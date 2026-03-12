@@ -41,6 +41,9 @@ foreach (Diagnostic diag in diagnostics)
 }
 
 Console.WriteLine();
+Console.WriteLine(BoundTreeWriter.Write(boundProgram));
+
+Console.WriteLine();
 Console.WriteLine($"tokens : {tokenCount}");
 Console.WriteLine($"members: {unit.Members.Count}");
 Console.WriteLine($"bound-fns: {boundProgram.Functions.Count}");

@@ -1,0 +1,16 @@
+
+
+
+extern reg var   PA:   u32 @(0x1F6);
+extern reg var   PB:   u32 @(0x1F7);
+extern reg var   PTRA: u32 @(0x1F8);    // free for user (hub data access)
+extern reg var   PTRB: u32 @(0x1F9);    // reserved for rec fn stack
+extern reg var   DIRA: u32 @(0x1FA);
+extern reg var   DIRB: u32 @(0x1FB);
+extern reg var   OUTA: u32 @(0x1FC);
+extern reg var   OUTB: u32 @(0x1FD);
+extern reg const INA:  u32 @(0x1FE);
+extern reg const INB:  u32 @(0x1FF);
+
+
+OUTA |= 0x10;
