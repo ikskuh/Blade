@@ -25,6 +25,7 @@ public sealed class Parser
     }
 
     public DiagnosticBag Diagnostics => _diagnostics;
+    public int TokenCount => _tokens.Count;
 
     private Token Current => Peek(0);
 

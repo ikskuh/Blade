@@ -5,7 +5,12 @@
       "Bash(dotnet test)",
       "Bash(dotnet build --nologo -v q)",
       "Bash(dotnet test --nologo -v q)",
-      "Bash(dotnet test --nologo -v n)"
+      "Bash(dotnet test --nologo -v n)",
+      "Bash(dotnet build -q)",
+      "Bash(dotnet run --project Blade/blade.csproj -- Blade.Tests/Accept/function_declarations.blade)",
+      "Bash(dotnet run --project Blade/blade.csproj -- Blade.Tests/Reject/missing_semicolon.blade)",
+      "Bash(dotnet run --project Blade/blade.csproj)",
+      "Bash(dotnet run --project Blade/blade.csproj -- nonexistent.blade)"
     ]
   }
 }
