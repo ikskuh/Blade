@@ -24,4 +24,9 @@
     <ProjectReference Include="..\Blade\blade.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="Accept\**\*.blade" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Reject\**\*.blade" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

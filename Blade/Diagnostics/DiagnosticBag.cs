@@ -40,6 +40,43 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
         Report(DiagnosticCode.E0004_UnterminatedBlockComment, span, "Unterminated block comment.");
     }
 
+    // Parser diagnostics
+
+    public void ReportUnexpectedToken(TextSpan span, string expected, string actual)
+    {
+        Report(DiagnosticCode.E0101_UnexpectedToken, span, $"Expected {expected}, got '{actual}'.");
+    }
+
+    public void ReportExpectedExpression(TextSpan span)
+    {
+        Report(DiagnosticCode.E0102_ExpectedExpression, span, "Expected expression.");
+    }
+
+    public void ReportExpectedStatement(TextSpan span)
+    {
+        Report(DiagnosticCode.E0103_ExpectedStatement, span, "Expected statement.");
+    }
+
+    public void ReportExpectedTypeName(TextSpan span)
+    {
+        Report(DiagnosticCode.E0104_ExpectedTypeName, span, "Expected type name.");
+    }
+
+    public void ReportExpectedIdentifier(TextSpan span)
+    {
+        Report(DiagnosticCode.E0105_ExpectedIdentifier, span, "Expected identifier.");
+    }
+
+    public void ReportInvalidAssignmentTarget(TextSpan span)
+    {
+        Report(DiagnosticCode.E0106_InvalidAssignmentTarget, span, "Invalid assignment target.");
+    }
+
+    public void ReportExpectedSemicolon(TextSpan span)
+    {
+        Report(DiagnosticCode.E0107_ExpectedSemicolon, span, "Expected ';'.");
+    }
+
     public IEnumerator<Diagnostic> GetEnumerator() => _diagnostics.GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();

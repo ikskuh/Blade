@@ -1,0 +1,6 @@
+reg var counter: u32 = 0;
+reg const MASK: u32 = 0xFF00FF00;
+lut var buffer: [128]u32 = undefined;
+hub var stream: [1024]u8 = undefined;
+extern reg var DIRA: u32 @(0x1FA);
+reg var aligned_buf: [16]u32 align(16) = undefined;

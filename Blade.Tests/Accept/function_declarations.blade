@@ -1,0 +1,24 @@
+fn square(x: u32) -> u32 {
+    return x * x;
+}
+
+leaf fn fast(val: u32) -> u32 {
+    return val;
+}
+
+inline fn nop() void {
+}
+
+rec fn fib(n: u32) -> u32 {
+    return n;
+}
+
+coro fn prod() void {
+    loop {
+        yieldto prod();
+    }
+}
+
+int1 fn on_timer() void {
+    yield;
+}

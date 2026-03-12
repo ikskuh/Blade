@@ -183,4 +183,41 @@ public static class SyntaxFacts
 
         _ => null,
     };
+
+    /// <summary>
+    /// Returns the binary operator precedence for a token kind, or 0 if not a binary operator.
+    /// Higher values bind tighter.
+    /// </summary>
+    public static int GetBinaryOperatorPrecedence(TokenKind kind) => kind switch
+    {
+        TokenKind.Star or TokenKind.Slash => 7,
+        TokenKind.Plus or TokenKind.Minus => 6,
+        TokenKind.LessLess or TokenKind.GreaterGreater => 5,
+        TokenKind.Ampersand => 4,
+        TokenKind.Caret => 3,
+        TokenKind.Pipe => 2,
+        TokenKind.Less or TokenKind.LessEqual or TokenKind.Greater or TokenKind.GreaterEqual
+            or TokenKind.EqualEqual or TokenKind.BangEqual => 1,
+        _ => 0,
+    };
+
+    /// <summary>
+    /// Returns the unary operator precedence for a token kind, or 0 if not a unary prefix operator.
+    /// </summary>
+    public static int GetUnaryOperatorPrecedence(TokenKind kind) => kind switch
+    {
+        TokenKind.Bang or TokenKind.Minus or TokenKind.Star => 8,
+        _ => 0,
+    };
+
+    /// <summary>
+    /// Returns true if the token kind is an assignment operator (=, +=, -=, etc.).
+    /// </summary>
+    public static bool IsAssignmentOperator(TokenKind kind) => kind switch
+    {
+        TokenKind.Equal or TokenKind.PlusEqual or TokenKind.MinusEqual
+            or TokenKind.AmpersandEqual or TokenKind.PipeEqual or TokenKind.CaretEqual
+            or TokenKind.LessLessEqual or TokenKind.GreaterGreaterEqual => true,
+        _ => false,
+    };
 }
