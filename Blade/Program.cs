@@ -2,6 +2,8 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using Blade.Diagnostics;
+using Blade.Semantics;
+using Blade.Semantics.Bound;
 using Blade.Source;
 using Blade.Syntax;
 using Blade.Syntax.Nodes;
@@ -27,6 +29,7 @@ DiagnosticBag diagnostics = new();
 Stopwatch sw = Stopwatch.StartNew();
 Parser parser = Parser.Create(source, diagnostics);
 CompilationUnitSyntax unit = parser.ParseCompilationUnit();
+BoundProgram boundProgram = Binder.Bind(unit, diagnostics);
 sw.Stop();
 
 int tokenCount = parser.TokenCount;
@@ -40,6 +43,7 @@ foreach (Diagnostic diag in diagnostics)
 Console.WriteLine();
 Console.WriteLine($"tokens : {tokenCount}");
 Console.WriteLine($"members: {unit.Members.Count}");
+Console.WriteLine($"bound-fns: {boundProgram.Functions.Count}");
 Console.WriteLine($"errors : {diagnostics.Count}");
 Console.WriteLine($"time   : {sw.Elapsed.TotalMilliseconds:F2} ms");
 

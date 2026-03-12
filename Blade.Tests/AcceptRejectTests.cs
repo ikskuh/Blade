@@ -4,6 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using Blade.Diagnostics;
+using Blade.Semantics;
+using Blade.Semantics.Bound;
 using Blade.Source;
 using Blade.Syntax;
 using Blade.Syntax.Nodes;
@@ -21,7 +23,14 @@ public class AcceptRejectTests
         SourceText source = new(text, filePath);
         diagnostics = new DiagnosticBag();
         Parser parser = Parser.Create(source, diagnostics);
-        return parser.ParseCompilationUnit();
+        CompilationUnitSyntax unit = parser.ParseCompilationUnit();
+        int parserDiagnosticCount = diagnostics.Count;
+        if (parserDiagnosticCount == 0)
+        {
+            BoundProgram program = Binder.Bind(unit, diagnostics);
+            _ = program;
+        }
+        return unit;
     }
 
     private static HashSet<string> ExtractExpectedCodes(string filePath)
@@ -82,11 +91,7 @@ public class AcceptRejectTests
         Assert.That(expectedCodes, Is.Not.Empty, "Reject file must have expected diagnostic codes on the first line.");
 
         HashSet<string> actualCodes = diagnostics.Select(d => d.FormatCode()).ToHashSet();
-
-        foreach (string expected in expectedCodes)
-        {
-            Assert.That(actualCodes, Does.Contain(expected),
-                $"Expected diagnostic {expected} but got: [{string.Join(", ", actualCodes)}]");
-        }
+        Assert.That(actualCodes, Is.EquivalentTo(expectedCodes),
+            $"Expected diagnostics [{string.Join(", ", expectedCodes)}], but got [{string.Join(", ", actualCodes)}]");
     }
 }

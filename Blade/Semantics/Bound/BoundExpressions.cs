@@ -1,0 +1,354 @@
+using System.Collections.Generic;
+using Blade.Source;
+using Blade.Syntax;
+
+namespace Blade.Semantics.Bound;
+
+public abstract class BoundExpression : BoundNode
+{
+    protected BoundExpression(BoundNodeKind kind, TextSpan span, TypeSymbol type)
+        : base(kind, span)
+    {
+        Type = type;
+    }
+
+    public TypeSymbol Type { get; }
+}
+
+public sealed class BoundLiteralExpression : BoundExpression
+{
+    public BoundLiteralExpression(object? value, TextSpan span, TypeSymbol type)
+        : base(BoundNodeKind.LiteralExpression, span, type)
+    {
+        Value = value;
+    }
+
+    public object? Value { get; }
+}
+
+public sealed class BoundSymbolExpression : BoundExpression
+{
+    public BoundSymbolExpression(Symbol symbol, TextSpan span, TypeSymbol type)
+        : base(BoundNodeKind.SymbolExpression, span, type)
+    {
+        Symbol = symbol;
+    }
+
+    public Symbol Symbol { get; }
+}
+
+public enum BoundUnaryOperatorKind
+{
+    LogicalNot,
+    Negation,
+    PostIncrement,
+    PostDecrement,
+}
+
+public sealed class BoundUnaryOperator
+{
+    public BoundUnaryOperator(TokenKind syntaxKind, BoundUnaryOperatorKind kind)
+    {
+        SyntaxKind = syntaxKind;
+        Kind = kind;
+    }
+
+    public TokenKind SyntaxKind { get; }
+    public BoundUnaryOperatorKind Kind { get; }
+
+    public static BoundUnaryOperator? Bind(TokenKind kind)
+    {
+        return kind switch
+        {
+            TokenKind.Bang => new BoundUnaryOperator(kind, BoundUnaryOperatorKind.LogicalNot),
+            TokenKind.Minus => new BoundUnaryOperator(kind, BoundUnaryOperatorKind.Negation),
+            TokenKind.PlusPlus => new BoundUnaryOperator(kind, BoundUnaryOperatorKind.PostIncrement),
+            TokenKind.MinusMinus => new BoundUnaryOperator(kind, BoundUnaryOperatorKind.PostDecrement),
+            _ => null,
+        };
+    }
+}
+
+public sealed class BoundUnaryExpression : BoundExpression
+{
+    public BoundUnaryExpression(BoundUnaryOperator op, BoundExpression operand, TextSpan span, TypeSymbol type)
+        : base(BoundNodeKind.UnaryExpression, span, type)
+    {
+        Operator = op;
+        Operand = operand;
+    }
+
+    public BoundUnaryOperator Operator { get; }
+    public BoundExpression Operand { get; }
+}
+
+public enum BoundBinaryOperatorKind
+{
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    ShiftLeft,
+    ShiftRight,
+    Equals,
+    NotEquals,
+    Less,
+    LessOrEqual,
+    Greater,
+    GreaterOrEqual,
+}
+
+public sealed class BoundBinaryOperator
+{
+    private BoundBinaryOperator(TokenKind syntaxKind, BoundBinaryOperatorKind kind, bool isComparison)
+    {
+        SyntaxKind = syntaxKind;
+        Kind = kind;
+        IsComparison = isComparison;
+    }
+
+    public TokenKind SyntaxKind { get; }
+    public BoundBinaryOperatorKind Kind { get; }
+    public bool IsComparison { get; }
+
+    public static BoundBinaryOperator? Bind(TokenKind kind)
+    {
+        return kind switch
+        {
+            TokenKind.Plus => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.Add, isComparison: false),
+            TokenKind.Minus => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.Subtract, isComparison: false),
+            TokenKind.Star => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.Multiply, isComparison: false),
+            TokenKind.Slash => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.Divide, isComparison: false),
+            TokenKind.Ampersand => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.BitwiseAnd, isComparison: false),
+            TokenKind.Pipe => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.BitwiseOr, isComparison: false),
+            TokenKind.Caret => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.BitwiseXor, isComparison: false),
+            TokenKind.LessLess => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.ShiftLeft, isComparison: false),
+            TokenKind.GreaterGreater => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.ShiftRight, isComparison: false),
+            TokenKind.EqualEqual => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.Equals, isComparison: true),
+            TokenKind.BangEqual => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.NotEquals, isComparison: true),
+            TokenKind.Less => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.Less, isComparison: true),
+            TokenKind.LessEqual => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.LessOrEqual, isComparison: true),
+            TokenKind.Greater => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.Greater, isComparison: true),
+            TokenKind.GreaterEqual => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.GreaterOrEqual, isComparison: true),
+            _ => null,
+        };
+    }
+}
+
+public sealed class BoundBinaryExpression : BoundExpression
+{
+    public BoundBinaryExpression(BoundExpression left, BoundBinaryOperator op, BoundExpression right, TextSpan span, TypeSymbol type)
+        : base(BoundNodeKind.BinaryExpression, span, type)
+    {
+        Left = left;
+        Operator = op;
+        Right = right;
+    }
+
+    public BoundExpression Left { get; }
+    public BoundBinaryOperator Operator { get; }
+    public BoundExpression Right { get; }
+}
+
+public sealed class BoundCallExpression : BoundExpression
+{
+    public BoundCallExpression(FunctionSymbol function, IReadOnlyList<BoundExpression> arguments, TextSpan span, TypeSymbol type)
+        : base(BoundNodeKind.CallExpression, span, type)
+    {
+        Function = function;
+        Arguments = arguments;
+    }
+
+    public FunctionSymbol Function { get; }
+    public IReadOnlyList<BoundExpression> Arguments { get; }
+}
+
+public sealed class BoundIntrinsicCallExpression : BoundExpression
+{
+    public BoundIntrinsicCallExpression(string name, IReadOnlyList<BoundExpression> arguments, TextSpan span, TypeSymbol type)
+        : base(BoundNodeKind.IntrinsicCallExpression, span, type)
+    {
+        Name = name;
+        Arguments = arguments;
+    }
+
+    public string Name { get; }
+    public IReadOnlyList<BoundExpression> Arguments { get; }
+}
+
+public sealed class BoundMemberAccessExpression : BoundExpression
+{
+    public BoundMemberAccessExpression(BoundExpression receiver, string memberName, TextSpan span, TypeSymbol type)
+        : base(BoundNodeKind.MemberAccessExpression, span, type)
+    {
+        Receiver = receiver;
+        MemberName = memberName;
+    }
+
+    public BoundExpression Receiver { get; }
+    public string MemberName { get; }
+}
+
+public sealed class BoundIndexExpression : BoundExpression
+{
+    public BoundIndexExpression(BoundExpression expression, BoundExpression index, TextSpan span, TypeSymbol type)
+        : base(BoundNodeKind.IndexExpression, span, type)
+    {
+        Expression = expression;
+        Index = index;
+    }
+
+    public BoundExpression Expression { get; }
+    public BoundExpression Index { get; }
+}
+
+public sealed class BoundPointerDerefExpression : BoundExpression
+{
+    public BoundPointerDerefExpression(BoundExpression expression, TextSpan span, TypeSymbol type)
+        : base(BoundNodeKind.PointerDerefExpression, span, type)
+    {
+        Expression = expression;
+    }
+
+    public BoundExpression Expression { get; }
+}
+
+public sealed class BoundIfExpression : BoundExpression
+{
+    public BoundIfExpression(BoundExpression condition, BoundExpression thenExpression, BoundExpression elseExpression, TextSpan span, TypeSymbol type)
+        : base(BoundNodeKind.IfExpression, span, type)
+    {
+        Condition = condition;
+        ThenExpression = thenExpression;
+        ElseExpression = elseExpression;
+    }
+
+    public BoundExpression Condition { get; }
+    public BoundExpression ThenExpression { get; }
+    public BoundExpression ElseExpression { get; }
+}
+
+public sealed class BoundRangeExpression : BoundExpression
+{
+    public BoundRangeExpression(BoundExpression start, BoundExpression end, TextSpan span)
+        : base(BoundNodeKind.RangeExpression, span, BuiltinTypes.Range)
+    {
+        Start = start;
+        End = end;
+    }
+
+    public BoundExpression Start { get; }
+    public BoundExpression End { get; }
+}
+
+public sealed class BoundStructFieldInitializer
+{
+    public BoundStructFieldInitializer(string name, BoundExpression value)
+    {
+        Name = name;
+        Value = value;
+    }
+
+    public string Name { get; }
+    public BoundExpression Value { get; }
+}
+
+public sealed class BoundStructLiteralExpression : BoundExpression
+{
+    public BoundStructLiteralExpression(IReadOnlyList<BoundStructFieldInitializer> fields, TextSpan span, TypeSymbol type)
+        : base(BoundNodeKind.StructLiteralExpression, span, type)
+    {
+        Fields = fields;
+    }
+
+    public IReadOnlyList<BoundStructFieldInitializer> Fields { get; }
+}
+
+public sealed class BoundConversionExpression : BoundExpression
+{
+    public BoundConversionExpression(BoundExpression expression, TextSpan span, TypeSymbol targetType)
+        : base(BoundNodeKind.ConversionExpression, span, targetType)
+    {
+        Expression = expression;
+    }
+
+    public BoundExpression Expression { get; }
+}
+
+public sealed class BoundErrorExpression : BoundExpression
+{
+    public BoundErrorExpression(TextSpan span)
+        : base(BoundNodeKind.ErrorExpression, span, BuiltinTypes.Unknown)
+    {
+    }
+}
+
+public abstract class BoundAssignmentTarget : BoundNode
+{
+    protected BoundAssignmentTarget(BoundNodeKind kind, TextSpan span, TypeSymbol type)
+        : base(kind, span)
+    {
+        Type = type;
+    }
+
+    public TypeSymbol Type { get; }
+}
+
+public sealed class BoundSymbolAssignmentTarget : BoundAssignmentTarget
+{
+    public BoundSymbolAssignmentTarget(Symbol symbol, TextSpan span, TypeSymbol type)
+        : base(BoundNodeKind.SymbolAssignmentTarget, span, type)
+    {
+        Symbol = symbol;
+    }
+
+    public Symbol Symbol { get; }
+}
+
+public sealed class BoundMemberAssignmentTarget : BoundAssignmentTarget
+{
+    public BoundMemberAssignmentTarget(BoundExpression receiver, string memberName, TextSpan span, TypeSymbol type)
+        : base(BoundNodeKind.MemberAssignmentTarget, span, type)
+    {
+        Receiver = receiver;
+        MemberName = memberName;
+    }
+
+    public BoundExpression Receiver { get; }
+    public string MemberName { get; }
+}
+
+public sealed class BoundIndexAssignmentTarget : BoundAssignmentTarget
+{
+    public BoundIndexAssignmentTarget(BoundExpression expression, BoundExpression index, TextSpan span, TypeSymbol type)
+        : base(BoundNodeKind.IndexAssignmentTarget, span, type)
+    {
+        Expression = expression;
+        Index = index;
+    }
+
+    public BoundExpression Expression { get; }
+    public BoundExpression Index { get; }
+}
+
+public sealed class BoundPointerDerefAssignmentTarget : BoundAssignmentTarget
+{
+    public BoundPointerDerefAssignmentTarget(BoundExpression expression, TextSpan span, TypeSymbol type)
+        : base(BoundNodeKind.PointerDerefAssignmentTarget, span, type)
+    {
+        Expression = expression;
+    }
+
+    public BoundExpression Expression { get; }
+}
+
+public sealed class BoundErrorAssignmentTarget : BoundAssignmentTarget
+{
+    public BoundErrorAssignmentTarget(TextSpan span)
+        : base(BoundNodeKind.ErrorAssignmentTarget, span, BuiltinTypes.Unknown)
+    {
+    }
+}
