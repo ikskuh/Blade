@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/Blade/">
+    <Project Path="Blade/blade.csproj" />
+  </Folder>
+  <Project Path="Blade.Tests/Blade.Tests.csproj" />
+</Solution>
