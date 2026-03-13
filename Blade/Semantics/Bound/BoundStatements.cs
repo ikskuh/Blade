@@ -93,14 +93,14 @@ public sealed class BoundWhileStatement : BoundStatement
 
 public sealed class BoundForStatement : BoundStatement
 {
-    public BoundForStatement(VariableSymbol? variable, BoundBlockStatement body, TextSpan span)
+    public BoundForStatement(Symbol? variable, BoundBlockStatement body, TextSpan span)
         : base(BoundNodeKind.ForStatement, span)
     {
         Variable = variable;
         Body = body;
     }
 
-    public VariableSymbol? Variable { get; }
+    public Symbol? Variable { get; }
     public BoundBlockStatement Body { get; }
 }
 
@@ -206,17 +206,24 @@ public sealed class BoundYieldtoStatement : BoundStatement
 
 public sealed class BoundAsmStatement : BoundStatement
 {
-    public BoundAsmStatement(string body, string? flagOutput, IReadOnlyList<InlineAssemblyValidator.AsmLine> parsedLines, TextSpan span)
+    public BoundAsmStatement(
+        string body,
+        string? flagOutput,
+        IReadOnlyList<InlineAssemblyValidator.AsmLine> parsedLines,
+        IReadOnlyDictionary<string, Symbol> referencedSymbols,
+        TextSpan span)
         : base(BoundNodeKind.AsmStatement, span)
     {
         Body = body;
         FlagOutput = flagOutput;
         ParsedLines = parsedLines;
+        ReferencedSymbols = referencedSymbols;
     }
 
     public string Body { get; }
     public string? FlagOutput { get; }
     public IReadOnlyList<InlineAssemblyValidator.AsmLine> ParsedLines { get; }
+    public IReadOnlyDictionary<string, Symbol> ReferencedSymbols { get; }
 }
 
 public sealed class BoundErrorStatement : BoundStatement

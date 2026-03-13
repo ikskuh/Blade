@@ -1,15 +1,20 @@
 using System.Collections.Generic;
+using System.Threading;
 using Blade.Syntax.Nodes;
 
 namespace Blade.Semantics;
 
 public abstract class Symbol
 {
+    private static int _nextId;
+
     protected Symbol(string name)
     {
+        Id = Interlocked.Increment(ref _nextId);
         Name = name;
     }
 
+    public int Id { get; }
     public string Name { get; }
 }
 
@@ -26,15 +31,37 @@ public sealed class TypeAliasSymbol : Symbol
 
 public sealed class VariableSymbol : Symbol
 {
-    public VariableSymbol(string name, TypeSymbol type, bool isConst)
+    public VariableSymbol(
+        string name,
+        TypeSymbol type,
+        bool isConst,
+        VariableStorageClass storageClass,
+        VariableScopeKind scopeKind,
+        bool isExtern,
+        int? fixedAddress,
+        int? alignment)
         : base(name)
     {
         Type = type;
         IsConst = isConst;
+        StorageClass = storageClass;
+        ScopeKind = scopeKind;
+        IsExtern = isExtern;
+        FixedAddress = fixedAddress;
+        Alignment = alignment;
     }
 
     public TypeSymbol Type { get; }
     public bool IsConst { get; }
+    public VariableStorageClass StorageClass { get; }
+    public VariableScopeKind ScopeKind { get; }
+    public bool IsExtern { get; }
+    public int? FixedAddress { get; }
+    public int? Alignment { get; }
+
+    public bool IsAutomatic => ScopeKind is VariableScopeKind.Local or VariableScopeKind.TopLevelAutomatic;
+    public bool IsGlobalStorage => ScopeKind == VariableScopeKind.GlobalStorage;
+    public bool UsesGlobalRegisterStorage => IsGlobalStorage && StorageClass == VariableStorageClass.Reg;
 }
 
 public sealed class ParameterSymbol : Symbol
@@ -46,6 +73,22 @@ public sealed class ParameterSymbol : Symbol
     }
 
     public TypeSymbol Type { get; }
+}
+
+public enum VariableStorageClass
+{
+    Automatic,
+    Reg,
+    Lut,
+    Hub,
+}
+
+public enum VariableScopeKind
+{
+    Local,
+    Parameter,
+    TopLevelAutomatic,
+    GlobalStorage,
 }
 
 public enum FunctionKind

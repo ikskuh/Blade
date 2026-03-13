@@ -93,6 +93,11 @@ public static class MirTextWriter
                 sb.Append(load.SymbolName);
                 break;
 
+            case MirLoadPlaceInstruction loadPlace:
+                sb.Append("load.place ");
+                sb.Append(loadPlace.Place.EmittedName);
+                break;
+
             case MirCopyInstruction copy:
                 sb.Append("copy ");
                 sb.Append(copy.Source);
@@ -155,6 +160,43 @@ public static class MirTextWriter
                 sb.Append('(');
                 WriteValueList(sb, store.Operands);
                 sb.Append(')');
+                break;
+
+            case MirStorePlaceInstruction storePlace:
+                sb.Append("store.place ");
+                sb.Append(storePlace.Place.EmittedName);
+                sb.Append('(');
+                sb.Append(storePlace.Value);
+                sb.Append(')');
+                break;
+
+            case MirUpdatePlaceInstruction updatePlace:
+                sb.Append("update.place ");
+                sb.Append(updatePlace.Place.EmittedName);
+                sb.Append(' ');
+                sb.Append(updatePlace.OperatorKind);
+                sb.Append(' ');
+                sb.Append(updatePlace.Value);
+                break;
+
+            case MirInlineAsmInstruction inlineAsm:
+                sb.Append("inlineasm");
+                if (inlineAsm.Bindings.Count > 0)
+                {
+                    sb.Append(' ');
+                    for (int i = 0; i < inlineAsm.Bindings.Count; i++)
+                    {
+                        if (i > 0)
+                            sb.Append(", ");
+                        MirInlineAsmBinding binding = inlineAsm.Bindings[i];
+                        sb.Append(binding.Name);
+                        sb.Append('=');
+                        if (binding.Value is MirValueId value)
+                            sb.Append(value);
+                        else
+                            sb.Append(binding.Place?.EmittedName ?? "<none>");
+                    }
+                }
                 break;
 
             case MirPseudoInstruction pseudo:

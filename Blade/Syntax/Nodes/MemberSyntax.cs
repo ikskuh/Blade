@@ -63,7 +63,7 @@ public sealed class FunctionDeclarationSyntax : MemberSyntax
 public sealed class VariableDeclarationSyntax : MemberSyntax
 {
     public Token? ExternKeyword { get; }
-    public Token StorageClassKeyword { get; }
+    public Token? StorageClassKeyword { get; }
     public Token MutabilityKeyword { get; }
     public Token Name { get; }
     public Token Colon { get; }
@@ -74,11 +74,11 @@ public sealed class VariableDeclarationSyntax : MemberSyntax
     public AlignClauseSyntax? AlignClause { get; }
     public Token Semicolon { get; }
 
-    public VariableDeclarationSyntax(Token? externKeyword, Token storageClassKeyword, Token mutabilityKeyword,
+    public VariableDeclarationSyntax(Token? externKeyword, Token? storageClassKeyword, Token mutabilityKeyword,
                                       Token name, Token colon, TypeSyntax type, Token? equalsToken,
                                       ExpressionSyntax? initializer, AddressClauseSyntax? atClause,
                                       AlignClauseSyntax? alignClause, Token semicolon)
-        : base(TextSpan.FromBounds(externKeyword?.Span.Start ?? storageClassKeyword.Span.Start, semicolon.Span.End))
+        : base(TextSpan.FromBounds((externKeyword ?? storageClassKeyword ?? mutabilityKeyword).Span.Start, semicolon.Span.End))
     {
         ExternKeyword = externKeyword;
         StorageClassKeyword = storageClassKeyword;

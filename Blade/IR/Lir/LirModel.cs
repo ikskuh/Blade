@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Blade.IR;
 using Blade.Semantics;
 using Blade.Source;
 
@@ -12,10 +13,17 @@ public readonly record struct LirVirtualRegister(int Id)
 public sealed class LirModule
 {
     public LirModule(IReadOnlyList<LirFunction> functions)
+        : this([], functions)
     {
+    }
+
+    public LirModule(IReadOnlyList<StoragePlace> storagePlaces, IReadOnlyList<LirFunction> functions)
+    {
+        StoragePlaces = storagePlaces;
         Functions = functions;
     }
 
+    public IReadOnlyList<StoragePlace> StoragePlaces { get; }
     public IReadOnlyList<LirFunction> Functions { get; }
 }
 
@@ -112,6 +120,16 @@ public sealed class LirSymbolOperand : LirOperand
     public string Symbol { get; }
 }
 
+public sealed class LirPlaceOperand : LirOperand
+{
+    public LirPlaceOperand(StoragePlace place)
+    {
+        Place = place;
+    }
+
+    public StoragePlace Place { get; }
+}
+
 public abstract class LirInstruction
 {
     protected LirInstruction(
@@ -162,6 +180,40 @@ public sealed class LirOpInstruction : LirInstruction
         : base(opcode, destination, resultType, operands, hasSideEffects, predicate, writesC, writesZ, span)
     {
     }
+}
+
+public sealed class LirInlineAsmBinding
+{
+    public LirInlineAsmBinding(string name, LirOperand operand)
+    {
+        Name = name;
+        Operand = operand;
+    }
+
+    public string Name { get; }
+    public LirOperand Operand { get; }
+}
+
+public sealed class LirInlineAsmInstruction : LirInstruction
+{
+    public LirInlineAsmInstruction(string body, IReadOnlyList<LirInlineAsmBinding> bindings, TextSpan span)
+        : base(
+            opcode: "inlineasm",
+            destination: null,
+            resultType: null,
+            operands: [],
+            hasSideEffects: true,
+            predicate: null,
+            writesC: false,
+            writesZ: false,
+            span)
+    {
+        Body = body;
+        Bindings = bindings;
+    }
+
+    public string Body { get; }
+    public IReadOnlyList<LirInlineAsmBinding> Bindings { get; }
 }
 
 public abstract class LirTerminator

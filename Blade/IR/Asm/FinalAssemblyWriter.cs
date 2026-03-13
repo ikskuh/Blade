@@ -1,5 +1,7 @@
 using System;
+using System.Globalization;
 using System.Text;
+using Blade.IR;
 
 namespace Blade.IR.Asm;
 
@@ -27,6 +29,7 @@ public static class FinalAssemblyWriter
     public static string Write(AsmModule module)
     {
         StringBuilder sb = new();
+        WriteConBlock(sb, module);
         sb.AppendLine("DAT");
         sb.AppendLine("    org 0");
         sb.AppendLine("    ' --- Blade compiler output ---");
@@ -44,6 +47,31 @@ public static class FinalAssemblyWriter
         }
 
         return sb.ToString();
+    }
+
+    private static void WriteConBlock(StringBuilder sb, AsmModule module)
+    {
+        bool wroteHeader = false;
+        foreach (StoragePlace place in module.StoragePlaces)
+        {
+            if (place.Kind != StoragePlaceKind.FixedRegisterAlias || !place.FixedAddress.HasValue)
+                continue;
+
+            if (!wroteHeader)
+            {
+                sb.AppendLine("CON");
+                wroteHeader = true;
+            }
+
+            sb.Append("    ");
+            sb.Append(place.EmittedName);
+            sb.Append(" = 0x");
+            sb.Append(place.FixedAddress.Value.ToString("X", CultureInfo.InvariantCulture));
+            sb.AppendLine();
+        }
+
+        if (wroteHeader)
+            sb.AppendLine();
     }
 
     private static void WriteNode(StringBuilder sb, AsmNode node)
@@ -115,6 +143,7 @@ public static class FinalAssemblyWriter
             AsmPhysicalRegisterOperand phys => phys.Name,
             AsmRegisterOperand virt => virt.Format(),
             AsmImmediateOperand imm => imm.Format(),
+            AsmPlaceOperand place => place.Place.EmittedName,
             AsmSymbolOperand sym => FormatSymbolOperand(sym, instruction, operandIndex),
             _ => operand.Format(),
         };

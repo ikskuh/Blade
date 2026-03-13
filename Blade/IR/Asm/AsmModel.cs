@@ -1,15 +1,23 @@
 using System;
 using System.Collections.Generic;
+using Blade.IR;
 
 namespace Blade.IR.Asm;
 
 public sealed class AsmModule
 {
     public AsmModule(IReadOnlyList<AsmFunction> functions)
+        : this([], functions)
     {
+    }
+
+    public AsmModule(IReadOnlyList<StoragePlace> storagePlaces, IReadOnlyList<AsmFunction> functions)
+    {
+        StoragePlaces = storagePlaces;
         Functions = functions;
     }
 
+    public IReadOnlyList<StoragePlace> StoragePlaces { get; }
     public IReadOnlyList<AsmFunction> Functions { get; }
 }
 
@@ -147,6 +155,18 @@ public sealed class AsmSymbolOperand : AsmOperand
     public override string Format() => $"#{Name}";
 }
 
+public sealed class AsmPlaceOperand : AsmOperand
+{
+    public AsmPlaceOperand(StoragePlace place)
+    {
+        Place = place;
+    }
+
+    public StoragePlace Place { get; }
+
+    public override string Format() => Place.EmittedName;
+}
+
 /// <summary>
 /// Physical register operand for post-register-allocation output.
 /// Uses named P2 registers (e.g., "r0", "PA", "PB", "PTRA").
@@ -184,10 +204,12 @@ public sealed class AsmCommentNode : AsmNode
 /// </summary>
 public sealed class AsmInlineTextNode : AsmNode
 {
-    public AsmInlineTextNode(string text)
+    public AsmInlineTextNode(string text, IReadOnlyDictionary<string, AsmOperand>? bindings = null)
     {
         Text = text;
+        Bindings = bindings ?? new Dictionary<string, AsmOperand>(StringComparer.Ordinal);
     }
 
     public string Text { get; }
+    public IReadOnlyDictionary<string, AsmOperand> Bindings { get; }
 }

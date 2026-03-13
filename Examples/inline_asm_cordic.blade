@@ -11,7 +11,7 @@ reg var product_lo: u32 = 0;
 reg var product_hi: u32 = 0;
 
 fn unsigned_multiply(a: u32, b: u32) -> u32 {
-    reg var lo: u32 = 0;
+    var lo: u32 = 0;
     asm {
         QMUL  {a}, {b}
         GETQX {lo}
@@ -20,7 +20,7 @@ fn unsigned_multiply(a: u32, b: u32) -> u32 {
 }
 
 fn unsigned_divide(dividend: u32, divisor: u32) -> u32 {
-    reg var quotient: u32 = 0;
+    var quotient: u32 = 0;
     asm {
         QDIV   {dividend}, {divisor}
         GETQX  {quotient}
@@ -29,7 +29,7 @@ fn unsigned_divide(dividend: u32, divisor: u32) -> u32 {
 }
 
 fn get_random() -> u32 {
-    reg var rnd: u32 = 0;
+    var rnd: u32 = 0;
     asm {
         GETRND {rnd}
     };

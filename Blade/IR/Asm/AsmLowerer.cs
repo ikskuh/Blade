@@ -41,7 +41,7 @@ public static class AsmLowerer
             functions.Add(LowerFunction(ctx));
         }
 
-        return new AsmModule(functions);
+        return new AsmModule(module.StoragePlaces, functions);
     }
 
     private sealed class LoweringContext
@@ -85,6 +85,12 @@ public static class AsmLowerer
 
     private static void LowerInstruction(List<AsmNode> nodes, LirInstruction instruction, LoweringContext ctx)
     {
+        if (instruction is LirInlineAsmInstruction inlineAsm)
+        {
+            LowerInlineAsm(nodes, inlineAsm);
+            return;
+        }
+
         if (instruction is not LirOpInstruction op)
         {
             nodes.Add(new AsmCommentNode($"unknown instruction: {instruction.Opcode}"));
@@ -102,6 +108,9 @@ public static class AsmLowerer
             case "load.sym":
                 LowerLoadSym(nodes, op);
                 break;
+            case "load.place":
+                LowerLoadPlace(nodes, op);
+                break;
             case "select":
                 LowerSelect(nodes, op);
                 break;
@@ -115,12 +124,14 @@ public static class AsmLowerer
                 LowerConvert(nodes, op);
                 break;
             default:
-                if (op.Opcode.StartsWith("asm\0", StringComparison.Ordinal))
-                    LowerInlineAsm(nodes, op);
-                else if (op.Opcode.StartsWith("binary.", StringComparison.Ordinal))
+                if (op.Opcode.StartsWith("binary.", StringComparison.Ordinal))
                     LowerBinary(nodes, op);
                 else if (op.Opcode.StartsWith("unary.", StringComparison.Ordinal))
                     LowerUnary(nodes, op);
+                else if (op.Opcode == "store.place")
+                    LowerStorePlace(nodes, op);
+                else if (op.Opcode.StartsWith("update.place.", StringComparison.Ordinal))
+                    LowerUpdatePlace(nodes, op);
                 else if (op.Opcode.StartsWith("store.", StringComparison.Ordinal))
                     LowerStore(nodes, op);
                 else if (op.Opcode.StartsWith("pseudo.", StringComparison.Ordinal))
@@ -134,11 +145,13 @@ public static class AsmLowerer
         }
     }
 
-    private static void LowerInlineAsm(List<AsmNode> nodes, LirOpInstruction op)
+    private static void LowerInlineAsm(List<AsmNode> nodes, LirInlineAsmInstruction inlineAsm)
     {
-        // Extract asm body from encoded opcode: "asm\0BODY"
-        string body = op.Opcode[4..]; // skip "asm\0"
+        string body = inlineAsm.Body;
         string[] lines = body.Split('\n');
+        Dictionary<string, AsmOperand> bindings = new(StringComparer.Ordinal);
+        foreach (LirInlineAsmBinding binding in inlineAsm.Bindings)
+            bindings[binding.Name] = LowerOperand(binding.Operand);
 
         nodes.Add(new AsmCommentNode("inline asm begin"));
         foreach (string rawLine in lines)
@@ -147,9 +160,7 @@ public static class AsmLowerer
             if (string.IsNullOrWhiteSpace(line))
                 continue;
 
-            // Preserve {varname} placeholders until register allocation so they can
-            // be rewritten to the same allocated symbol labels as normal operands.
-            nodes.Add(new AsmInlineTextNode(line));
+            nodes.Add(new AsmInlineTextNode(line, bindings));
         }
         nodes.Add(new AsmCommentNode("inline asm end"));
     }
@@ -173,6 +184,13 @@ public static class AsmLowerer
         AsmRegisterOperand dest = DestReg(op);
         string symbol = ((LirSymbolOperand)op.Operands[0]).Symbol;
         nodes.Add(Emit("MOV", dest, new AsmSymbolOperand(symbol)));
+    }
+
+    private static void LowerLoadPlace(List<AsmNode> nodes, LirOpInstruction op)
+    {
+        AsmRegisterOperand dest = DestReg(op);
+        AsmPlaceOperand place = (AsmPlaceOperand)LowerOperand(op.Operands[0]);
+        nodes.Add(Emit("MOV", dest, place));
     }
 
     private static void LowerConvert(List<AsmNode> nodes, LirOpInstruction op)
@@ -412,6 +430,43 @@ public static class AsmLowerer
             nodes.Add(new AsmCommentNode($"store.{target}"));
             nodes.Add(new AsmInstructionNode("MOV", [targetOp, valueOp]));
         }
+    }
+
+    private static void LowerStorePlace(List<AsmNode> nodes, LirOpInstruction op)
+    {
+        AsmPlaceOperand place = (AsmPlaceOperand)LowerOperand(op.Operands[0]);
+        AsmOperand valueOp = LowerOperand(op.Operands[1]);
+        nodes.Add(new AsmInstructionNode("MOV", [place, valueOp]));
+    }
+
+    private static void LowerUpdatePlace(List<AsmNode> nodes, LirOpInstruction op)
+    {
+        string operatorName = op.Opcode["update.place.".Length..];
+        AsmPlaceOperand place = (AsmPlaceOperand)LowerOperand(op.Operands[0]);
+        AsmOperand value = LowerOperand(op.Operands[1]);
+
+        string opcode = Enum.TryParse<BoundBinaryOperatorKind>(operatorName, out BoundBinaryOperatorKind kind)
+            ? kind switch
+            {
+                BoundBinaryOperatorKind.Add => "ADD",
+                BoundBinaryOperatorKind.Subtract => "SUB",
+                BoundBinaryOperatorKind.BitwiseAnd => "AND",
+                BoundBinaryOperatorKind.BitwiseOr => "OR",
+                BoundBinaryOperatorKind.BitwiseXor => "XOR",
+                BoundBinaryOperatorKind.ShiftLeft => "SHL",
+                BoundBinaryOperatorKind.ShiftRight => "SHR",
+                _ => string.Empty,
+            }
+            : string.Empty;
+
+        if (string.IsNullOrEmpty(opcode))
+        {
+            nodes.Add(new AsmCommentNode($"unhandled update place: {operatorName}"));
+            nodes.Add(new AsmInstructionNode("MOV", [place, value]));
+            return;
+        }
+
+        nodes.Add(new AsmInstructionNode(opcode, [place, value]));
     }
 
     private static void LowerPseudo(List<AsmNode> nodes, LirOpInstruction op)
@@ -659,6 +714,7 @@ public static class AsmLowerer
             LirRegisterOperand reg => new AsmRegisterOperand(reg.Register.Id),
             LirImmediateOperand imm => new AsmImmediateOperand(GetImmediateValue(imm)),
             LirSymbolOperand sym => new AsmSymbolOperand(sym.Symbol),
+            LirPlaceOperand place => new AsmPlaceOperand(place.Place),
             _ => throw new InvalidOperationException($"Unknown operand type: {operand.GetType().Name}"),
         };
     }

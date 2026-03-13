@@ -45,7 +45,8 @@ public class ParserTests
         Assert.That(unit.Members[0], Is.TypeOf<VariableDeclarationSyntax>());
 
         VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
-        Assert.That(decl.StorageClassKeyword.Kind, Is.EqualTo(TokenKind.RegKeyword));
+        Assert.That(decl.StorageClassKeyword, Is.Not.Null);
+        Assert.That(decl.StorageClassKeyword is Token storageClass && storageClass.Kind == TokenKind.RegKeyword, Is.True);
         Assert.That(decl.MutabilityKeyword.Kind, Is.EqualTo(TokenKind.VarKeyword));
         Assert.That(decl.Name.Text, Is.EqualTo("x"));
         Assert.That(decl.Type, Is.TypeOf<PrimitiveTypeSyntax>());

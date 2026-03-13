@@ -88,8 +88,10 @@ public sealed class Parser
                 return ParseVariableDeclaration(NextToken());
 
             case TokenKind.RegKeyword or TokenKind.LutKeyword or TokenKind.HubKeyword:
-                // Could be variable declaration (reg var ...) or something else
                 return ParseVariableDeclaration(externKeyword: null);
+
+            case TokenKind.VarKeyword:
+                return ParseGlobalStatement();
 
             case TokenKind.ConstKeyword:
                 // const Name = packed struct { ... }; (type alias)
@@ -226,7 +228,10 @@ public sealed class Parser
 
     private VariableDeclarationSyntax ParseVariableDeclaration(Token? externKeyword)
     {
-        Token storageClass = MatchStorageClass();
+        Token? storageClass = null;
+        if (Current.Kind is TokenKind.RegKeyword or TokenKind.LutKeyword or TokenKind.HubKeyword)
+            storageClass = NextToken();
+
         Token mutability = Current.Kind == TokenKind.VarKeyword || Current.Kind == TokenKind.ConstKeyword
             ? NextToken()
             : MatchToken(TokenKind.VarKeyword); // will report error
@@ -279,15 +284,6 @@ public sealed class Parser
         return new VariableDeclarationSyntax(externKeyword, storageClass, mutability, name, colon, type, equalsToken, initializer, atClause, alignClause, semi);
     }
 
-    private Token MatchStorageClass()
-    {
-        if (Current.Kind is TokenKind.RegKeyword or TokenKind.LutKeyword or TokenKind.HubKeyword)
-            return NextToken();
-
-        _diagnostics.ReportUnexpectedToken(Current.Span, "'reg', 'lut', or 'hub'", Current.Text);
-        return new Token(TokenKind.RegKeyword, new TextSpan(Current.Span.Start, 0), "");
-    }
-
     private MemberSyntax ParseTypeAliasOrConstDeclaration()
     {
         // const Name = packed struct { ... };
@@ -333,9 +329,11 @@ public sealed class Parser
             case TokenKind.OpenBrace:
                 return ParseBlockStatement();
 
-            case TokenKind.RegKeyword or TokenKind.LutKeyword or TokenKind.HubKeyword:
-                // Variable declaration inside a block
+            case TokenKind.VarKeyword or TokenKind.RegKeyword or TokenKind.LutKeyword or TokenKind.HubKeyword:
                 return new VariableDeclarationStatementSyntax(ParseVariableDeclaration(externKeyword: null));
+
+            case TokenKind.ExternKeyword:
+                return new VariableDeclarationStatementSyntax(ParseVariableDeclaration(NextToken()));
 
             case TokenKind.IfKeyword:
                 return ParseIfStatement();

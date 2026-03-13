@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using Blade.IR;
 using Blade.Semantics;
 using Blade.Semantics.Bound;
 using Blade.Source;
@@ -10,35 +12,64 @@ public static class MirLowerer
 {
     public static MirModule Lower(BoundProgram program)
     {
+        List<StoragePlace> storagePlaces = CollectStoragePlaces(program);
+
         List<MirFunction> functions = new();
-        functions.Add(LowerTopLevel(program));
+        functions.Add(LowerTopLevel(program, storagePlaces));
 
         foreach (BoundFunctionMember functionMember in program.Functions)
-        {
-            MirFunction function = LowerFunction(functionMember);
-            functions.Add(function);
-        }
+            functions.Add(LowerFunction(functionMember, storagePlaces));
 
-        return new MirModule(functions);
+        return new MirModule(storagePlaces, functions);
     }
 
-    private static MirFunction LowerTopLevel(BoundProgram program)
+    private static MirFunction LowerTopLevel(BoundProgram program, IReadOnlyList<StoragePlace> storagePlaces)
     {
-        FunctionLoweringContext context = new("$top", isEntryPoint: true, FunctionKind.Default, []);
+        FunctionLoweringContext context = new("$top", isEntryPoint: true, FunctionKind.Default, [], storagePlaces);
         context.LowerTopLevel(program.GlobalVariables, program.TopLevelStatements);
         return context.Build();
     }
 
-    private static MirFunction LowerFunction(BoundFunctionMember functionMember)
+    private static MirFunction LowerFunction(BoundFunctionMember functionMember, IReadOnlyList<StoragePlace> storagePlaces)
     {
         FunctionSymbol symbol = functionMember.Symbol;
         FunctionLoweringContext context = new(
             symbol.Name,
             isEntryPoint: false,
             symbol.Kind,
-            symbol.ReturnTypes);
+            symbol.ReturnTypes,
+            storagePlaces);
         context.LowerFunctionBody(functionMember.Body, symbol.Parameters);
         return context.Build();
+    }
+
+    private static List<StoragePlace> CollectStoragePlaces(BoundProgram program)
+    {
+        List<StoragePlace> places = new(program.GlobalVariables.Count);
+        foreach (BoundGlobalVariableMember global in program.GlobalVariables)
+        {
+            VariableSymbol symbol = global.Symbol;
+            if (!symbol.UsesGlobalRegisterStorage)
+                continue;
+
+            StoragePlaceKind kind = symbol.FixedAddress.HasValue
+                ? StoragePlaceKind.FixedRegisterAlias
+                : symbol.IsExtern
+                    ? StoragePlaceKind.ExternalAlias
+                    : StoragePlaceKind.AllocatableGlobalRegister;
+
+            object? staticInitializer = null;
+            if (kind == StoragePlaceKind.AllocatableGlobalRegister
+                && global.Initializer is not null
+                && TryEvaluateStaticValue(global.Initializer, out object? value))
+            {
+                staticInitializer = value;
+            }
+
+            places.Add(new StoragePlace(symbol, kind, symbol.FixedAddress, staticInitializer));
+        }
+
+        return places;
     }
 
     private sealed class FunctionLoweringContext
@@ -49,18 +80,28 @@ public static class MirLowerer
         private readonly IReadOnlyList<TypeSymbol> _returnTypes;
         private readonly List<BlockBuilder> _blocks = [];
         private readonly Stack<LoopContext> _loopStack = [];
+        private readonly Dictionary<int, StoragePlace> _storagePlacesBySymbolId = [];
         private readonly BlockBuilder _entryBlock;
         private readonly BlockBuilder _exitBlock;
+        private readonly Dictionary<Symbol, MirValueId> _currentValues = [];
         private BlockBuilder _currentBlock;
         private int _nextBlockId;
         private int _nextValueId;
 
-        public FunctionLoweringContext(string name, bool isEntryPoint, FunctionKind kind, IReadOnlyList<TypeSymbol> returnTypes)
+        public FunctionLoweringContext(
+            string name,
+            bool isEntryPoint,
+            FunctionKind kind,
+            IReadOnlyList<TypeSymbol> returnTypes,
+            IReadOnlyList<StoragePlace> storagePlaces)
         {
             _name = name;
             _isEntryPoint = isEntryPoint;
             _kind = kind;
             _returnTypes = returnTypes;
+            foreach (StoragePlace place in storagePlaces)
+                _storagePlacesBySymbolId[place.Symbol.Id] = place;
+
             _entryBlock = CreateBlock();
             _exitBlock = CreateBlock();
             _currentBlock = _entryBlock;
@@ -79,11 +120,14 @@ public static class MirLowerer
         {
             foreach (BoundGlobalVariableMember global in globalVariables)
             {
-                if (global.Initializer is null)
+                if (global.Initializer is null || !TryGetStoragePlace(global.Symbol, out StoragePlace place))
+                    continue;
+
+                if (place.Kind == StoragePlaceKind.AllocatableGlobalRegister && place.HasStaticInitializer)
                     continue;
 
                 MirValueId initializerValue = LowerExpression(global.Initializer);
-                EmitStore($"global:{global.Symbol.Name}", [initializerValue], global.Span);
+                EmitStorePlace(place, initializerValue, global.Span);
             }
 
             foreach (BoundStatement statement in statements)
@@ -98,7 +142,7 @@ public static class MirLowerer
             {
                 MirValueId parameterValue = NextValue();
                 _entryBlock.Parameters.Add(new MirBlockParameter(parameterValue, parameter.Name, parameter.Type));
-                _entryBlock.Instructions.Add(new MirStoreInstruction(parameter.Name, [parameterValue], body.Span));
+                _currentValues[parameter] = parameterValue;
             }
 
             LowerStatement(body);
@@ -163,9 +207,8 @@ public static class MirLowerer
                     if (variableDeclaration.Initializer is not null)
                     {
                         MirValueId initializer = LowerExpression(variableDeclaration.Initializer);
-                        EmitStore(variableDeclaration.Symbol.Name, [initializer], statement.Span);
+                        WriteSymbol(variableDeclaration.Symbol, initializer, statement.Span);
                     }
-
                     break;
 
                 case BoundAssignmentStatement assignment:
@@ -212,29 +255,11 @@ public static class MirLowerer
                     break;
 
                 case BoundBreakStatement:
-                    if (_loopStack.Count > 0)
-                    {
-                        LoopContext loop = _loopStack.Peek();
-                        _currentBlock.Terminator = new MirGotoTerminator(loop.BreakLabel, [], statement.Span);
-                    }
-                    else
-                    {
-                        _currentBlock.Terminator = new MirUnreachableTerminator(statement.Span);
-                    }
-
+                    LowerLoopTransfer(isBreak: true, statement.Span);
                     break;
 
                 case BoundContinueStatement:
-                    if (_loopStack.Count > 0)
-                    {
-                        LoopContext loop = _loopStack.Peek();
-                        _currentBlock.Terminator = new MirGotoTerminator(loop.ContinueLabel, [], statement.Span);
-                    }
-                    else
-                    {
-                        _currentBlock.Terminator = new MirUnreachableTerminator(statement.Span);
-                    }
-
+                    LowerLoopTransfer(isBreak: false, statement.Span);
                     break;
 
                 case BoundYieldStatement yieldStatement:
@@ -253,14 +278,8 @@ public static class MirLowerer
                 }
 
                 case BoundAsmStatement asmStatement:
-                {
-                    // Encode asm body in opcode for passthrough. Format: "asm\0BODY"
-                    // The AsmLowerer will extract and emit the raw lines.
-                    string encodedBody = asmStatement.Body.Replace("\r\n", "\n").Replace("\r", "\n");
-                    string opcode = $"asm\0{encodedBody}";
-                    EmitOp(opcode, [], hasSideEffects: true, asmStatement.Span);
+                    LowerInlineAsmStatement(asmStatement);
                     break;
-                }
 
                 case BoundErrorStatement errorStatement:
                     EmitOp("error.statement", [], hasSideEffects: true, errorStatement.Span);
@@ -268,8 +287,52 @@ public static class MirLowerer
             }
         }
 
+        private void LowerInlineAsmStatement(BoundAsmStatement asmStatement)
+        {
+            List<MirInlineAsmBinding> bindings = new(asmStatement.ReferencedSymbols.Count);
+            foreach ((string name, Symbol symbol) in asmStatement.ReferencedSymbols)
+            {
+                if (TryGetStoragePlace(symbol, out StoragePlace? place))
+                {
+                    bindings.Add(new MirInlineAsmBinding(name, value: null, place));
+                }
+                else
+                {
+                    TypeSymbol type = GetSymbolType(symbol);
+                    MirValueId value = ReadSymbol(symbol, type, asmStatement.Span);
+                    bindings.Add(new MirInlineAsmBinding(name, value, place: null));
+                }
+            }
+
+            _currentBlock.Instructions.Add(new MirInlineAsmInstruction(asmStatement.Body, bindings, asmStatement.Span));
+        }
+
+        private void LowerLoopTransfer(bool isBreak, TextSpan span)
+        {
+            if (_loopStack.Count == 0)
+            {
+                _currentBlock.Terminator = new MirUnreachableTerminator(span);
+                return;
+            }
+
+            LoopContext loop = _loopStack.Peek();
+            string target = isBreak ? loop.BreakLabel : loop.ContinueLabel;
+            List<MirValueId> arguments = BuildEnvironmentArguments(loop.Symbols, span);
+            _currentBlock.Terminator = new MirGotoTerminator(target, arguments, span);
+        }
+
         private void LowerAssignmentStatement(BoundAssignmentStatement assignment)
         {
+            if (assignment.Target is BoundSymbolAssignmentTarget symbolTarget
+                && assignment.OperatorKind != TokenKind.Equal
+                && TryGetStoragePlace(symbolTarget.Symbol, out StoragePlace place)
+                && TryMapCompoundOperator(assignment.OperatorKind, out BoundBinaryOperatorKind updateKind))
+            {
+                MirValueId rhs = LowerExpression(assignment.Value);
+                EmitUpdatePlace(place, updateKind, rhs, assignment.Span);
+                return;
+            }
+
             MirValueId value = LowerExpression(assignment.Value);
             if (assignment.OperatorKind != TokenKind.Equal)
             {
@@ -293,10 +356,14 @@ public static class MirLowerer
 
         private void LowerIfStatement(BoundIfStatement ifStatement)
         {
+            Dictionary<Symbol, MirValueId> beforeEnv = SnapshotAutomaticEnvironment();
+            IReadOnlyList<Symbol> envSymbols = GetOrderedAutomaticSymbols(beforeEnv);
+
             MirValueId condition = LowerExpression(ifStatement.Condition);
             BlockBuilder thenBlock = CreateBlock();
             BlockBuilder elseBlock = CreateBlock();
             BlockBuilder mergeBlock = CreateBlock();
+            Dictionary<Symbol, MirValueId> mergeEnv = CreateEnvironmentParameters(mergeBlock, envSymbols, "if");
 
             _currentBlock.Terminator = new MirBranchTerminator(
                 condition,
@@ -307,91 +374,152 @@ public static class MirLowerer
                 ifStatement.Span);
 
             _currentBlock = thenBlock;
+            ReplaceAutomaticEnvironment(beforeEnv);
             LowerStatement(ifStatement.ThenBody);
             if (_currentBlock.Terminator is null)
-                _currentBlock.Terminator = new MirGotoTerminator(mergeBlock.Label, [], ifStatement.ThenBody.Span);
+            {
+                _currentBlock.Terminator = new MirGotoTerminator(
+                    mergeBlock.Label,
+                    BuildEnvironmentArguments(envSymbols, ifStatement.ThenBody.Span),
+                    ifStatement.ThenBody.Span);
+            }
 
             _currentBlock = elseBlock;
+            ReplaceAutomaticEnvironment(beforeEnv);
             if (ifStatement.ElseBody is not null)
                 LowerStatement(ifStatement.ElseBody);
             if (_currentBlock.Terminator is null)
-                _currentBlock.Terminator = new MirGotoTerminator(mergeBlock.Label, [], ifStatement.Span);
+            {
+                _currentBlock.Terminator = new MirGotoTerminator(
+                    mergeBlock.Label,
+                    BuildEnvironmentArguments(envSymbols, ifStatement.Span),
+                    ifStatement.Span);
+            }
 
             _currentBlock = mergeBlock;
+            ReplaceAutomaticEnvironment(mergeEnv);
         }
 
         private void LowerWhileStatement(BoundWhileStatement whileStatement)
         {
+            Dictionary<Symbol, MirValueId> beforeEnv = SnapshotAutomaticEnvironment();
+            IReadOnlyList<Symbol> envSymbols = GetOrderedAutomaticSymbols(beforeEnv);
+
             BlockBuilder conditionBlock = CreateBlock();
             BlockBuilder bodyBlock = CreateBlock();
             BlockBuilder exitBlock = CreateBlock();
+            Dictionary<Symbol, MirValueId> conditionEnv = CreateEnvironmentParameters(conditionBlock, envSymbols, "while");
+            Dictionary<Symbol, MirValueId> bodyEnv = CreateEnvironmentParameters(bodyBlock, envSymbols, "while");
+            Dictionary<Symbol, MirValueId> exitEnv = CreateEnvironmentParameters(exitBlock, envSymbols, "while");
 
-            _currentBlock.Terminator = new MirGotoTerminator(conditionBlock.Label, [], whileStatement.Span);
+            _currentBlock.Terminator = new MirGotoTerminator(conditionBlock.Label, BuildEnvironmentArguments(envSymbols, whileStatement.Span), whileStatement.Span);
 
             _currentBlock = conditionBlock;
+            ReplaceAutomaticEnvironment(conditionEnv);
             MirValueId condition = LowerExpression(whileStatement.Condition);
             _currentBlock.Terminator = new MirBranchTerminator(
                 condition,
                 bodyBlock.Label,
                 exitBlock.Label,
-                [],
-                [],
+                BuildEnvironmentArguments(envSymbols, whileStatement.Condition.Span),
+                BuildEnvironmentArguments(envSymbols, whileStatement.Condition.Span),
                 whileStatement.Condition.Span);
 
-            _loopStack.Push(new LoopContext(exitBlock.Label, conditionBlock.Label));
+            _loopStack.Push(new LoopContext(exitBlock.Label, conditionBlock.Label, envSymbols));
             _currentBlock = bodyBlock;
+            ReplaceAutomaticEnvironment(bodyEnv);
             LowerStatement(whileStatement.Body);
             if (_currentBlock.Terminator is null)
-                _currentBlock.Terminator = new MirGotoTerminator(conditionBlock.Label, [], whileStatement.Body.Span);
+            {
+                _currentBlock.Terminator = new MirGotoTerminator(
+                    conditionBlock.Label,
+                    BuildEnvironmentArguments(envSymbols, whileStatement.Body.Span),
+                    whileStatement.Body.Span);
+            }
             _loopStack.Pop();
 
             _currentBlock = exitBlock;
+            ReplaceAutomaticEnvironment(exitEnv);
         }
 
         private void LowerForStatement(BoundForStatement forStatement)
         {
+            Dictionary<Symbol, MirValueId> beforeEnv = SnapshotAutomaticEnvironment();
+            IReadOnlyList<Symbol> envSymbols = GetOrderedAutomaticSymbols(beforeEnv);
+
             BlockBuilder conditionBlock = CreateBlock();
             BlockBuilder bodyBlock = CreateBlock();
             BlockBuilder exitBlock = CreateBlock();
-            _currentBlock.Terminator = new MirGotoTerminator(conditionBlock.Label, [], forStatement.Span);
+            Dictionary<Symbol, MirValueId> conditionEnv = CreateEnvironmentParameters(conditionBlock, envSymbols, "for");
+            Dictionary<Symbol, MirValueId> bodyEnv = CreateEnvironmentParameters(bodyBlock, envSymbols, "for");
+            Dictionary<Symbol, MirValueId> exitEnv = CreateEnvironmentParameters(exitBlock, envSymbols, "for");
+
+            _currentBlock.Terminator = new MirGotoTerminator(conditionBlock.Label, BuildEnvironmentArguments(envSymbols, forStatement.Span), forStatement.Span);
 
             _currentBlock = conditionBlock;
+            ReplaceAutomaticEnvironment(conditionEnv);
             MirValueId condition = forStatement.Variable is null
                 ? EmitConstant(true, BuiltinTypes.Bool, forStatement.Span)
-                : EmitLoadSymbol(forStatement.Variable.Name, forStatement.Variable.Type, forStatement.Span);
+                : LowerConditionVariable(forStatement.Variable, forStatement.Span);
 
             _currentBlock.Terminator = new MirBranchTerminator(
                 condition,
                 bodyBlock.Label,
                 exitBlock.Label,
-                [],
-                [],
+                BuildEnvironmentArguments(envSymbols, forStatement.Span),
+                BuildEnvironmentArguments(envSymbols, forStatement.Span),
                 forStatement.Span);
 
-            _loopStack.Push(new LoopContext(exitBlock.Label, conditionBlock.Label));
+            _loopStack.Push(new LoopContext(exitBlock.Label, conditionBlock.Label, envSymbols));
             _currentBlock = bodyBlock;
+            ReplaceAutomaticEnvironment(bodyEnv);
             LowerStatement(forStatement.Body);
             if (_currentBlock.Terminator is null)
-                _currentBlock.Terminator = new MirGotoTerminator(conditionBlock.Label, [], forStatement.Body.Span);
+            {
+                _currentBlock.Terminator = new MirGotoTerminator(
+                    conditionBlock.Label,
+                    BuildEnvironmentArguments(envSymbols, forStatement.Body.Span),
+                    forStatement.Body.Span);
+            }
             _loopStack.Pop();
 
             _currentBlock = exitBlock;
+            ReplaceAutomaticEnvironment(exitEnv);
+        }
+
+        private MirValueId LowerConditionVariable(Symbol symbol, TextSpan span)
+        {
+            TypeSymbol type = GetSymbolType(symbol);
+            return ReadSymbol(symbol, type, span);
         }
 
         private void LowerLoopStatement(BoundLoopStatement loopStatement)
         {
+            Dictionary<Symbol, MirValueId> beforeEnv = SnapshotAutomaticEnvironment();
+            IReadOnlyList<Symbol> envSymbols = GetOrderedAutomaticSymbols(beforeEnv);
+
             BlockBuilder bodyBlock = CreateBlock();
             BlockBuilder exitBlock = CreateBlock();
-            _currentBlock.Terminator = new MirGotoTerminator(bodyBlock.Label, [], loopStatement.Span);
+            Dictionary<Symbol, MirValueId> bodyEnv = CreateEnvironmentParameters(bodyBlock, envSymbols, "loop");
+            Dictionary<Symbol, MirValueId> exitEnv = CreateEnvironmentParameters(exitBlock, envSymbols, "loop");
 
-            _loopStack.Push(new LoopContext(exitBlock.Label, bodyBlock.Label));
+            _currentBlock.Terminator = new MirGotoTerminator(bodyBlock.Label, BuildEnvironmentArguments(envSymbols, loopStatement.Span), loopStatement.Span);
+
+            _loopStack.Push(new LoopContext(exitBlock.Label, bodyBlock.Label, envSymbols));
             _currentBlock = bodyBlock;
+            ReplaceAutomaticEnvironment(bodyEnv);
             LowerStatement(loopStatement.Body);
             if (_currentBlock.Terminator is null)
-                _currentBlock.Terminator = new MirGotoTerminator(bodyBlock.Label, [], loopStatement.Body.Span);
+            {
+                _currentBlock.Terminator = new MirGotoTerminator(
+                    bodyBlock.Label,
+                    BuildEnvironmentArguments(envSymbols, loopStatement.Body.Span),
+                    loopStatement.Body.Span);
+            }
             _loopStack.Pop();
 
             _currentBlock = exitBlock;
+            ReplaceAutomaticEnvironment(exitEnv);
         }
 
         private void LowerRepLoopStatement(BoundRepLoopStatement repLoopStatement)
@@ -399,19 +527,32 @@ public static class MirLowerer
             MirValueId count = LowerExpression(repLoopStatement.Count);
             EmitOp("rep.setup", [count], hasSideEffects: true, repLoopStatement.Span);
 
+            Dictionary<Symbol, MirValueId> beforeEnv = SnapshotAutomaticEnvironment();
+            IReadOnlyList<Symbol> envSymbols = GetOrderedAutomaticSymbols(beforeEnv);
+
             BlockBuilder bodyBlock = CreateBlock();
             BlockBuilder exitBlock = CreateBlock();
-            _currentBlock.Terminator = new MirGotoTerminator(bodyBlock.Label, [], repLoopStatement.Span);
+            Dictionary<Symbol, MirValueId> bodyEnv = CreateEnvironmentParameters(bodyBlock, envSymbols, "rep");
+            Dictionary<Symbol, MirValueId> exitEnv = CreateEnvironmentParameters(exitBlock, envSymbols, "rep");
 
-            _loopStack.Push(new LoopContext(exitBlock.Label, bodyBlock.Label));
+            _currentBlock.Terminator = new MirGotoTerminator(bodyBlock.Label, BuildEnvironmentArguments(envSymbols, repLoopStatement.Span), repLoopStatement.Span);
+
+            _loopStack.Push(new LoopContext(exitBlock.Label, bodyBlock.Label, envSymbols));
             _currentBlock = bodyBlock;
+            ReplaceAutomaticEnvironment(bodyEnv);
             EmitOp("rep.iter", [count], hasSideEffects: true, repLoopStatement.Span);
             LowerStatement(repLoopStatement.Body);
             if (_currentBlock.Terminator is null)
-                _currentBlock.Terminator = new MirGotoTerminator(bodyBlock.Label, [], repLoopStatement.Body.Span);
+            {
+                _currentBlock.Terminator = new MirGotoTerminator(
+                    bodyBlock.Label,
+                    BuildEnvironmentArguments(envSymbols, repLoopStatement.Body.Span),
+                    repLoopStatement.Body.Span);
+            }
             _loopStack.Pop();
 
             _currentBlock = exitBlock;
+            ReplaceAutomaticEnvironment(exitEnv);
         }
 
         private void LowerRepForStatement(BoundRepForStatement repForStatement)
@@ -420,19 +561,32 @@ public static class MirLowerer
             MirValueId end = LowerExpression(repForStatement.End);
             EmitOp("repfor.setup", [start, end], hasSideEffects: true, repForStatement.Span);
 
+            Dictionary<Symbol, MirValueId> beforeEnv = SnapshotAutomaticEnvironment();
+            IReadOnlyList<Symbol> envSymbols = GetOrderedAutomaticSymbols(beforeEnv);
+
             BlockBuilder bodyBlock = CreateBlock();
             BlockBuilder exitBlock = CreateBlock();
-            _currentBlock.Terminator = new MirGotoTerminator(bodyBlock.Label, [], repForStatement.Span);
+            Dictionary<Symbol, MirValueId> bodyEnv = CreateEnvironmentParameters(bodyBlock, envSymbols, "repfor");
+            Dictionary<Symbol, MirValueId> exitEnv = CreateEnvironmentParameters(exitBlock, envSymbols, "repfor");
 
-            _loopStack.Push(new LoopContext(exitBlock.Label, bodyBlock.Label));
+            _currentBlock.Terminator = new MirGotoTerminator(bodyBlock.Label, BuildEnvironmentArguments(envSymbols, repForStatement.Span), repForStatement.Span);
+
+            _loopStack.Push(new LoopContext(exitBlock.Label, bodyBlock.Label, envSymbols));
             _currentBlock = bodyBlock;
+            ReplaceAutomaticEnvironment(bodyEnv);
             EmitOp("repfor.iter", [start, end], hasSideEffects: true, repForStatement.Span);
             LowerStatement(repForStatement.Body);
             if (_currentBlock.Terminator is null)
-                _currentBlock.Terminator = new MirGotoTerminator(bodyBlock.Label, [], repForStatement.Body.Span);
+            {
+                _currentBlock.Terminator = new MirGotoTerminator(
+                    bodyBlock.Label,
+                    BuildEnvironmentArguments(envSymbols, repForStatement.Body.Span),
+                    repForStatement.Body.Span);
+            }
             _loopStack.Pop();
 
             _currentBlock = exitBlock;
+            ReplaceAutomaticEnvironment(exitEnv);
         }
 
         private void LowerReturnStatement(BoundReturnStatement returnStatement)
@@ -478,7 +632,7 @@ public static class MirLowerer
                     return EmitConstant(literal.Value, literal.Type, literal.Span);
 
                 case BoundSymbolExpression symbolExpression:
-                    return EmitLoadSymbol(symbolExpression.Symbol.Name, symbolExpression.Type, symbolExpression.Span);
+                    return ReadSymbol(symbolExpression.Symbol, symbolExpression.Type, symbolExpression.Span);
 
                 case BoundUnaryExpression unaryExpression:
                     return LowerUnaryExpression(unaryExpression);
@@ -626,12 +780,16 @@ public static class MirLowerer
 
         private MirValueId LowerIfExpression(BoundIfExpression ifExpression)
         {
+            Dictionary<Symbol, MirValueId> beforeEnv = SnapshotAutomaticEnvironment();
+            IReadOnlyList<Symbol> envSymbols = GetOrderedAutomaticSymbols(beforeEnv);
+
             MirValueId condition = LowerExpression(ifExpression.Condition);
             BlockBuilder thenBlock = CreateBlock();
             BlockBuilder elseBlock = CreateBlock();
             BlockBuilder mergeBlock = CreateBlock();
             MirValueId result = NextValue();
             mergeBlock.Parameters.Add(new MirBlockParameter(result, "ifexpr", ifExpression.Type));
+            Dictionary<Symbol, MirValueId> mergeEnv = CreateEnvironmentParameters(mergeBlock, envSymbols, "ifexpr");
 
             _currentBlock.Terminator = new MirBranchTerminator(
                 condition,
@@ -642,26 +800,27 @@ public static class MirLowerer
                 ifExpression.Condition.Span);
 
             _currentBlock = thenBlock;
+            ReplaceAutomaticEnvironment(beforeEnv);
             MirValueId thenValue = LowerExpression(ifExpression.ThenExpression);
             if (_currentBlock.Terminator is null)
             {
-                _currentBlock.Terminator = new MirGotoTerminator(
-                    mergeBlock.Label,
-                    [thenValue],
-                    ifExpression.ThenExpression.Span);
+                List<MirValueId> arguments = new() { thenValue };
+                arguments.AddRange(BuildEnvironmentArguments(envSymbols, ifExpression.ThenExpression.Span));
+                _currentBlock.Terminator = new MirGotoTerminator(mergeBlock.Label, arguments, ifExpression.ThenExpression.Span);
             }
 
             _currentBlock = elseBlock;
+            ReplaceAutomaticEnvironment(beforeEnv);
             MirValueId elseValue = LowerExpression(ifExpression.ElseExpression);
             if (_currentBlock.Terminator is null)
             {
-                _currentBlock.Terminator = new MirGotoTerminator(
-                    mergeBlock.Label,
-                    [elseValue],
-                    ifExpression.ElseExpression.Span);
+                List<MirValueId> arguments = new() { elseValue };
+                arguments.AddRange(BuildEnvironmentArguments(envSymbols, ifExpression.ElseExpression.Span));
+                _currentBlock.Terminator = new MirGotoTerminator(mergeBlock.Label, arguments, ifExpression.ElseExpression.Span);
             }
 
             _currentBlock = mergeBlock;
+            ReplaceAutomaticEnvironment(mergeEnv);
             return result;
         }
 
@@ -669,7 +828,7 @@ public static class MirLowerer
         {
             return target switch
             {
-                BoundSymbolAssignmentTarget symbolTarget => EmitLoadSymbol(symbolTarget.Symbol.Name, symbolTarget.Type, target.Span),
+                BoundSymbolAssignmentTarget symbolTarget => ReadSymbol(symbolTarget.Symbol, symbolTarget.Type, target.Span),
                 BoundMemberAssignmentTarget memberTarget => EmitOp(
                     $"load.member.{memberTarget.MemberName}",
                     memberTarget.Type,
@@ -697,13 +856,13 @@ public static class MirLowerer
             switch (target)
             {
                 case BoundSymbolAssignmentTarget symbolTarget:
-                    EmitStore(symbolTarget.Symbol.Name, [value], span);
+                    WriteSymbol(symbolTarget.Symbol, value, span);
                     return;
 
                 case BoundMemberAssignmentTarget memberTarget:
                 {
                     MirValueId receiver = LowerExpression(memberTarget.Receiver);
-                    EmitStore($"member:{memberTarget.MemberName}", [receiver, value], span);
+                    EmitStore("member:" + memberTarget.MemberName, [receiver, value], span);
                     return;
                 }
 
@@ -726,6 +885,130 @@ public static class MirLowerer
                     EmitOp("store.error", [value], hasSideEffects: true, span);
                     return;
             }
+        }
+
+        private void WriteSymbol(Symbol symbol, MirValueId value, TextSpan span)
+        {
+                if (TryGetStoragePlace(symbol, out StoragePlace place))
+                {
+                    EmitStorePlace(place, value, span);
+                    return;
+                }
+
+            _currentValues[symbol] = value;
+        }
+
+        private MirValueId ReadSymbol(Symbol symbol, TypeSymbol type, TextSpan span)
+        {
+            if (TryGetStoragePlace(symbol, out StoragePlace place))
+                return EmitLoadPlace(place, type, span);
+
+            if (_currentValues.TryGetValue(symbol, out MirValueId value))
+                return value;
+
+            MirValueId defaultValue = EmitDefaultValue(type, span);
+            _currentValues[symbol] = defaultValue;
+            return defaultValue;
+        }
+
+        private bool TryGetStoragePlace(Symbol symbol, out StoragePlace place)
+        {
+            if (symbol is VariableSymbol variable && _storagePlacesBySymbolId.TryGetValue(variable.Id, out StoragePlace? resolved))
+            {
+                place = resolved;
+                return true;
+            }
+
+            place = null!;
+            return false;
+        }
+
+        private Dictionary<Symbol, MirValueId> SnapshotAutomaticEnvironment()
+        {
+            Dictionary<Symbol, MirValueId> snapshot = [];
+            foreach ((Symbol symbol, MirValueId value) in _currentValues)
+            {
+                if (IsAutomaticSymbol(symbol))
+                    snapshot[symbol] = value;
+            }
+
+            return snapshot;
+        }
+
+        private void ReplaceAutomaticEnvironment(IReadOnlyDictionary<Symbol, MirValueId> newValues)
+        {
+            List<Symbol> toRemove = [];
+            foreach (Symbol symbol in _currentValues.Keys)
+            {
+                if (IsAutomaticSymbol(symbol))
+                    toRemove.Add(symbol);
+            }
+
+            foreach (Symbol symbol in toRemove)
+                _currentValues.Remove(symbol);
+
+            foreach ((Symbol symbol, MirValueId value) in newValues)
+                _currentValues[symbol] = value;
+        }
+
+        private static bool IsAutomaticSymbol(Symbol symbol)
+        {
+            return symbol switch
+            {
+                VariableSymbol variable => variable.IsAutomatic,
+                ParameterSymbol => true,
+                _ => false,
+            };
+        }
+
+        private static TypeSymbol GetSymbolType(Symbol symbol)
+        {
+            return symbol switch
+            {
+                VariableSymbol variable => variable.Type,
+                ParameterSymbol parameter => parameter.Type,
+                _ => BuiltinTypes.Unknown,
+            };
+        }
+
+        private static IReadOnlyList<Symbol> GetOrderedAutomaticSymbols(IReadOnlyDictionary<Symbol, MirValueId> values)
+        {
+            List<Symbol> symbols = new(values.Count);
+            foreach (Symbol symbol in values.Keys)
+                symbols.Add(symbol);
+            symbols.Sort((left, right) => left.Id.CompareTo(right.Id));
+            return symbols;
+        }
+
+        private Dictionary<Symbol, MirValueId> CreateEnvironmentParameters(BlockBuilder block, IReadOnlyList<Symbol> symbols, string prefix)
+        {
+            Dictionary<Symbol, MirValueId> values = new(symbols.Count);
+            foreach (Symbol symbol in symbols)
+            {
+                MirValueId value = NextValue();
+                block.Parameters.Add(new MirBlockParameter(value, $"{prefix}_{symbol.Name}", GetSymbolType(symbol)));
+                values[symbol] = value;
+            }
+
+            return values;
+        }
+
+        private List<MirValueId> BuildEnvironmentArguments(IReadOnlyList<Symbol> symbols, TextSpan span)
+        {
+            List<MirValueId> arguments = new(symbols.Count);
+            foreach (Symbol symbol in symbols)
+            {
+                if (_currentValues.TryGetValue(symbol, out MirValueId value))
+                {
+                    arguments.Add(value);
+                }
+                else
+                {
+                    arguments.Add(EmitDefaultValue(GetSymbolType(symbol), span));
+                }
+            }
+
+            return arguments;
         }
 
         private static bool TryMapCompoundOperator(TokenKind operatorKind, out BoundBinaryOperatorKind binaryKind)
@@ -758,10 +1041,10 @@ public static class MirLowerer
             return id;
         }
 
-        private MirValueId EmitLoadSymbol(string symbolName, TypeSymbol type, TextSpan span)
+        private MirValueId EmitLoadPlace(StoragePlace place, TypeSymbol type, TextSpan span)
         {
             MirValueId id = NextValue();
-            _currentBlock.Instructions.Add(new MirLoadSymbolInstruction(id, type, symbolName, span));
+            _currentBlock.Instructions.Add(new MirLoadPlaceInstruction(id, type, place, span));
             return id;
         }
 
@@ -777,11 +1060,7 @@ public static class MirLowerer
             return result;
         }
 
-        private void EmitOp(
-            string opcode,
-            IReadOnlyList<MirValueId> operands,
-            bool hasSideEffects,
-            TextSpan span)
+        private void EmitOp(string opcode, IReadOnlyList<MirValueId> operands, bool hasSideEffects, TextSpan span)
         {
             _currentBlock.Instructions.Add(new MirOpInstruction(opcode, result: null, resultType: null, operands, hasSideEffects, span));
         }
@@ -789,6 +1068,16 @@ public static class MirLowerer
         private void EmitStore(string target, IReadOnlyList<MirValueId> operands, TextSpan span)
         {
             _currentBlock.Instructions.Add(new MirStoreInstruction(target, operands, span));
+        }
+
+        private void EmitStorePlace(StoragePlace place, MirValueId value, TextSpan span)
+        {
+            _currentBlock.Instructions.Add(new MirStorePlaceInstruction(place, value, span));
+        }
+
+        private void EmitUpdatePlace(StoragePlace place, BoundBinaryOperatorKind operatorKind, MirValueId value, TextSpan span)
+        {
+            _currentBlock.Instructions.Add(new MirUpdatePlaceInstruction(place, operatorKind, value, span));
         }
 
         private sealed class BlockBuilder
@@ -804,6 +1093,75 @@ public static class MirLowerer
             public MirTerminator? Terminator { get; set; }
         }
 
-        private readonly record struct LoopContext(string BreakLabel, string ContinueLabel);
+        private readonly record struct LoopContext(string BreakLabel, string ContinueLabel, IReadOnlyList<Symbol> Symbols);
+    }
+
+    private static bool TryEvaluateStaticValue(BoundExpression expression, out object? value)
+    {
+        switch (expression)
+        {
+            case BoundLiteralExpression literal:
+                value = literal.Value;
+                return true;
+
+            case BoundConversionExpression conversion:
+                return TryEvaluateStaticValue(conversion.Expression, out value);
+
+            case BoundUnaryExpression unary when TryEvaluateStaticValue(unary.Operand, out object? unaryValue):
+                value = unary.Operator.Kind switch
+                {
+                    BoundUnaryOperatorKind.Negation when unaryValue is IConvertible => -Convert.ToInt64(unaryValue),
+                    BoundUnaryOperatorKind.LogicalNot when unaryValue is bool boolean => !boolean,
+                    _ => null,
+                };
+                return value is not null;
+
+            case BoundBinaryExpression binary
+                when TryEvaluateStaticValue(binary.Left, out object? leftValue)
+                && TryEvaluateStaticValue(binary.Right, out object? rightValue):
+                value = EvaluateBinary(binary.Operator.Kind, leftValue, rightValue);
+                return value is not null;
+        }
+
+        value = null;
+        return false;
+    }
+
+    private static object? EvaluateBinary(BoundBinaryOperatorKind kind, object? leftValue, object? rightValue)
+    {
+        if (leftValue is bool leftBool && rightValue is bool rightBool)
+        {
+            return kind switch
+            {
+                BoundBinaryOperatorKind.Equals => leftBool == rightBool,
+                BoundBinaryOperatorKind.NotEquals => leftBool != rightBool,
+                _ => null,
+            };
+        }
+
+        if (leftValue is not IConvertible || rightValue is not IConvertible)
+            return null;
+
+        long left = Convert.ToInt64(leftValue);
+        long right = Convert.ToInt64(rightValue);
+        return kind switch
+        {
+            BoundBinaryOperatorKind.Add => left + right,
+            BoundBinaryOperatorKind.Subtract => left - right,
+            BoundBinaryOperatorKind.Multiply => left * right,
+            BoundBinaryOperatorKind.Divide => right == 0 ? null : left / right,
+            BoundBinaryOperatorKind.BitwiseAnd => left & right,
+            BoundBinaryOperatorKind.BitwiseOr => left | right,
+            BoundBinaryOperatorKind.BitwiseXor => left ^ right,
+            BoundBinaryOperatorKind.ShiftLeft => left << (int)right,
+            BoundBinaryOperatorKind.ShiftRight => left >> (int)right,
+            BoundBinaryOperatorKind.Equals => left == right,
+            BoundBinaryOperatorKind.NotEquals => left != right,
+            BoundBinaryOperatorKind.Less => left < right,
+            BoundBinaryOperatorKind.LessOrEqual => left <= right,
+            BoundBinaryOperatorKind.Greater => left > right,
+            BoundBinaryOperatorKind.GreaterOrEqual => left >= right,
+            _ => null,
+        };
     }
 }

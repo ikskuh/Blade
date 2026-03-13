@@ -38,7 +38,7 @@ public class BinderTests
             fn add(a: u32, b: u32) -> u32 {
                 return a + b;
             }
-            reg var result: u32 = add(1, 2);
+            var result: u32 = add(1, 2);
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
@@ -70,8 +70,8 @@ public class BinderTests
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
             fn f() void {
-                reg var x: u32 = 0;
-                reg var x: u32 = 1;
+                var x: u32 = 0;
+                var x: u32 = 1;
             }
             """);
 
@@ -157,5 +157,19 @@ public class BinderTests
             """);
 
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0201_SymbolAlreadyDeclared), Is.True);
+    }
+
+    [Test]
+    public void TopLevelVar_IsNotVisibleInsideFunctions()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            var counter: u32 = 0;
+
+            fn f() void {
+                counter = 1;
+            }
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0202_UndefinedName), Is.True);
     }
 }

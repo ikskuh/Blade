@@ -32,7 +32,7 @@ public class IrPipelineTests
                 return x + 1;
             }
 
-            reg var x: u32 = inc(1);
+            var x: u32 = inc(1);
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
@@ -59,7 +59,7 @@ public class IrPipelineTests
                 return a + b;
             }
 
-            reg var x: u32 = add(1, 2);
+            var x: u32 = add(1, 2);
             if (x == 3) {
                 x = x + 1;
             } else {
@@ -146,7 +146,7 @@ public class IrPipelineTests
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
             fn test_and_set_bit(val: u32, bit_num: u32) -> u32 {
-                reg var out: u32 = 0;
+                var out: u32 = 0;
                 asm {
                     MOV   {out}, {val}
                     TESTB {out}, {bit_num} WC
@@ -165,11 +165,12 @@ public class IrPipelineTests
             EnableMirOptimizations = false,
         });
 
-        Assert.That(build.AssemblyText, Does.Contain("MOV   var_out, var_val"));
-        Assert.That(build.AssemblyText, Does.Contain("TESTB var_out, var_bit_num WC"));
-        Assert.That(build.AssemblyText, Does.Contain("IF_NC BITH  var_out, var_bit_num"));
+        Assert.That(build.AssemblyText, Does.Match(@"MOV\s+_top_r\d+,\s+_top_r\d+"));
+        Assert.That(build.AssemblyText, Does.Match(@"TESTB\s+_top_r\d+,\s+_top_r\d+\s+WC"));
+        Assert.That(build.AssemblyText, Does.Match(@"IF_NC BITH\s+_top_r\d+,\s+_top_r\d+"));
         Assert.That(build.AssemblyText, Does.Not.Contain("MOV   out, val"));
         Assert.That(build.AssemblyText, Does.Not.Contain("TESTB out, bit_num WC"));
+        Assert.That(build.AssemblyText, Does.Not.Contain("%r"));
     }
 
     [Test]
@@ -179,7 +180,7 @@ public class IrPipelineTests
             reg var flags: u32 = 0;
 
             fn test_and_set_bit(val: u32, bit_num: u32) -> u32 {
-                reg var out: u32 = 0;
+                var out: u32 = 0;
                 asm {
                     MOV   {out}, {val}
                     TESTB {out}, {bit_num} WC
@@ -207,9 +208,70 @@ public class IrPipelineTests
         Assert.That(lir, Does.Not.Contain("inl_0_bb1"));
         Assert.That(lir, Does.Not.Contain("inl_after_0"));
 
-        Assert.That(build.AssemblyText, Does.Contain("MOV var_flags, var_out"));
-        Assert.That(build.AssemblyText, Does.Not.Contain("_top_r"));
+        Assert.That(build.AssemblyText, Does.Match(@"MOV\s+g_flags_\d+,\s+_top_r\d+"));
         Assert.That(build.AssemblyText, Does.Not.Contain("$top_inl_0_bb1"));
         Assert.That(build.AssemblyText, Does.Not.Contain("$top_inl_after_0"));
+        Assert.That(build.AssemblyText, Does.Not.Contain("%r"));
+    }
+
+    [Test]
+    public void FixedRegisterAlias_UsesConAliasAndDirectOperand()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            extern reg var OUTA: u32 @(0x1FC);
+            OUTA |= 0x10;
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+        });
+
+        Assert.That(build.AssemblyText, Does.Contain("CON"));
+        Assert.That(build.AssemblyText, Does.Contain("OUTA = 0x1FC"));
+        Assert.That(build.AssemblyText, Does.Contain("OR OUTA, #16"));
+        Assert.That(build.AssemblyText, Does.Not.Contain("LONG 0"));
+        Assert.That(build.AssemblyText, Does.Not.Contain("g_OUTA"));
+    }
+
+    [Test]
+    public void ExternalRegisterAliasWithoutAddress_StaysAsBareSymbol()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            extern reg var FOO: u32;
+            FOO = 1;
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+        });
+
+        Assert.That(build.AssemblyText, Does.Contain("MOV FOO, #1"));
+        Assert.That(build.AssemblyText, Does.Not.Contain("LONG 0"));
+        Assert.That(build.AssemblyText, Does.Not.Contain("g_FOO"));
+    }
+
+    [Test]
+    public void AllocatableGlobalStaticInitializer_EmitsLongData()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg var g: u32 = 1000;
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+        });
+
+        Assert.That(build.AssemblyText, Does.Match(@"g_g_\d+"));
+        Assert.That(build.AssemblyText, Does.Contain("LONG 1000"));
+        Assert.That(build.AssemblyText, Does.Not.Contain("MOV g_g_"));
     }
 }

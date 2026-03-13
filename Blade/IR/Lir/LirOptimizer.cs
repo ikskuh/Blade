@@ -58,7 +58,7 @@ public static class LirOptimizer
                 blocks));
         }
 
-        return new LirModule(functions);
+        return new LirModule(module.StoragePlaces, functions);
     }
 
     private static LirModule RunControlFlowSimplification(LirModule module)
@@ -76,7 +76,7 @@ public static class LirOptimizer
                 merged));
         }
 
-        return new LirModule(functions);
+        return new LirModule(module.StoragePlaces, functions);
     }
 
     private static LirModule RunDeadCodeElimination(LirModule module)
@@ -123,7 +123,7 @@ public static class LirOptimizer
                 blocks));
         }
 
-        return new LirModule(functions);
+        return new LirModule(module.StoragePlaces, functions);
     }
 
     private static IReadOnlyList<LirBlock> ThreadTrivialGotoBlocks(IReadOnlyList<LirBlock> blocks)

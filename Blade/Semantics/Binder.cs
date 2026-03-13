@@ -16,6 +16,7 @@ public sealed class Binder
     private readonly HashSet<string> _typeAliasResolutionStack = new(StringComparer.Ordinal);
     private readonly Dictionary<string, FunctionSymbol> _functions = new(StringComparer.Ordinal);
     private readonly Scope _globalScope;
+    private readonly Scope _topLevelScope;
     private Scope _currentScope;
     private FunctionSymbol? _currentFunction;
     private readonly Stack<LoopContext> _loopStack = new();
@@ -25,6 +26,7 @@ public sealed class Binder
     {
         _diagnostics = diagnostics;
         _globalScope = new Scope(parent: null);
+        _topLevelScope = new Scope(_globalScope);
         _currentScope = _globalScope;
     }
 
@@ -46,7 +48,7 @@ public sealed class Binder
         List<BoundFunctionMember> boundFunctions = new();
         List<BoundStatement> boundTopLevelStatements = new();
 
-        _currentScope = _globalScope;
+        _currentScope = _topLevelScope;
         foreach (MemberSyntax member in unit.Members)
         {
             switch (member)
@@ -58,7 +60,9 @@ public sealed class Binder
                     break;
 
                 case VariableDeclarationSyntax variable:
+                    _currentScope = _globalScope;
                     boundGlobals.Add(BindGlobalVariable(variable));
+                    _currentScope = _topLevelScope;
                     break;
 
                 case FunctionDeclarationSyntax function:
@@ -94,6 +98,7 @@ public sealed class Binder
 
     private void CollectTopLevelFunctions(CompilationUnitSyntax unit)
     {
+        _currentScope = _globalScope;
         foreach (MemberSyntax member in unit.Members)
         {
             if (member is not FunctionDeclarationSyntax functionDecl)
@@ -121,6 +126,9 @@ public sealed class Binder
             foreach (ParameterSyntax param in function.Syntax.Parameters)
             {
                 TypeSymbol parameterType = BindType(param.Type);
+                if (param.StorageClassKeyword is Token storageClassKeyword)
+                    _diagnostics.ReportInvalidParameterStorageClass(storageClassKeyword.Span, storageClassKeyword.Text);
+
                 if (!parameterNames.Add(param.Name.Text))
                 {
                     _diagnostics.ReportSymbolAlreadyDeclared(param.Name.Span, param.Name.Text);
@@ -156,8 +164,7 @@ public sealed class Binder
                 continue;
 
             TypeSymbol variableType = BindType(variableDecl.Type);
-            bool isConst = variableDecl.MutabilityKeyword.Kind == TokenKind.ConstKeyword;
-            VariableSymbol symbol = new(variableDecl.Name.Text, variableType, isConst);
+            VariableSymbol symbol = CreateVariableSymbol(variableDecl, variableType, VariableScopeKind.GlobalStorage);
 
             if (!_globalScope.TryDeclare(symbol))
                 _diagnostics.ReportSymbolAlreadyDeclared(variableDecl.Name.Span, variableDecl.Name.Text);
@@ -172,8 +179,19 @@ public sealed class Binder
 
     private BoundGlobalVariableMember BindGlobalVariable(VariableDeclarationSyntax variable)
     {
-        if (!_currentScope.TryLookup(variable.Name.Text, out Symbol? symbol) || symbol is not VariableSymbol variableSymbol)
-            return new BoundGlobalVariableMember(new VariableSymbol(variable.Name.Text, BuiltinTypes.Unknown, isConst: false), initializer: null, variable.Span);
+        if (!_globalScope.TryLookup(variable.Name.Text, out Symbol? symbol) || symbol is not VariableSymbol variableSymbol)
+        {
+            VariableSymbol errorSymbol = new(
+                variable.Name.Text,
+                BuiltinTypes.Unknown,
+                isConst: false,
+                VariableStorageClass.Reg,
+                VariableScopeKind.GlobalStorage,
+                isExtern: false,
+                fixedAddress: null,
+                alignment: null);
+            return new BoundGlobalVariableMember(errorSymbol, initializer: null, variable.Span);
+        }
 
         BoundExpression? initializer = null;
         if (variable.Initializer is not null)
@@ -283,7 +301,7 @@ public sealed class Binder
 
             case ForStatementSyntax forStatement:
             {
-                VariableSymbol? variable = ResolveVariableSymbol(forStatement.Variable);
+                Symbol? variable = ResolveVariableSymbol(forStatement.Variable);
                 PushLoop(LoopContext.Regular);
                 BoundBlockStatement body = BindBlockStatement(forStatement.Body, createScope: true, isTopLevel: false);
                 PopLoop();
@@ -388,7 +406,14 @@ public sealed class Binder
                 InlineAssemblyValidator.ValidationResult validationResult =
                     InlineAssemblyValidator.Validate(asm.Body, asm.Span, availableVars, _diagnostics);
 
-                return new BoundAsmStatement(asm.Body, flagOutput, validationResult.Lines, asm.Span);
+                Dictionary<string, Symbol> referencedSymbols = new(StringComparer.Ordinal);
+                foreach (string name in validationResult.ReferencedVariables)
+                {
+                    if (_currentScope.TryLookup(name, out Symbol? referenced) && referenced is not null)
+                        referencedSymbols[name] = referenced;
+                }
+
+                return new BoundAsmStatement(asm.Body, flagOutput, validationResult.Lines, referencedSymbols, asm.Span);
             }
         }
 
@@ -398,8 +423,10 @@ public sealed class Binder
     private BoundVariableDeclarationStatement BindLocalVariableDeclaration(VariableDeclarationSyntax declaration)
     {
         TypeSymbol variableType = BindType(declaration.Type);
-        bool isConst = declaration.MutabilityKeyword.Kind == TokenKind.ConstKeyword;
-        VariableSymbol variableSymbol = new(declaration.Name.Text, variableType, isConst);
+        VariableScopeKind scopeKind = _currentFunction is null
+            ? VariableScopeKind.TopLevelAutomatic
+            : VariableScopeKind.Local;
+        VariableSymbol variableSymbol = CreateVariableSymbol(declaration, variableType, scopeKind);
         if (!_currentScope.TryDeclare(variableSymbol))
         {
             _diagnostics.ReportSymbolAlreadyDeclared(declaration.Name.Span, declaration.Name.Text);
@@ -418,7 +445,15 @@ public sealed class Binder
         Scope previousScope = _currentScope;
         _currentScope = new Scope(previousScope);
 
-        VariableSymbol variable = new(repFor.Variable.Text, BuiltinTypes.IntegerLiteral, isConst: true);
+        VariableSymbol variable = new(
+            repFor.Variable.Text,
+            BuiltinTypes.IntegerLiteral,
+            isConst: true,
+            VariableStorageClass.Automatic,
+            VariableScopeKind.Local,
+            isExtern: false,
+            fixedAddress: null,
+            alignment: null);
         _currentScope.TryDeclare(variable);
 
         BoundBlockStatement body = BindBlockStatement(repFor.Body, createScope: false, isTopLevel: false);
@@ -996,7 +1031,7 @@ public sealed class Binder
         return new BoundConversionExpression(expression, span, targetType);
     }
 
-    private VariableSymbol? ResolveVariableSymbol(Token token)
+    private Symbol? ResolveVariableSymbol(Token token)
     {
         if (!_currentScope.TryLookup(token.Text, out Symbol? symbol) || symbol is null)
         {
@@ -1007,7 +1042,102 @@ public sealed class Binder
         return symbol switch
         {
             VariableSymbol variable => variable,
-            ParameterSymbol parameter => new VariableSymbol(parameter.Name, parameter.Type, isConst: false),
+            ParameterSymbol parameter => parameter,
+            _ => null,
+        };
+    }
+
+    private VariableSymbol CreateVariableSymbol(
+        VariableDeclarationSyntax declaration,
+        TypeSymbol variableType,
+        VariableScopeKind scopeKind)
+    {
+        VariableStorageClass storageClass = MapStorageClass(declaration.StorageClassKeyword);
+        bool isConst = declaration.MutabilityKeyword.Kind == TokenKind.ConstKeyword;
+        bool isGlobalStorage = scopeKind == VariableScopeKind.GlobalStorage;
+
+        if (!isGlobalStorage)
+        {
+            if (declaration.ExternKeyword is Token externKeyword)
+                _diagnostics.ReportInvalidExternScope(externKeyword.Span);
+
+            if (declaration.StorageClassKeyword is Token storageClassKeyword)
+                _diagnostics.ReportInvalidLocalStorageClass(storageClassKeyword.Span, storageClassKeyword.Text);
+        }
+
+        if (isGlobalStorage && storageClass is VariableStorageClass.Lut or VariableStorageClass.Hub)
+        {
+            if (declaration.StorageClassKeyword is Token storageClassKeyword)
+                _diagnostics.ReportUnsupportedStorageClass(storageClassKeyword.Span, storageClassKeyword.Text);
+            else
+                _diagnostics.ReportUnsupportedStorageClass(declaration.Span, declaration.MutabilityKeyword.Text);
+        }
+
+        int? fixedAddress = TryEvaluateConstantInt(declaration.AtClause?.Address);
+        int? alignment = TryEvaluateConstantInt(declaration.AlignClause?.Alignment);
+
+        return new VariableSymbol(
+            declaration.Name.Text,
+            variableType,
+            isConst,
+            storageClass,
+            scopeKind,
+            declaration.ExternKeyword is not null,
+            fixedAddress,
+            alignment);
+    }
+
+    private static VariableStorageClass MapStorageClass(Token? storageClassKeyword)
+    {
+        return storageClassKeyword?.Kind switch
+        {
+            TokenKind.RegKeyword => VariableStorageClass.Reg,
+            TokenKind.LutKeyword => VariableStorageClass.Lut,
+            TokenKind.HubKeyword => VariableStorageClass.Hub,
+            _ => VariableStorageClass.Automatic,
+        };
+    }
+
+    private int? TryEvaluateConstantInt(ExpressionSyntax? expression)
+    {
+        if (expression is null)
+            return null;
+
+        BoundExpression bound = BindExpression(expression);
+        return TryEvaluateConstantInt(bound);
+    }
+
+    private static int? TryEvaluateConstantInt(BoundExpression expression)
+    {
+        return expression switch
+        {
+            BoundLiteralExpression literal when literal.Value is int value => value,
+            BoundLiteralExpression literal when literal.Value is uint value => unchecked((int)value),
+            BoundLiteralExpression literal when literal.Value is long value => unchecked((int)value),
+            BoundLiteralExpression literal when literal.Value is ulong value => unchecked((int)value),
+            BoundLiteralExpression literal when literal.Value is short value => value,
+            BoundLiteralExpression literal when literal.Value is ushort value => value,
+            BoundLiteralExpression literal when literal.Value is byte value => value,
+            BoundLiteralExpression literal when literal.Value is sbyte value => value,
+            BoundConversionExpression conversion => TryEvaluateConstantInt(conversion.Expression),
+            BoundUnaryExpression unary when unary.Operator.Kind == BoundUnaryOperatorKind.Negation
+                && TryEvaluateConstantInt(unary.Operand) is int operand
+                => -operand,
+            BoundBinaryExpression binary when TryEvaluateConstantInt(binary.Left) is int left
+                && TryEvaluateConstantInt(binary.Right) is int right
+                => binary.Operator.Kind switch
+                {
+                    BoundBinaryOperatorKind.Add => left + right,
+                    BoundBinaryOperatorKind.Subtract => left - right,
+                    BoundBinaryOperatorKind.Multiply => left * right,
+                    BoundBinaryOperatorKind.Divide => right == 0 ? null : left / right,
+                    BoundBinaryOperatorKind.BitwiseAnd => left & right,
+                    BoundBinaryOperatorKind.BitwiseOr => left | right,
+                    BoundBinaryOperatorKind.BitwiseXor => left ^ right,
+                    BoundBinaryOperatorKind.ShiftLeft => left << right,
+                    BoundBinaryOperatorKind.ShiftRight => left >> right,
+                    _ => null,
+                },
             _ => null,
         };
     }

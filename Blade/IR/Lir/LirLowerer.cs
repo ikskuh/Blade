@@ -12,7 +12,7 @@ public static class LirLowerer
         List<LirFunction> functions = new(module.Functions.Count);
         foreach (MirFunction mirFunction in module.Functions)
             functions.Add(LowerFunction(mirFunction));
-        return new LirModule(functions);
+        return new LirModule(module.StoragePlaces, functions);
     }
 
     private static LirFunction LowerFunction(MirFunction mirFunction)
@@ -86,6 +86,17 @@ public static class LirLowerer
                 writesC: false,
                 writesZ: false,
                 load.Span),
+
+            MirLoadPlaceInstruction loadPlace => new LirOpInstruction(
+                "load.place",
+                destination,
+                loadPlace.ResultType,
+                [new LirPlaceOperand(loadPlace.Place)],
+                hasSideEffects: false,
+                predicate: null,
+                writesC: false,
+                writesZ: false,
+                loadPlace.Span),
 
             MirCopyInstruction copy => new LirOpInstruction(
                 "mov",
@@ -179,6 +190,33 @@ public static class LirLowerer
                 writesZ: false,
                 store.Span),
 
+            MirStorePlaceInstruction storePlace => new LirOpInstruction(
+                "store.place",
+                destination: null,
+                resultType: null,
+                [new LirPlaceOperand(storePlace.Place), new LirRegisterOperand(getRegister(storePlace.Value))],
+                hasSideEffects: true,
+                predicate: null,
+                writesC: false,
+                writesZ: false,
+                storePlace.Span),
+
+            MirUpdatePlaceInstruction updatePlace => new LirOpInstruction(
+                $"update.place.{updatePlace.OperatorKind}",
+                destination: null,
+                resultType: null,
+                [new LirPlaceOperand(updatePlace.Place), new LirRegisterOperand(getRegister(updatePlace.Value))],
+                hasSideEffects: true,
+                predicate: null,
+                writesC: false,
+                writesZ: false,
+                updatePlace.Span),
+
+            MirInlineAsmInstruction inlineAsm => new LirInlineAsmInstruction(
+                inlineAsm.Body,
+                LowerInlineAsmBindings(inlineAsm.Bindings, getRegister),
+                inlineAsm.Span),
+
             MirPseudoInstruction pseudo => new LirOpInstruction(
                 $"pseudo.{pseudo.Opcode}",
                 destination: null,
@@ -254,5 +292,21 @@ public static class LirLowerer
         foreach (MirValueId argument in arguments)
             operands.Add(new LirRegisterOperand(getRegister(argument)));
         return operands;
+    }
+
+    private static IReadOnlyList<LirInlineAsmBinding> LowerInlineAsmBindings(
+        IReadOnlyList<MirInlineAsmBinding> bindings,
+        System.Func<MirValueId, LirVirtualRegister> getRegister)
+    {
+        List<LirInlineAsmBinding> lowered = new(bindings.Count);
+        foreach (MirInlineAsmBinding binding in bindings)
+        {
+            LirOperand operand = binding.Value is MirValueId value
+                ? new LirRegisterOperand(getRegister(value))
+                : new LirPlaceOperand(binding.Place!);
+            lowered.Add(new LirInlineAsmBinding(binding.Name, operand));
+        }
+
+        return lowered;
     }
 }

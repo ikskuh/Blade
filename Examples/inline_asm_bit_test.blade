@@ -9,7 +9,7 @@ reg var pin_state: u32 = 0;
 reg var result: u32 = 0;
 
 fn test_and_set_bit(val: u32, bit_num: u32) -> u32 {
-    reg var out: u32 = 0;
+    var out: u32 = 0;
     asm {
         MOV   {out}, {val}
         TESTB {out}, {bit_num} WC

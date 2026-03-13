@@ -81,6 +81,11 @@ public static class AsmTextWriter
 
                 sb.AppendLine();
                 break;
+
+            case AsmInlineTextNode inlineText:
+                sb.Append("    ");
+                sb.AppendLine(inlineText.Text);
+                break;
         }
     }
 

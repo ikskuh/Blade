@@ -155,6 +155,26 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
         Report(DiagnosticCode.E0214_InvalidYieldtoTarget, span, $"'{target}' is not a coroutine function.");
     }
 
+    public void ReportInvalidLocalStorageClass(TextSpan span, string storageClass)
+    {
+        Report(DiagnosticCode.E0215_InvalidLocalStorageClass, span, $"Storage class '{storageClass}' is only allowed for top-level storage declarations.");
+    }
+
+    public void ReportInvalidExternScope(TextSpan span)
+    {
+        Report(DiagnosticCode.E0216_InvalidExternScope, span, "'extern' is only allowed on top-level storage declarations.");
+    }
+
+    public void ReportInvalidParameterStorageClass(TextSpan span, string storageClass)
+    {
+        Report(DiagnosticCode.E0217_InvalidParameterStorageClass, span, $"Parameter storage class '{storageClass}' is not supported.");
+    }
+
+    public void ReportUnsupportedStorageClass(TextSpan span, string storageClass)
+    {
+        Report(DiagnosticCode.E0218_UnsupportedStorageClass, span, $"Storage class '{storageClass}' is not supported yet.");
+    }
+
     // Inline assembly diagnostics
 
     public void ReportInlineAsmUnknownInstruction(TextSpan span, string mnemonic)

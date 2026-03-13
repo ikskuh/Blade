@@ -82,7 +82,7 @@ public static class AsmLegalizer
                 entry.Name, entry.IsEntryPoint, entry.CcTier, extendedNodes);
         }
 
-        return new AsmModule(functions);
+        return new AsmModule(module.StoragePlaces, functions);
     }
 
     private static void CountLargeImmediates(

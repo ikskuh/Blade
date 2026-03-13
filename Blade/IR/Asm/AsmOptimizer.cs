@@ -10,7 +10,7 @@ public static class AsmOptimizer
         List<AsmFunction> functions = new(module.Functions.Count);
         foreach (AsmFunction function in module.Functions)
             functions.Add(OptimizeFunction(function));
-        return new AsmModule(functions);
+        return new AsmModule(module.StoragePlaces, functions);
     }
 
     private static AsmFunction OptimizeFunction(AsmFunction function)
@@ -325,6 +325,7 @@ public static class AsmOptimizer
             (AsmRegisterOperand lhs, AsmRegisterOperand rhs) => lhs.RegisterId == rhs.RegisterId,
             (AsmImmediateOperand lhs, AsmImmediateOperand rhs) => lhs.Value == rhs.Value,
             (AsmSymbolOperand lhs, AsmSymbolOperand rhs) => lhs.Name == rhs.Name,
+            (AsmPlaceOperand lhs, AsmPlaceOperand rhs) => lhs.Place.Symbol.Id == rhs.Place.Symbol.Id,
             (AsmPhysicalRegisterOperand lhs, AsmPhysicalRegisterOperand rhs) => lhs.Address == rhs.Address,
             _ => false,
         };

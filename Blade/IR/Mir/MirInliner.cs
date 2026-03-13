@@ -59,7 +59,7 @@ public static class MirInliner
                 rewrittenFunctions.Add(mutable.ToImmutable());
             }
 
-            current = new MirModule(rewrittenFunctions);
+            current = new MirModule(current.StoragePlaces, rewrittenFunctions);
             if (!changed)
                 break;
         }
@@ -231,6 +231,7 @@ public static class MirInliner
             {
                 MirConstantInstruction constant => new MirConstantInstruction(newResult!.Value, constant.ResultType!, constant.Value, constant.Span),
                 MirLoadSymbolInstruction load => new MirLoadSymbolInstruction(newResult!.Value, load.ResultType!, load.SymbolName, load.Span),
+                MirLoadPlaceInstruction loadPlace => new MirLoadPlaceInstruction(newResult!.Value, loadPlace.ResultType!, loadPlace.Place, loadPlace.Span),
                 MirCopyInstruction copy => new MirCopyInstruction(newResult!.Value, copy.ResultType!, copy.Source, copy.Span),
                 MirUnaryInstruction unary => new MirUnaryInstruction(newResult!.Value, unary.ResultType!, unary.Operator, unary.Operand, unary.Span),
                 MirBinaryInstruction binary => new MirBinaryInstruction(newResult!.Value, binary.ResultType!, binary.Operator, binary.Left, binary.Right, binary.Span),
@@ -239,6 +240,9 @@ public static class MirInliner
                 MirCallInstruction call => new MirCallInstruction(newResult, call.ResultType, call.FunctionName, call.Arguments, call.Span),
                 MirIntrinsicCallInstruction intrinsic => new MirIntrinsicCallInstruction(newResult, intrinsic.ResultType, intrinsic.IntrinsicName, intrinsic.Arguments, intrinsic.Span),
                 MirStoreInstruction store => new MirStoreInstruction(store.Target, store.Operands, store.Span),
+                MirStorePlaceInstruction storePlace => new MirStorePlaceInstruction(storePlace.Place, storePlace.Value, storePlace.Span),
+                MirUpdatePlaceInstruction updatePlace => new MirUpdatePlaceInstruction(updatePlace.Place, updatePlace.OperatorKind, updatePlace.Value, updatePlace.Span),
+                MirInlineAsmInstruction inlineAsm => new MirInlineAsmInstruction(inlineAsm.Body, inlineAsm.Bindings, inlineAsm.Span),
                 MirPseudoInstruction pseudo => new MirPseudoInstruction(pseudo.Opcode, pseudo.Operands, pseudo.HasSideEffects, pseudo.Span),
                 _ => rewritten,
             };

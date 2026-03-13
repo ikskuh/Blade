@@ -3,7 +3,7 @@ reg var x: u32 = 0;
 reg var y: u32 = 42;
 
 fn add_values(a: u32, b: u32) -> u32 {
-    reg var result: u32 = 0;
+    var result: u32 = 0;
     asm {
         MOV {result}, {a}
         ADD {result}, {b}
@@ -12,7 +12,7 @@ fn add_values(a: u32, b: u32) -> u32 {
 }
 
 fn bitwise_ops(val: u32, mask: u32) -> u32 {
-    reg var out: u32 = 0;
+    var out: u32 = 0;
     asm {
         MOV {out}, {val}
         AND {out}, {mask}

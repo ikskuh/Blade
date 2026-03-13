@@ -111,7 +111,7 @@ public static class MirOptimizer
                 blocks));
         }
 
-        return new MirModule(functions);
+        return new MirModule(module.StoragePlaces, functions);
     }
 
     private static MirModule RunCopyPropagation(MirModule module)
@@ -149,7 +149,7 @@ public static class MirOptimizer
                 blocks));
         }
 
-        return new MirModule(functions);
+        return new MirModule(module.StoragePlaces, functions);
     }
 
     private static MirModule RunControlFlowSimplification(MirModule module)
@@ -167,7 +167,7 @@ public static class MirOptimizer
                 merged));
         }
 
-        return new MirModule(functions);
+        return new MirModule(module.StoragePlaces, functions);
     }
 
     private static MirModule RunDeadCodeElimination(MirModule module)
@@ -214,7 +214,7 @@ public static class MirOptimizer
                 blocks));
         }
 
-        return new MirModule(functions);
+        return new MirModule(module.StoragePlaces, functions);
     }
 
     private static HashSet<string> ComputeReachableBlocks(MirFunction function)

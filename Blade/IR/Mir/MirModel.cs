@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Blade.IR;
 using Blade.Semantics;
 using Blade.Semantics.Bound;
 using Blade.Source;
@@ -13,10 +14,17 @@ public readonly record struct MirValueId(int Id)
 public sealed class MirModule
 {
     public MirModule(IReadOnlyList<MirFunction> functions)
+        : this([], functions)
     {
+    }
+
+    public MirModule(IReadOnlyList<StoragePlace> storagePlaces, IReadOnlyList<MirFunction> functions)
+    {
+        StoragePlaces = storagePlaces;
         Functions = functions;
     }
 
+    public IReadOnlyList<StoragePlace> StoragePlaces { get; }
     public IReadOnlyList<MirFunction> Functions { get; }
 }
 
@@ -120,6 +128,21 @@ public sealed class MirLoadSymbolInstruction : MirInstruction
     }
 
     public string SymbolName { get; }
+
+    public override IReadOnlyList<MirValueId> Uses => [];
+
+    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping) => this;
+}
+
+public sealed class MirLoadPlaceInstruction : MirInstruction
+{
+    public MirLoadPlaceInstruction(MirValueId result, TypeSymbol type, StoragePlace place, TextSpan span)
+        : base(result, type, span, hasSideEffects: false)
+    {
+        Place = place;
+    }
+
+    public StoragePlace Place { get; }
 
     public override IReadOnlyList<MirValueId> Uses => [];
 
@@ -362,6 +385,108 @@ public sealed class MirStoreInstruction : MirInstruction
         }
 
         return changed ? new MirStoreInstruction(Target, rewritten, Span) : this;
+    }
+}
+
+public sealed class MirStorePlaceInstruction : MirInstruction
+{
+    public MirStorePlaceInstruction(StoragePlace place, MirValueId value, TextSpan span)
+        : base(result: null, resultType: null, span, hasSideEffects: true)
+    {
+        Place = place;
+        Value = value;
+    }
+
+    public StoragePlace Place { get; }
+    public MirValueId Value { get; }
+
+    public override IReadOnlyList<MirValueId> Uses => [Value];
+
+    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
+    {
+        MirValueId value = mapping.TryGetValue(Value, out MirValueId mapped) ? mapped : Value;
+        return value == Value ? this : new MirStorePlaceInstruction(Place, value, Span);
+    }
+}
+
+public sealed class MirUpdatePlaceInstruction : MirInstruction
+{
+    public MirUpdatePlaceInstruction(StoragePlace place, BoundBinaryOperatorKind operatorKind, MirValueId value, TextSpan span)
+        : base(result: null, resultType: null, span, hasSideEffects: true)
+    {
+        Place = place;
+        OperatorKind = operatorKind;
+        Value = value;
+    }
+
+    public StoragePlace Place { get; }
+    public BoundBinaryOperatorKind OperatorKind { get; }
+    public MirValueId Value { get; }
+
+    public override IReadOnlyList<MirValueId> Uses => [Value];
+
+    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
+    {
+        MirValueId value = mapping.TryGetValue(Value, out MirValueId mapped) ? mapped : Value;
+        return value == Value ? this : new MirUpdatePlaceInstruction(Place, OperatorKind, value, Span);
+    }
+}
+
+public sealed class MirInlineAsmBinding
+{
+    public MirInlineAsmBinding(string name, MirValueId? value, StoragePlace? place)
+    {
+        Name = name;
+        Value = value;
+        Place = place;
+    }
+
+    public string Name { get; }
+    public MirValueId? Value { get; }
+    public StoragePlace? Place { get; }
+}
+
+public sealed class MirInlineAsmInstruction : MirInstruction
+{
+    public MirInlineAsmInstruction(string body, IReadOnlyList<MirInlineAsmBinding> bindings, TextSpan span)
+        : base(result: null, resultType: null, span, hasSideEffects: true)
+    {
+        Body = body;
+        Bindings = bindings;
+    }
+
+    public string Body { get; }
+    public IReadOnlyList<MirInlineAsmBinding> Bindings { get; }
+
+    public override IReadOnlyList<MirValueId> Uses
+    {
+        get
+        {
+            List<MirValueId> uses = [];
+            foreach (MirInlineAsmBinding binding in Bindings)
+            {
+                if (binding.Value is MirValueId value)
+                    uses.Add(value);
+            }
+
+            return uses;
+        }
+    }
+
+    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
+    {
+        List<MirInlineAsmBinding>? rewritten = null;
+        for (int i = 0; i < Bindings.Count; i++)
+        {
+            MirInlineAsmBinding binding = Bindings[i];
+            if (binding.Value is not MirValueId value || !mapping.TryGetValue(value, out MirValueId mapped) || mapped == value)
+                continue;
+
+            rewritten ??= new List<MirInlineAsmBinding>(Bindings);
+            rewritten[i] = new MirInlineAsmBinding(binding.Name, mapped, binding.Place);
+        }
+
+        return rewritten is null ? this : new MirInlineAsmInstruction(Body, rewritten, Span);
     }
 }
 

@@ -35,6 +35,10 @@ public enum DiagnosticCode
     E0212_ReturnValueCountMismatch = 212,
     E0213_ReturnOutsideFunction = 213,
     E0214_InvalidYieldtoTarget = 214,
+    E0215_InvalidLocalStorageClass = 215,
+    E0216_InvalidExternScope = 216,
+    E0217_InvalidParameterStorageClass = 217,
+    E0218_UnsupportedStorageClass = 218,
 
     // Inline assembly errors
     E0301_InlineAsmUnknownInstruction = 301,
