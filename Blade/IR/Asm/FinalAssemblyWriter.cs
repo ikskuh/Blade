@@ -15,7 +15,10 @@ public static class FinalAssemblyWriter
         {
             sb.AppendLine();
             sb.Append("    ' function ");
-            sb.AppendLine(function.Name);
+            sb.Append(function.Name);
+            sb.Append(" (");
+            sb.Append(function.CcTier);
+            sb.AppendLine(")");
             foreach (AsmNode node in function.Nodes)
                 WriteNode(sb, node);
         }
@@ -74,11 +77,14 @@ public static class FinalAssemblyWriter
 
     private static string FormatOperand(AsmOperand operand)
     {
-        // At final emission, virtual registers are still symbolic (%rN).
-        // After register allocation, they become physical register names.
-        // For now, emit as-is — FlexSpin will not accept virtual registers,
-        // but this allows incremental development and testing of instruction selection.
-        return operand.Format();
+        return operand switch
+        {
+            AsmPhysicalRegisterOperand phys => phys.Name,
+            AsmRegisterOperand virt => virt.Format(), // Fallback for pre-regalloc output
+            AsmImmediateOperand imm => imm.Format(),
+            AsmSymbolOperand sym => sym.Format(),
+            _ => operand.Format(),
+        };
     }
 
     private static string FormatFlagEffect(AsmFlagEffect effect)

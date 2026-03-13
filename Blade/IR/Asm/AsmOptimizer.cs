@@ -45,6 +45,6 @@ public static class AsmOptimizer
             nodes.Add(node);
         }
 
-        return new AsmFunction(function.Name, function.IsEntryPoint, nodes);
+        return new AsmFunction(function.Name, function.IsEntryPoint, function.CcTier, nodes);
     }
 }
