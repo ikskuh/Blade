@@ -1,0 +1,25 @@
+{
+  "name": "blade-lang",
+  "displayName": "Blade",
+  "description": "Support for the Blade programming language.",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.110.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [{
+      "id": "blade",
+      "aliases": ["Blade", "blade"],
+      "extensions": [".blade"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "blade",
+      "scopeName": "source.blade",
+      "path": "./syntaxes/blade.tmLanguage.json"
+    }]
+  }
+}
