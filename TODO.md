@@ -29,3 +29,13 @@ asm fn test_and_set_bit(val: u32, bit_num: u32) -> u32, bool@C {
 }
 ```
 
+## `asm volatile { }` blocks
+
+Right now, all blocks are inherently volatile.
+
+If we can make this an optional keyword, we can change the semantics:
+
+- `asm { … }` is hand-written assembly code, but *may* be optimized by an ASMIR or ASM optimizer.
+- `asm volatile { … }` must be taken verbatim by the assembler.
+
+This would allow optimizing user-written assembly code and elide unnecessary MOV or copies emitted by the compiler.
