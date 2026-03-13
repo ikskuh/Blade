@@ -19,6 +19,7 @@ public static class MirOptimizer
                 current = MirInliner.InlineCostBased(current, inlineCostThreshold: 12);
             current = RunConstantPropagation(current);
             current = RunCopyPropagation(current);
+            current = RunControlFlowSimplification(current);
             current = RunDeadCodeElimination(current);
             string after = MirTextWriter.Write(current);
             if (before == after)
@@ -151,6 +152,24 @@ public static class MirOptimizer
         return new MirModule(functions);
     }
 
+    private static MirModule RunControlFlowSimplification(MirModule module)
+    {
+        List<MirFunction> functions = new(module.Functions.Count);
+        foreach (MirFunction function in module.Functions)
+        {
+            IReadOnlyList<MirBlock> threaded = ThreadTrivialGotoBlocks(function.Blocks);
+            IReadOnlyList<MirBlock> merged = MergeLinearBlocks(threaded);
+            functions.Add(new MirFunction(
+                function.Name,
+                function.IsEntryPoint,
+                function.Kind,
+                function.ReturnTypes,
+                merged));
+        }
+
+        return new MirModule(functions);
+    }
+
     private static MirModule RunDeadCodeElimination(MirModule module)
     {
         List<MirFunction> functions = new(module.Functions.Count);
@@ -238,6 +257,218 @@ public static class MirOptimizer
                 yield return branch.FalseLabel;
                 break;
         }
+    }
+
+    private static IReadOnlyList<MirBlock> ThreadTrivialGotoBlocks(IReadOnlyList<MirBlock> blocks)
+    {
+        if (blocks.Count == 0)
+            return blocks;
+
+        Dictionary<string, MirBlock> byLabel = [];
+        foreach (MirBlock block in blocks)
+            byLabel[block.Label] = block;
+
+        List<MirBlock> rewritten = new(blocks.Count);
+        foreach (MirBlock block in blocks)
+        {
+            MirTerminator terminator = block.Terminator switch
+            {
+                MirGotoTerminator mirGoto => RewriteGotoThroughTrivialBlocks(mirGoto, byLabel),
+                MirBranchTerminator branch => RewriteBranchThroughTrivialBlocks(branch, byLabel),
+                _ => block.Terminator,
+            };
+
+            rewritten.Add(new MirBlock(block.Label, block.Parameters, block.Instructions, terminator));
+        }
+
+        return rewritten;
+    }
+
+    private static MirGotoTerminator RewriteGotoThroughTrivialBlocks(
+        MirGotoTerminator terminator,
+        IReadOnlyDictionary<string, MirBlock> byLabel)
+    {
+        (string label, IReadOnlyList<MirValueId> arguments) = ResolveSuccessor(
+            terminator.TargetLabel,
+            terminator.Arguments,
+            byLabel);
+
+        if (label == terminator.TargetLabel && ReferenceEquals(arguments, terminator.Arguments))
+            return terminator;
+
+        return new MirGotoTerminator(label, arguments, terminator.Span);
+    }
+
+    private static MirBranchTerminator RewriteBranchThroughTrivialBlocks(
+        MirBranchTerminator terminator,
+        IReadOnlyDictionary<string, MirBlock> byLabel)
+    {
+        (string trueLabel, IReadOnlyList<MirValueId> trueArguments) = ResolveSuccessor(
+            terminator.TrueLabel,
+            terminator.TrueArguments,
+            byLabel);
+        (string falseLabel, IReadOnlyList<MirValueId> falseArguments) = ResolveSuccessor(
+            terminator.FalseLabel,
+            terminator.FalseArguments,
+            byLabel);
+
+        if (trueLabel == terminator.TrueLabel
+            && falseLabel == terminator.FalseLabel
+            && ReferenceEquals(trueArguments, terminator.TrueArguments)
+            && ReferenceEquals(falseArguments, terminator.FalseArguments))
+        {
+            return terminator;
+        }
+
+        return new MirBranchTerminator(
+            terminator.Condition,
+            trueLabel,
+            falseLabel,
+            trueArguments,
+            falseArguments,
+            terminator.Span);
+    }
+
+    private static (string Label, IReadOnlyList<MirValueId> Arguments) ResolveSuccessor(
+        string label,
+        IReadOnlyList<MirValueId> arguments,
+        IReadOnlyDictionary<string, MirBlock> byLabel)
+    {
+        string currentLabel = label;
+        IReadOnlyList<MirValueId> currentArguments = arguments;
+        HashSet<string> seen = [];
+
+        while (byLabel.TryGetValue(currentLabel, out MirBlock? block)
+            && seen.Add(currentLabel)
+            && IsTrivialGotoBlock(block)
+            && block.Terminator is MirGotoTerminator next)
+        {
+            Dictionary<MirValueId, MirValueId>? parameterMap = CreateParameterMap(block.Parameters, currentArguments);
+            if (parameterMap is null)
+                break;
+
+            currentArguments = RewriteValues(next.Arguments, parameterMap);
+            currentLabel = next.TargetLabel;
+        }
+
+        return (currentLabel, currentArguments);
+    }
+
+    private static IReadOnlyList<MirBlock> MergeLinearBlocks(IReadOnlyList<MirBlock> blocks)
+    {
+        if (blocks.Count == 0)
+            return blocks;
+
+        Dictionary<string, MirBlock> byLabel = [];
+        foreach (MirBlock block in blocks)
+            byLabel[block.Label] = block;
+
+        Dictionary<string, int> predecessorCounts = ComputePredecessorCounts(blocks);
+        HashSet<string> removed = [];
+        List<MirBlock> mergedBlocks = new(blocks.Count);
+        string entryLabel = blocks[0].Label;
+
+        foreach (MirBlock original in blocks)
+        {
+            if (removed.Contains(original.Label))
+                continue;
+
+            MirBlock current = original;
+            while (TryMergeSuccessor(
+                current,
+                entryLabel,
+                byLabel,
+                predecessorCounts,
+                removed,
+                out MirBlock merged))
+            {
+                current = merged;
+            }
+
+            mergedBlocks.Add(current);
+        }
+
+        return mergedBlocks;
+    }
+
+    private static bool TryMergeSuccessor(
+        MirBlock block,
+        string entryLabel,
+        IReadOnlyDictionary<string, MirBlock> byLabel,
+        IReadOnlyDictionary<string, int> predecessorCounts,
+        ISet<string> removed,
+        out MirBlock merged)
+    {
+        merged = block;
+        if (block.Terminator is not MirGotoTerminator gotoTerminator)
+            return false;
+
+        if (gotoTerminator.TargetLabel == entryLabel
+            || gotoTerminator.TargetLabel == block.Label
+            || removed.Contains(gotoTerminator.TargetLabel)
+            || !byLabel.TryGetValue(gotoTerminator.TargetLabel, out MirBlock? target)
+            || predecessorCounts.GetValueOrDefault(target.Label) != 1)
+        {
+            return false;
+        }
+
+        Dictionary<MirValueId, MirValueId>? parameterMap = CreateParameterMap(target.Parameters, gotoTerminator.Arguments);
+        if (parameterMap is null)
+            return false;
+
+        List<MirInstruction> instructions = new(block.Instructions.Count + target.Instructions.Count);
+        instructions.AddRange(block.Instructions);
+        foreach (MirInstruction instruction in target.Instructions)
+            instructions.Add(instruction.RewriteUses(parameterMap));
+
+        MirTerminator terminator = target.Terminator.RewriteUses(parameterMap);
+        removed.Add(target.Label);
+        merged = new MirBlock(block.Label, block.Parameters, instructions, terminator);
+        return true;
+    }
+
+    private static bool IsTrivialGotoBlock(MirBlock block)
+        => block.Instructions.Count == 0 && block.Terminator is MirGotoTerminator;
+
+    private static Dictionary<string, int> ComputePredecessorCounts(IReadOnlyList<MirBlock> blocks)
+    {
+        Dictionary<string, int> counts = [];
+        foreach (MirBlock block in blocks)
+        {
+            foreach (string successor in EnumerateSuccessors(block.Terminator))
+                counts[successor] = counts.GetValueOrDefault(successor) + 1;
+        }
+
+        return counts;
+    }
+
+    private static Dictionary<MirValueId, MirValueId>? CreateParameterMap(
+        IReadOnlyList<MirBlockParameter> parameters,
+        IReadOnlyList<MirValueId> arguments)
+    {
+        if (parameters.Count != arguments.Count)
+            return null;
+
+        Dictionary<MirValueId, MirValueId> mapping = [];
+        for (int i = 0; i < parameters.Count; i++)
+            mapping[parameters[i].Value] = arguments[i];
+        return mapping;
+    }
+
+    private static IReadOnlyList<MirValueId> RewriteValues(
+        IReadOnlyList<MirValueId> values,
+        IReadOnlyDictionary<MirValueId, MirValueId> mapping)
+    {
+        List<MirValueId> rewritten = new(values.Count);
+        bool changed = false;
+        foreach (MirValueId value in values)
+        {
+            MirValueId mapped = mapping.TryGetValue(value, out MirValueId replacement) ? replacement : value;
+            rewritten.Add(mapped);
+            changed |= mapped != value;
+        }
+
+        return changed ? rewritten : values;
     }
 
     private static bool TryGetConstant(

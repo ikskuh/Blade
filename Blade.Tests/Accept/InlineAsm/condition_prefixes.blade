@@ -1,0 +1,16 @@
+// Inline assembly with condition prefixes and flag effects
+reg var acc: u32 = 0;
+reg var delta: u32 = 1;
+
+fn conditional_add(val: u32, d: u32) -> u32 {
+    reg var result: u32 = 0;
+    asm {
+        MOV {result}, {val}
+        CMP {result}, #10 WC
+        IF_C  ADD {result}, {d}
+        IF_NC SUB {result}, {d}
+    };
+    return result;
+}
+
+acc = conditional_add(acc, delta);

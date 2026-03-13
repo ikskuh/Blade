@@ -358,8 +358,37 @@ public sealed class Binder
 
             case AsmBlockStatementSyntax asm:
             {
-                string? flagOutput = asm.FlagOutput is null ? null : $"@{asm.FlagOutput.Flag.Text}";
-                return new BoundAsmStatement(asm.Body, flagOutput, asm.Span);
+                string? flagOutput = null;
+                if (asm.FlagOutput is not null)
+                {
+                    string flag = asm.FlagOutput.Flag.Text;
+                    if (flag is not ("C" or "Z"))
+                    {
+                        _diagnostics.ReportInlineAsmInvalidFlagOutput(asm.FlagOutput.Span, flag);
+                    }
+                    flagOutput = $"@{flag}";
+                }
+
+                // Collect available variables from current scope for validation
+                HashSet<string> availableVars = new(StringComparer.Ordinal);
+                Scope? scope = _currentScope;
+                while (scope is not null)
+                {
+                    foreach (string name in scope.GetDeclaredNames())
+                        availableVars.Add(name);
+                    scope = scope.Parent;
+                }
+                // Also add function parameters
+                if (_currentFunction is not null)
+                {
+                    foreach (ParameterSymbol param in _currentFunction.Parameters)
+                        availableVars.Add(param.Name);
+                }
+
+                InlineAssemblyValidator.ValidationResult validationResult =
+                    InlineAssemblyValidator.Validate(asm.Body, asm.Span, availableVars, _diagnostics);
+
+                return new BoundAsmStatement(asm.Body, flagOutput, validationResult.Lines, asm.Span);
             }
         }
 

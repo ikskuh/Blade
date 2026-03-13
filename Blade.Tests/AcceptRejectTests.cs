@@ -52,14 +52,17 @@ public class AcceptRejectTests
         string dir = Path.Combine(TestDataPath, "Accept");
         if (!Directory.Exists(dir))
             yield break;
-        foreach (string file in Directory.GetFiles(dir, "*.blade"))
-            yield return Path.GetFileName(file);
+        foreach (string file in Directory.GetFiles(dir, "*.blade", SearchOption.AllDirectories))
+        {
+            string relativePath = Path.GetRelativePath(Path.Combine(TestDataPath, "Accept"), file);
+            yield return relativePath;
+        }
     }
 
     [TestCaseSource(nameof(AcceptFiles))]
-    public void AcceptFile_ParsesWithoutErrors(string fileName)
+    public void AcceptFile_ParsesWithoutErrors(string relativePath)
     {
-        string filePath = Path.Combine(TestDataPath, "Accept", fileName);
+        string filePath = Path.Combine(TestDataPath, "Accept", relativePath);
         CompilationUnitSyntax unit = ParseFile(filePath, out DiagnosticBag diagnostics);
 
         Assert.That(unit, Is.Not.Null);

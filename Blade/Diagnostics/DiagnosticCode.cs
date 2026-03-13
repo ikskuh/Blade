@@ -35,4 +35,10 @@ public enum DiagnosticCode
     E0212_ReturnValueCountMismatch = 212,
     E0213_ReturnOutsideFunction = 213,
     E0214_InvalidYieldtoTarget = 214,
+
+    // Inline assembly errors
+    E0301_InlineAsmUnknownInstruction = 301,
+    E0302_InlineAsmUndefinedVariable = 302,
+    E0303_InlineAsmEmptyInstruction = 303,
+    E0304_InlineAsmInvalidFlagOutput = 304,
 }

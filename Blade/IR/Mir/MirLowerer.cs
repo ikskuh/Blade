@@ -254,9 +254,10 @@ public static class MirLowerer
 
                 case BoundAsmStatement asmStatement:
                 {
-                    string opcode = asmStatement.FlagOutput is null
-                        ? "asm"
-                        : $"asm:{asmStatement.FlagOutput}";
+                    // Encode asm body in opcode for passthrough. Format: "asm\0BODY"
+                    // The AsmLowerer will extract and emit the raw lines.
+                    string encodedBody = asmStatement.Body.Replace("\r\n", "\n").Replace("\r", "\n");
+                    string opcode = $"asm\0{encodedBody}";
                     EmitOp(opcode, [], hasSideEffects: true, asmStatement.Span);
                     break;
                 }

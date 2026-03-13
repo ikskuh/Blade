@@ -70,6 +70,11 @@ public static class FinalAssemblyWriter
                 sb.AppendLine(comment.Text);
                 break;
 
+            case AsmInlineTextNode inlineText:
+                sb.Append("            ");
+                sb.AppendLine(inlineText.Text);
+                break;
+
             case AsmInstructionNode instruction:
                 sb.Append("            ");
                 if (!string.IsNullOrWhiteSpace(instruction.Predicate))

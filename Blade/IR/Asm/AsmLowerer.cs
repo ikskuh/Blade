@@ -115,7 +115,9 @@ public static class AsmLowerer
                 LowerConvert(nodes, op);
                 break;
             default:
-                if (op.Opcode.StartsWith("binary.", StringComparison.Ordinal))
+                if (op.Opcode.StartsWith("asm\0", StringComparison.Ordinal))
+                    LowerInlineAsm(nodes, op);
+                else if (op.Opcode.StartsWith("binary.", StringComparison.Ordinal))
                     LowerBinary(nodes, op);
                 else if (op.Opcode.StartsWith("unary.", StringComparison.Ordinal))
                     LowerUnary(nodes, op);
@@ -130,6 +132,26 @@ public static class AsmLowerer
                     nodes.Add(new AsmCommentNode($"unhandled: {op.Opcode}"));
                 break;
         }
+    }
+
+    private static void LowerInlineAsm(List<AsmNode> nodes, LirOpInstruction op)
+    {
+        // Extract asm body from encoded opcode: "asm\0BODY"
+        string body = op.Opcode[4..]; // skip "asm\0"
+        string[] lines = body.Split('\n');
+
+        nodes.Add(new AsmCommentNode("inline asm begin"));
+        foreach (string rawLine in lines)
+        {
+            string line = rawLine.Trim();
+            if (string.IsNullOrWhiteSpace(line))
+                continue;
+
+            // Preserve {varname} placeholders until register allocation so they can
+            // be rewritten to the same allocated symbol labels as normal operands.
+            nodes.Add(new AsmInlineTextNode(line));
+        }
+        nodes.Add(new AsmCommentNode("inline asm end"));
     }
 
     private static void LowerConst(List<AsmNode> nodes, LirOpInstruction op)

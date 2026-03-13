@@ -12,11 +12,9 @@ extern reg var   OUTB: u32 @(0x1FD);
 extern reg const INA:  u32 @(0x1FE);
 extern reg const INB:  u32 @(0x1FF);
 
-
-
-fn foo() void {
-
-OUTA |= 0x10;
-}
-
-foo();
+// while(true) {
+    OUTA |= 0x10;
+//     @sleepx(1000);
+//     OUTA = 0;
+//     @sleepx(1000);
+// }

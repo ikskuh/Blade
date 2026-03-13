@@ -25,6 +25,9 @@ public static class IrPipeline
         }
 
         LirModule lirModule = LirLowerer.Lower(mirModule);
+        if (options.EnableLirOptimizations)
+            lirModule = LirOptimizer.Optimize(lirModule, options.MaxOptimizationIterations);
+
         AsmModule asmModule = AsmLowerer.Lower(lirModule);
 
         IrBuildResult preEmit = new(boundProgram, mirModule, lirModule, asmModule, assemblyText: string.Empty);

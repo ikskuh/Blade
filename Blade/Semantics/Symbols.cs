@@ -110,4 +110,6 @@ public sealed class Scope
         symbol = null;
         return false;
     }
+
+    public IEnumerable<string> GetDeclaredNames() => _symbols.Keys;
 }

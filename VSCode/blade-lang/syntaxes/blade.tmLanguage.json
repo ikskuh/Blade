@@ -1,0 +1,654 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Blade",
+  "scopeName": "source.blade",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#module-declaration"
+    },
+    {
+      "include": "#imports"
+    },
+    {
+      "include": "#function-definitions"
+    },
+    {
+      "include": "#type-declarations"
+    },
+    {
+      "include": "#variable-declarations"
+    },
+    {
+      "include": "#asm-block"
+    },
+    {
+      "include": "#packed-struct"
+    },
+    {
+      "include": "#intrinsics"
+    },
+    {
+      "include": "#flag-annotations"
+    },
+    {
+      "include": "#exec-modes"
+    },
+    {
+      "include": "#member-access"
+    },
+    {
+      "include": "#function-calls"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#operators"
+    }
+  ],
+  "repository": {
+    "asm-block": {
+      "begin": "\\b(asm)\\b(?:\\s*(->)\\s*(@)(C|Z))?\\s*(\\{)",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.asm.blade"
+        },
+        "2": {
+          "name": "keyword.operator.arrow.blade"
+        },
+        "3": {
+          "name": "punctuation.definition.annotation.blade"
+        },
+        "4": {
+          "name": "constant.language.flag.blade"
+        },
+        "5": {
+          "name": "punctuation.section.block.begin.blade"
+        }
+      },
+      "end": "(\\})",
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.section.block.end.blade"
+        }
+      },
+      "name": "meta.block.asm.blade",
+      "patterns": [
+        {
+          "include": "#comments"
+        },
+        {
+          "match": "(\\{)([A-Za-z_][A-Za-z0-9_]*)(\\})",
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.placeholder.begin.blade"
+            },
+            "2": {
+              "name": "variable.other.placeholder.blade"
+            },
+            "3": {
+              "name": "punctuation.definition.placeholder.end.blade"
+            }
+          }
+        },
+        {
+          "match": "(#)(0[xX][0-9A-Fa-f](?:_?[0-9A-Fa-f])*|0[bB][01](?:_?[01])*|(?:0|[1-9](?:_?[0-9])*))\\b",
+          "captures": {
+            "1": {
+              "name": "keyword.operator.immediate.asm.blade"
+            },
+            "2": {
+              "name": "constant.numeric.integer.blade"
+            }
+          }
+        },
+        {
+          "match": "\\bIF_[A-Z0-9_]+\\b",
+          "name": "keyword.control.conditional.asm.blade"
+        },
+        {
+          "match": "\\b(?:WCZ|WC|WZ)\\b",
+          "name": "storage.modifier.flag.asm.blade"
+        },
+        {
+          "match": "\\b[A-Z][A-Z0-9_]*\\b",
+          "name": "support.function.asm.mnemonic.blade"
+        },
+        {
+          "include": "#numbers"
+        },
+        {
+          "include": "#operators"
+        }
+      ]
+    },
+    "block-comment": {
+      "begin": "/\\*",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.comment.begin.blade"
+        }
+      },
+      "end": "\\*/",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.comment.end.blade"
+        }
+      },
+      "name": "comment.block.blade",
+      "patterns": [
+        {
+          "include": "#block-comment"
+        }
+      ]
+    },
+    "comments": {
+      "patterns": [
+        {
+          "begin": "//",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.comment.blade"
+            }
+          },
+          "end": "$",
+          "name": "comment.line.double-slash.blade"
+        },
+        {
+          "include": "#block-comment"
+        }
+      ]
+    },
+    "exec-modes": {
+      "match": "\\.(?:cog|lut)\\b",
+      "name": "constant.language.exec-mode.blade"
+    },
+    "flag-annotations": {
+      "patterns": [
+        {
+          "match": "(@)(C|Z)\\b",
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.annotation.blade"
+            },
+            "2": {
+              "name": "constant.language.flag.blade"
+            }
+          }
+        },
+        {
+          "match": "@(?=\\()",
+          "name": "punctuation.definition.annotation.blade"
+        }
+      ]
+    },
+    "function-calls": {
+      "match": "\\b(?!if\\b|while\\b|for\\b|loop\\b|return\\b|rep\\b|asm\\b|align\\b|import\\b|fn\\b|uint\\b|int\\b)([A-Za-z_][A-Za-z0-9_]*)\\b(?=\\s*\\()",
+      "captures": {
+        "1": {
+          "name": "entity.name.function.blade"
+        }
+      }
+    },
+    "function-definitions": {
+      "begin": "\\b(?:(leaf|inline|rec|coro|comptime|int1|int2|int3)\\s+)?(fn)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b",
+      "beginCaptures": {
+        "1": {
+          "name": "storage.modifier.function.blade"
+        },
+        "2": {
+          "name": "storage.type.function.blade"
+        },
+        "3": {
+          "name": "entity.name.function.blade"
+        }
+      },
+      "end": "(?=\\{)",
+      "name": "meta.function.signature.blade",
+      "patterns": [
+        {
+          "include": "#comments"
+        },
+        {
+          "match": "\\b(reg|lut|hub)\\b(?=\\s+[A-Za-z_][A-Za-z0-9_]*\\s*:)",
+          "name": "storage.modifier.storage-class.blade"
+        },
+        {
+          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\b(?=\\s*:)",
+          "captures": {
+            "1": {
+              "name": "variable.parameter.blade"
+            }
+          }
+        },
+        {
+          "include": "#type-annotations"
+        },
+        {
+          "match": "(?<=\\))\\s*(void|u8|i8|u16|i16|u32|i32|bool|bit|nit|nib|uint|int|[A-Za-z_][A-Za-z0-9_]*)\\b(?=\\s*\\{)",
+          "captures": {
+            "1": {
+              "name": "entity.name.type.blade"
+            }
+          }
+        },
+        {
+          "include": "#flag-annotations"
+        },
+        {
+          "include": "#keywords"
+        },
+        {
+          "include": "#operators"
+        }
+      ]
+    },
+    "imports": {
+      "begin": "\\b(import)\\b",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.import.blade"
+        }
+      },
+      "end": ";",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.terminator.statement.blade"
+        }
+      },
+      "name": "meta.import.blade",
+      "patterns": [
+        {
+          "include": "#comments"
+        },
+        {
+          "include": "#strings"
+        },
+        {
+          "match": "\\b(as)\\b\\s*([A-Za-z_][A-Za-z0-9_]*)\\b",
+          "captures": {
+            "1": {
+              "name": "keyword.control.import.blade"
+            },
+            "2": {
+              "name": "entity.name.namespace.blade"
+            }
+          }
+        }
+      ]
+    },
+    "intrinsics": {
+      "match": "(@)([A-Za-z_][A-Za-z0-9_]*)\\b(?=\\s*\\()",
+      "captures": {
+        "1": {
+          "name": "punctuation.definition.intrinsic.blade"
+        },
+        "2": {
+          "name": "support.function.intrinsic.blade"
+        }
+      }
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "match": "\\b(?:if|else|while|for|loop|break|continue|return|yield|yieldto|rep|noirq|in)\\b",
+          "name": "keyword.control.blade"
+        },
+        {
+          "match": "\\b(?:extern|reg|lut|hub|var|const)\\b",
+          "name": "storage.modifier.blade"
+        },
+        {
+          "match": "\\b(?:fn|leaf|inline|rec|coro|comptime|int1|int2|int3|asm|align|packed|struct|import|as)\\b",
+          "name": "keyword.other.blade"
+        },
+        {
+          "match": "\\b(?:true|false|undefined)\\b",
+          "name": "constant.language.blade"
+        }
+      ]
+    },
+    "member-access": {
+      "match": "(\\.)([A-Za-z_][A-Za-z0-9_]*)\\b",
+      "captures": {
+        "1": {
+          "name": "punctuation.accessor.dot.blade"
+        },
+        "2": {
+          "name": "variable.other.member.blade"
+        }
+      }
+    },
+    "module-declaration": {
+      "begin": "\\b(const)\\s+(exec_mode)\\b",
+      "beginCaptures": {
+        "1": {
+          "name": "storage.modifier.blade"
+        },
+        "2": {
+          "name": "variable.language.exec-mode.blade"
+        }
+      },
+      "end": ";",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.terminator.statement.blade"
+        }
+      },
+      "name": "meta.declaration.module.blade",
+      "patterns": [
+        {
+          "include": "#comments"
+        },
+        {
+          "include": "#exec-modes"
+        },
+        {
+          "include": "#operators"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "match": "\\b0[xX][0-9A-Fa-f](?:_?[0-9A-Fa-f])*\\b",
+          "name": "constant.numeric.integer.hex.blade"
+        },
+        {
+          "match": "\\b0[bB][01](?:_?[01])*\\b",
+          "name": "constant.numeric.integer.binary.blade"
+        },
+        {
+          "match": "\\b(?:0|[1-9](?:_?[0-9])*)\\b",
+          "name": "constant.numeric.integer.decimal.blade"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "match": "->|\\.\\.|<<=|>>=|\\+=|-=|&=|\\|=|\\^=|==|!=|<=|>=|<<|>>|\\+\\+|--|[+\\-*/&|^!=<>]=?",
+          "name": "keyword.operator.blade"
+        },
+        {
+          "match": "[{}()\\[\\]]",
+          "name": "punctuation.section.brackets.blade"
+        },
+        {
+          "match": "[,;:]",
+          "name": "punctuation.separator.blade"
+        },
+        {
+          "match": "\\.",
+          "name": "punctuation.accessor.dot.blade"
+        }
+      ]
+    },
+    "packed-struct": {
+      "begin": "\\b(packed)\\b\\s+\\b(struct)\\b\\s*(\\{)",
+      "beginCaptures": {
+        "1": {
+          "name": "storage.modifier.blade"
+        },
+        "2": {
+          "name": "storage.type.struct.blade"
+        },
+        "3": {
+          "name": "punctuation.section.block.begin.blade"
+        }
+      },
+      "end": "(\\})",
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.section.block.end.blade"
+        }
+      },
+      "name": "meta.struct.packed.blade",
+      "patterns": [
+        {
+          "include": "#comments"
+        },
+        {
+          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\b(?=\\s*:)",
+          "captures": {
+            "1": {
+              "name": "variable.other.member.definition.blade"
+            }
+          }
+        },
+        {
+          "include": "#type-annotations"
+        },
+        {
+          "include": "#numbers"
+        },
+        {
+          "include": "#keywords"
+        },
+        {
+          "include": "#operators"
+        }
+      ]
+    },
+    "strings": {
+      "begin": "\"",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.string.begin.blade"
+        }
+      },
+      "end": "\"",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.string.end.blade"
+        }
+      },
+      "name": "string.quoted.double.blade",
+      "patterns": [
+        {
+          "match": "\\\\.",
+          "name": "constant.character.escape.blade"
+        }
+      ]
+    },
+    "type-annotations": {
+      "patterns": [
+        {
+          "begin": "(:)\\s*",
+          "beginCaptures": {
+            "1": {
+              "name": "punctuation.separator.type.blade"
+            }
+          },
+          "end": "(?=[=;,){}])",
+          "name": "meta.type.annotation.blade",
+          "patterns": [
+            {
+              "include": "#comments"
+            },
+            {
+              "include": "#packed-struct"
+            },
+            {
+              "include": "#types"
+            },
+            {
+              "include": "#keywords"
+            },
+            {
+              "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b",
+              "name": "entity.name.type.blade"
+            },
+            {
+              "include": "#flag-annotations"
+            },
+            {
+              "include": "#numbers"
+            },
+            {
+              "include": "#operators"
+            }
+          ]
+        },
+        {
+          "begin": "(->)\\s*",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.operator.return-type.blade"
+            }
+          },
+          "end": "(?=\\{)",
+          "name": "meta.return.type.blade",
+          "patterns": [
+            {
+              "include": "#comments"
+            },
+            {
+              "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\b(?=\\s*:)",
+              "captures": {
+                "1": {
+                  "name": "variable.parameter.return-label.blade"
+                }
+              }
+            },
+            {
+              "include": "#packed-struct"
+            },
+            {
+              "include": "#types"
+            },
+            {
+              "include": "#keywords"
+            },
+            {
+              "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b",
+              "name": "entity.name.type.blade"
+            },
+            {
+              "include": "#flag-annotations"
+            },
+            {
+              "include": "#numbers"
+            },
+            {
+              "include": "#operators"
+            }
+          ]
+        }
+      ]
+    },
+    "type-declarations": {
+      "begin": "\\b(const)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b(?=\\s*=\\s*packed\\s+struct\\b)",
+      "beginCaptures": {
+        "1": {
+          "name": "storage.modifier.blade"
+        },
+        "2": {
+          "name": "entity.name.type.blade"
+        }
+      },
+      "end": ";",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.terminator.statement.blade"
+        }
+      },
+      "name": "meta.declaration.type.blade",
+      "patterns": [
+        {
+          "include": "#comments"
+        },
+        {
+          "include": "#packed-struct"
+        },
+        {
+          "include": "#operators"
+        }
+      ]
+    },
+    "types": {
+      "match": "\\b(?:u8|i8|u16|i16|u32|i32|bool|bit|nit|nib|uint|int|void)\\b",
+      "name": "storage.type.blade"
+    },
+    "variable-declarations": {
+      "begin": "\\b(?:(extern)\\s+)?(?:(reg|lut|hub)\\s+)?(var|const)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b",
+      "beginCaptures": {
+        "1": {
+          "name": "storage.modifier.external.blade"
+        },
+        "2": {
+          "name": "storage.modifier.storage-class.blade"
+        },
+        "3": {
+          "name": "storage.modifier.blade"
+        },
+        "4": {
+          "name": "variable.other.definition.blade"
+        }
+      },
+      "end": ";",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.terminator.statement.blade"
+        }
+      },
+      "name": "meta.declaration.variable.blade",
+      "patterns": [
+        {
+          "include": "#comments"
+        },
+        {
+          "include": "#strings"
+        },
+        {
+          "include": "#packed-struct"
+        },
+        {
+          "include": "#type-annotations"
+        },
+        {
+          "include": "#asm-block"
+        },
+        {
+          "include": "#intrinsics"
+        },
+        {
+          "include": "#flag-annotations"
+        },
+        {
+          "include": "#exec-modes"
+        },
+        {
+          "include": "#member-access"
+        },
+        {
+          "include": "#function-calls"
+        },
+        {
+          "include": "#numbers"
+        },
+        {
+          "include": "#types"
+        },
+        {
+          "include": "#keywords"
+        },
+        {
+          "include": "#operators"
+        }
+      ]
+    }
+  }
+}
