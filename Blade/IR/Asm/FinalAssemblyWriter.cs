@@ -1,3 +1,4 @@
+using System;
 using System.Text;
 
 namespace Blade.IR.Asm;
@@ -8,6 +9,14 @@ public static class FinalAssemblyWriter
     /// Opcodes where the S-field symbol operand is a jump/call target address
     /// (needs # prefix). All other symbol operands are register references.
     /// </summary>
+    private static bool IsDataDirective(string text)
+    {
+        ReadOnlySpan<char> t = text.AsSpan().TrimStart();
+        return t.StartsWith("LONG", StringComparison.OrdinalIgnoreCase)
+            || t.StartsWith("WORD", StringComparison.OrdinalIgnoreCase)
+            || t.StartsWith("BYTE", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static bool IsJumpOrCallOpcode(string opcode)
     {
         return opcode is "JMP" or "TJZ" or "TJNZ" or "TJF" or "TJNF"
@@ -42,8 +51,9 @@ public static class FinalAssemblyWriter
         switch (node)
         {
             case AsmDirectiveNode directive:
-                // Emit data directives (LONG, etc.) — these define register storage
-                if (!string.IsNullOrWhiteSpace(directive.Text))
+                // Only emit data storage directives (LONG, WORD, BYTE).
+                // Internal metadata markers like "function $top" are silently dropped.
+                if (IsDataDirective(directive.Text))
                 {
                     sb.Append("            ");
                     sb.AppendLine(directive.Text);
