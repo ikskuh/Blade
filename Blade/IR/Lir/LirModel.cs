@@ -1,0 +1,232 @@
+using System.Collections.Generic;
+using Blade.Semantics;
+using Blade.Source;
+
+namespace Blade.IR.Lir;
+
+public readonly record struct LirVirtualRegister(int Id)
+{
+    public override string ToString() => $"%r{Id}";
+}
+
+public sealed class LirModule
+{
+    public LirModule(IReadOnlyList<LirFunction> functions)
+    {
+        Functions = functions;
+    }
+
+    public IReadOnlyList<LirFunction> Functions { get; }
+}
+
+public sealed class LirFunction
+{
+    public LirFunction(
+        string name,
+        bool isEntryPoint,
+        FunctionKind kind,
+        IReadOnlyList<TypeSymbol> returnTypes,
+        IReadOnlyList<LirBlock> blocks)
+    {
+        Name = name;
+        IsEntryPoint = isEntryPoint;
+        Kind = kind;
+        ReturnTypes = returnTypes;
+        Blocks = blocks;
+    }
+
+    public string Name { get; }
+    public bool IsEntryPoint { get; }
+    public FunctionKind Kind { get; }
+    public IReadOnlyList<TypeSymbol> ReturnTypes { get; }
+    public IReadOnlyList<LirBlock> Blocks { get; }
+}
+
+public sealed class LirBlock
+{
+    public LirBlock(
+        string label,
+        IReadOnlyList<LirBlockParameter> parameters,
+        IReadOnlyList<LirInstruction> instructions,
+        LirTerminator terminator)
+    {
+        Label = label;
+        Parameters = parameters;
+        Instructions = instructions;
+        Terminator = terminator;
+    }
+
+    public string Label { get; }
+    public IReadOnlyList<LirBlockParameter> Parameters { get; }
+    public IReadOnlyList<LirInstruction> Instructions { get; }
+    public LirTerminator Terminator { get; }
+}
+
+public sealed class LirBlockParameter
+{
+    public LirBlockParameter(LirVirtualRegister register, string name, TypeSymbol type)
+    {
+        Register = register;
+        Name = name;
+        Type = type;
+    }
+
+    public LirVirtualRegister Register { get; }
+    public string Name { get; }
+    public TypeSymbol Type { get; }
+}
+
+public abstract class LirOperand
+{
+}
+
+public sealed class LirRegisterOperand : LirOperand
+{
+    public LirRegisterOperand(LirVirtualRegister register)
+    {
+        Register = register;
+    }
+
+    public LirVirtualRegister Register { get; }
+}
+
+public sealed class LirImmediateOperand : LirOperand
+{
+    public LirImmediateOperand(object? value, TypeSymbol type)
+    {
+        Value = value;
+        Type = type;
+    }
+
+    public object? Value { get; }
+    public TypeSymbol Type { get; }
+}
+
+public sealed class LirSymbolOperand : LirOperand
+{
+    public LirSymbolOperand(string symbol)
+    {
+        Symbol = symbol;
+    }
+
+    public string Symbol { get; }
+}
+
+public abstract class LirInstruction
+{
+    protected LirInstruction(
+        string opcode,
+        LirVirtualRegister? destination,
+        TypeSymbol? resultType,
+        IReadOnlyList<LirOperand> operands,
+        bool hasSideEffects,
+        string? predicate,
+        bool writesC,
+        bool writesZ,
+        TextSpan span)
+    {
+        Opcode = opcode;
+        Destination = destination;
+        ResultType = resultType;
+        Operands = operands;
+        HasSideEffects = hasSideEffects;
+        Predicate = predicate;
+        WritesC = writesC;
+        WritesZ = writesZ;
+        Span = span;
+    }
+
+    public string Opcode { get; }
+    public LirVirtualRegister? Destination { get; }
+    public TypeSymbol? ResultType { get; }
+    public IReadOnlyList<LirOperand> Operands { get; }
+    public bool HasSideEffects { get; }
+    public string? Predicate { get; }
+    public bool WritesC { get; }
+    public bool WritesZ { get; }
+    public TextSpan Span { get; }
+}
+
+public sealed class LirOpInstruction : LirInstruction
+{
+    public LirOpInstruction(
+        string opcode,
+        LirVirtualRegister? destination,
+        TypeSymbol? resultType,
+        IReadOnlyList<LirOperand> operands,
+        bool hasSideEffects,
+        string? predicate,
+        bool writesC,
+        bool writesZ,
+        TextSpan span)
+        : base(opcode, destination, resultType, operands, hasSideEffects, predicate, writesC, writesZ, span)
+    {
+    }
+}
+
+public abstract class LirTerminator
+{
+    protected LirTerminator(TextSpan span)
+    {
+        Span = span;
+    }
+
+    public TextSpan Span { get; }
+}
+
+public sealed class LirGotoTerminator : LirTerminator
+{
+    public LirGotoTerminator(string targetLabel, IReadOnlyList<LirOperand> arguments, TextSpan span)
+        : base(span)
+    {
+        TargetLabel = targetLabel;
+        Arguments = arguments;
+    }
+
+    public string TargetLabel { get; }
+    public IReadOnlyList<LirOperand> Arguments { get; }
+}
+
+public sealed class LirBranchTerminator : LirTerminator
+{
+    public LirBranchTerminator(
+        LirOperand condition,
+        string trueLabel,
+        string falseLabel,
+        IReadOnlyList<LirOperand> trueArguments,
+        IReadOnlyList<LirOperand> falseArguments,
+        TextSpan span)
+        : base(span)
+    {
+        Condition = condition;
+        TrueLabel = trueLabel;
+        FalseLabel = falseLabel;
+        TrueArguments = trueArguments;
+        FalseArguments = falseArguments;
+    }
+
+    public LirOperand Condition { get; }
+    public string TrueLabel { get; }
+    public string FalseLabel { get; }
+    public IReadOnlyList<LirOperand> TrueArguments { get; }
+    public IReadOnlyList<LirOperand> FalseArguments { get; }
+}
+
+public sealed class LirReturnTerminator : LirTerminator
+{
+    public LirReturnTerminator(IReadOnlyList<LirOperand> values, TextSpan span)
+        : base(span)
+    {
+        Values = values;
+    }
+
+    public IReadOnlyList<LirOperand> Values { get; }
+}
+
+public sealed class LirUnreachableTerminator : LirTerminator
+{
+    public LirUnreachableTerminator(TextSpan span)
+        : base(span)
+    {
+    }
+}
