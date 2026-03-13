@@ -5,6 +5,15 @@ using Blade.Semantics;
 
 namespace Blade.IR.Asm;
 
+// TODO: Add C#-style attributes that can be attached to different AST nodes:
+//   - [Used] attribute: marks a function/variable as used, preventing elimination
+//     even if never called directly (e.g., for functions called via function pointers
+//     or referenced externally).
+//   - [LinkName("_start")] attribute: sets the name of the asm label exported for
+//     the function, allowing interop with external assembly/linker conventions.
+// These attributes should be parsed in the syntax layer, stored in the bound tree,
+// and propagated through MIR/LIR so the call graph analyzer and codegen can use them.
+
 /// <summary>
 /// Resolved calling convention tier for a function, determined by call graph analysis.
 /// </summary>
@@ -28,21 +37,43 @@ public enum CallingConventionTier
     /// <summary>Interrupt handler (int1/int2/int3). Uses RETI1/RETI2/RETI3.</summary>
     Interrupt,
 
-    /// <summary>Entry point (top-level code). No calling convention — just runs.</summary>
+    /// <summary>Entry point (top-level code). No calling convention — just runs.
+    /// Exit is an endless halt loop (REP #1, #0 + NOP).</summary>
     EntryPoint,
 }
 
 /// <summary>
+/// Result of call graph analysis: CC tiers and dead function set.
+/// </summary>
+public sealed class CallGraphResult
+{
+    public CallGraphResult(
+        Dictionary<string, CallingConventionTier> tiers,
+        HashSet<string> deadFunctions)
+    {
+        Tiers = tiers;
+        DeadFunctions = deadFunctions;
+    }
+
+    /// <summary>CC tier for each function by name.</summary>
+    public Dictionary<string, CallingConventionTier> Tiers { get; }
+
+    /// <summary>Functions that are never called and not entry points — can be eliminated.</summary>
+    public HashSet<string> DeadFunctions { get; }
+}
+
+/// <summary>
 /// Analyzes the static call graph of a LIR module and assigns calling convention tiers.
+/// Also identifies dead (unreachable) functions for elimination.
 /// </summary>
 public static class CallGraphAnalyzer
 {
     /// <summary>
-    /// Analyze the call graph and return a dictionary mapping function name to CC tier.
+    /// Analyze the call graph, assign CC tiers, and identify dead functions.
     /// </summary>
-    public static Dictionary<string, CallingConventionTier> Analyze(LirModule module)
+    public static CallGraphResult Analyze(LirModule module)
     {
-        // Build a map of function name → function for lookups
+        // Build maps
         Dictionary<string, LirFunction> functionMap = new(module.Functions.Count);
         foreach (LirFunction function in module.Functions)
             functionMap[function.Name] = function;
@@ -52,7 +83,19 @@ public static class CallGraphAnalyzer
         foreach (LirFunction function in module.Functions)
             callGraph[function.Name] = CollectCallees(function);
 
-        // Assign tiers
+        // Compute reachability from entry points and interrupt handlers
+        HashSet<string> reachable = ComputeReachable(module, callGraph);
+
+        // Identify dead functions
+        HashSet<string> deadFunctions = [];
+        foreach (LirFunction function in module.Functions)
+        {
+            if (!reachable.Contains(function.Name))
+                deadFunctions.Add(function.Name);
+        }
+
+        // Assign tiers (only for reachable functions, but we tier everything
+        // so callers can look up any name)
         Dictionary<string, CallingConventionTier> tiers = new(module.Functions.Count);
 
         foreach (LirFunction function in module.Functions)
@@ -61,7 +104,45 @@ public static class CallGraphAnalyzer
             tiers[function.Name] = tier;
         }
 
-        return tiers;
+        return new CallGraphResult(tiers, deadFunctions);
+    }
+
+    /// <summary>
+    /// Compute the set of reachable functions from all entry points and interrupt handlers.
+    /// </summary>
+    private static HashSet<string> ComputeReachable(
+        LirModule module,
+        Dictionary<string, HashSet<string>> callGraph)
+    {
+        HashSet<string> reachable = [];
+        Queue<string> worklist = new();
+
+        // Seed: entry points and interrupt handlers are always reachable
+        foreach (LirFunction function in module.Functions)
+        {
+            if (function.IsEntryPoint
+                || function.Kind is FunctionKind.Int1 or FunctionKind.Int2 or FunctionKind.Int3)
+            {
+                if (reachable.Add(function.Name))
+                    worklist.Enqueue(function.Name);
+            }
+        }
+
+        // Flood-fill transitively called functions
+        while (worklist.Count > 0)
+        {
+            string current = worklist.Dequeue();
+            if (callGraph.TryGetValue(current, out HashSet<string>? callees))
+            {
+                foreach (string callee in callees)
+                {
+                    if (reachable.Add(callee))
+                        worklist.Enqueue(callee);
+                }
+            }
+        }
+
+        return reachable;
     }
 
     private static HashSet<string> CollectCallees(LirFunction function)
@@ -87,7 +168,6 @@ public static class CallGraphAnalyzer
         Dictionary<string, LirFunction> functionMap,
         Dictionary<string, CallingConventionTier> resolved)
     {
-        // Entry point is special
         if (function.IsEntryPoint)
             return CallingConventionTier.EntryPoint;
 
@@ -109,7 +189,6 @@ public static class CallGraphAnalyzer
         // Auto-tier Default functions based on call graph
         HashSet<string> callees = callGraph.GetValueOrDefault(function.Name) ?? [];
 
-        // No callees → leaf
         if (callees.Count == 0)
             return CallingConventionTier.Leaf;
 
@@ -119,7 +198,6 @@ public static class CallGraphAnalyzer
             if (resolved.TryGetValue(callee, out CallingConventionTier calleeTier))
                 return calleeTier == CallingConventionTier.Leaf;
 
-            // If not yet resolved, check if the callee has no callees itself
             if (functionMap.TryGetValue(callee, out LirFunction? calleeFunc))
             {
                 HashSet<string> calleeCallees = callGraph.GetValueOrDefault(callee) ?? [];
@@ -127,14 +205,12 @@ public static class CallGraphAnalyzer
                        || calleeFunc.Kind == FunctionKind.Leaf;
             }
 
-            // External/unknown function — assume general
             return false;
         });
 
         if (allCalleesAreLeaves)
             return CallingConventionTier.SecondOrder;
 
-        // Otherwise, general tier
         return CallingConventionTier.General;
     }
 }

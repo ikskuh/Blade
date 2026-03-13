@@ -15,8 +15,8 @@ public static class AsmLowerer
 {
     public static AsmModule Lower(LirModule module)
     {
-        // Run call graph analysis to determine CC tiers
-        Dictionary<string, CallingConventionTier> ccTiers = CallGraphAnalyzer.Analyze(module);
+        // Run call graph analysis to determine CC tiers and dead functions
+        CallGraphResult cgResult = CallGraphAnalyzer.Analyze(module);
 
         // Build a map of function name → block label → block parameter registers
         // so φ-moves can emit actual MOV instructions to the right target registers.
@@ -29,14 +29,15 @@ public static class AsmLowerer
             blockParamMap[function.Name] = funcBlocks;
         }
 
-        // Build a map of function name → CC tier for callee lookup
-        Dictionary<string, CallingConventionTier> calleeTiers = ccTiers;
-
         List<AsmFunction> functions = new(module.Functions.Count);
         foreach (LirFunction function in module.Functions)
         {
-            CallingConventionTier tier = ccTiers.GetValueOrDefault(function.Name, CallingConventionTier.General);
-            LoweringContext ctx = new(function, tier, calleeTiers, blockParamMap[function.Name]);
+            // Eliminate dead (unreachable) functions from codegen
+            if (cgResult.DeadFunctions.Contains(function.Name))
+                continue;
+
+            CallingConventionTier tier = cgResult.Tiers.GetValueOrDefault(function.Name, CallingConventionTier.General);
+            LoweringContext ctx = new(function, tier, cgResult.Tiers, blockParamMap[function.Name]);
             functions.Add(LowerFunction(ctx));
         }
 
@@ -469,7 +470,7 @@ public static class AsmLowerer
 
             case LirUnreachableTerminator:
                 nodes.Add(new AsmCommentNode("unreachable"));
-                nodes.Add(Emit("JMP", new AsmSymbolOperand("$")));
+                EmitHaltLoop(nodes);
                 break;
         }
     }
@@ -502,6 +503,11 @@ public static class AsmLowerer
 
         switch (ctx.Tier)
         {
+            case CallingConventionTier.EntryPoint:
+                // Entry point "returns" by halting: endless loop with interrupts shielded
+                EmitHaltLoop(nodes);
+                break;
+
             case CallingConventionTier.Recursive:
                 nodes.Add(Emit("RET"));
                 break;
@@ -522,6 +528,19 @@ public static class AsmLowerer
                 nodes.Add(Emit("RET"));
                 break;
         }
+    }
+
+    /// <summary>
+    /// Emit an endless halt loop: REP #1, #0 followed by NOP.
+    /// REP #1, #0 repeats the next 1 instruction forever (count=0 means infinite).
+    /// This keeps the COG alive without executing real work.
+    /// </summary>
+    private static void EmitHaltLoop(List<AsmNode> nodes)
+    {
+        nodes.Add(new AsmCommentNode("halt: endless loop"));
+        nodes.Add(new AsmInstructionNode("REP",
+            [new AsmImmediateOperand(1), new AsmImmediateOperand(0)]));
+        nodes.Add(Emit("NOP"));
     }
 
     private static void LowerBranch(List<AsmNode> nodes, LoweringContext ctx, LirBranchTerminator branch)
