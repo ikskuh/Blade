@@ -155,6 +155,28 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
         Report(DiagnosticCode.E0214_InvalidYieldtoTarget, span, $"'{target}' is not a coroutine function.");
     }
 
+    // Inline assembly diagnostics
+
+    public void ReportInlineAsmUnknownInstruction(TextSpan span, string mnemonic)
+    {
+        Report(DiagnosticCode.E0301_InlineAsmUnknownInstruction, span, $"Unknown P2 instruction '{mnemonic}' in inline assembly.");
+    }
+
+    public void ReportInlineAsmUndefinedVariable(TextSpan span, string name)
+    {
+        Report(DiagnosticCode.E0302_InlineAsmUndefinedVariable, span, $"Undefined variable '{name}' referenced in inline assembly.");
+    }
+
+    public void ReportInlineAsmEmptyInstruction(TextSpan span)
+    {
+        Report(DiagnosticCode.E0303_InlineAsmEmptyInstruction, span, "Empty instruction in inline assembly block.");
+    }
+
+    public void ReportInlineAsmInvalidFlagOutput(TextSpan span, string flag)
+    {
+        Report(DiagnosticCode.E0304_InlineAsmInvalidFlagOutput, span, $"Invalid flag output '@{flag}' in inline assembly. Expected '@C' or '@Z'.");
+    }
+
     public IEnumerator<Diagnostic> GetEnumerator() => _diagnostics.GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();

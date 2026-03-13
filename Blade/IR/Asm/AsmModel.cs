@@ -177,3 +177,17 @@ public sealed class AsmCommentNode : AsmNode
 
     public string Text { get; }
 }
+
+/// <summary>
+/// Raw inline assembly text node. Emitted verbatim into the final PASM2 output.
+/// Variable references have already been substituted to symbol names.
+/// </summary>
+public sealed class AsmInlineTextNode : AsmNode
+{
+    public AsmInlineTextNode(string text)
+    {
+        Text = text;
+    }
+
+    public string Text { get; }
+}

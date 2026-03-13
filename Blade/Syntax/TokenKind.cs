@@ -87,6 +87,7 @@ public enum TokenKind
     Bang,
     Dot,
     At,
+    Hash,
 
     // Multi-char operators
     Arrow,          // ->

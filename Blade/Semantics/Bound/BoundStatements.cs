@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Blade.Semantics;
 using Blade.Source;
 using Blade.Syntax;
 
@@ -205,15 +206,17 @@ public sealed class BoundYieldtoStatement : BoundStatement
 
 public sealed class BoundAsmStatement : BoundStatement
 {
-    public BoundAsmStatement(string body, string? flagOutput, TextSpan span)
+    public BoundAsmStatement(string body, string? flagOutput, IReadOnlyList<InlineAssemblyValidator.AsmLine> parsedLines, TextSpan span)
         : base(BoundNodeKind.AsmStatement, span)
     {
         Body = body;
         FlagOutput = flagOutput;
+        ParsedLines = parsedLines;
     }
 
     public string Body { get; }
     public string? FlagOutput { get; }
+    public IReadOnlyList<InlineAssemblyValidator.AsmLine> ParsedLines { get; }
 }
 
 public sealed class BoundErrorStatement : BoundStatement

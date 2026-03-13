@@ -1,0 +1,27 @@
+// Example: Bit testing and conditional execution with inline assembly
+//
+// The P2's TESTB instruction tests a specific bit and writes the result
+// to the C or Z flag. Combined with IF_C/IF_NC prefixes, this allows
+// branchless conditional logic — critical for deterministic-time code.
+
+reg var flags: u32 = 0;
+reg var pin_state: u32 = 0;
+reg var result: u32 = 0;
+
+fn test_and_set_bit(val: u32, bit_num: u32) -> u32 {
+    reg var out: u32 = 0;
+    asm {
+        MOV   {out}, {val}
+        TESTB {out}, {bit_num} WC
+        IF_NC BITH  {out}, {bit_num}
+    };
+    return out;
+}
+
+fn read_pin_to_carry(pin: u32) -> bool@C {
+    asm -> @C {
+        TESTP {pin} WC
+    };
+}
+
+flags = test_and_set_bit(flags, 5);

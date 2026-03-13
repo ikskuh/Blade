@@ -1,0 +1,24 @@
+// Example: Configuring the P2 Streamer with inline assembly
+//
+// The streamer is a hardware peripheral on the Propeller 2 that can
+// output pixel data, generate signals, or DMA between hub and pins.
+// It requires SETQ + XINIT, which are most naturally expressed in asm.
+
+reg var mode: u32 = 0;
+reg var count: u32 = 64;
+
+fn setup_streamer(m: u32, cnt: u32) void {
+    asm {
+        SETQ  {cnt}
+        XINIT {m}, #0
+    };
+}
+
+fn stop_streamer() void {
+    asm {
+        XSTOP
+    };
+}
+
+setup_streamer(mode, count);
+stop_streamer();
