@@ -171,4 +171,45 @@ public class IrPipelineTests
         Assert.That(build.AssemblyText, Does.Not.Contain("MOV   out, val"));
         Assert.That(build.AssemblyText, Does.Not.Contain("TESTB out, bit_num WC"));
     }
+
+    [Test]
+    public void InlineAsm_CopyAndJumpElision_CollapsesReturnHopChains()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg var flags: u32 = 0;
+
+            fn test_and_set_bit(val: u32, bit_num: u32) -> u32 {
+                reg var out: u32 = 0;
+                asm {
+                    MOV   {out}, {val}
+                    TESTB {out}, {bit_num} WC
+                    IF_NC BITH  {out}, {bit_num}
+                };
+                return out;
+            }
+
+            flags = test_and_set_bit(flags, 5);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = true,
+            EnableLirOptimizations = true,
+        });
+
+        string mir = MirTextWriter.Write(build.MirModule);
+        string lir = LirTextWriter.Write(build.LirModule);
+
+        Assert.That(mir, Does.Not.Contain("inl_0_bb1"));
+        Assert.That(mir, Does.Not.Contain("inl_after_0"));
+        Assert.That(lir, Does.Not.Contain("inl_0_bb1"));
+        Assert.That(lir, Does.Not.Contain("inl_after_0"));
+
+        Assert.That(build.AssemblyText, Does.Contain("MOV var_flags, var_out"));
+        Assert.That(build.AssemblyText, Does.Not.Contain("_top_r"));
+        Assert.That(build.AssemblyText, Does.Not.Contain("$top_inl_0_bb1"));
+        Assert.That(build.AssemblyText, Does.Not.Contain("$top_inl_after_0"));
+    }
 }
