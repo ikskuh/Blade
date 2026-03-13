@@ -5,26 +5,24 @@
 The MIR/LIR seems to use load/store semantics for cog variables which makes no sense at all as these can just be virtual
 values like everything else in the SSA. They are just names we assign to SSA slot.
 
-```blade
-extern reg var   OUTA: u32 @(0x1FC);
-OUTA |= 0x10;
+This also implies that "reg var" globals are just the same as any local variable: Just a register.
+
+This also means that variables don't need initialization instructions, but can be preloaded in their storage allocation:
+
+```spin2
+    MOV var_global_multiplicand, ##1000 ' double-## is implicit AUGS
+    …
+var_global_multiplicand
+    LONG 0
 ```
 
-currently compiles to LIR:
+can be optimized to
 
-```blade-lir
-%r0:u32 = const 16:u32
-%r1:u32 = load.sym @OUTA
-%r2:u32 = binary.BitwiseOr %r1, %r0
-store.OUTA %r2 ; sidefx
-```
-
-which seems weird, because it could also be
-
-```blade-lir
-%r0:u32 = const 16:u32
-%r2:u32 = binary.BitwiseOr %OUTA, %r0
-store.OUTA %r2 ; sidefx
+```spin2
+    ' load is fully elided as statically initialized.
+    …
+var_global_multiplicand
+    LONG 1000
 ```
 
 ## Rework register allocation
