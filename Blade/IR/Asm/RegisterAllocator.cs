@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace Blade.IR.Asm;
 
@@ -60,31 +61,32 @@ public static class RegisterAllocator
 
             foreach (AsmNode node in function.Nodes)
             {
-                if (node is not AsmInstructionNode instruction)
-                    continue;
-
-                foreach (AsmOperand operand in instruction.Operands)
+                switch (node)
                 {
-                    switch (operand)
-                    {
-                        case AsmRegisterOperand reg:
-                            if (!virtLabels.ContainsKey(reg.RegisterId))
+                    case AsmInstructionNode instruction:
+                        foreach (AsmOperand operand in instruction.Operands)
+                        {
+                            switch (operand)
                             {
-                                string label = SanitizeLabel($"{function.Name}_r{reg.RegisterId}");
-                                virtLabels[reg.RegisterId] = label;
-                            }
-                            break;
+                                case AsmRegisterOperand reg:
+                                    if (!virtLabels.ContainsKey(reg.RegisterId))
+                                    {
+                                        string label = SanitizeLabel($"{function.Name}_r{reg.RegisterId}");
+                                        virtLabels[reg.RegisterId] = label;
+                                    }
+                                    break;
 
-                        case AsmSymbolOperand sym:
-                            if (!IsSpecialSymbol(sym.Name)
-                                && !IsLabelInModule(sym.Name, module)
-                                && !symbolLabels.ContainsKey(sym.Name))
-                            {
-                                string label = SanitizeLabel($"var_{sym.Name}");
-                                symbolLabels[sym.Name] = label;
+                                case AsmSymbolOperand sym:
+                                    EnsureSymbolLabel(sym.Name, symbolLabels, module);
+                                    break;
                             }
-                            break;
-                    }
+                        }
+                        break;
+
+                    case AsmInlineTextNode inlineText:
+                        foreach (string placeholder in EnumerateInlineAsmPlaceholders(inlineText.Text))
+                            EnsureSymbolLabel(placeholder, symbolLabels, module);
+                        break;
                 }
             }
 
@@ -107,6 +109,11 @@ public static class RegisterAllocator
                         newOperands.Add(RewriteOperand(operand, virtLabels, symbolLabels, module));
                     newNodes.Add(new AsmInstructionNode(
                         instruction.Opcode, newOperands, instruction.Predicate, instruction.FlagEffect));
+                }
+                else if (node is AsmInlineTextNode inlineText)
+                {
+                    newNodes.Add(new AsmInlineTextNode(
+                        RewriteInlineAsmText(inlineText.Text, symbolLabels)));
                 }
                 else
                 {
@@ -196,6 +203,42 @@ public static class RegisterAllocator
             default:
                 return operand;
         }
+    }
+
+    private static void EnsureSymbolLabel(
+        string name,
+        Dictionary<string, string> symbolLabels,
+        AsmModule module)
+    {
+        if (!IsSpecialSymbol(name)
+            && !IsLabelInModule(name, module)
+            && !symbolLabels.ContainsKey(name))
+        {
+            string label = SanitizeLabel($"var_{name}");
+            symbolLabels[name] = label;
+        }
+    }
+
+    private static IEnumerable<string> EnumerateInlineAsmPlaceholders(string text)
+    {
+        foreach (Match match in Regex.Matches(text, @"\{(\w+)\}"))
+            yield return match.Groups[1].Value;
+    }
+
+    private static string RewriteInlineAsmText(
+        string text,
+        Dictionary<string, string> symbolLabels)
+    {
+        return Regex.Replace(
+            text,
+            @"\{(\w+)\}",
+            match =>
+            {
+                string name = match.Groups[1].Value;
+                return symbolLabels.TryGetValue(name, out string? label)
+                    ? label
+                    : name;
+            });
     }
 
     private static string SanitizeLabel(string name)

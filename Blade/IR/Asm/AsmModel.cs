@@ -180,7 +180,7 @@ public sealed class AsmCommentNode : AsmNode
 
 /// <summary>
 /// Raw inline assembly text node. Emitted verbatim into the final PASM2 output.
-/// Variable references have already been substituted to symbol names.
+/// `{name}` placeholders are resolved during register allocation.
 /// </summary>
 public sealed class AsmInlineTextNode : AsmNode
 {

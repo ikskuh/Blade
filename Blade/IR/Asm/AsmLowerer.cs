@@ -147,14 +147,9 @@ public static class AsmLowerer
             if (string.IsNullOrWhiteSpace(line))
                 continue;
 
-            // Substitute {varname} references with the variable's symbol name
-            // (the register allocator / final writer will resolve these as register references)
-            string processed = System.Text.RegularExpressions.Regex.Replace(
-                line,
-                @"\{(\w+)\}",
-                m => m.Groups[1].Value);
-
-            nodes.Add(new AsmInlineTextNode(processed));
+            // Preserve {varname} placeholders until register allocation so they can
+            // be rewritten to the same allocated symbol labels as normal operands.
+            nodes.Add(new AsmInlineTextNode(line));
         }
         nodes.Add(new AsmCommentNode("inline asm end"));
     }
