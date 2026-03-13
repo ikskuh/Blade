@@ -7,9 +7,19 @@ public static class CodegenPipeline
     public static EmitResult Emit(IrBuildResult buildResult, EmitOptions? options = null)
     {
         options ??= new EmitOptions();
-        AsmModule asmModule = options.EnableAsmOptimization
-            ? AsmOptimizer.Optimize(buildResult.AsmModule)
-            : buildResult.AsmModule;
+        AsmModule asmModule = buildResult.AsmModule;
+
+        // Peephole optimization
+        if (options.EnableAsmOptimization)
+            asmModule = AsmOptimizer.Optimize(asmModule);
+
+        // Register allocation: virtual → physical
+        if (options.EnableRegisterAllocation)
+            asmModule = RegisterAllocator.Allocate(asmModule);
+
+        // Legalization: AUGS/AUGD for large immediates, size checks
+        if (options.EnableLegalization)
+            asmModule = AsmLegalizer.Legalize(asmModule);
 
         string assemblyText = FinalAssemblyWriter.Write(asmModule);
         return new EmitResult(asmModule, assemblyText);

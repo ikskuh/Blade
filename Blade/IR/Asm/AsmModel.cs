@@ -15,15 +15,21 @@ public sealed class AsmModule
 
 public sealed class AsmFunction
 {
-    public AsmFunction(string name, bool isEntryPoint, IReadOnlyList<AsmNode> nodes)
+    public AsmFunction(
+        string name,
+        bool isEntryPoint,
+        CallingConventionTier ccTier,
+        IReadOnlyList<AsmNode> nodes)
     {
         Name = name;
         IsEntryPoint = isEntryPoint;
+        CcTier = ccTier;
         Nodes = nodes;
     }
 
     public string Name { get; }
     public bool IsEntryPoint { get; }
+    public CallingConventionTier CcTier { get; }
     public IReadOnlyList<AsmNode> Nodes { get; }
 }
 
@@ -139,6 +145,24 @@ public sealed class AsmSymbolOperand : AsmOperand
     public string Name { get; }
 
     public override string Format() => $"#{Name}";
+}
+
+/// <summary>
+/// Physical register operand for post-register-allocation output.
+/// Uses named P2 registers (e.g., "r0", "PA", "PB", "PTRA").
+/// </summary>
+public sealed class AsmPhysicalRegisterOperand : AsmOperand
+{
+    public AsmPhysicalRegisterOperand(int address, string name)
+    {
+        Address = address;
+        Name = name;
+    }
+
+    public int Address { get; }
+    public string Name { get; }
+
+    public override string Format() => Name;
 }
 
 /// <summary>

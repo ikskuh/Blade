@@ -22,6 +22,9 @@ public static class AsmTextWriter
         sb.Append(function.Name);
         if (function.IsEntryPoint)
             sb.Append(" entry");
+        sb.Append(" [");
+        sb.Append(function.CcTier);
+        sb.Append(']');
         sb.AppendLine();
         sb.AppendLine("{");
         foreach (AsmNode node in function.Nodes)

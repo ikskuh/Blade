@@ -1,9 +1,29 @@
+using System;
 using System.Text;
 
 namespace Blade.IR.Asm;
 
 public static class FinalAssemblyWriter
 {
+    /// <summary>
+    /// Opcodes where the S-field symbol operand is a jump/call target address
+    /// (needs # prefix). All other symbol operands are register references.
+    /// </summary>
+    private static bool IsDataDirective(string text)
+    {
+        ReadOnlySpan<char> t = text.AsSpan().TrimStart();
+        return t.StartsWith("LONG", StringComparison.OrdinalIgnoreCase)
+            || t.StartsWith("WORD", StringComparison.OrdinalIgnoreCase)
+            || t.StartsWith("BYTE", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsJumpOrCallOpcode(string opcode)
+    {
+        return opcode is "JMP" or "TJZ" or "TJNZ" or "TJF" or "TJNF"
+            or "DJNZ" or "DJZ" or "CALL" or "CALLPA" or "CALLPB"
+            or "CALLB" or "CALLD" or "CALLA" or "LOC";
+    }
+
     public static string Write(AsmModule module)
     {
         StringBuilder sb = new();
@@ -15,7 +35,10 @@ public static class FinalAssemblyWriter
         {
             sb.AppendLine();
             sb.Append("    ' function ");
-            sb.AppendLine(function.Name);
+            sb.Append(function.Name);
+            sb.Append(" (");
+            sb.Append(function.CcTier);
+            sb.AppendLine(")");
             foreach (AsmNode node in function.Nodes)
                 WriteNode(sb, node);
         }
@@ -27,8 +50,14 @@ public static class FinalAssemblyWriter
     {
         switch (node)
         {
-            case AsmDirectiveNode:
-                // Directives are internal markers, not emitted in final PASM2
+            case AsmDirectiveNode directive:
+                // Only emit data storage directives (LONG, WORD, BYTE).
+                // Internal metadata markers like "function $top" are silently dropped.
+                if (IsDataDirective(directive.Text))
+                {
+                    sb.Append("            ");
+                    sb.AppendLine(directive.Text);
+                }
                 break;
 
             case AsmLabelNode label:
@@ -57,7 +86,7 @@ public static class FinalAssemblyWriter
                     {
                         if (i > 0)
                             sb.Append(", ");
-                        sb.Append(FormatOperand(instruction.Operands[i]));
+                        sb.Append(FormatOperand(instruction, i));
                     }
                 }
 
@@ -72,13 +101,59 @@ public static class FinalAssemblyWriter
         }
     }
 
-    private static string FormatOperand(AsmOperand operand)
+    private static string FormatOperand(AsmInstructionNode instruction, int operandIndex)
     {
-        // At final emission, virtual registers are still symbolic (%rN).
-        // After register allocation, they become physical register names.
-        // For now, emit as-is — FlexSpin will not accept virtual registers,
-        // but this allows incremental development and testing of instruction selection.
-        return operand.Format();
+        AsmOperand operand = instruction.Operands[operandIndex];
+
+        return operand switch
+        {
+            AsmPhysicalRegisterOperand phys => phys.Name,
+            AsmRegisterOperand virt => virt.Format(),
+            AsmImmediateOperand imm => imm.Format(),
+            AsmSymbolOperand sym => FormatSymbolOperand(sym, instruction, operandIndex),
+            _ => operand.Format(),
+        };
+    }
+
+    /// <summary>
+    /// Format a symbol operand with or without # prefix depending on context.
+    /// - Jump/call targets in S-field: #label (immediate address)
+    /// - Register references in D-field or S-field: plain label
+    /// - Special registers (PA, PB, etc.): plain name
+    /// </summary>
+    private static string FormatSymbolOperand(
+        AsmSymbolOperand sym,
+        AsmInstructionNode instruction,
+        int operandIndex)
+    {
+        // Special register names: always plain
+        if (IsSpecialRegisterName(sym.Name))
+            return sym.Name;
+
+        // $ (current address): always prefixed
+        if (sym.Name == "$")
+            return "#$";
+
+        // Jump/call opcodes: the target (last operand) gets # prefix
+        if (IsJumpOrCallOpcode(instruction.Opcode))
+        {
+            // For CALLPA/CALLPB: operand[0] = PA/PB, operand[1] = target
+            // For JMP/CALL: operand[0] = target
+            // For TJZ: operand[0] = cond, operand[1] = target
+            int targetIndex = instruction.Operands.Count - 1;
+            if (operandIndex == targetIndex)
+                return $"#{sym.Name}";
+        }
+
+        // Default: register reference (no # prefix)
+        return sym.Name;
+    }
+
+    private static bool IsSpecialRegisterName(string name)
+    {
+        return name is "PA" or "PB" or "PTRA" or "PTRB"
+            or "DIRA" or "DIRB" or "OUTA" or "OUTB" or "INA" or "INB"
+            or "IJMP1" or "IRET1" or "IJMP2" or "IRET2" or "IJMP3" or "IRET3";
     }
 
     private static string FormatFlagEffect(AsmFlagEffect effect)
