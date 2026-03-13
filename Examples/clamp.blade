@@ -1,0 +1,15 @@
+// Starter example: a tiny helper function and top-level automatic scratch state.
+
+fn clamp_to_limit(value: u32, limit: u32) -> u32 {
+    if (value > limit) {
+        return limit;
+    }
+
+    return value;
+}
+
+var candidate: u32 = 250;
+reg var limit: u32 = 128;
+reg var clamped: u32 = 0;
+
+clamped = clamp_to_limit(candidate, limit);

@@ -14,7 +14,8 @@
       "Bash(dotnet test --no-build)",
       "Bash(dotnet run --project Blade -- --dump-final-asm --dump-asmir Blade.Tests/Accept/expressions.blade)",
       "Bash(dotnet run --project Blade -- --dump-asmir Blade.Tests/Accept/control_flow.blade)",
-      "Bash(dotnet run --project Blade -- --dump-asmir Blade.Tests/Accept/function_declarations.blade)"
+      "Bash(dotnet run --project Blade -- --dump-asmir Blade.Tests/Accept/function_declarations.blade)",
+      "Bash(dotnet test:*)"
     ]
   }
 }

@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Blade.Diagnostics;
 using Blade.IR;
 using Blade.IR.Asm;
@@ -165,9 +166,9 @@ public class IrPipelineTests
             EnableMirOptimizations = false,
         });
 
-        Assert.That(build.AssemblyText, Does.Match(@"MOV\s+_top_r\d+,\s+_top_r\d+"));
-        Assert.That(build.AssemblyText, Does.Match(@"TESTB\s+_top_r\d+,\s+_top_r\d+\s+WC"));
-        Assert.That(build.AssemblyText, Does.Match(@"IF_NC BITH\s+_top_r\d+,\s+_top_r\d+"));
+        Assert.That(build.AssemblyText, Does.Match(@"MOV\s+_r\d+,\s+_r\d+"));
+        Assert.That(build.AssemblyText, Does.Match(@"TESTB\s+_r\d+,\s+_r\d+\s+WC"));
+        Assert.That(build.AssemblyText, Does.Match(@"IF_NC BITH\s+_r\d+,\s+_r\d+"));
         Assert.That(build.AssemblyText, Does.Not.Contain("MOV   out, val"));
         Assert.That(build.AssemblyText, Does.Not.Contain("TESTB out, bit_num WC"));
         Assert.That(build.AssemblyText, Does.Not.Contain("%r"));
@@ -208,7 +209,7 @@ public class IrPipelineTests
         Assert.That(lir, Does.Not.Contain("inl_0_bb1"));
         Assert.That(lir, Does.Not.Contain("inl_after_0"));
 
-        Assert.That(build.AssemblyText, Does.Match(@"MOV\s+g_flags_\d+,\s+_top_r\d+"));
+        Assert.That(build.AssemblyText, Does.Match(@"MOV\s+g_flags_\d+,\s+_r\d+"));
         Assert.That(build.AssemblyText, Does.Not.Contain("$top_inl_0_bb1"));
         Assert.That(build.AssemblyText, Does.Not.Contain("$top_inl_after_0"));
         Assert.That(build.AssemblyText, Does.Not.Contain("%r"));
@@ -273,5 +274,97 @@ public class IrPipelineTests
         Assert.That(build.AssemblyText, Does.Match(@"g_g_\d+"));
         Assert.That(build.AssemblyText, Does.Contain("LONG 1000"));
         Assert.That(build.AssemblyText, Does.Not.Contain("MOV g_g_"));
+    }
+
+    [Test]
+    public void RegisterAllocator_LeafFunctions_ShareRegisterSlots()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn add_one(x: u32) -> u32 {
+                return x + 1;
+            }
+
+            fn add_two(x: u32) -> u32 {
+                return x + 2;
+            }
+
+            var a: u32 = add_one(5);
+            var b: u32 = add_two(10);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = true,
+            EnableLirOptimizations = true,
+        });
+
+        // Both leaf functions should share register slots, resulting in fewer
+        // LONG 0 entries than if each function had its own registers
+        int longZeroCount = Regex.Matches(build.AssemblyText, @"LONG 0").Count;
+
+        // With sharing, the total should be small — two leaf functions with 1 temp each
+        // should share the same slot
+        Assert.That(longZeroCount, Is.LessThanOrEqualTo(4),
+            $"Expected register sharing to reduce LONG 0 count.\nAssembly:\n{build.AssemblyText}");
+        Assert.That(build.AssemblyText, Does.Not.Contain("%r"));
+    }
+
+    [Test]
+    public void RegisterAllocator_NoVirtualRegistersInOutput()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn double(x: u32) -> u32 {
+                return x + x;
+            }
+
+            reg var result: u32 = double(42);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+        });
+
+        Assert.That(build.AssemblyText, Does.Not.Contain("%r"),
+            "No virtual registers should remain in final output");
+        Assert.That(build.AssemblyText, Does.Match(@"_r\d+"),
+            "Physical register slots should be present");
+    }
+
+    [Test]
+    public void RegisterAllocator_UsesSharedSlotLabels()
+    {
+        // Use a program complex enough that virtual registers survive optimization
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg var flags: u32 = 0;
+
+            fn test_and_set_bit(val: u32, bit_num: u32) -> u32 {
+                var out: u32 = 0;
+                asm {
+                    MOV   {out}, {val}
+                    TESTB {out}, {bit_num} WC
+                    IF_NC BITH  {out}, {bit_num}
+                };
+                return out;
+            }
+
+            flags = test_and_set_bit(flags, 5);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+        });
+
+        // Register slots should use the new _rN naming scheme
+        Assert.That(build.AssemblyText, Does.Match(@"_r\d+"));
+        Assert.That(build.AssemblyText, Does.Not.Match(@"_top_r\d+"),
+            "Old per-function register naming should not appear");
     }
 }

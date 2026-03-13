@@ -67,5 +67,31 @@ can be optimized to
     _RET_ ANYOP …
 ```
 
+### Conditional Move
+
+general rule: If a conditional jump skips a single unconditional instruction, it can fuse the condition
+into the unconditional instruction and elide the jump:
+
+```
+   IF_Z JMP #$top_inl_after_0
+        MOV _r2, _r3
+$top_inl_after_0
+```
+
+can be optimized into
+
+```
+   IF_Z MOV _r2, _r3
+```
+
+### Identification of NOPs
+
+All potential NOP operations can be removed from the ASMIR without any harm.
+
+- `NOP`
+- `MOV x, x`
+- ... (to be done)
+
+
 > TODO: Ingest https://p2docs.github.io/idiom.html
 > TODO: Ingest https://p2docs.github.io/faster.html

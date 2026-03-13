@@ -1,0 +1,16 @@
+// Starter example: recursive Fibonacci using plain local `var`.
+
+rec fn fibonacci(n: u32) -> u32 {
+    if (n <= 1) {
+        return n;
+    }
+
+    var a: u32 = fibonacci(n - 1);
+    var b: u32 = fibonacci(n - 2);
+    return a + b;
+}
+
+reg var input: u32 = 10;
+reg var result: u32 = 0;
+
+result = fibonacci(input);

@@ -48,12 +48,6 @@ A good approach would be:
     4. When the leaves are resolved, we can then use the same registers as long as they never pass a function call for local temporaries
     5. All temporary values and parameters that cross a function call must not use the same register slot as the called function (and its transients)
 
-## `reg var` must be only `var` for locals
-
-This change removes the restriction that each local variable must be allocated into its own register.
-
-This is important as register space is expensive after all, and we don't have a stack to spill.
-
 ## `CALLPA` bindings are important
 
 Leaf functions through CALL/PA should prefer the "PA" parameter for their first parameter value.
@@ -109,3 +103,5 @@ If we can make this an optional keyword, we can change the semantics:
 - `asm volatile { … }` must be taken verbatim by the assembler.
 
 This would allow optimizing user-written assembly code and elide unnecessary MOV or copies emitted by the compiler.
+
+## `rec fn` seems to miscompile
