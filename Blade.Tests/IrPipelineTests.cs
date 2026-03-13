@@ -47,7 +47,7 @@ public class IrPipelineTests
 
         Assert.That(mir, Does.StartWith("; MIR v1"));
         Assert.That(lir, Does.StartWith("; LIR v1"));
-        Assert.That(asmir, Does.StartWith("; ASMIR v1"));
+        Assert.That(asmir, Does.StartWith("; ASMIR v2"));
         Assert.That(build.AssemblyText, Does.StartWith("DAT"));
     }
 

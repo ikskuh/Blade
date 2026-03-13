@@ -7,7 +7,7 @@ public static class AsmTextWriter
     public static string Write(AsmModule module)
     {
         StringBuilder sb = new();
-        sb.AppendLine("; ASMIR v1");
+        sb.AppendLine("; ASMIR v2");
         sb.AppendLine();
 
         foreach (AsmFunction function in module.Functions)
@@ -45,13 +45,17 @@ public static class AsmTextWriter
                 sb.AppendLine(":");
                 break;
 
+            case AsmCommentNode comment:
+                sb.Append("    ' ");
+                sb.AppendLine(comment.Text);
+                break;
+
             case AsmInstructionNode instruction:
                 sb.Append("    ");
                 if (!string.IsNullOrWhiteSpace(instruction.Predicate))
                 {
-                    sb.Append('[');
                     sb.Append(instruction.Predicate);
-                    sb.Append("] ");
+                    sb.Append(' ');
                 }
 
                 sb.Append(instruction.Opcode);
@@ -62,12 +66,29 @@ public static class AsmTextWriter
                     {
                         if (i > 0)
                             sb.Append(", ");
-                        sb.Append(instruction.Operands[i]);
+                        sb.Append(instruction.Operands[i].Format());
                     }
+                }
+
+                if (instruction.FlagEffect != AsmFlagEffect.None)
+                {
+                    sb.Append(' ');
+                    sb.Append(FormatFlagEffect(instruction.FlagEffect));
                 }
 
                 sb.AppendLine();
                 break;
         }
+    }
+
+    private static string FormatFlagEffect(AsmFlagEffect effect)
+    {
+        return effect switch
+        {
+            AsmFlagEffect.WC => "WC",
+            AsmFlagEffect.WZ => "WZ",
+            AsmFlagEffect.WCZ => "WCZ",
+            _ => string.Empty,
+        };
     }
 }

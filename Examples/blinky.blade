@@ -13,4 +13,10 @@ extern reg const INA:  u32 @(0x1FE);
 extern reg const INB:  u32 @(0x1FF);
 
 
+
+fn foo() void {
+
 OUTA |= 0x10;
+}
+
+foo();

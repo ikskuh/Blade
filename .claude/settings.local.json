@@ -10,7 +10,11 @@
       "Bash(dotnet run --project Blade/blade.csproj -- Blade.Tests/Accept/function_declarations.blade)",
       "Bash(dotnet run --project Blade/blade.csproj -- Blade.Tests/Reject/missing_semicolon.blade)",
       "Bash(dotnet run --project Blade/blade.csproj)",
-      "Bash(dotnet run --project Blade/blade.csproj -- nonexistent.blade)"
+      "Bash(dotnet run --project Blade/blade.csproj -- nonexistent.blade)",
+      "Bash(dotnet test --no-build)",
+      "Bash(dotnet run --project Blade -- --dump-final-asm --dump-asmir Blade.Tests/Accept/expressions.blade)",
+      "Bash(dotnet run --project Blade -- --dump-asmir Blade.Tests/Accept/control_flow.blade)",
+      "Bash(dotnet run --project Blade -- --dump-asmir Blade.Tests/Accept/function_declarations.blade)"
     ]
   }
 }

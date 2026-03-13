@@ -29,10 +29,15 @@ public static class AsmOptimizer
 
             previousLabel = null;
 
+            // Remove self-MOV: MOV %rN, %rN
             if (node is AsmInstructionNode instruction
                 && instruction.Opcode == "MOV"
                 && instruction.Operands.Count == 2
-                && instruction.Operands[0] == instruction.Operands[1])
+                && instruction.Operands[0] is AsmRegisterOperand dest
+                && instruction.Operands[1] is AsmRegisterOperand src
+                && dest.RegisterId == src.RegisterId
+                && instruction.Predicate is null
+                && instruction.FlagEffect == AsmFlagEffect.None)
             {
                 continue;
             }

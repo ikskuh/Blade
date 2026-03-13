@@ -27,18 +27,22 @@ public static class FinalAssemblyWriter
     {
         switch (node)
         {
-            case AsmDirectiveNode directive:
-                sb.Append("    ");
-                sb.AppendLine(directive.Text);
+            case AsmDirectiveNode:
+                // Directives are internal markers, not emitted in final PASM2
                 break;
 
             case AsmLabelNode label:
                 sb.Append(label.Name);
-                sb.AppendLine(":");
+                sb.AppendLine();
+                break;
+
+            case AsmCommentNode comment:
+                sb.Append("    ' ");
+                sb.AppendLine(comment.Text);
                 break;
 
             case AsmInstructionNode instruction:
-                sb.Append("    ");
+                sb.Append("            ");
                 if (!string.IsNullOrWhiteSpace(instruction.Predicate))
                 {
                     sb.Append(instruction.Predicate);
@@ -53,12 +57,38 @@ public static class FinalAssemblyWriter
                     {
                         if (i > 0)
                             sb.Append(", ");
-                        sb.Append(instruction.Operands[i]);
+                        sb.Append(FormatOperand(instruction.Operands[i]));
                     }
+                }
+
+                if (instruction.FlagEffect != AsmFlagEffect.None)
+                {
+                    sb.Append(' ');
+                    sb.Append(FormatFlagEffect(instruction.FlagEffect));
                 }
 
                 sb.AppendLine();
                 break;
         }
+    }
+
+    private static string FormatOperand(AsmOperand operand)
+    {
+        // At final emission, virtual registers are still symbolic (%rN).
+        // After register allocation, they become physical register names.
+        // For now, emit as-is — FlexSpin will not accept virtual registers,
+        // but this allows incremental development and testing of instruction selection.
+        return operand.Format();
+    }
+
+    private static string FormatFlagEffect(AsmFlagEffect effect)
+    {
+        return effect switch
+        {
+            AsmFlagEffect.WC => "WC",
+            AsmFlagEffect.WZ => "WZ",
+            AsmFlagEffect.WCZ => "WCZ",
+            _ => string.Empty,
+        };
     }
 }
