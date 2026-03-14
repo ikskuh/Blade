@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using Blade;
 
@@ -21,7 +22,7 @@ public sealed class BasicBlock
     /// <summary>Exclusive end index into the function's node list.</summary>
     public int EndIndex { get; }
 
-    public List<int> SuccessorBlockIndices { get; } = [];
+    public Collection<int> SuccessorBlockIndices { get; } = new();
     public HashSet<int> Defs { get; } = [];
     public HashSet<int> Uses { get; } = [];
     public HashSet<int> LiveIn { get; } = [];
@@ -31,7 +32,7 @@ public sealed class BasicBlock
     /// Set of call instruction indices (into the function's node list)
     /// contained in this block.
     /// </summary>
-    public List<int> CallIndices { get; } = [];
+    public Collection<int> CallIndices { get; } = new();
 }
 
 /// <summary>

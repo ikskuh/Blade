@@ -32,8 +32,8 @@ public static class InlineAssemblyValidator
     /// </summary>
     public sealed class ValidationResult
     {
-        public List<AsmLine> Lines { get; } = [];
-        public List<string> ReferencedVariables { get; } = [];
+        public Collection<AsmLine> Lines { get; } = new();
+        public Collection<string> ReferencedVariables { get; } = new();
         public bool IsValid { get; set; } = true;
     }
 

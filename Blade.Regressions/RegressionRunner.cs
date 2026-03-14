@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using Blade;
 using Blade.Diagnostics;
 using Blade.IR;
 using Blade.Source;
@@ -498,7 +500,7 @@ public static class RegressionRunner
                 issues.Add($"unexpected diagnostic: {diagnostic.Display()}");
         }
 
-        if (expectation.ExpectationKind == RegressionExpectationKind.Fail && !diagnostics.Any(diag => diag.Code.StartsWith("E", StringComparison.Ordinal)))
+        if (expectation.ExpectationKind == RegressionExpectationKind.Fail && !diagnostics.Any(diag => diag.Code.StartsWith('E')))
             issues.Add("expected at least one error diagnostic, but compilation was clean");
 
         return issues;
@@ -795,7 +797,7 @@ internal static class RegressionFixtureParser
             throw new InvalidOperationException("ARGS is only valid for .blade fixtures.");
 
         if (expectation.ExpectationKind == RegressionExpectationKind.Pass
-            && EnumerateExpectedDiagnosticCodes(expectation).Any(code => code.StartsWith("E", StringComparison.Ordinal)))
+            && EnumerateExpectedDiagnosticCodes(expectation).Any(code => code.StartsWith('E')))
         {
             throw new InvalidOperationException("EXPECT: pass cannot be combined with error diagnostic expectations.");
         }
@@ -1014,7 +1016,7 @@ internal static class RegressionFixtureParser
 
     private static string ParseBulletItem(string trimmed, string directiveName)
     {
-        if (!trimmed.StartsWith("-", StringComparison.Ordinal))
+        if (!trimmed.StartsWith('-'))
             throw new InvalidOperationException($"{directiveName} block entries must begin with '-'.");
         return trimmed[1..].TrimStart();
     }
@@ -1027,7 +1029,7 @@ internal static class RegressionFixtureParser
 
         int? line = null;
         if (match.Groups["line"].Success)
-            line = int.Parse(match.Groups["line"].Value);
+            line = int.Parse(match.Groups["line"].Value, CultureInfo.InvariantCulture);
 
         string? message = null;
         if (match.Groups["message"].Success)
@@ -1107,7 +1109,7 @@ internal static class RegressionFixtureParser
                 {
                     int prefixIndex = line.IndexOf("//", StringComparison.Ordinal);
                     content = line[(prefixIndex + 2)..];
-                    if (content.StartsWith(" ", StringComparison.Ordinal))
+                    if (content.StartsWith(' '))
                         content = content[1..];
                     return true;
                 }
@@ -1115,12 +1117,12 @@ internal static class RegressionFixtureParser
             else
             {
                 string trimmedStart = line.TrimStart();
-                if (trimmedStart.StartsWith("'", StringComparison.Ordinal)
-                    || trimmedStart.StartsWith(";", StringComparison.Ordinal))
+                if (trimmedStart.StartsWith('\'')
+                    || trimmedStart.StartsWith(';'))
                 {
                     int prefixIndex = line.IndexOf(trimmedStart[0], StringComparison.Ordinal);
                     content = line[(prefixIndex + 1)..];
-                    if (content.StartsWith(" ", StringComparison.Ordinal))
+                    if (content.StartsWith(' '))
                         content = content[1..];
                     return true;
                 }
@@ -1160,7 +1162,7 @@ internal static class CodeNormalizer
         StringBuilder builder = new();
         foreach (string line in SplitLines(text))
         {
-            int commentIndex = line.IndexOf(';');
+            int commentIndex = line.IndexOf(';', StringComparison.Ordinal);
             string kept = commentIndex >= 0 ? line[..commentIndex] : line;
             builder.AppendLine(kept);
         }
@@ -1283,7 +1285,11 @@ internal sealed class ArtifactWriter
 
     private string CreateRunRootPath()
     {
-        string root = Path.Combine(_repositoryRootPath, ".artifacts", "regressions", DateTime.UtcNow.ToString("yyyyMMddTHHmmssfffZ"));
+        string root = Path.Combine(
+            _repositoryRootPath,
+            ".artifacts",
+            "regressions",
+            DateTime.UtcNow.ToString("yyyyMMddTHHmmssfffZ", CultureInfo.InvariantCulture));
         Directory.CreateDirectory(root);
         return root;
     }
@@ -1446,25 +1452,42 @@ public static class RegressionReportFormatter
 {
     public static string Format(RegressionRunResult result)
     {
+        Requires.NotNull(result);
+
         StringBuilder builder = new();
         foreach (RegressionFixtureResult fixtureResult in result.FixtureResults)
         {
-            builder.AppendLine($"{fixtureResult.Outcome.ToString().ToUpperInvariant(),-14} {fixtureResult.RelativePath}");
-            builder.AppendLine($"  {fixtureResult.Summary}");
+            builder.Append(fixtureResult.Outcome.ToString().ToUpperInvariant().PadRight(14));
+            builder.Append(' ');
+            builder.AppendLine(fixtureResult.RelativePath);
+            builder.Append("  ");
+            builder.AppendLine(fixtureResult.Summary);
             foreach (string detail in fixtureResult.Details)
-                builder.AppendLine($"  {detail}");
+            {
+                builder.Append("  ");
+                builder.AppendLine(detail);
+            }
             if (fixtureResult.ArtifactDirectoryPath is not null)
-                builder.AppendLine($"  artifacts: {fixtureResult.ArtifactDirectoryPath}");
+            {
+                builder.Append("  artifacts: ");
+                builder.AppendLine(fixtureResult.ArtifactDirectoryPath);
+            }
         }
 
         builder.AppendLine();
-        builder.AppendLine($"Repository: {result.RepositoryRootPath}");
-        builder.AppendLine($"Fixtures  : {result.FixtureResults.Count}");
-        builder.AppendLine($"Pass      : {result.PassCount}");
-        builder.AppendLine($"XFail     : {result.XFailCount}");
-        builder.AppendLine($"Fail      : {result.FailCount}");
-        builder.AppendLine($"Unexpected: {result.UnexpectedPassCount}");
+        builder.Append("Repository: ");
+        builder.AppendLine(result.RepositoryRootPath);
+        builder.Append("Fixtures  : ");
+        builder.AppendLine(result.FixtureResults.Count.ToString(CultureInfo.InvariantCulture));
+        builder.Append("Pass      : ");
+        builder.AppendLine(result.PassCount.ToString(CultureInfo.InvariantCulture));
         builder.AppendLine($"Skipped   : {result.SkipCount}");
+        builder.Append("XFail     : ");
+        builder.AppendLine(result.XFailCount.ToString(CultureInfo.InvariantCulture));
+        builder.Append("Fail      : ");
+        builder.AppendLine(result.FailCount.ToString(CultureInfo.InvariantCulture));
+        builder.Append("Unexpected: ");
+        builder.AppendLine(result.UnexpectedPassCount.ToString(CultureInfo.InvariantCulture));
         return builder.ToString();
     }
 }
