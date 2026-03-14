@@ -77,6 +77,3 @@ The idea is that we introduce a proper testing framework or test runner outside 
 - Can validate generated instruction sequences
 - Can validate/match on generated code snippets (only raw code, always ignores comments and whitespace)
 - Can be used to run hand-written tests against hand-optimized assembly code
-
-## Consolidate all instruction metadata encodings inside the code base
-
