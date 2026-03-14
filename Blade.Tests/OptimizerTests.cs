@@ -217,4 +217,101 @@ public class OptimizerTests
         AsmFunction function = AsmOptimizer.Optimize(module).Functions[0];
         Assert.That(function.Nodes.OfType<AsmInstructionNode>().Any(i => i.Opcode == "ADD"), Is.True);
     }
+
+    [Test]
+    public void LirOptimizer_RewritesInlineAsmBindingsDuringCopyPropagation()
+    {
+        LirVirtualRegister r0 = new(0);
+        LirVirtualRegister r1 = new(1);
+
+        LirModule module = new([
+            new LirFunction("f", isEntryPoint: false, FunctionKind.Default, [],
+            [
+                new LirBlock("bb0", [new LirBlockParameter(r0, "x", BuiltinTypes.U32)],
+                [
+                    new LirOpInstruction("mov", r1, BuiltinTypes.U32,
+                        [new LirRegisterOperand(r0)],
+                        hasSideEffects: false, predicate: null, writesC: false, writesZ: false, Span),
+                    new LirInlineAsmInstruction(
+                        AsmVolatility.NonVolatile,
+                        "TEST {x}, #1",
+                        flagOutput: null,
+                        parsedLines: [],
+                        bindings: [new LirInlineAsmBinding("x", new LirRegisterOperand(r1), InlineAsmBindingAccess.Read)],
+                        Span),
+                ], new LirReturnTerminator([], Span)),
+            ]),
+        ]);
+
+        LirFunction function = LirOptimizer.Optimize(module, maxIterations: 4).Functions[0];
+        LirInlineAsmInstruction inlineAsm = function.Blocks[0].Instructions.OfType<LirInlineAsmInstruction>().Single();
+
+        Assert.That(inlineAsm.Bindings[0].Operand, Is.TypeOf<LirRegisterOperand>());
+        Assert.That(((LirRegisterOperand)inlineAsm.Bindings[0].Operand).Register, Is.EqualTo(r0));
+        Assert.That(function.Blocks[0].Instructions.OfType<LirOpInstruction>().Any(op => op.Opcode == "mov"), Is.False);
+    }
+
+    [Test]
+    public void LirOptimizer_KeepsDefinitionUsedByInlineAsmBinding()
+    {
+        LirVirtualRegister r0 = new(0);
+
+        LirModule module = new([
+            new LirFunction("f", isEntryPoint: false, FunctionKind.Default, [],
+            [
+                new LirBlock("bb0", [],
+                [
+                    new LirOpInstruction("const", r0, BuiltinTypes.U32,
+                        [new LirImmediateOperand(13, BuiltinTypes.U32)],
+                        hasSideEffects: false, predicate: null, writesC: false, writesZ: false, Span),
+                    new LirInlineAsmInstruction(
+                        AsmVolatility.Volatile,
+                        "MOV INA, {x}",
+                        flagOutput: null,
+                        parsedLines: [],
+                        bindings: [new LirInlineAsmBinding("x", new LirRegisterOperand(r0), InlineAsmBindingAccess.ReadWrite)],
+                        Span),
+                ], new LirReturnTerminator([], Span)),
+            ]),
+        ]);
+
+        LirFunction function = LirOptimizer.Optimize(module, maxIterations: 4).Functions[0];
+        Assert.That(function.Blocks[0].Instructions.OfType<LirOpInstruction>().Any(op => op.Opcode == "const"), Is.True);
+    }
+
+    [Test]
+    public void LirOptimizer_DoesNotPropagateAliasAcrossInlineAsmWriteBinding()
+    {
+        LirVirtualRegister r0 = new(0);
+        LirVirtualRegister r1 = new(1);
+        LirVirtualRegister r2 = new(2);
+
+        LirModule module = new([
+            new LirFunction("f", isEntryPoint: false, FunctionKind.Default, [BuiltinTypes.U32],
+            [
+                new LirBlock("bb0", [new LirBlockParameter(r0, "x", BuiltinTypes.U32)],
+                [
+                    new LirOpInstruction("mov", r1, BuiltinTypes.U32,
+                        [new LirRegisterOperand(r0)],
+                        hasSideEffects: false, predicate: null, writesC: false, writesZ: false, Span),
+                    new LirInlineAsmInstruction(
+                        AsmVolatility.NonVolatile,
+                        "MOV {x}, #1",
+                        flagOutput: null,
+                        parsedLines: [],
+                        bindings: [new LirInlineAsmBinding("x", new LirRegisterOperand(r1), InlineAsmBindingAccess.Write)],
+                        Span),
+                    new LirOpInstruction("mov", r2, BuiltinTypes.U32,
+                        [new LirRegisterOperand(r1)],
+                        hasSideEffects: false, predicate: null, writesC: false, writesZ: false, Span),
+                ], new LirReturnTerminator([new LirRegisterOperand(r2)], Span)),
+            ]),
+        ]);
+
+        LirFunction function = LirOptimizer.Optimize(module, maxIterations: 4).Functions[0];
+        LirReturnTerminator ret = (LirReturnTerminator)function.Blocks[0].Terminator;
+
+        Assert.That(ret.Values[0], Is.TypeOf<LirRegisterOperand>());
+        Assert.That(((LirRegisterOperand)ret.Values[0]).Register, Is.EqualTo(r1));
+    }
 }

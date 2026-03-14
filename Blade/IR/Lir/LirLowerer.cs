@@ -307,7 +307,7 @@ public static class LirLowerer
             LirOperand operand = binding.Value is MirValueId value
                 ? new LirRegisterOperand(getRegister(value))
                 : new LirPlaceOperand(binding.Place!);
-            lowered.Add(new LirInlineAsmBinding(binding.Name, operand));
+            lowered.Add(new LirInlineAsmBinding(binding.Name, operand, binding.Access));
         }
 
         return lowered;

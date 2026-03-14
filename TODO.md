@@ -64,3 +64,19 @@ Validate that `rec fn` uses CALLB and stack spilling
 In FinalAssemblyWriter.WriteConBlock, skip CON alias emission when the fixed-address alias name is already a real hardware register identifier (DIRA, OUTA, INA, etc.).
 
 ## `undefined` keyword for no-init locals
+
+## `noinline fn` should be added to control code size
+
+## Test strategy to find regressions and miscompilations
+
+Right now, nothing is really tested except for the unit tests, which have bad coverage atm.
+
+The idea is that we introduce a proper testing framework or test runner outside NUnit Tests which:
+
+- Can run on a lot of files
+- Can validate generated instruction sequences
+- Can validate/match on generated code snippets (only raw code, always ignores comments and whitespace)
+- Can be used to run hand-written tests against hand-optimized assembly code
+
+## Consolidate all instruction metadata encodings inside the code base
+

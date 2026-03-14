@@ -289,18 +289,27 @@ public static class MirLowerer
 
         private void LowerInlineAsmStatement(BoundAsmStatement asmStatement)
         {
+            string[] bindingNames = [.. asmStatement.ReferencedSymbols.Keys];
+            IReadOnlyDictionary<string, InlineAsmBindingAccess> bindingAccess =
+                InlineAssemblyBindingAnalysis.ComputeBindingAccess(
+                    asmStatement.Volatility,
+                    asmStatement.FlagOutput,
+                    asmStatement.ParsedLines,
+                    bindingNames);
+
             List<MirInlineAsmBinding> bindings = new(asmStatement.ReferencedSymbols.Count);
             foreach ((string name, Symbol symbol) in asmStatement.ReferencedSymbols)
             {
+                InlineAsmBindingAccess access = bindingAccess.GetValueOrDefault(name, InlineAsmBindingAccess.ReadWrite);
                 if (TryGetStoragePlace(symbol, out StoragePlace? place))
                 {
-                    bindings.Add(new MirInlineAsmBinding(name, value: null, place));
+                    bindings.Add(new MirInlineAsmBinding(name, value: null, place, access));
                 }
                 else
                 {
                     TypeSymbol type = GetSymbolType(symbol);
                     MirValueId value = ReadSymbol(symbol, type, asmStatement.Span);
-                    bindings.Add(new MirInlineAsmBinding(name, value, place: null));
+                    bindings.Add(new MirInlineAsmBinding(name, value, place: null, access));
                 }
             }
 

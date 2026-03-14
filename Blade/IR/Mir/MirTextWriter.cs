@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
+using Blade.Semantics;
 
 namespace Blade.IR.Mir;
 
@@ -200,6 +201,8 @@ public static class MirTextWriter
                             sb.Append(value);
                         else
                             sb.Append(binding.Place?.EmittedName ?? "<none>");
+                        sb.Append(':');
+                        sb.Append(FormatInlineAsmAccess(binding.Access));
                     }
                 }
                 break;
@@ -279,6 +282,17 @@ public static class MirTextWriter
             string s => $"\"{s}\"",
             IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
             _ => value.ToString() ?? "<?>",
+        };
+    }
+
+    private static string FormatInlineAsmAccess(InlineAsmBindingAccess access)
+    {
+        return access switch
+        {
+            InlineAsmBindingAccess.Read => "r",
+            InlineAsmBindingAccess.Write => "w",
+            InlineAsmBindingAccess.ReadWrite => "rw",
+            _ => "?",
         };
     }
 }

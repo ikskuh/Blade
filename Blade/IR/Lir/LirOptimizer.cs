@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Blade.Semantics;
 
 namespace Blade.IR.Lir;
 
@@ -36,11 +37,14 @@ public static class LirOptimizer
                 foreach (LirInstruction instruction in block.Instructions)
                 {
                     Dictionary<LirVirtualRegister, LirVirtualRegister> mapping = ResolveAliasMap(aliases);
-                    LirInstruction rewritten = RewriteInstructionUses(instruction, mapping);
+                    LirInstruction rewritten = RewriteInstructionUsesForCopyPropagation(instruction, mapping);
                     instructions.Add(rewritten);
 
                     if (rewritten.Destination is LirVirtualRegister destination)
                         aliases.Remove(destination);
+
+                    foreach (LirVirtualRegister written in EnumerateWrites(rewritten))
+                        aliases.Remove(written);
 
                     if (TryGetCopyAlias(rewritten, out LirVirtualRegister dest, out LirVirtualRegister source))
                         aliases[dest] = ResolveAlias(source, aliases);
@@ -387,27 +391,74 @@ public static class LirOptimizer
         return RewriteInstructionUses(instruction, operandMapping);
     }
 
+    private static LirInstruction RewriteInstructionUsesForCopyPropagation(
+        LirInstruction instruction,
+        IReadOnlyDictionary<LirVirtualRegister, LirVirtualRegister> mapping)
+    {
+        Dictionary<LirVirtualRegister, LirOperand> operandMapping = [];
+        foreach ((LirVirtualRegister key, LirVirtualRegister value) in mapping)
+            operandMapping[key] = new LirRegisterOperand(value);
+
+        if (instruction is not LirInlineAsmInstruction inlineAsm)
+            return RewriteInstructionUses(instruction, operandMapping);
+
+        IReadOnlyList<LirInlineAsmBinding> rewrittenBindings =
+            RewriteInlineAsmBindings(inlineAsm.Bindings, operandMapping, readOnlyOnly: true);
+        if (ReferenceEquals(rewrittenBindings, inlineAsm.Bindings))
+            return instruction;
+
+        return new LirInlineAsmInstruction(
+            inlineAsm.Volatility,
+            inlineAsm.Body,
+            inlineAsm.FlagOutput,
+            inlineAsm.ParsedLines,
+            rewrittenBindings,
+            inlineAsm.Span);
+    }
+
     private static LirInstruction RewriteInstructionUses(
         LirInstruction instruction,
         IReadOnlyDictionary<LirVirtualRegister, LirOperand> mapping)
     {
-        if (instruction is not LirOpInstruction op)
-            return instruction;
+        switch (instruction)
+        {
+            case LirOpInstruction op:
+            {
+                IReadOnlyList<LirOperand> rewrittenOperands = RewriteOperands(op.Operands, mapping);
+                if (ReferenceEquals(rewrittenOperands, op.Operands))
+                    return instruction;
 
-        IReadOnlyList<LirOperand> rewrittenOperands = RewriteOperands(op.Operands, mapping);
-        if (ReferenceEquals(rewrittenOperands, op.Operands))
-            return instruction;
+                return new LirOpInstruction(
+                    op.Opcode,
+                    op.Destination,
+                    op.ResultType,
+                    rewrittenOperands,
+                    op.HasSideEffects,
+                    op.Predicate,
+                    op.WritesC,
+                    op.WritesZ,
+                    op.Span);
+            }
 
-        return new LirOpInstruction(
-            op.Opcode,
-            op.Destination,
-            op.ResultType,
-            rewrittenOperands,
-            op.HasSideEffects,
-            op.Predicate,
-            op.WritesC,
-            op.WritesZ,
-            op.Span);
+            case LirInlineAsmInstruction inlineAsm:
+            {
+                IReadOnlyList<LirInlineAsmBinding> rewrittenBindings =
+                    RewriteInlineAsmBindings(inlineAsm.Bindings, mapping, readOnlyOnly: false);
+                if (ReferenceEquals(rewrittenBindings, inlineAsm.Bindings))
+                    return instruction;
+
+                return new LirInlineAsmInstruction(
+                    inlineAsm.Volatility,
+                    inlineAsm.Body,
+                    inlineAsm.FlagOutput,
+                    inlineAsm.ParsedLines,
+                    rewrittenBindings,
+                    inlineAsm.Span);
+            }
+
+            default:
+                return instruction;
+        }
     }
 
     private static LirTerminator RewriteTerminatorUses(
@@ -497,12 +548,64 @@ public static class LirOptimizer
         return operand;
     }
 
+    private static IReadOnlyList<LirInlineAsmBinding> RewriteInlineAsmBindings(
+        IReadOnlyList<LirInlineAsmBinding> bindings,
+        IReadOnlyDictionary<LirVirtualRegister, LirOperand> mapping,
+        bool readOnlyOnly)
+    {
+        List<LirInlineAsmBinding>? rewritten = null;
+        for (int i = 0; i < bindings.Count; i++)
+        {
+            LirInlineAsmBinding binding = bindings[i];
+            if (readOnlyOnly && binding.Access != InlineAsmBindingAccess.Read)
+                continue;
+
+            LirOperand operand = RewriteOperand(binding.Operand, mapping);
+            if (ReferenceEquals(operand, binding.Operand))
+                continue;
+
+            rewritten ??= new List<LirInlineAsmBinding>(bindings);
+            rewritten[i] = new LirInlineAsmBinding(binding.Name, operand, binding.Access);
+        }
+
+        return rewritten ?? bindings;
+    }
+
     private static IEnumerable<LirVirtualRegister> EnumerateUses(LirInstruction instruction)
     {
+        if (instruction is LirInlineAsmInstruction inlineAsm)
+        {
+            foreach (LirInlineAsmBinding binding in inlineAsm.Bindings)
+            {
+                if (InlineAssemblyBindingAnalysis.IncludesRead(binding.Access)
+                    && binding.Operand is LirRegisterOperand register)
+                {
+                    yield return register.Register;
+                }
+            }
+
+            yield break;
+        }
+
         foreach (LirOperand operand in instruction.Operands)
         {
             if (operand is LirRegisterOperand register)
                 yield return register.Register;
+        }
+    }
+
+    private static IEnumerable<LirVirtualRegister> EnumerateWrites(LirInstruction instruction)
+    {
+        if (instruction is not LirInlineAsmInstruction inlineAsm)
+            yield break;
+
+        foreach (LirInlineAsmBinding binding in inlineAsm.Bindings)
+        {
+            if (InlineAssemblyBindingAnalysis.IncludesWrite(binding.Access)
+                && binding.Operand is LirRegisterOperand register)
+            {
+                yield return register.Register;
+            }
         }
     }
 

@@ -127,11 +127,14 @@ public static class MirOptimizer
                 foreach (MirInstruction instruction in block.Instructions)
                 {
                     Dictionary<MirValueId, MirValueId> mapping = ResolveAliasMap(aliases);
-                    MirInstruction rewritten = instruction.RewriteUses(mapping);
+                    MirInstruction rewritten = RewriteInstructionUsesForCopyPropagation(instruction, mapping);
                     instructions.Add(rewritten);
 
                     if (rewritten.Result is MirValueId result)
                         aliases.Remove(result);
+
+                    foreach (MirValueId written in EnumerateWrites(rewritten))
+                        aliases.Remove(written);
 
                     if (rewritten is MirCopyInstruction copy && rewritten.Result is MirValueId copyResult)
                         aliases[copyResult] = ResolveAlias(copy.Source, aliases);
@@ -469,6 +472,55 @@ public static class MirOptimizer
         }
 
         return changed ? rewritten : values;
+    }
+
+    private static MirInstruction RewriteInstructionUsesForCopyPropagation(
+        MirInstruction instruction,
+        IReadOnlyDictionary<MirValueId, MirValueId> mapping)
+    {
+        if (instruction is not MirInlineAsmInstruction inlineAsm)
+            return instruction.RewriteUses(mapping);
+
+        List<MirInlineAsmBinding>? rewritten = null;
+        for (int i = 0; i < inlineAsm.Bindings.Count; i++)
+        {
+            MirInlineAsmBinding binding = inlineAsm.Bindings[i];
+            if (binding.Access != InlineAsmBindingAccess.Read
+                || binding.Value is not MirValueId value
+                || !mapping.TryGetValue(value, out MirValueId mapped)
+                || mapped == value)
+            {
+                continue;
+            }
+
+            rewritten ??= new List<MirInlineAsmBinding>(inlineAsm.Bindings);
+            rewritten[i] = new MirInlineAsmBinding(binding.Name, mapped, binding.Place, binding.Access);
+        }
+
+        return rewritten is null
+            ? instruction
+            : new MirInlineAsmInstruction(
+                inlineAsm.Volatility,
+                inlineAsm.Body,
+                inlineAsm.FlagOutput,
+                inlineAsm.ParsedLines,
+                rewritten,
+                inlineAsm.Span);
+    }
+
+    private static IEnumerable<MirValueId> EnumerateWrites(MirInstruction instruction)
+    {
+        if (instruction is not MirInlineAsmInstruction inlineAsm)
+            yield break;
+
+        foreach (MirInlineAsmBinding binding in inlineAsm.Bindings)
+        {
+            if (InlineAssemblyBindingAnalysis.IncludesWrite(binding.Access)
+                && binding.Value is MirValueId value)
+            {
+                yield return value;
+            }
+        }
     }
 
     private static bool TryGetConstant(

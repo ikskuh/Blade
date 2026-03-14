@@ -101,6 +101,62 @@ public class IrPipelineTests
     }
 
     [Test]
+    public void InlineAsm_InlinedVolatileBindingValue_RemainsLiveThroughOptimization()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn consume(x: u32) {
+                asm volatile {
+                    MOV INA, {x}
+                };
+            }
+
+            consume(13);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        IrBuildResult build = IrPipeline.Build(program);
+
+        string lir = LirTextWriter.Write(build.LirModule);
+        Assert.That(lir, Does.Match(@"const 13:[A-Za-z0-9_<>\-]+"));
+
+        Match initMatch = Regex.Match(build.AssemblyText, @"MOV (_r\d+), #13");
+        Match useMatch = Regex.Match(build.AssemblyText, @"MOV INA, (_r\d+)");
+        Assert.That(initMatch.Success, Is.True, build.AssemblyText);
+        Assert.That(useMatch.Success, Is.True, build.AssemblyText);
+        Assert.That(initMatch.Groups[1].Value, Is.EqualTo(useMatch.Groups[1].Value), build.AssemblyText);
+        Assert.That(initMatch.Index, Is.LessThan(useMatch.Index), build.AssemblyText);
+    }
+
+    [Test]
+    public void InlineAsm_CopyChainInput_RemainsLiveThroughOptimization()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg var input_word: u32 = 13;
+            reg var copy_folded: u32 = 0;
+
+            fn copy_chain(x: u32) -> u32 {
+                var tmp0: u32 = 0;
+                var tmp1: u32 = 0;
+                var out: u32 = 0;
+                asm {
+                    MOV {tmp0}, {x}
+                    MOV {tmp1}, {tmp0}
+                    MOV {out}, {tmp1}
+                };
+                return out;
+            }
+
+            copy_folded = copy_chain(input_word);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        IrBuildResult build = IrPipeline.Build(program);
+
+        Assert.That(LirTextWriter.Write(build.LirModule), Does.Contain("load.place %place(g_input_word_"));
+        Assert.That(build.AssemblyText, Does.Match(@"MOV g_copy_folded_\d+,\s+g_input_word_\d+"));
+    }
+
+    [Test]
     public void FinalAssemblyWriter_FormatsInlineAsmAndRegisterFileForReadability()
     {
         AsmModule module = new([],
@@ -257,7 +313,7 @@ public class IrPipelineTests
             EnableMirOptimizations = false,
         });
 
-        Assert.That(build.AssemblyText, Does.Match(@"MOV\s+_r\d+,\s+_r\d+"));
+        Assert.That(build.AssemblyText, Does.Match(@"MOV\s+_r\d+,\s+#0"));
         Assert.That(build.AssemblyText, Does.Match(@"TESTB\s+_r\d+,\s+_r\d+\s+WC"));
         Assert.That(build.AssemblyText, Does.Match(@"IF_NC BITH\s+_r\d+,\s+_r\d+"));
         Assert.That(build.AssemblyText, Does.Not.Contain("MOV   out, val"));

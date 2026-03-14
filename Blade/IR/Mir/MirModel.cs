@@ -434,16 +434,18 @@ public sealed class MirUpdatePlaceInstruction : MirInstruction
 
 public sealed class MirInlineAsmBinding
 {
-    public MirInlineAsmBinding(string name, MirValueId? value, StoragePlace? place)
+    public MirInlineAsmBinding(string name, MirValueId? value, StoragePlace? place, InlineAsmBindingAccess access)
     {
         Name = name;
         Value = value;
         Place = place;
+        Access = access;
     }
 
     public string Name { get; }
     public MirValueId? Value { get; }
     public StoragePlace? Place { get; }
+    public InlineAsmBindingAccess Access { get; }
 }
 
 public sealed class MirInlineAsmInstruction : MirInstruction
@@ -477,8 +479,11 @@ public sealed class MirInlineAsmInstruction : MirInstruction
             List<MirValueId> uses = [];
             foreach (MirInlineAsmBinding binding in Bindings)
             {
-                if (binding.Value is MirValueId value)
+                if (binding.Value is MirValueId value
+                    && InlineAssemblyBindingAnalysis.IncludesRead(binding.Access))
+                {
                     uses.Add(value);
+                }
             }
 
             return uses;
@@ -495,7 +500,7 @@ public sealed class MirInlineAsmInstruction : MirInstruction
                 continue;
 
             rewritten ??= new List<MirInlineAsmBinding>(Bindings);
-            rewritten[i] = new MirInlineAsmBinding(binding.Name, mapped, binding.Place);
+            rewritten[i] = new MirInlineAsmBinding(binding.Name, mapped, binding.Place, binding.Access);
         }
 
         return rewritten is null ? this : new MirInlineAsmInstruction(Volatility, Body, FlagOutput, ParsedLines, rewritten, Span);

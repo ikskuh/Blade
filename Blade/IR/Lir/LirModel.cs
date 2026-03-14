@@ -184,14 +184,16 @@ public sealed class LirOpInstruction : LirInstruction
 
 public sealed class LirInlineAsmBinding
 {
-    public LirInlineAsmBinding(string name, LirOperand operand)
+    public LirInlineAsmBinding(string name, LirOperand operand, InlineAsmBindingAccess access)
     {
         Name = name;
         Operand = operand;
+        Access = access;
     }
 
     public string Name { get; }
     public LirOperand Operand { get; }
+    public InlineAsmBindingAccess Access { get; }
 }
 
 public sealed class LirInlineAsmInstruction : LirInstruction

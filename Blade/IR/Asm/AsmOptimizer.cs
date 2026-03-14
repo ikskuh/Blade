@@ -157,6 +157,14 @@ public static class AsmOptimizer
                         live.Add(reg.RegisterId);
                 }
             }
+            else if (node is AsmInlineTextNode inlineText)
+            {
+                foreach (AsmOperand operand in inlineText.Bindings.Values)
+                {
+                    if (operand is AsmRegisterOperand reg)
+                        live.Add(reg.RegisterId);
+                }
+            }
 
             kept.Add(node);
         }

@@ -131,6 +131,8 @@ public static class LirTextWriter
                 sb.Append(binding.Name);
                 sb.Append('=');
                 sb.Append(FormatOperand(binding.Operand));
+                sb.Append(':');
+                sb.Append(FormatInlineAsmAccess(binding.Access));
             }
         }
 
@@ -208,6 +210,17 @@ public static class LirTextWriter
             string s => $"\"{s}\"",
             IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
             _ => value.ToString() ?? "<?>",
+        };
+    }
+
+    private static string FormatInlineAsmAccess(InlineAsmBindingAccess access)
+    {
+        return access switch
+        {
+            InlineAsmBindingAccess.Read => "r",
+            InlineAsmBindingAccess.Write => "w",
+            InlineAsmBindingAccess.ReadWrite => "rw",
+            _ => "?",
         };
     }
 }
