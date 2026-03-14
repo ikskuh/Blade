@@ -1,3 +1,4 @@
+using System.Reflection;
 using Blade.Diagnostics;
 using Blade.Source;
 using Blade;
@@ -16,6 +17,13 @@ public class ParserTests
         Parser parser = Parser.Create(source, diagnostics);
         CompilationUnitSyntax unit = parser.ParseCompilationUnit();
         return (unit, diagnostics);
+    }
+
+    private static Parser CreateParser(params Token[] tokens)
+    {
+        SourceText source = new(string.Empty);
+        DiagnosticBag diagnostics = new();
+        return new Parser(source, tokens, diagnostics);
     }
 
     private static void AssertNoDiagnostics(DiagnosticBag diagnostics)
@@ -222,5 +230,446 @@ public class ParserTests
         (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var x: u32 = 0");
         Assert.That(diag.Count, Is.GreaterThan(0));
         Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0101_UnexpectedToken), Is.True);
+    }
+
+    [Test]
+    public void ImportDeclaration_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("import \"math\" as math;");
+        AssertNoDiagnostics(diag);
+
+        Assert.That(unit.Members[0], Is.TypeOf<ImportDeclarationSyntax>());
+        ImportDeclarationSyntax import = (ImportDeclarationSyntax)unit.Members[0];
+        Assert.That(import.Path.Value, Is.EqualTo("math"));
+        Assert.That(import.Alias.Text, Is.EqualTo("math"));
+    }
+
+    [Test]
+    public void ExternConstVariableDeclaration_ParsesAllOptionalClauses()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("extern reg const table: u32 @(1) align(4) = 7;");
+        AssertNoDiagnostics(diag);
+
+        VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
+        Assert.That(decl.ExternKeyword, Is.Not.Null);
+        Assert.That(decl.MutabilityKeyword.Kind, Is.EqualTo(TokenKind.ConstKeyword));
+        Assert.That(decl.AtClause, Is.Not.Null);
+        Assert.That(decl.AlignClause, Is.Not.Null);
+        Assert.That(decl.Initializer, Is.TypeOf<LiteralExpressionSyntax>());
+    }
+
+    [Test]
+    public void MissingVariableMutability_ReportsDiagnostic()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg table: u32;");
+        Assert.That(unit.Members[0], Is.TypeOf<VariableDeclarationSyntax>());
+        Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0101_UnexpectedToken), Is.True);
+    }
+
+    [Test]
+    public void PackedStructTypeAlias_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("const Header = packed struct { lo: u8, hi: u8 };");
+        AssertNoDiagnostics(diag);
+
+        TypeAliasDeclarationSyntax alias = (TypeAliasDeclarationSyntax)unit.Members[0];
+        Assert.That(alias.Type, Is.TypeOf<StructTypeSyntax>());
+        StructTypeSyntax type = (StructTypeSyntax)alias.Type;
+        Assert.That(type.Fields.Count, Is.EqualTo(2));
+    }
+
+    [Test]
+    public void ComptimeConstDeclaration_ParsesAsTypeAliasPlaceholder()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("const BuildInfo = comptime { 1; };");
+        AssertNoDiagnostics(diag);
+
+        TypeAliasDeclarationSyntax alias = (TypeAliasDeclarationSyntax)unit.Members[0];
+        Assert.That(alias.Type, Is.TypeOf<NamedTypeSyntax>());
+        Assert.That(((NamedTypeSyntax)alias.Type).Name.Text, Is.EqualTo("auto"));
+    }
+
+    [Test]
+    public void ComptimeFunctionDeclaration_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("comptime fn init() { return; }");
+        AssertNoDiagnostics(diag);
+
+        FunctionDeclarationSyntax func = (FunctionDeclarationSyntax)unit.Members[0];
+        Assert.That(func.FuncKindKeyword?.Kind, Is.EqualTo(TokenKind.ComptimeKeyword));
+        Assert.That(func.Name.Text, Is.EqualTo("init"));
+    }
+
+    [Test]
+    public void FunctionWithBareReturnType_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("fn nop() void { return; }");
+        AssertNoDiagnostics(diag);
+
+        FunctionDeclarationSyntax func = (FunctionDeclarationSyntax)unit.Members[0];
+        Assert.That(func.Arrow, Is.Null);
+        Assert.That(func.ReturnSpec, Is.Not.Null);
+        Assert.That(func.ReturnSpec![0].Type, Is.TypeOf<PrimitiveTypeSyntax>());
+    }
+
+    [TestCase("bool")]
+    [TestCase("bit")]
+    [TestCase("nit")]
+    [TestCase("nib")]
+    [TestCase("u8")]
+    [TestCase("i8")]
+    [TestCase("u16")]
+    [TestCase("i16")]
+    [TestCase("u32")]
+    [TestCase("i32")]
+    [TestCase("uint(5)")]
+    [TestCase("int(5)")]
+    [TestCase("*const u8")]
+    [TestCase("[4]u8")]
+    [TestCase("CustomType")]
+    public void FunctionWithBareReturnTypeStart_ParsesCorrectly(string returnType)
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse($"fn f() {returnType} {{ return; }}");
+        AssertNoDiagnostics(diag);
+
+        FunctionDeclarationSyntax func = (FunctionDeclarationSyntax)unit.Members[0];
+        Assert.That(func.ReturnSpec, Is.Not.Null);
+        Assert.That(func.ReturnSpec!.Count, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void FunctionWithBarePackedStructReturnType_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("fn f() packed struct { lo: u8, hi: u8 } { return; }");
+        AssertNoDiagnostics(diag);
+
+        FunctionDeclarationSyntax func = (FunctionDeclarationSyntax)unit.Members[0];
+        Assert.That(func.ReturnSpec![0].Type, Is.TypeOf<StructTypeSyntax>());
+    }
+
+    [Test]
+    public void FunctionWithNamedAndFlaggedReturnItems_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("fn status() -> value: u32 @C, flag: bool { return 1, true; }");
+        AssertNoDiagnostics(diag);
+
+        FunctionDeclarationSyntax func = (FunctionDeclarationSyntax)unit.Members[0];
+        Assert.That(func.ReturnSpec, Is.Not.Null);
+        Assert.That(func.ReturnSpec!.Count, Is.EqualTo(2));
+        Assert.That(func.ReturnSpec[0].Name?.Text, Is.EqualTo("value"));
+        Assert.That(func.ReturnSpec[0].FlagAnnotation?.Flag.Text, Is.EqualTo("C"));
+        Assert.That(func.ReturnSpec[1].Name?.Text, Is.EqualTo("flag"));
+        Assert.That(func.ReturnSpec[1].FlagAnnotation, Is.Null);
+    }
+
+    [Test]
+    public void IfElseIfStatement_ParsesNestedNonBlockBodies()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("if (x) y = 1; else if (z) y = 2;");
+        AssertNoDiagnostics(diag);
+
+        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
+        IfStatementSyntax ifStmt = (IfStatementSyntax)global.Statement;
+        Assert.That(ifStmt.ThenBody, Is.TypeOf<AssignmentStatementSyntax>());
+        Assert.That(ifStmt.ElseClause?.Body, Is.TypeOf<IfStatementSyntax>());
+    }
+
+    [Test]
+    public void IfElseStatement_WithPlainElseBody_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("if (x) { y = 1; } else y = 2;");
+        AssertNoDiagnostics(diag);
+
+        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
+        IfStatementSyntax ifStmt = (IfStatementSyntax)global.Statement;
+        Assert.That(ifStmt.ElseClause?.Body, Is.TypeOf<AssignmentStatementSyntax>());
+    }
+
+    [Test]
+    public void StatementForms_ParsesControlFlowVariants()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("""
+            {
+                extern reg var ext: u32;
+                for (i) { }
+                loop { }
+                rep loop (4) { }
+                rep for (i in 1..4) { }
+                noirq { }
+                break;
+                continue;
+                yield;
+                yieldto worker(a, b);
+                return;
+                return a, b;
+                asm -> @C { { } };
+            }
+            """);
+        AssertNoDiagnostics(diag);
+
+        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
+        BlockStatementSyntax block = (BlockStatementSyntax)global.Statement;
+        Assert.That(block.Statements.Count, Is.EqualTo(13));
+        Assert.That(block.Statements[0], Is.TypeOf<VariableDeclarationStatementSyntax>());
+        Assert.That(block.Statements[1], Is.TypeOf<ForStatementSyntax>());
+        Assert.That(block.Statements[2], Is.TypeOf<LoopStatementSyntax>());
+        Assert.That(block.Statements[3], Is.TypeOf<RepLoopStatementSyntax>());
+        Assert.That(block.Statements[4], Is.TypeOf<RepForStatementSyntax>());
+        Assert.That(block.Statements[5], Is.TypeOf<NoirqStatementSyntax>());
+        Assert.That(block.Statements[6], Is.TypeOf<BreakStatementSyntax>());
+        Assert.That(block.Statements[7], Is.TypeOf<ContinueStatementSyntax>());
+        Assert.That(block.Statements[8], Is.TypeOf<YieldStatementSyntax>());
+        Assert.That(block.Statements[9], Is.TypeOf<YieldtoStatementSyntax>());
+        Assert.That(block.Statements[10], Is.TypeOf<ReturnStatementSyntax>());
+        Assert.That(((ReturnStatementSyntax)block.Statements[10]).Values, Is.Null);
+        Assert.That(block.Statements[11], Is.TypeOf<ReturnStatementSyntax>());
+        Assert.That(((ReturnStatementSyntax)block.Statements[11]).Values?.Count, Is.EqualTo(2));
+        Assert.That(block.Statements[12], Is.TypeOf<AsmBlockStatementSyntax>());
+        Assert.That(((AsmBlockStatementSyntax)block.Statements[12]).FlagOutput?.Flag.Text, Is.EqualTo("C"));
+    }
+
+    [Test]
+    public void RangeExpression_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var span: u32 = 1..4;");
+        AssertNoDiagnostics(diag);
+
+        VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
+        Assert.That(decl.Initializer, Is.TypeOf<RangeExpressionSyntax>());
+    }
+
+    [Test]
+    public void PointerDerefExpression_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("ptr.*;");
+        AssertNoDiagnostics(diag);
+
+        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
+        ExpressionStatementSyntax statement = (ExpressionStatementSyntax)global.Statement;
+        Assert.That(statement.Expression, Is.TypeOf<PointerDerefExpressionSyntax>());
+    }
+
+    [Test]
+    public void MemberAccessExpression_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("node.value;");
+        AssertNoDiagnostics(diag);
+
+        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
+        ExpressionStatementSyntax statement = (ExpressionStatementSyntax)global.Statement;
+        Assert.That(statement.Expression, Is.TypeOf<MemberAccessExpressionSyntax>());
+    }
+
+    [Test]
+    public void CallIndexAndPostfixExpressions_ParseCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("""
+            {
+                items[0];
+                invoke(a, b);
+                counter++;
+                other--;
+            }
+            """);
+        AssertNoDiagnostics(diag);
+
+        BlockStatementSyntax block = (BlockStatementSyntax)((GlobalStatementSyntax)unit.Members[0]).Statement;
+        Assert.That(((ExpressionStatementSyntax)block.Statements[0]).Expression, Is.TypeOf<IndexExpressionSyntax>());
+        Assert.That(((ExpressionStatementSyntax)block.Statements[1]).Expression, Is.TypeOf<CallExpressionSyntax>());
+        Assert.That(((ExpressionStatementSyntax)block.Statements[2]).Expression, Is.TypeOf<PostfixUnaryExpressionSyntax>());
+        Assert.That(((ExpressionStatementSyntax)block.Statements[3]).Expression, Is.TypeOf<PostfixUnaryExpressionSyntax>());
+    }
+
+    [Test]
+    public void IntrinsicCallExpression_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("@encod(value);");
+        AssertNoDiagnostics(diag);
+
+        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
+        ExpressionStatementSyntax statement = (ExpressionStatementSyntax)global.Statement;
+        Assert.That(statement.Expression, Is.TypeOf<IntrinsicCallExpressionSyntax>());
+    }
+
+    [Test]
+    public void StructLiteralExpression_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse(".{ .x = 1, .y = 2 };");
+        AssertNoDiagnostics(diag);
+
+        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
+        ExpressionStatementSyntax statement = (ExpressionStatementSyntax)global.Statement;
+        StructLiteralExpressionSyntax expression = (StructLiteralExpressionSyntax)statement.Expression;
+        Assert.That(expression.Initializers.Count, Is.EqualTo(2));
+    }
+
+    [Test]
+    public void EmptyStructLiteralExpression_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse(".{ };");
+        AssertNoDiagnostics(diag);
+
+        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
+        ExpressionStatementSyntax statement = (ExpressionStatementSyntax)global.Statement;
+        StructLiteralExpressionSyntax expression = (StructLiteralExpressionSyntax)statement.Expression;
+        Assert.That(expression.Initializers.Count, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void ComptimeExpression_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("comptime { 1; };");
+        AssertNoDiagnostics(diag);
+
+        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
+        ExpressionStatementSyntax statement = (ExpressionStatementSyntax)global.Statement;
+        Assert.That(statement.Expression, Is.TypeOf<ComptimeExpressionSyntax>());
+    }
+
+    [Test]
+    public void IfExpression_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var choice: u32 = if (cond) left else right;");
+        AssertNoDiagnostics(diag);
+
+        VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
+        Assert.That(decl.Initializer, Is.TypeOf<IfExpressionSyntax>());
+    }
+
+    [Test]
+    public void MissingTypeName_ReportsDiagnostic()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var value: = 0;");
+        Assert.That(unit.Members[0], Is.TypeOf<VariableDeclarationSyntax>());
+        Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0104_ExpectedTypeName), Is.True);
+    }
+
+    [Test]
+    public void NamedType_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var value: CustomType = undefined;");
+        AssertNoDiagnostics(diag);
+
+        VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
+        Assert.That(decl.Type, Is.TypeOf<NamedTypeSyntax>());
+    }
+
+    [Test]
+    public void ParserSafetyRecovery_SkipsUnconsumedTopLevelToken()
+    {
+        Token eof = new(TokenKind.EndOfFile, new TextSpan(0, 0), string.Empty);
+        Parser parser = CreateParser(new Token(TokenKind.Bad, new TextSpan(0, 1), "~"), eof);
+
+        CompilationUnitSyntax unit = parser.ParseCompilationUnit();
+
+        Assert.That(unit.Members, Has.Count.EqualTo(1));
+        Assert.That(parser.Diagnostics.Count, Is.GreaterThan(0));
+    }
+
+    [Test]
+    public void ParserSafetyRecovery_SkipsUnconsumedBlockToken()
+    {
+        Parser parser = CreateParser(
+            new Token(TokenKind.OpenBrace, new TextSpan(0, 1), "{"),
+            new Token(TokenKind.Bad, new TextSpan(1, 1), "~"),
+            new Token(TokenKind.CloseBrace, new TextSpan(2, 1), "}"),
+            new Token(TokenKind.EndOfFile, new TextSpan(3, 0), string.Empty));
+
+        CompilationUnitSyntax unit = parser.ParseCompilationUnit();
+
+        Assert.That(unit.Members[0], Is.TypeOf<GlobalStatementSyntax>());
+        BlockStatementSyntax block = (BlockStatementSyntax)((GlobalStatementSyntax)unit.Members[0]).Statement;
+        Assert.That(block.Statements, Has.Count.EqualTo(1));
+        Assert.That(parser.Diagnostics.Count, Is.GreaterThan(0));
+    }
+
+    [Test]
+    public void ParseExpression_AllowsDotOpenBracePostfixRecovery()
+    {
+        Parser parser = CreateParser(
+            new Token(TokenKind.Identifier, new TextSpan(0, 1), "x"),
+            new Token(TokenKind.Dot, new TextSpan(1, 1), "."),
+            new Token(TokenKind.OpenBrace, new TextSpan(2, 1), "{"),
+            new Token(TokenKind.EndOfFile, new TextSpan(3, 0), string.Empty));
+
+        ExpressionSyntax expression = parser.ParseExpression();
+
+        Assert.That(expression, Is.TypeOf<MemberAccessExpressionSyntax>());
+        Assert.That(parser.Diagnostics.Count, Is.GreaterThan(0));
+    }
+
+    [Test]
+    public void UnterminatedAsmBlock_ReachesEndOfFileRecovery()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("asm { {");
+        Assert.That(unit.Members[0], Is.TypeOf<GlobalStatementSyntax>());
+        Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0101_UnexpectedToken), Is.True);
+    }
+
+    [Test]
+    public void UnterminatedStructLiteral_ReachesEndOfFileRecovery()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse(".{ .x = 1,");
+        Assert.That(unit.Members[0], Is.TypeOf<GlobalStatementSyntax>());
+        Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0101_UnexpectedToken), Is.True);
+    }
+
+    [Test]
+    public void ParseExpression_OnInvalidDotPrimary_UsesRecoveryAndReportsDiagnostic()
+    {
+        Parser parser = CreateParser(
+            new Token(TokenKind.Dot, new TextSpan(0, 1), "."),
+            new Token(TokenKind.Identifier, new TextSpan(1, 1), "x"),
+            new Token(TokenKind.EndOfFile, new TextSpan(2, 0), string.Empty));
+
+        ExpressionSyntax expression = parser.ParseExpression();
+
+        Assert.That(expression, Is.TypeOf<MemberAccessExpressionSyntax>());
+        Assert.That(parser.Diagnostics.Count, Is.GreaterThan(0));
+    }
+
+    [Test]
+    public void Parser_PeekBeyondEnd_ReusesLastToken()
+    {
+        Parser parser = CreateParser(new Token(TokenKind.EndOfFile, new TextSpan(0, 0), string.Empty));
+
+        CompilationUnitSyntax first = parser.ParseCompilationUnit();
+        CompilationUnitSyntax second = parser.ParseCompilationUnit();
+
+        Assert.That(first.Members, Is.Empty);
+        Assert.That(second.Members, Is.Empty);
+    }
+
+    [Test]
+    public void IsTypeStart_ReturnsExpectedValueForEveryTokenKind()
+    {
+        MethodInfo method = typeof(Parser).GetMethod("IsTypeStart", BindingFlags.NonPublic | BindingFlags.Static)!;
+        HashSet<TokenKind> typeStarts = new()
+        {
+            TokenKind.BoolKeyword,
+            TokenKind.BitKeyword,
+            TokenKind.NitKeyword,
+            TokenKind.NibKeyword,
+            TokenKind.U8Keyword,
+            TokenKind.I8Keyword,
+            TokenKind.U16Keyword,
+            TokenKind.I16Keyword,
+            TokenKind.U32Keyword,
+            TokenKind.I32Keyword,
+            TokenKind.VoidKeyword,
+            TokenKind.UintKeyword,
+            TokenKind.IntKeyword,
+            TokenKind.Star,
+            TokenKind.OpenBracket,
+            TokenKind.PackedKeyword,
+            TokenKind.Identifier,
+        };
+
+        foreach (TokenKind kind in Enum.GetValues<TokenKind>())
+        {
+            bool actual = (bool)method.Invoke(null, new object[] { kind })!;
+            bool expected = typeStarts.Contains(kind);
+            Assert.That(actual, Is.EqualTo(expected), $"Unexpected IsTypeStart result for {kind}");
+        }
     }
 }

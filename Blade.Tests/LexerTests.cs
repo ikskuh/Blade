@@ -211,6 +211,51 @@ public class LexerTests
         Assert.That(tokens[0].Value, Is.EqualTo(0L));
     }
 
+    [Test]
+    public void DecimalIntegerOverflow_ReportsDiagnostic()
+    {
+        List<Token> tokens = LexWithDiagnostics("9223372036854775808", out DiagnosticBag diagnostics);
+        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.IntegerLiteral));
+        Assert.That(tokens[0].Value, Is.EqualTo(0L));
+        Assert.That(diagnostics.Count, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void HexIntegerWithoutDigits_ReportsDiagnostic()
+    {
+        List<Token> tokens = LexWithDiagnostics("0x", out DiagnosticBag diagnostics);
+        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.IntegerLiteral));
+        Assert.That(tokens[0].Value, Is.EqualTo(0L));
+        Assert.That(diagnostics.Count, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void HexIntegerOverflow_ReportsDiagnostic()
+    {
+        List<Token> tokens = LexWithDiagnostics("0x1_0000_0000_0000_0000", out DiagnosticBag diagnostics);
+        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.IntegerLiteral));
+        Assert.That(tokens[0].Value, Is.EqualTo(0L));
+        Assert.That(diagnostics.Count, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void BinaryIntegerWithoutDigits_ReportsDiagnostic()
+    {
+        List<Token> tokens = LexWithDiagnostics("0b", out DiagnosticBag diagnostics);
+        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.IntegerLiteral));
+        Assert.That(tokens[0].Value, Is.EqualTo(0L));
+        Assert.That(diagnostics.Count, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void BinaryIntegerOverflow_ReportsDiagnostic()
+    {
+        List<Token> tokens = LexWithDiagnostics($"0b{new string('1', 65)}", out DiagnosticBag diagnostics);
+        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.IntegerLiteral));
+        Assert.That(tokens[0].Value, Is.EqualTo(0L));
+        Assert.That(diagnostics.Count, Is.EqualTo(1));
+    }
+
     // --- String Literals ---
 
     [Test]
@@ -233,6 +278,22 @@ public class LexerTests
     public void UnterminatedString_ReportsDiagnostic()
     {
         List<Token> tokens = LexWithDiagnostics("\"hello", out DiagnosticBag diagnostics);
+        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.StringLiteral));
+        Assert.That(diagnostics.Count, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void UnterminatedString_AtNewline_ReportsDiagnostic()
+    {
+        List<Token> tokens = LexWithDiagnostics("\"hello\nworld", out DiagnosticBag diagnostics);
+        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.StringLiteral));
+        Assert.That(diagnostics.Count, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void UnterminatedString_AtCarriageReturn_ReportsDiagnostic()
+    {
+        List<Token> tokens = LexWithDiagnostics("\"hello\rworld", out DiagnosticBag diagnostics);
         Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.StringLiteral));
         Assert.That(diagnostics.Count, Is.EqualTo(1));
     }

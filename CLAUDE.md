@@ -156,6 +156,24 @@ Run with:
 dotnet test
 ```
 
+### Justfile Commands
+
+The repo has a `justfile` with a few convenience commands:
+
+- `just all` runs the usual local verification sequence: `build`, `test`,
+  `compile-all-samples`, and `compile-known-breakage-samples`.
+- `just build` runs `dotnet build`.
+- `just test` runs `dotnet test`.
+- `just coverage` runs `dotnet test --collect:"XPlat Code Coverage"`.
+- `just compile-all-samples` builds Blade and compiles the checked-in sample and
+  demonstrator `.blade` programs, writing `*.dump.txt` files next to each sample.
+- `just compile-known-breakage-samples` builds Blade and runs the samples that are
+  intentionally expected to fail while current front-end/lowering gaps remain.
+- `just compile-sample <path>` runs `Blade/bin/Debug/net10.0/blade --dump-all`
+  for one sample path and writes the dump beside the source file.
+- `just compile-sample-expected-breakage <path>` does the same, but keeps going
+  when the compiler exits non-zero and labels the output as expected breakage.
+
 ## P2 Architecture Quick Reference
 
 Key facts for compiler developers (see docs for full details):
