@@ -1,0 +1,39 @@
+
+[*.cs]
+
+# Performance tweaks are up to a later stage:
+dotnet_diagnostic.CA1859.severity = none
+
+# We're totally fine with class nesting:
+dotnet_diagnostic.CA1034.severity = none
+
+# Implicit dependency on user local should be an error
+dotnet_diagnostic.CA1305.severity = error
+
+# We want to use StringComparison in all cases for clarity.
+dotnet_diagnostic.CA1307.severity = error
+
+# Externally visible APIs require manual NULL check.
+# We use the code inside "Requires.cs" to handle this:
+# `Requires.NotNull(parameterName);`
+dotnet_diagnostic.CA1062.severity = error
+
+# String builder optimizations to use 'char' methods over 'string' methods for single-char elements:
+dotnet_diagnostic.CA1865.severity = error
+dotnet_diagnostic.CA1834.severity = error
+
+# We should not expose properties through arrays. Better use IReadOnlyList<T> when immutability is required. 
+dotnet_diagnostic.CA1819.severity = error
+
+# disable the warning for public types inside executables:
+# Blade can also be used as a library (and we need it for unit tests and runners)
+dotnet_diagnostic.CA1515.severity = none
+
+
+[Diagnostics/DiagnosticCode.cs]
+
+# The message is about code style that we sshould remove the underscore
+# inside the "Exxxx_Foo" identifiers, but these actually help quickly
+# diagnosing failures by grepping for the E/W code number instead of 
+# the enumeration name:
+dotnet_diagnostic.CA1707.severity = none
