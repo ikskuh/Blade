@@ -1,0 +1,7 @@
+// E0301
+fn f() void {
+    var x: u32 = 0;
+    asm {
+        NOTAREAL {x}, #1
+    };
+}

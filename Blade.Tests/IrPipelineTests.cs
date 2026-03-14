@@ -769,4 +769,66 @@ public class IrPipelineTests
         Assert.That(build.AssemblyText, Does.Not.Match(@"_top_r\d+"),
             "Old per-function register naming should not appear");
     }
+
+    [Test]
+    public void AdvancedSemantics_CanFlowThroughEntireIrPipeline()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            const Pair = packed struct { left: u32, right: u32 };
+
+            coro fn worker(seed: u32) -> u32 {
+                var pair: Pair = .{ .left = seed, .right = seed };
+                var arr: [2]u32 = undefined;
+                var ptr: *u32 = undefined;
+                var sink: u32 = 0;
+
+                while (true) { break; }
+                loop { continue; }
+                rep loop (2) { sink = sink + 1; }
+                rep for (i in 1..2) { sink = sink + i; }
+                noirq { sink = sink + 1; }
+
+                sink = pair.left;
+                pair.right = sink;
+                sink = arr[0];
+                arr[1] = sink;
+                sink = ptr.*;
+                ptr.* = sink;
+                sink = if (true) pair.left else pair.right;
+                @encod(sink);
+                1..2;
+                asm {
+                    MOV {sink}, {sink}
+                };
+                yieldto worker(seed);
+                return sink;
+            }
+
+            int1 fn irq() void {
+                yield;
+            }
+
+            yieldto worker(1);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = true,
+            EnableLirOptimizations = true,
+            EnableSingleCallsiteInlining = true,
+        });
+
+        string mir = MirTextWriter.Write(build.MirModule);
+        string lir = LirTextWriter.Write(build.LirModule);
+        string asmir = AsmTextWriter.Write(build.AsmModule);
+
+        Assert.That(build.MirModule.Functions.Count, Is.EqualTo(3));
+        Assert.That(mir, Does.Contain("worker"));
+        Assert.That(lir, Does.Contain("worker"));
+        Assert.That(asmir, Does.Contain("irq"));
+        Assert.That(build.AssemblyText, Does.Contain("TODO: CALLD (yieldto worker)"));
+        Assert.That(build.AssemblyText, Does.Contain("RETI1"));
+    }
 }
