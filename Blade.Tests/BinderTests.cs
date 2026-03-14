@@ -172,4 +172,20 @@ public class BinderTests
 
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0202_UndefinedName), Is.True);
     }
+
+    [Test]
+    public void AsmVolatile_PropagatesToBoundTree()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn f(x: u32) void {
+                asm volatile {
+                    MOV {x}, {x}
+                };
+            }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        string dump = BoundTreeWriter.Write(program);
+        Assert.That(dump, Does.Contain("Asm [Volatile]"));
+    }
 }

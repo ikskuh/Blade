@@ -126,6 +126,7 @@ public class LexerTests
     [TestCase("import", TokenKind.ImportKeyword)]
     [TestCase("as", TokenKind.AsKeyword)]
     [TestCase("asm", TokenKind.AsmKeyword)]
+    [TestCase("volatile", TokenKind.VolatileKeyword)]
     [TestCase("packed", TokenKind.PackedKeyword)]
     [TestCase("struct", TokenKind.StructKeyword)]
     [TestCase("undefined", TokenKind.UndefinedKeyword)]

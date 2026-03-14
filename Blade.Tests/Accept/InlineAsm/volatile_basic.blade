@@ -1,0 +1,13 @@
+// 
+reg var x: u32 = 0;
+
+fn copy_once(a: u32) -> u32 {
+    var out: u32 = 0;
+    asm volatile {
+        // preserve this line
+        MOV   {out}, {a}
+    };
+    return out;
+}
+
+x = copy_once(1);

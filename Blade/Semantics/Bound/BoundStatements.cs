@@ -207,6 +207,7 @@ public sealed class BoundYieldtoStatement : BoundStatement
 public sealed class BoundAsmStatement : BoundStatement
 {
     public BoundAsmStatement(
+        AsmVolatility volatility,
         string body,
         string? flagOutput,
         IReadOnlyList<InlineAssemblyValidator.AsmLine> parsedLines,
@@ -214,12 +215,14 @@ public sealed class BoundAsmStatement : BoundStatement
         TextSpan span)
         : base(BoundNodeKind.AsmStatement, span)
     {
+        Volatility = volatility;
         Body = body;
         FlagOutput = flagOutput;
         ParsedLines = parsedLines;
         ReferencedSymbols = referencedSymbols;
     }
 
+    public AsmVolatility Volatility { get; }
     public string Body { get; }
     public string? FlagOutput { get; }
     public IReadOnlyList<InlineAssemblyValidator.AsmLine> ParsedLines { get; }

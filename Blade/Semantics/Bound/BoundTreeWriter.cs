@@ -130,7 +130,7 @@ public static class BoundTreeWriter
                 break;
 
             case BoundAsmStatement asm:
-                AppendLine(sb, indent, $"Asm ({asm.FlagOutput ?? "no-flag"})");
+                AppendLine(sb, indent, $"Asm [{asm.Volatility}] ({asm.FlagOutput ?? "no-flag"})");
                 break;
 
             case BoundErrorStatement:

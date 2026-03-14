@@ -57,6 +57,15 @@ public static class P2OpcodeInfo
         "NOP", "REP", "AUGS", "AUGD",
     ];
 
+    private static readonly HashSet<string> PureRegisterLocalOpcodes =
+    [
+        "MOV", "NEG", "ABS", "NOT",
+        "ADD", "SUB", "AND", "OR", "XOR",
+        "SHL", "SHR", "SAR", "ROL", "ROR",
+        "ENCOD", "DECOD", "BMASK", "ZEROX", "SIGNX",
+        "BITH", "BITL", "BITNOT", "BITZ", "BITNZ", "BITRND",
+    ];
+
     /// <summary>
     /// Returns true if the opcode writes to operand[0] (the D field).
     /// For predicated instructions, the caller must treat D as both def and use.
@@ -106,4 +115,29 @@ public static class P2OpcodeInfo
     /// </summary>
     public static bool HasNoRegisterEffect(string opcode)
         => NoEffectOpcodes.Contains(opcode);
+
+    /// <summary>
+    /// Returns true when the instruction is a local-register-only data transform
+    /// that may be removed if its destination is dead.
+    /// </summary>
+    public static bool IsPureRegisterLocalInstruction(AsmInstructionNode instruction)
+    {
+        if (instruction.Predicate is not null
+            || instruction.FlagEffect != AsmFlagEffect.None
+            || instruction.Operands.Count == 0
+            || instruction.Operands[0] is not AsmRegisterOperand
+            || !PureRegisterLocalOpcodes.Contains(instruction.Opcode))
+        {
+            return false;
+        }
+
+        for (int i = 1; i < instruction.Operands.Count; i++)
+        {
+            if (instruction.Operands[i] is AsmRegisterOperand or AsmImmediateOperand)
+                continue;
+            return false;
+        }
+
+        return true;
+    }
 }

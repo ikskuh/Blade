@@ -54,6 +54,7 @@ public enum TokenKind
     ImportKeyword,
     AsKeyword,
     AsmKeyword,
+    VolatileKeyword,
     PackedKeyword,
     StructKeyword,
     UndefinedKeyword,

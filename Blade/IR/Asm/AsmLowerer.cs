@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using Blade.IR.Lir;
 using Blade.Semantics;
 using Blade.Semantics.Bound;
@@ -147,22 +148,239 @@ public static class AsmLowerer
 
     private static void LowerInlineAsm(List<AsmNode> nodes, LirInlineAsmInstruction inlineAsm)
     {
-        string body = inlineAsm.Body;
-        string[] lines = body.Split('\n');
         Dictionary<string, AsmOperand> bindings = new(StringComparer.Ordinal);
         foreach (LirInlineAsmBinding binding in inlineAsm.Bindings)
             bindings[binding.Name] = LowerOperand(binding.Operand);
 
-        nodes.Add(new AsmCommentNode("inline asm begin"));
-        foreach (string rawLine in lines)
+        if (inlineAsm.Volatility == AsmVolatility.Volatile)
         {
-            string line = rawLine.Trim();
-            if (string.IsNullOrWhiteSpace(line))
-                continue;
-
-            nodes.Add(new AsmInlineTextNode(line, bindings));
+            LowerRawInlineAsm(nodes, inlineAsm.Body, bindings, "inline asm volatile");
+            return;
         }
-        nodes.Add(new AsmCommentNode("inline asm end"));
+
+        if (inlineAsm.FlagOutput is not null)
+        {
+            LowerRawInlineAsm(nodes, inlineAsm.Body, bindings, $"inline asm flag-output {inlineAsm.FlagOutput}");
+            return;
+        }
+
+        if (TryLowerTypedInlineAsm(nodes, inlineAsm, bindings))
+            return;
+
+        LowerRawInlineAsm(nodes, inlineAsm.Body, bindings, "inline asm raw fallback");
+    }
+
+    private static bool TryLowerTypedInlineAsm(
+        List<AsmNode> nodes,
+        LirInlineAsmInstruction inlineAsm,
+        IReadOnlyDictionary<string, AsmOperand> bindings)
+    {
+        List<AsmInstructionNode> lowered = new(inlineAsm.ParsedLines.Count);
+        foreach (InlineAssemblyValidator.AsmLine line in inlineAsm.ParsedLines)
+        {
+            if (!TryLowerParsedInlineAsmLine(line, bindings, out AsmInstructionNode? instruction))
+                return false;
+            lowered.Add(instruction!);
+        }
+
+        nodes.Add(new AsmCommentNode("inline asm typed begin"));
+        foreach (AsmInstructionNode instruction in lowered)
+            nodes.Add(instruction);
+        nodes.Add(new AsmCommentNode("inline asm typed end"));
+        return true;
+    }
+
+    private static void LowerRawInlineAsm(
+        List<AsmNode> nodes,
+        string body,
+        IReadOnlyDictionary<string, AsmOperand> bindings,
+        string commentLabel)
+    {
+        nodes.Add(new AsmCommentNode($"{commentLabel} begin"));
+        foreach (string line in SplitInlineAsmBody(body))
+            nodes.Add(new AsmInlineTextNode(line, bindings));
+        nodes.Add(new AsmCommentNode($"{commentLabel} end"));
+    }
+
+    private static IEnumerable<string> SplitInlineAsmBody(string body)
+    {
+        string normalized = body.Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n');
+
+        if (normalized.Length == 0)
+            yield break;
+
+        int start = 0;
+        while (start <= normalized.Length)
+        {
+            int newline = normalized.IndexOf('\n', start);
+            if (newline < 0)
+            {
+                yield return normalized[start..];
+                yield break;
+            }
+
+            yield return normalized[start..newline];
+            start = newline + 1;
+
+            if (start == normalized.Length)
+            {
+                yield return string.Empty;
+                yield break;
+            }
+        }
+    }
+
+    private static bool TryLowerParsedInlineAsmLine(
+        InlineAssemblyValidator.AsmLine line,
+        IReadOnlyDictionary<string, AsmOperand> bindings,
+        out AsmInstructionNode? instruction)
+    {
+        instruction = null;
+        if (!TryMapFlagEffect(line.FlagEffect, out AsmFlagEffect flagEffect))
+            return false;
+
+        List<AsmOperand> operands = new(line.Operands.Length);
+        foreach (string operandText in line.Operands)
+        {
+            if (!TryParseInlineAsmOperand(operandText, bindings, out AsmOperand? operand))
+                return false;
+            operands.Add(operand!);
+        }
+
+        instruction = new AsmInstructionNode(line.Mnemonic, operands, line.Condition, flagEffect);
+        return true;
+    }
+
+    private static bool TryMapFlagEffect(string? flagText, out AsmFlagEffect effect)
+    {
+        effect = AsmFlagEffect.None;
+        if (string.IsNullOrWhiteSpace(flagText))
+            return true;
+
+        return flagText.ToUpperInvariant() switch
+        {
+            "WC" => SetFlagEffect(AsmFlagEffect.WC, out effect),
+            "WZ" => SetFlagEffect(AsmFlagEffect.WZ, out effect),
+            "WCZ" => SetFlagEffect(AsmFlagEffect.WCZ, out effect),
+            _ => false,
+        };
+    }
+
+    private static bool SetFlagEffect(AsmFlagEffect value, out AsmFlagEffect effect)
+    {
+        effect = value;
+        return true;
+    }
+
+    private static bool TryParseInlineAsmOperand(
+        string text,
+        IReadOnlyDictionary<string, AsmOperand> bindings,
+        out AsmOperand? operand)
+    {
+        operand = null;
+        string trimmed = text.Trim();
+        if (trimmed.Length == 0)
+            return false;
+
+        if (trimmed[0] == '{')
+        {
+            if (trimmed[^1] != '}')
+                return false;
+
+            string name = trimmed[1..^1].Trim();
+            if (name.Length == 0 || name.Contains('{') || name.Contains('}') || !bindings.TryGetValue(name, out AsmOperand? bound))
+                return false;
+
+            operand = bound;
+            return true;
+        }
+
+        if (trimmed.Contains('{') || trimmed.Contains('}'))
+            return false;
+
+        if (trimmed.StartsWith("#", StringComparison.Ordinal))
+        {
+            string immediateText = trimmed[1..].Trim();
+            if (immediateText == "$")
+            {
+                operand = new AsmSymbolOperand("$");
+                return true;
+            }
+
+            if (!TryParseInlineAsmImmediate(immediateText, out long immediate))
+                return false;
+
+            operand = new AsmImmediateOperand(immediate);
+            return true;
+        }
+
+        if (trimmed == "$" || IsPlainInlineAsmSymbol(trimmed))
+        {
+            operand = new AsmSymbolOperand(trimmed);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsPlainInlineAsmSymbol(string text)
+    {
+        foreach (char c in text)
+        {
+            if (char.IsAsciiLetterOrDigit(c) || c == '_' || c == '$')
+                continue;
+            return false;
+        }
+
+        return text.Length > 0;
+    }
+
+    private static bool TryParseInlineAsmImmediate(string text, out long value)
+    {
+        value = 0;
+        if (text.Length == 0)
+            return false;
+
+        bool negative = false;
+        string remainder = text;
+        if (remainder[0] is '+' or '-')
+        {
+            negative = remainder[0] == '-';
+            remainder = remainder[1..];
+        }
+
+        remainder = remainder.Replace("_", "", StringComparison.Ordinal);
+        if (remainder.Length == 0)
+            return false;
+
+        try
+        {
+            if (remainder.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!long.TryParse(remainder[2..], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out long hex))
+                    return false;
+                value = negative ? -hex : hex;
+                return true;
+            }
+
+            if (remainder.StartsWith("0b", StringComparison.OrdinalIgnoreCase))
+            {
+                long binary = Convert.ToInt64(remainder[2..], 2);
+                value = negative ? -binary : binary;
+                return true;
+            }
+
+            if (!long.TryParse(remainder, NumberStyles.None, CultureInfo.InvariantCulture, out long decimalValue))
+                return false;
+
+            value = negative ? -decimalValue : decimalValue;
+            return true;
+        }
+        catch (OverflowException)
+        {
+            return false;
+        }
     }
 
     private static void LowerConst(List<AsmNode> nodes, LirOpInstruction op)

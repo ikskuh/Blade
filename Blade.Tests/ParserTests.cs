@@ -1,5 +1,6 @@
 using Blade.Diagnostics;
 using Blade.Source;
+using Blade;
 using Blade.Syntax;
 using Blade.Syntax.Nodes;
 
@@ -158,6 +159,23 @@ public class ParserTests
         GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
         AssignmentStatementSyntax assign = (AssignmentStatementSyntax)global.Statement;
         Assert.That(assign.Operator.Kind, Is.EqualTo(TokenKind.PlusEqual));
+    }
+
+    [Test]
+    public void AsmVolatileStatement_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("""
+            asm volatile {
+                MOV x, y
+            };
+            """);
+        AssertNoDiagnostics(diag);
+
+        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
+        AsmBlockStatementSyntax asm = (AsmBlockStatementSyntax)global.Statement;
+        Assert.That(asm.VolatileKeyword, Is.Not.Null);
+        Assert.That(asm.VolatileKeyword!.Value.Kind, Is.EqualTo(TokenKind.VolatileKeyword));
+        Assert.That(asm.Volatility, Is.EqualTo(AsmVolatility.Volatile));
     }
 
     // ── Types ──

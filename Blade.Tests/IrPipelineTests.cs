@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Blade;
 using Blade.Diagnostics;
 using Blade.IR;
 using Blade.IR.Asm;
@@ -172,6 +173,153 @@ public class IrPipelineTests
         Assert.That(build.AssemblyText, Does.Not.Contain("MOV   out, val"));
         Assert.That(build.AssemblyText, Does.Not.Contain("TESTB out, bit_num WC"));
         Assert.That(build.AssemblyText, Does.Not.Contain("%r"));
+    }
+
+    [Test]
+    public void InlineAsmVolatile_SurvivesMirAndLir()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn f(x: u32) -> u32 {
+                var out: u32 = 0;
+                asm volatile {
+                    MOV   {out}, {x}
+                };
+                return out;
+            }
+
+            reg var sink: u32 = f(1);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableSingleCallsiteInlining = false,
+            EnableMirInlining = false,
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        Assert.That(MirTextWriter.Write(build.MirModule), Does.Contain("inlineasm.volatile"));
+        Assert.That(LirTextWriter.Write(build.LirModule), Does.Contain("inlineasm.volatile"));
+        AsmFunction function = build.AsmModule.Functions.Single(f => f.Name == "f");
+        Assert.That(function.Nodes.OfType<AsmInlineTextNode>().Any(), Is.True);
+    }
+
+    [Test]
+    public void InlineAsm_NonVolatile_LowersToTypedAsmInstructions()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn f(x: u32) -> u32 {
+                var out: u32 = 0;
+                asm {
+                    MOV {out}, {x}
+                    ADD {out}, #1
+                };
+                return out;
+            }
+
+            reg var sink: u32 = f(1);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableSingleCallsiteInlining = false,
+            EnableMirInlining = false,
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        AsmFunction function = build.AsmModule.Functions.Single(f => f.Name == "f");
+        Assert.That(function.Nodes.OfType<AsmInstructionNode>().Any(i => i.Opcode == "ADD"), Is.True);
+        Assert.That(function.Nodes.OfType<AsmInlineTextNode>().Any(), Is.False);
+        Assert.That(AsmTextWriter.Write(build.AsmModule), Does.Contain("inline asm typed begin"));
+    }
+
+    [Test]
+    public void InlineAsm_Volatile_PreservesRawTextAndComments()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn f(x: u32) -> u32 {
+                var out: u32 = 0;
+                asm volatile {
+                    // keep this comment
+                    MOV   {out}, {x}
+                };
+                return out;
+            }
+
+            reg var sink: u32 = f(1);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableSingleCallsiteInlining = false,
+            EnableMirInlining = false,
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        Assert.That(build.AssemblyText, Does.Contain("// keep this comment"));
+        Assert.That(build.AssemblyText, Does.Match(@"MOV   \s*_r\d+,\s+_r\d+"));
+    }
+
+    [Test]
+    public void InlineAsm_NonVolatile_FallsBackToRawWhenOperandShapeIsUnsupported()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn f(x: u32) -> u32 {
+                var out: u32 = 0;
+                asm {
+                    MOV {out}, #target_label
+                };
+                return out;
+            }
+
+            reg var sink: u32 = f(1);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableSingleCallsiteInlining = false,
+            EnableMirInlining = false,
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        AsmFunction function = build.AsmModule.Functions.Single(f => f.Name == "f");
+        Assert.That(function.Nodes.OfType<AsmInlineTextNode>().Any(), Is.True);
+        Assert.That(build.AssemblyText, Does.Contain("#target_label"));
+    }
+
+    [Test]
+    public void InlineAsm_FlagOutput_StaysOpaqueForOptimizationSafety()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn test_bit(val: u32, pos: u32) -> bool@C {
+                asm -> @C {
+                    TESTB {val}, {pos} WC
+                };
+            }
+
+            reg var sink: bool = test_bit(0, 1);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableSingleCallsiteInlining = false,
+            EnableMirInlining = false,
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        Assert.That(MirTextWriter.Write(build.MirModule), Does.Contain("inlineasm -> @C"));
+        Assert.That(LirTextWriter.Write(build.LirModule), Does.Contain("inlineasm -> @C"));
+        AsmFunction function = build.AsmModule.Functions.Single(f => f.Name == "test_bit");
+        Assert.That(function.Nodes.OfType<AsmInlineTextNode>().Any(), Is.True);
     }
 
     [Test]

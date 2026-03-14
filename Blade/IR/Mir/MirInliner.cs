@@ -242,7 +242,13 @@ public static class MirInliner
                 MirStoreInstruction store => new MirStoreInstruction(store.Target, store.Operands, store.Span),
                 MirStorePlaceInstruction storePlace => new MirStorePlaceInstruction(storePlace.Place, storePlace.Value, storePlace.Span),
                 MirUpdatePlaceInstruction updatePlace => new MirUpdatePlaceInstruction(updatePlace.Place, updatePlace.OperatorKind, updatePlace.Value, updatePlace.Span),
-                MirInlineAsmInstruction inlineAsm => new MirInlineAsmInstruction(inlineAsm.Body, inlineAsm.Bindings, inlineAsm.Span),
+                MirInlineAsmInstruction inlineAsm => new MirInlineAsmInstruction(
+                    inlineAsm.Volatility,
+                    inlineAsm.Body,
+                    inlineAsm.FlagOutput,
+                    inlineAsm.ParsedLines,
+                    inlineAsm.Bindings,
+                    inlineAsm.Span),
                 MirPseudoInstruction pseudo => new MirPseudoInstruction(pseudo.Opcode, pseudo.Operands, pseudo.HasSideEffects, pseudo.Span),
                 _ => rewritten,
             };

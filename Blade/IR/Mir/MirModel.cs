@@ -448,14 +448,26 @@ public sealed class MirInlineAsmBinding
 
 public sealed class MirInlineAsmInstruction : MirInstruction
 {
-    public MirInlineAsmInstruction(string body, IReadOnlyList<MirInlineAsmBinding> bindings, TextSpan span)
+    public MirInlineAsmInstruction(
+        AsmVolatility volatility,
+        string body,
+        string? flagOutput,
+        IReadOnlyList<InlineAssemblyValidator.AsmLine> parsedLines,
+        IReadOnlyList<MirInlineAsmBinding> bindings,
+        TextSpan span)
         : base(result: null, resultType: null, span, hasSideEffects: true)
     {
+        Volatility = volatility;
         Body = body;
+        FlagOutput = flagOutput;
+        ParsedLines = parsedLines;
         Bindings = bindings;
     }
 
+    public AsmVolatility Volatility { get; }
     public string Body { get; }
+    public string? FlagOutput { get; }
+    public IReadOnlyList<InlineAssemblyValidator.AsmLine> ParsedLines { get; }
     public IReadOnlyList<MirInlineAsmBinding> Bindings { get; }
 
     public override IReadOnlyList<MirValueId> Uses
@@ -486,7 +498,7 @@ public sealed class MirInlineAsmInstruction : MirInstruction
             rewritten[i] = new MirInlineAsmBinding(binding.Name, mapped, binding.Place);
         }
 
-        return rewritten is null ? this : new MirInlineAsmInstruction(Body, rewritten, Span);
+        return rewritten is null ? this : new MirInlineAsmInstruction(Volatility, Body, FlagOutput, ParsedLines, rewritten, Span);
     }
 }
 

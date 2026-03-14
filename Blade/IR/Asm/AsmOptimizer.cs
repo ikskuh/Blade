@@ -22,8 +22,8 @@ public static class AsmOptimizer
             changed = false;
             (current, bool rewriteChanged) = RewriteStraightLineCopyUses(current);
             changed |= rewriteChanged;
-            (current, bool deadMoveChanged) = RemoveDeadRegisterMoves(current);
-            changed |= deadMoveChanged;
+            (current, bool deadInstructionChanged) = RemoveDeadPureRegisterInstructions(current);
+            changed |= deadInstructionChanged;
             (current, bool jumpsChanged) = RemoveJumpsToNextLabel(current);
             changed |= jumpsChanged;
             (current, bool cleanupChanged) = CleanupLabelsAndSelfMoves(current);
@@ -121,7 +121,7 @@ public static class AsmOptimizer
         return (new AsmFunction(function.Name, function.IsEntryPoint, function.CcTier, nodes), changed);
     }
 
-    private static (AsmFunction Function, bool Changed) RemoveDeadRegisterMoves(AsmFunction function)
+    private static (AsmFunction Function, bool Changed) RemoveDeadPureRegisterInstructions(AsmFunction function)
     {
         HashSet<int> live = [];
         List<AsmNode> kept = [];
@@ -132,8 +132,7 @@ public static class AsmOptimizer
             AsmNode node = function.Nodes[i];
             if (node is AsmInstructionNode instruction)
             {
-                if (TryGetTrackedCopy(instruction, out AsmRegisterOperand dest, out _)
-                    && !live.Contains(dest.RegisterId))
+                if (IsDeadInstruction(instruction, live))
                 {
                     changed = true;
                     continue;
@@ -151,6 +150,20 @@ public static class AsmOptimizer
 
         kept.Reverse();
         return (new AsmFunction(function.Name, function.IsEntryPoint, function.CcTier, kept), changed);
+    }
+
+    private static bool IsDeadInstruction(AsmInstructionNode instruction, IReadOnlySet<int> live)
+    {
+        if (TryGetTrackedCopy(instruction, out AsmRegisterOperand copyDestination, out _))
+            return !live.Contains(copyDestination.RegisterId);
+
+        if (!P2OpcodeInfo.IsPureRegisterLocalInstruction(instruction)
+            || instruction.Operands[0] is not AsmRegisterOperand destination)
+        {
+            return false;
+        }
+
+        return !live.Contains(destination.RegisterId);
     }
 
     private static (AsmFunction Function, bool Changed) RemoveJumpsToNextLabel(AsmFunction function)

@@ -180,7 +180,12 @@ public static class MirTextWriter
                 break;
 
             case MirInlineAsmInstruction inlineAsm:
-                sb.Append("inlineasm");
+                sb.Append(inlineAsm.Volatility == AsmVolatility.Volatile ? "inlineasm.volatile" : "inlineasm");
+                if (inlineAsm.FlagOutput is not null)
+                {
+                    sb.Append(" -> ");
+                    sb.Append(inlineAsm.FlagOutput);
+                }
                 if (inlineAsm.Bindings.Count > 0)
                 {
                     sb.Append(' ');

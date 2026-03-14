@@ -413,7 +413,7 @@ public sealed class Binder
                         referencedSymbols[name] = referenced;
                 }
 
-                return new BoundAsmStatement(asm.Body, flagOutput, validationResult.Lines, referencedSymbols, asm.Span);
+                return new BoundAsmStatement(asm.Volatility, asm.Body, flagOutput, validationResult.Lines, referencedSymbols, asm.Span);
             }
         }
 

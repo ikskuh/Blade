@@ -196,7 +196,13 @@ public sealed class LirInlineAsmBinding
 
 public sealed class LirInlineAsmInstruction : LirInstruction
 {
-    public LirInlineAsmInstruction(string body, IReadOnlyList<LirInlineAsmBinding> bindings, TextSpan span)
+    public LirInlineAsmInstruction(
+        AsmVolatility volatility,
+        string body,
+        string? flagOutput,
+        IReadOnlyList<InlineAssemblyValidator.AsmLine> parsedLines,
+        IReadOnlyList<LirInlineAsmBinding> bindings,
+        TextSpan span)
         : base(
             opcode: "inlineasm",
             destination: null,
@@ -208,11 +214,17 @@ public sealed class LirInlineAsmInstruction : LirInstruction
             writesZ: false,
             span)
     {
+        Volatility = volatility;
         Body = body;
+        FlagOutput = flagOutput;
+        ParsedLines = parsedLines;
         Bindings = bindings;
     }
 
+    public AsmVolatility Volatility { get; }
     public string Body { get; }
+    public string? FlagOutput { get; }
+    public IReadOnlyList<InlineAssemblyValidator.AsmLine> ParsedLines { get; }
     public IReadOnlyList<LirInlineAsmBinding> Bindings { get; }
 }
 

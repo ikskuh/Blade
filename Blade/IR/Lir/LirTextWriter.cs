@@ -71,6 +71,12 @@ public static class LirTextWriter
 
     private static void WriteInstruction(StringBuilder sb, LirInstruction instruction)
     {
+        if (instruction is LirInlineAsmInstruction inlineAsm)
+        {
+            WriteInlineAsmInstruction(sb, inlineAsm);
+            return;
+        }
+
         sb.Append("    ");
         if (instruction.Destination is LirVirtualRegister destination)
         {
@@ -101,6 +107,34 @@ public static class LirTextWriter
 
         if (instruction.HasSideEffects)
             sb.Append(" ; sidefx");
+        sb.AppendLine();
+    }
+
+    private static void WriteInlineAsmInstruction(StringBuilder sb, LirInlineAsmInstruction instruction)
+    {
+        sb.Append("    ");
+        sb.Append(instruction.Volatility == AsmVolatility.Volatile ? "inlineasm.volatile" : "inlineasm");
+        if (instruction.FlagOutput is not null)
+        {
+            sb.Append(" -> ");
+            sb.Append(instruction.FlagOutput);
+        }
+
+        if (instruction.Bindings.Count > 0)
+        {
+            sb.Append(' ');
+            for (int i = 0; i < instruction.Bindings.Count; i++)
+            {
+                if (i > 0)
+                    sb.Append(", ");
+                LirInlineAsmBinding binding = instruction.Bindings[i];
+                sb.Append(binding.Name);
+                sb.Append('=');
+                sb.Append(FormatOperand(binding.Operand));
+            }
+        }
+
+        sb.Append(" ; sidefx");
         sb.AppendLine();
     }
 

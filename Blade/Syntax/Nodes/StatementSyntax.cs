@@ -279,16 +279,26 @@ public sealed class YieldtoStatementSyntax : StatementSyntax
 public sealed class AsmBlockStatementSyntax : StatementSyntax
 {
     public Token AsmKeyword { get; }
+    public Token? VolatileKeyword { get; }
     public AsmFlagOutputSyntax? FlagOutput { get; }
     public Token OpenBrace { get; }
     public string Body { get; }
     public Token CloseBrace { get; }
     public Token Semicolon { get; }
+    public AsmVolatility Volatility => VolatileKeyword is null ? AsmVolatility.NonVolatile : AsmVolatility.Volatile;
 
-    public AsmBlockStatementSyntax(Token asmKeyword, AsmFlagOutputSyntax? flagOutput, Token openBrace, string body, Token closeBrace, Token semicolon)
+    public AsmBlockStatementSyntax(
+        Token asmKeyword,
+        Token? volatileKeyword,
+        AsmFlagOutputSyntax? flagOutput,
+        Token openBrace,
+        string body,
+        Token closeBrace,
+        Token semicolon)
         : base(TextSpan.FromBounds(asmKeyword.Span.Start, semicolon.Span.End))
     {
         AsmKeyword = asmKeyword;
+        VolatileKeyword = volatileKeyword;
         FlagOutput = flagOutput;
         OpenBrace = openBrace;
         Body = body;

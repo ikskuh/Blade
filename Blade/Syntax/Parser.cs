@@ -529,6 +529,9 @@ public sealed class Parser
     private AsmBlockStatementSyntax ParseAsmBlockStatement()
     {
         Token asmKw = MatchToken(TokenKind.AsmKeyword);
+        Token? volatileKw = null;
+        if (Current.Kind == TokenKind.VolatileKeyword)
+            volatileKw = NextToken();
 
         AsmFlagOutputSyntax? flagOutput = null;
         if (Current.Kind == TokenKind.Arrow)
@@ -562,7 +565,7 @@ public sealed class Parser
 
         Token closeBrace = MatchToken(TokenKind.CloseBrace);
         Token semi = MatchToken(TokenKind.Semicolon);
-        return new AsmBlockStatementSyntax(asmKw, flagOutput, openBrace, body, closeBrace, semi);
+        return new AsmBlockStatementSyntax(asmKw, volatileKw, flagOutput, openBrace, body, closeBrace, semi);
     }
 
     private StatementSyntax ParseExpressionOrAssignmentStatement()

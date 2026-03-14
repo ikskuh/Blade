@@ -213,7 +213,10 @@ public static class LirLowerer
                 updatePlace.Span),
 
             MirInlineAsmInstruction inlineAsm => new LirInlineAsmInstruction(
+                inlineAsm.Volatility,
                 inlineAsm.Body,
+                inlineAsm.FlagOutput,
+                inlineAsm.ParsedLines,
                 LowerInlineAsmBindings(inlineAsm.Bindings, getRegister),
                 inlineAsm.Span),
 

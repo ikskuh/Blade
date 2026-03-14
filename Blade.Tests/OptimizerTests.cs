@@ -162,4 +162,40 @@ public class OptimizerTests
         Assert.That(instructions[1].Operands[1], Is.TypeOf<AsmRegisterOperand>());
         Assert.That(((AsmRegisterOperand)instructions[1].Operands[1]).RegisterId, Is.EqualTo(1));
     }
+
+    [Test]
+    public void AsmOptimizer_RemovesDeadPureRegisterOnlyInlineAsmInstructions()
+    {
+        AsmRegisterOperand r1 = new(1);
+        AsmRegisterOperand r2 = new(2);
+
+        AsmModule module = new([
+            new AsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
+            [
+                new AsmLabelNode("f_bb0"),
+                new AsmInstructionNode("MOV", [r1, r2]),
+                new AsmInstructionNode("ADD", [r1, new AsmImmediateOperand(1)]),
+            ]),
+        ]);
+
+        AsmFunction function = AsmOptimizer.Optimize(module).Functions[0];
+        Assert.That(function.Nodes.OfType<AsmInstructionNode>(), Is.Empty);
+    }
+
+    [Test]
+    public void AsmOptimizer_DoesNotRemoveNonRegisterDestinationInstruction()
+    {
+        AsmRegisterOperand r1 = new(1);
+
+        AsmModule module = new([
+            new AsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
+            [
+                new AsmLabelNode("f_bb0"),
+                new AsmInstructionNode("MOV", [new AsmSymbolOperand("OUTA"), r1]),
+            ]),
+        ]);
+
+        AsmFunction function = AsmOptimizer.Optimize(module).Functions[0];
+        Assert.That(function.Nodes.OfType<AsmInstructionNode>().ToArray(), Has.Length.EqualTo(1));
+    }
 }
