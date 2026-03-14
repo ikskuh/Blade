@@ -15,6 +15,7 @@ public static class IrPipeline
         mirModule = MirInliner.InlineMandatoryAndSingleCallsite(
             mirModule,
             options.EnableSingleCallsiteInlining);
+        MirModule preOptimizationMirModule = mirModule;
 
         if (options.EnableMirOptimizations)
         {
@@ -25,13 +26,31 @@ public static class IrPipeline
         }
 
         LirModule lirModule = LirLowerer.Lower(mirModule);
+        LirModule preOptimizationLirModule = lirModule;
         if (options.EnableLirOptimizations)
             lirModule = LirOptimizer.Optimize(lirModule, options.MaxOptimizationIterations);
 
         AsmModule asmModule = AsmLowerer.Lower(lirModule);
+        AsmModule preOptimizationAsmModule = asmModule;
 
-        IrBuildResult preEmit = new(boundProgram, mirModule, lirModule, asmModule, assemblyText: string.Empty);
+        IrBuildResult preEmit = new(
+            boundProgram,
+            preOptimizationMirModule,
+            mirModule,
+            preOptimizationLirModule,
+            lirModule,
+            preOptimizationAsmModule,
+            asmModule,
+            assemblyText: string.Empty);
         EmitResult emitResult = CodegenPipeline.Emit(preEmit, new EmitOptions());
-        return new IrBuildResult(boundProgram, mirModule, lirModule, emitResult.AsmModule, emitResult.AssemblyText);
+        return new IrBuildResult(
+            boundProgram,
+            preOptimizationMirModule,
+            mirModule,
+            preOptimizationLirModule,
+            lirModule,
+            preOptimizationAsmModule,
+            emitResult.AsmModule,
+            emitResult.AssemblyText);
     }
 }

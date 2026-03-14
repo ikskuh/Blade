@@ -9,21 +9,30 @@ public sealed class IrBuildResult
 {
     public IrBuildResult(
         BoundProgram boundProgram,
+        MirModule preOptimizationMirModule,
         MirModule mirModule,
+        LirModule preOptimizationLirModule,
         LirModule lirModule,
+        AsmModule preOptimizationAsmModule,
         AsmModule asmModule,
         string assemblyText)
     {
         BoundProgram = boundProgram;
+        PreOptimizationMirModule = preOptimizationMirModule;
         MirModule = mirModule;
+        PreOptimizationLirModule = preOptimizationLirModule;
         LirModule = lirModule;
+        PreOptimizationAsmModule = preOptimizationAsmModule;
         AsmModule = asmModule;
         AssemblyText = assemblyText;
     }
 
     public BoundProgram BoundProgram { get; }
+    public MirModule PreOptimizationMirModule { get; }
     public MirModule MirModule { get; }
+    public LirModule PreOptimizationLirModule { get; }
     public LirModule LirModule { get; }
+    public AsmModule PreOptimizationAsmModule { get; }
     public AsmModule AsmModule { get; }
     public string AssemblyText { get; }
 }

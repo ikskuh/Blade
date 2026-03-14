@@ -54,6 +54,96 @@ public class IrPipelineTests
     }
 
     [Test]
+    public void DumpContentBuilder_CanEmitPreOptimizationStageDumps()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn add_one(x: u32) -> u32 {
+                var copy: u32 = x;
+                return copy + 1;
+            }
+
+            var sink: u32 = add_one(1);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = true,
+            EnableLirOptimizations = true,
+        });
+
+        DumpSelection selection = new()
+        {
+            DumpMirPreOptimization = true,
+            DumpMir = true,
+            DumpLirPreOptimization = true,
+            DumpLir = true,
+            DumpAsmirPreOptimization = true,
+            DumpAsmir = true,
+        };
+        Dictionary<string, string> dumps = DumpContentBuilder.Build(selection, build);
+
+        Assert.That(dumps.Keys, Is.EquivalentTo(new[]
+        {
+            "05_mir_preopt.ir",
+            "10_mir.ir",
+            "15_lir_preopt.ir",
+            "20_lir.ir",
+            "25_asmir_preopt.ir",
+            "30_asmir.ir",
+        }));
+        Assert.That(dumps["05_mir_preopt.ir"], Is.EqualTo(MirTextWriter.Write(build.PreOptimizationMirModule)));
+        Assert.That(dumps["10_mir.ir"], Is.EqualTo(MirTextWriter.Write(build.MirModule)));
+        Assert.That(dumps["15_lir_preopt.ir"], Is.EqualTo(LirTextWriter.Write(build.PreOptimizationLirModule)));
+        Assert.That(dumps["20_lir.ir"], Is.EqualTo(LirTextWriter.Write(build.LirModule)));
+        Assert.That(dumps["25_asmir_preopt.ir"], Is.EqualTo(AsmTextWriter.Write(build.PreOptimizationAsmModule)));
+        Assert.That(dumps["30_asmir.ir"], Is.EqualTo(AsmTextWriter.Write(build.AsmModule)));
+    }
+
+    [Test]
+    public void FinalAssemblyWriter_FormatsInlineAsmAndRegisterFileForReadability()
+    {
+        AsmModule module = new([],
+        [
+            new AsmFunction("$top", isEntryPoint: true, CallingConventionTier.EntryPoint,
+            [
+                new AsmLabelNode("$top_bb0"),
+                new AsmCommentNode("inline asm raw fallback begin"),
+                new AsmInlineTextNode("            "),
+                new AsmInlineTextNode("                    MOV _r4, #target_label"),
+                new AsmInlineTextNode("                "),
+                new AsmCommentNode("inline asm raw fallback end"),
+                new AsmInstructionNode("MOV", [new AsmSymbolOperand("_r4"), new AsmImmediateOperand(0)]),
+                new AsmCommentNode("--- register file ---"),
+                new AsmLabelNode("g_input_word_7"),
+                new AsmDirectiveNode("LONG 13"),
+                new AsmLabelNode("g_dead_code_visible_10"),
+                new AsmDirectiveNode("LONG 0"),
+                new AsmLabelNode("_r4"),
+                new AsmDirectiveNode("LONG 0"),
+            ]),
+        ]);
+
+        string assembly = FinalAssemblyWriter.Write(module);
+
+        Assert.That(assembly, Does.Contain("""
+            $top_bb0
+                ' inline asm raw fallback begin
+
+                MOV _r4, #target_label
+
+                ' inline asm raw fallback end
+                MOV _r4, #0
+
+            ' --- register file ---
+            """));
+        Assert.That(assembly, Does.Contain("g_input_word_7         LONG 13"));
+        Assert.That(assembly, Does.Contain("g_dead_code_visible_10 LONG  0"));
+        Assert.That(assembly, Does.Contain("_r4                    LONG  0"));
+        Assert.That(assembly, Does.Not.Contain("            MOV _r4, #target_label"));
+    }
+
+    [Test]
     public void MirWriter_IsDeterministicAcrossRuns()
     {
         const string source = """
@@ -467,7 +557,7 @@ public class IrPipelineTests
         Assert.That(place.FixedAddress, Is.EqualTo(0x1FC));
         Assert.That(build.AssemblyText, Does.Contain("OR OUTA, #16"));
         Assert.That(build.AssemblyText, Does.Not.Contain("OUTA = 0x1FC"));
-        Assert.That(build.AssemblyText, Does.Not.Contain("LONG 0"));
+        Assert.That(build.AssemblyText, Does.Not.Match(@"LONG\s+0\b"));
         Assert.That(build.AssemblyText, Does.Not.Contain("g_OUTA"));
     }
 
@@ -509,7 +599,7 @@ public class IrPipelineTests
         });
 
         Assert.That(build.AssemblyText, Does.Contain("MOV FOO, #1"));
-        Assert.That(build.AssemblyText, Does.Not.Contain("LONG 0"));
+        Assert.That(build.AssemblyText, Does.Not.Match(@"LONG\s+0\b"));
         Assert.That(build.AssemblyText, Does.Not.Contain("g_FOO"));
     }
 
@@ -528,7 +618,7 @@ public class IrPipelineTests
         });
 
         Assert.That(build.AssemblyText, Does.Match(@"g_g_\d+"));
-        Assert.That(build.AssemblyText, Does.Contain("LONG 1000"));
+        Assert.That(build.AssemblyText, Does.Match(@"LONG\s+1000\b"));
         Assert.That(build.AssemblyText, Does.Not.Contain("MOV g_g_"));
     }
 
@@ -558,7 +648,7 @@ public class IrPipelineTests
 
         // Both leaf functions should share register slots, resulting in fewer
         // LONG 0 entries than if each function had its own registers
-        int longZeroCount = Regex.Matches(build.AssemblyText, @"LONG 0").Count;
+        int longZeroCount = Regex.Matches(build.AssemblyText, @"LONG\s+0\b").Count;
 
         // With sharing, the total should be small — two leaf functions with 1 temp each
         // should share the same slot

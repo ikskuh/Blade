@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text;
 using Blade.IR;
 
@@ -42,8 +44,7 @@ public static class FinalAssemblyWriter
             sb.Append(" (");
             sb.Append(function.CcTier);
             sb.AppendLine(")");
-            foreach (AsmNode node in function.Nodes)
-                WriteNode(sb, node);
+            WriteFunctionNodes(sb, function.Nodes);
         }
 
         return sb.ToString();
@@ -77,6 +78,154 @@ public static class FinalAssemblyWriter
             sb.AppendLine();
     }
 
+    private static void WriteFunctionNodes(StringBuilder sb, IReadOnlyList<AsmNode> nodes)
+    {
+        int index = 0;
+        while (index < nodes.Count)
+        {
+            if (TryWriteRegisterFile(sb, nodes, ref index))
+                continue;
+
+            if (TryWriteRawInlineAsmBlock(sb, nodes, ref index))
+                continue;
+
+            WriteNode(sb, nodes[index]);
+            index++;
+        }
+    }
+
+    private static bool TryWriteRegisterFile(StringBuilder sb, IReadOnlyList<AsmNode> nodes, ref int index)
+    {
+        if (nodes[index] is not AsmCommentNode { Text: "--- register file ---" })
+            return false;
+
+        List<(string Label, string Directive, string Value)> rows = [];
+        int rowIndex = index + 1;
+        while (rowIndex + 1 < nodes.Count
+            && nodes[rowIndex] is AsmLabelNode label
+            && nodes[rowIndex + 1] is AsmDirectiveNode directive
+            && TryParseDataDirective(directive.Text, out string directiveName, out string valueText))
+        {
+            rows.Add((label.Name, directiveName, valueText));
+            rowIndex += 2;
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("' --- register file ---");
+        if (rows.Count == 0)
+        {
+            index = rowIndex;
+            return true;
+        }
+
+        int maxLabelWidth = rows.Max(static row => row.Label.Length);
+        int maxDirectiveWidth = rows.Max(static row => row.Directive.Length);
+        int maxValueWidth = rows.Max(static row => row.Value.Length);
+
+        foreach ((string label, string directive, string value) in rows)
+        {
+            sb.Append(label.PadRight(maxLabelWidth));
+            sb.Append(' ');
+            sb.Append(directive.PadRight(maxDirectiveWidth));
+            sb.Append(' ');
+            sb.Append(value.PadLeft(maxValueWidth));
+            sb.AppendLine();
+        }
+
+        index = rowIndex;
+        return true;
+    }
+
+    private static bool TryWriteRawInlineAsmBlock(StringBuilder sb, IReadOnlyList<AsmNode> nodes, ref int index)
+    {
+        if (nodes[index] is not AsmCommentNode beginComment
+            || !beginComment.Text.EndsWith(" begin", StringComparison.Ordinal)
+            || index + 1 >= nodes.Count
+            || nodes[index + 1] is not AsmInlineTextNode)
+        {
+            return false;
+        }
+
+        int endIndex = index + 1;
+        while (endIndex < nodes.Count && nodes[endIndex] is AsmInlineTextNode)
+            endIndex++;
+
+        if (endIndex >= nodes.Count
+            || nodes[endIndex] is not AsmCommentNode endComment
+            || endComment.Text != beginComment.Text[..^" begin".Length] + " end")
+        {
+            return false;
+        }
+
+        WriteNode(sb, beginComment);
+
+        int commonIndent = GetCommonInlineTextIndent(nodes, index + 1, endIndex);
+        for (int i = index + 1; i < endIndex; i++)
+        {
+            AsmInlineTextNode inlineText = (AsmInlineTextNode)nodes[i];
+            WriteInlineText(sb, inlineText.Text, commonIndent);
+        }
+
+        WriteNode(sb, endComment);
+        index = endIndex + 1;
+        return true;
+    }
+
+    private static int GetCommonInlineTextIndent(IReadOnlyList<AsmNode> nodes, int start, int end)
+    {
+        int? commonIndent = null;
+        for (int i = start; i < end; i++)
+        {
+            string text = ((AsmInlineTextNode)nodes[i]).Text;
+            if (string.IsNullOrWhiteSpace(text))
+                continue;
+
+            int indent = CountLeadingWhitespace(text);
+            commonIndent = commonIndent.HasValue ? Math.Min(commonIndent.Value, indent) : indent;
+        }
+
+        return commonIndent ?? 0;
+    }
+
+    private static int CountLeadingWhitespace(string text)
+    {
+        int count = 0;
+        while (count < text.Length && char.IsWhiteSpace(text[count]))
+            count++;
+        return count;
+    }
+
+    private static void WriteInlineText(StringBuilder sb, string text, int trimIndent)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            sb.AppendLine();
+            return;
+        }
+
+        int removeCount = Math.Min(trimIndent, CountLeadingWhitespace(text));
+        sb.Append("    ");
+        sb.AppendLine(text[removeCount..]);
+    }
+
+    private static bool TryParseDataDirective(string text, out string directiveName, out string valueText)
+    {
+        directiveName = string.Empty;
+        valueText = string.Empty;
+
+        ReadOnlySpan<char> trimmed = text.AsSpan().Trim();
+        if (trimmed.IsEmpty)
+            return false;
+
+        int separator = trimmed.IndexOf(' ');
+        if (separator < 0)
+            return false;
+
+        directiveName = trimmed[..separator].ToString();
+        valueText = trimmed[(separator + 1)..].TrimStart().ToString();
+        return IsDataDirective(directiveName);
+    }
+
     private static void WriteNode(StringBuilder sb, AsmNode node)
     {
         switch (node)
@@ -86,7 +235,7 @@ public static class FinalAssemblyWriter
                 // Internal metadata markers like "function $top" are silently dropped.
                 if (IsDataDirective(directive.Text))
                 {
-                    sb.Append("            ");
+                    sb.Append("    ");
                     sb.AppendLine(directive.Text);
                 }
                 break;
@@ -105,12 +254,11 @@ public static class FinalAssemblyWriter
                 break;
 
             case AsmInlineTextNode inlineText:
-                sb.Append("            ");
-                sb.AppendLine(inlineText.Text);
+                WriteInlineText(sb, inlineText.Text, trimIndent: 0);
                 break;
 
             case AsmInstructionNode instruction:
-                sb.Append("            ");
+                sb.Append("    ");
                 if (!string.IsNullOrWhiteSpace(instruction.Predicate))
                 {
                     sb.Append(instruction.Predicate);

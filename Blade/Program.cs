@@ -2,11 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using Blade;
 using Blade.Diagnostics;
 using Blade.IR;
-using Blade.IR.Asm;
-using Blade.IR.Lir;
-using Blade.IR.Mir;
 using Blade.Semantics;
 using Blade.Semantics.Bound;
 using Blade.Source;
@@ -54,7 +52,18 @@ if (diagnostics.Count > 0)
 if (irBuild is null)
     return 1;
 
-Dictionary<string, string> dumpContent = BuildDumpContent(options, irBuild);
+DumpSelection dumpSelection = new()
+{
+    DumpBound = options.DumpBound,
+    DumpMirPreOptimization = options.DumpMirPreOptimization,
+    DumpMir = options.DumpMir,
+    DumpLirPreOptimization = options.DumpLirPreOptimization,
+    DumpLir = options.DumpLir,
+    DumpAsmirPreOptimization = options.DumpAsmirPreOptimization,
+    DumpAsmir = options.DumpAsmir,
+    DumpFinalAsm = options.DumpFinalAsm,
+};
+Dictionary<string, string> dumpContent = DumpContentBuilder.Build(dumpSelection, irBuild);
 if (options.DumpDirectory is not null)
 {
     Directory.CreateDirectory(options.DumpDirectory);
@@ -87,32 +96,6 @@ Console.WriteLine($"time   : {sw.Elapsed.TotalMilliseconds:F2} ms");
 
 return 0;
 
-static Dictionary<string, string> BuildDumpContent(CommandLineOptions options, IrBuildResult buildResult)
-{
-    Dictionary<string, string> dumps = [];
-    if (!options.DumpBound
-        && !options.DumpMir
-        && !options.DumpLir
-        && !options.DumpAsmir
-        && !options.DumpFinalAsm)
-    {
-        dumps["40_final.spin2"] = buildResult.AssemblyText;
-        return dumps;
-    }
-
-    if (options.DumpBound)
-        dumps["00_bound.ir"] = BoundTreeWriter.Write(buildResult.BoundProgram);
-    if (options.DumpMir)
-        dumps["10_mir.ir"] = MirTextWriter.Write(buildResult.MirModule);
-    if (options.DumpLir)
-        dumps["20_lir.ir"] = LirTextWriter.Write(buildResult.LirModule);
-    if (options.DumpAsmir)
-        dumps["30_asmir.ir"] = AsmTextWriter.Write(buildResult.AsmModule);
-    if (options.DumpFinalAsm)
-        dumps["40_final.spin2"] = buildResult.AssemblyText;
-    return dumps;
-}
-
 internal sealed class CommandLineOptions
 {
     private CommandLineOptions()
@@ -121,8 +104,11 @@ internal sealed class CommandLineOptions
 
     public required string FilePath { get; init; }
     public bool DumpBound { get; init; }
+    public bool DumpMirPreOptimization { get; init; }
     public bool DumpMir { get; init; }
+    public bool DumpLirPreOptimization { get; init; }
     public bool DumpLir { get; init; }
+    public bool DumpAsmirPreOptimization { get; init; }
     public bool DumpAsmir { get; init; }
     public bool DumpFinalAsm { get; init; }
     public string? DumpDirectory { get; init; }
@@ -139,8 +125,11 @@ internal sealed class CommandLineOptions
         string? filePath = null;
         string? dumpDirectory = null;
         bool dumpBound = false;
+        bool dumpMirPreOptimization = false;
         bool dumpMir = false;
+        bool dumpLirPreOptimization = false;
         bool dumpLir = false;
+        bool dumpAsmirPreOptimization = false;
         bool dumpAsmir = false;
         bool dumpFinalAsm = false;
         bool dumpAll = false;
@@ -159,12 +148,24 @@ internal sealed class CommandLineOptions
                     dumpMir = true;
                     break;
 
+                case "--dump-mir-preopt":
+                    dumpMirPreOptimization = true;
+                    break;
+
                 case "--dump-lir":
                     dumpLir = true;
                     break;
 
+                case "--dump-lir-preopt":
+                    dumpLirPreOptimization = true;
+                    break;
+
                 case "--dump-asmir":
                     dumpAsmir = true;
+                    break;
+
+                case "--dump-asmir-preopt":
+                    dumpAsmirPreOptimization = true;
                     break;
 
                 case "--dump-final-asm":
@@ -218,8 +219,11 @@ internal sealed class CommandLineOptions
         if (dumpAll)
         {
             dumpBound = true;
+            dumpMirPreOptimization = true;
             dumpMir = true;
+            dumpLirPreOptimization = true;
             dumpLir = true;
+            dumpAsmirPreOptimization = true;
             dumpAsmir = true;
             dumpFinalAsm = true;
         }
@@ -228,8 +232,11 @@ internal sealed class CommandLineOptions
         {
             FilePath = filePath,
             DumpBound = dumpBound,
+            DumpMirPreOptimization = dumpMirPreOptimization,
             DumpMir = dumpMir,
+            DumpLirPreOptimization = dumpLirPreOptimization,
             DumpLir = dumpLir,
+            DumpAsmirPreOptimization = dumpAsmirPreOptimization,
             DumpAsmir = dumpAsmir,
             DumpFinalAsm = dumpFinalAsm,
             DumpDirectory = dumpDirectory,
@@ -242,8 +249,11 @@ internal sealed class CommandLineOptions
         Console.Error.WriteLine("Usage: blade <file.blade> [options]");
         Console.Error.WriteLine("Options:");
         Console.Error.WriteLine("  --dump-bound");
+        Console.Error.WriteLine("  --dump-mir-preopt");
         Console.Error.WriteLine("  --dump-mir");
+        Console.Error.WriteLine("  --dump-lir-preopt");
         Console.Error.WriteLine("  --dump-lir");
+        Console.Error.WriteLine("  --dump-asmir-preopt");
         Console.Error.WriteLine("  --dump-asmir");
         Console.Error.WriteLine("  --dump-final-asm");
         Console.Error.WriteLine("  --dump-all");
