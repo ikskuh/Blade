@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Blade;
 using Blade.IR.Lir;
 using Blade.Semantics;
 
@@ -73,6 +74,8 @@ public static class CallGraphAnalyzer
     /// </summary>
     public static CallGraphResult Analyze(LirModule module)
     {
+        Requires.NotNull(module);
+
         // Build maps
         Dictionary<string, LirFunction> functionMap = new(module.Functions.Count);
         foreach (LirFunction function in module.Functions)

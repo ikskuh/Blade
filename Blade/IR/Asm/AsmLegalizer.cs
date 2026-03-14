@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Blade;
 
 namespace Blade.IR.Asm;
 
@@ -23,6 +24,8 @@ public static class AsmLegalizer
 
     public static AsmModule Legalize(AsmModule module)
     {
+        Requires.NotNull(module);
+
         // First pass: collect all large immediate values across the whole program
         // to decide which ones should share a constant register vs. use AUG.
         Dictionary<uint, int> immediateUseCounts = [];

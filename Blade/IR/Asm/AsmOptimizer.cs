@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Blade;
 
 namespace Blade.IR.Asm;
 
@@ -8,8 +9,9 @@ public static class AsmOptimizer
 {
     public static AsmModule Optimize(AsmModule module, IReadOnlyList<string> enabledOptimizations)
     {
-        ArgumentNullException.ThrowIfNull(module);
-        ArgumentNullException.ThrowIfNull(enabledOptimizations);
+        Requires.NotNull(module);
+        Requires.NotNull(enabledOptimizations);
+
         List<AsmFunction> functions = new(module.Functions.Count);
         foreach (AsmFunction function in module.Functions)
             functions.Add(OptimizeFunction(function, enabledOptimizations));

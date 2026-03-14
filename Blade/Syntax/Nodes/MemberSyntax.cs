@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Blade;
 using Blade.Source;
 
 namespace Blade.Syntax.Nodes;
@@ -46,7 +47,7 @@ public sealed class FunctionDeclarationSyntax : MemberSyntax
                                       SeparatedSyntaxList<ParameterSyntax> parameters, Token closeParen,
                                       Token? arrow, SeparatedSyntaxList<ReturnItemSyntax>? returnSpec,
                                       BlockStatementSyntax body)
-        : base(TextSpan.FromBounds(funcKindKeyword?.Span.Start ?? fnKeyword.Span.Start, body.Span.End))
+        : base(TextSpan.FromBounds(funcKindKeyword?.Span.Start ?? fnKeyword.Span.Start, Requires.NotNull(body).Span.End))
     {
         FuncKindKeyword = funcKindKeyword;
         FnKeyword = fnKeyword;
@@ -56,7 +57,7 @@ public sealed class FunctionDeclarationSyntax : MemberSyntax
         CloseParen = closeParen;
         Arrow = arrow;
         ReturnSpec = returnSpec;
-        Body = body;
+        Body = Requires.NotNull(body);
     }
 }
 
@@ -85,7 +86,7 @@ public sealed class VariableDeclarationSyntax : MemberSyntax
         MutabilityKeyword = mutabilityKeyword;
         Name = name;
         Colon = colon;
-        Type = type;
+        Type = Requires.NotNull(type);
         EqualsToken = equalsToken;
         Initializer = initializer;
         AtClause = atClause;
@@ -108,7 +109,7 @@ public sealed class TypeAliasDeclarationSyntax : MemberSyntax
         ConstKeyword = constKeyword;
         Name = name;
         EqualsToken = equalsToken;
-        Type = type;
+        Type = Requires.NotNull(type);
         Semicolon = semicolon;
     }
 }
@@ -118,8 +119,8 @@ public sealed class GlobalStatementSyntax : MemberSyntax
     public StatementSyntax Statement { get; }
 
     public GlobalStatementSyntax(StatementSyntax statement)
-        : base(statement.Span)
+        : base(Requires.NotNull(statement).Span)
     {
-        Statement = statement;
+        Statement = Requires.NotNull(statement);
     }
 }

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Blade;
 using Blade.Source;
 
 namespace Blade.Syntax.Nodes;
@@ -21,7 +22,7 @@ public sealed class BlockStatementSyntax : StatementSyntax
         : base(TextSpan.FromBounds(openBrace.Span.Start, closeBrace.Span.End))
     {
         OpenBrace = openBrace;
-        Statements = statements;
+        Statements = Requires.NotNull(statements);
         CloseBrace = closeBrace;
     }
 }
@@ -31,9 +32,9 @@ public sealed class VariableDeclarationStatementSyntax : StatementSyntax
     public VariableDeclarationSyntax Declaration { get; }
 
     public VariableDeclarationStatementSyntax(VariableDeclarationSyntax declaration)
-        : base(declaration.Span)
+        : base(Requires.NotNull(declaration).Span)
     {
-        Declaration = declaration;
+        Declaration = Requires.NotNull(declaration);
     }
 }
 
@@ -43,9 +44,9 @@ public sealed class ExpressionStatementSyntax : StatementSyntax
     public Token Semicolon { get; }
 
     public ExpressionStatementSyntax(ExpressionSyntax expression, Token semicolon)
-        : base(TextSpan.FromBounds(expression.Span.Start, semicolon.Span.End))
+        : base(TextSpan.FromBounds(Requires.NotNull(expression).Span.Start, semicolon.Span.End))
     {
-        Expression = expression;
+        Expression = Requires.NotNull(expression);
         Semicolon = semicolon;
     }
 }
@@ -58,11 +59,11 @@ public sealed class AssignmentStatementSyntax : StatementSyntax
     public Token Semicolon { get; }
 
     public AssignmentStatementSyntax(ExpressionSyntax target, Token @operator, ExpressionSyntax value, Token semicolon)
-        : base(TextSpan.FromBounds(target.Span.Start, semicolon.Span.End))
+        : base(TextSpan.FromBounds(Requires.NotNull(target).Span.Start, semicolon.Span.End))
     {
-        Target = target;
+        Target = Requires.NotNull(target);
         Operator = @operator;
-        Value = value;
+        Value = Requires.NotNull(value);
         Semicolon = semicolon;
     }
 }
@@ -78,13 +79,15 @@ public sealed class IfStatementSyntax : StatementSyntax
 
     public IfStatementSyntax(Token ifKeyword, Token openParen, ExpressionSyntax condition, Token closeParen,
                              StatementSyntax thenBody, ElseClauseSyntax? elseClause)
-        : base(TextSpan.FromBounds(ifKeyword.Span.Start, elseClause?.Span.End ?? thenBody.Span.End))
+        : base(TextSpan.FromBounds(
+            ifKeyword.Span.Start,
+            elseClause?.Span.End ?? Requires.NotNull(thenBody).Span.End))
     {
         IfKeyword = ifKeyword;
         OpenParen = openParen;
-        Condition = condition;
+        Condition = Requires.NotNull(condition);
         CloseParen = closeParen;
-        ThenBody = thenBody;
+        ThenBody = Requires.NotNull(thenBody);
         ElseClause = elseClause;
     }
 }
@@ -98,13 +101,13 @@ public sealed class WhileStatementSyntax : StatementSyntax
     public BlockStatementSyntax Body { get; }
 
     public WhileStatementSyntax(Token whileKeyword, Token openParen, ExpressionSyntax condition, Token closeParen, BlockStatementSyntax body)
-        : base(TextSpan.FromBounds(whileKeyword.Span.Start, body.Span.End))
+        : base(TextSpan.FromBounds(whileKeyword.Span.Start, Requires.NotNull(body).Span.End))
     {
         WhileKeyword = whileKeyword;
         OpenParen = openParen;
-        Condition = condition;
+        Condition = Requires.NotNull(condition);
         CloseParen = closeParen;
-        Body = body;
+        Body = Requires.NotNull(body);
     }
 }
 
@@ -117,13 +120,13 @@ public sealed class ForStatementSyntax : StatementSyntax
     public BlockStatementSyntax Body { get; }
 
     public ForStatementSyntax(Token forKeyword, Token openParen, Token variable, Token closeParen, BlockStatementSyntax body)
-        : base(TextSpan.FromBounds(forKeyword.Span.Start, body.Span.End))
+        : base(TextSpan.FromBounds(forKeyword.Span.Start, Requires.NotNull(body).Span.End))
     {
         ForKeyword = forKeyword;
         OpenParen = openParen;
         Variable = variable;
         CloseParen = closeParen;
-        Body = body;
+        Body = Requires.NotNull(body);
     }
 }
 
@@ -133,10 +136,10 @@ public sealed class LoopStatementSyntax : StatementSyntax
     public BlockStatementSyntax Body { get; }
 
     public LoopStatementSyntax(Token loopKeyword, BlockStatementSyntax body)
-        : base(TextSpan.FromBounds(loopKeyword.Span.Start, body.Span.End))
+        : base(TextSpan.FromBounds(loopKeyword.Span.Start, Requires.NotNull(body).Span.End))
     {
         LoopKeyword = loopKeyword;
-        Body = body;
+        Body = Requires.NotNull(body);
     }
 }
 
@@ -150,14 +153,14 @@ public sealed class RepLoopStatementSyntax : StatementSyntax
     public BlockStatementSyntax Body { get; }
 
     public RepLoopStatementSyntax(Token repKeyword, Token loopKeyword, Token openParen, ExpressionSyntax count, Token closeParen, BlockStatementSyntax body)
-        : base(TextSpan.FromBounds(repKeyword.Span.Start, body.Span.End))
+        : base(TextSpan.FromBounds(repKeyword.Span.Start, Requires.NotNull(body).Span.End))
     {
         RepKeyword = repKeyword;
         LoopKeyword = loopKeyword;
         OpenParen = openParen;
-        Count = count;
+        Count = Requires.NotNull(count);
         CloseParen = closeParen;
-        Body = body;
+        Body = Requires.NotNull(body);
     }
 }
 
@@ -174,16 +177,16 @@ public sealed class RepForStatementSyntax : StatementSyntax
 
     public RepForStatementSyntax(Token repKeyword, Token forKeyword, Token openParen, Token variable, Token inKeyword,
                                   RangeExpressionSyntax range, Token closeParen, BlockStatementSyntax body)
-        : base(TextSpan.FromBounds(repKeyword.Span.Start, body.Span.End))
+        : base(TextSpan.FromBounds(repKeyword.Span.Start, Requires.NotNull(body).Span.End))
     {
         RepKeyword = repKeyword;
         ForKeyword = forKeyword;
         OpenParen = openParen;
         Variable = variable;
         InKeyword = inKeyword;
-        Range = range;
+        Range = Requires.NotNull(range);
         CloseParen = closeParen;
-        Body = body;
+        Body = Requires.NotNull(body);
     }
 }
 
@@ -193,10 +196,10 @@ public sealed class NoirqStatementSyntax : StatementSyntax
     public BlockStatementSyntax Body { get; }
 
     public NoirqStatementSyntax(Token noirqKeyword, BlockStatementSyntax body)
-        : base(TextSpan.FromBounds(noirqKeyword.Span.Start, body.Span.End))
+        : base(TextSpan.FromBounds(noirqKeyword.Span.Start, Requires.NotNull(body).Span.End))
     {
         NoirqKeyword = noirqKeyword;
-        Body = body;
+        Body = Requires.NotNull(body);
     }
 }
 

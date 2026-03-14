@@ -23,6 +23,9 @@ public static class DumpContentBuilder
 {
     public static Dictionary<string, string> Build(DumpSelection selection, IrBuildResult buildResult)
     {
+        Requires.NotNull(selection);
+        Requires.NotNull(buildResult);
+
         Dictionary<string, string> dumps = [];
         if (!selection.DumpBound
             && !selection.DumpMirPreOptimization

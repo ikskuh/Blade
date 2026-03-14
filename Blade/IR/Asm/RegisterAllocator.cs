@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using Blade;
 using Blade.IR;
 
 namespace Blade.IR.Asm;
@@ -23,6 +24,8 @@ public static class RegisterAllocator
 {
     public static AsmModule Allocate(AsmModule module)
     {
+        Requires.NotNull(module);
+
         if (module.Functions.Count == 0)
             return module;
 

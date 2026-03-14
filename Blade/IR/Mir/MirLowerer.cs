@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using Blade;
 using Blade.IR;
 using Blade.Semantics;
 using Blade.Semantics.Bound;
@@ -12,6 +14,8 @@ public static class MirLowerer
 {
     public static MirModule Lower(BoundProgram program)
     {
+        Requires.NotNull(program);
+
         List<StoragePlace> storagePlaces = CollectStoragePlaces(program);
 
         List<MirFunction> functions = new();
@@ -1125,7 +1129,8 @@ public static class MirLowerer
             case BoundUnaryExpression unary when TryEvaluateStaticValue(unary.Operand, out object? unaryValue):
                 value = unary.Operator.Kind switch
                 {
-                    BoundUnaryOperatorKind.Negation when unaryValue is IConvertible => -Convert.ToInt64(unaryValue),
+                    BoundUnaryOperatorKind.Negation when unaryValue is IConvertible
+                        => -Convert.ToInt64(unaryValue, CultureInfo.InvariantCulture),
                     BoundUnaryOperatorKind.LogicalNot when unaryValue is bool boolean => !boolean,
                     _ => null,
                 };
@@ -1157,8 +1162,8 @@ public static class MirLowerer
         if (leftValue is not IConvertible || rightValue is not IConvertible)
             return null;
 
-        long left = Convert.ToInt64(leftValue);
-        long right = Convert.ToInt64(rightValue);
+        long left = Convert.ToInt64(leftValue, CultureInfo.InvariantCulture);
+        long right = Convert.ToInt64(rightValue, CultureInfo.InvariantCulture);
         return kind switch
         {
             BoundBinaryOperatorKind.Add => left + right,

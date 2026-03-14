@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Threading;
+using Blade;
 using Blade.Syntax.Nodes;
 
 namespace Blade.Semantics;
@@ -23,7 +24,7 @@ public sealed class TypeAliasSymbol : Symbol
     public TypeAliasSymbol(string name, TypeAliasDeclarationSyntax syntax)
         : base(name)
     {
-        Syntax = syntax;
+        Syntax = Requires.NotNull(syntax);
     }
 
     public TypeAliasDeclarationSyntax Syntax { get; }
@@ -42,7 +43,7 @@ public sealed class VariableSymbol : Symbol
         int? alignment)
         : base(name)
     {
-        Type = type;
+        Type = Requires.NotNull(type);
         IsConst = isConst;
         StorageClass = storageClass;
         ScopeKind = scopeKind;
@@ -69,7 +70,7 @@ public sealed class ParameterSymbol : Symbol
     public ParameterSymbol(string name, TypeSymbol type)
         : base(name)
     {
-        Type = type;
+        Type = Requires.NotNull(type);
     }
 
     public TypeSymbol Type { get; }
@@ -109,7 +110,7 @@ public sealed class FunctionSymbol : Symbol
     public FunctionSymbol(string name, FunctionDeclarationSyntax syntax, FunctionKind kind)
         : base(name)
     {
-        Syntax = syntax;
+        Syntax = Requires.NotNull(syntax);
         Kind = kind;
     }
 
@@ -132,6 +133,8 @@ public sealed class Scope
 
     public bool TryDeclare(Symbol symbol)
     {
+        Requires.NotNull(symbol);
+
         if (_symbols.ContainsKey(symbol.Name))
             return false;
 

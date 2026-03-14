@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using Blade;
 using Blade.IR;
 
 namespace Blade.IR.Asm;
@@ -23,6 +24,8 @@ public static class FinalAssemblyWriter
 
     public static string Write(AsmModule module)
     {
+        Requires.NotNull(module);
+
         StringBuilder sb = new();
         WriteConBlock(sb, module);
         sb.AppendLine("DAT");

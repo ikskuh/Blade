@@ -6,6 +6,8 @@ public static class CodegenPipeline
 {
     public static EmitResult Emit(IrBuildResult buildResult, EmitOptions? options = null)
     {
+        Requires.NotNull(buildResult);
+
         options ??= new EmitOptions();
         AsmModule asmModule = buildResult.AsmModule;
 

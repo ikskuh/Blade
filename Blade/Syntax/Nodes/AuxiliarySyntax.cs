@@ -1,3 +1,4 @@
+using Blade;
 using Blade.Source;
 
 namespace Blade.Syntax.Nodes;
@@ -12,12 +13,12 @@ public sealed class ParameterSyntax : SyntaxNode
     public ParameterSyntax(Token? storageClassKeyword, Token name, Token colon, TypeSyntax type)
         : base(TextSpan.FromBounds(
             storageClassKeyword?.Span.Start ?? name.Span.Start,
-            type.Span.End))
+            Requires.NotNull(type).Span.End))
     {
         StorageClassKeyword = storageClassKeyword;
         Name = name;
         Colon = colon;
-        Type = type;
+        Type = Requires.NotNull(type);
     }
 }
 
@@ -30,12 +31,12 @@ public sealed class ReturnItemSyntax : SyntaxNode
 
     public ReturnItemSyntax(Token? name, Token? colonToken, TypeSyntax type, FlagAnnotationSyntax? flagAnnotation)
         : base(TextSpan.FromBounds(
-            name?.Span.Start ?? type.Span.Start,
-            flagAnnotation?.Span.End ?? type.Span.End))
+            name?.Span.Start ?? Requires.NotNull(type).Span.Start,
+            flagAnnotation?.Span.End ?? Requires.NotNull(type).Span.End))
     {
         Name = name;
         ColonToken = colonToken;
-        Type = type;
+        Type = Requires.NotNull(type);
         FlagAnnotation = flagAnnotation;
     }
 }
@@ -65,7 +66,7 @@ public sealed class AddressClauseSyntax : SyntaxNode
     {
         AtToken = atToken;
         OpenParen = openParen;
-        Address = address;
+        Address = Requires.NotNull(address);
         CloseParen = closeParen;
     }
 }
@@ -82,7 +83,7 @@ public sealed class AlignClauseSyntax : SyntaxNode
     {
         AlignKeyword = alignKeyword;
         OpenParen = openParen;
-        Alignment = alignment;
+        Alignment = Requires.NotNull(alignment);
         CloseParen = closeParen;
     }
 }
@@ -93,10 +94,10 @@ public sealed class ElseClauseSyntax : SyntaxNode
     public StatementSyntax Body { get; }
 
     public ElseClauseSyntax(Token elseKeyword, StatementSyntax body)
-        : base(TextSpan.FromBounds(elseKeyword.Span.Start, body.Span.End))
+        : base(TextSpan.FromBounds(elseKeyword.Span.Start, Requires.NotNull(body).Span.End))
     {
         ElseKeyword = elseKeyword;
-        Body = body;
+        Body = Requires.NotNull(body);
     }
 }
 
@@ -108,12 +109,12 @@ public sealed class FieldInitializerSyntax : SyntaxNode
     public ExpressionSyntax Value { get; }
 
     public FieldInitializerSyntax(Token dot, Token name, Token equalsToken, ExpressionSyntax value)
-        : base(TextSpan.FromBounds(dot.Span.Start, value.Span.End))
+        : base(TextSpan.FromBounds(dot.Span.Start, Requires.NotNull(value).Span.End))
     {
         Dot = dot;
         Name = name;
         EqualsToken = equalsToken;
-        Value = value;
+        Value = Requires.NotNull(value);
     }
 }
 
@@ -124,11 +125,11 @@ public sealed class StructFieldSyntax : SyntaxNode
     public TypeSyntax Type { get; }
 
     public StructFieldSyntax(Token name, Token colon, TypeSyntax type)
-        : base(TextSpan.FromBounds(name.Span.Start, type.Span.End))
+        : base(TextSpan.FromBounds(name.Span.Start, Requires.NotNull(type).Span.End))
     {
         Name = name;
         Colon = colon;
-        Type = type;
+        Type = Requires.NotNull(type);
     }
 }
 

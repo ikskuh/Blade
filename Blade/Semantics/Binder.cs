@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Blade;
 using Blade.Diagnostics;
 using Blade.Semantics.Bound;
 using Blade.Source;
@@ -32,6 +33,9 @@ public sealed class Binder
 
     public static BoundProgram Bind(CompilationUnitSyntax unit, DiagnosticBag diagnostics)
     {
+        Requires.NotNull(unit);
+        Requires.NotNull(diagnostics);
+
         Binder binder = new(diagnostics);
         return binder.BindCompilationUnit(unit);
     }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Blade;
 using Blade.IR.Lir;
 using Blade.Semantics;
 using Blade.Semantics.Bound;
@@ -17,6 +18,8 @@ public static class AsmLowerer
 {
     public static AsmModule Lower(LirModule module)
     {
+        Requires.NotNull(module);
+
         // Run call graph analysis to determine CC tiers and dead functions
         CallGraphResult cgResult = CallGraphAnalyzer.Analyze(module);
 
@@ -263,7 +266,7 @@ public static class AsmLowerer
         if (!TryMapFlagEffect(line.FlagEffect, out AsmFlagEffect flagEffect))
             return false;
 
-        List<AsmOperand> operands = new(line.Operands.Length);
+        List<AsmOperand> operands = new(line.Operands.Count);
         foreach (string operandText in line.Operands)
         {
             if (!TryParseInlineAsmOperand(operandText, bindings, out AsmOperand? operand))
@@ -312,18 +315,22 @@ public static class AsmLowerer
                 return false;
 
             string name = trimmed[1..^1].Trim();
-            if (name.Length == 0 || name.Contains('{') || name.Contains('}') || !bindings.TryGetValue(name, out AsmOperand? bound))
+            if (name.Length == 0
+                || name.Contains('{', StringComparison.Ordinal)
+                || name.Contains('}', StringComparison.Ordinal)
+                || !bindings.TryGetValue(name, out AsmOperand? bound))
                 return false;
 
             operand = bound;
             return true;
         }
 
-        if (trimmed.Contains('{') || trimmed.Contains('}'))
+        if (trimmed.Contains('{', StringComparison.Ordinal)
+            || trimmed.Contains('}', StringComparison.Ordinal))
             return false;
 
-        if (trimmed.StartsWith("#", StringComparison.Ordinal))
-        {
+        if (trimmed.StartsWith('#'))
+            {
             string immediateText = trimmed[1..].Trim();
             if (immediateText == "$")
             {
@@ -1026,7 +1033,7 @@ public static class AsmLowerer
             sbyte s => s,
             short s => s,
             ushort u => u,
-            _ => Convert.ToInt64(imm.Value),
+            _ => Convert.ToInt64(imm.Value, CultureInfo.InvariantCulture),
         };
     }
 

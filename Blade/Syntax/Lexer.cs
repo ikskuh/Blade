@@ -167,7 +167,7 @@ public sealed class Lexer
 
         TextSpan span = new(_start, _position - _start);
         string text = _source.ToString(span);
-        string digits = text.Replace("_", "");
+        string digits = text.Replace("_", "", StringComparison.Ordinal);
 
         if (long.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out long value))
             return MakeToken(TokenKind.IntegerLiteral, value);
@@ -186,7 +186,7 @@ public sealed class Lexer
 
         TextSpan span = new(_start, _position - _start);
         string text = _source.ToString(span);
-        string digits = text.Substring(2).Replace("_", "");
+        string digits = text.Substring(2).Replace("_", "", StringComparison.Ordinal);
 
         if (digits.Length > 0 && long.TryParse(digits, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out long value))
             return MakeToken(TokenKind.IntegerLiteral, value);
@@ -205,7 +205,7 @@ public sealed class Lexer
 
         TextSpan span = new(_start, _position - _start);
         string text = _source.ToString(span);
-        string digits = text.Substring(2).Replace("_", "");
+        string digits = text.Substring(2).Replace("_", "", StringComparison.Ordinal);
 
         if (digits.Length > 0)
         {

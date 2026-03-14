@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Blade;
 using Blade.Semantics;
 
 namespace Blade.IR.Lir;
@@ -11,8 +12,9 @@ public static class LirOptimizer
         int maxIterations,
         IReadOnlyList<string> enabledOptimizations)
     {
-        ArgumentNullException.ThrowIfNull(module);
-        ArgumentNullException.ThrowIfNull(enabledOptimizations);
+        Requires.NotNull(module);
+        Requires.NotNull(enabledOptimizationsule);
+
 
         LirModule current = module;
         int iterations = Math.Max(1, maxIterations);

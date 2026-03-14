@@ -1,4 +1,5 @@
 using System.Text;
+using Blade;
 
 namespace Blade.IR.Asm;
 
@@ -6,6 +7,8 @@ public static class AsmTextWriter
 {
     public static string Write(AsmModule module)
     {
+        Requires.NotNull(module);
+
         StringBuilder sb = new();
         sb.AppendLine("; ASMIR v2");
         sb.AppendLine();

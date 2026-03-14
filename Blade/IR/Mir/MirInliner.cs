@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using Blade;
 using Blade.Semantics;
 using Blade.Source;
 
@@ -10,6 +11,8 @@ public static class MirInliner
 {
     public static MirModule InlineMandatoryAndSingleCallsite(MirModule module, bool enableSingleCallsiteInlining)
     {
+        Requires.NotNull(module);
+
         return Inline(module, (caller, call, callee, callCounts) =>
         {
             if (callee.Kind == FunctionKind.Inline)
@@ -23,6 +26,8 @@ public static class MirInliner
 
     public static MirModule InlineCostBased(MirModule module, int inlineCostThreshold)
     {
+        Requires.NotNull(module);
+
         return Inline(module, (caller, call, callee, callCounts) =>
         {
             if (callee.Kind is FunctionKind.Rec

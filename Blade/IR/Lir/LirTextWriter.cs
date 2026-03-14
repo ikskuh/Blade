@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
+using Blade;
 using Blade.Semantics;
 
 namespace Blade.IR.Lir;
@@ -10,6 +11,8 @@ public static class LirTextWriter
 {
     public static string Write(LirModule module)
     {
+        Requires.NotNull(module);
+
         StringBuilder sb = new();
         sb.AppendLine("; LIR v1");
         sb.AppendLine();
@@ -57,7 +60,7 @@ public static class LirTextWriter
             sb.Append(parameter.Register);
             sb.Append(':');
             sb.Append(parameter.Type.Name);
-            sb.Append(" ");
+            sb.Append(' ');
             sb.Append(parameter.Name);
         }
 

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Blade;
 
 namespace Blade.IR.Asm;
 
@@ -74,6 +75,8 @@ public static class LivenessAnalyzer
 {
     public static FunctionLiveness Analyze(AsmFunction function)
     {
+        Requires.NotNull(function);
+
         IReadOnlyList<AsmNode> nodes = function.Nodes;
 
         // Step 1: Build basic blocks and CFG

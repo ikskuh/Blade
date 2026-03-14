@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Text;
+using Blade;
 
 namespace Blade.Semantics.Bound;
 
@@ -7,6 +8,8 @@ public static class BoundTreeWriter
 {
     public static string Write(BoundProgram program)
     {
+        Requires.NotNull(program);
+
         StringBuilder sb = new();
         AppendLine(sb, 0, "Program");
 

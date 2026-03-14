@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Blade;
 using Blade.Source;
 
 namespace Blade.Semantics.Bound;
@@ -11,15 +12,15 @@ public sealed class BoundProgram : BoundNode
         IReadOnlyList<BoundFunctionMember> functions,
         IReadOnlyDictionary<string, TypeSymbol> typeAliases,
         IReadOnlyDictionary<string, FunctionSymbol> functionLookup)
-        : base(BoundNodeKind.Program, topLevelStatements.Count > 0
+        : base(BoundNodeKind.Program, Requires.NotNull(topLevelStatements).Count > 0
             ? TextSpan.FromBounds(topLevelStatements[0].Span.Start, topLevelStatements[^1].Span.End)
             : new TextSpan(0, 0))
     {
-        TopLevelStatements = topLevelStatements;
-        GlobalVariables = globalVariables;
-        Functions = functions;
-        TypeAliases = typeAliases;
-        FunctionLookup = functionLookup;
+        TopLevelStatements = Requires.NotNull(topLevelStatements);
+        GlobalVariables = Requires.NotNull(globalVariables);
+        Functions = Requires.NotNull(functions);
+        TypeAliases = Requires.NotNull(typeAliases);
+        FunctionLookup = Requires.NotNull(functionLookup);
     }
 
     public IReadOnlyList<BoundStatement> TopLevelStatements { get; }
@@ -42,7 +43,7 @@ public sealed class BoundGlobalVariableMember : BoundMember
     public BoundGlobalVariableMember(VariableSymbol symbol, BoundExpression? initializer, TextSpan span)
         : base(BoundNodeKind.GlobalVariableMember, span)
     {
-        Symbol = symbol;
+        Symbol = Requires.NotNull(symbol);
         Initializer = initializer;
     }
 
@@ -55,8 +56,8 @@ public sealed class BoundFunctionMember : BoundMember
     public BoundFunctionMember(FunctionSymbol symbol, BoundBlockStatement body, TextSpan span)
         : base(BoundNodeKind.FunctionMember, span)
     {
-        Symbol = symbol;
-        Body = body;
+        Symbol = Requires.NotNull(symbol);
+        Body = Requires.NotNull(body);
     }
 
     public FunctionSymbol Symbol { get; }

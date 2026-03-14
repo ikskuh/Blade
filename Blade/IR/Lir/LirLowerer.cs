@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Blade;
 using Blade.IR.Mir;
 using Blade.Semantics;
 using Blade.Source;
@@ -9,6 +10,8 @@ public static class LirLowerer
 {
     public static LirModule Lower(MirModule module)
     {
+        Requires.NotNull(module);
+
         List<LirFunction> functions = new(module.Functions.Count);
         foreach (MirFunction mirFunction in module.Functions)
             functions.Add(LowerFunction(mirFunction));

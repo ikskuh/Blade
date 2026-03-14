@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Blade;
 using Blade.Source;
 
 namespace Blade.Syntax.Nodes;
@@ -40,10 +41,10 @@ public sealed class ParenthesizedExpressionSyntax : ExpressionSyntax
     public Token CloseParen { get; }
 
     public ParenthesizedExpressionSyntax(Token openParen, ExpressionSyntax expression, Token closeParen)
-        : base(TextSpan.FromBounds(openParen.Span.Start, closeParen.Span.End))
+        : base(TextSpan.FromBounds(openParen.Span.Start, Requires.NotNull(expression).Span.End))
     {
         OpenParen = openParen;
-        Expression = expression;
+        Expression = Requires.NotNull(expression);
         CloseParen = closeParen;
     }
 }
@@ -54,10 +55,10 @@ public sealed class UnaryExpressionSyntax : ExpressionSyntax
     public ExpressionSyntax Operand { get; }
 
     public UnaryExpressionSyntax(Token @operator, ExpressionSyntax operand)
-        : base(TextSpan.FromBounds(@operator.Span.Start, operand.Span.End))
+        : base(TextSpan.FromBounds(@operator.Span.Start, Requires.NotNull(operand).Span.End))
     {
         Operator = @operator;
-        Operand = operand;
+        Operand = Requires.NotNull(operand);
     }
 }
 
@@ -68,11 +69,11 @@ public sealed class BinaryExpressionSyntax : ExpressionSyntax
     public ExpressionSyntax Right { get; }
 
     public BinaryExpressionSyntax(ExpressionSyntax left, Token @operator, ExpressionSyntax right)
-        : base(TextSpan.FromBounds(left.Span.Start, right.Span.End))
+        : base(TextSpan.FromBounds(Requires.NotNull(left).Span.Start, Requires.NotNull(right).Span.End))
     {
-        Left = left;
+        Left = Requires.NotNull(left);
         Operator = @operator;
-        Right = right;
+        Right = Requires.NotNull(right);
     }
 }
 
@@ -82,9 +83,9 @@ public sealed class PostfixUnaryExpressionSyntax : ExpressionSyntax
     public Token Operator { get; }
 
     public PostfixUnaryExpressionSyntax(ExpressionSyntax operand, Token @operator)
-        : base(TextSpan.FromBounds(operand.Span.Start, @operator.Span.End))
+        : base(TextSpan.FromBounds(Requires.NotNull(operand).Span.Start, @operator.Span.End))
     {
-        Operand = operand;
+        Operand = Requires.NotNull(operand);
         Operator = @operator;
     }
 }
@@ -96,9 +97,9 @@ public sealed class MemberAccessExpressionSyntax : ExpressionSyntax
     public Token Member { get; }
 
     public MemberAccessExpressionSyntax(ExpressionSyntax expression, Token dot, Token member)
-        : base(TextSpan.FromBounds(expression.Span.Start, member.Span.End))
+        : base(TextSpan.FromBounds(Requires.NotNull(expression).Span.Start, member.Span.End))
     {
-        Expression = expression;
+        Expression = Requires.NotNull(expression);
         Dot = dot;
         Member = member;
     }
@@ -111,9 +112,9 @@ public sealed class PointerDerefExpressionSyntax : ExpressionSyntax
     public Token Star { get; }
 
     public PointerDerefExpressionSyntax(ExpressionSyntax expression, Token dot, Token star)
-        : base(TextSpan.FromBounds(expression.Span.Start, star.Span.End))
+        : base(TextSpan.FromBounds(Requires.NotNull(expression).Span.Start, star.Span.End))
     {
-        Expression = expression;
+        Expression = Requires.NotNull(expression);
         Dot = dot;
         Star = star;
     }
@@ -127,11 +128,11 @@ public sealed class IndexExpressionSyntax : ExpressionSyntax
     public Token CloseBracket { get; }
 
     public IndexExpressionSyntax(ExpressionSyntax expression, Token openBracket, ExpressionSyntax index, Token closeBracket)
-        : base(TextSpan.FromBounds(expression.Span.Start, closeBracket.Span.End))
+        : base(TextSpan.FromBounds(Requires.NotNull(expression).Span.Start, closeBracket.Span.End))
     {
-        Expression = expression;
+        Expression = Requires.NotNull(expression);
         OpenBracket = openBracket;
-        Index = index;
+        Index = Requires.NotNull(index);
         CloseBracket = closeBracket;
     }
 }
@@ -144,9 +145,9 @@ public sealed class CallExpressionSyntax : ExpressionSyntax
     public Token CloseParen { get; }
 
     public CallExpressionSyntax(ExpressionSyntax callee, Token openParen, SeparatedSyntaxList<ExpressionSyntax> arguments, Token closeParen)
-        : base(TextSpan.FromBounds(callee.Span.Start, closeParen.Span.End))
+        : base(TextSpan.FromBounds(Requires.NotNull(callee).Span.Start, closeParen.Span.End))
     {
-        Callee = callee;
+        Callee = Requires.NotNull(callee);
         OpenParen = openParen;
         Arguments = arguments;
         CloseParen = closeParen;
@@ -195,10 +196,10 @@ public sealed class ComptimeExpressionSyntax : ExpressionSyntax
     public BlockStatementSyntax Body { get; }
 
     public ComptimeExpressionSyntax(Token comptimeKeyword, BlockStatementSyntax body)
-        : base(TextSpan.FromBounds(comptimeKeyword.Span.Start, body.Span.End))
+        : base(TextSpan.FromBounds(comptimeKeyword.Span.Start, Requires.NotNull(body).Span.End))
     {
         ComptimeKeyword = comptimeKeyword;
-        Body = body;
+        Body = Requires.NotNull(body);
     }
 }
 
@@ -214,15 +215,15 @@ public sealed class IfExpressionSyntax : ExpressionSyntax
 
     public IfExpressionSyntax(Token ifKeyword, Token openParen, ExpressionSyntax condition, Token closeParen,
                               ExpressionSyntax thenExpression, Token elseKeyword, ExpressionSyntax elseExpression)
-        : base(TextSpan.FromBounds(ifKeyword.Span.Start, elseExpression.Span.End))
+        : base(TextSpan.FromBounds(ifKeyword.Span.Start, Requires.NotNull(elseExpression).Span.End))
     {
         IfKeyword = ifKeyword;
         OpenParen = openParen;
-        Condition = condition;
+        Condition = Requires.NotNull(condition);
         CloseParen = closeParen;
-        ThenExpression = thenExpression;
+        ThenExpression = Requires.NotNull(thenExpression);
         ElseKeyword = elseKeyword;
-        ElseExpression = elseExpression;
+        ElseExpression = Requires.NotNull(elseExpression);
     }
 }
 
@@ -233,10 +234,10 @@ public sealed class RangeExpressionSyntax : ExpressionSyntax
     public ExpressionSyntax End { get; }
 
     public RangeExpressionSyntax(ExpressionSyntax start, Token dotDot, ExpressionSyntax end)
-        : base(TextSpan.FromBounds(start.Span.Start, end.Span.End))
+        : base(TextSpan.FromBounds(Requires.NotNull(start).Span.Start, Requires.NotNull(end).Span.End))
     {
-        Start = start;
+        Start = Requires.NotNull(start);
         DotDot = dotDot;
-        End = end;
+        End = Requires.NotNull(end);
     }
 }

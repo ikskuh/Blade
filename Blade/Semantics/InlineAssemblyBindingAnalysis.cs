@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Blade;
 
 namespace Blade.Semantics;
 
@@ -18,6 +19,9 @@ public static class InlineAssemblyBindingAnalysis
         IReadOnlyList<InlineAssemblyValidator.AsmLine> parsedLines,
         IReadOnlyCollection<string> bindingNames)
     {
+        Requires.NotNull(parsedLines);
+        Requires.NotNull(bindingNames);
+
         HashSet<string> bindingNameSet = new(bindingNames, StringComparer.Ordinal);
         Dictionary<string, InlineAsmBindingAccess> access = new(bindingNames.Count, StringComparer.Ordinal);
 
@@ -36,14 +40,14 @@ public static class InlineAssemblyBindingAnalysis
         foreach (InlineAssemblyValidator.AsmLine line in parsedLines)
         {
             string mnemonic = line.Mnemonic.ToUpperInvariant();
-            if (!TryGetOperandAccesses(mnemonic, line.Operands.Length, out InlineAsmBindingAccess[]? operandAccesses))
+            if (!TryGetOperandAccesses(mnemonic, line.Operands.Count, out InlineAsmBindingAccess[]? operandAccesses))
             {
                 foreach (string bindingName in bindingNames)
                     access[bindingName] = InlineAsmBindingAccess.ReadWrite;
                 return access;
             }
 
-            for (int i = 0; i < line.Operands.Length; i++)
+            for (int i = 0; i < line.Operands.Count; i++)
             {
                 if (!TryGetBindingName(line.Operands[i], out string? bindingName))
                     continue;
@@ -92,10 +96,10 @@ public static class InlineAssemblyBindingAnalysis
         if (TryGetBindingName(trimmed, out string? bindingName))
             return bindingName is not null && bindingNames.Contains(bindingName);
 
-        if (trimmed.Contains('{') || trimmed.Contains('}'))
+        if (trimmed.Contains('{', StringComparison.Ordinal) || trimmed.Contains('}', StringComparison.Ordinal))
             return false;
 
-        if (trimmed.StartsWith("#", StringComparison.Ordinal))
+        if (trimmed.StartsWith('#'))
         {
             string immediateText = trimmed[1..].Trim();
             if (immediateText == "$")
@@ -115,7 +119,9 @@ public static class InlineAssemblyBindingAnalysis
             return false;
 
         string name = trimmed[1..^1].Trim();
-        if (name.Length == 0 || name.Contains('{') || name.Contains('}'))
+        if (name.Length == 0
+            || name.Contains('{', StringComparison.Ordinal)
+            || name.Contains('}', StringComparison.Ordinal))
             return false;
 
         bindingName = name;

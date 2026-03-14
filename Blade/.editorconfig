@@ -1,39 +1,50 @@
 
 [*.cs]
 
-# Performance tweaks are up to a later stage:
+# This file is the local source of truth for Blade's analyzer policy.
+# Keep the enabled/disabled set documented here so contributors can see both
+# the rule choice and the reason behind it without having to inspect CI output.
+#
+# If a single occurrence genuinely needs to violate a rule, prefer a very
+# narrow in-source suppression with a strong explanation of why the code is
+# safe as written. That decision must be visible to and understood by the
+# programmer reviewing or maintaining the code later.
+
+# Performance tuning is staged separately from correctness and API cleanup.
 dotnet_diagnostic.CA1859.severity = none
 
-# We're totally fine with class nesting:
+# Nested helper types are fine in this compiler code base.
 dotnet_diagnostic.CA1034.severity = none
 
-# Implicit dependency on user local should be an error
+# Implicit dependency on the current user's locale is not acceptable in a compiler.
 dotnet_diagnostic.CA1305.severity = error
 
-# We want to use StringComparison in all cases for clarity.
+# String comparison intent must stay explicit.
 dotnet_diagnostic.CA1307.severity = error
 
-# Externally visible APIs require manual NULL check.
-# We use the code inside "Requires.cs" to handle this:
-# `Requires.NotNull(parameterName);`
+# Public and externally visible APIs must validate their inputs.
+# Use Blade/Requires.cs helpers such as:
+#   Requires.NotNull(parameter);
+#   Requires.NonNegative(value);
+#   Requires.InRange(value, min, max);
 dotnet_diagnostic.CA1062.severity = error
 
-# String builder optimizations to use 'char' methods over 'string' methods for single-char elements:
+# Small hot-path text emission cleanups are worthwhile in the compiler writers.
 dotnet_diagnostic.CA1865.severity = error
 dotnet_diagnostic.CA1834.severity = error
 
-# We should not expose properties through arrays. Better use IReadOnlyList<T> when immutability is required. 
+# Externally visible array properties are harder to reason about than immutable list shapes.
 dotnet_diagnostic.CA1819.severity = error
 
-# disable the warning for public types inside executables:
-# Blade can also be used as a library (and we need it for unit tests and runners)
+# Blade is built as an executable, but its public surface is intentionally reused
+# by tests and helper runners.
 dotnet_diagnostic.CA1515.severity = none
 
 
 [Diagnostics/DiagnosticCode.cs]
 
-# The message is about code style that we sshould remove the underscore
-# inside the "Exxxx_Foo" identifiers, but these actually help quickly
-# diagnosing failures by grepping for the E/W code number instead of 
-# the enumeration name:
+# Keep the diagnostic code in the identifier so developers can grep by E/W code quickly.
 dotnet_diagnostic.CA1707.severity = none
+
+# Blade intentionally does not define a synthetic zero-value "None" diagnostic code.
+dotnet_diagnostic.CA1008.severity = none

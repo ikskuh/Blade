@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Text.RegularExpressions;
+using Blade;
 using Blade.Diagnostics;
 using Blade.Source;
 
@@ -20,7 +22,7 @@ public static class InlineAssemblyValidator
     {
         public string? Condition { get; init; }
         public string Mnemonic { get; init; } = "";
-        public string[] Operands { get; init; } = [];
+        public IReadOnlyList<string> Operands { get; init; } = Array.Empty<string>();
         public string? FlagEffect { get; init; }
         public string RawText { get; init; } = "";
     }
@@ -46,6 +48,10 @@ public static class InlineAssemblyValidator
         HashSet<string> availableVariables,
         DiagnosticBag diagnostics)
     {
+        Requires.NotNull(body);
+        Requires.NotNull(availableVariables);
+        Requires.NotNull(diagnostics);
+
         ValidationResult result = new();
         string[] rawLines = body.Split('\n');
 
@@ -159,7 +165,7 @@ public static class InlineAssemblyValidator
         {
             Condition = condition,
             Mnemonic = mnemonic.ToUpperInvariant(),
-            Operands = operands.ToArray(),
+            Operands = new ReadOnlyCollection<string>(operands),
             FlagEffect = flagEffect,
             RawText = text,
         };

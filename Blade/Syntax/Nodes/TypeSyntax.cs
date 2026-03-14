@@ -1,3 +1,4 @@
+using Blade;
 using Blade.Source;
 
 namespace Blade.Syntax.Nodes;
@@ -33,7 +34,7 @@ public sealed class GenericWidthTypeSyntax : TypeSyntax
     {
         Keyword = keyword;
         OpenParen = openParen;
-        Width = width;
+        Width = Requires.NotNull(width);
         CloseParen = closeParen;
     }
 }
@@ -46,12 +47,12 @@ public sealed class ArrayTypeSyntax : TypeSyntax
     public TypeSyntax ElementType { get; }
 
     public ArrayTypeSyntax(Token openBracket, ExpressionSyntax size, Token closeBracket, TypeSyntax elementType)
-        : base(TextSpan.FromBounds(openBracket.Span.Start, elementType.Span.End))
+        : base(TextSpan.FromBounds(openBracket.Span.Start, Requires.NotNull(elementType).Span.End))
     {
         OpenBracket = openBracket;
-        Size = size;
+        Size = Requires.NotNull(size);
         CloseBracket = closeBracket;
-        ElementType = elementType;
+        ElementType = Requires.NotNull(elementType);
     }
 }
 
@@ -62,11 +63,11 @@ public sealed class PointerTypeSyntax : TypeSyntax
     public TypeSyntax PointeeType { get; }
 
     public PointerTypeSyntax(Token star, Token? constKeyword, TypeSyntax pointeeType)
-        : base(TextSpan.FromBounds(star.Span.Start, pointeeType.Span.End))
+        : base(TextSpan.FromBounds(star.Span.Start, Requires.NotNull(pointeeType).Span.End))
     {
         Star = star;
         ConstKeyword = constKeyword;
-        PointeeType = pointeeType;
+        PointeeType = Requires.NotNull(pointeeType);
     }
 }
 

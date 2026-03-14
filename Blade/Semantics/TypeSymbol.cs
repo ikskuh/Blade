@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Blade;
 
 namespace Blade.Semantics;
 
@@ -38,9 +39,9 @@ public sealed class PrimitiveTypeSymbol : TypeSymbol
 public sealed class ArrayTypeSymbol : TypeSymbol
 {
     public ArrayTypeSymbol(TypeSymbol elementType)
-        : base($"[{elementType.Name}]")
+        : base($"[{Requires.NotNull(elementType).Name}]")
     {
-        ElementType = elementType;
+        ElementType = Requires.NotNull(elementType);
     }
 
     public TypeSymbol ElementType { get; }
@@ -49,9 +50,11 @@ public sealed class ArrayTypeSymbol : TypeSymbol
 public sealed class PointerTypeSymbol : TypeSymbol
 {
     public PointerTypeSymbol(TypeSymbol pointeeType, bool isConst)
-        : base(isConst ? $"*const {pointeeType.Name}" : $"*{pointeeType.Name}")
+        : base(isConst
+            ? $"*const {Requires.NotNull(pointeeType).Name}"
+            : $"*{Requires.NotNull(pointeeType).Name}")
     {
-        PointeeType = pointeeType;
+        PointeeType = Requires.NotNull(pointeeType);
         IsConst = isConst;
     }
 
@@ -64,7 +67,7 @@ public sealed class StructTypeSymbol : TypeSymbol
     public StructTypeSymbol(string name, IReadOnlyDictionary<string, TypeSymbol> fields)
         : base(name)
     {
-        Fields = fields;
+        Fields = Requires.NotNull(fields);
     }
 
     public IReadOnlyDictionary<string, TypeSymbol> Fields { get; }
@@ -73,9 +76,9 @@ public sealed class StructTypeSymbol : TypeSymbol
 public sealed class FunctionTypeSymbol : TypeSymbol
 {
     public FunctionTypeSymbol(FunctionSymbol function)
-        : base($"fn {function.Name}")
+        : base($"fn {Requires.NotNull(function).Name}")
     {
-        Function = function;
+        Function = Requires.NotNull(function);
     }
 
     public FunctionSymbol Function { get; }

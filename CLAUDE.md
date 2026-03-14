@@ -89,6 +89,16 @@ Build incrementally. Each stage should be independently testable.
 - **Proper error handling.** Every error path must be handled, not swallowed.
 - **No `var` where the type isn't obvious.** Prefer explicit types on declarations
   when the RHS doesn't make the type self-evident.
+- **Validate externally visible inputs with `Blade/Requires.cs`.** When analyzers
+  require argument validation, use the shared helpers such as `Requires.NotNull`,
+  `Requires.NonNegative`, `Requires.Positive`, and `Requires.InRange` instead of
+  ad hoc guard code.
+- **`Blade/.editorconfig` is the analyzer source of truth.** Keep the enabled and
+  disabled rule set documented there together with the reasoning for each choice.
+- **In-source suppressions are exceptional.** A `#pragma`, attribute suppression,
+  or similar local mute is allowed only for a single occurrence with a strong
+  explanation of why the rule does not apply, and that reasoning must be clear to
+  the programmer who will review or maintain the code later.
 
 ## Diagnostics
 
