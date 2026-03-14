@@ -1,0 +1,8 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - L5, E0202: Name 'missing' does not exist in the current scope.
+fn load() -> u32 {
+    return missing;
+}
+
+reg var sink: u32 = load();

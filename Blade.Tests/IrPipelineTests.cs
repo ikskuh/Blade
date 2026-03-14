@@ -183,7 +183,8 @@ public class IrPipelineTests
         string assembly = FinalAssemblyWriter.Write(module);
 
         Assert.That(assembly, Does.Contain("""
-            $top_bb0
+              l_top
+              l_top_bb0
                 ' inline asm raw fallback begin
 
                 MOV _r4, #target_label

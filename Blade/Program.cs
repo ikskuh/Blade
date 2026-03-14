@@ -4,12 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using Blade;
 using Blade.Diagnostics;
-using Blade.IR;
-using Blade.Semantics;
-using Blade.Semantics.Bound;
 using Blade.Source;
-using Blade.Syntax;
-using Blade.Syntax.Nodes;
 
 CommandLineOptions? options = CommandLineOptions.Parse(args);
 if (options is null)
@@ -22,34 +17,26 @@ if (!File.Exists(options.FilePath))
 }
 
 string text = File.ReadAllText(options.FilePath);
-SourceText source = new(text, options.FilePath);
-DiagnosticBag diagnostics = new();
-
 Stopwatch sw = Stopwatch.StartNew();
-Parser parser = Parser.Create(source, diagnostics);
-CompilationUnitSyntax unit = parser.ParseCompilationUnit();
-BoundProgram boundProgram = Binder.Bind(unit, diagnostics);
-IrBuildResult? irBuild = null;
-if (diagnostics.Count == 0)
-{
-    IrPipelineOptions pipelineOptions = new()
+CompilationResult compilation = CompilerDriver.Compile(
+    text,
+    options.FilePath,
+    new CompilationOptions
     {
         EnableSingleCallsiteInlining = options.EnableSingleCallsiteInlining,
-    };
-    irBuild = IrPipeline.Build(boundProgram, pipelineOptions);
-}
+    });
 sw.Stop();
 
-foreach (Diagnostic diag in diagnostics)
+foreach (Diagnostic diag in compilation.Diagnostics)
 {
-    SourceLocation loc = source.GetLocation(diag.Span.Start);
+    SourceLocation loc = compilation.Source.GetLocation(diag.Span.Start);
     Console.WriteLine($"{loc}: {diag}");
 }
 
-if (diagnostics.Count > 0)
+if (compilation.Diagnostics.Count > 0)
     return 1;
 
-if (irBuild is null)
+if (compilation.IrBuildResult is null)
     return 1;
 
 DumpSelection dumpSelection = new()
@@ -63,7 +50,7 @@ DumpSelection dumpSelection = new()
     DumpAsmir = options.DumpAsmir,
     DumpFinalAsm = options.DumpFinalAsm,
 };
-Dictionary<string, string> dumpContent = DumpContentBuilder.Build(dumpSelection, irBuild);
+Dictionary<string, string> dumpContent = DumpContentBuilder.Build(dumpSelection, compilation.IrBuildResult);
 if (options.DumpDirectory is not null)
 {
     Directory.CreateDirectory(options.DumpDirectory);
@@ -87,11 +74,11 @@ else
 }
 
 Console.WriteLine();
-Console.WriteLine($"tokens : {parser.TokenCount}");
-Console.WriteLine($"members: {unit.Members.Count}");
-Console.WriteLine($"bound-fns: {boundProgram.Functions.Count}");
-Console.WriteLine($"mir-fns: {irBuild.MirModule.Functions.Count}");
-Console.WriteLine($"errors : {diagnostics.Count}");
+Console.WriteLine($"tokens : {compilation.TokenCount}");
+Console.WriteLine($"members: {compilation.Syntax.Members.Count}");
+Console.WriteLine($"bound-fns: {compilation.BoundProgram.Functions.Count}");
+Console.WriteLine($"mir-fns: {compilation.IrBuildResult.MirModule.Functions.Count}");
+Console.WriteLine($"errors : {compilation.Diagnostics.Count}");
 Console.WriteLine($"time   : {sw.Elapsed.TotalMilliseconds:F2} ms");
 
 return 0;

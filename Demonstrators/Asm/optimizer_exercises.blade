@@ -1,4 +1,11 @@
-// Small routines intended to exercise inline-asm optimization behavior.
+// EXPECT: pass
+// STAGE: final-asm
+// FLEXSPIN: forbidden
+// CONTAINS:
+// - MOV _r4, #target_label
+// - XOR _r4, _r5
+// NOTE:
+//   Small routines intended to exercise inline-asm optimization behavior.
 
 reg var input_word: u32 = 13;
 reg var copy_folded: u32 = 0;

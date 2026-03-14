@@ -1,0 +1,7 @@
+' EXPECT: pass
+' FLEXSPIN: required
+' EXACT:
+'   OR OUTA, #16
+'   RET
+OR OUTA, #16
+RET

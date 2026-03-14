@@ -117,34 +117,24 @@ The T4 template generates the actual C# diagnostic classes/enums from this table
 
 ## Testing
 
+### Regression Harness
+
+The main behavioral gate is the external regression harness in `Blade.Regressions`.
+It discovers fixtures under `Examples/`, `Demonstrators/`, and `RegressionTests/`,
+matches diagnostics and generated code against header expectations, and validates
+hand-written assembly through FlexSpin.
+
+- `Examples/` must stay pristine: no expectation headers, zero diagnostics only.
+- `Demonstrators/` may contain expectation headers and are part of the regression corpus.
+- `RegressionTests/` holds focused bug, diagnostic, and assembly fixtures.
+
+The header format and directive semantics are documented in `Docs/TestHarness.md`.
+
 ### Accept/Reject Test Files
 
-Tests use `.blade` source files organized into accept/reject collections:
-
-- **Accept files** (`Tests/Accept/*.blade`): Must compile successfully. May contain
-  expected warnings.
-- **Reject files** (`Tests/Reject/*.blade`): Must fail compilation with specific errors.
-
-Both accept and reject files encode expected diagnostics as codes in a comment on
-the **first line**:
-
-```blade
-// E1001, W2003
-rec fn deep() -> u32 {
-    return deep() + deep();  // E1001: stack depth exceeded
-}
-reg var unused: u32 = 0;     // W2003: unused variable
-```
-
-The test runner:
-1. Parses the first-line comment for expected diagnostic codes.
-2. Runs the compiler on the file.
-3. Asserts that **exactly** the listed diagnostics were emitted (no more, no fewer).
-4. For accept files: asserts compilation succeeds (only warnings, no errors).
-5. For reject files: asserts compilation fails (at least one error present).
-
-Accept files that produce PASM output can additionally be validated through FlexSpin
-to ensure the emitted assembly is syntactically valid.
+`Blade.Tests/Accept` and `Blade.Tests/Reject` still exist for focused NUnit
+coverage of parser/binder diagnostics. They use the older first-line diagnostic-code
+convention and are not the primary compiler-quality gate.
 
 ### Unit Tests
 
@@ -161,18 +151,15 @@ dotnet test
 The repo has a `justfile` with a few convenience commands:
 
 - `just all` runs the usual local verification sequence: `build`, `test`,
-  `compile-all-samples`, and `compile-known-breakage-samples`.
+  `regressions`, and `compile-all-samples`.
 - `just build` runs `dotnet build`.
 - `just test` runs `dotnet test`.
 - `just coverage` runs `dotnet test --collect:"XPlat Code Coverage"`.
+- `just regressions` runs the external regression harness over the full fixture corpus.
 - `just compile-all-samples` builds Blade and compiles the checked-in sample and
   demonstrator `.blade` programs, writing `*.dump.txt` files next to each sample.
-- `just compile-known-breakage-samples` builds Blade and runs the samples that are
-  intentionally expected to fail while current front-end/lowering gaps remain.
 - `just compile-sample <path>` runs `Blade/bin/Debug/net10.0/blade --dump-all`
   for one sample path and writes the dump beside the source file.
-- `just compile-sample-expected-breakage <path>` does the same, but keeps going
-  when the compiler exits non-zero and labels the output as expected breakage.
 
 ## P2 Architecture Quick Reference
 

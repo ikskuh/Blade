@@ -12,9 +12,15 @@ extern reg var   OUTB: u32 @(0x1FD);
 extern reg const INA:  u32 @(0x1FE);
 extern reg const INB:  u32 @(0x1FF);
 
-// while(true) {
+fn wait(cnt: u32) {
+    asm {
+        WAITX {cnt}
+    };
+}
+
+while(true) {
     OUTA |= 0x10;
-//     @sleepx(1000);
-//     OUTA = 0;
-//     @sleepx(1000);
-// }
+    wait(1000);
+    OUTA = 0;
+    wait(1000);
+}

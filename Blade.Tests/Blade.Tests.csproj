@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Blade\blade.csproj" />
+    <ProjectReference Include="..\Blade.Regressions\Blade.Regressions.csproj" />
   </ItemGroup>
 
   <ItemGroup>

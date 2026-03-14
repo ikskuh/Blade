@@ -1,4 +1,13 @@
-// asm volatile is useful when the exact instruction text and ordering must be preserved.
+// EXPECT: pass
+// STAGE: final-asm
+// SEQUENCE:
+// - SETQ _r3
+// - XINIT _r4, #0
+// - WAITX _r3
+// - NOP
+// - NOP
+// NOTE:
+//   asm volatile is useful when the exact instruction text and ordering must be preserved.
 
 reg var mode_word: u32 = 0x1234;
 reg var transfer_count: u32 = 4;

@@ -56,8 +56,7 @@ This would allow optimizing user-written assembly code and elide unnecessary MOV
 
 ## `rec fn` seems to miscompile
 
-Validate that `rec fn` uses CALLB and stack spilling
-
+Validate that `rec fn` uses CALLB and stack spilling when calling other rec functions.
 
 ## Assert that DIRA, OUTA, ... names are always bound to the correct special function register
 
@@ -77,3 +76,20 @@ The idea is that we introduce a proper testing framework or test runner outside 
 - Can validate generated instruction sequences
 - Can validate/match on generated code snippets (only raw code, always ignores comments and whitespace)
 - Can be used to run hand-written tests against hand-optimized assembly code
+
+## Add configuration for each optimization pass
+
+This is a no-brainer, but we need to have optimizations to be enabled and disabled so we can see if they are effective.
+
+## Type improvements
+
+- Distinct between `[*]T` and `*T` like in Zig. This gives better quality code without basically any drawbacks.
+
+
+## `@waitx(10)`
+
+does not compile properly at all.
+
+## constant file rendering is broken
+
+uses the old rendering method which is weirdly formatted.

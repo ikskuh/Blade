@@ -1,9 +1,11 @@
-// Example derived from the design doc's hub-string walker.
-//
-// Expected breakage:
-// - `hub var` is intentionally diagnosed today instead of lowered incorrectly.
-// - Pointer stepping over hub strings is not ready yet, so this stays as a
-//   forward-looking sample for the intended language shape.
+// EXPECT: xfail
+// DIAGNOSTICS:
+// - E0218: Storage class 'hub' is not supported yet.
+// - E0205
+// - E0205
+// NOTE:
+//   Example derived from the design doc's hub-string walker.
+//   `hub var` and the pointer-stepping shape are still front-end gaps.
 
 hub var greeting: [16]u8 = undefined;
 

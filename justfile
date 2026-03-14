@@ -1,5 +1,5 @@
 
-all: build test compile-all-samples compile-known-breakage-samples
+all: build test regressions compile-all-samples
 
 build:
     dotnet build
@@ -9,6 +9,9 @@ test:
 
 coverage:
     dotnet test --collect:"XPlat Code Coverage"
+
+regressions:
+    dotnet run --project Blade.Regressions --
 
 compile-all-samples: build \
     (compile-sample "Examples/blinky.blade") \
@@ -22,18 +25,10 @@ compile-all-samples: build \
     (compile-sample "Demonstrators/Asm/volatile_routines.blade") \
     (compile-sample "Demonstrators/Asm/optimizer_exercises.blade") \
     (compile-sample "Demonstrators/Asm/io_regular_asm.blade") \
-    (compile-sample "Demonstrators/Asm/math_routines.blade")
-
-# Samples in this target are intentionally expected to fail until the marked
-# front-end / lowering gaps are implemented.
-compile-known-breakage-samples: build \
-    (compile-sample-expected-breakage "Examples/hub_string_walk.blade")
+    (compile-sample "Demonstrators/Asm/math_routines.blade") \
+    (compile-sample "Demonstrators/Bugs/missing-copy.blade")
 
 
 compile-sample foo:
     Blade/bin/Debug/net10.0/blade --dump-all {{foo}} > {{ without_extension(foo) }}.dump.txt 
-
-compile-sample-expected-breakage foo:
-    @echo "EXPECTED BREAKAGE: {{foo}}"
-    -Blade/bin/Debug/net10.0/blade --dump-all {{foo}} > {{ without_extension(foo) }}.dump.txt 2>&1
  

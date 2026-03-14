@@ -1,5 +1,13 @@
-// Plain asm blocks with observable IO side effects.
-// These should remain even though they are not marked volatile.
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - OR DIRA, #16
+// - MOV _r1, INA
+// - AND _r1, #255
+// - ANDN OUTA, #16
+// NOTE:
+//   Plain asm blocks with observable IO side effects.
+//   These should remain even though they are not marked volatile.
 
 extern reg var DIRA: u32 @(0x1FA);
 extern reg var OUTA: u32 @(0x1FC);

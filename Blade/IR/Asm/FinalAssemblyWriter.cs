@@ -37,6 +37,8 @@ public static class FinalAssemblyWriter
             sb.Append(" (");
             sb.Append(function.CcTier);
             sb.AppendLine(")");
+            sb.Append("  ");
+            sb.AppendLine(FormatIdentifier(function.Name));
             WriteFunctionNodes(sb, function.Nodes);
         }
 
@@ -61,7 +63,7 @@ public static class FinalAssemblyWriter
             }
 
             sb.Append("    ");
-            sb.Append(place.EmittedName);
+            sb.Append(FormatIdentifier(place.EmittedName));
             sb.Append(" = 0x");
             sb.Append(place.FixedAddress.Value.ToString("X", CultureInfo.InvariantCulture));
             sb.AppendLine();
@@ -117,7 +119,7 @@ public static class FinalAssemblyWriter
 
         foreach ((string label, string directive, string value) in rows)
         {
-            sb.Append(label.PadRight(maxLabelWidth));
+            sb.Append(FormatIdentifier(label).PadRight(maxLabelWidth));
             sb.Append(' ');
             sb.Append(directive.PadRight(maxDirectiveWidth));
             sb.Append(' ');
@@ -234,8 +236,8 @@ public static class FinalAssemblyWriter
                 break;
 
             case AsmLabelNode label:
-                sb.Append(label.Name);
-                sb.AppendLine();
+                sb.Append("  ");
+                sb.AppendLine(FormatIdentifier(label.Name));
                 break;
 
             case AsmCommentNode comment:
@@ -290,7 +292,7 @@ public static class FinalAssemblyWriter
             AsmPhysicalRegisterOperand phys => phys.Name,
             AsmRegisterOperand virt => virt.Format(),
             AsmImmediateOperand imm => imm.Format(),
-            AsmPlaceOperand place => place.Place.EmittedName,
+            AsmPlaceOperand place => FormatIdentifier(place.Place.EmittedName),
             AsmSymbolOperand sym => FormatSymbolOperand(sym, instruction, operandIndex),
             _ => operand.Format(),
         };
@@ -318,11 +320,11 @@ public static class FinalAssemblyWriter
         // Jump/call opcodes: the target (last operand) gets # prefix
         if (P2InstructionMetadata.RequiresImmediateAddressPrefix(instruction.Opcode, instruction.Operands.Count, operandIndex))
         {
-            return $"#{sym.Name}";
+            return $"#{FormatIdentifier(sym.Name)}";
         }
 
         // Default: register reference (no # prefix)
-        return sym.Name;
+        return FormatIdentifier(sym.Name);
     }
 
     private static string FormatFlagEffect(AsmFlagEffect effect)
@@ -334,5 +336,35 @@ public static class FinalAssemblyWriter
             AsmFlagEffect.WCZ => "WCZ",
             _ => string.Empty,
         };
+    }
+
+    private static string FormatIdentifier(string name)
+    {
+        if (P2InstructionMetadata.IsSpecialRegisterName(name))
+            return name;
+
+        StringBuilder builder = new();
+        if (name.Length == 0)
+            return "l_";
+
+        char first = name[0];
+        if (char.IsLetter(first) || first == '_')
+        {
+            builder.Append(first);
+        }
+        else
+        {
+            builder.Append('l');
+            builder.Append(char.IsLetterOrDigit(first) || first == '_' ? first : '_');
+        }
+
+        for (int i = 1; i < name.Length; i++)
+        {
+            char ch = name[i];
+            bool isValidLater = char.IsLetterOrDigit(ch) || ch == '_';
+            builder.Append(isValidLater ? ch : '_');
+        }
+
+        return builder.ToString();
     }
 }
