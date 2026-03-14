@@ -21,13 +21,6 @@ public static class FinalAssemblyWriter
             || t.StartsWith("BYTE", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool IsJumpOrCallOpcode(string opcode)
-    {
-        return opcode is "JMP" or "TJZ" or "TJNZ" or "TJF" or "TJNF"
-            or "DJNZ" or "DJZ" or "CALL" or "CALLPA" or "CALLPB"
-            or "CALLB" or "CALLD" or "CALLA" or "LOC";
-    }
-
     public static string Write(AsmModule module)
     {
         StringBuilder sb = new();
@@ -58,7 +51,7 @@ public static class FinalAssemblyWriter
             if (place.Kind != StoragePlaceKind.FixedRegisterAlias || !place.FixedAddress.HasValue)
                 continue;
 
-            if (P2OpcodeInfo.IsSpecialRegisterName(place.EmittedName))
+            if (P2InstructionMetadata.IsSpecialRegisterName(place.EmittedName))
                 continue;
 
             if (!wroteHeader)
@@ -315,7 +308,7 @@ public static class FinalAssemblyWriter
         int operandIndex)
     {
         // Special register names: always plain
-        if (P2OpcodeInfo.IsSpecialRegisterName(sym.Name))
+        if (P2InstructionMetadata.IsSpecialRegisterName(sym.Name))
             return sym.Name;
 
         // $ (current address): always prefixed
@@ -323,14 +316,9 @@ public static class FinalAssemblyWriter
             return "#$";
 
         // Jump/call opcodes: the target (last operand) gets # prefix
-        if (IsJumpOrCallOpcode(instruction.Opcode))
+        if (P2InstructionMetadata.RequiresImmediateAddressPrefix(instruction.Opcode, instruction.Operands.Count, operandIndex))
         {
-            // For CALLPA/CALLPB: operand[0] = PA/PB, operand[1] = target
-            // For JMP/CALL: operand[0] = target
-            // For TJZ: operand[0] = cond, operand[1] = target
-            int targetIndex = instruction.Operands.Count - 1;
-            if (operandIndex == targetIndex)
-                return $"#{sym.Name}";
+            return $"#{sym.Name}";
         }
 
         // Default: register reference (no # prefix)

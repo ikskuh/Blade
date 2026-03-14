@@ -18,6 +18,11 @@ Docs/                           # Reference documentation
   Propeller-2-Hardware-Manual-20221101.pdf
   Propeller2-P2X8C4M64P-Datasheet-20221101.pdf
   Parallax Propeller 2 Instructions v35 - Rev B_C Silicon.csv
+  propeller2-instructions.xlsx  # Preprocessed instruction workbook (source for generated metadata)
+Scripts/
+  extract.py                    # Generates Blade/P2InstructionMetadata.g.cs from the workbook
+Blade/
+  P2InstructionMetadata.g.cs    # Generated singular source of truth for instruction metadata
 ```
 
 ## Host Environment
@@ -162,6 +167,20 @@ Key facts for compiler developers (see docs for full details):
 - **All functions ≤ 511 instructions** (architectural limit in COG/LUT exec)
 - **Instruction CSV**: `Docs/Parallax Propeller 2 Instructions v35 - Rev B_C Silicon.csv`
   has the full ISA with encodings, cycle counts, and flag effects
+- **Instruction metadata source of truth**: `Blade/P2InstructionMetadata.g.cs` is generated from
+  `Docs/propeller2-instructions.xlsx` by `Scripts/extract.py`. Do not hand-edit generated
+  instruction metadata. Regenerate it instead.
+
+## Generated Instruction Metadata
+
+- All instruction-related metadata queries must go through `Blade/P2InstructionMetadata.g.cs`.
+- Regenerate with:
+  ```sh
+  source .venv/bin/activate
+  python Scripts/extract.py
+  ```
+- `Scripts/extract.py` records the generation timestamp and command line in the generated file
+  header. If the workbook changes, rerun the generator and review the resulting diff.
 
 ## Calling Convention Tiering (Compiler Must Implement)
 

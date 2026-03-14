@@ -1,7 +1,5 @@
 using System;
-using System.Collections.Frozen;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text.RegularExpressions;
 using Blade.Diagnostics;
 using Blade.Source;
@@ -15,120 +13,6 @@ namespace Blade.Semantics;
 /// </summary>
 public static class InlineAssemblyValidator
 {
-    /// <summary>
-    /// Complete set of valid P2 instruction mnemonics (including aliases).
-    /// Derived from "Parallax Propeller 2 Instructions v35 - Rev B_C Silicon.csv".
-    /// </summary>
-    private static readonly FrozenSet<string> ValidInstructions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-    {
-        "ABS", "ADD", "ADDCT1", "ADDCT2", "ADDCT3", "ADDPIX", "ADDS", "ADDSX", "ADDX",
-        "AKPIN", "ALLOWI", "ALTB", "ALTD", "ALTGB", "ALTGN", "ALTGW", "ALTI", "ALTR",
-        "ALTS", "ALTSB", "ALTSN", "ALTSW", "AND", "ANDN", "AUGD", "AUGS",
-        "BITC", "BITH", "BITL", "BITNC", "BITNOT", "BITNZ", "BITRND", "BITZ",
-        "BLNPIX", "BMASK", "BRK",
-        "CALL", "CALLA", "CALLB", "CALLD", "CALLPA", "CALLPB",
-        "CMP", "CMPM", "CMPR", "CMPS", "CMPSUB", "CMPSX", "CMPX",
-        "COGATN", "COGBRK", "COGID", "COGINIT", "COGSTOP",
-        "CRCBIT", "CRCNIB",
-        "DECMOD", "DECOD",
-        "DIRC", "DIRH", "DIRL", "DIRNC", "DIRNOT", "DIRNZ", "DIRRND", "DIRZ",
-        "DJF", "DJNF", "DJNZ", "DJZ",
-        "DRVC", "DRVH", "DRVL", "DRVNC", "DRVNOT", "DRVNZ", "DRVRND", "DRVZ",
-        "ENCOD", "EXECF",
-        "FBLOCK", "FGE", "FGES", "FLE", "FLES",
-        "FLTC", "FLTH", "FLTL", "FLTNC", "FLTNOT", "FLTNZ", "FLTRND", "FLTZ",
-        "GETBRK", "GETBYTE", "GETCT", "GETNIB", "GETPTR", "GETQX", "GETQY",
-        "GETRND", "GETSCP", "GETWORD", "GETXACC",
-        "HUBSET",
-        "IJNZ", "IJZ", "INCMOD",
-        "JATN", "JCT1", "JCT2", "JCT3", "JFBW", "JINT", "JMP", "JMPREL",
-        "JNATN", "JNCT1", "JNCT2", "JNCT3", "JNFBW", "JNINT", "JNPAT", "JNQMT",
-        "JNSE1", "JNSE2", "JNSE3", "JNSE4", "JNXFI", "JNXMT", "JNXRL", "JNXRO",
-        "JPAT", "JQMT", "JSE1", "JSE2", "JSE3", "JSE4",
-        "JXFI", "JXMT", "JXRL", "JXRO",
-        "LOC", "LOCKNEW", "LOCKREL", "LOCKRET", "LOCKTRY",
-        "MERGEB", "MERGEW", "MIXPIX", "MODC", "MODCZ", "MODZ",
-        "MOV", "MOVBYTS", "MUL", "MULPIX", "MULS",
-        "MUXC", "MUXNC", "MUXNIBS", "MUXNITS", "MUXNZ", "MUXQ", "MUXZ",
-        "NEG", "NEGC", "NEGNC", "NEGNZ", "NEGZ",
-        "NIXINT1", "NIXINT2", "NIXINT3", "NOP", "NOT",
-        "ONES", "OR",
-        "OUTC", "OUTH", "OUTL", "OUTNC", "OUTNOT", "OUTNZ", "OUTRND", "OUTZ",
-        "POLLATN", "POLLCT1", "POLLCT2", "POLLCT3", "POLLFBW", "POLLINT",
-        "POLLPAT", "POLLQMT", "POLLSE1", "POLLSE2", "POLLSE3", "POLLSE4",
-        "POLLXFI", "POLLXMT", "POLLXRL", "POLLXRO",
-        "POP", "POPA", "POPB", "PUSH", "PUSHA", "PUSHB",
-        "QDIV", "QEXP", "QFRAC", "QLOG", "QMUL", "QROTATE", "QSQRT", "QVECTOR",
-        "RCZL", "RCZR",
-        "RDBYTE", "RDFAST", "RDLONG", "RDLUT", "RDPIN", "RDWORD",
-        "REP",
-        "RESI0", "RESI1", "RESI2", "RESI3",
-        "RET", "RETA", "RETB", "RETI0", "RETI1", "RETI2", "RETI3",
-        "REV",
-        "RFBYTE", "RFLONG", "RFVAR", "RFVARS", "RFWORD",
-        "RGBEXP", "RGBSQZ",
-        "ROL", "ROLBYTE", "ROLNIB", "ROLWORD", "ROR",
-        "RQPIN",
-        "RCL", "RCR",
-        "SAL", "SAR",
-        "SCA", "SCAS",
-        "SETBYTE", "SETCFRQ", "SETCI", "SETCMOD", "SETCQ", "SETCY",
-        "SETD", "SETDACS", "SETINT1", "SETINT2", "SETINT3", "SETLUTS",
-        "SETNIB", "SETPAT", "SETPIV", "SETPIX", "SETQ", "SETQ2",
-        "SETR", "SETS", "SETSCP", "SETSE1", "SETSE2", "SETSE3", "SETSE4",
-        "SETWORD", "SETXFRQ",
-        "SEUSSF", "SEUSSR",
-        "SHL", "SHR", "SIGNX",
-        "SKIP", "SKIPF", "SPLITB", "SPLITW", "STALLI",
-        "SUB", "SUBR", "SUBS", "SUBSX", "SUBX",
-        "SUMC", "SUMNC", "SUMNZ", "SUMZ",
-        "TEST", "TESTB", "TESTBN", "TESTN", "TESTP", "TESTPN",
-        "TJF", "TJNF", "TJNS", "TJNZ", "TJS", "TJV", "TJZ",
-        "TRGINT1", "TRGINT2", "TRGINT3",
-        "WAITATN", "WAITCT1", "WAITCT2", "WAITCT3", "WAITFBW", "WAITINT",
-        "WAITPAT", "WAITSE1", "WAITSE2", "WAITSE3", "WAITSE4",
-        "WAITX", "WAITXFI", "WAITXMT", "WAITXRL", "WAITXRO",
-        "WFBYTE", "WFLONG", "WFWORD",
-        "WMLONG", "WRBYTE", "WRC", "WRFAST", "WRLONG", "WRLUT",
-        "WRNC", "WRNZ", "WRPIN", "WRWORD", "WRZ",
-        "WXPIN", "WYPIN",
-        "XCONT", "XINIT", "XOR", "XORO32", "XSTOP", "XZERO",
-        "ZEROX",
-    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
-
-    /// <summary>
-    /// Valid condition prefixes (IF_xx and _RET_).
-    /// </summary>
-    private static readonly FrozenSet<string> ValidConditions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-    {
-        "_RET_",
-        "IF_NC_AND_NZ", "IF_NZ_AND_NC", "IF_GT", "IF_A", "IF_00",
-        "IF_NC_AND_Z", "IF_Z_AND_NC", "IF_01",
-        "IF_NC", "IF_GE", "IF_AE", "IF_0X",
-        "IF_C_AND_NZ", "IF_NZ_AND_C", "IF_10",
-        "IF_NZ", "IF_NE", "IF_X0",
-        "IF_C_NE_Z", "IF_Z_NE_C", "IF_DIFF",
-        "IF_NC_OR_NZ", "IF_NZ_OR_NC", "IF_NOT_11",
-        "IF_C_AND_Z", "IF_Z_AND_C", "IF_11",
-        "IF_C_EQ_Z", "IF_Z_EQ_C", "IF_SAME",
-        "IF_Z", "IF_E", "IF_X1",
-        "IF_NC_OR_Z", "IF_Z_OR_NC", "IF_NOT_10",
-        "IF_C", "IF_LT", "IF_B", "IF_1X",
-        "IF_C_OR_NZ", "IF_NZ_OR_C", "IF_NOT_01",
-        "IF_C_OR_Z", "IF_Z_OR_C", "IF_LE", "IF_BE", "IF_NOT_00",
-    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
-
-    /// <summary>
-    /// Valid flag effect suffixes.
-    /// </summary>
-    private static readonly FrozenSet<string> ValidFlagEffects = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-    {
-        "WC", "WZ", "WCZ",
-        "ANDC", "ANDZ",
-        "ORC", "ORZ",
-        "XORC", "XORZ",
-    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
-
     /// <summary>
     /// Represents a single parsed inline assembly instruction line.
     /// </summary>
@@ -206,7 +90,7 @@ public static class InlineAssemblyValidator
 
         // Check for condition prefix at the start
         string firstWord = GetFirstWord(remaining);
-        if (ValidConditions.Contains(firstWord))
+        if (P2InstructionMetadata.IsValidConditionPrefix(firstWord))
         {
             condition = firstWord.ToUpperInvariant();
             remaining = remaining[firstWord.Length..].TrimStart();
@@ -220,7 +104,7 @@ public static class InlineAssemblyValidator
             return null;
         }
 
-        if (!ValidInstructions.Contains(mnemonic))
+        if (!P2InstructionMetadata.IsValidInstruction(mnemonic))
         {
             diagnostics.ReportInlineAsmUnknownInstruction(blockSpan, mnemonic);
             return null;
@@ -231,7 +115,7 @@ public static class InlineAssemblyValidator
         // Check for flag effects at the end
         // Need to look at the last word(s)
         string lastWord = GetLastWord(remaining);
-        if (!string.IsNullOrEmpty(lastWord) && ValidFlagEffects.Contains(lastWord))
+        if (!string.IsNullOrEmpty(lastWord) && P2InstructionMetadata.IsValidFlagEffect(lastWord))
         {
             flagEffect = lastWord.ToUpperInvariant();
             remaining = remaining[..remaining.LastIndexOf(lastWord, StringComparison.OrdinalIgnoreCase)].TrimEnd();
@@ -304,11 +188,11 @@ public static class InlineAssemblyValidator
     /// Returns true if the given mnemonic is a valid P2 instruction.
     /// </summary>
     public static bool IsValidInstruction(string mnemonic)
-        => ValidInstructions.Contains(mnemonic);
+        => P2InstructionMetadata.IsValidInstruction(mnemonic);
 
     /// <summary>
     /// Returns true if the given name is a valid condition prefix.
     /// </summary>
     public static bool IsValidCondition(string name)
-        => ValidConditions.Contains(name);
+        => P2InstructionMetadata.IsValidConditionPrefix(name);
 }

@@ -178,7 +178,7 @@ public static class AsmOptimizer
         if (TryGetTrackedCopy(instruction, out AsmRegisterOperand copyDestination, out _))
             return !live.Contains(copyDestination.RegisterId);
 
-        if (!P2OpcodeInfo.IsPureRegisterLocalInstruction(instruction)
+        if (!IsPureRegisterLocalInstruction(instruction)
             || instruction.Operands[0] is not AsmRegisterOperand destination)
         {
             return false;
@@ -358,11 +358,32 @@ public static class AsmOptimizer
         if (instruction.Predicate is not null || instruction.FlagEffect != AsmFlagEffect.None)
             return true;
 
-        return instruction.Opcode is "JMP" or "TJZ" or "TJNZ" or "TJF" or "TJNF"
-            or "DJNZ" or "DJZ"
-            or "CALL" or "CALLA" or "CALLB" or "CALLD" or "CALLPA" or "CALLPB"
-            or "RET" or "RETA" or "RETB" or "RETI0" or "RETI1" or "RETI2" or "RETI3"
-            or "LOC";
+        return P2InstructionMetadata.IsControlFlow(instruction.Opcode, instruction.Operands.Count)
+            || P2InstructionMetadata.RequiresImmediateAddressPrefix(
+                instruction.Opcode,
+                instruction.Operands.Count,
+                instruction.Operands.Count - 1);
+    }
+
+    private static bool IsPureRegisterLocalInstruction(AsmInstructionNode instruction)
+    {
+        if (instruction.Predicate is not null
+            || instruction.FlagEffect != AsmFlagEffect.None
+            || instruction.Operands.Count == 0
+            || instruction.Operands[0] is not AsmRegisterOperand
+            || !P2InstructionMetadata.IsPureRegisterLocal(instruction.Opcode, instruction.Operands.Count))
+        {
+            return false;
+        }
+
+        for (int i = 1; i < instruction.Operands.Count; i++)
+        {
+            if (instruction.Operands[i] is AsmRegisterOperand or AsmImmediateOperand)
+                continue;
+            return false;
+        }
+
+        return true;
     }
 
     private static bool OperandsEquivalent(AsmOperand left, AsmOperand right)

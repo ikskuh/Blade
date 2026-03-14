@@ -241,7 +241,7 @@ public static class RegisterAllocator
             HashSet<string> callees = [];
             foreach (AsmNode node in function.Nodes)
             {
-                if (node is AsmInstructionNode instruction && P2OpcodeInfo.IsCall(instruction.Opcode))
+                if (node is AsmInstructionNode instruction && P2InstructionMetadata.IsCall(instruction.Opcode, instruction.Operands.Count))
                 {
                     foreach (AsmOperand operand in instruction.Operands)
                     {

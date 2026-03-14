@@ -7,6 +7,9 @@ build:
 test:
     dotnet test
 
+coverage:
+    dotnet test --collect:"XPlat Code Coverage"
+
 compile-all-samples: build \
     (compile-sample "Examples/blinky.blade") \
     (compile-sample "Examples/clamp.blade") \

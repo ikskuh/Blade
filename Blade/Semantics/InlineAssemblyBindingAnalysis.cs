@@ -127,25 +127,25 @@ public static class InlineAssemblyBindingAnalysis
         int operandCount,
         out InlineAsmBindingAccess[]? operandAccesses)
     {
-        operandAccesses = mnemonic switch
-        {
-            "MOV" when operandCount == 2 => [InlineAsmBindingAccess.Write, InlineAsmBindingAccess.Read],
-            "ADD" when operandCount == 2 => [InlineAsmBindingAccess.ReadWrite, InlineAsmBindingAccess.Read],
-            "SUB" when operandCount == 2 => [InlineAsmBindingAccess.ReadWrite, InlineAsmBindingAccess.Read],
-            "AND" when operandCount == 2 => [InlineAsmBindingAccess.ReadWrite, InlineAsmBindingAccess.Read],
-            "OR" when operandCount == 2 => [InlineAsmBindingAccess.ReadWrite, InlineAsmBindingAccess.Read],
-            "XOR" when operandCount == 2 => [InlineAsmBindingAccess.ReadWrite, InlineAsmBindingAccess.Read],
-            "SHL" when operandCount == 2 => [InlineAsmBindingAccess.ReadWrite, InlineAsmBindingAccess.Read],
-            "SHR" when operandCount == 2 => [InlineAsmBindingAccess.ReadWrite, InlineAsmBindingAccess.Read],
-            "CMP" when operandCount == 2 => [InlineAsmBindingAccess.Read, InlineAsmBindingAccess.Read],
-            "TEST" when operandCount == 2 => [InlineAsmBindingAccess.Read, InlineAsmBindingAccess.Read],
-            "TESTN" when operandCount == 2 => [InlineAsmBindingAccess.Read, InlineAsmBindingAccess.Read],
-            "TESTB" when operandCount == 2 => [InlineAsmBindingAccess.Read, InlineAsmBindingAccess.Read],
-            "TESTBN" when operandCount == 2 => [InlineAsmBindingAccess.Read, InlineAsmBindingAccess.Read],
-            _ => null,
-        };
+        operandAccesses = null;
+        if (!P2InstructionMetadata.TryGetInstructionForm(mnemonic, operandCount, out _))
+            return false;
 
-        return operandAccesses is not null;
+        InlineAsmBindingAccess[] accesses = new InlineAsmBindingAccess[operandCount];
+        for (int operandIndex = 0; operandIndex < operandCount; operandIndex++)
+        {
+            P2OperandAccess access = P2InstructionMetadata.GetOperandAccess(mnemonic, operandCount, operandIndex);
+            accesses[operandIndex] = access switch
+            {
+                P2OperandAccess.Read => InlineAsmBindingAccess.Read,
+                P2OperandAccess.Write => InlineAsmBindingAccess.Write,
+                P2OperandAccess.ReadWrite => InlineAsmBindingAccess.ReadWrite,
+                _ => InlineAsmBindingAccess.ReadWrite,
+            };
+        }
+
+        operandAccesses = accesses;
+        return true;
     }
 
     private static InlineAsmBindingAccess Merge(InlineAsmBindingAccess current, InlineAsmBindingAccess next)

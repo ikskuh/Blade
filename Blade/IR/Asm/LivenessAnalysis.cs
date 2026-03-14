@@ -105,8 +105,9 @@ public static class LivenessAnalyzer
             {
                 leaders.Add(i);
             }
-            else if (nodes[i] is AsmInstructionNode instruction &&
-                     (P2OpcodeInfo.IsBranch(instruction.Opcode) || P2OpcodeInfo.IsReturn(instruction.Opcode)))
+            else if (nodes[i] is AsmInstructionNode instruction
+                     && P2InstructionMetadata.TryGetInstructionForm(instruction.Opcode, instruction.Operands.Count, out P2InstructionFormInfo form)
+                     && (form.IsBranch || form.IsReturn))
             {
                 if (i + 1 < nodes.Count)
                     leaders.Add(i + 1);
@@ -169,8 +170,12 @@ public static class LivenessAnalyzer
                 continue;
             }
 
-            bool isBranch = P2OpcodeInfo.IsBranch(lastInstruction.Opcode);
-            bool isReturn = P2OpcodeInfo.IsReturn(lastInstruction.Opcode);
+            bool hasForm = P2InstructionMetadata.TryGetInstructionForm(
+                lastInstruction.Opcode,
+                lastInstruction.Operands.Count,
+                out P2InstructionFormInfo lastInstructionForm);
+            bool isBranch = hasForm && lastInstructionForm.IsBranch;
+            bool isReturn = hasForm && lastInstructionForm.IsReturn;
 
             if (isReturn)
             {
@@ -181,9 +186,11 @@ public static class LivenessAnalyzer
             if (isBranch)
             {
                 // Find branch target
-                AsmSymbolOperand? target = lastInstruction.Operands
-                    .OfType<AsmSymbolOperand>()
-                    .FirstOrDefault();
+                AsmSymbolOperand? target = hasForm
+                    && lastInstructionForm.ImmediateLabelOperandIndex >= 0
+                    && lastInstructionForm.ImmediateLabelOperandIndex < lastInstruction.Operands.Count
+                    ? lastInstruction.Operands[lastInstructionForm.ImmediateLabelOperandIndex] as AsmSymbolOperand
+                    : null;
 
                 if (target is not null && labelToBlock.TryGetValue(target.Name, out int targetBlock))
                     block.SuccessorBlockIndices.Add(targetBlock);
@@ -240,85 +247,18 @@ public static class LivenessAnalyzer
 
     private static void ProcessInstruction(AsmInstructionNode instruction, BasicBlock block)
     {
-        string opcode = instruction.Opcode;
-
-        if (P2OpcodeInfo.HasNoRegisterEffect(opcode))
+        if (P2InstructionMetadata.HasNoRegisterEffect(instruction.Opcode, instruction.Operands.Count))
             return;
 
-        bool isPredicated = instruction.Predicate is not null;
+        List<int> defs = [];
+        List<int> uses = [];
+        ExtractInstructionDefsUses(instruction, defs, uses);
 
-        if (instruction.Operands.Count == 0)
-            return;
+        foreach (int registerId in uses)
+            AddUse(block, registerId);
 
-        // Handle calls specially: they may use/def specific operands
-        if (P2OpcodeInfo.IsCall(opcode))
-        {
-            // CALLPA/CALLPB: operand[0] is read (PA/PB), operand[1] is the target (read)
-            // CALL: operand[0] is the target (read)
-            foreach (AsmOperand operand in instruction.Operands)
-            {
-                if (operand is AsmRegisterOperand reg)
-                    AddUse(block, reg.RegisterId);
-            }
-            return;
-        }
-
-        AsmOperand dest = instruction.Operands[0];
-
-        if (P2OpcodeInfo.IsReadOnly(opcode))
-        {
-            // Both operands are reads only
-            foreach (AsmOperand operand in instruction.Operands)
-            {
-                if (operand is AsmRegisterOperand reg)
-                    AddUse(block, reg.RegisterId);
-            }
-            return;
-        }
-
-        if (P2OpcodeInfo.IsBranch(opcode))
-        {
-            // Branches: TJZ/TJNZ read operand[0]; DJNZ/DJZ read-modify-write operand[0]
-            if (P2OpcodeInfo.ReadsDestination(opcode) && dest is AsmRegisterOperand djReg)
-            {
-                AddUse(block, djReg.RegisterId);
-                AddDef(block, djReg.RegisterId);
-            }
-            else if (dest is AsmRegisterOperand branchReg)
-            {
-                AddUse(block, branchReg.RegisterId);
-            }
-            // Target operand is a symbol, not a register
-            return;
-        }
-
-        // Standard two-operand instructions
-        bool definesD = P2OpcodeInfo.DefinesDestination(opcode);
-        bool readsD = P2OpcodeInfo.ReadsDestination(opcode);
-
-        // If predicated, the old value of D may survive — treat as both def and use
-        if (isPredicated && definesD && dest is AsmRegisterOperand predDest)
-        {
-            AddUse(block, predDest.RegisterId);
-        }
-
-        // Source operands (operand[1..])
-        for (int i = 1; i < instruction.Operands.Count; i++)
-        {
-            if (instruction.Operands[i] is AsmRegisterOperand srcReg)
-                AddUse(block, srcReg.RegisterId);
-        }
-
-        // Destination
-        if (readsD && dest is AsmRegisterOperand rmwDest)
-        {
-            AddUse(block, rmwDest.RegisterId);
-        }
-
-        if (definesD && dest is AsmRegisterOperand defDest)
-        {
-            AddDef(block, defDest.RegisterId);
-        }
+        foreach (int registerId in defs)
+            AddDef(block, registerId);
     }
 
     private static void AddUse(BasicBlock block, int registerId)
@@ -395,13 +335,11 @@ public static class LivenessAnalyzer
                 {
                     case AsmInstructionNode instruction:
                     {
-                        string opcode = instruction.Opcode;
-
-                        if (P2OpcodeInfo.HasNoRegisterEffect(opcode))
+                        if (P2InstructionMetadata.HasNoRegisterEffect(instruction.Opcode, instruction.Operands.Count))
                             continue;
 
                         // If this is a call, all currently-live registers are live across it
-                        if (P2OpcodeInfo.IsCall(opcode))
+                        if (P2InstructionMetadata.IsCall(instruction.Opcode, instruction.Operands.Count))
                         {
                             foreach (int reg in live)
                                 liveAcrossCall.Add(reg);
@@ -479,67 +417,48 @@ public static class LivenessAnalyzer
         List<int> defs,
         List<int> uses)
     {
-        string opcode = instruction.Opcode;
         bool isPredicated = instruction.Predicate is not null;
 
         if (instruction.Operands.Count == 0)
             return;
 
-        if (P2OpcodeInfo.IsCall(opcode))
+        if (!P2InstructionMetadata.TryGetInstructionForm(
+                instruction.Opcode,
+                instruction.Operands.Count,
+                out _))
         {
             foreach (AsmOperand operand in instruction.Operands)
             {
                 if (operand is AsmRegisterOperand reg)
+                {
                     uses.Add(reg.RegisterId);
+                    defs.Add(reg.RegisterId);
+                }
             }
             return;
         }
 
-        AsmOperand dest = instruction.Operands[0];
-
-        if (P2OpcodeInfo.IsReadOnly(opcode))
+        for (int operandIndex = 0; operandIndex < instruction.Operands.Count; operandIndex++)
         {
-            foreach (AsmOperand operand in instruction.Operands)
+            if (instruction.Operands[operandIndex] is not AsmRegisterOperand register)
+                continue;
+
+            P2OperandAccess access = P2InstructionMetadata.GetOperandAccess(
+                instruction.Opcode,
+                instruction.Operands.Count,
+                operandIndex);
+
+            if (access is P2OperandAccess.Read or P2OperandAccess.ReadWrite)
+                uses.Add(register.RegisterId);
+
+            if (access is P2OperandAccess.Write or P2OperandAccess.ReadWrite)
             {
-                if (operand is AsmRegisterOperand reg)
-                    uses.Add(reg.RegisterId);
+                if (isPredicated && access == P2OperandAccess.Write)
+                    uses.Add(register.RegisterId);
+
+                defs.Add(register.RegisterId);
             }
-            return;
         }
-
-        if (P2OpcodeInfo.IsBranch(opcode))
-        {
-            if (P2OpcodeInfo.ReadsDestination(opcode) && dest is AsmRegisterOperand djReg)
-            {
-                uses.Add(djReg.RegisterId);
-                defs.Add(djReg.RegisterId);
-            }
-            else if (dest is AsmRegisterOperand branchReg)
-            {
-                uses.Add(branchReg.RegisterId);
-            }
-            return;
-        }
-
-        bool definesD = P2OpcodeInfo.DefinesDestination(opcode);
-        bool readsD = P2OpcodeInfo.ReadsDestination(opcode);
-
-        // Predicated: old value may survive
-        if (isPredicated && definesD && dest is AsmRegisterOperand predDest)
-            uses.Add(predDest.RegisterId);
-
-        // Source operands
-        for (int i = 1; i < instruction.Operands.Count; i++)
-        {
-            if (instruction.Operands[i] is AsmRegisterOperand srcReg)
-                uses.Add(srcReg.RegisterId);
-        }
-
-        if (readsD && dest is AsmRegisterOperand rmwDest)
-            uses.Add(rmwDest.RegisterId);
-
-        if (definesD && dest is AsmRegisterOperand defDest)
-            defs.Add(defDest.RegisterId);
     }
 
     private static void EnsureNode(Dictionary<int, HashSet<int>> graph, int id)
