@@ -57,6 +57,13 @@ public static class P2OpcodeInfo
         "NOP", "REP", "AUGS", "AUGD",
     ];
 
+    private static readonly HashSet<string> SpecialRegisterNames =
+    [
+        "PA", "PB", "PTRA", "PTRB",
+        "DIRA", "DIRB", "OUTA", "OUTB", "INA", "INB",
+        "IJMP1", "IRET1", "IJMP2", "IRET2", "IJMP3", "IRET3",
+    ];
+
     private static readonly HashSet<string> PureRegisterLocalOpcodes =
     [
         "MOV", "NEG", "ABS", "NOT",
@@ -115,6 +122,9 @@ public static class P2OpcodeInfo
     /// </summary>
     public static bool HasNoRegisterEffect(string opcode)
         => NoEffectOpcodes.Contains(opcode);
+
+    public static bool IsSpecialRegisterName(string name)
+        => SpecialRegisterNames.Contains(name);
 
     /// <summary>
     /// Returns true when the instruction is a local-register-only data transform

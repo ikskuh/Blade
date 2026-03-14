@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Globalization;
 using Blade.Semantics;
 using Blade.Source;
 
@@ -120,6 +122,7 @@ public static class MirInliner
             foreach (MirBlock block in source.Blocks)
                 _blocks.Add(new MutableBlock(block.Label, block.Parameters, block.Instructions, block.Terminator));
             _nextValueId = ComputeNextValueId(source);
+            _inlineOrdinal = ComputeNextInlineOrdinal(source);
         }
 
         public bool TryInline(
@@ -160,12 +163,12 @@ public static class MirInliner
             for (int i = instructionIndex + 1; i < callerBlock.Instructions.Count; i++)
                 suffix.Add(callerBlock.Instructions[i]);
 
-            MutableBlock afterBlock = CreateAfterBlock(call, suffix, callerBlock.Terminator);
+            int inlineOrdinal = _inlineOrdinal++;
+            MutableBlock afterBlock = CreateAfterBlock(call, suffix, callerBlock.Terminator, inlineOrdinal);
 
             Dictionary<string, string> labelMap = new();
             foreach (MirBlock calleeBlock in callee.Blocks)
-                labelMap[calleeBlock.Label] = $"inl_{_inlineOrdinal}_{calleeBlock.Label}";
-            _inlineOrdinal++;
+                labelMap[calleeBlock.Label] = $"inl_{inlineOrdinal}_{calleeBlock.Label}";
 
             List<MutableBlock> clonedBlocks = CloneCalleeBlocks(call, callee, labelMap, afterBlock.Label);
             List<MirValueId> entryArguments = BuildEntryArguments(call, callee.Blocks[0], callerBlock, call.Span);
@@ -312,7 +315,8 @@ public static class MirInliner
         private MutableBlock CreateAfterBlock(
             MirCallInstruction call,
             IReadOnlyList<MirInstruction> suffix,
-            MirTerminator terminator)
+            MirTerminator terminator,
+            int inlineOrdinal)
         {
             List<MirBlockParameter> parameters = [];
             if (call.Result is MirValueId callResult)
@@ -321,7 +325,7 @@ public static class MirInliner
                 parameters.Add(new MirBlockParameter(callResult, "ret0", type));
             }
 
-            string label = $"inl_after_{_inlineOrdinal}";
+            string label = $"inl_after_{inlineOrdinal}";
             return new MutableBlock(label, parameters, suffix, terminator);
         }
 
@@ -350,6 +354,42 @@ public static class MirInliner
         }
 
         private MirValueId NextValue() => new(_nextValueId++);
+
+        private static int ComputeNextInlineOrdinal(MirFunction function)
+        {
+            int nextOrdinal = 0;
+            foreach (MirBlock block in function.Blocks)
+            {
+                if (TryGetInlineOrdinal(block.Label, out int ordinal))
+                    nextOrdinal = Math.Max(nextOrdinal, ordinal + 1);
+            }
+
+            return nextOrdinal;
+        }
+
+        private static bool TryGetInlineOrdinal(string label, out int ordinal)
+        {
+            ordinal = default;
+            const string inlinePrefix = "inl_";
+            const string afterPrefix = "inl_after_";
+
+            ReadOnlySpan<char> source = label.AsSpan();
+            if (source.StartsWith(afterPrefix, StringComparison.Ordinal))
+                return TryParseInlineOrdinal(source[afterPrefix.Length..], out ordinal);
+
+            if (!source.StartsWith(inlinePrefix, StringComparison.Ordinal))
+                return false;
+
+            return TryParseInlineOrdinal(source[inlinePrefix.Length..], out ordinal);
+        }
+
+        private static bool TryParseInlineOrdinal(ReadOnlySpan<char> source, out int ordinal)
+        {
+            ordinal = default;
+            int separator = source.IndexOf('_');
+            ReadOnlySpan<char> number = separator >= 0 ? source[..separator] : source;
+            return int.TryParse(number, NumberStyles.None, CultureInfo.InvariantCulture, out ordinal);
+        }
 
         private static int ComputeNextValueId(MirFunction function)
         {

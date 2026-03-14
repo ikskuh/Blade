@@ -57,3 +57,10 @@ This would allow optimizing user-written assembly code and elide unnecessary MOV
 ## `rec fn` seems to miscompile
 
 Validate that `rec fn` uses CALLB and stack spilling
+
+
+## Assert that DIRA, OUTA, ... names are always bound to the correct special function register
+
+In FinalAssemblyWriter.WriteConBlock, skip CON alias emission when the fixed-address alias name is already a real hardware register identifier (DIRA, OUTA, INA, etc.).
+
+## `undefined` keyword for no-init locals

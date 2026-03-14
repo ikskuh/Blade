@@ -1,0 +1,31 @@
+// Tight math and bit-twiddling routines using plain optimizer-visible asm.
+
+reg var input_a: u32 = 7;
+reg var input_b: u32 = 11;
+reg var scaled_sum: u32 = 0;
+reg var masked_mix: u32 = 0;
+
+fn mul_by_ten(x: u32) -> u32 {
+    var out: u32 = 0;
+    asm {
+        MOV {out}, {x}
+        SHL {out}, #1
+        ADD {out}, {x}
+        SHL {out}, #1
+        ADD {out}, {x}
+    };
+    return out;
+}
+
+fn accumulate_masked(lhs: u32, rhs: u32) -> u32 {
+    var out: u32 = 0;
+    asm {
+        MOV {out}, {lhs}
+        ADD {out}, {rhs}
+        AND {out}, #0xFF
+    };
+    return out;
+}
+
+scaled_sum = mul_by_ten(input_a);
+masked_mix = accumulate_masked(scaled_sum, input_b);

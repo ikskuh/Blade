@@ -53,6 +53,17 @@ public static class AsmTextWriter
                 sb.AppendLine(comment.Text);
                 break;
 
+            case AsmImplicitUseNode implicitUse:
+                sb.Append("    .use ");
+                for (int i = 0; i < implicitUse.Operands.Count; i++)
+                {
+                    if (i > 0)
+                        sb.Append(", ");
+                    sb.Append(implicitUse.Operands[i].Format());
+                }
+                sb.AppendLine();
+                break;
+
             case AsmInstructionNode instruction:
                 sb.Append("    ");
                 if (!string.IsNullOrWhiteSpace(instruction.Predicate))

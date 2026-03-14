@@ -83,6 +83,13 @@ public static class RegisterAllocator
                             allRegs.Add(reg.RegisterId);
                     }
                     break;
+                case AsmImplicitUseNode implicitUse:
+                    foreach (AsmOperand operand in implicitUse.Operands)
+                    {
+                        if (operand is AsmRegisterOperand reg)
+                            allRegs.Add(reg.RegisterId);
+                    }
+                    break;
             }
         }
 
@@ -494,6 +501,15 @@ public static class RegisterAllocator
                         rewrittenNodes.Add(new AsmInlineTextNode(
                             RewriteInlineAsmText(inlineText.Text, inlineText.Bindings, regToSlot)));
                         break;
+
+                    case AsmImplicitUseNode implicitUse:
+                    {
+                        List<AsmOperand> operands = new(implicitUse.Operands.Count);
+                        foreach (AsmOperand operand in implicitUse.Operands)
+                            operands.Add(RewriteOperand(operand, regToSlot));
+                        rewrittenNodes.Add(new AsmImplicitUseNode(operands));
+                        break;
+                    }
 
                     default:
                         rewrittenNodes.Add(node);

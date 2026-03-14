@@ -1,0 +1,253 @@
+;; 00_bound.ir
+Program
+  TypeAliases
+  Globals
+    input_word: u32
+      Conversion<u32>
+        Literal<<int-literal>> 13
+    copy_folded: u32
+      Conversion<u32>
+        Literal<<int-literal>> 0
+    fallback_kept: u32
+      Conversion<u32>
+        Literal<<int-literal>> 0
+    dead_code_visible: u32
+      Conversion<u32>
+        Literal<<int-literal>> 0
+  TopLevelStatements
+    Assign (Equal)
+      TargetSymbol<u32> copy_folded
+      Call<u32> copy_chain
+        Symbol<u32> input_word
+    Assign (Equal)
+      TargetSymbol<u32> dead_code_visible
+      Call<u32> dead_local_math
+        Symbol<u32> copy_folded
+    Assign (Equal)
+      TargetSymbol<u32> fallback_kept
+      Call<u32> unsupported_operand_falls_back
+        Symbol<u32> dead_code_visible
+  Functions
+    copy_chain (Default)
+      Block
+        VarDecl tmp0: u32
+          Conversion<u32>
+            Literal<<int-literal>> 0
+        VarDecl tmp1: u32
+          Conversion<u32>
+            Literal<<int-literal>> 0
+        VarDecl out: u32
+          Conversion<u32>
+            Literal<<int-literal>> 0
+        Asm [NonVolatile] (no-flag)
+        Return
+          Symbol<u32> out
+    dead_local_math (Default)
+      Block
+        VarDecl scratch: u32
+          Conversion<u32>
+            Literal<<int-literal>> 0
+        Asm [NonVolatile] (no-flag)
+        Return
+          Symbol<u32> x
+    unsupported_operand_falls_back (Default)
+      Block
+        VarDecl out: u32
+          Conversion<u32>
+            Literal<<int-literal>> 0
+        Asm [NonVolatile] (no-flag)
+        Return
+          Binary<u32> BitwiseXor
+            Symbol<u32> out
+            Symbol<u32> x
+
+
+;; 10_mir.ir
+; MIR v1
+
+fn $top kind=Default entry returns=()
+{
+  bb0():
+    %v0:u32 = load.place g_input_word_7
+    %v8:u32 = const 0
+    %v10:u32 = const 0
+    %v12:u32 = const 0
+    inlineasm tmp0=%v8, x=%v0, tmp1=%v10, out=%v12 ; sidefx
+    store.place g_copy_folded_8(%v12) ; sidefx
+    %v2:u32 = load.place g_copy_folded_8
+    %v16:u32 = const 0
+    inlineasm scratch=%v16, x=%v2 ; sidefx
+    store.place g_dead_code_visible_10(%v2) ; sidefx
+    %v4:u32 = load.place g_dead_code_visible_10
+    %v20:u32 = const 0
+    inlineasm out=%v20 ; sidefx
+    %v21:u32 = binary.BitwiseXor %v20, %v4
+    store.place g_fallback_kept_9(%v21) ; sidefx
+    ret 
+}
+
+fn copy_chain kind=Default returns=(u32)
+{
+  bb0(%v1:u32 x):
+    %v3:u32 = const 0
+    %v5:u32 = const 0
+    %v7:u32 = const 0
+    inlineasm tmp0=%v3, x=%v1, tmp1=%v5, out=%v7 ; sidefx
+    ret %v7
+}
+
+fn dead_local_math kind=Default returns=(u32)
+{
+  bb0(%v1:u32 x):
+    %v3:u32 = const 0
+    inlineasm scratch=%v3, x=%v1 ; sidefx
+    ret %v1
+}
+
+fn unsupported_operand_falls_back kind=Default returns=(u32)
+{
+  bb0(%v1:u32 x):
+    %v3:u32 = const 0
+    inlineasm out=%v3 ; sidefx
+    %v4:u32 = binary.BitwiseXor %v3, %v1
+    ret %v4
+}
+
+
+
+;; 20_lir.ir
+; LIR v1
+
+fn $top kind=Default entry returns=()
+{
+  bb0():
+    %r3:u32 = const 0:u32
+    inlineasm tmp0=%r1, x=%r0, tmp1=%r2, out=%r3 ; sidefx
+    store.place %place(g_copy_folded_8), %r3 ; sidefx
+    %r4:u32 = load.place %place(g_copy_folded_8)
+    inlineasm scratch=%r5, x=%r4 ; sidefx
+    store.place %place(g_dead_code_visible_10), %r4 ; sidefx
+    %r6:u32 = load.place %place(g_dead_code_visible_10)
+    %r7:u32 = const 0:u32
+    inlineasm out=%r7 ; sidefx
+    %r8:u32 = binary.BitwiseXor %r7, %r6
+    store.place %place(g_fallback_kept_9), %r8 ; sidefx
+    ret 
+}
+
+fn copy_chain kind=Default returns=(u32)
+{
+  bb0(%r0:u32 x):
+    %r3:u32 = const 0:u32
+    inlineasm tmp0=%r1, x=%r0, tmp1=%r2, out=%r3 ; sidefx
+    ret %r3
+}
+
+fn dead_local_math kind=Default returns=(u32)
+{
+  bb0(%r0:u32 x):
+    inlineasm scratch=%r1, x=%r0 ; sidefx
+    ret %r0
+}
+
+fn unsupported_operand_falls_back kind=Default returns=(u32)
+{
+  bb0(%r0:u32 x):
+    %r1:u32 = const 0:u32
+    inlineasm out=%r1 ; sidefx
+    %r2:u32 = binary.BitwiseXor %r1, %r0
+    ret %r2
+}
+
+
+
+;; 30_asmir.ir
+; ASMIR v2
+
+function $top entry [EntryPoint]
+{
+  .function $top
+  $top_bb0:
+    ' inline asm typed begin
+    ' inline asm typed end
+    MOV g_copy_folded_8, #_r4
+    ' inline asm typed begin
+    ' inline asm typed end
+    MOV g_dead_code_visible_10, g_copy_folded_8
+    MOV #_r5, g_dead_code_visible_10
+    MOV #_r4, #0
+    ' inline asm raw fallback begin
+    
+            MOV _r4, #target_label
+        
+    ' inline asm raw fallback end
+    MOV #_r4, #_r4
+    XOR #_r4, #_r5
+    MOV g_fallback_kept_9, #_r4
+    ' halt: endless loop
+    REP #1, #0
+    NOP
+    ' --- register file ---
+  g_input_word_7:
+  .LONG 13
+  g_copy_folded_8:
+  .LONG 0
+  g_fallback_kept_9:
+  .LONG 0
+  g_dead_code_visible_10:
+  .LONG 0
+  _r4:
+  .LONG 0
+  _r5:
+  .LONG 0
+}
+
+
+
+;; 40_final.spin2
+DAT
+    org 0
+    ' --- Blade compiler output ---
+
+    ' function $top (EntryPoint)
+$top_bb0
+    ' inline asm typed begin
+    ' inline asm typed end
+            MOV g_copy_folded_8, _r4
+    ' inline asm typed begin
+    ' inline asm typed end
+            MOV g_dead_code_visible_10, g_copy_folded_8
+            MOV _r5, g_dead_code_visible_10
+            MOV _r4, #0
+    ' inline asm raw fallback begin
+            
+                    MOV _r4, #target_label
+                
+    ' inline asm raw fallback end
+            MOV _r4, _r4
+            XOR _r4, _r5
+            MOV g_fallback_kept_9, _r4
+    ' halt: endless loop
+            REP #1, #0
+            NOP
+    ' --- register file ---
+g_input_word_7
+            LONG 13
+g_copy_folded_8
+            LONG 0
+g_fallback_kept_9
+            LONG 0
+g_dead_code_visible_10
+            LONG 0
+_r4
+            LONG 0
+_r5
+            LONG 0
+
+
+tokens : 198
+members: 10
+bound-fns: 3
+mir-fns: 4
+errors : 0
+time   : 146.24 ms

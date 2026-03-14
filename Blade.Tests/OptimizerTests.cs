@@ -198,4 +198,23 @@ public class OptimizerTests
         AsmFunction function = AsmOptimizer.Optimize(module).Functions[0];
         Assert.That(function.Nodes.OfType<AsmInstructionNode>().ToArray(), Has.Length.EqualTo(1));
     }
+
+    [Test]
+    public void AsmOptimizer_PreservesInstructionUsedByImplicitReturnUse()
+    {
+        AsmRegisterOperand r1 = new(1);
+
+        AsmModule module = new([
+            new AsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
+            [
+                new AsmLabelNode("f_bb0"),
+                new AsmInstructionNode("ADD", [r1, new AsmImmediateOperand(1)]),
+                new AsmImplicitUseNode([r1]),
+                new AsmInstructionNode("RET", []),
+            ]),
+        ]);
+
+        AsmFunction function = AsmOptimizer.Optimize(module).Functions[0];
+        Assert.That(function.Nodes.OfType<AsmInstructionNode>().Any(i => i.Opcode == "ADD"), Is.True);
+    }
 }

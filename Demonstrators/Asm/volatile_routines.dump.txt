@@ -1,0 +1,175 @@
+;; 00_bound.ir
+Program
+  TypeAliases
+  Globals
+    mode_word: u32
+      Conversion<u32>
+        Literal<<int-literal>> 4660
+    transfer_count: u32
+      Conversion<u32>
+        Literal<<int-literal>> 4
+    pulse_width: u32
+      Conversion<u32>
+        Literal<<int-literal>> 32
+  TopLevelStatements
+    ExprStmt
+      Call<void> start_streamer
+        Symbol<u32> mode_word
+        Symbol<u32> transfer_count
+    ExprStmt
+      Call<void> fixed_delay
+        Symbol<u32> pulse_width
+  Functions
+    start_streamer (Default)
+      Block
+        Asm [Volatile] (no-flag)
+    fixed_delay (Default)
+      Block
+        Asm [Volatile] (no-flag)
+
+
+;; 10_mir.ir
+; MIR v1
+
+fn $top kind=Default entry returns=()
+{
+  bb0():
+    %v0:u32 = load.place g_mode_word_6
+    %v1:u32 = load.place g_transfer_count_7
+    inlineasm.volatile count=%v1, mode=%v0 ; sidefx
+    %v3:u32 = load.place g_pulse_width_8
+    inlineasm.volatile cycles=%v3 ; sidefx
+    ret 
+}
+
+fn start_streamer kind=Default returns=()
+{
+  bb0(%v0:u32 mode, %v1:u32 count):
+    inlineasm.volatile count=%v1, mode=%v0 ; sidefx
+    ret 
+}
+
+fn fixed_delay kind=Default returns=()
+{
+  bb0(%v0:u32 cycles):
+    inlineasm.volatile cycles=%v0 ; sidefx
+    ret 
+}
+
+
+
+;; 20_lir.ir
+; LIR v1
+
+fn $top kind=Default entry returns=()
+{
+  bb0():
+    inlineasm.volatile count=%r1, mode=%r0 ; sidefx
+    inlineasm.volatile cycles=%r2 ; sidefx
+    ret 
+}
+
+fn start_streamer kind=Default returns=()
+{
+  bb0(%r0:u32 mode, %r1:u32 count):
+    inlineasm.volatile count=%r1, mode=%r0 ; sidefx
+    ret 
+}
+
+fn fixed_delay kind=Default returns=()
+{
+  bb0(%r0:u32 cycles):
+    inlineasm.volatile cycles=%r0 ; sidefx
+    ret 
+}
+
+
+
+;; 30_asmir.ir
+; ASMIR v2
+
+function $top entry [EntryPoint]
+{
+  .function $top
+  $top_bb0:
+    ' inline asm volatile begin
+    
+            ' Keep this exact sequence as written.
+            SETQ  _r4
+            XINIT _r5, #0
+        
+    ' inline asm volatile end
+    ' inline asm volatile begin
+    
+            ' Hand-written timing pad; preserve spacing and comments.
+            WAITX _r3
+            NOP
+            NOP
+        
+    ' inline asm volatile end
+    ' halt: endless loop
+    REP #1, #0
+    NOP
+    ' --- register file ---
+  g_mode_word_6:
+  .LONG 4660
+  g_transfer_count_7:
+  .LONG 4
+  g_pulse_width_8:
+  .LONG 32
+  _r3:
+  .LONG 0
+  _r4:
+  .LONG 0
+  _r5:
+  .LONG 0
+}
+
+
+
+;; 40_final.spin2
+DAT
+    org 0
+    ' --- Blade compiler output ---
+
+    ' function $top (EntryPoint)
+$top_bb0
+    ' inline asm volatile begin
+            
+                    ' Keep this exact sequence as written.
+                    SETQ  _r4
+                    XINIT _r5, #0
+                
+    ' inline asm volatile end
+    ' inline asm volatile begin
+            
+                    ' Hand-written timing pad; preserve spacing and comments.
+                    WAITX _r3
+                    NOP
+                    NOP
+                
+    ' inline asm volatile end
+    ' halt: endless loop
+            REP #1, #0
+            NOP
+    ' --- register file ---
+g_mode_word_6
+            LONG 4660
+g_transfer_count_7
+            LONG 4
+g_pulse_width_8
+            LONG 32
+_r3
+            LONG 0
+_r4
+            LONG 0
+_r5
+            LONG 0
+
+
+tokens : 88
+members: 7
+bound-fns: 2
+mir-fns: 3
+errors : 0
+time   : 138.99 ms

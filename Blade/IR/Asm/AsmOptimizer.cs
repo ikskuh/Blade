@@ -85,6 +85,11 @@ public static class AsmOptimizer
                     nodes.Add(node);
                     break;
 
+                case AsmImplicitUseNode implicitUse:
+                    nodes.Add(RewriteImplicitUse(implicitUse, aliases));
+                    aliases.Clear();
+                    break;
+
                 case AsmLabelNode:
                 case AsmDirectiveNode:
                 case AsmInlineTextNode:
@@ -143,6 +148,14 @@ public static class AsmOptimizer
 
                 foreach (int usedRegister in EnumerateUsedRegisters(instruction))
                     live.Add(usedRegister);
+            }
+            else if (node is AsmImplicitUseNode implicitUse)
+            {
+                foreach (AsmOperand operand in implicitUse.Operands)
+                {
+                    if (operand is AsmRegisterOperand reg)
+                        live.Add(reg.RegisterId);
+                }
             }
 
             kept.Add(node);
@@ -273,6 +286,22 @@ public static class AsmOptimizer
         }
 
         return current;
+    }
+
+    private static AsmImplicitUseNode RewriteImplicitUse(
+        AsmImplicitUseNode implicitUse,
+        IReadOnlyDictionary<int, AsmOperand> aliases)
+    {
+        List<AsmOperand> operands = new(implicitUse.Operands.Count);
+        bool changed = false;
+        foreach (AsmOperand operand in implicitUse.Operands)
+        {
+            AsmOperand rewritten = ResolveAlias(operand, aliases);
+            operands.Add(rewritten);
+            changed |= !ReferenceEquals(rewritten, operand);
+        }
+
+        return changed ? new AsmImplicitUseNode(operands) : implicitUse;
     }
 
     private static void InvalidateAliases(

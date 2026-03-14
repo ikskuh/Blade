@@ -214,6 +214,14 @@ public static class LivenessAnalyzer
                         ProcessInstruction(instruction, block);
                         break;
 
+                    case AsmImplicitUseNode implicitUse:
+                        foreach (AsmOperand operand in implicitUse.Operands)
+                        {
+                            if (operand is AsmRegisterOperand reg)
+                                AddUse(block, reg.RegisterId);
+                        }
+                        break;
+
                     case AsmInlineTextNode inlineText:
                         // Conservative: all bindings are both defs and uses
                         foreach (AsmOperand operand in inlineText.Bindings.Values)
@@ -430,6 +438,16 @@ public static class LivenessAnalyzer
 
                         break;
                     }
+
+                    case AsmImplicitUseNode implicitUse:
+                        foreach (AsmOperand operand in implicitUse.Operands)
+                        {
+                            if (operand is not AsmRegisterOperand reg)
+                                continue;
+                            EnsureNode(interference, reg.RegisterId);
+                            live.Add(reg.RegisterId);
+                        }
+                        break;
 
                     case AsmInlineTextNode inlineText:
                     {

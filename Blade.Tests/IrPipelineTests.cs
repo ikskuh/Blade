@@ -237,7 +237,47 @@ public class IrPipelineTests
     }
 
     [Test]
-    public void InlineAsm_Volatile_PreservesRawTextAndComments()
+    public void InlineAsm_GeneralTierReturnValue_StaysLiveThroughAsmOptimization()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn leaf_add(x: u32) -> u32 {
+                return x + 1;
+            }
+
+            fn mid(x: u32) -> u32 {
+                return leaf_add(x);
+            }
+
+            fn f(x: u32) -> u32 {
+                var ignored: u32 = mid(x);
+                var out: u32 = 0;
+                asm {
+                    MOV {out}, {x}
+                    ADD {out}, #1
+                };
+                return out;
+            }
+
+            reg var sink: u32 = f(1);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableSingleCallsiteInlining = false,
+            EnableMirInlining = false,
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        AsmFunction function = build.AsmModule.Functions.Single(f => f.Name == "f");
+        Assert.That(function.CcTier, Is.EqualTo(CallingConventionTier.General));
+        Assert.That(function.Nodes.OfType<AsmInstructionNode>().Any(i => i.Opcode == "ADD"), Is.True);
+        Assert.That(function.Nodes.OfType<AsmImplicitUseNode>().Any(), Is.True);
+    }
+
+    [Test]
+    public void InlineAsm_Volatile_TransposesCommentsToPasmStyle()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
             fn f(x: u32) -> u32 {
@@ -261,8 +301,39 @@ public class IrPipelineTests
             EnableLirOptimizations = false,
         });
 
-        Assert.That(build.AssemblyText, Does.Contain("// keep this comment"));
+        Assert.That(build.AssemblyText, Does.Contain("' keep this comment"));
+        Assert.That(build.AssemblyText, Does.Not.Contain("// keep this comment"));
         Assert.That(build.AssemblyText, Does.Match(@"MOV   \s*_r\d+,\s+_r\d+"));
+    }
+
+    [Test]
+    public void InlineAsm_NonVolatile_PreservesAndTransposesComments()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn f(x: u32) -> u32 {
+                var out: u32 = 0;
+                asm {
+                    // before
+                    MOV {out}, {x} // after
+                };
+                return out;
+            }
+
+            reg var sink: u32 = f(1);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableSingleCallsiteInlining = false,
+            EnableMirInlining = false,
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        Assert.That(build.AssemblyText, Does.Contain("' before"));
+        Assert.That(build.AssemblyText, Does.Contain("' after"));
+        Assert.That(build.AssemblyText, Does.Match(@"MOV\s+_r\d+,\s+_r\d+"));
     }
 
     [Test]
@@ -272,7 +343,7 @@ public class IrPipelineTests
             fn f(x: u32) -> u32 {
                 var out: u32 = 0;
                 asm {
-                    MOV {out}, #target_label
+                    MOV {out}, #target_label // keep raw fallback comment
                 };
                 return out;
             }
@@ -292,6 +363,7 @@ public class IrPipelineTests
         AsmFunction function = build.AsmModule.Functions.Single(f => f.Name == "f");
         Assert.That(function.Nodes.OfType<AsmInlineTextNode>().Any(), Is.True);
         Assert.That(build.AssemblyText, Does.Contain("#target_label"));
+        Assert.That(build.AssemblyText, Does.Contain("' keep raw fallback comment"));
     }
 
     [Test]
@@ -351,20 +423,32 @@ public class IrPipelineTests
 
         string mir = MirTextWriter.Write(build.MirModule);
         string lir = LirTextWriter.Write(build.LirModule);
+        string[] duplicateMirLabels = build.MirModule.Functions
+            .SelectMany(f => f.Blocks.Select(block => $"{f.Name}:{block.Label}"))
+            .GroupBy(label => label)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .ToArray();
+        string[] duplicateAsmLabels = build.AsmModule.Functions
+            .SelectMany(f => f.Nodes.OfType<AsmLabelNode>())
+            .GroupBy(label => label.Name)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .ToArray();
 
         Assert.That(mir, Does.Not.Contain("inl_0_bb1"));
         Assert.That(mir, Does.Not.Contain("inl_after_0"));
         Assert.That(lir, Does.Not.Contain("inl_0_bb1"));
         Assert.That(lir, Does.Not.Contain("inl_after_0"));
+        Assert.That(duplicateMirLabels, Is.Empty);
+        Assert.That(duplicateAsmLabels, Is.Empty);
 
         Assert.That(build.AssemblyText, Does.Match(@"MOV\s+g_flags_\d+,\s+_r\d+"));
-        Assert.That(build.AssemblyText, Does.Not.Contain("$top_inl_0_bb1"));
-        Assert.That(build.AssemblyText, Does.Not.Contain("$top_inl_after_0"));
         Assert.That(build.AssemblyText, Does.Not.Contain("%r"));
     }
 
     [Test]
-    public void FixedRegisterAlias_UsesConAliasAndDirectOperand()
+    public void ReservedFixedRegisterAlias_UsesDirectOperandWithoutConAlias_AndKeepsAddressBinding()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
             extern reg var OUTA: u32 @(0x1FC);
@@ -378,11 +462,35 @@ public class IrPipelineTests
             EnableMirOptimizations = false,
         });
 
-        Assert.That(build.AssemblyText, Does.Contain("CON"));
-        Assert.That(build.AssemblyText, Does.Contain("OUTA = 0x1FC"));
+        StoragePlace place = build.AsmModule.StoragePlaces.Single(p => p.EmittedName == "OUTA");
+        Assert.That(place.Kind, Is.EqualTo(StoragePlaceKind.FixedRegisterAlias));
+        Assert.That(place.FixedAddress, Is.EqualTo(0x1FC));
         Assert.That(build.AssemblyText, Does.Contain("OR OUTA, #16"));
+        Assert.That(build.AssemblyText, Does.Not.Contain("OUTA = 0x1FC"));
         Assert.That(build.AssemblyText, Does.Not.Contain("LONG 0"));
         Assert.That(build.AssemblyText, Does.Not.Contain("g_OUTA"));
+    }
+
+    [Test]
+    public void NonReservedFixedRegisterAlias_StillEmitsConAlias()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            extern reg var LED_PORT: u32 @(0x1FC);
+            LED_PORT |= 0x10;
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+        });
+
+        StoragePlace place = build.AsmModule.StoragePlaces.Single(p => p.EmittedName == "LED_PORT");
+        Assert.That(place.FixedAddress, Is.EqualTo(0x1FC));
+        Assert.That(build.AssemblyText, Does.Contain("CON"));
+        Assert.That(build.AssemblyText, Does.Contain("LED_PORT = 0x1FC"));
+        Assert.That(build.AssemblyText, Does.Contain("OR LED_PORT, #16"));
     }
 
     [Test]

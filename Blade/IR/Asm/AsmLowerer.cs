@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using Blade.IR.Lir;
 using Blade.Semantics;
 using Blade.Semantics.Bound;
@@ -175,17 +176,39 @@ public static class AsmLowerer
         LirInlineAsmInstruction inlineAsm,
         IReadOnlyDictionary<string, AsmOperand> bindings)
     {
-        List<AsmInstructionNode> lowered = new(inlineAsm.ParsedLines.Count);
-        foreach (InlineAssemblyValidator.AsmLine line in inlineAsm.ParsedLines)
+        Queue<InlineAssemblyValidator.AsmLine> parsedLines = new(inlineAsm.ParsedLines);
+        List<AsmNode> lowered = [];
+        foreach (InlineAsmSourceLine sourceLine in ParseInlineAsmSourceLines(inlineAsm.Body))
         {
-            if (!TryLowerParsedInlineAsmLine(line, bindings, out AsmInstructionNode? instruction))
+            if (sourceLine.IsBlank)
+                continue;
+
+            if (sourceLine.CommentText is not null && sourceLine.InstructionText is null)
+            {
+                lowered.Add(new AsmCommentNode(sourceLine.CommentText));
+                continue;
+            }
+
+            if (sourceLine.InstructionText is null)
+                continue;
+
+            if (!parsedLines.TryDequeue(out InlineAssemblyValidator.AsmLine? line)
+                || !TryLowerParsedInlineAsmLine(line, bindings, out AsmInstructionNode? instruction))
+            {
                 return false;
+            }
+
             lowered.Add(instruction!);
+            if (sourceLine.CommentText is not null)
+                lowered.Add(new AsmCommentNode(sourceLine.CommentText));
         }
 
+        if (parsedLines.Count != 0)
+            return false;
+
         nodes.Add(new AsmCommentNode("inline asm typed begin"));
-        foreach (AsmInstructionNode instruction in lowered)
-            nodes.Add(instruction);
+        foreach (AsmNode node in lowered)
+            nodes.Add(node);
         nodes.Add(new AsmCommentNode("inline asm typed end"));
         return true;
     }
@@ -198,7 +221,7 @@ public static class AsmLowerer
     {
         nodes.Add(new AsmCommentNode($"{commentLabel} begin"));
         foreach (string line in SplitInlineAsmBody(body))
-            nodes.Add(new AsmInlineTextNode(line, bindings));
+            nodes.Add(new AsmInlineTextNode(TransposeBladeCommentToPasm(line), bindings));
         nodes.Add(new AsmCommentNode($"{commentLabel} end"));
     }
 
@@ -335,6 +358,50 @@ public static class AsmLowerer
 
         return text.Length > 0;
     }
+
+    private static IEnumerable<InlineAsmSourceLine> ParseInlineAsmSourceLines(string body)
+    {
+        foreach (string line in SplitInlineAsmBody(body))
+        {
+            string trimmed = line.Trim();
+            if (trimmed.Length == 0)
+            {
+                yield return new InlineAsmSourceLine(null, null, true);
+                continue;
+            }
+
+            int commentIdx = line.IndexOf("//", StringComparison.Ordinal);
+            if (commentIdx < 0)
+            {
+                yield return new InlineAsmSourceLine(trimmed, null, false);
+                continue;
+            }
+
+            string instructionText = line[..commentIdx].Trim();
+            string commentText = NormalizeBladeComment(line[(commentIdx + 2)..]);
+            yield return new InlineAsmSourceLine(
+                instructionText.Length == 0 ? null : instructionText,
+                commentText,
+                false);
+        }
+    }
+
+    private static string NormalizeBladeComment(string commentText)
+        => commentText.TrimStart();
+
+    private static string TransposeBladeCommentToPasm(string line)
+    {
+        int commentIdx = line.IndexOf("//", StringComparison.Ordinal);
+        if (commentIdx < 0)
+            return line;
+
+        string beforeComment = line[..commentIdx];
+        string commentText = NormalizeBladeComment(line[(commentIdx + 2)..]);
+        string pasmComment = $"'{(commentText.Length == 0 ? string.Empty : $" {commentText}")}";
+        return beforeComment.Length == 0 ? pasmComment : $"{beforeComment}{pasmComment}";
+    }
+
+    private readonly record struct InlineAsmSourceLine(string? InstructionText, string? CommentText, bool IsBlank);
 
     private static bool TryParseInlineAsmImmediate(string text, out long value)
     {
@@ -791,6 +858,7 @@ public static class AsmLowerer
 
                 default:
                     // General/Recursive: result stays in its register (caller knows which)
+                    nodes.Add(new AsmImplicitUseNode([resultOp]));
                     nodes.Add(new AsmCommentNode($"return value: {resultOp.Format()}"));
                     break;
             }

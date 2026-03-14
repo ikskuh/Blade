@@ -1,0 +1,204 @@
+;; 00_bound.ir
+Program
+  TypeAliases
+  Globals
+    input_a: u32
+      Conversion<u32>
+        Literal<<int-literal>> 7
+    input_b: u32
+      Conversion<u32>
+        Literal<<int-literal>> 11
+    scaled_sum: u32
+      Conversion<u32>
+        Literal<<int-literal>> 0
+    masked_mix: u32
+      Conversion<u32>
+        Literal<<int-literal>> 0
+  TopLevelStatements
+    Assign (Equal)
+      TargetSymbol<u32> scaled_sum
+      Call<u32> mul_by_ten
+        Symbol<u32> input_a
+    Assign (Equal)
+      TargetSymbol<u32> masked_mix
+      Call<u32> accumulate_masked
+        Symbol<u32> scaled_sum
+        Symbol<u32> input_b
+  Functions
+    mul_by_ten (Default)
+      Block
+        VarDecl out: u32
+          Conversion<u32>
+            Literal<<int-literal>> 0
+        Asm [NonVolatile] (no-flag)
+        Return
+          Symbol<u32> out
+    accumulate_masked (Default)
+      Block
+        VarDecl out: u32
+          Conversion<u32>
+            Literal<<int-literal>> 0
+        Asm [NonVolatile] (no-flag)
+        Return
+          Symbol<u32> out
+
+
+;; 10_mir.ir
+; MIR v1
+
+fn $top kind=Default entry returns=()
+{
+  bb0():
+    %v0:u32 = load.place g_input_a_6
+    %v7:u32 = const 0
+    inlineasm out=%v7, x=%v0 ; sidefx
+    store.place g_scaled_sum_8(%v7) ; sidefx
+    %v2:u32 = load.place g_scaled_sum_8
+    %v3:u32 = load.place g_input_b_7
+    %v12:u32 = const 0
+    inlineasm out=%v12, lhs=%v2, rhs=%v3 ; sidefx
+    store.place g_masked_mix_9(%v12) ; sidefx
+    ret 
+}
+
+fn mul_by_ten kind=Default returns=(u32)
+{
+  bb0(%v1:u32 x):
+    %v3:u32 = const 0
+    inlineasm out=%v3, x=%v1 ; sidefx
+    ret %v3
+}
+
+fn accumulate_masked kind=Default returns=(u32)
+{
+  bb0(%v1:u32 lhs, %v2:u32 rhs):
+    %v4:u32 = const 0
+    inlineasm out=%v4, lhs=%v1, rhs=%v2 ; sidefx
+    ret %v4
+}
+
+
+
+;; 20_lir.ir
+; LIR v1
+
+fn $top kind=Default entry returns=()
+{
+  bb0():
+    %r1:u32 = const 0:u32
+    inlineasm out=%r1, x=%r0 ; sidefx
+    store.place %place(g_scaled_sum_8), %r1 ; sidefx
+    %r4:u32 = const 0:u32
+    inlineasm out=%r4, lhs=%r2, rhs=%r3 ; sidefx
+    store.place %place(g_masked_mix_9), %r4 ; sidefx
+    ret 
+}
+
+fn mul_by_ten kind=Default returns=(u32)
+{
+  bb0(%r0:u32 x):
+    %r1:u32 = const 0:u32
+    inlineasm out=%r1, x=%r0 ; sidefx
+    ret %r1
+}
+
+fn accumulate_masked kind=Default returns=(u32)
+{
+  bb0(%r0:u32 lhs, %r1:u32 rhs):
+    %r2:u32 = const 0:u32
+    inlineasm out=%r2, lhs=%r0, rhs=%r1 ; sidefx
+    ret %r2
+}
+
+
+
+;; 30_asmir.ir
+; ASMIR v2
+
+function $top entry [EntryPoint]
+{
+  .function $top
+  $top_bb0:
+    ' inline asm typed begin
+    MOV #_r4, #_r5
+    SHL #_r4, #1
+    ADD #_r4, #_r5
+    SHL #_r4, #1
+    ADD #_r4, #_r5
+    ' inline asm typed end
+    MOV g_scaled_sum_8, #_r4
+    ' inline asm typed begin
+    MOV #_r5, #_r5
+    ADD #_r5, #_r6
+    AND #_r5, #255
+    ' inline asm typed end
+    MOV g_masked_mix_9, #_r5
+    ' halt: endless loop
+    REP #1, #0
+    NOP
+    ' --- register file ---
+  g_input_a_6:
+  .LONG 7
+  g_input_b_7:
+  .LONG 11
+  g_scaled_sum_8:
+  .LONG 0
+  g_masked_mix_9:
+  .LONG 0
+  _r4:
+  .LONG 0
+  _r5:
+  .LONG 0
+  _r6:
+  .LONG 0
+}
+
+
+
+;; 40_final.spin2
+DAT
+    org 0
+    ' --- Blade compiler output ---
+
+    ' function $top (EntryPoint)
+$top_bb0
+    ' inline asm typed begin
+            MOV _r4, _r5
+            SHL _r4, #1
+            ADD _r4, _r5
+            SHL _r4, #1
+            ADD _r4, _r5
+    ' inline asm typed end
+            MOV g_scaled_sum_8, _r4
+    ' inline asm typed begin
+            MOV _r5, _r5
+            ADD _r5, _r6
+            AND _r5, #255
+    ' inline asm typed end
+            MOV g_masked_mix_9, _r5
+    ' halt: endless loop
+            REP #1, #0
+            NOP
+    ' --- register file ---
+g_input_a_6
+            LONG 7
+g_input_b_7
+            LONG 11
+g_scaled_sum_8
+            LONG 0
+g_masked_mix_9
+            LONG 0
+_r4
+            LONG 0
+_r5
+            LONG 0
+_r6
+            LONG 0
+
+
+tokens : 164
+members: 8
+bound-fns: 2
+mir-fns: 3
+errors : 0
+time   : 134.95 ms

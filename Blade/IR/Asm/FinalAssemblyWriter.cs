@@ -57,6 +57,9 @@ public static class FinalAssemblyWriter
             if (place.Kind != StoragePlaceKind.FixedRegisterAlias || !place.FixedAddress.HasValue)
                 continue;
 
+            if (P2OpcodeInfo.IsSpecialRegisterName(place.EmittedName))
+                continue;
+
             if (!wroteHeader)
             {
                 sb.AppendLine("CON");
@@ -96,6 +99,9 @@ public static class FinalAssemblyWriter
             case AsmCommentNode comment:
                 sb.Append("    ' ");
                 sb.AppendLine(comment.Text);
+                break;
+
+            case AsmImplicitUseNode:
                 break;
 
             case AsmInlineTextNode inlineText:
@@ -161,7 +167,7 @@ public static class FinalAssemblyWriter
         int operandIndex)
     {
         // Special register names: always plain
-        if (IsSpecialRegisterName(sym.Name))
+        if (P2OpcodeInfo.IsSpecialRegisterName(sym.Name))
             return sym.Name;
 
         // $ (current address): always prefixed
@@ -181,13 +187,6 @@ public static class FinalAssemblyWriter
 
         // Default: register reference (no # prefix)
         return sym.Name;
-    }
-
-    private static bool IsSpecialRegisterName(string name)
-    {
-        return name is "PA" or "PB" or "PTRA" or "PTRB"
-            or "DIRA" or "DIRB" or "OUTA" or "OUTB" or "INA" or "INB"
-            or "IJMP1" or "IRET1" or "IJMP2" or "IRET2" or "IJMP3" or "IRET3";
     }
 
     private static string FormatFlagEffect(AsmFlagEffect effect)
