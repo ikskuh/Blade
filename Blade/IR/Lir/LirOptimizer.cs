@@ -6,16 +6,29 @@ namespace Blade.IR.Lir;
 
 public static class LirOptimizer
 {
-    public static LirModule Optimize(LirModule module, int maxIterations)
+    public static LirModule Optimize(
+        LirModule module,
+        int maxIterations,
+        IReadOnlyList<string> enabledOptimizations)
     {
+        ArgumentNullException.ThrowIfNull(module);
+        ArgumentNullException.ThrowIfNull(enabledOptimizations);
+
         LirModule current = module;
         int iterations = Math.Max(1, maxIterations);
         for (int i = 0; i < iterations; i++)
         {
             string before = LirTextWriter.Write(current);
-            current = RunCopyPropagation(current);
-            current = RunControlFlowSimplification(current);
-            current = RunDeadCodeElimination(current);
+            foreach (string optimization in enabledOptimizations)
+            {
+                current = optimization switch
+                {
+                    "copy-prop" => RunCopyPropagation(current),
+                    "cfg-simplify" => RunControlFlowSimplification(current),
+                    "dce" => RunDeadCodeElimination(current),
+                    _ => current,
+                };
+            }
             string after = LirTextWriter.Write(current);
             if (before == after)
                 break;

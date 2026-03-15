@@ -1,0 +1,20 @@
+// EXPECT: pass
+// STAGE: asmir
+// ARGS:
+// - -fno-asmir-opt=*
+// CONTAINS:
+// - IF_C OR #_r1, #_r2
+// - IF_NC ANDN #_r1, #_r2
+// NOT_CONTAINS:
+// - MUXC #_r1, #_r2
+// NOTE:
+//   Negative case for muxc-fusion: with optimization disabled, the pair remains unfused.
+
+reg var sink: u32 = 0;
+var x: u32 = 1;
+var m: u32 = 2;
+asm {
+  IF_C OR {x}, {m}
+  IF_NC ANDN {x}, {m}
+};
+sink = x;

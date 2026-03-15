@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -5,29 +6,39 @@ namespace Blade.IR.Asm;
 
 public static class AsmOptimizer
 {
-    public static AsmModule Optimize(AsmModule module)
+    public static AsmModule Optimize(AsmModule module, IReadOnlyList<string> enabledOptimizations)
     {
+        ArgumentNullException.ThrowIfNull(module);
+        ArgumentNullException.ThrowIfNull(enabledOptimizations);
         List<AsmFunction> functions = new(module.Functions.Count);
         foreach (AsmFunction function in module.Functions)
-            functions.Add(OptimizeFunction(function));
+            functions.Add(OptimizeFunction(function, enabledOptimizations));
         return new AsmModule(module.StoragePlaces, functions);
     }
 
-    private static AsmFunction OptimizeFunction(AsmFunction function)
+    private static AsmFunction OptimizeFunction(AsmFunction function, IReadOnlyList<string> enabledOptimizations)
     {
         AsmFunction current = function;
         bool changed;
         do
         {
             changed = false;
-            (current, bool rewriteChanged) = RewriteStraightLineCopyUses(current);
-            changed |= rewriteChanged;
-            (current, bool deadInstructionChanged) = RemoveDeadPureRegisterInstructions(current);
-            changed |= deadInstructionChanged;
-            (current, bool jumpsChanged) = RemoveJumpsToNextLabel(current);
-            changed |= jumpsChanged;
-            (current, bool cleanupChanged) = CleanupLabelsAndSelfMoves(current);
-            changed |= cleanupChanged;
+            foreach (string optimization in enabledOptimizations)
+            {
+                (current, bool stageChanged) = optimization switch
+                {
+                    "copy-prop" => RewriteStraightLineCopyUses(current),
+                    "dce-reg" => RemoveDeadPureRegisterInstructions(current),
+                    "drop-jmp-next" => RemoveJumpsToNextLabel(current),
+                    "ret-fusion" => FuseRetIntoPreviousInstruction(current),
+                    "conditional-move-fusion" => FuseConditionalJumpOverSingleInstruction(current),
+                    "muxc-fusion" => FuseMuxConditionPair(current),
+                    "elide-nops" => ElideSemanticNops(current),
+                    "cleanup-self-mov" => CleanupLabelsAndSelfMoves(current),
+                    _ => (current, false),
+                };
+                changed |= stageChanged;
+            }
         }
         while (changed);
 
@@ -202,6 +213,117 @@ public static class AsmOptimizer
                 && instruction.Operands[0] is AsmSymbolOperand target
                 && TryGetNextLabel(function.Nodes, i + 1, out string? nextLabel)
                 && nextLabel == target.Name)
+            {
+                changed = true;
+                continue;
+            }
+
+            nodes.Add(node);
+        }
+
+        return (new AsmFunction(function.Name, function.IsEntryPoint, function.CcTier, nodes), changed);
+    }
+
+
+    private static (AsmFunction Function, bool Changed) FuseRetIntoPreviousInstruction(AsmFunction function)
+    {
+        HashSet<string> targetedLabels = CollectJumpTargets(function.Nodes);
+        List<AsmNode> nodes = [];
+        bool changed = false;
+
+        for (int i = 0; i < function.Nodes.Count; i++)
+        {
+            AsmNode node = function.Nodes[i];
+            if (node is AsmInstructionNode instruction
+                && instruction.Opcode == "RET"
+                && instruction.Predicate is null
+                && instruction.Operands.Count == 0
+                && instruction.FlagEffect == AsmFlagEffect.None
+                && i > 0
+                && nodes.Count > 0
+                && nodes[^1] is AsmInstructionNode previous
+                && previous.Predicate is null
+                && !IsControlFlowInstruction(previous)
+                && !EndsWithTargetedLabel(nodes, targetedLabels))
+            {
+                nodes[^1] = new AsmInstructionNode(previous.Opcode, previous.Operands, "_RET_", previous.FlagEffect);
+                changed = true;
+                continue;
+            }
+
+            nodes.Add(node);
+        }
+
+        return (new AsmFunction(function.Name, function.IsEntryPoint, function.CcTier, nodes), changed);
+    }
+
+    private static (AsmFunction Function, bool Changed) FuseConditionalJumpOverSingleInstruction(AsmFunction function)
+    {
+        HashSet<string> targetedLabels = CollectJumpTargets(function.Nodes);
+        List<AsmNode> nodes = [];
+        bool changed = false;
+
+        for (int i = 0; i < function.Nodes.Count;)
+        {
+            if (i + 2 < function.Nodes.Count
+                && function.Nodes[i] is AsmInstructionNode jump
+                && jump.Opcode == "JMP"
+                && jump.Predicate is not null
+                && jump.Operands.Count == 1
+                && jump.Operands[0] is AsmSymbolOperand target
+                && function.Nodes[i + 1] is AsmInstructionNode body
+                && body.Predicate is null
+                && function.Nodes[i + 2] is AsmLabelNode label
+                && label.Name == target.Name
+                && !targetedLabels.Contains(label.Name))
+            {
+                nodes.Add(new AsmInstructionNode(body.Opcode, body.Operands, InvertPredicate(jump.Predicate), body.FlagEffect));
+                nodes.Add(label);
+                changed = true;
+                i += 3;
+                continue;
+            }
+
+            nodes.Add(function.Nodes[i]);
+            i++;
+        }
+
+        return (new AsmFunction(function.Name, function.IsEntryPoint, function.CcTier, nodes), changed);
+    }
+
+    private static (AsmFunction Function, bool Changed) FuseMuxConditionPair(AsmFunction function)
+    {
+        List<AsmNode> nodes = [];
+        bool changed = false;
+
+        for (int i = 0; i < function.Nodes.Count;)
+        {
+            if (i + 1 < function.Nodes.Count
+                && function.Nodes[i] is AsmInstructionNode first
+                && function.Nodes[i + 1] is AsmInstructionNode second
+                && TryFuseMuxPair(first, second, out AsmInstructionNode? fused))
+            {
+                nodes.Add(fused!);
+                changed = true;
+                i += 2;
+                continue;
+            }
+
+            nodes.Add(function.Nodes[i]);
+            i++;
+        }
+
+        return (new AsmFunction(function.Name, function.IsEntryPoint, function.CcTier, nodes), changed);
+    }
+
+    private static (AsmFunction Function, bool Changed) ElideSemanticNops(AsmFunction function)
+    {
+        List<AsmNode> nodes = [];
+        bool changed = false;
+
+        foreach (AsmNode node in function.Nodes)
+        {
+            if (node is AsmInstructionNode instruction && IsSemanticNop(instruction))
             {
                 changed = true;
                 continue;
@@ -401,4 +523,100 @@ public static class AsmOptimizer
             _ => false,
         };
     }
+
+    private static HashSet<string> CollectJumpTargets(IReadOnlyList<AsmNode> nodes)
+    {
+        HashSet<string> targets = [];
+        foreach (AsmNode node in nodes)
+        {
+            if (node is AsmInstructionNode instruction
+                && instruction.Opcode == "JMP"
+                && instruction.Operands.Count == 1
+                && instruction.Operands[0] is AsmSymbolOperand symbol)
+            {
+                targets.Add(symbol.Name);
+            }
+        }
+
+        return targets;
+    }
+
+    private static bool EndsWithTargetedLabel(IReadOnlyList<AsmNode> nodes, IReadOnlySet<string> targets)
+        => nodes.Count > 0 && nodes[^1] is AsmLabelNode label && targets.Contains(label.Name);
+
+    private static bool IsControlFlowInstruction(AsmInstructionNode instruction)
+        => P2InstructionMetadata.IsControlFlow(instruction.Opcode, instruction.Operands.Count);
+
+    private static bool TryFuseMuxPair(AsmInstructionNode first, AsmInstructionNode second, out AsmInstructionNode? fused)
+    {
+        fused = null;
+        if (first.FlagEffect != AsmFlagEffect.None || second.FlagEffect != AsmFlagEffect.None)
+            return false;
+
+        if (first.Operands.Count != 2 || second.Operands.Count != 2)
+            return false;
+
+        if (!OperandsEquivalent(first.Operands[0], second.Operands[0])
+            || !OperandsEquivalent(first.Operands[1], second.Operands[1]))
+        {
+            return false;
+        }
+
+        if (first.Predicate == "IF_C" && second.Predicate == "IF_NC" && first.Opcode == "OR" && second.Opcode == "ANDN")
+            fused = new AsmInstructionNode("MUXC", [first.Operands[0], first.Operands[1]]);
+        else if (first.Predicate == "IF_NC" && second.Predicate == "IF_C" && first.Opcode == "ANDN" && second.Opcode == "OR")
+            fused = new AsmInstructionNode("MUXC", [first.Operands[0], first.Operands[1]]);
+        else if (first.Predicate == "IF_NC" && second.Predicate == "IF_C" && first.Opcode == "OR" && second.Opcode == "ANDN")
+            fused = new AsmInstructionNode("MUXNC", [first.Operands[0], first.Operands[1]]);
+        else if (first.Predicate == "IF_C" && second.Predicate == "IF_NC" && first.Opcode == "ANDN" && second.Opcode == "OR")
+            fused = new AsmInstructionNode("MUXNC", [first.Operands[0], first.Operands[1]]);
+
+        return fused is not null;
+    }
+
+    private static bool IsSemanticNop(AsmInstructionNode instruction)
+    {
+        if (instruction.Predicate is not null || instruction.FlagEffect != AsmFlagEffect.None)
+            return false;
+
+        if (instruction.Opcode == "NOP")
+            return true;
+
+        if (instruction.Operands.Count != 2)
+            return false;
+
+        AsmOperand left = instruction.Operands[0];
+        AsmOperand right = instruction.Operands[1];
+
+        if (instruction.Opcode == "MOV" && OperandsEquivalent(left, right))
+            return true;
+
+        if (right is not AsmImmediateOperand immediate)
+            return false;
+
+        return instruction.Opcode switch
+        {
+            "OR" when immediate.Value == 0 => true,
+            "XOR" when immediate.Value == 0 => true,
+            "ADD" when immediate.Value == 0 => true,
+            "SUB" when immediate.Value == 0 => true,
+            "SHL" when immediate.Value == 0 => true,
+            "SHR" when immediate.Value == 0 => true,
+            "SAR" when immediate.Value == 0 => true,
+            "ROL" when immediate.Value == 0 => true,
+            "ROR" when immediate.Value == 0 => true,
+            _ => false,
+        };
+    }
+
+    private static string InvertPredicate(string predicate)
+        => predicate switch
+        {
+            "IF_Z" => "IF_NZ",
+            "IF_NZ" => "IF_Z",
+            "IF_C" => "IF_NC",
+            "IF_NC" => "IF_C",
+            _ => predicate,
+        };
+
 }

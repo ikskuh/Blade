@@ -13,6 +13,7 @@ namespace Blade;
 public sealed class CompilationOptions
 {
     public bool EnableSingleCallsiteInlining { get; init; } = true;
+    public IReadOnlyList<OptimizationDirective> OptimizationDirectives { get; init; } = [];
 }
 
 public sealed class CompilationResult
@@ -59,6 +60,7 @@ public static class CompilerDriver
             IrPipelineOptions pipelineOptions = new()
             {
                 EnableSingleCallsiteInlining = effectiveOptions.EnableSingleCallsiteInlining,
+                OptimizationDirectives = effectiveOptions.OptimizationDirectives,
             };
             irBuildResult = IrPipeline.Build(boundProgram, pipelineOptions);
         }

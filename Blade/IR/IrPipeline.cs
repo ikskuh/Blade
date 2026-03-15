@@ -22,13 +22,16 @@ public static class IrPipeline
             mirModule = MirOptimizer.Optimize(
                 mirModule,
                 options.MaxOptimizationIterations,
-                enableCostBasedInlining: options.EnableMirInlining);
+                OptimizationCatalog.ResolveEnabled(OptimizationStage.Mir, options.OptimizationDirectives));
         }
 
         LirModule lirModule = LirLowerer.Lower(mirModule);
         LirModule preOptimizationLirModule = lirModule;
         if (options.EnableLirOptimizations)
-            lirModule = LirOptimizer.Optimize(lirModule, options.MaxOptimizationIterations);
+            lirModule = LirOptimizer.Optimize(
+                lirModule,
+                options.MaxOptimizationIterations,
+                OptimizationCatalog.ResolveEnabled(OptimizationStage.Lir, options.OptimizationDirectives));
 
         AsmModule asmModule = AsmLowerer.Lower(lirModule);
         AsmModule preOptimizationAsmModule = asmModule;
@@ -42,7 +45,10 @@ public static class IrPipeline
             preOptimizationAsmModule,
             asmModule,
             assemblyText: string.Empty);
-        EmitResult emitResult = CodegenPipeline.Emit(preEmit, new EmitOptions());
+        EmitResult emitResult = CodegenPipeline.Emit(preEmit, new EmitOptions
+        {
+            EnabledAsmirOptimizations = OptimizationCatalog.ResolveEnabled(OptimizationStage.Asmir, options.OptimizationDirectives),
+        });
         return new IrBuildResult(
             boundProgram,
             preOptimizationMirModule,

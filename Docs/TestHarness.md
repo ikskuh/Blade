@@ -121,6 +121,18 @@ Every listed snippet must appear after comment and whitespace normalization.
 // - ANDN OUTA, #16
 ```
 
+
+### `NOT_CONTAINS`
+
+Like `CONTAINS`, but asserts a snippet is absent from normalized output.
+
+```blade
+// EXPECT: pass
+// STAGE: asmir
+// NOT_CONTAINS:
+// - NOP
+```
+
 ### `SEQUENCE`
 
 The listed snippets must appear in order after normalization.
@@ -149,6 +161,27 @@ The fully normalized code must match exactly.
 OR OUTA, #16
 RET
 ```
+
+
+### `ARGS`
+
+`ARGS` passes per-fixture compiler CLI options to the Blade compiler invocation (`.blade` fixtures only).
+
+Single-line form:
+
+```
+// ARGS: -fno-asmir-opt=* -fasmir-opt=elide-nops
+```
+
+Block form:
+
+```
+// ARGS:
+// - -fno-asmir-opt=*
+// - -fasmir-opt=elide-nops
+```
+
+Supported options are compiler optimization toggles and `--no-single-callsite-inline`.
 
 ### `FLEXSPIN`
 
@@ -204,3 +237,9 @@ entry
 - `just coverage` runs `dotnet test --collect:"XPlat Code Coverage"`
 
 The NUnit suite contains a thin wrapper that invokes the regression runner in-process, so the regression harness contributes to the existing coverage data without a second coverage pipeline.
+
+
+## FlexSpin availability
+
+The runner probes FlexSpin once at startup using `flexspin --version`.
+If FlexSpin is unavailable, fixtures that require FlexSpin validation are reported as `SKIPPED`.
