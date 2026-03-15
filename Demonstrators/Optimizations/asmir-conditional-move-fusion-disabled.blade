@@ -1,0 +1,24 @@
+// EXPECT: pass
+// STAGE: asmir
+// ARGS:
+// - --no-single-callsite-inline
+// - -fno-asmir-opt=*
+// CONTAINS:
+// - IF_Z JMP #$top_inl_after_0
+// NOTE:
+//   Baseline for ASMIR conditional-move-fusion.
+//   Current source lowering produces the guarding conditional jump, but not yet in a source-stable one-instruction body shape.
+
+reg var sink: u32 = 0;
+reg var input: bool = false;
+
+fn demo(x: bool) -> u32 {
+    var y: u32 = 1;
+    if (x) {
+        y = 2;
+    }
+
+    return y;
+}
+
+sink = demo(input);

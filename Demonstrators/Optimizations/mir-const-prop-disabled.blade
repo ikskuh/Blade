@@ -1,0 +1,16 @@
+// EXPECT: pass
+// STAGE: mir
+// ARGS:
+// - -fno-mir-opt=*
+// CONTAINS:
+// - binary.Add
+// NOTE:
+//   Negative case for MIR const-prop: constant arithmetic should remain unfused.
+
+reg var sink: u32 = 0;
+
+fn demo() -> u32 {
+    return 40 + 2;
+}
+
+sink = demo();

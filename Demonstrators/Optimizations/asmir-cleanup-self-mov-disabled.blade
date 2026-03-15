@@ -1,0 +1,17 @@
+// EXPECT: pass
+// STAGE: asmir
+// ARGS:
+// - -fno-asmir-opt=*
+// CONTAINS:
+// - MOV #_r1, #_r1
+// NOTE:
+//   Negative case for ASMIR cleanup-self-mov: the self-move remains.
+
+reg var sink: u32 = 0;
+var x: u32 = 1;
+
+asm {
+  MOV {x}, {x}
+};
+
+sink = x;

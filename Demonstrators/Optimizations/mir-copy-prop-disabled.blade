@@ -1,0 +1,20 @@
+// EXPECT: pass
+// STAGE: mir
+// ARGS:
+// - --no-single-callsite-inline
+// - -fno-mir-opt=*
+// CONTAINS:
+// - branch %v1 ? bb2() : bb3()
+// NOTE:
+//   Baseline for MIR copy-prop. Current source lowering does not materialize MIR copy nodes here.
+
+reg var sink: u32 = 0;
+reg var input: bool = false;
+reg var left: u32 = 2;
+reg var right: u32 = 3;
+
+fn demo(cond: bool, a: u32, b: u32) -> u32 {
+    return if (cond) a else b;
+}
+
+sink = demo(input, left, right);

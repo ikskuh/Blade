@@ -100,3 +100,10 @@ Codify that changes in the syntax must be reflected in "VSCode/blade-lang/syntax
 the language docs under "Docs/Blade.md".
 
 Codify builds must yield zero warnings.
+
+
+## Non-deterministic code generation
+
+`g_sink_XXX` in `Demonstrators/Optimizations/asmir-elide-nops-enabled.blade` is
+having random numbers. Potentially an issue with the use of a non-sorted HashSet type.
+

@@ -1,0 +1,22 @@
+// EXPECT: pass
+// STAGE: mir
+// ARGS:
+// - --no-single-callsite-inline
+// - -fno-mir-opt=*
+// CONTAINS:
+// - call add1(
+// - call demo(
+// NOTE:
+//   Negative case for MIR cost-inline: with MIR optimizations disabled, both calls remain.
+
+reg var sink: u32 = 0;
+
+fn add1(x: u32) -> u32 {
+    return x + 1;
+}
+
+fn demo(x: u32) -> u32 {
+    return add1(x);
+}
+
+sink = demo(7);

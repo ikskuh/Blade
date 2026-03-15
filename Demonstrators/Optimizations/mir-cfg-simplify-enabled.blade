@@ -1,0 +1,26 @@
+// EXPECT: pass
+// STAGE: mir
+// ARGS:
+// - --no-single-callsite-inline
+// - -fno-mir-opt=*
+// - -fmir-opt=cfg-simplify
+// CONTAINS:
+// - branch %v1 ? bb2() : bb1(
+// NOT_CONTAINS:
+// - branch %v1 ? bb2() : bb3()
+// NOTE:
+//   Positive case for MIR cfg-simplify: the trivial false-edge block should be threaded away.
+
+reg var sink: u32 = 0;
+reg var input: bool = false;
+
+fn demo(x: bool) -> u32 {
+    var y: u32 = 1;
+    if (x) {
+        y = y + 1;
+    }
+
+    return y;
+}
+
+sink = demo(input);

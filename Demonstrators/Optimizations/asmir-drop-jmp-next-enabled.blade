@@ -1,0 +1,20 @@
+// EXPECT: pass
+// STAGE: asmir
+// ARGS:
+// - --no-single-callsite-inline
+// - -fno-mir-opt=*
+// - -fno-lir-opt=*
+// - -fno-asmir-opt=*
+// - -fasmir-opt=drop-jmp-next
+// NOT_CONTAINS:
+// - JMP #add1_bb1
+// NOTE:
+//   Positive case for ASMIR drop-jmp-next: the redundant jump should be removed.
+
+reg var sink: u32 = 0;
+
+fn add1(x: u32) -> u32 {
+    return x + 1;
+}
+
+sink = add1(1);

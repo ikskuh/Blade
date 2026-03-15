@@ -1,0 +1,19 @@
+// EXPECT: pass
+// STAGE: mir
+// ARGS:
+// - -fno-mir-opt=*
+// - -fmir-opt=const-prop
+// CONTAINS:
+// - const 42
+// NOT_CONTAINS:
+// - binary.Add
+// NOTE:
+//   Positive case for MIR const-prop: the folded constant should replace the add.
+
+reg var sink: u32 = 0;
+
+fn demo() -> u32 {
+    return 40 + 2;
+}
+
+sink = demo();

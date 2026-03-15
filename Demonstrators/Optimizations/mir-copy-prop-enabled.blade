@@ -1,0 +1,22 @@
+// EXPECT: xfail
+// STAGE: mir
+// ARGS:
+// - --no-single-callsite-inline
+// - -fno-mir-opt=*
+// - -fmir-opt=copy-prop
+// NOT_CONTAINS:
+// - copy
+// NOTE:
+//   Intended positive case for MIR copy-prop.
+//   This is currently xfail because .blade sources do not expose a stable way to materialize MIR copy nodes for the pass.
+
+reg var sink: u32 = 0;
+reg var input: bool = false;
+reg var left: u32 = 2;
+reg var right: u32 = 3;
+
+fn demo(cond: bool, a: u32, b: u32) -> u32 {
+    return if (cond) a else b;
+}
+
+sink = demo(input, left, right);
