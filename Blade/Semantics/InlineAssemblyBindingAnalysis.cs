@@ -105,8 +105,11 @@ public static class InlineAssemblyBindingAnalysis
             if (immediateText == "$")
                 return true;
 
-            return TryParseImmediate(immediateText, out _);
+            return TryParseImmediate(immediateText, out _) || IsPlainSymbol(immediateText);
         }
+
+        if (trimmed.EndsWith(':'))
+            return IsPlainSymbol(trimmed[..^1].Trim());
 
         return trimmed == "$" || IsPlainSymbol(trimmed);
     }

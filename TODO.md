@@ -43,17 +43,6 @@ asm fn test_and_set_bit(val: u32, bit_num: u32) -> u32, bool@C {
 }
 ```
 
-## `asm volatile { }` blocks
-
-Right now, all blocks are inherently volatile.
-
-If we can make this an optional keyword, we can change the semantics:
-
-- `asm { … }` is hand-written assembly code, but *may* be optimized by an ASMIR or ASM optimizer.
-- `asm volatile { … }` must be taken verbatim by the assembler.
-
-This would allow optimizing user-written assembly code and elide unnecessary MOV or copies emitted by the compiler.
-
 ## `rec fn` seems to miscompile
 
 Validate that `rec fn` uses CALLB and stack spilling when calling other rec functions.
@@ -64,18 +53,6 @@ In FinalAssemblyWriter.WriteConBlock, skip CON alias emission when the fixed-add
 
 ## `undefined` keyword for no-init locals
 
-## `noinline fn` should be added to control code size
-
-## Test strategy to find regressions and miscompilations
-
-Right now, nothing is really tested except for the unit tests, which have bad coverage atm.
-
-The idea is that we introduce a proper testing framework or test runner outside NUnit Tests which:
-
-- Can run on a lot of files
-- Can validate generated instruction sequences
-- Can validate/match on generated code snippets (only raw code, always ignores comments and whitespace)
-- Can be used to run hand-written tests against hand-optimized assembly code
 
 ## Add configuration for each optimization pass
 
@@ -101,12 +78,6 @@ the language docs under "Docs/Blade.md".
 
 Codify builds must yield zero warnings.
 
-
-## Non-deterministic code generation
-
-`g_sink_XXX` in `Demonstrators/Optimizations/asmir-elide-nops-enabled.blade` is
-having random numbers. Potentially an issue with the use of a non-sorted HashSet type.
-
 ## Support Inline assembly labels
 
 This is a huge important thing, we need to be able to use this:
@@ -118,3 +89,40 @@ asm {
 label: // derive from the PASM syntax to make parsing simpler
 }
 ```
+
+## Optimizer removes the required NOP
+
+```
+REP #1, #0
+NOP
+```
+
+gets optimized by the NOP optimizer
+
+this means we need a way to handle the "TRAP" as a single ASMIR instruction
+
+
+
+---
+
+## `asm volatile { }` blocks
+
+Right now, all blocks are inherently volatile.
+
+If we can make this an optional keyword, we can change the semantics:
+
+- `asm { … }` is hand-written assembly code, but *may* be optimized by an ASMIR or ASM optimizer.
+- `asm volatile { … }` must be taken verbatim by the assembler.
+
+This would allow optimizing user-written assembly code and elide unnecessary MOV or copies emitted by the compiler.
+
+## Test strategy to find regressions and miscompilations
+
+Right now, nothing is really tested except for the unit tests, which have bad coverage atm.
+
+The idea is that we introduce a proper testing framework or test runner outside NUnit Tests which:
+
+- Can run on a lot of files
+- Can validate generated instruction sequences
+- Can validate/match on generated code snippets (only raw code, always ignores comments and whitespace)
+- Can be used to run hand-written tests against hand-optimized assembly code

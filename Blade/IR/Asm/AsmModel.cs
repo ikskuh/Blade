@@ -214,12 +214,17 @@ public sealed class AsmCommentNode : AsmNode
 /// </summary>
 public sealed class AsmInlineTextNode : AsmNode
 {
-    public AsmInlineTextNode(string text, IReadOnlyDictionary<string, AsmOperand>? bindings = null)
+    public AsmInlineTextNode(
+        string text,
+        IReadOnlyDictionary<string, AsmOperand>? bindings = null,
+        IReadOnlyDictionary<string, string>? localLabels = null)
     {
         Text = text;
         Bindings = bindings ?? new Dictionary<string, AsmOperand>(StringComparer.Ordinal);
+        LocalLabels = localLabels ?? new Dictionary<string, string>(StringComparer.Ordinal);
     }
 
     public string Text { get; }
     public IReadOnlyDictionary<string, AsmOperand> Bindings { get; }
+    public IReadOnlyDictionary<string, string> LocalLabels { get; }
 }

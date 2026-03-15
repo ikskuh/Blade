@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -502,7 +503,7 @@ public static class RegisterAllocator
 
                     case AsmInlineTextNode inlineText:
                         rewrittenNodes.Add(new AsmInlineTextNode(
-                            RewriteInlineAsmText(inlineText.Text, inlineText.Bindings, regToSlot)));
+                            RewriteInlineAsmText(inlineText.Text, inlineText.Bindings, inlineText.LocalLabels, regToSlot)));
                         break;
 
                     case AsmImplicitUseNode implicitUse:
@@ -569,10 +570,15 @@ public static class RegisterAllocator
     private static string RewriteInlineAsmText(
         string text,
         IReadOnlyDictionary<string, AsmOperand> bindings,
+        IReadOnlyDictionary<string, string> localLabels,
         IReadOnlyDictionary<int, int> regToSlot)
     {
-        return Regex.Replace(
-            text,
+        int commentIndex = text.AsSpan().IndexOf('\'');
+        string codeText = commentIndex >= 0 ? text[..commentIndex] : text;
+        string commentText = commentIndex >= 0 ? text[commentIndex..] : string.Empty;
+
+        string rewritten = Regex.Replace(
+            codeText,
             @"\{(\w+)\}",
             match =>
             {
@@ -588,6 +594,37 @@ public static class RegisterAllocator
                     _ => rewritten.Format(),
                 };
             });
+
+        rewritten = RewriteInlineAsmLocalLabels(rewritten, localLabels);
+        return rewritten + commentText;
+    }
+
+    private static string RewriteInlineAsmLocalLabels(
+        string text,
+        IReadOnlyDictionary<string, string> localLabels)
+    {
+        if (localLabels.Count == 0 || string.IsNullOrEmpty(text))
+            return text;
+
+        Match labelDefinition = Regex.Match(
+            text,
+            @"^(?<leading>\s*)(?<label>[A-Za-z0-9_$]+)\s*:\s*$",
+            RegexOptions.CultureInvariant);
+        if (labelDefinition.Success)
+        {
+            string originalLabel = labelDefinition.Groups["label"].Value;
+            if (localLabels.TryGetValue(originalLabel, out string? rewrittenLabel))
+                return labelDefinition.Groups["leading"].Value + rewrittenLabel;
+        }
+
+        string rewritten = text;
+        foreach ((string originalLabel, string rewrittenLabel) in localLabels.OrderByDescending(static pair => pair.Key.Length))
+        {
+            string pattern = $@"(?<![A-Za-z0-9_$]){Regex.Escape(originalLabel)}(?![A-Za-z0-9_$])";
+            rewritten = Regex.Replace(rewritten, pattern, rewrittenLabel, RegexOptions.CultureInvariant);
+        }
+
+        return rewritten;
     }
 
     private static string SlotLabel(int slot) => $"_r{slot}";

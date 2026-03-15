@@ -337,12 +337,51 @@ public class IrPipelineTests
 
         IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
         {
+            EnableSingleCallsiteInlining = false,
+            EnableMirInlining = false,
             EnableMirOptimizations = false,
             EnableLirOptimizations = false,
         });
 
-        Assert.That(build.AssemblyText, Does.Contain("done"));
-        Assert.That(build.AssemblyText, Does.Contain("IF_Z JMP #done"));
+        AsmFunction function = build.AsmModule.Functions.Single(f => f.Name == "f");
+        Assert.That(function.Nodes.OfType<AsmInlineTextNode>(), Is.Empty);
+        Assert.That(build.AssemblyText, Does.Not.Contain("done:"));
+        Assert.That(build.AssemblyText, Does.Not.Contain("IF_Z JMP #done"));
+        Assert.That(build.AssemblyText, Does.Match(@"IF_Z JMP #__asm_\d+_\d+_done"));
+        Assert.That(Regex.IsMatch(build.AssemblyText, @"^\s*__asm_\d+_\d+_done\s*$", RegexOptions.Multiline), Is.True, build.AssemblyText);
+    }
+
+    [Test]
+    public void InlineAsm_Volatile_LocalLabelsArePrefixedAndEmitWithoutColon()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn f(v: u32) -> u32 {
+                var out: u32 = 0;
+                asm volatile {
+                    IF_Z JMP #done
+                    MOV {out}, {v}
+                    done:
+                };
+                return out;
+            }
+
+            reg var sink: u32 = f(1);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableSingleCallsiteInlining = false,
+            EnableMirInlining = false,
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        Assert.That(build.AssemblyText, Does.Not.Contain("done:"));
+        Assert.That(build.AssemblyText, Does.Not.Contain("IF_Z JMP #done"));
+        Assert.That(build.AssemblyText, Does.Match(@"IF_Z JMP #__asm_\d+_\d+_done"));
+        Assert.That(Regex.IsMatch(build.AssemblyText, @"^\s*__asm_\d+_\d+_done\s*$", RegexOptions.Multiline), Is.True, build.AssemblyText);
     }
 
     [Test]
@@ -545,7 +584,7 @@ public class IrPipelineTests
             fn f(x: u32) -> u32 {
                 var out: u32 = 0;
                 asm {
-                    MOV {out}, #target_label // keep raw fallback comment
+                    MOV {out}, #target_label + 4 // keep raw fallback comment
                 };
                 return out;
             }
@@ -564,7 +603,7 @@ public class IrPipelineTests
 
         AsmFunction function = build.AsmModule.Functions.Single(f => f.Name == "f");
         Assert.That(function.Nodes.OfType<AsmInlineTextNode>().Any(), Is.True);
-        Assert.That(build.AssemblyText, Does.Contain("#target_label"));
+        Assert.That(build.AssemblyText, Does.Contain("#target_label + 4"));
         Assert.That(build.AssemblyText, Does.Contain("' keep raw fallback comment"));
     }
 

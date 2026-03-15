@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text;
 using Blade;
 using Blade.IR.Lir;
 using Blade.Semantics;
@@ -42,7 +43,7 @@ public static class AsmLowerer
                 continue;
 
             CallingConventionTier tier = cgResult.Tiers.GetValueOrDefault(function.Name, CallingConventionTier.General);
-            LoweringContext ctx = new(function, tier, cgResult.Tiers, blockParamMap[function.Name]);
+            LoweringContext ctx = new(function, functionOrdinal: functions.Count, tier, cgResult.Tiers, blockParamMap[function.Name]);
             functions.Add(LowerFunction(ctx));
         }
 
@@ -52,17 +53,21 @@ public static class AsmLowerer
     private sealed class LoweringContext
     {
         public LirFunction Function { get; }
+        public int FunctionOrdinal { get; }
         public CallingConventionTier Tier { get; }
         public Dictionary<string, CallingConventionTier> CalleeTiers { get; }
         public Dictionary<string, IReadOnlyList<LirBlockParameter>> BlockParams { get; }
+        public int NextInlineAsmBlockOrdinal { get; set; }
 
         public LoweringContext(
             LirFunction function,
+            int functionOrdinal,
             CallingConventionTier tier,
             Dictionary<string, CallingConventionTier> calleeTiers,
             Dictionary<string, IReadOnlyList<LirBlockParameter>> blockParams)
         {
             Function = function;
+            FunctionOrdinal = functionOrdinal;
             Tier = tier;
             CalleeTiers = calleeTiers;
             BlockParams = blockParams;
@@ -92,7 +97,7 @@ public static class AsmLowerer
     {
         if (instruction is LirInlineAsmInstruction inlineAsm)
         {
-            LowerInlineAsm(nodes, inlineAsm);
+            LowerInlineAsm(nodes, inlineAsm, ctx);
             return;
         }
 
@@ -150,34 +155,37 @@ public static class AsmLowerer
         }
     }
 
-    private static void LowerInlineAsm(List<AsmNode> nodes, LirInlineAsmInstruction inlineAsm)
+    private static void LowerInlineAsm(List<AsmNode> nodes, LirInlineAsmInstruction inlineAsm, LoweringContext ctx)
     {
         Dictionary<string, AsmOperand> bindings = new(StringComparer.Ordinal);
         foreach (LirInlineAsmBinding binding in inlineAsm.Bindings)
             bindings[binding.Name] = LowerOperand(binding.Operand);
 
+        IReadOnlyDictionary<string, string> localLabels = CreateInlineAsmLocalLabels(ctx, inlineAsm.ParsedLines);
+
         if (inlineAsm.Volatility == AsmVolatility.Volatile)
         {
-            LowerRawInlineAsm(nodes, inlineAsm.Body, bindings, "inline asm volatile");
+            LowerRawInlineAsm(nodes, inlineAsm.Body, inlineAsm.ParsedLines, bindings, localLabels, "inline asm volatile");
             return;
         }
 
         if (inlineAsm.FlagOutput is not null)
         {
-            LowerRawInlineAsm(nodes, inlineAsm.Body, bindings, $"inline asm flag-output {inlineAsm.FlagOutput}");
+            LowerRawInlineAsm(nodes, inlineAsm.Body, inlineAsm.ParsedLines, bindings, localLabels, $"inline asm flag-output {inlineAsm.FlagOutput}");
             return;
         }
 
-        if (TryLowerTypedInlineAsm(nodes, inlineAsm, bindings))
+        if (TryLowerTypedInlineAsm(nodes, inlineAsm, bindings, localLabels))
             return;
 
-        LowerRawInlineAsm(nodes, inlineAsm.Body, bindings, "inline asm raw fallback");
+        LowerRawInlineAsm(nodes, inlineAsm.Body, inlineAsm.ParsedLines, bindings, localLabels, "inline asm raw fallback");
     }
 
     private static bool TryLowerTypedInlineAsm(
         List<AsmNode> nodes,
         LirInlineAsmInstruction inlineAsm,
-        IReadOnlyDictionary<string, AsmOperand> bindings)
+        IReadOnlyDictionary<string, AsmOperand> bindings,
+        IReadOnlyDictionary<string, string> localLabels)
     {
         Queue<InlineAssemblyValidator.AsmLine> parsedLines = new(inlineAsm.ParsedLines);
         List<AsmNode> lowered = [];
@@ -203,13 +211,13 @@ public static class AsmLowerer
                 if (string.IsNullOrWhiteSpace(line.LabelName))
                     return false;
 
-                lowered.Add(new AsmLabelNode(line.LabelName));
+                lowered.Add(new AsmLabelNode(RewriteInlineAsmLocalLabel(line.LabelName, localLabels)));
                 if (sourceLine.CommentText is not null)
                     lowered.Add(new AsmCommentNode(sourceLine.CommentText));
                 continue;
             }
 
-            if (!TryLowerParsedInlineAsmLine(line, bindings, out AsmInstructionNode? instruction))
+            if (!TryLowerParsedInlineAsmLine(line, bindings, localLabels, out AsmInstructionNode? instruction))
                 return false;
 
             lowered.Add(instruction!);
@@ -230,12 +238,49 @@ public static class AsmLowerer
     private static void LowerRawInlineAsm(
         List<AsmNode> nodes,
         string body,
+        IReadOnlyList<InlineAssemblyValidator.AsmLine> parsedLines,
         IReadOnlyDictionary<string, AsmOperand> bindings,
+        IReadOnlyDictionary<string, string> localLabels,
         string commentLabel)
     {
         nodes.Add(new AsmCommentNode($"{commentLabel} begin"));
-        foreach (string line in SplitInlineAsmBody(body))
-            nodes.Add(new AsmInlineTextNode(TransposeBladeCommentToPasm(line), bindings));
+        Queue<InlineAssemblyValidator.AsmLine> remainingLines = new(parsedLines);
+        foreach (InlineAsmSourceLine sourceLine in ParseInlineAsmSourceLines(body))
+        {
+            if (sourceLine.IsBlank)
+            {
+                nodes.Add(new AsmInlineTextNode(string.Empty));
+                continue;
+            }
+
+            if (sourceLine.InstructionText is null)
+            {
+                if (sourceLine.CommentText is not null)
+                    nodes.Add(new AsmCommentNode(sourceLine.CommentText));
+                continue;
+            }
+
+            if (remainingLines.TryPeek(out InlineAssemblyValidator.AsmLine? line) && line.IsLabel)
+            {
+                remainingLines.Dequeue();
+                if (string.IsNullOrWhiteSpace(line.LabelName))
+                    continue;
+
+                nodes.Add(new AsmLabelNode(RewriteInlineAsmLocalLabel(line.LabelName, localLabels)));
+                if (sourceLine.CommentText is not null)
+                    nodes.Add(new AsmCommentNode(sourceLine.CommentText));
+                continue;
+            }
+
+            if (remainingLines.Count > 0)
+                remainingLines.Dequeue();
+
+            nodes.Add(new AsmInlineTextNode(
+                FormatRawInlineAsmText(sourceLine.InstructionText, sourceLine.CommentText),
+                bindings,
+                localLabels));
+        }
+
         nodes.Add(new AsmCommentNode($"{commentLabel} end"));
     }
 
@@ -271,6 +316,7 @@ public static class AsmLowerer
     private static bool TryLowerParsedInlineAsmLine(
         InlineAssemblyValidator.AsmLine line,
         IReadOnlyDictionary<string, AsmOperand> bindings,
+        IReadOnlyDictionary<string, string> localLabels,
         out AsmInstructionNode? instruction)
     {
         instruction = null;
@@ -280,7 +326,7 @@ public static class AsmLowerer
         List<AsmOperand> operands = new(line.Operands.Count);
         foreach (string operandText in line.Operands)
         {
-            if (!TryParseInlineAsmOperand(operandText, bindings, out AsmOperand? operand))
+            if (!TryParseInlineAsmOperand(operandText, bindings, localLabels, out AsmOperand? operand))
                 return false;
             operands.Add(operand!);
         }
@@ -313,6 +359,7 @@ public static class AsmLowerer
     private static bool TryParseInlineAsmOperand(
         string text,
         IReadOnlyDictionary<string, AsmOperand> bindings,
+        IReadOnlyDictionary<string, string> localLabels,
         out AsmOperand? operand)
     {
         operand = null;
@@ -341,7 +388,7 @@ public static class AsmLowerer
             return false;
 
         if (trimmed.StartsWith('#'))
-            {
+        {
             string immediateText = trimmed[1..].Trim();
             if (immediateText == "$")
             {
@@ -349,11 +396,19 @@ public static class AsmLowerer
                 return true;
             }
 
-            if (!TryParseInlineAsmImmediate(immediateText, out long immediate))
-                return false;
+            if (TryParseInlineAsmImmediate(immediateText, out long immediate))
+            {
+                operand = new AsmImmediateOperand(immediate);
+                return true;
+            }
 
-            operand = new AsmImmediateOperand(immediate);
-            return true;
+            if (IsPlainInlineAsmSymbol(immediateText))
+            {
+                operand = new AsmSymbolOperand(RewriteInlineAsmLocalLabel(immediateText, localLabels));
+                return true;
+            }
+
+            return false;
         }
 
         if (trimmed.EndsWith(":"[0]))
@@ -362,13 +417,13 @@ public static class AsmLowerer
             if (!IsPlainInlineAsmSymbol(labelReference))
                 return false;
 
-            operand = new AsmSymbolOperand(labelReference);
+            operand = new AsmSymbolOperand(RewriteInlineAsmLocalLabel(labelReference, localLabels));
             return true;
         }
 
         if (trimmed == "$" || IsPlainInlineAsmSymbol(trimmed))
         {
-            operand = new AsmSymbolOperand(trimmed);
+            operand = new AsmSymbolOperand(RewriteInlineAsmLocalLabel(trimmed, localLabels));
             return true;
         }
 
@@ -417,16 +472,60 @@ public static class AsmLowerer
     private static string NormalizeBladeComment(string commentText)
         => commentText.TrimStart();
 
-    private static string TransposeBladeCommentToPasm(string line)
+    private static string FormatRawInlineAsmText(string instructionText, string? commentText)
     {
-        int commentIdx = line.IndexOf("//", StringComparison.Ordinal);
-        if (commentIdx < 0)
-            return line;
+        if (commentText is null)
+            return instructionText;
 
-        string beforeComment = line[..commentIdx];
-        string commentText = NormalizeBladeComment(line[(commentIdx + 2)..]);
-        string pasmComment = $"'{(commentText.Length == 0 ? string.Empty : $" {commentText}")}";
-        return beforeComment.Length == 0 ? pasmComment : $"{beforeComment}{pasmComment}";
+        return instructionText.Length == 0
+            ? $"'{(commentText.Length == 0 ? string.Empty : $" {commentText}")}"
+            : $"{instructionText} '{(commentText.Length == 0 ? string.Empty : $" {commentText}")}";
+    }
+
+    private static IReadOnlyDictionary<string, string> CreateInlineAsmLocalLabels(
+        LoweringContext ctx,
+        IReadOnlyList<InlineAssemblyValidator.AsmLine> parsedLines)
+    {
+        Dictionary<string, string> localLabels = new(StringComparer.Ordinal);
+        List<string> labelNames = parsedLines
+            .Where(static line => line.IsLabel && !string.IsNullOrWhiteSpace(line.LabelName))
+            .Select(static line => line.LabelName!)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        if (labelNames.Count == 0)
+            return localLabels;
+
+        int blockOrdinal = ctx.NextInlineAsmBlockOrdinal++;
+        foreach (string labelName in labelNames)
+            localLabels[labelName] = $"__asm_{ctx.FunctionOrdinal}_{blockOrdinal}_{EncodeInlineAsmLabelComponent(labelName)}";
+
+        return localLabels;
+    }
+
+    private static string RewriteInlineAsmLocalLabel(
+        string label,
+        IReadOnlyDictionary<string, string> localLabels)
+    {
+        return localLabels.TryGetValue(label, out string? rewritten) ? rewritten : label;
+    }
+
+    private static string EncodeInlineAsmLabelComponent(string label)
+    {
+        StringBuilder builder = new(label.Length);
+        foreach (char ch in label)
+        {
+            if (char.IsAsciiLetterOrDigit(ch) || ch == '_')
+            {
+                builder.Append(ch);
+                continue;
+            }
+
+            builder.Append("_x");
+            builder.Append(((int)ch).ToString("X2", CultureInfo.InvariantCulture));
+            builder.Append('_');
+        }
+
+        return builder.ToString();
     }
 
     private readonly record struct InlineAsmSourceLine(string? InstructionText, string? CommentText, bool IsBlank);
