@@ -9,8 +9,9 @@
 // Blade only supports line comments introduced with '//'.
 //
 // NOTE:
-//   This file is syntactically and semantically valid, but may not yet be accepted
+//   This file is syntactically valid, but may not yet be accepted
 //   by the Blade parser.
+//   The file will eventually also be semantically valid.
 //
 
 // As a "main" function doesn't make sense for blade, we just allow top-level code
@@ -59,11 +60,11 @@ fn get_three_specific() -> u32@reg, bool@C, bit@Z {
 // by default, booleans and bit values will be returned in a flag instead of
 // a register, as the flags allow efficient processing for conditionals,
 // while a 0/1 value in a register would require unwrapping again, thus
-fn get_state_default() bool {
+fn get_state_default() -> bool {
     return true;
 }
 // and 
-fn get_state_explicit() bool@C {
+fn get_state_explicit() -> bool@C {
     return true;
 }
 // will behave equivalent assuming the compiler has chosen to put the boolean into C.
@@ -338,9 +339,13 @@ fn control_flow_demo(count: u32, cond: bool) {
     return 0;
     return 0, true;
     return 0, true, 0;
+}
 
+int1 fn control_flow_int() {
     yield; // yields from an "intX fn"
+}
 
+coro fn control_flow_coro() {
     yieldto call(); // yields control to another "coro fn"
 }
 
@@ -417,38 +422,38 @@ asm volatile fn assembly_function() -> u32 {
 fn builtin_types() {
     // The following basic integer types are supported by Blade:
     var v_00: u8 = 0;
-    var v_00: u16 = 0;
-    var v_00: u32 = 0;
+    var v_01: u16 = 0;
+    var v_02: u32 = 0;
     
     // Two's complement signed integers:
-    var v_00: i8 = 0;
-    var v_00: i16 = 0;
-    var v_00: i32 = 0;
+    var v_03: i8 = 0;
+    var v_04: i16 = 0;
+    var v_05: i32 = 0;
 
     // single-bit types, can be stored in flags efficiently:
-    var v_00: bool = true; // or "false"
-    var v_00: bit = 0; // or "1"
+    var v_06: bool = true; // or "false"
+    var v_07: bit = 0; // or "1"
 
     // special ints:
-    var v_00: nib = []; // 4 bit unsigned integer
+    var v_08: nib = []; // 4 bit unsigned integer
 
     // arrays:
-    var v_00: [N]u8 = []; // Array of N bytes
+    var v_09: [N]u8 = []; // Array of N bytes
 
     // arrays are packed efficiently when possible
-    var v_00: [N]bool = []; // Backed into a u32, using BITx instructions
-    var v_00: [N]nib = []; // Backed into a u32, using GETNIB,SETNIB,ROLNIB
-    var v_00: [N]u8 = []; // Backed into a u32, using GETBYTE,SETBYTE,ROLBYTE
-    var v_00: [N]u16 = []; // Backed into a u32, using GETWORD,SETWORD,ROLWORD
+    var v_10: [N]bool = []; // Backed into a u32, using BITx instructions
+    var v_11: [N]nib = []; // Backed into a u32, using GETNIB,SETNIB,ROLNIB
+    var v_12: [N]u8 = []; // Backed into a u32, using GETBYTE,SETBYTE,ROLBYTE
+    var v_13: [N]u16 = []; // Backed into a u32, using GETWORD,SETWORD,ROLWORD
 
     // The SIMD type:
     // A type that can be coerced from/to [4]u8, but allows additional operations
     // and swizzling, behaves like a RGBA8888 color type kinda:
-    var v_00: u8x4 = [1,2,3,4];
+    var v_14: u8x4 = [1,2,3,4];
 
     // Pointer types can also be defined:
-    var v_00: *T = undefined; // ptr to a single item
-    var v_00: [*]T = undefined; // ptr to an array of unknown length
+    var v_15: *reg T = undefined; // ptr to a single register
+    var v_16: [*]reg T = undefined; // ptr to an array of unknown length
 }
 
 // type aliases can be defined:
@@ -466,6 +471,70 @@ type Point = struct {
 // 
 // };
 
+// An enumeration of known items:
+type Enum = enum {
+    first = 0,
+    second = 1,
+    third, // automatically previous item + 1
+};
 
+//////////////////////////////////////////////////////////////////////////////
+// Expressions & Operators
+//////////////////////////////////////////////////////////////////////////////
 
+fn expressions() {
+    var a: [2]u32 = [0,0];
+    var x: u32 = 0;
+    var y: u32 = 0;
+    var b: bool = 0;
+    var c: bool = 0;
+    var p: *T = undefined;
 
+    x = y; // assignment is a statement, and cannot be nested into expressions
+
+    // Comparison:
+    b = (x == y); // equality
+    b = (x != y); // inequality
+    b = (x >  y); // greater than
+    b = (x >= y); // greater or equal than
+    b = (x <  y); // less than
+    b = (x <= y); // less or equal than
+    
+    // Boolean ops:
+    b = (b and c); // boolean and, with short-circuit
+    b = (b or  c); // boolean or, with short-circuit
+    b = !b;        // boolean not
+
+    // Bitwise ops:
+    x = ~x; // bitwise inversion
+    x = x | y; // bitwise OR
+    x = x & y; // bitwise AND
+    x = x ^ y; // bitwise XOR
+    x = x << y; // logical left shift (shift in zeroes)
+    x = x >> y; // logical right shift (shift in zeroes)
+    x = x << y; // arithmetic left shift (shift in LSB)
+    x = x >> y; // arithmetic right shift (shift in MSB)
+
+    // Arithmetic ops:
+    x = -x;    // negate
+    x = x + y; // addition
+    x = x - y; // subtraction
+    x = x * y; // multiplication
+    x = x / y; // division
+    x = x % y; // modulus division
+
+    x = function(); // function calls
+    x = function(10, 20); // function calls with positionals params
+    x = function(x=10, y=20); // function calls with named params
+    x = function(10, y=20); // function calls with mixed params (names must come after positionals, no conflicts)
+
+    x = a[1]; // array/ptr read at index
+    a[0] = x; // array/ptr write to index
+
+    a = [ 1, 2 ]; // array construction/assignment
+
+    p = &x; // address-of operator
+    y = p.*; // value-of operator
+
+    x = (y); // parens overwrite precedence
+}
