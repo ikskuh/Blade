@@ -37,7 +37,10 @@
   - `--dump-final-asm`
   - `--dump-all`
   - `--dump-dir <path>`
-  - `--no-single-callsite-inline`
+  - optimizer toggles:
+    - `-fmir-opt=<csv>` / `-fno-mir-opt=<csv>`
+    - `-flir-opt=<csv>` / `-fno-lir-opt=<csv>`
+    - `-fasmir-opt=<csv>` / `-fno-asmir-opt=<csv>`
 
 ```sh
 # Current dev loop

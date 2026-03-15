@@ -1,7 +1,6 @@
 // EXPECT: pass
 // STAGE: mir
 // ARGS:
-// - --no-single-callsite-inline
 // - -fno-mir-opt=*
 // CONTAINS:
 // - binary.Add
@@ -11,7 +10,7 @@
 reg var sink: u32 = 0;
 reg var input: u32 = 5;
 
-fn demo(x: u32) -> u32 {
+noinline fn demo(x: u32) -> u32 {
     var y: u32 = x + 1;
     return x;
 }

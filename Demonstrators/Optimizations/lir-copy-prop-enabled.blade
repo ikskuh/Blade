@@ -1,7 +1,6 @@
 // EXPECT: xfail
 // STAGE: lir
 // ARGS:
-// - --no-single-callsite-inline
 // - -fno-mir-opt=*
 // - -fno-lir-opt=*
 // - -flir-opt=copy-prop
@@ -17,7 +16,7 @@ reg var input: bool = false;
 reg var left: u32 = 2;
 reg var right: u32 = 3;
 
-fn demo(cond: bool, a: u32, b: u32) -> u32 {
+noinline fn demo(cond: bool, a: u32, b: u32) -> u32 {
     return if (cond) a else b;
 }
 

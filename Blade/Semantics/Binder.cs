@@ -1304,6 +1304,7 @@ public sealed class Binder
     {
         TokenKind.LeafKeyword => FunctionKind.Leaf,
         TokenKind.InlineKeyword => FunctionKind.Inline,
+        TokenKind.NoinlineKeyword => FunctionKind.Noinline,
         TokenKind.RecKeyword => FunctionKind.Rec,
         TokenKind.CoroKeyword => FunctionKind.Coro,
         TokenKind.ComptimeKeyword => FunctionKind.Comptime,

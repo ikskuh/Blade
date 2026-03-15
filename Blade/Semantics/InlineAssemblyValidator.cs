@@ -25,6 +25,8 @@ public static class InlineAssemblyValidator
         public IReadOnlyList<string> Operands { get; init; } = Array.Empty<string>();
         public string? FlagEffect { get; init; }
         public string RawText { get; init; } = "";
+        public bool IsLabel { get; init; }
+        public string? LabelName { get; init; }
     }
 
     /// <summary>
@@ -93,6 +95,16 @@ public static class InlineAssemblyValidator
         string remaining = text;
         string? condition = null;
         string? flagEffect = null;
+
+        if (TryParseLabelDefinition(text, out string? labelName))
+        {
+            return new AsmLine
+            {
+                RawText = text,
+                IsLabel = true,
+                LabelName = labelName,
+            };
+        }
 
         // Check for condition prefix at the start
         string firstWord = GetFirstWord(remaining);
@@ -169,6 +181,45 @@ public static class InlineAssemblyValidator
             FlagEffect = flagEffect,
             RawText = text,
         };
+    }
+
+    private static bool TryParseLabelDefinition(string text, out string? labelName)
+    {
+        labelName = null;
+        ReadOnlySpan<char> trimmed = text.AsSpan().Trim();
+        if (trimmed.Length < 2 || trimmed[^1] != ':')
+            return false;
+
+        ReadOnlySpan<char> candidate = trimmed[..^1].Trim();
+        if (candidate.IsEmpty)
+            return false;
+
+        if (!IsPlainInlineAsmSymbol(candidate))
+            return false;
+
+        string candidateText = candidate.ToString();
+        if (P2InstructionMetadata.IsValidConditionPrefix(candidateText)
+            || P2InstructionMetadata.IsValidInstruction(candidateText)
+            || P2InstructionMetadata.IsValidFlagEffect(candidateText))
+        {
+            return false;
+        }
+
+        labelName = candidateText;
+        return true;
+    }
+
+    private static bool IsPlainInlineAsmSymbol(ReadOnlySpan<char> text)
+    {
+        foreach (char c in text)
+        {
+            if (char.IsAsciiLetterOrDigit(c) || c == '_' || c == '$')
+                continue;
+
+            return false;
+        }
+
+        return text.Length > 0;
     }
 
     private static string GetFirstWord(string text)

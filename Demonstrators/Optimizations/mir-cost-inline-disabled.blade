@@ -1,7 +1,6 @@
 // EXPECT: pass
 // STAGE: mir
 // ARGS:
-// - --no-single-callsite-inline
 // - -fno-mir-opt=*
 // CONTAINS:
 // - call add1(
@@ -11,11 +10,11 @@
 
 reg var sink: u32 = 0;
 
-fn add1(x: u32) -> u32 {
+noinline fn add1(x: u32) -> u32 {
     return x + 1;
 }
 
-fn demo(x: u32) -> u32 {
+noinline fn demo(x: u32) -> u32 {
     return add1(x);
 }
 

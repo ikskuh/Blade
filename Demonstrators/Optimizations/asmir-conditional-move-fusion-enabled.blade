@@ -1,7 +1,6 @@
 // EXPECT: xfail
 // STAGE: asmir
 // ARGS:
-// - --no-single-callsite-inline
 // - -fasmir-opt=conditional-move-fusion
 // CONTAINS:
 // - IF_Z MOV #_r1, #2
@@ -20,7 +19,7 @@ reg var sink: u32 = 0;
 // label
 // }
 
-fn demo(x: bool) -> u32 {
+noinline fn demo(x: bool) -> u32 {
     var y: u32 = 1;
     if (x) {
         y = 2;

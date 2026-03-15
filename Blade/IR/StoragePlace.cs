@@ -35,7 +35,7 @@ public sealed class StoragePlace
     {
         StoragePlaceKind.FixedRegisterAlias => Symbol.Name,
         StoragePlaceKind.ExternalAlias => Symbol.Name,
-        _ => $"g_{Sanitize(Symbol.Name)}_{Symbol.Id}",
+        _ => $"g_{Sanitize(Symbol.Name)}",
     };
 
     private static string Sanitize(string name)

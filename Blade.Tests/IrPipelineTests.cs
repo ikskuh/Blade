@@ -152,8 +152,8 @@ public class IrPipelineTests
         Assert.That(diagnostics.Count, Is.EqualTo(0));
         IrBuildResult build = IrPipeline.Build(program);
 
-        Assert.That(LirTextWriter.Write(build.LirModule), Does.Contain("load.place %place(g_input_word_"));
-        Assert.That(build.AssemblyText, Does.Match(@"MOV g_copy_folded_\d+,\s+g_input_word_\d+"));
+        Assert.That(LirTextWriter.Write(build.LirModule), Does.Contain("load.place %place(g_input_word"));
+        Assert.That(build.AssemblyText, Does.Match(@"MOV g_copy_folded,\s+g_input_word"));
     }
 
     [Test]
@@ -288,6 +288,61 @@ public class IrPipelineTests
         string withMir = MirTextWriter.Write(withInlining.MirModule);
         Assert.That(withoutMir, Does.Contain("call helper("));
         Assert.That(withMir, Does.Not.Contain("call helper("));
+    }
+
+    [Test]
+    public void NoinlineFunction_IsNeverInlinedAtSingleCallsite()
+    {
+        const string source = """
+            noinline fn helper(x: u32) -> u32 {
+                return x + 1;
+            }
+
+            fn apply(v: u32) -> u32 {
+                return helper(v);
+            }
+            """;
+
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind(source);
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableSingleCallsiteInlining = true,
+            EnableMirOptimizations = false,
+        });
+
+        string mir = MirTextWriter.Write(build.MirModule);
+        Assert.That(mir, Does.Contain("call helper("));
+    }
+
+    [Test]
+    public void InlineAsm_TypedMode_SupportsColonTerminatedLabels()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn f(v: u32) -> u32 {
+                var out: u32 = 0;
+                asm {
+                    IF_Z JMP #done
+                    MOV {out}, {v}
+                    done:
+                };
+                return out;
+            }
+
+            reg var sink: u32 = f(1);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        Assert.That(build.AssemblyText, Does.Contain("done"));
+        Assert.That(build.AssemblyText, Does.Contain("IF_Z JMP #done"));
     }
 
     [Test]
@@ -590,7 +645,7 @@ public class IrPipelineTests
         Assert.That(duplicateMirLabels, Is.Empty);
         Assert.That(duplicateAsmLabels, Is.Empty);
 
-        Assert.That(build.AssemblyText, Does.Match(@"MOV\s+g_flags_\d+,\s+_r\d+"));
+        Assert.That(build.AssemblyText, Does.Match(@"MOV\s+g_flags,\s+_r\d+"));
         Assert.That(build.AssemblyText, Does.Not.Contain("%r"));
     }
 
@@ -674,9 +729,9 @@ public class IrPipelineTests
             EnableMirOptimizations = false,
         });
 
-        Assert.That(build.AssemblyText, Does.Match(@"g_g_\d+"));
+        Assert.That(build.AssemblyText, Does.Match(@"\bg_g\b"));
         Assert.That(build.AssemblyText, Does.Match(@"LONG\s+1000\b"));
-        Assert.That(build.AssemblyText, Does.Not.Contain("MOV g_g_"));
+        Assert.That(build.AssemblyText, Does.Not.Contain("MOV g_g,"));
     }
 
     [Test]

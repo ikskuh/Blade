@@ -394,12 +394,6 @@ public static class RegressionRunner
 
         foreach (string arg in compilerArgs)
         {
-            if (arg == "--no-single-callsite-inline")
-            {
-                enableSingleCallsiteInlining = false;
-                continue;
-            }
-
             if (TryParseOptimizationDirective(arg, OptimizationStage.Mir, "-fmir-opt=", enable: true, out OptimizationDirective? directive)
                 || TryParseOptimizationDirective(arg, OptimizationStage.Mir, "-fno-mir-opt=", enable: false, out directive)
                 || TryParseOptimizationDirective(arg, OptimizationStage.Lir, "-flir-opt=", enable: true, out directive)

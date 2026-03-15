@@ -1,7 +1,7 @@
 // EXPECT: pass
 // STAGE: asmir
 // ARGS:
-// - --no-single-callsite-inline
+// - -fno-mir-opt=single-callsite-inline
 // - -fno-asmir-opt=conditional-move-fusion
 // SEQUENCE:
 // -   IF_Z JMP #$top_inl_after_0

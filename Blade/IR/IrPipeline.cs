@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using Blade.IR.Asm;
 using Blade.IR.Lir;
 using Blade.IR.Mir;
@@ -12,9 +15,16 @@ public static class IrPipeline
         options ??= new IrPipelineOptions();
 
         MirModule mirModule = MirLowerer.Lower(boundProgram);
+
+        IReadOnlyList<string> enabledMirOptimizations = OptimizationCatalog.ResolveEnabled(
+            OptimizationStage.Mir,
+            options.OptimizationDirectives);
+        bool enableSingleCallsiteInlining = options.EnableSingleCallsiteInlining
+            && enabledMirOptimizations.Contains("single-callsite-inline", StringComparer.Ordinal);
+
         mirModule = MirInliner.InlineMandatoryAndSingleCallsite(
             mirModule,
-            options.EnableSingleCallsiteInlining);
+            enableSingleCallsiteInlining);
         MirModule preOptimizationMirModule = mirModule;
 
         if (options.EnableMirOptimizations)
@@ -22,7 +32,7 @@ public static class IrPipeline
             mirModule = MirOptimizer.Optimize(
                 mirModule,
                 options.MaxOptimizationIterations,
-                OptimizationCatalog.ResolveEnabled(OptimizationStage.Mir, options.OptimizationDirectives));
+                enabledMirOptimizations);
         }
 
         LirModule lirModule = LirLowerer.Lower(mirModule);

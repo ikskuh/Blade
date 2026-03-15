@@ -28,6 +28,7 @@ public enum TokenKind
     FnKeyword,
     LeafKeyword,
     InlineKeyword,
+    NoinlineKeyword,
     RecKeyword,
     CoroKeyword,
     ComptimeKeyword,

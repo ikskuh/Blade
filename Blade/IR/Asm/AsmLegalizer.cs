@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Blade;
 
 namespace Blade.IR.Asm;
@@ -41,11 +42,10 @@ public static class AsmLegalizer
         // Immediates used 2+ times → allocate a shared constant register.
         // Immediates used once → use AUG prefix inline.
         Dictionary<uint, string> constantRegisters = [];
-        int constantIndex = 0;
-        foreach ((uint value, int count) in immediateUseCounts)
+        foreach ((uint value, int count) in immediateUseCounts.OrderBy(static pair => pair.Key))
         {
             if (count >= 2)
-                constantRegisters[value] = $"_const_{constantIndex++}";
+                constantRegisters[value] = $"constant_{value}";
         }
 
         // Second pass: legalize each function
@@ -74,8 +74,8 @@ public static class AsmLegalizer
             List<AsmNode> extendedNodes = new(entry.Nodes.Count + constantRegisters.Count * 2);
             extendedNodes.AddRange(entry.Nodes);
 
-            extendedNodes.Add(new AsmCommentNode("--- constant registers ---"));
-            foreach ((uint value, string label) in constantRegisters)
+            extendedNodes.Add(new AsmCommentNode("--- constant file ---"));
+            foreach ((uint value, string label) in constantRegisters.OrderBy(static pair => pair.Key).Select(static pair => (pair.Key, pair.Value)))
             {
                 extendedNodes.Add(new AsmLabelNode(label));
                 extendedNodes.Add(new AsmDirectiveNode($"LONG ${value:X8}"));

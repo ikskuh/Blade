@@ -26,6 +26,7 @@ public static class MirOptimizer
             {
                 current = optimization switch
                 {
+                    "single-callsite-inline" => current,
                     "cost-inline" => MirInliner.InlineCostBased(current, inlineCostThreshold: 12),
                     "const-prop" => RunConstantPropagation(current),
                     "copy-prop" => RunCopyPropagation(current),
