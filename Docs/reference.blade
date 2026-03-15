@@ -1,0 +1,471 @@
+// 
+// This file is the definitive syntactical and semantic reference for
+// the blade programming language.
+//
+// It is not a specification, but a collection of syntactical constructs
+// which have comments explaining the semantics of the structures if not
+// obvious.
+//
+// Blade only supports line comments introduced with '//'.
+//
+// NOTE:
+//   This file is syntactically and semantically valid, but may not yet be accepted
+//   by the Blade parser.
+//
+
+// As a "main" function doesn't make sense for blade, we just allow top-level code
+// to be written.
+// Top-level code might be intermixed with function declarations, but a warning
+// diagnostic is emitted if the top-level code is not uniformly completely 
+// at the start or at the end of the file.
+//
+// Top-level code starts at the address `000`.
+//
+// Global variable declarations are not top-level code.
+empty_call();
+
+//////////////////////////////////////////////////////////////////////////////
+// Functions
+//////////////////////////////////////////////////////////////////////////////
+
+// functions are declared in a Rust-similar manner, and blocks use curly braces:
+fn empty_call() {
+
+}
+
+// parameters and return types are written like this:
+fn sum_of_two(a: u32, b: u32) -> u32 {
+
+    // Values must be returned through the 'return' keyword:
+    return a + b;
+}
+
+// the propeller 2 can also be used to return values through the C and Z flags.
+// this allows us returning three values natively, one regular 32 bit value,
+// and up to two booleans with explicit locations:
+fn get_three() -> u32, bool, bit {
+    // return then accepts up to three comma-separated values:
+    return 100, false, 1;
+}
+
+// functions can also specify an explicit placement for the two additional values:
+fn get_three_specific() -> u32@reg, bool@C, bit@Z {
+    // in this case, the default return value is returned through
+    // the register slot, the boolean value is returned in the C flag
+    // and the bit value is returned in the Z flag.
+    return 100, false, 1;
+}
+
+// by default, booleans and bit values will be returned in a flag instead of
+// a register, as the flags allow efficient processing for conditionals,
+// while a 0/1 value in a register would require unwrapping again, thus
+fn get_state_default() bool {
+    return true;
+}
+// and 
+fn get_state_explicit() bool@C {
+    return true;
+}
+// will behave equivalent assuming the compiler has chosen to put the boolean into C.
+// 
+// The return values will determine what flags the compiler will restore when
+// invoking the `RET` instruction:
+//
+// The default is `RET WCZ`, which restores all flags from the caller.
+// If a single bool/bit value is returned, the compiler will place it in C or Z,
+// thus using `RET WC` or `RET WZ`.
+// If both bit/bool-values are returned, the compiler uses a bare `RET`.
+
+//////////////////////////////////////////////////////////////////////////////
+// Calling Conventions
+//////////////////////////////////////////////////////////////////////////////
+
+// Blade supports a bunch of different calling conventions:
+
+// The default calling convention is "the compiler tries its best to be efficient".
+// Default functions can never be recursive and the compiler enforces a
+// maximum call depth of 8 (or 7, when interrupt functions are defined).
+fn cc_default() {}
+
+// The `leaf` calling convention is optimized to use CALLPA if possible.
+// A `leaf` function cannot call other functions (except `comptime fn` and `inline fn`
+// as these are never function calls in the emitted code).
+// Leaves typically allow fast calling and are optimized well. 
+leaf fn cc_leaf() {}
+
+// The language also support a second-order leaf calling convention, which isn't
+// possible to codify in the language itself. It's the calling convention for
+// functions that only call leaf functions. These functions can use `CALLPB` for
+// efficient implementation, as this also can save an instruction.
+
+
+// When recursion is required, `rec fn` can be used.
+// The call stack then will go through a hub-based stack in `PTRB`, and is less 
+// efficient than using the COG-internal stack:
+rec fn cc_recursive(bound: u32) {
+    if(bound > 0) {
+        cc_recursive(bound - 1);
+    }
+}
+
+// Some functions can be used in a macro-like state, but must not contain any
+// inline assembly or access to external values.
+// These functions will be evaluated at compile time and are effectively 
+// just a really fancy way of writing constant values.
+comptime fn cc_comptime() -> u32 {
+    return 1337;
+}
+
+// If it makes sense to have a piece of instructions to never use the call stack,
+// a force-inlined function can be used:
+inline fn cc_inline() {
+    // the code in here is pasted into the calling function.
+}
+
+// If inlining must be prevented semantically, a `noinline fn` must be used:
+noinline fn cc_noinline() {
+    // These functions behave like regular "default cc" functions,
+    // but have the guarantee to be called through regular means.
+    // 
+    // All other functions may be automatically inlined by the compiler,
+    // and functions with only a *single caller* must be force-inlined
+    // into their caller (unless they use `noinline`). 
+}
+
+// The Propeller 2 supports a fancy way of doing coroutines through `CALLD`.
+// This is natively supported in Blade by the use of:
+coro fn cc_coro1(value: u32) {
+    while(true) {
+        // Coroutines can call regular functions. The coroutine itself does not
+        // count towards the stack size limit, as they do not use the internal
+        // hw stack for managing their return state.
+        cc_default();
+
+        // A `coro fn` supports a special control flow keyword called
+        // `yieldto`. It saves the return position for the currently executed
+        // coroutine and resumes the called coroutine at its saved state.
+        // The initial state is always the first instruction of the coroutine.
+        //
+        // Explicit or implicit "return" inside a `coro fn` is forbidden. These 
+        // functions cannot return normally.
+        yieldto cc_coro2();
+    }
+}
+
+coro fn cc_coro2() {
+    while(true) {
+        cc_leaf();
+        
+        // Parameters that are passed to a coroutine with "yieldto" will always
+        // replace the last parameter value if the coroutine was already running.
+        // This allows implementing controlled filter chains or state machines.
+        yieldto cc_coro1(20);
+    }
+}
+
+// The coroutine subsystem can be entered by invoking a "yieldto" on the toplevel:
+yieldto cc_coro1(10);
+
+// There are three special calling conventions in Blade, which cater the
+// Propeller 2 interrupt system:
+int1 fn cc_int1() {
+    // The interrupt handlers have special requirements, and
+    // a regular 'return' in an interrupt handler must be replaced with the correponding
+    // RETI1/RETI2/RETI3 instruction:
+
+    return; // is using "RETI1" as it's a "int1 fn".
+}
+int2 fn cc_int2() {
+
+    // In addition to the regular "return", a interrupt function also
+    // supports coroutinish behaviour through "yield".
+    // A yield returns from the interrupt handler, but also replaces
+    // the new interrupt handler with the next code line, allowing us 
+    // to effectively "suspend" the interrupt handling until the next
+    // interrupt of the same type occurs.
+    yield; // is using "RESI2" as it's a "int2 fn".
+
+    // If "yield" is used in an interrupt function
+    return; // First sets IJMP2 to "cc_int2", then uses "RETI2" to return from the handler.
+}
+int3 fn cc_int3() {
+    // The last of the three interrupt calling conventions.
+}
+
+//////////////////////////////////////////////////////////////////////////////
+// Variables
+//////////////////////////////////////////////////////////////////////////////
+
+// Global variables in blade can be declared in three storage spaces,
+// and two classifications (var/const).
+// All of these values require a constant, comptime initializer.
+
+// "reg var" are guaranteed to be allocated in register
+// space and do not require load/stores to be accessed:
+// The address of a "reg var" yield as "*reg T".
+reg var rv_01: u32 = 0;
+
+// "lut var" is allocated in the LUT memory and will
+// require RDLUT and WRLUT instructions to be accessed.
+// The address of a "lut var" yield as "*lut T".
+lut var lv_01: u32 = 0;
+
+// "hut var" is allocated in the HUB memory and will
+// require RDLONG,RDWORD,RDBYTE and WRLONG,WRWORD,WRBYTE
+// instructions to be accessed.
+// The address of a "hub var" yield as "*hub T".
+hub var hv_01: u32 = 0;
+
+// The constant versions of the variables can be read, but never be written.
+// The language assumes them as immutable, and the compiler may always inline
+// the values of constants into the emitted code to elide loads.
+//
+// The storage class is still required to retain proper pointer semantics.
+reg const rc_01: u32 = 0;
+lut const lc_01: u32 = 0;
+hub const hc_01: u32 = 0;
+
+// Blade also supports another type of variable, which is a plain var or const:
+fn showcase_locals(param: u32) {
+    // locals do not have a defined storage type, and may be fully elided
+    // by the compiler. They are essentially defined as "ephemeral names to
+    // SSA values".
+    
+    // It is not possible to take the address of a local variable, but they
+    // can be initialized with runtime data:
+    var local_var: u32 = 2 * param;
+
+    // also  local constants can be initialized with runtime data, and just
+    // prevent accidental writeback:
+    const local_const: u32 = 2 * local_var;
+}
+
+// The top-level code also can use local variables, which, in contrast to
+// globals, cannot be accessed by functions. They are effectively scoped
+// to the top-level code alone:
+var toplevel_var: u32 = 0;
+
+// TODO: reg var foo: align(value) = 0;
+// TODO: extern reg var foo;
+// TODO: extern reg var foo @(0x1FA);
+// extern reg var DIRA: u32 @(0x1FA);
+// extern reg var DIRB: u32 @(0x1FB);
+// extern reg var OUTA: u32 @(0x1FC);
+// extern reg var OUTB: u32 @(0x1FD);
+// extern reg const INA: u32 @(0x1FE);
+// extern reg const INB: u32 @(0x1FF);
+// extern reg var PTRA: u32 @(0x1F8);    // free for user (hub data access)
+// extern reg var PTRB: u32 @(0x1F9);    // reserved for rec fn stack
+// extern reg var PA: u32 @(0x1F6);
+// extern reg var PB: u32 @(0x1F7);
+
+//////////////////////////////////////////////////////////////////////////////
+// Control Flow
+//////////////////////////////////////////////////////////////////////////////
+
+fn control_flow_demo(count: u32, cond: bool) {
+
+    if (cond) {
+        // taken if cond is true
+    }
+
+    if (cond) {
+        // taken if cond is true
+    } else {
+        // taken if cond is false
+    }
+
+    loop {
+        // endless loop
+
+        // stops loop execution:
+        break;
+
+        // immediately restarts the next loop iteration, skipping the rest of the current iteration.
+        continue; 
+    }
+
+    rep loop {
+        // endless loop, backed by REP => cannot be interrupted, but faster.
+        // all "rep" prefixed loops cannot be interrupted with a "break" or
+        // "continue" but will run to their end.
+    }
+
+    for(count) {
+        // repeats the body "count" times.
+    }
+
+    rep for(count) {
+        // repeats the body "count" times, backed by REP
+    }
+
+    for(count) -> index {
+        // loops index from all values including 0 up to (count-1)
+    }
+
+    rep for(count) -> index {
+        // loops index from all values including 0 up to (count-1), backed by REP
+    }
+
+
+    var array: [4]u32 = 0;
+
+    for(array) -> item {
+        // iterates over array, yielding a constant alias
+        // to the array item
+    }
+
+    for(array) -> &item {
+        // iterates over array, yielding a mutable alias
+        // to the array item
+        item = 10; // writes to the array item
+    }
+
+    for(array) -> &item, index {
+        // iterates over the array, yielding both the item
+        // and the current index:
+        item = index; // initialize the array with consecutive numbers
+    }
+
+    noirq {
+        // This is a REP based block which is uninterruptible, but not
+        // not repeat.
+        // Equivalent to "rep for(1) {}"
+    }
+
+    // Returns zero to three values from a function:
+    return; 
+    return 0;
+    return 0, true;
+    return 0, true, 0;
+
+    yield; // yields from an "intX fn"
+
+    yieldto call(); // yields control to another "coro fn"
+}
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+// Inline Assembly
+//////////////////////////////////////////////////////////////////////////////
+
+// There are two important types of inline assembly:
+fn inline_asm_demo(a: u32, b: u32) {
+
+    // Type 1 is "optimizable inline assembly", which is typically used to
+    // express things in a way it is efficient, but the compiler fails 
+    // to emit the code in a way the programmer likes it:
+    asm {
+        // Inline asm can use curly braces to refer to values
+        // from the outside scope:
+        MOV {b}, {a}
+
+        // we can manually place labels in the asm:
+    loop:
+        // The compiler parses the assembly as intermediate code 
+        // and can perform all typical optimizations like
+        // dead code elimination, register renaming and so on.
+        ADD {a}, {b} WC
+
+        IF_NZ JMP loop // we can also use prefixes
+    };
+
+    // In contrast to optimizable assembly, there's the volatile assembly:
+    asm volatile { 
+        // The compiler won't touch the code inside this, and just perform
+        // the replacement of labels and scope references:
+        MOV {a}, {a}
+
+        // It will not perform any optimizations of the code whatsoever.
+    };
+
+    // Both types of asm blocks can return values through flags:
+    asm {
+        MODC _SET
+        // The following line will bind the flag C to the name "state"
+        // so it can be used efficiently by the compiler.
+    } -> state: bool@C;
+}
+
+// Sometimes, whole functions will be written in assembly. For this use case,
+// the asm fn is solving that:
+asm fn assembly_function(a: u32, b: u32) -> bool@C {
+    // The whole function body is replaced with a regular inline asm block.
+    ADD {a}, {b} WC
+
+    // In such a case, the return values through flags come into
+    // a nice synergy with the inline assembly blocks.
+}
+
+// Regular "asm fn" can be optimized by the compiler as well, while a 
+// "asm volatile fn" will not be optimized.
+asm volatile fn assembly_function() -> u32 {
+    // The return value of an "asm fn" can be referred to by the
+    // keyword "return" in the scope binding:
+    MOV {return}, #10
+    
+    // The compiler will still emit the proper return automatically
+    // for the functions, so a RET isn't needed here:
+}
+
+//////////////////////////////////////////////////////////////////////////////
+// Type System
+//////////////////////////////////////////////////////////////////////////////
+
+fn builtin_types() {
+    // The following basic integer types are supported by Blade:
+    var v_00: u8 = 0;
+    var v_00: u16 = 0;
+    var v_00: u32 = 0;
+    
+    // Two's complement signed integers:
+    var v_00: i8 = 0;
+    var v_00: i16 = 0;
+    var v_00: i32 = 0;
+
+    // single-bit types, can be stored in flags efficiently:
+    var v_00: bool = true; // or "false"
+    var v_00: bit = 0; // or "1"
+
+    // special ints:
+    var v_00: nib = []; // 4 bit unsigned integer
+
+    // arrays:
+    var v_00: [N]u8 = []; // Array of N bytes
+
+    // arrays are packed efficiently when possible
+    var v_00: [N]bool = []; // Backed into a u32, using BITx instructions
+    var v_00: [N]nib = []; // Backed into a u32, using GETNIB,SETNIB,ROLNIB
+    var v_00: [N]u8 = []; // Backed into a u32, using GETBYTE,SETBYTE,ROLBYTE
+    var v_00: [N]u16 = []; // Backed into a u32, using GETWORD,SETWORD,ROLWORD
+
+    // The SIMD type:
+    // A type that can be coerced from/to [4]u8, but allows additional operations
+    // and swizzling, behaves like a RGBA8888 color type kinda:
+    var v_00: u8x4 = [1,2,3,4];
+
+    // Pointer types can also be defined:
+    var v_00: *T = undefined; // ptr to a single item
+    var v_00: [*]T = undefined; // ptr to an array of unknown length
+}
+
+// type aliases can be defined:
+type Array = [4]u16;
+
+// A typical record type is also supported. Fields have no defined
+// order and may be reordered by the compiler to generate more efficient code:
+type Point = struct {
+    x: i16,
+    y: i16,
+};
+
+// TODO: Spec out "packed struct" sanely
+// type Packed = packed struct {
+// 
+// };
+
+
+
+
