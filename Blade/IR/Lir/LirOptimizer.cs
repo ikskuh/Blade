@@ -13,7 +13,7 @@ public static class LirOptimizer
         IReadOnlyList<string> enabledOptimizations)
     {
         Requires.NotNull(module);
-        Requires.NotNull(enabledOptimizationsule);
+        Requires.NotNull(enabledOptimizations);
 
 
         LirModule current = module;

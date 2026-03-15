@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using Blade;
 using Blade.Diagnostics;
@@ -318,7 +319,7 @@ internal sealed class CommandLineOptions
     {
         directive = null;
         errorMessage = null;
-        int equalsIndex = arg.IndexOf('=');
+        int equalsIndex = arg.IndexOf('=', StringComparison.Ordinal);
         if (equalsIndex < 0 || equalsIndex == arg.Length - 1)
         {
             errorMessage = $"error: missing optimization list in '{arg}'";

@@ -59,6 +59,8 @@ public static class OptimizationCatalog
         OptimizationStage stage,
         IEnumerable<OptimizationDirective> directives)
     {
+        Requires.NotNull(directives);
+
         IReadOnlyList<string> defaults = GetDefaultOrder(stage);
         HashSet<string> enabled = new(defaults, StringComparer.Ordinal);
 

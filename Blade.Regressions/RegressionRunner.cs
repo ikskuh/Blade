@@ -1481,13 +1481,14 @@ public static class RegressionReportFormatter
         builder.AppendLine(result.FixtureResults.Count.ToString(CultureInfo.InvariantCulture));
         builder.Append("Pass      : ");
         builder.AppendLine(result.PassCount.ToString(CultureInfo.InvariantCulture));
-        builder.AppendLine($"Skipped   : {result.SkipCount}");
         builder.Append("XFail     : ");
         builder.AppendLine(result.XFailCount.ToString(CultureInfo.InvariantCulture));
         builder.Append("Fail      : ");
         builder.AppendLine(result.FailCount.ToString(CultureInfo.InvariantCulture));
         builder.Append("Unexpected: ");
         builder.AppendLine(result.UnexpectedPassCount.ToString(CultureInfo.InvariantCulture));
+        builder.Append("Skipped   : ");
+        builder.AppendLine(result.SkipCount.ToString(CultureInfo.InvariantCulture));
         return builder.ToString();
     }
 }
