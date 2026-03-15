@@ -8,19 +8,32 @@ namespace Blade.IR.Mir;
 
 public static class MirOptimizer
 {
-    public static MirModule Optimize(MirModule module, int maxIterations, bool enableCostBasedInlining)
+    public static MirModule Optimize(
+        MirModule module,
+        int maxIterations,
+        IReadOnlyList<string> enabledOptimizations)
     {
+        ArgumentNullException.ThrowIfNull(module);
+        ArgumentNullException.ThrowIfNull(enabledOptimizations);
+
         MirModule current = module;
         int iterations = Math.Max(1, maxIterations);
         for (int i = 0; i < iterations; i++)
         {
             string before = MirTextWriter.Write(current);
-            if (enableCostBasedInlining)
-                current = MirInliner.InlineCostBased(current, inlineCostThreshold: 12);
-            current = RunConstantPropagation(current);
-            current = RunCopyPropagation(current);
-            current = RunControlFlowSimplification(current);
-            current = RunDeadCodeElimination(current);
+            foreach (string optimization in enabledOptimizations)
+            {
+                current = optimization switch
+                {
+                    "cost-inline" => MirInliner.InlineCostBased(current, inlineCostThreshold: 12),
+                    "const-prop" => RunConstantPropagation(current),
+                    "copy-prop" => RunCopyPropagation(current),
+                    "cfg-simplify" => RunControlFlowSimplification(current),
+                    "dce" => RunDeadCodeElimination(current),
+                    _ => current,
+                };
+            }
+
             string after = MirTextWriter.Write(current);
             if (before == after)
                 break;

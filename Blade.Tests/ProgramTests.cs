@@ -1,4 +1,5 @@
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using Blade.Source;
 
@@ -115,6 +116,22 @@ public class ProgramTests
         Assert.That(GetProperty<bool>(options!, "DumpFinalAsm"), Is.True);
     }
 
+
+    [Test]
+    public void CommandLineOptions_Parse_RecognizesOptimizationToggleFlags()
+    {
+        object? options = ParseOptions(
+            "input.blade",
+            "-fno-asmir-opt=*",
+            "-fasmir-opt=elide-nops",
+            "-fno-mir-opt=const-prop",
+            "-flir-opt=dce");
+
+        Assert.That(options, Is.Not.Null);
+        System.Collections.IEnumerable directives = GetProperty<System.Collections.IEnumerable>(options!, "OptimizationDirectives");
+        Assert.That(directives.Cast<object>().Count(), Is.EqualTo(4));
+    }
+
     [Test]
     public void CommandLineOptions_Parse_ReportsUsageAndErrors()
     {
@@ -129,6 +146,10 @@ public class ProgramTests
         (object? unknownOption, _, string unknownOptionErr) = CaptureConsole(() => ParseOptions("input.blade", "--bogus"));
         Assert.That(unknownOption, Is.Null);
         Assert.That(unknownOptionErr, Does.Contain("unknown option '--bogus'"));
+
+        (object? unknownMirOpt, _, string unknownMirOptErr) = CaptureConsole(() => ParseOptions("input.blade", "-fmir-opt=not-real"));
+        Assert.That(unknownMirOpt, Is.Null);
+        Assert.That(unknownMirOptErr, Does.Contain("unknown mir optimization"));
 
         (object? multipleFiles, _, string multipleFilesErr) = CaptureConsole(() => ParseOptions("a.blade", "b.blade"));
         Assert.That(multipleFiles, Is.Null);

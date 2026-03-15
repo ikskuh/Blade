@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using Blade.Diagnostics;
+using Blade.IR;
 using Blade.Source;
 
 namespace Blade.Regressions;
@@ -31,6 +32,7 @@ public sealed class RegressionRunResult
     public int FailCount => FixtureResults.Count(result => result.Outcome == RegressionFixtureOutcome.Fail);
     public int XFailCount => FixtureResults.Count(result => result.Outcome == RegressionFixtureOutcome.XFail);
     public int UnexpectedPassCount => FixtureResults.Count(result => result.Outcome == RegressionFixtureOutcome.UnexpectedPass);
+    public int SkipCount => FixtureResults.Count(result => result.Outcome == RegressionFixtureOutcome.Skipped);
     public bool Succeeded => FailCount == 0 && UnexpectedPassCount == 0;
 }
 
@@ -63,6 +65,7 @@ public enum RegressionFixtureOutcome
     Fail,
     XFail,
     UnexpectedPass,
+    Skipped,
 }
 
 public enum RegressionFixtureKind
@@ -130,31 +133,37 @@ public sealed class RegressionExpectation
         RegressionExpectationKind expectationKind,
         RegressionStage? stage,
         IReadOnlyList<string> containsSnippets,
+        IReadOnlyList<string> notContainsSnippets,
         IReadOnlyList<string> sequenceSnippets,
         string? exactText,
         IReadOnlyList<string> looseDiagnosticCodes,
         IReadOnlyList<ExpectedDiagnostic> exactDiagnostics,
-        FlexspinExpectation flexspinExpectation)
+        FlexspinExpectation flexspinExpectation,
+        IReadOnlyList<string> compilerArgs)
     {
         ExpectationKind = expectationKind;
         Stage = stage;
         ContainsSnippets = containsSnippets;
+        NotContainsSnippets = notContainsSnippets;
         SequenceSnippets = sequenceSnippets;
         ExactText = exactText;
         LooseDiagnosticCodes = looseDiagnosticCodes;
         ExactDiagnostics = exactDiagnostics;
         FlexspinExpectation = flexspinExpectation;
+        CompilerArgs = compilerArgs;
     }
 
     public RegressionExpectationKind ExpectationKind { get; }
     public RegressionStage? Stage { get; }
     public IReadOnlyList<string> ContainsSnippets { get; }
+    public IReadOnlyList<string> NotContainsSnippets { get; }
     public IReadOnlyList<string> SequenceSnippets { get; }
     public string? ExactText { get; }
     public IReadOnlyList<string> LooseDiagnosticCodes { get; }
     public IReadOnlyList<ExpectedDiagnostic> ExactDiagnostics { get; }
     public FlexspinExpectation FlexspinExpectation { get; }
-    public bool HasCodeAssertions => ContainsSnippets.Count > 0 || SequenceSnippets.Count > 0 || ExactText is not null;
+    public IReadOnlyList<string> CompilerArgs { get; }
+    public bool HasCodeAssertions => ContainsSnippets.Count > 0 || NotContainsSnippets.Count > 0 || SequenceSnippets.Count > 0 || ExactText is not null;
     public bool HasDiagnosticAssertions => LooseDiagnosticCodes.Count > 0 || ExactDiagnostics.Count > 0;
 }
 
@@ -207,13 +216,14 @@ public static class RegressionRunner
         RegressionRunOptions effectiveOptions = options ?? new RegressionRunOptions();
         string repositoryRootPath = RepositoryLayout.FindRepositoryRoot(effectiveOptions.RepositoryRootPath);
 
+        FlexspinProbeResult flexspinProbe = FlexspinRunner.ProbeAvailability();
         List<string> fixturePaths = DiscoverFixturePaths(repositoryRootPath, effectiveOptions.Filters);
         List<RegressionFixtureResult> fixtureResults = [];
         ArtifactWriter artifactWriter = new(repositoryRootPath, effectiveOptions.WriteFailureArtifacts);
 
         foreach (string fixturePath in fixturePaths)
         {
-            RegressionFixtureResult result = EvaluateFixture(repositoryRootPath, fixturePath, artifactWriter);
+            RegressionFixtureResult result = EvaluateFixture(repositoryRootPath, fixturePath, artifactWriter, flexspinProbe);
             fixtureResults.Add(result);
         }
 
@@ -251,7 +261,7 @@ public static class RegressionRunner
         paths.AddRange(discovered);
     }
 
-    private static RegressionFixtureResult EvaluateFixture(string repositoryRootPath, string fixturePath, ArtifactWriter artifactWriter)
+    private static RegressionFixtureResult EvaluateFixture(string repositoryRootPath, string fixturePath, ArtifactWriter artifactWriter, FlexspinProbeResult flexspinProbe)
     {
         string relativePath = Path.GetRelativePath(repositoryRootPath, fixturePath).Replace('\\', '/');
 
@@ -263,6 +273,16 @@ public static class RegressionRunner
 
             issues.AddRange(EvaluateDiagnostics(fixture.Expectation, evaluatedFixture.Diagnostics));
             issues.AddRange(EvaluateCodeAssertions(fixture, evaluatedFixture));
+            if (ShouldRunFlexspin(fixture) && !flexspinProbe.IsAvailable)
+            {
+                List<string> details =
+                [
+                    "skipped: flexspin is not available",
+                    $"flexspin probe: {flexspinProbe.ProbeSummary}",
+                ];
+                return new RegressionFixtureResult(relativePath, RegressionFixtureOutcome.Skipped, "skipped", details, null);
+            }
+
             issues.AddRange(EvaluateFlexspin(fixture, evaluatedFixture));
 
             RegressionFixtureOutcome outcome = ComputeOutcome(
@@ -297,10 +317,12 @@ public static class RegressionRunner
                     null,
                     [],
                     [],
+                    [],
                     null,
                     [],
                     [],
-                    FlexspinExpectation.Forbidden));
+                    FlexspinExpectation.Forbidden,
+                    []));
             string summary = "fixture evaluation crashed";
             string? artifactDirectoryPath = artifactWriter.WriteFailureArtifacts(syntheticFixture, failedFixture, summary, details);
             return new RegressionFixtureResult(relativePath, RegressionFixtureOutcome.Fail, summary, details, artifactDirectoryPath);
@@ -320,7 +342,8 @@ public static class RegressionRunner
 
     private static EvaluatedFixture ExecuteBladeFixture(RegressionFixture fixture)
     {
-        CompilationResult compilation = CompilerDriver.Compile(fixture.Text, fixture.AbsolutePath);
+        CompilationOptions options = BuildCompilationOptions(fixture.Expectation.CompilerArgs);
+        CompilationResult compilation = CompilerDriver.Compile(fixture.Text, fixture.AbsolutePath, options);
         List<ActualDiagnostic> diagnostics = compilation.Diagnostics
             .Select(diag =>
             {
@@ -360,6 +383,74 @@ public static class RegressionRunner
             stageOutputs,
             compilation.IrBuildResult?.AssemblyText,
             fixture.BodyText);
+    }
+
+    private static CompilationOptions BuildCompilationOptions(IReadOnlyList<string> compilerArgs)
+    {
+        bool enableSingleCallsiteInlining = true;
+        List<OptimizationDirective> directives = [];
+
+        foreach (string arg in compilerArgs)
+        {
+            if (arg == "--no-single-callsite-inline")
+            {
+                enableSingleCallsiteInlining = false;
+                continue;
+            }
+
+            if (TryParseOptimizationDirective(arg, OptimizationStage.Mir, "-fmir-opt=", enable: true, out OptimizationDirective? directive)
+                || TryParseOptimizationDirective(arg, OptimizationStage.Mir, "-fno-mir-opt=", enable: false, out directive)
+                || TryParseOptimizationDirective(arg, OptimizationStage.Lir, "-flir-opt=", enable: true, out directive)
+                || TryParseOptimizationDirective(arg, OptimizationStage.Lir, "-fno-lir-opt=", enable: false, out directive)
+                || TryParseOptimizationDirective(arg, OptimizationStage.Asmir, "-fasmir-opt=", enable: true, out directive)
+                || TryParseOptimizationDirective(arg, OptimizationStage.Asmir, "-fno-asmir-opt=", enable: false, out directive))
+            {
+                directives.Add(directive!.Value);
+                continue;
+            }
+
+            throw new InvalidOperationException($"Unsupported ARGS option '{arg}'.");
+        }
+
+        return new CompilationOptions
+        {
+            EnableSingleCallsiteInlining = enableSingleCallsiteInlining,
+            OptimizationDirectives = directives,
+        };
+    }
+
+    private static bool TryParseOptimizationDirective(
+        string arg,
+        OptimizationStage stage,
+        string prefix,
+        bool enable,
+        out OptimizationDirective? directive)
+    {
+        directive = null;
+        if (!arg.StartsWith(prefix, StringComparison.Ordinal))
+            return false;
+
+        string csv = arg[prefix.Length..];
+        string[] rawNames = csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (rawNames.Length == 0)
+            throw new InvalidOperationException($"Missing optimization list in ARGS option '{arg}'.");
+
+        List<string> names = [];
+        foreach (string name in rawNames)
+        {
+            if (name == "*")
+            {
+                names.Add(name);
+                continue;
+            }
+
+            if (!OptimizationCatalog.IsKnown(stage, name))
+                throw new InvalidOperationException($"Unknown {stage.ToString().ToLowerInvariant()} optimization '{name}' in ARGS option.");
+            names.Add(name);
+        }
+
+        directive = new OptimizationDirective(stage, enable, names);
+        return true;
     }
 
     private static List<string> EvaluateDiagnostics(RegressionExpectation expectation, IReadOnlyList<ActualDiagnostic> diagnostics)
@@ -467,6 +558,13 @@ public static class RegressionRunner
             string normalizedSnippet = NormalizeExpectedCode(snippet, stage);
             if (!normalizedActual.Contains(normalizedSnippet, StringComparison.Ordinal))
                 issues.Add($"missing snippet: {snippet}");
+        }
+
+        foreach (string snippet in expectation.NotContainsSnippets)
+        {
+            string normalizedSnippet = NormalizeExpectedCode(snippet, stage);
+            if (normalizedActual.Contains(normalizedSnippet, StringComparison.Ordinal))
+                issues.Add($"unexpected snippet present: {snippet}");
         }
 
         if (expectation.SequenceSnippets.Count > 0)
@@ -653,7 +751,7 @@ internal sealed class EvaluatedFixture
 internal static class RegressionFixtureParser
 {
     private static readonly Regex DirectiveRegex = new(
-        @"^(?<name>EXPECT|NOTE|DIAGNOSTICS|STAGE|CONTAINS|SEQUENCE|EXACT|FLEXSPIN):(?<value>.*)$",
+        @"^(?<name>EXPECT|NOTE|DIAGNOSTICS|STAGE|CONTAINS|NOT_CONTAINS|SEQUENCE|EXACT|FLEXSPIN|ARGS):(?<value>.*)$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex ExactDiagnosticRegex = new(
@@ -677,10 +775,12 @@ internal static class RegressionFixtureParser
                 null,
                 [],
                 [],
+                [],
                 null,
                 [],
                 [],
-                FlexspinExpectation.Auto);
+                FlexspinExpectation.Auto,
+                []);
 
         if (kind != RegressionFixtureKind.Blade && expectation.HasDiagnosticAssertions)
             throw new InvalidOperationException("Assembly fixtures do not support DIAGNOSTICS assertions.");
@@ -690,6 +790,9 @@ internal static class RegressionFixtureParser
 
         if (kind != RegressionFixtureKind.Blade && expectation.Stage is not null)
             throw new InvalidOperationException("STAGE is only valid for .blade fixtures.");
+
+        if (kind != RegressionFixtureKind.Blade && expectation.CompilerArgs.Count > 0)
+            throw new InvalidOperationException("ARGS is only valid for .blade fixtures.");
 
         if (expectation.ExpectationKind == RegressionExpectationKind.Pass
             && EnumerateExpectedDiagnosticCodes(expectation).Any(code => code.StartsWith("E", StringComparison.Ordinal)))
@@ -725,10 +828,12 @@ internal static class RegressionFixtureParser
         RegressionExpectationKind expectationKind = RegressionExpectationKind.Pass;
         RegressionStage? stage = null;
         List<string> containsSnippets = [];
+        List<string> notContainsSnippets = [];
         List<string> sequenceSnippets = [];
         List<string> looseDiagnosticCodes = [];
         List<ExpectedDiagnostic> exactDiagnostics = [];
         FlexspinExpectation flexspinExpectation = FlexspinExpectation.Auto;
+        List<string> compilerArgs = [];
         StringBuilder? exactText = null;
         HeaderBlock? activeBlock = null;
 
@@ -759,8 +864,10 @@ internal static class RegressionFixtureParser
                     "NOTE" => HeaderBlock.Note,
                     "DIAGNOSTICS" when directiveValue.Length == 0 => HeaderBlock.ExactDiagnostics,
                     "CONTAINS" => HeaderBlock.Contains,
+                    "NOT_CONTAINS" => HeaderBlock.NotContains,
                     "SEQUENCE" => HeaderBlock.Sequence,
                     "EXACT" => HeaderBlock.Exact,
+                    "ARGS" => HeaderBlock.Args,
                     _ => null,
                 };
 
@@ -802,6 +909,9 @@ internal static class RegressionFixtureParser
                     case "CONTAINS":
                         break;
 
+                    case "NOT_CONTAINS":
+                        break;
+
                     case "SEQUENCE":
                         break;
 
@@ -809,6 +919,11 @@ internal static class RegressionFixtureParser
                         exactText = new StringBuilder();
                         if (directiveValue.Length > 0)
                             exactText.AppendLine(directiveValue);
+                        break;
+
+                    case "ARGS":
+                        if (directiveValue.Length > 0)
+                            compilerArgs.AddRange(SplitHeaderArgs(directiveValue));
                         break;
 
                     case "FLEXSPIN":
@@ -836,6 +951,10 @@ internal static class RegressionFixtureParser
                     containsSnippets.Add(ParseBulletItem(trimmed, "CONTAINS"));
                     break;
 
+                case HeaderBlock.NotContains:
+                    notContainsSnippets.Add(ParseBulletItem(trimmed, "NOT_CONTAINS"));
+                    break;
+
                 case HeaderBlock.Sequence:
                     sequenceSnippets.Add(ParseBulletItem(trimmed, "SEQUENCE"));
                     break;
@@ -844,6 +963,10 @@ internal static class RegressionFixtureParser
                     if (exactText is null)
                         throw new InvalidOperationException("EXACT block started without a buffer.");
                     exactText.AppendLine(line.Content);
+                    break;
+
+                case HeaderBlock.Args:
+                    compilerArgs.Add(ParseBulletItem(trimmed, "ARGS"));
                     break;
 
                 case HeaderBlock.ExactDiagnostics:
@@ -863,11 +986,18 @@ internal static class RegressionFixtureParser
             expectationKind,
             stage,
             containsSnippets,
+            notContainsSnippets,
             sequenceSnippets,
             exact,
             looseDiagnosticCodes,
             exactDiagnostics,
-            flexspinExpectation);
+            flexspinExpectation,
+            compilerArgs);
+    }
+
+    private static IReadOnlyList<string> SplitHeaderArgs(string text)
+    {
+        return text.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
     private static IReadOnlyList<string> ParseLooseDiagnosticCodes(string text)
@@ -911,8 +1041,10 @@ internal static class RegressionFixtureParser
         Note,
         ExactDiagnostics,
         Contains,
+        NotContains,
         Sequence,
         Exact,
+        Args,
     }
 
     private readonly record struct HeaderLine(bool IsComment, string Content);
@@ -1202,6 +1334,19 @@ internal static class PasmWrapper
     }
 }
 
+
+internal sealed class FlexspinProbeResult
+{
+    public FlexspinProbeResult(bool isAvailable, string probeSummary)
+    {
+        IsAvailable = isAvailable;
+        ProbeSummary = probeSummary;
+    }
+
+    public bool IsAvailable { get; }
+    public string ProbeSummary { get; }
+}
+
 internal sealed class FlexspinResult
 {
     public FlexspinResult(bool succeeded, IReadOnlyList<string> outputLines)
@@ -1216,6 +1361,41 @@ internal sealed class FlexspinResult
 
 internal static class FlexspinRunner
 {
+    public static FlexspinProbeResult ProbeAvailability()
+    {
+        ProcessStartInfo startInfo = new()
+        {
+            FileName = "flexspin",
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        startInfo.ArgumentList.Add("--version");
+
+        try
+        {
+            using Process process = Process.Start(startInfo)
+                ?? throw new InvalidOperationException("Failed to start flexspin.");
+            string stdout = process.StandardOutput.ReadToEnd();
+            string stderr = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+
+            string combined = $"{stdout}\n{stderr}".Trim();
+            bool looksValid = !string.IsNullOrWhiteSpace(combined)
+                && combined.Contains("flexspin", StringComparison.OrdinalIgnoreCase);
+            bool ok = process.ExitCode == 0 && looksValid;
+            string summary = ok
+                ? combined.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() ?? "ok"
+                : $"exit={process.ExitCode}; output={combined}";
+            return new FlexspinProbeResult(ok, summary);
+        }
+        catch (Exception ex)
+        {
+            return new FlexspinProbeResult(false, ex.Message);
+        }
+    }
+
     public static FlexspinResult Run(string sourceText, string fileExtension)
     {
         string tempDirectoryPath = Path.Combine(Path.GetTempPath(), "blade-regressions", Guid.NewGuid().ToString("N"));
@@ -1284,6 +1464,7 @@ public static class RegressionReportFormatter
         builder.AppendLine($"XFail     : {result.XFailCount}");
         builder.AppendLine($"Fail      : {result.FailCount}");
         builder.AppendLine($"Unexpected: {result.UnexpectedPassCount}");
+        builder.AppendLine($"Skipped   : {result.SkipCount}");
         return builder.ToString();
     }
 }

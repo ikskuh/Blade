@@ -11,7 +11,7 @@ public static class CodegenPipeline
 
         // Peephole optimization
         if (options.EnableAsmOptimization)
-            asmModule = AsmOptimizer.Optimize(asmModule);
+            asmModule = AsmOptimizer.Optimize(asmModule, options.EnabledAsmirOptimizations);
 
         // Register allocation: virtual → physical
         if (options.EnableRegisterAllocation)

@@ -1,0 +1,19 @@
+// EXPECT: pass
+// STAGE: asmir
+// ARGS:
+// - -fno-asmir-opt=*
+// CONTAINS:
+// - MOV #_r1, #_r1
+// - OR #_r1, #0
+// - ADD #_r1, #0
+// NOTE:
+//   Negative case for elide-nops: with optimization disabled, no-op instructions remain.
+
+reg var sink: u32 = 0;
+var x: u32 = 1;
+asm {
+  MOV {x}, {x}
+  OR {x}, #0
+  ADD {x}, #0
+};
+sink = x;

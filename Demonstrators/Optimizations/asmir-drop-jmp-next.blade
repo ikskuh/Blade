@@ -1,0 +1,24 @@
+// EXPECT: pass
+// FLEXSPIN: forbidden
+// NOTE:
+//   Demonstrates asmir-drop-jmp-next.
+//   Positive: enable only this pass and inspect pre/post IR dumps.
+//   Negative: disable this pass and confirm the pattern remains.
+
+reg var sink: u32 = 0;
+
+fn demo(x: u32, m: u32) -> u32 {
+    var a: u32 = 0;
+    var b: u32 = 0;
+    asm {
+        MOV {a}, {x}
+        MOV {b}, {a}
+        OR {b}, #0
+        IF_C OR {b}, {m}
+        IF_NC ANDN {b}, {m}
+        ADD {b}, #0
+    };
+    return b;
+}
+
+sink = demo(1, 2);

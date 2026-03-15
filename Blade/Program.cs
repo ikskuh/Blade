@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using Blade;
 using Blade.Diagnostics;
+using Blade.IR;
 using Blade.Source;
 
 CommandLineOptions? options = CommandLineOptions.Parse(args);
@@ -24,6 +25,7 @@ CompilationResult compilation = CompilerDriver.Compile(
     new CompilationOptions
     {
         EnableSingleCallsiteInlining = options.EnableSingleCallsiteInlining,
+        OptimizationDirectives = options.OptimizationDirectives,
     });
 sw.Stop();
 
@@ -100,6 +102,7 @@ internal sealed class CommandLineOptions
     public bool DumpFinalAsm { get; init; }
     public string? DumpDirectory { get; init; }
     public bool EnableSingleCallsiteInlining { get; init; }
+    public IReadOnlyList<OptimizationDirective> OptimizationDirectives { get; init; } = [];
 
     public static CommandLineOptions? Parse(string[] args)
     {
@@ -121,6 +124,7 @@ internal sealed class CommandLineOptions
         bool dumpFinalAsm = false;
         bool dumpAll = false;
         bool enableSingleCallsiteInlining = true;
+        List<OptimizationDirective> optimizationDirectives = [];
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -166,6 +170,79 @@ internal sealed class CommandLineOptions
                 case "--no-single-callsite-inline":
                     enableSingleCallsiteInlining = false;
                     break;
+
+
+                case string value when value.StartsWith("-fmir-opt=", StringComparison.Ordinal):
+                {
+                    if (!TryParseOptimizationDirective(value, OptimizationStage.Mir, enable: true, out OptimizationDirective? directive, out string? errorMessage))
+                    {
+                        Console.Error.WriteLine(errorMessage);
+                        return null;
+                    }
+
+                    optimizationDirectives.Add(directive!.Value);
+                    break;
+                }
+
+                case string value when value.StartsWith("-fno-mir-opt=", StringComparison.Ordinal):
+                {
+                    if (!TryParseOptimizationDirective(value, OptimizationStage.Mir, enable: false, out OptimizationDirective? directive, out string? errorMessage))
+                    {
+                        Console.Error.WriteLine(errorMessage);
+                        return null;
+                    }
+
+                    optimizationDirectives.Add(directive!.Value);
+                    break;
+                }
+
+                case string value when value.StartsWith("-flir-opt=", StringComparison.Ordinal):
+                {
+                    if (!TryParseOptimizationDirective(value, OptimizationStage.Lir, enable: true, out OptimizationDirective? directive, out string? errorMessage))
+                    {
+                        Console.Error.WriteLine(errorMessage);
+                        return null;
+                    }
+
+                    optimizationDirectives.Add(directive!.Value);
+                    break;
+                }
+
+                case string value when value.StartsWith("-fno-lir-opt=", StringComparison.Ordinal):
+                {
+                    if (!TryParseOptimizationDirective(value, OptimizationStage.Lir, enable: false, out OptimizationDirective? directive, out string? errorMessage))
+                    {
+                        Console.Error.WriteLine(errorMessage);
+                        return null;
+                    }
+
+                    optimizationDirectives.Add(directive!.Value);
+                    break;
+                }
+
+                case string value when value.StartsWith("-fasmir-opt=", StringComparison.Ordinal):
+                {
+                    if (!TryParseOptimizationDirective(value, OptimizationStage.Asmir, enable: true, out OptimizationDirective? directive, out string? errorMessage))
+                    {
+                        Console.Error.WriteLine(errorMessage);
+                        return null;
+                    }
+
+                    optimizationDirectives.Add(directive!.Value);
+                    break;
+                }
+
+                case string value when value.StartsWith("-fno-asmir-opt=", StringComparison.Ordinal):
+                {
+                    if (!TryParseOptimizationDirective(value, OptimizationStage.Asmir, enable: false, out OptimizationDirective? directive, out string? errorMessage))
+                    {
+                        Console.Error.WriteLine(errorMessage);
+                        return null;
+                    }
+
+                    optimizationDirectives.Add(directive!.Value);
+                    break;
+                }
 
                 case "--dump-dir":
                     if (i + 1 >= args.Length)
@@ -228,7 +305,54 @@ internal sealed class CommandLineOptions
             DumpFinalAsm = dumpFinalAsm,
             DumpDirectory = dumpDirectory,
             EnableSingleCallsiteInlining = enableSingleCallsiteInlining,
+            OptimizationDirectives = optimizationDirectives,
         };
+    }
+
+    private static bool TryParseOptimizationDirective(
+        string arg,
+        OptimizationStage stage,
+        bool enable,
+        out OptimizationDirective? directive,
+        out string? errorMessage)
+    {
+        directive = null;
+        errorMessage = null;
+        int equalsIndex = arg.IndexOf('=');
+        if (equalsIndex < 0 || equalsIndex == arg.Length - 1)
+        {
+            errorMessage = $"error: missing optimization list in '{arg}'";
+            return false;
+        }
+
+        string csv = arg[(equalsIndex + 1)..];
+        string[] rawNames = csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (rawNames.Length == 0)
+        {
+            errorMessage = $"error: missing optimization list in '{arg}'";
+            return false;
+        }
+
+        List<string> names = new(rawNames.Length);
+        foreach (string name in rawNames)
+        {
+            if (name == "*")
+            {
+                names.Add(name);
+                continue;
+            }
+
+            if (!OptimizationCatalog.IsKnown(stage, name))
+            {
+                errorMessage = $"error: unknown {stage.ToString().ToLowerInvariant()} optimization '{name}'";
+                return false;
+            }
+
+            names.Add(name);
+        }
+
+        directive = new OptimizationDirective(stage, enable, names);
+        return true;
     }
 
     private static void PrintUsage()
@@ -246,5 +370,8 @@ internal sealed class CommandLineOptions
         Console.Error.WriteLine("  --dump-all");
         Console.Error.WriteLine("  --dump-dir <path>");
         Console.Error.WriteLine("  --no-single-callsite-inline");
+        Console.Error.WriteLine("  -fmir-opt=<csv> / -fno-mir-opt=<csv>");
+        Console.Error.WriteLine("  -flir-opt=<csv> / -fno-lir-opt=<csv>");
+        Console.Error.WriteLine("  -fasmir-opt=<csv> / -fno-asmir-opt=<csv>");
     }
 }
