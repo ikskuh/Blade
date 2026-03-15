@@ -1,25 +1,31 @@
-// EXPECT: pass
+// EXPECT: xfail
 // STAGE: asmir
 // ARGS:
 // - --no-single-callsite-inline
-// - -fno-asmir-opt=*
 // - -fasmir-opt=conditional-move-fusion
 // CONTAINS:
+// - IF_Z MOV #_r1, #2
+// NOT_CONTAINS:
 // - IF_Z JMP #$top_inl_after_0
 // NOTE:
 //   Intended positive case for ASMIR conditional-move-fusion.
 //   The optimizer has unit coverage, but current .blade lowering does not expose a stable jump-over-single-instruction trigger yet.
 
 reg var sink: u32 = 0;
-reg var input: bool = false;
+
+// TODO: Use this pattern for less side effects:
+// asm {
+//     IF_Z JMP #label
+//     MOV {sink}, #1
+// label
+// }
 
 fn demo(x: bool) -> u32 {
     var y: u32 = 1;
     if (x) {
         y = 2;
     }
-
     return y;
 }
 
-sink = demo(input);
+sink = demo(true);

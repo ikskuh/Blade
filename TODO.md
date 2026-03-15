@@ -107,3 +107,14 @@ Codify builds must yield zero warnings.
 `g_sink_XXX` in `Demonstrators/Optimizations/asmir-elide-nops-enabled.blade` is
 having random numbers. Potentially an issue with the use of a non-sorted HashSet type.
 
+## Support Inline assembly labels
+
+This is a huge important thing, we need to be able to use this:
+
+```
+asm {
+    IF_Z JMP #label
+    MOV {sink}, #1
+label: // derive from the PASM syntax to make parsing simpler
+}
+```

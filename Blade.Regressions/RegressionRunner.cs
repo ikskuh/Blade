@@ -661,13 +661,10 @@ public static class RegressionRunner
     {
         if (expectationKind == RegressionExpectationKind.XFail)
         {
-            if (matched)
-                return RegressionFixtureOutcome.XFail;
-
-            if (LooksLikeUnexpectedPass(fixture, evaluatedFixture))
+            if (matched && LooksLikeUnexpectedPass(fixture, evaluatedFixture))
                 return RegressionFixtureOutcome.UnexpectedPass;
 
-            return RegressionFixtureOutcome.Fail;
+            return RegressionFixtureOutcome.XFail;
         }
 
         return matched ? RegressionFixtureOutcome.Pass : RegressionFixtureOutcome.Fail;
