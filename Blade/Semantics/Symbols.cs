@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Blade;
 using Blade.Syntax.Nodes;
@@ -157,5 +158,9 @@ public sealed class Scope
         return false;
     }
 
+    [SuppressMessage(
+        "Design",
+        "CA1024:Use properties where appropriate",
+        Justification = "Enumerating declared names is an action-oriented query, not stable object state.")]
     public IEnumerable<string> GetDeclaredNames() => _symbols.Keys;
 }

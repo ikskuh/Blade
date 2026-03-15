@@ -98,3 +98,5 @@ uses the old rendering method which is weirdly formatted.
 
 Codify that changes in the syntax must be reflected in "VSCode/blade-lang/syntaxes/blade.tmLanguage.json" and
 the language docs under "Docs/Blade.md".
+
+Codify builds must yield zero warnings.

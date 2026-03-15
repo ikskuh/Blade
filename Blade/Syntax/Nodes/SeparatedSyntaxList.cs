@@ -30,6 +30,10 @@ public sealed class SeparatedSyntaxList<T> : IEnumerable<T> where T : SyntaxNode
     }
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+}
 
-    public static SeparatedSyntaxList<T> Empty { get; } = new(Array.Empty<object>());
+public static class SeparatedSyntaxList
+{
+    public static SeparatedSyntaxList<T> Empty<T>() where T : SyntaxNode
+        => new(Array.Empty<object>());
 }
