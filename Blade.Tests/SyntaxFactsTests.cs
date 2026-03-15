@@ -19,6 +19,7 @@ public class SyntaxFactsTests
         [TokenKind.FnKeyword] = "fn",
         [TokenKind.LeafKeyword] = "leaf",
         [TokenKind.InlineKeyword] = "inline",
+        [TokenKind.NoinlineKeyword] = "noinline",
         [TokenKind.RecKeyword] = "rec",
         [TokenKind.CoroKeyword] = "coro",
         [TokenKind.ComptimeKeyword] = "comptime",

@@ -84,7 +84,7 @@ public class ProgramTests
             "--dump-final-asm",
             "--dump-dir",
             "out",
-            "--no-single-callsite-inline");
+            "-fno-mir-opt=single-callsite-inline");
 
         Assert.That(options, Is.Not.Null);
         Assert.That(GetProperty<string>(options!, "FilePath"), Is.EqualTo("input.blade"));
@@ -97,7 +97,8 @@ public class ProgramTests
         Assert.That(GetProperty<bool>(options!, "DumpAsmir"), Is.True);
         Assert.That(GetProperty<bool>(options!, "DumpFinalAsm"), Is.True);
         Assert.That(GetProperty<string?>(options!, "DumpDirectory"), Is.EqualTo("out"));
-        Assert.That(GetProperty<bool>(options!, "EnableSingleCallsiteInlining"), Is.False);
+        System.Collections.IEnumerable directives = GetProperty<System.Collections.IEnumerable>(options!, "OptimizationDirectives");
+        Assert.That(directives.Cast<object>().Count(), Is.EqualTo(1));
     }
 
     [Test]

@@ -181,7 +181,7 @@ Block form:
 // - -fasmir-opt=elide-nops
 ```
 
-Supported options are compiler optimization toggles and `--no-single-callsite-inline`.
+Supported options are compiler optimization toggles and `-fno-mir-opt=single-callsite-inline`.
 
 ### `FLEXSPIN`
 

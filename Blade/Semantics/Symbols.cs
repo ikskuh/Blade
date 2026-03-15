@@ -98,6 +98,7 @@ public enum FunctionKind
     Default,
     Leaf,
     Inline,
+    Noinline,
     Rec,
     Coro,
     Comptime,

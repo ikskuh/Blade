@@ -17,6 +17,7 @@ public static class OptimizationCatalog
 {
     public static readonly IReadOnlyList<string> MirDefaultOrder =
     [
+        "single-callsite-inline",
         "cost-inline",
         "const-prop",
         "copy-prop",

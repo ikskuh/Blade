@@ -84,6 +84,9 @@ public static class FinalAssemblyWriter
             if (TryWriteRegisterFile(sb, nodes, ref index))
                 continue;
 
+            if (TryWriteConstantFile(sb, nodes, ref index))
+                continue;
+
             if (TryWriteRawInlineAsmBlock(sb, nodes, ref index))
                 continue;
 
@@ -127,6 +130,48 @@ public static class FinalAssemblyWriter
             sb.Append(directive.PadRight(maxDirectiveWidth));
             sb.Append(' ');
             sb.Append(value.PadLeft(maxValueWidth));
+            sb.AppendLine();
+        }
+
+        index = rowIndex;
+        return true;
+    }
+
+
+    private static bool TryWriteConstantFile(StringBuilder sb, IReadOnlyList<AsmNode> nodes, ref int index)
+    {
+        if (nodes[index] is not AsmCommentNode { Text: "--- constant file ---" })
+            return false;
+
+        List<(string Label, string Directive, string Value)> rows = [];
+        int rowIndex = index + 1;
+        while (rowIndex + 1 < nodes.Count
+            && nodes[rowIndex] is AsmLabelNode label
+            && nodes[rowIndex + 1] is AsmDirectiveNode directive
+            && TryParseDataDirective(directive.Text, out string directiveName, out string valueText))
+        {
+            rows.Add((label.Name, directiveName, valueText));
+            rowIndex += 2;
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("' --- constant file ---");
+        if (rows.Count == 0)
+        {
+            index = rowIndex;
+            return true;
+        }
+
+        int maxLabelWidth = rows.Max(static row => row.Label.Length);
+        int maxDirectiveWidth = rows.Max(static row => row.Directive.Length);
+
+        foreach ((string label, string directive, string value) in rows)
+        {
+            sb.Append(FormatIdentifier(label).PadRight(maxLabelWidth));
+            sb.Append(' ');
+            sb.Append(directive.PadRight(maxDirectiveWidth));
+            sb.Append(' ');
+            sb.Append(value);
             sb.AppendLine();
         }
 

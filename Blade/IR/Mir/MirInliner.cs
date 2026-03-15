@@ -18,6 +18,9 @@ public static class MirInliner
             if (callee.Kind == FunctionKind.Inline)
                 return true;
 
+            if (callee.Kind == FunctionKind.Noinline)
+                return false;
+
             return enableSingleCallsiteInlining
                 && callCounts.TryGetValue(callee.Name, out int count)
                 && count == 1;
@@ -30,7 +33,8 @@ public static class MirInliner
 
         return Inline(module, (caller, call, callee, callCounts) =>
         {
-            if (callee.Kind is FunctionKind.Rec
+            if (callee.Kind is FunctionKind.Noinline
+                or FunctionKind.Rec
                 or FunctionKind.Coro
                 or FunctionKind.Int1
                 or FunctionKind.Int2

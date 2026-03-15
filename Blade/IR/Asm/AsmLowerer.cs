@@ -195,11 +195,22 @@ public static class AsmLowerer
             if (sourceLine.InstructionText is null)
                 continue;
 
-            if (!parsedLines.TryDequeue(out InlineAssemblyValidator.AsmLine? line)
-                || !TryLowerParsedInlineAsmLine(line, bindings, out AsmInstructionNode? instruction))
-            {
+            if (!parsedLines.TryDequeue(out InlineAssemblyValidator.AsmLine? line))
                 return false;
+
+            if (line.IsLabel)
+            {
+                if (string.IsNullOrWhiteSpace(line.LabelName))
+                    return false;
+
+                lowered.Add(new AsmLabelNode(line.LabelName));
+                if (sourceLine.CommentText is not null)
+                    lowered.Add(new AsmCommentNode(sourceLine.CommentText));
+                continue;
             }
+
+            if (!TryLowerParsedInlineAsmLine(line, bindings, out AsmInstructionNode? instruction))
+                return false;
 
             lowered.Add(instruction!);
             if (sourceLine.CommentText is not null)
@@ -342,6 +353,16 @@ public static class AsmLowerer
                 return false;
 
             operand = new AsmImmediateOperand(immediate);
+            return true;
+        }
+
+        if (trimmed.EndsWith(":"[0]))
+        {
+            string labelReference = trimmed[..^1].Trim();
+            if (!IsPlainInlineAsmSymbol(labelReference))
+                return false;
+
+            operand = new AsmSymbolOperand(labelReference);
             return true;
         }
 

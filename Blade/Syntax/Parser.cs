@@ -101,7 +101,7 @@ public sealed class Parser
             case TokenKind.FnKeyword:
                 return ParseFunctionDeclaration(funcKindKeyword: null);
 
-            case TokenKind.LeafKeyword or TokenKind.InlineKeyword or TokenKind.RecKeyword
+            case TokenKind.LeafKeyword or TokenKind.InlineKeyword or TokenKind.NoinlineKeyword or TokenKind.RecKeyword
                  or TokenKind.CoroKeyword or TokenKind.Int1Keyword or TokenKind.Int2Keyword
                  or TokenKind.Int3Keyword:
                 return ParseFunctionDeclaration(NextToken());

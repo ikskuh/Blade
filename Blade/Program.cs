@@ -168,10 +168,6 @@ internal sealed class CommandLineOptions
                     dumpAll = true;
                     break;
 
-                case "--no-single-callsite-inline":
-                    enableSingleCallsiteInlining = false;
-                    break;
-
 
                 case string value when value.StartsWith("-fmir-opt=", StringComparison.Ordinal):
                 {
@@ -370,7 +366,6 @@ internal sealed class CommandLineOptions
         Console.Error.WriteLine("  --dump-final-asm");
         Console.Error.WriteLine("  --dump-all");
         Console.Error.WriteLine("  --dump-dir <path>");
-        Console.Error.WriteLine("  --no-single-callsite-inline");
         Console.Error.WriteLine("  -fmir-opt=<csv> / -fno-mir-opt=<csv>");
         Console.Error.WriteLine("  -flir-opt=<csv> / -fno-lir-opt=<csv>");
         Console.Error.WriteLine("  -fasmir-opt=<csv> / -fno-asmir-opt=<csv>");

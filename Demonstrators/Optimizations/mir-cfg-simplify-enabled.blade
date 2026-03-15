@@ -1,7 +1,6 @@
 // EXPECT: pass
 // STAGE: mir
 // ARGS:
-// - --no-single-callsite-inline
 // - -fno-mir-opt=*
 // - -fmir-opt=cfg-simplify
 // CONTAINS:
@@ -14,7 +13,7 @@
 reg var sink: u32 = 0;
 reg var input: bool = false;
 
-fn demo(x: bool) -> u32 {
+noinline fn demo(x: bool) -> u32 {
     var y: u32 = 1;
     if (x) {
         y = y + 1;
