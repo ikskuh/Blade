@@ -17,8 +17,8 @@
 // As a "main" function doesn't make sense for blade, we just allow top-level code
 // to be written.
 // Top-level code might be intermixed with function declarations, but a warning
-// diagnostic is emitted if the top-level code is not uniformly completely 
-// at the start or at the end of the file.
+// diagnostic is emitted if the top-level code is interrupted by function or global declarations.
+// (this file will emit warnings so explanatory code is tight to the required explaining top-level code).
 //
 // Top-level code starts at the address `000`.
 //
@@ -76,6 +76,17 @@ fn get_state_explicit() -> bool@C {
 // If a single bool/bit value is returned, the compiler will place it in C or Z,
 // thus using `RET WC` or `RET WZ`.
 // If both bit/bool-values are returned, the compiler uses a bare `RET`.
+//
+// The selection of the C/Z flag for a return value depends on the potential callers
+// to reduce code size if possible. It's not defined that the first bit return value
+// is returned in "C" or "Z".
+//
+// Default placement of bool/bit return values is call-graph-dependent and not part of a stable ABI.
+// Blade assumes whole-program compilation and does not support separate object-file compilation.
+//
+// If three values are returned, the first return value is always returned
+// inside a register, as the last two are guaranteed to be returned in flags.
+// This is also true if the first value is a bit/bool type.
 
 //////////////////////////////////////////////////////////////////////////////
 // Calling Conventions
@@ -89,12 +100,13 @@ fn get_state_explicit() -> bool@C {
 fn cc_default() {}
 
 // The `leaf` calling convention is optimized to use CALLPA if possible.
-// A `leaf` function cannot call other functions (except `comptime fn` and `inline fn`
-// as these are never function calls in the emitted code).
+// A `leaf` function cannot call other functions. This means that any call except the following are not permitted:
+// - A call to a `comptime fn` (gets replaced by a constant).
+// - A call to an `inline fn` that expands into code that does not perform any runtime calls (So it can again call other `inline fn` or `comptime fn` with the same rules).
 // Leaves typically allow fast calling and are optimized well. 
 leaf fn cc_leaf() {}
 
-// The language also support a second-order leaf calling convention, which isn't
+// The language also supports a second-order leaf calling convention, which isn't
 // possible to codify in the language itself. It's the calling convention for
 // functions that only call leaf functions. These functions can use `CALLPB` for
 // efficient implementation, as this also can save an instruction.
@@ -168,29 +180,35 @@ coro fn cc_coro2() {
 yieldto cc_coro1(10);
 
 // There are three special calling conventions in Blade, which cater the
-// Propeller 2 interrupt system:
+// Propeller 2 interrupt system.
+// The important part for "int*" functions is that they cannot be called,
+// as they would not have a correct way of returning to the caller.
+// The only way an "int* fn" can be invoked is through the interrupt system.
+//
+// An interrupt handler function cannot have parameters and must not return any values.
 int1 fn cc_int1() {
     // The interrupt handlers have special requirements, and
-    // a regular 'return' in an interrupt handler must be replaced with the correponding
+    // a regular implicit or explicit 'return' in an interrupt handler must be replaced with the corresponding
     // RETI1/RETI2/RETI3 instruction:
 
-    return; // is using "RETI1" as it's a "int1 fn".
+    return; // is using "RETI1" as it's a "int1 fn". Uses "RETI1/RETI2/RETI3" depending on the interrupt type.
 }
 int2 fn cc_int2() {
 
-    // In addition to the regular "return", a interrupt function also
+    // In addition to the regular "return", an interrupt function also
     // supports coroutinish behaviour through "yield".
     // A yield returns from the interrupt handler, but also replaces
     // the new interrupt handler with the next code line, allowing us 
     // to effectively "suspend" the interrupt handling until the next
     // interrupt of the same type occurs.
-    yield; // is using "RESI2" as it's a "int2 fn".
+    yield; // is using "RESI2" as it's a "int2 fn". Uses "RESI1/RESI2/RESI3" depending on the interrupt type.
 
     // If "yield" is used in an interrupt function
     return; // First sets IJMP2 to "cc_int2", then uses "RETI2" to return from the handler.
 }
+// The last of the three interrupt calling conventions.
 int3 fn cc_int3() {
-    // The last of the three interrupt calling conventions.
+    // implicit return also has the same rules as explicit return:
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -203,18 +221,18 @@ int3 fn cc_int3() {
 
 // "reg var" are guaranteed to be allocated in register
 // space and do not require load/stores to be accessed:
-// The address of a "reg var" yield as "*reg T".
+// The address of a "reg var" yields as "*reg T".
 reg var rv_01: u32 = 0;
 
 // "lut var" is allocated in the LUT memory and will
 // require RDLUT and WRLUT instructions to be accessed.
-// The address of a "lut var" yield as "*lut T".
+// The address of a "lut var" yields as "*lut T".
 lut var lv_01: u32 = 0;
 
-// "hut var" is allocated in the HUB memory and will
+// "hub var" is allocated in the HUB memory and will
 // require RDLONG,RDWORD,RDBYTE and WRLONG,WRWORD,WRBYTE
 // instructions to be accessed.
-// The address of a "hub var" yield as "*hub T".
+// The address of a "hub var" yields as "*hub T".
 hub var hv_01: u32 = 0;
 
 // The constant versions of the variables can be read, but never be written.
@@ -228,17 +246,29 @@ hub const hc_01: u32 = 0;
 
 // Blade also supports another type of variable, which is a plain var or const:
 fn showcase_locals(param: u32) {
-    // locals do not have a defined storage type, and may be fully elided
+    // Locals do not have a defined storage type, and may be fully elided
     // by the compiler. They are essentially defined as "ephemeral names to
     // SSA values".
     
-    // It is not possible to take the address of a local variable, but they
-    // can be initialized with runtime data:
+    // Locals can be initialized with runtime data:
     var local_var: u32 = 2 * param;
 
     // also  local constants can be initialized with runtime data, and just
     // prevent accidental writeback:
     const local_const: u32 = 2 * local_var;
+
+    // It *is* possible to take a pointer to a local variable, then it will
+    // be a `*reg T` or `[*]reg T` type.
+    // When the address is taken, the local variable will be forced into
+    // existence and basically behaves like a register-spaced global.
+    //
+    // Important: Pointers to local variables of recursive functions
+    //            are forbidden, as the locals are still lowered into
+    //            registers.
+    //            These registers will be saved to the stack across the
+    //            recursive calls, but the address would still point to
+    //            the same storage location for *all recursive invocations*,
+    //            which is not the intent of saving a pointer to a local.
 }
 
 // The top-level code also can use local variables, which, in contrast to
@@ -292,6 +322,10 @@ fn control_flow_demo(count: u32, cond: bool) {
         // "continue" but will run to their end.
     }
 
+    while(cond) {
+        // loops until "cond" is false.
+    }
+
     for(count) {
         // repeats the body "count" times.
     }
@@ -309,7 +343,7 @@ fn control_flow_demo(count: u32, cond: bool) {
     }
 
 
-    var array: [4]u32 = 0;
+    var array: [4]u32 = [0,0,0,0];
 
     for(array) -> item {
         // iterates over array, yielding a constant alias
@@ -329,15 +363,26 @@ fn control_flow_demo(count: u32, cond: bool) {
     }
 
     noirq {
-        // This is a REP based block which is uninterruptible, but not
-        // not repeat.
+        // This is a REP based block which is uninterruptible, but does not repeat.
         // Equivalent to "rep for(1) {}"
     }
 
-    // Returns zero to three values from a function:
+    // Return zero values from a function:
     return; 
+}
+
+fn control_flow_ret1() -> u32 {
+    // Return one value from a function:
     return 0;
+}
+
+fn control_flow_ret2() -> u32, bool {
+    // Return two values from a function:
     return 0, true;
+}
+
+fn control_flow_ret3() -> u32, bool, bit {
+    // Return three values from a function:
     return 0, true, 0;
 }
 
@@ -345,8 +390,15 @@ int1 fn control_flow_int() {
     yield; // yields from an "intX fn"
 }
 
-coro fn control_flow_coro() {
-    yieldto call(); // yields control to another "coro fn"
+coro fn control_flow_coro1() {
+    loop {
+        yieldto control_flow_coro2(); // yields control to another "coro fn"
+    }
+}
+coro fn control_flow_coro2() {
+    loop {
+        yieldto control_flow_coro1(); // yields control to another "coro fn"
+    }
 }
 
 
@@ -406,7 +458,7 @@ asm fn assembly_function(a: u32, b: u32) -> bool@C {
 
 // Regular "asm fn" can be optimized by the compiler as well, while a 
 // "asm volatile fn" will not be optimized.
-asm volatile fn assembly_function() -> u32 {
+asm volatile fn volatile_assembly_function() -> u32 {
     // The return value of an "asm fn" can be referred to by the
     // keyword "return" in the scope binding:
     MOV {return}, #10
@@ -419,7 +471,12 @@ asm volatile fn assembly_function() -> u32 {
 // Type System
 //////////////////////////////////////////////////////////////////////////////
 
+// type aliases can be defined:
+type T = u32;
+
 fn builtin_types() {
+    const N: u32 = 0; // required helper for array sizes
+
     // The following basic integer types are supported by Blade:
     var v_00: u8 = 0;
     var v_01: u16 = 0;
@@ -435,60 +492,126 @@ fn builtin_types() {
     var v_07: bit = 0; // or "1"
 
     // special ints:
-    var v_08: nib = []; // 4 bit unsigned integer
+    var v_08: nib = 0; // 4 bit unsigned integer
 
     // arrays:
     var v_09: [N]u8 = []; // Array of N bytes
 
     // arrays are packed efficiently when possible
-    var v_10: [N]bool = []; // Backed into a u32, using BITx instructions
-    var v_11: [N]nib = []; // Backed into a u32, using GETNIB,SETNIB,ROLNIB
-    var v_12: [N]u8 = []; // Backed into a u32, using GETBYTE,SETBYTE,ROLBYTE
-    var v_13: [N]u16 = []; // Backed into a u32, using GETWORD,SETWORD,ROLWORD
+    var v_10: [N]bool = []; // Backed into a sequence of u32, using BITx instructions
+    var v_11: [N]nib = []; // Backed into a sequence of u32, using GETNIB,SETNIB,ROLNIB
+    var v_12: [N]u8 = []; // Backed into a sequence of u32, using GETBYTE,SETBYTE,ROLBYTE
+    var v_13: [N]u16 = []; // Backed into a sequence of u32, using GETWORD,SETWORD,ROLWORD
 
     // The SIMD type:
     // A type that can be coerced from/to [4]u8, but allows additional operations
     // and swizzling, behaves like a RGBA8888 color type kinda:
     var v_14: u8x4 = [1,2,3,4];
 
-    // Pointer types can also be defined:
+    // Pointer types can also be defined, and always require a storage type:
     var v_15: *reg T = undefined; // ptr to a single register
     var v_16: [*]reg T = undefined; // ptr to an array of unknown length
+    
+    var v_17: *lut T = undefined; // ptr to a single lut variable
+    var v_18: [*]lut T = undefined; // ptr to an array of unknown length
+    
+    var v_19: *hub T = undefined; // ptr to a single hub variable
+    var v_20: [*]hub T = undefined; // ptr to an array of unknown length
+
+    // Pointers  also can have additional attributes in addition to their
+    // arity and the storage space:
+    var v_21: *reg align(8) T = undefined; // The pointers address must be aligned to a multiple of 8
+    var v_22: *reg const T = undefined; // The pointee cannot be changed through this pointer
+    var v_23: *lut volatile T = undefined; // The compiler may not elide reads or writes through the pointer, as the value may be changed externally through other cogs
+
+    // This variable combines all possible pointer attributes and shows them in the nominal order.
+    // The order is not fixed and can be swapped, but the following is the designated order of attributes:
+    var v_24: *hub const volatile align(4) T = undefined;
 }
 
-// type aliases can be defined:
 type Array = [4]u16;
 
-// A typical record type is also supported. Fields have no defined
-// order and may be reordered by the compiler to generate more efficient code:
+// A typical record type is also supported.
+// - First field is stored at offset 0.
+// - Consecutive fields are stored with padding such that the fields alignment is matched.
+// - The alignment of a struct is the alignment of the member with the largest alignment.
 type Point = struct {
     x: i16,
     y: i16,
 };
 
-// TODO: Spec out "packed struct" sanely
-// type Packed = packed struct {
-// 
-// };
+// Unions provide a unification of two memory layouts. They can be used for
+// type punning (write one field, read another one), or "poor man's polymorphism".
+// - All fields are stored at the same offset.
+// - The size of a union is the size of biggest member.
+// - The alignment of a union is the alignment of the member with the largest alignment.
+type OneOf = union {
+    point: Point,
+    array: Array,
+};
 
-// An enumeration of known items:
-type Enum = enum {
+// An enumeration is a fancy integer where the values have assigned names, and you cannot
+// do arithmetic with the integer itself.
+// The backing type defines what integer is used for loads, stores and copies, while the 
+// enum members define the allowed values for the type:
+type ClosedEnum = enum (u32) {
     first = 0,
     second = 1,
     third, // automatically previous item + 1
 };
 
+// In contrast to closed enumerations, an open enumeration allows all possible values for
+// the underlying integer and can be cast back and forth between the underlying integer type:
+type OpenEnum = enum (u8) {
+    first = 0,
+    ..., // defines the enum is open.
+};
+
+// Bit fields are another class of "integers with fancy pants":
+// They behave like their backing type (provided in the parens) for loads, stores and copies,
+// but you can access individual fields as if the bitfield would be a struct.
+// Fields are always layed out LSB to MSB, and values occupy only the exact number of bits they
+// need:
+type Bitfield = bitfield (u32) {
+    lsb: bool, // bit offset 0
+    
+    low: nib, // bit offset 1
+    high: nib, // bit offset 5
+
+    storage: u16, // bit offset 9
+
+    mode: bit, // bit offset 25
+    chainload: bool, // bit offset 26
+
+    detector: nib, // bit offset 27
+
+    msb: bit, // bit offset 31
+};
+
+
 //////////////////////////////////////////////////////////////////////////////
 // Expressions & Operators
 //////////////////////////////////////////////////////////////////////////////
+
+fn func_0() -> u32 {
+    return 0;
+}
+
+fn func_1(x: u32) -> u32 {
+    return 0;
+}
+
+fn func_2(x: u32, y: u32) -> u32  {
+    return 0;
+}
 
 fn expressions() {
     var a: [2]u32 = [0,0];
     var x: u32 = 0;
     var y: u32 = 0;
-    var b: bool = 0;
-    var c: bool = 0;
-    var p: *T = undefined;
+    var b: bool = false;
+    var c: bool = false;
+    var p: *reg T = undefined;
 
     x = y; // assignment is a statement, and cannot be nested into expressions
 
@@ -501,21 +624,27 @@ fn expressions() {
     b = (x <= y); // less or equal than
     
     // Boolean ops:
-    b = (b and c); // boolean and, with short-circuit
-    b = (b or  c); // boolean or, with short-circuit
-    b = !b;        // boolean not
+    b = (b and c); // boolean AND, with short-circuit
+    b = (b or  c); // boolean OR, with short-circuit
+    b = (b & c); // boolean AND, without short-circuit
+    b = (b | c); // boolean OR, without short-circuit
+    b = (b ^ c); // boolean XOR
+    b = !b;        // boolean NOT
 
     // Bitwise ops:
     x = ~x; // bitwise inversion
-    x = x | y; // bitwise OR
-    x = x & y; // bitwise AND
-    x = x ^ y; // bitwise XOR
+    x = x | y; // bitwise OR, if used on integer types
+    x = x & y; // bitwise AND, if used on integer types
+    x = x ^ y; // bitwise XOR, if used on integer types
     x = x << y; // logical left shift (shift in zeroes)
     x = x >> y; // logical right shift (shift in zeroes)
-    x = x << y; // arithmetic left shift (shift in LSB)
-    x = x >> y; // arithmetic right shift (shift in MSB)
+    x = x <<< y; // arithmetic left shift (shift in LSB)
+    x = x >>> y; // arithmetic right shift (shift in MSB)
+    x = x <%< y; // rotating left shift (shift in the bits shifted out)
+    x = x >%> y; // rotating right shift (shift in the bits shifted out)
 
     // Arithmetic ops:
+    x = +x;    // unary plus, does nothing
     x = -x;    // negate
     x = x + y; // addition
     x = x - y; // subtraction
@@ -523,18 +652,87 @@ fn expressions() {
     x = x / y; // division
     x = x % y; // modulus division
 
-    x = function(); // function calls
-    x = function(10, 20); // function calls with positionals params
-    x = function(x=10, y=20); // function calls with named params
-    x = function(10, y=20); // function calls with mixed params (names must come after positionals, no conflicts)
+    x = func_0(); // function calls
+    x = func_2(10, 20); // function calls with positional arguments
+    x = func_2(x=10, y=20); // function calls with named arguments
+    x = func_2(10, y=20); // function calls with mixed arguments (names must come after positionals, no conflicts)
 
     x = a[1]; // array/ptr read at index
     a[0] = x; // array/ptr write to index
 
     a = [ 1, 2 ]; // array construction/assignment
+    a = [ 1... ]; // spread operator fills all remaining elements with the given value
+    a = [ 1, 2... ]; // can also be used with a prefix
 
-    p = &x; // address-of operator
+    p = &x; // address-of operator, returns a "*<storage> T" for non-array variables and "[*]<storage> T" for arrays, with <storage> being `reg`, `lut`, or `hub` depending on the sourced type
     y = p.*; // value-of operator
 
     x = (y); // parens overwrite precedence
+}
+
+fn values() {
+    var x: u32 = undefined;
+    var b: bool = undefined;
+    var a: [4]u8 = undefined;
+    var e: ClosedEnum = undefined;
+    var s: Point = undefined;
+    var b: Bitfield = undefined;
+
+    // "undefined" is a value that makes the compiler not initialize the value, but just leave it as is.
+    // this is potentially unsafe, but allows good optimizations and communication that the value isn't
+    // relevant at initialization time.
+    // This is an expression that can be used anywhere:
+    x = undefined; 
+    func_1(undefined);
+
+    b = true;  // The truthy boolean value
+    b = false; // The falsy boolean value
+
+    // Note: not all of these literals fit into
+    //       their destination type and would emit a warning or compiler error,
+    //       this is just to showcase all legal character forms:
+    x = 0b1100101; // Binary integer literal
+    x = 0q3210; // Quaternary integer literal
+    x = 0o76543210; // Octal integer literal
+    x = 9876543210; // Decimal integer literal
+    x = 0xFEdcBA9876543210; // Hexadecimal integer literals
+
+    // integer literals can also use interior _ characters for clarity:
+    x = 4_294_967_295;
+    x = 0b1100_0101;
+    x = 0x12_22_33_44;
+    // Literals must not end or start with "_", so 
+    // "_123" or "123_" would be illegal, also "0x_112".
+
+    x = 'x'; // character integer literal, evaluates to the characters unicode codepoint
+
+    a = [ 0,0,0,0 ]; // array "literal", evaluates to an array of 4 u8 in this case
+    a = "bye!"; // string literal, evaluates to an array of 4 u8
+    a = z"hi!"; // zero-terminated string literal, evaluates to an array of 4 u8
+
+    // Escape sequences are valid for strings and character literals:
+    x = '\0'; // NUL escape = 0x00
+    x = '\t'; // TAB escape = 0x09
+    x = '\n'; // LF escape = 0x0A
+    x = '\r'; // CR escape = 0x0D
+    x = '\e'; // ESC escape = 0x1B
+    x = '\xAB'; // hexadecimal escape = 0xAB (in this case)
+    x = '\u{1F4A9}'; // unicode escape, evaluates to the codepoint U+1F4A9. As a char, this is 0x1F4A9, in a string, it's encoded with the compiler's codepage.
+
+    // strings are encoded with the compiler's codepage, which is by default UTF-8. The compiler should allow exchanging the codepage for custom codepages,
+    // to enable font mappings and such.
+
+    e = ClosedEnum.first; // You can access the items of an enumeration by the name
+    e = .first; // Enum literals are the values of enumerations and can be used without their enclosing type.
+
+    // Structs can be constructed like this:
+    s = Point {
+        .x = 10,
+        .y = 20,
+        // all fields must be given, always.
+    };
+
+    s.x = 10; // struct field write
+    x = s.y;  // struct field read
+
 }
