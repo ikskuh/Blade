@@ -4,3 +4,4 @@ bin/
 
 *.dump.txt
 .artifacts/
+coverage/

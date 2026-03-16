@@ -17,7 +17,8 @@
       "Bash(dotnet run --project Blade -- --dump-asmir Blade.Tests/Accept/function_declarations.blade)",
       "Bash(dotnet test:*)",
       "Bash(just regressions:*)",
-      "Bash(just compile-all-samples:*)"
+      "Bash(just compile-all-samples:*)",
+      "Bash(ls -la /home/felix/projects/nerdgruppe/blade/Blade.Regressions/*.cs)"
     ]
   }
 }

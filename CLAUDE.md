@@ -100,6 +100,18 @@ Build incrementally. Each stage should be independently testable.
   explanation of why the rule does not apply, and that reasoning must be clear to
   the programmer who will review or maintain the code later.
 
+## Syntax & Grammar Changes
+
+- **`Docs/reference.blade` is the syntax authority.** Every change to the parser,
+  lexer, or AST must be justified by a construct defined in `Docs/reference.blade`.
+  Do not invent syntax that is not in the reference.
+- **Mirror into the TextMate grammar.** Any token, keyword, operator, or syntactic
+  form added to the compiler frontend must also be reflected in
+  `VSCode/blade-lang/syntaxes/blade.tmLanguage.json` so that editor highlighting
+  stays in sync with the language.
+- **Update tests.** Parser and lexer changes require corresponding test updates in
+  `Blade.Tests/`.
+
 ## Diagnostics
 
 Every diagnostic (error, warning, info) must have:
@@ -126,6 +138,13 @@ W2001 | UnusedVariable      | Variable '{0}' is declared but never used.
 The T4 template generates the actual C# diagnostic classes/enums from this table.
 
 ## Testing
+
+### Coverage Requirement
+
+All new code must have **100% branch coverage** through testing. Run `just coverage`
+to verify. The report covers the `Blade` assembly (the regression suite contributes
+to coverage but is not itself measured) and writes results to
+`coverage/coverage.cobertura.xml`.
 
 ### Regression Harness
 
@@ -164,7 +183,8 @@ The repo has a `justfile` with a few convenience commands:
   `regressions`, and `compile-all-samples`.
 - `just build` runs `dotnet build`.
 - `just test` runs `dotnet test`.
-- `just coverage` runs `dotnet test --collect:"XPlat Code Coverage"`.
+- `just coverage` collects code coverage (including `Blade.Regressions`),
+  writes a stable `coverage/coverage.cobertura.xml`, and prints a summary.
 - `just regressions` runs the external regression harness over the full fixture corpus.
 - `just compile-all-samples` builds Blade and compiles the checked-in sample and
   demonstrator `.blade` programs, writing `*.dump.txt` files next to each sample.

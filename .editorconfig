@@ -60,3 +60,9 @@ dotnet_diagnostic.CA1008.severity = none
 # In this file the identifiers intentionally mirror Blade language spellings and
 # built-in source types such as int, uint, and string. Keep CA1720 active elsewhere.
 dotnet_diagnostic.CA1720.severity = none
+
+
+[Blade/Program.cs]
+
+# Mute the diagnostic to use "ToUpperInvariant()" which doesn't make sense here
+dotnet_diagnostic.CA1308.severity = none

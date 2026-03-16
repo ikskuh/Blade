@@ -7,6 +7,9 @@
       "include": "#comments"
     },
     {
+      "include": "#char-literals"
+    },
+    {
       "include": "#strings"
     },
     {
@@ -28,7 +31,7 @@
       "include": "#asm-block"
     },
     {
-      "include": "#packed-struct"
+      "include": "#compound-types"
     },
     {
       "include": "#intrinsics"
@@ -60,21 +63,15 @@
   ],
   "repository": {
     "asm-block": {
-      "begin": "\\b(asm)\\b(?:\\s*(->)\\s*(@)(C|Z))?\\s*(\\{)",
+      "begin": "\\b(asm)\\b(?:\\s+(volatile))?\\s*(\\{)",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.asm.blade"
         },
         "2": {
-          "name": "keyword.operator.arrow.blade"
+          "name": "storage.modifier.volatile.blade"
         },
         "3": {
-          "name": "punctuation.definition.annotation.blade"
-        },
-        "4": {
-          "name": "constant.language.flag.blade"
-        },
-        "5": {
           "name": "punctuation.section.block.begin.blade"
         }
       },
@@ -154,6 +151,19 @@
         }
       ]
     },
+    "char-literals": {
+      "match": "(')((?:\\\\(?:[0tnre]|x[0-9A-Fa-f]{2}|u\\{[0-9A-Fa-f]+\\})|[^'\\\\]))(')","captures": {
+        "1": {
+          "name": "punctuation.definition.char.begin.blade"
+        },
+        "2": {
+          "name": "constant.character.blade"
+        },
+        "3": {
+          "name": "punctuation.definition.char.end.blade"
+        }
+      }
+    },
     "comments": {
       "patterns": [
         {
@@ -171,6 +181,153 @@
         }
       ]
     },
+    "compound-types": {
+      "patterns": [
+        {
+          "begin": "\\b(?:(packed)\\s+)?(struct)\\s*(\\{)",
+          "beginCaptures": {
+            "1": {
+              "name": "storage.modifier.blade"
+            },
+            "2": {
+              "name": "storage.type.struct.blade"
+            },
+            "3": {
+              "name": "punctuation.section.block.begin.blade"
+            }
+          },
+          "end": "(\\})",
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.section.block.end.blade"
+            }
+          },
+          "name": "meta.struct.blade",
+          "patterns": [
+            {
+              "include": "#compound-type-body"
+            }
+          ]
+        },
+        {
+          "begin": "\\b(union)\\s*(\\{)",
+          "beginCaptures": {
+            "1": {
+              "name": "storage.type.union.blade"
+            },
+            "2": {
+              "name": "punctuation.section.block.begin.blade"
+            }
+          },
+          "end": "(\\})",
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.section.block.end.blade"
+            }
+          },
+          "name": "meta.union.blade",
+          "patterns": [
+            {
+              "include": "#compound-type-body"
+            }
+          ]
+        },
+        {
+          "begin": "\\b(enum)\\s*(\\()",
+          "beginCaptures": {
+            "1": {
+              "name": "storage.type.enum.blade"
+            },
+            "2": {
+              "name": "punctuation.section.parens.begin.blade"
+            }
+          },
+          "end": "(\\})",
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.section.block.end.blade"
+            }
+          },
+          "name": "meta.enum.blade",
+          "patterns": [
+            {
+              "include": "#comments"
+            },
+            {
+              "match": "\\.\\.\\.",
+              "name": "keyword.operator.spread.blade"
+            },
+            {
+              "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\b(?=\\s*[=,}])",
+              "captures": {
+                "1": {
+                  "name": "variable.other.enummember.blade"
+                }
+              }
+            },
+            {
+              "include": "#types"
+            },
+            {
+              "include": "#numbers"
+            },
+            {
+              "include": "#operators"
+            }
+          ]
+        },
+        {
+          "begin": "\\b(bitfield)\\s*(\\()",
+          "beginCaptures": {
+            "1": {
+              "name": "storage.type.bitfield.blade"
+            },
+            "2": {
+              "name": "punctuation.section.parens.begin.blade"
+            }
+          },
+          "end": "(\\})",
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.section.block.end.blade"
+            }
+          },
+          "name": "meta.bitfield.blade",
+          "patterns": [
+            {
+              "include": "#compound-type-body"
+            }
+          ]
+        }
+      ]
+    },
+    "compound-type-body": {
+      "patterns": [
+        {
+          "include": "#comments"
+        },
+        {
+          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\b(?=\\s*:)",
+          "captures": {
+            "1": {
+              "name": "variable.other.member.definition.blade"
+            }
+          }
+        },
+        {
+          "include": "#type-annotations"
+        },
+        {
+          "include": "#numbers"
+        },
+        {
+          "include": "#keywords"
+        },
+        {
+          "include": "#operators"
+        }
+      ]
+    },
     "exec-modes": {
       "match": "\\.(?:cog|lut)\\b",
       "name": "constant.language.exec-mode.blade"
@@ -178,7 +335,7 @@
     "flag-annotations": {
       "patterns": [
         {
-          "match": "(@)(C|Z)\\b",
+          "match": "(@)(C|Z|reg)\\b",
           "captures": {
             "1": {
               "name": "punctuation.definition.annotation.blade"
@@ -195,7 +352,7 @@
       ]
     },
     "function-calls": {
-      "match": "\\b(?!if\\b|while\\b|for\\b|loop\\b|return\\b|rep\\b|asm\\b|align\\b|import\\b|fn\\b|uint\\b|int\\b)([A-Za-z_][A-Za-z0-9_]*)\\b(?=\\s*\\()",
+      "match": "\\b(?!if\\b|while\\b|for\\b|loop\\b|return\\b|rep\\b|asm\\b|align\\b|import\\b|fn\\b|uint\\b|int\\b|bitcast\\b)([A-Za-z_][A-Za-z0-9_]*)\\b(?=\\s*\\()",
       "captures": {
         "1": {
           "name": "entity.name.function.blade"
@@ -203,15 +360,21 @@
       }
     },
     "function-definitions": {
-      "begin": "\\b(?:(leaf|inline|rec|coro|comptime|int1|int2|int3)\\s+)?(fn)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b",
+      "begin": "\\b(?:(asm)\\s+(?:(volatile)\\s+)?)?(?:(leaf|inline|noinline|rec|coro|comptime|int1|int2|int3)\\s+)?(fn)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b",
       "beginCaptures": {
         "1": {
-          "name": "storage.modifier.function.blade"
+          "name": "keyword.control.asm.blade"
         },
         "2": {
-          "name": "storage.type.function.blade"
+          "name": "storage.modifier.volatile.blade"
         },
         "3": {
+          "name": "storage.modifier.function.blade"
+        },
+        "4": {
+          "name": "storage.type.function.blade"
+        },
+        "5": {
           "name": "entity.name.function.blade"
         }
       },
@@ -237,7 +400,7 @@
           "include": "#type-annotations"
         },
         {
-          "match": "(?<=\\))\\s*(void|u8|i8|u16|i16|u32|i32|bool|bit|nit|nib|uint|int|[A-Za-z_][A-Za-z0-9_]*)\\b(?=\\s*\\{)",
+          "match": "(?<=\\))\\s*(void|u8|i8|u16|i16|u32|i32|u8x4|bool|bit|nit|nib|uint|int|[A-Za-z_][A-Za-z0-9_]*)\\b(?=\\s*\\{)",
           "captures": {
             "1": {
               "name": "entity.name.type.blade"
@@ -286,6 +449,14 @@
               "name": "entity.name.namespace.blade"
             }
           }
+        },
+        {
+          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\b",
+          "captures": {
+            "1": {
+              "name": "entity.name.namespace.blade"
+            }
+          }
         }
       ]
     },
@@ -303,15 +474,15 @@
     "keywords": {
       "patterns": [
         {
-          "match": "\\b(?:if|else|while|for|loop|break|continue|return|yield|yieldto|rep|noirq|in)\\b",
+          "match": "\\b(?:if|else|while|for|loop|break|continue|return|yield|yieldto|rep|noirq|in|and|or)\\b",
           "name": "keyword.control.blade"
         },
         {
-          "match": "\\b(?:extern|reg|lut|hub|var|const)\\b",
+          "match": "\\b(?:extern|reg|lut|hub|var|const|volatile)\\b",
           "name": "storage.modifier.blade"
         },
         {
-          "match": "\\b(?:fn|leaf|inline|rec|coro|comptime|int1|int2|int3|asm|align|packed|struct|import|as)\\b",
+          "match": "\\b(?:fn|leaf|inline|noinline|rec|coro|comptime|int1|int2|int3|asm|align|packed|struct|union|enum|bitfield|bitcast|type|import|as)\\b",
           "name": "keyword.other.blade"
         },
         {
@@ -371,6 +542,14 @@
           "name": "constant.numeric.integer.binary.blade"
         },
         {
+          "match": "\\b0[qQ][0-3](?:_?[0-3])*\\b",
+          "name": "constant.numeric.integer.quaternary.blade"
+        },
+        {
+          "match": "\\b0[oO][0-7](?:_?[0-7])*\\b",
+          "name": "constant.numeric.integer.octal.blade"
+        },
+        {
           "match": "\\b(?:0|[1-9](?:_?[0-9])*)\\b",
           "name": "constant.numeric.integer.decimal.blade"
         }
@@ -379,7 +558,19 @@
     "operators": {
       "patterns": [
         {
-          "match": "->|\\.\\.|<<=|>>=|\\+=|-=|&=|\\|=|\\^=|==|!=|<=|>=|<<|>>|\\+\\+|--|[+\\-*/&|^!=<>]=?",
+          "match": "\\.\\.\\.",
+          "name": "keyword.operator.spread.blade"
+        },
+        {
+          "match": "<%<|>%>",
+          "name": "keyword.operator.rotate.blade"
+        },
+        {
+          "match": "<<<|>>>",
+          "name": "keyword.operator.arithmetic-shift.blade"
+        },
+        {
+          "match": "->|\\.\\.|<<=|>>=|%=|\\+=|-=|&=|\\|=|\\^=|==|!=|<=|>=|<<|>>|\\+\\+|--|[+\\-*/&|^!=<>~%]=?",
           "name": "keyword.operator.blade"
         },
         {
@@ -396,70 +587,52 @@
         }
       ]
     },
-    "packed-struct": {
-      "begin": "\\b(packed)\\b\\s+\\b(struct)\\b\\s*(\\{)",
-      "beginCaptures": {
-        "1": {
-          "name": "storage.modifier.blade"
-        },
-        "2": {
-          "name": "storage.type.struct.blade"
-        },
-        "3": {
-          "name": "punctuation.section.block.begin.blade"
-        }
-      },
-      "end": "(\\})",
-      "endCaptures": {
-        "1": {
-          "name": "punctuation.section.block.end.blade"
-        }
-      },
-      "name": "meta.struct.packed.blade",
-      "patterns": [
-        {
-          "include": "#comments"
-        },
-        {
-          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\b(?=\\s*:)",
-          "captures": {
-            "1": {
-              "name": "variable.other.member.definition.blade"
-            }
-          }
-        },
-        {
-          "include": "#type-annotations"
-        },
-        {
-          "include": "#numbers"
-        },
-        {
-          "include": "#keywords"
-        },
-        {
-          "include": "#operators"
-        }
-      ]
-    },
     "strings": {
-      "begin": "\"",
-      "beginCaptures": {
-        "0": {
-          "name": "punctuation.definition.string.begin.blade"
-        }
-      },
-      "end": "\"",
-      "endCaptures": {
-        "0": {
-          "name": "punctuation.definition.string.end.blade"
-        }
-      },
-      "name": "string.quoted.double.blade",
       "patterns": [
         {
-          "match": "\\\\.",
-          "name": "constant.character.escape.blade"
+          "begin": "(z)(\")",
+          "beginCaptures": {
+            "1": {
+              "name": "storage.modifier.string.blade"
+            },
+            "2": {
+              "name": "punctuation.definition.string.begin.blade"
+            }
+          },
+          "end": "\"",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.end.blade"
+            }
+          },
+          "name": "string.quoted.double.zero-terminated.blade",
+          "patterns": [
+            {
+              "match": "\\\\(?:[0tnre\\\\\"']|x[0-9A-Fa-f]{2}|u\\{[0-9A-Fa-f]+\\})",
+              "name": "constant.character.escape.blade"
+            }
+          ]
+        },
+        {
+          "begin": "\"",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.begin.blade"
+            }
+          },
+          "end": "\"",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.end.blade"
+            }
+          },
+          "name": "string.quoted.double.blade",
+          "patterns": [
+            {
+              "match": "\\\\(?:[0tnre\\\\\"']|x[0-9A-Fa-f]{2}|u\\{[0-9A-Fa-f]+\\})",
+              "name": "constant.character.escape.blade"
+            }
+          ]
         }
       ]
     },
@@ -479,7 +652,7 @@
               "include": "#comments"
             },
             {
-              "include": "#packed-struct"
+              "include": "#compound-types"
             },
             {
               "include": "#types"
@@ -524,7 +697,7 @@
               }
             },
             {
-              "include": "#packed-struct"
+              "include": "#compound-types"
             },
             {
               "include": "#types"
@@ -550,7 +723,7 @@
       ]
     },
     "type-declarations": {
-      "begin": "\\b(const)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b(?=\\s*=\\s*packed\\s+struct\\b)",
+      "begin": "\\b(type|const)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b(?=\\s*=)",
       "beginCaptures": {
         "1": {
           "name": "storage.modifier.blade"
@@ -571,7 +744,16 @@
           "include": "#comments"
         },
         {
-          "include": "#packed-struct"
+          "include": "#compound-types"
+        },
+        {
+          "include": "#types"
+        },
+        {
+          "include": "#numbers"
+        },
+        {
+          "include": "#keywords"
         },
         {
           "include": "#operators"
@@ -579,7 +761,7 @@
       ]
     },
     "types": {
-      "match": "\\b(?:u8|i8|u16|i16|u32|i32|bool|bit|nit|nib|uint|int|void)\\b",
+      "match": "\\b(?:u8|i8|u16|i16|u32|i32|u8x4|bool|bit|nit|nib|uint|int|void)\\b",
       "name": "storage.type.blade"
     },
     "variable-declarations": {
@@ -610,10 +792,13 @@
           "include": "#comments"
         },
         {
+          "include": "#char-literals"
+        },
+        {
           "include": "#strings"
         },
         {
-          "include": "#packed-struct"
+          "include": "#compound-types"
         },
         {
           "include": "#type-annotations"
