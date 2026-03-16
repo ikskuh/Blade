@@ -94,9 +94,12 @@ public sealed class Parser
                 return ParseGlobalStatement();
 
             case TokenKind.ConstKeyword:
-                // const Name = packed struct { ... }; (type alias)
+                // const Name = packed struct { ... }; (type alias, legacy)
                 // or const Name = comptime { ... }; (global const)
                 return ParseTypeAliasOrConstDeclaration();
+
+            case TokenKind.TypeKeyword:
+                return ParseTypeAliasDeclaration();
 
             case TokenKind.FnKeyword:
                 return ParseFunctionDeclaration(funcKindKeyword: null);
@@ -105,6 +108,15 @@ public sealed class Parser
                  or TokenKind.CoroKeyword or TokenKind.Int1Keyword or TokenKind.Int2Keyword
                  or TokenKind.Int3Keyword:
                 return ParseFunctionDeclaration(NextToken());
+
+            case TokenKind.AsmKeyword:
+                // asm fn ... or asm volatile fn ... → asm function declaration
+                // asm { ... }; → global statement with asm block
+                if (Peek(1).Kind == TokenKind.FnKeyword)
+                    return ParseAsmFunctionDeclaration();
+                if (Peek(1).Kind == TokenKind.VolatileKeyword && Peek(2).Kind == TokenKind.FnKeyword)
+                    return ParseAsmFunctionDeclaration();
+                return ParseGlobalStatement();
 
             case TokenKind.ComptimeKeyword:
                 // comptime fn ... → function declaration
@@ -121,11 +133,26 @@ public sealed class Parser
     private ImportDeclarationSyntax ParseImportDeclaration()
     {
         Token importKw = MatchToken(TokenKind.ImportKeyword);
-        Token path = MatchToken(TokenKind.StringLiteral);
-        Token asKw = MatchToken(TokenKind.AsKeyword);
-        Token alias = MatchToken(TokenKind.Identifier);
+
+        // File import:  import "path/to/file.blade" as alias;
+        // Named module: import extmod;
+        // Named module with rename: import extmod as alias;
+        Token source;
+        if (Current.Kind == TokenKind.StringLiteral)
+            source = NextToken();
+        else
+            source = MatchToken(TokenKind.Identifier);
+
+        Token? asKw = null;
+        Token? alias = null;
+        if (Current.Kind == TokenKind.AsKeyword)
+        {
+            asKw = NextToken();
+            alias = MatchToken(TokenKind.Identifier);
+        }
+
         Token semi = MatchToken(TokenKind.Semicolon);
-        return new ImportDeclarationSyntax(importKw, path, asKw, alias, semi);
+        return new ImportDeclarationSyntax(importKw, source, asKw, alias, semi);
     }
 
     private FunctionDeclarationSyntax ParseFunctionDeclaration(Token? funcKindKeyword)
@@ -152,6 +179,64 @@ public sealed class Parser
 
         BlockStatementSyntax body = ParseBlockStatement();
         return new FunctionDeclarationSyntax(funcKindKeyword, fnKw, name, openParen, parameters, closeParen, arrow, returnSpec, body);
+    }
+
+    private AsmFunctionDeclarationSyntax ParseAsmFunctionDeclaration()
+    {
+        Token asmKw = MatchToken(TokenKind.AsmKeyword);
+        Token? volatileKw = null;
+        if (Current.Kind == TokenKind.VolatileKeyword)
+            volatileKw = NextToken();
+
+        Token fnKw = MatchToken(TokenKind.FnKeyword);
+        Token name = MatchToken(TokenKind.Identifier);
+        Token openParen = MatchToken(TokenKind.OpenParen);
+        SeparatedSyntaxList<ParameterSyntax> parameters = ParseParameterList();
+        Token closeParen = MatchToken(TokenKind.CloseParen);
+
+        Token? arrow = null;
+        SeparatedSyntaxList<ReturnItemSyntax>? returnSpec = null;
+
+        if (Current.Kind == TokenKind.Arrow)
+        {
+            arrow = NextToken();
+            returnSpec = ParseReturnSpec();
+        }
+
+        Token openBrace = MatchToken(TokenKind.OpenBrace);
+
+        // Capture raw text between braces
+        int bodyStart = openBrace.Span.End;
+        int depth = 1;
+        while (Current.Kind != TokenKind.EndOfFile && depth > 0)
+        {
+            if (Current.Kind == TokenKind.OpenBrace)
+                depth++;
+            else if (Current.Kind == TokenKind.CloseBrace)
+            {
+                depth--;
+                if (depth == 0)
+                    break;
+            }
+            NextToken();
+        }
+
+        int bodyEnd = Current.Span.Start;
+        string body = _source.ToString(TextSpan.FromBounds(bodyStart, bodyEnd));
+
+        Token closeBrace = MatchToken(TokenKind.CloseBrace);
+        return new AsmFunctionDeclarationSyntax(asmKw, volatileKw, fnKw, name, openParen, parameters, closeParen,
+                                                 arrow, returnSpec, openBrace, body, closeBrace);
+    }
+
+    private TypeAliasDeclarationSyntax ParseTypeAliasDeclaration()
+    {
+        Token typeKw = MatchToken(TokenKind.TypeKeyword);
+        Token name = MatchToken(TokenKind.Identifier);
+        Token equals = MatchToken(TokenKind.Equal);
+        TypeSyntax type = ParseType();
+        Token semi = MatchToken(TokenKind.Semicolon);
+        return new TypeAliasDeclarationSyntax(typeKw, name, equals, type, semi);
     }
 
     private SeparatedSyntaxList<ParameterSyntax> ParseParameterList()
@@ -292,7 +377,7 @@ public sealed class Parser
         Token name = MatchToken(TokenKind.Identifier);
         Token equals = MatchToken(TokenKind.Equal);
 
-        if (Current.Kind == TokenKind.PackedKeyword)
+        if (Current.Kind == TokenKind.PackedKeyword || Current.Kind == TokenKind.StructKeyword)
         {
             TypeSyntax type = ParseStructType();
             Token semi = MatchToken(TokenKind.Semicolon);
@@ -303,10 +388,6 @@ public sealed class Parser
         ExpressionSyntax initializer = ParseExpression();
         Token semicolon = MatchToken(TokenKind.Semicolon);
 
-        // We model this as a type alias for now — but it's really a global constant without storage class.
-        // Wrap as a GlobalStatementSyntax containing the whole thing as an assignment-like construct.
-        // Actually, let's just create a VariableDeclarationSyntax with a fabricated storage class.
-        // The semantic analyzer will handle the special case.
         return new TypeAliasDeclarationSyntax(constKw, name, equals,
             new NamedTypeSyntax(new Token(TokenKind.Identifier, initializer.Span, "auto")),
             semicolon);
@@ -331,6 +412,14 @@ public sealed class Parser
 
             case TokenKind.VarKeyword or TokenKind.RegKeyword or TokenKind.LutKeyword or TokenKind.HubKeyword:
                 return new VariableDeclarationStatementSyntax(ParseVariableDeclaration(externKeyword: null));
+
+            case TokenKind.ConstKeyword:
+                // Local const declaration: const name: type = expr;
+                // Disambiguate from const Name = type (type alias at statement level is unusual)
+                if (Peek(1).Kind == TokenKind.Identifier && Peek(2).Kind == TokenKind.Colon)
+                    return new VariableDeclarationStatementSyntax(ParseVariableDeclaration(externKeyword: null));
+                // Fall through to expression/assignment
+                return ParseExpressionOrAssignmentStatement();
 
             case TokenKind.ExternKeyword:
                 return new VariableDeclarationStatementSyntax(ParseVariableDeclaration(NextToken()));
@@ -435,10 +524,36 @@ public sealed class Parser
     {
         Token forKw = MatchToken(TokenKind.ForKeyword);
         Token openParen = MatchToken(TokenKind.OpenParen);
-        Token variable = MatchToken(TokenKind.Identifier);
+        ExpressionSyntax iterable = ParseExpression();
         Token closeParen = MatchToken(TokenKind.CloseParen);
+
+        ForBindingSyntax? binding = null;
+        if (Current.Kind == TokenKind.Arrow)
+            binding = ParseForBinding();
+
         BlockStatementSyntax body = ParseBlockStatement();
-        return new ForStatementSyntax(forKw, openParen, variable, closeParen, body);
+        return new ForStatementSyntax(forKw, openParen, iterable, closeParen, binding, body);
+    }
+
+    private ForBindingSyntax ParseForBinding()
+    {
+        Token arrow = MatchToken(TokenKind.Arrow);
+
+        Token? ampersand = null;
+        if (Current.Kind == TokenKind.Ampersand)
+            ampersand = NextToken();
+
+        Token itemName = MatchToken(TokenKind.Identifier);
+
+        Token? comma = null;
+        Token? indexName = null;
+        if (Current.Kind == TokenKind.Comma)
+        {
+            comma = NextToken();
+            indexName = MatchToken(TokenKind.Identifier);
+        }
+
+        return new ForBindingSyntax(arrow, ampersand, itemName, comma, indexName);
     }
 
     private LoopStatementSyntax ParseLoopStatement()
@@ -455,22 +570,34 @@ public sealed class Parser
         if (Current.Kind == TokenKind.LoopKeyword)
         {
             Token loopKw = NextToken();
+
+            if (Current.Kind == TokenKind.OpenBrace)
+            {
+                // rep loop { body } — infinite rep loop
+                BlockStatementSyntax body = ParseBlockStatement();
+                return new RepLoopStatementSyntax(repKw, loopKw, null, null, null, body);
+            }
+
+            // rep loop (count) { body }
             Token openParen = MatchToken(TokenKind.OpenParen);
             ExpressionSyntax count = ParseExpression();
             Token closeParen = MatchToken(TokenKind.CloseParen);
-            BlockStatementSyntax body = ParseBlockStatement();
-            return new RepLoopStatementSyntax(repKw, loopKw, openParen, count, closeParen, body);
+            BlockStatementSyntax body2 = ParseBlockStatement();
+            return new RepLoopStatementSyntax(repKw, loopKw, openParen, count, closeParen, body2);
         }
 
-        // rep for (ident in start..end) { ... }
+        // rep for (expr) [-> binding] { body }
         Token forKw = MatchToken(TokenKind.ForKeyword);
         Token openParen2 = MatchToken(TokenKind.OpenParen);
-        Token variable = MatchToken(TokenKind.Identifier);
-        Token inKw = MatchToken(TokenKind.InKeyword);
-        RangeExpressionSyntax range = ParseRangeExpression();
+        ExpressionSyntax iterable = ParseExpression();
         Token closeParen2 = MatchToken(TokenKind.CloseParen);
-        BlockStatementSyntax body2 = ParseBlockStatement();
-        return new RepForStatementSyntax(repKw, forKw, openParen2, variable, inKw, range, closeParen2, body2);
+
+        ForBindingSyntax? binding = null;
+        if (Current.Kind == TokenKind.Arrow)
+            binding = ParseForBinding();
+
+        BlockStatementSyntax body3 = ParseBlockStatement();
+        return new RepForStatementSyntax(repKw, forKw, openParen2, iterable, closeParen2, binding, body3);
     }
 
     private NoirqStatementSyntax ParseNoirqStatement()
@@ -533,15 +660,6 @@ public sealed class Parser
         if (Current.Kind == TokenKind.VolatileKeyword)
             volatileKw = NextToken();
 
-        AsmFlagOutputSyntax? flagOutput = null;
-        if (Current.Kind == TokenKind.Arrow)
-        {
-            Token arrow = NextToken();
-            Token at = MatchToken(TokenKind.At);
-            Token flag = MatchToken(TokenKind.Identifier);
-            flagOutput = new AsmFlagOutputSyntax(arrow, at, flag);
-        }
-
         Token openBrace = MatchToken(TokenKind.OpenBrace);
 
         // Capture raw text between braces
@@ -564,8 +682,29 @@ public sealed class Parser
         string body = _source.ToString(TextSpan.FromBounds(bodyStart, bodyEnd));
 
         Token closeBrace = MatchToken(TokenKind.CloseBrace);
+
+        // Parse optional output binding after body: -> name: type@Flag
+        AsmOutputBindingSyntax? outputBinding = null;
+        if (Current.Kind == TokenKind.Arrow)
+        {
+            Token arrow = NextToken();
+            Token name = MatchToken(TokenKind.Identifier);
+            Token colon = MatchToken(TokenKind.Colon);
+            TypeSyntax type = ParseType();
+
+            FlagAnnotationSyntax? flagAnnotation = null;
+            if (Current.Kind == TokenKind.At)
+            {
+                Token at = NextToken();
+                Token flag = MatchToken(TokenKind.Identifier);
+                flagAnnotation = new FlagAnnotationSyntax(at, flag);
+            }
+
+            outputBinding = new AsmOutputBindingSyntax(arrow, name, colon, type, flagAnnotation);
+        }
+
         Token semi = MatchToken(TokenKind.Semicolon);
-        return new AsmBlockStatementSyntax(asmKw, volatileKw, flagOutput, openBrace, body, closeBrace, semi);
+        return new AsmBlockStatementSyntax(asmKw, volatileKw, openBrace, body, closeBrace, outputBinding, semi);
     }
 
     private StatementSyntax ParseExpressionOrAssignmentStatement()
@@ -596,24 +735,42 @@ public sealed class Parser
             case TokenKind.BoolKeyword or TokenKind.BitKeyword or TokenKind.NitKeyword
                  or TokenKind.NibKeyword or TokenKind.U8Keyword or TokenKind.I8Keyword
                  or TokenKind.U16Keyword or TokenKind.I16Keyword or TokenKind.U32Keyword
-                 or TokenKind.I32Keyword or TokenKind.VoidKeyword:
+                 or TokenKind.I32Keyword or TokenKind.VoidKeyword or TokenKind.U8x4Keyword:
                 return new PrimitiveTypeSyntax(NextToken());
 
             // Generic width: uint(N), int(N)
             case TokenKind.UintKeyword or TokenKind.IntKeyword:
                 return ParseGenericWidthType();
 
-            // Array: [expr]type
+            // Array or multi-pointer: [expr]type or [*]type
             case TokenKind.OpenBracket:
+                if (Peek(1).Kind == TokenKind.Star && Peek(2).Kind == TokenKind.CloseBracket)
+                    return ParseMultiPointerType();
                 return ParseArrayType();
 
-            // Pointer: *type, *const type
+            // Pointer: *type
             case TokenKind.Star:
                 return ParsePointerType();
 
             // Packed struct
             case TokenKind.PackedKeyword:
                 return ParseStructType();
+
+            // Non-packed struct
+            case TokenKind.StructKeyword:
+                return ParseStructType();
+
+            // Union
+            case TokenKind.UnionKeyword:
+                return ParseUnionType();
+
+            // Enum
+            case TokenKind.EnumKeyword:
+                return ParseEnumType();
+
+            // Bitfield
+            case TokenKind.BitfieldKeyword:
+                return ParseBitfieldType();
 
             // Named type (user-defined)
             case TokenKind.Identifier:
@@ -646,16 +803,65 @@ public sealed class Parser
     private PointerTypeSyntax ParsePointerType()
     {
         Token star = MatchToken(TokenKind.Star);
-        Token? constKw = null;
-        if (Current.Kind == TokenKind.ConstKeyword)
-            constKw = NextToken();
+        ParsePointerAttributes(out Token? storageClass, out Token? constKw, out Token? volatileKw, out AlignClauseSyntax? alignClause);
         TypeSyntax pointeeType = ParseType();
-        return new PointerTypeSyntax(star, constKw, pointeeType);
+        return new PointerTypeSyntax(star, storageClass, constKw, volatileKw, alignClause, pointeeType);
+    }
+
+    private MultiPointerTypeSyntax ParseMultiPointerType()
+    {
+        Token openBracket = MatchToken(TokenKind.OpenBracket);
+        Token star = MatchToken(TokenKind.Star);
+        Token closeBracket = MatchToken(TokenKind.CloseBracket);
+        ParsePointerAttributes(out Token? storageClass, out Token? constKw, out Token? volatileKw, out AlignClauseSyntax? alignClause);
+        TypeSyntax pointeeType = ParseType();
+        return new MultiPointerTypeSyntax(openBracket, star, closeBracket, storageClass, constKw, volatileKw, alignClause, pointeeType);
+    }
+
+    private void ParsePointerAttributes(out Token? storageClass, out Token? constKw, out Token? volatileKw, out AlignClauseSyntax? alignClause)
+    {
+        storageClass = null;
+        constKw = null;
+        volatileKw = null;
+        alignClause = null;
+
+        // Parse optional attributes in any order: storage, const, volatile, align(N)
+        bool parsing = true;
+        while (parsing)
+        {
+            switch (Current.Kind)
+            {
+                case TokenKind.RegKeyword or TokenKind.LutKeyword or TokenKind.HubKeyword when storageClass is null:
+                    storageClass = NextToken();
+                    break;
+                case TokenKind.ConstKeyword when constKw is null:
+                    constKw = NextToken();
+                    break;
+                case TokenKind.VolatileKeyword when volatileKw is null:
+                    volatileKw = NextToken();
+                    break;
+                case TokenKind.AlignKeyword when alignClause is null:
+                {
+                    Token alignKw = NextToken();
+                    Token openParen = MatchToken(TokenKind.OpenParen);
+                    ExpressionSyntax alignment = ParseExpression();
+                    Token closeParen = MatchToken(TokenKind.CloseParen);
+                    alignClause = new AlignClauseSyntax(alignKw, openParen, alignment, closeParen);
+                    break;
+                }
+                default:
+                    parsing = false;
+                    break;
+            }
+        }
     }
 
     private StructTypeSyntax ParseStructType()
     {
-        Token packedKw = MatchToken(TokenKind.PackedKeyword);
+        Token? packedKw = null;
+        if (Current.Kind == TokenKind.PackedKeyword)
+            packedKw = NextToken();
+
         Token structKw = MatchToken(TokenKind.StructKeyword);
         Token openBrace = MatchToken(TokenKind.OpenBrace);
 
@@ -675,6 +881,99 @@ public sealed class Parser
 
         Token closeBrace = MatchToken(TokenKind.CloseBrace);
         return new StructTypeSyntax(packedKw, structKw, openBrace, new SeparatedSyntaxList<StructFieldSyntax>(fieldsAndSeparators), closeBrace);
+    }
+
+    private UnionTypeSyntax ParseUnionType()
+    {
+        Token unionKw = MatchToken(TokenKind.UnionKeyword);
+        Token openBrace = MatchToken(TokenKind.OpenBrace);
+
+        List<object> fieldsAndSeparators = new();
+        while (Current.Kind != TokenKind.CloseBrace && Current.Kind != TokenKind.EndOfFile)
+        {
+            Token fieldName = MatchToken(TokenKind.Identifier);
+            Token colon = MatchToken(TokenKind.Colon);
+            TypeSyntax fieldType = ParseType();
+            fieldsAndSeparators.Add(new StructFieldSyntax(fieldName, colon, fieldType));
+
+            if (Current.Kind == TokenKind.Comma)
+                fieldsAndSeparators.Add(NextToken());
+            else
+                break;
+        }
+
+        Token closeBrace = MatchToken(TokenKind.CloseBrace);
+        return new UnionTypeSyntax(unionKw, openBrace, new SeparatedSyntaxList<StructFieldSyntax>(fieldsAndSeparators), closeBrace);
+    }
+
+    private EnumTypeSyntax ParseEnumType()
+    {
+        Token enumKw = MatchToken(TokenKind.EnumKeyword);
+        Token openParen = MatchToken(TokenKind.OpenParen);
+        TypeSyntax backingType = ParseType();
+        Token closeParen = MatchToken(TokenKind.CloseParen);
+        Token openBrace = MatchToken(TokenKind.OpenBrace);
+
+        List<object> membersAndSeparators = new();
+        while (Current.Kind != TokenKind.CloseBrace && Current.Kind != TokenKind.EndOfFile)
+        {
+            if (Current.Kind == TokenKind.DotDotDot)
+            {
+                // Open enum marker: ...
+                Token dots = NextToken();
+                membersAndSeparators.Add(new EnumMemberSyntax(dots, null, null, isOpenMarker: true));
+            }
+            else
+            {
+                Token memberName = MatchToken(TokenKind.Identifier);
+
+                Token? equalsToken = null;
+                ExpressionSyntax? value = null;
+                if (Current.Kind == TokenKind.Equal)
+                {
+                    equalsToken = NextToken();
+                    value = ParseExpression();
+                }
+
+                membersAndSeparators.Add(new EnumMemberSyntax(memberName, equalsToken, value));
+            }
+
+            if (Current.Kind == TokenKind.Comma)
+                membersAndSeparators.Add(NextToken());
+            else
+                break;
+        }
+
+        Token closeBrace = MatchToken(TokenKind.CloseBrace);
+        return new EnumTypeSyntax(enumKw, openParen, backingType, closeParen, openBrace,
+                                  new SeparatedSyntaxList<EnumMemberSyntax>(membersAndSeparators), closeBrace);
+    }
+
+    private BitfieldTypeSyntax ParseBitfieldType()
+    {
+        Token bitfieldKw = MatchToken(TokenKind.BitfieldKeyword);
+        Token openParen = MatchToken(TokenKind.OpenParen);
+        TypeSyntax backingType = ParseType();
+        Token closeParen = MatchToken(TokenKind.CloseParen);
+        Token openBrace = MatchToken(TokenKind.OpenBrace);
+
+        List<object> fieldsAndSeparators = new();
+        while (Current.Kind != TokenKind.CloseBrace && Current.Kind != TokenKind.EndOfFile)
+        {
+            Token fieldName = MatchToken(TokenKind.Identifier);
+            Token colon = MatchToken(TokenKind.Colon);
+            TypeSyntax fieldType = ParseType();
+            fieldsAndSeparators.Add(new StructFieldSyntax(fieldName, colon, fieldType));
+
+            if (Current.Kind == TokenKind.Comma)
+                fieldsAndSeparators.Add(NextToken());
+            else
+                break;
+        }
+
+        Token closeBrace = MatchToken(TokenKind.CloseBrace);
+        return new BitfieldTypeSyntax(bitfieldKw, openParen, backingType, closeParen, openBrace,
+                                      new SeparatedSyntaxList<StructFieldSyntax>(fieldsAndSeparators), closeBrace);
     }
 
     // ──────────────────────────────────────────
@@ -741,15 +1040,6 @@ public sealed class Parser
                         Token star = NextToken();
                         expression = new PointerDerefExpressionSyntax(expression, dot, star);
                     }
-                    else if (Current.Kind == TokenKind.OpenBrace)
-                    {
-                        // .{ field initializers } — struct literal
-                        // This is handled specially: the dot was already consumed as part of postfix.
-                        // Actually, struct literals start with `.{` at primary level. Let's not handle here.
-                        // Put the dot back? No, we already consumed it. This case shouldn't happen in valid code.
-                        Token member = MatchToken(TokenKind.Identifier);
-                        expression = new MemberAccessExpressionSyntax(expression, dot, member);
-                    }
                     else
                     {
                         Token member = MatchToken(TokenKind.Identifier);
@@ -779,6 +1069,44 @@ public sealed class Parser
                     expression = new PostfixUnaryExpressionSyntax(expression, NextToken());
                     break;
 
+                case TokenKind.AsKeyword:
+                {
+                    // expr as Type
+                    Token asKw = NextToken();
+                    TypeSyntax targetType = ParseType();
+                    expression = new CastExpressionSyntax(expression, asKw, targetType);
+                    break;
+                }
+
+                case TokenKind.OpenBrace when expression is NameExpressionSyntax:
+                {
+                    // TypeName { .field = value, ... } — typed struct literal
+                    // Disambiguate: only if the first token inside the brace is '.'
+                    if (Peek(1).Kind != TokenKind.Dot)
+                        return expression;
+
+                    Token openBrace = NextToken();
+                    List<object> initializersAndSeparators = new();
+                    while (Current.Kind != TokenKind.CloseBrace && Current.Kind != TokenKind.EndOfFile)
+                    {
+                        Token fieldDot = MatchToken(TokenKind.Dot);
+                        Token fieldName = MatchToken(TokenKind.Identifier);
+                        Token equals = MatchToken(TokenKind.Equal);
+                        ExpressionSyntax value = ParseExpression();
+                        initializersAndSeparators.Add(new FieldInitializerSyntax(fieldDot, fieldName, equals, value));
+
+                        if (Current.Kind == TokenKind.Comma)
+                            initializersAndSeparators.Add(NextToken());
+                        else
+                            break;
+                    }
+
+                    Token closeBrace = MatchToken(TokenKind.CloseBrace);
+                    expression = new TypedStructLiteralExpressionSyntax(expression, openBrace,
+                        new SeparatedSyntaxList<FieldInitializerSyntax>(initializersAndSeparators), closeBrace);
+                    break;
+                }
+
                 default:
                     return expression;
             }
@@ -789,7 +1117,7 @@ public sealed class Parser
     {
         switch (Current.Kind)
         {
-            case TokenKind.IntegerLiteral or TokenKind.StringLiteral:
+            case TokenKind.IntegerLiteral or TokenKind.StringLiteral or TokenKind.CharLiteral:
                 return new LiteralExpressionSyntax(NextToken());
 
             case TokenKind.TrueKeyword or TokenKind.FalseKeyword or TokenKind.UndefinedKeyword:
@@ -806,13 +1134,21 @@ public sealed class Parser
                 return new ParenthesizedExpressionSyntax(openParen, expr, closeParen);
             }
 
+            case TokenKind.OpenBracket:
+                return ParseArrayLiteral();
+
             case TokenKind.At:
                 return ParseIntrinsicCall();
 
             case TokenKind.Dot:
                 if (Peek(1).Kind == TokenKind.OpenBrace)
                     return ParseStructLiteral();
+                if (Peek(1).Kind == TokenKind.Identifier)
+                    return ParseEnumLiteral();
                 goto default;
+
+            case TokenKind.BitcastKeyword:
+                return ParseBitcastExpression();
 
             case TokenKind.ComptimeKeyword:
             {
@@ -829,6 +1165,50 @@ public sealed class Parser
                 return new LiteralExpressionSyntax(
                     new Token(TokenKind.IntegerLiteral, new TextSpan(Current.Span.Start, 0), "", 0L));
         }
+    }
+
+    private ArrayLiteralExpressionSyntax ParseArrayLiteral()
+    {
+        Token openBracket = MatchToken(TokenKind.OpenBracket);
+
+        List<object> elementsAndSeparators = new();
+        while (Current.Kind != TokenKind.CloseBracket && Current.Kind != TokenKind.EndOfFile)
+        {
+            ExpressionSyntax value = ParseExpression();
+
+            Token? spread = null;
+            if (Current.Kind == TokenKind.DotDotDot)
+                spread = NextToken();
+
+            elementsAndSeparators.Add(new ArrayElementSyntax(value, spread));
+
+            if (Current.Kind == TokenKind.Comma)
+                elementsAndSeparators.Add(NextToken());
+            else
+                break;
+        }
+
+        Token closeBracket = MatchToken(TokenKind.CloseBracket);
+        return new ArrayLiteralExpressionSyntax(openBracket,
+            new SeparatedSyntaxList<ArrayElementSyntax>(elementsAndSeparators), closeBracket);
+    }
+
+    private EnumLiteralExpressionSyntax ParseEnumLiteral()
+    {
+        Token dot = MatchToken(TokenKind.Dot);
+        Token memberName = MatchToken(TokenKind.Identifier);
+        return new EnumLiteralExpressionSyntax(dot, memberName);
+    }
+
+    private BitcastExpressionSyntax ParseBitcastExpression()
+    {
+        Token bitcastKw = MatchToken(TokenKind.BitcastKeyword);
+        Token openParen = MatchToken(TokenKind.OpenParen);
+        TypeSyntax targetType = ParseType();
+        Token comma = MatchToken(TokenKind.Comma);
+        ExpressionSyntax value = ParseExpression();
+        Token closeParen = MatchToken(TokenKind.CloseParen);
+        return new BitcastExpressionSyntax(bitcastKw, openParen, targetType, comma, value, closeParen);
     }
 
     private IntrinsicCallExpressionSyntax ParseIntrinsicCall()
@@ -896,7 +1276,22 @@ public sealed class Parser
 
         while (Current.Kind != TokenKind.CloseParen && Current.Kind != TokenKind.EndOfFile)
         {
-            ExpressionSyntax arg = ParseExpression();
+            ExpressionSyntax arg;
+
+            // Check for named argument: identifier = expr
+            if (Current.Kind == TokenKind.Identifier && Peek(1).Kind == TokenKind.Equal
+                && Peek(2).Kind != TokenKind.Equal) // not ==
+            {
+                Token name = NextToken();
+                Token equals = NextToken();
+                ExpressionSyntax value = ParseExpression();
+                arg = new NamedArgumentSyntax(name, equals, value);
+            }
+            else
+            {
+                arg = ParseExpression();
+            }
+
             nodesAndSeparators.Add(arg);
 
             if (Current.Kind == TokenKind.Comma)
@@ -928,9 +1323,11 @@ public sealed class Parser
     {
         TokenKind.BoolKeyword or TokenKind.BitKeyword or TokenKind.NitKeyword or TokenKind.NibKeyword
             or TokenKind.U8Keyword or TokenKind.I8Keyword or TokenKind.U16Keyword or TokenKind.I16Keyword
-            or TokenKind.U32Keyword or TokenKind.I32Keyword or TokenKind.VoidKeyword
+            or TokenKind.U32Keyword or TokenKind.I32Keyword or TokenKind.VoidKeyword or TokenKind.U8x4Keyword
             or TokenKind.UintKeyword or TokenKind.IntKeyword
             or TokenKind.Star or TokenKind.OpenBracket or TokenKind.PackedKeyword
+            or TokenKind.StructKeyword or TokenKind.UnionKeyword or TokenKind.EnumKeyword
+            or TokenKind.BitfieldKeyword
             or TokenKind.Identifier => true,
         _ => false,
     };

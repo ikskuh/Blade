@@ -70,9 +70,20 @@ public sealed class Lexer
         if (char.IsAsciiLetter(c) || c == '_')
             return ReadIdentifierOrKeyword();
 
+        // Zero-terminated strings: z"..."
+        if (c == 'z' && Lookahead == '"')
+        {
+            Advance(); // skip 'z'
+            return ReadString(zeroTerminated: true);
+        }
+
         // Strings
         if (c == '"')
-            return ReadString();
+            return ReadString(zeroTerminated: false);
+
+        // Character literals
+        if (c == '\'')
+            return ReadCharLiteral();
 
         // Comments or slash
         if (c == '/')
@@ -157,6 +168,12 @@ public sealed class Lexer
         if (Current == '0' && (Lookahead == 'b' || Lookahead == 'B'))
             return ReadBinaryNumber();
 
+        if (Current == '0' && (Lookahead == 'q' || Lookahead == 'Q'))
+            return ReadQuaternaryNumber();
+
+        if (Current == '0' && (Lookahead == 'o' || Lookahead == 'O'))
+            return ReadOctalNumber();
+
         return ReadDecimalNumber();
     }
 
@@ -224,6 +241,64 @@ public sealed class Lexer
         return MakeToken(TokenKind.IntegerLiteral, 0L);
     }
 
+    private Token ReadQuaternaryNumber()
+    {
+        // Skip 0q
+        Advance(2);
+
+        while (_position < _source.Length && (Current >= '0' && Current <= '3' || Current == '_'))
+            Advance();
+
+        TextSpan span = new(_start, _position - _start);
+        string text = _source.ToString(span);
+        string digits = text.Substring(2).Replace("_", "", StringComparison.Ordinal);
+
+        if (digits.Length > 0)
+        {
+            try
+            {
+                long value = Convert.ToInt64(digits, 4);
+                return MakeToken(TokenKind.IntegerLiteral, value);
+            }
+            catch (OverflowException)
+            {
+                // fall through to error
+            }
+        }
+
+        _diagnostics.ReportInvalidNumberLiteral(span, text);
+        return MakeToken(TokenKind.IntegerLiteral, 0L);
+    }
+
+    private Token ReadOctalNumber()
+    {
+        // Skip 0o
+        Advance(2);
+
+        while (_position < _source.Length && (Current >= '0' && Current <= '7' || Current == '_'))
+            Advance();
+
+        TextSpan span = new(_start, _position - _start);
+        string text = _source.ToString(span);
+        string digits = text.Substring(2).Replace("_", "", StringComparison.Ordinal);
+
+        if (digits.Length > 0)
+        {
+            try
+            {
+                long value = Convert.ToInt64(digits, 8);
+                return MakeToken(TokenKind.IntegerLiteral, value);
+            }
+            catch (OverflowException)
+            {
+                // fall through to error
+            }
+        }
+
+        _diagnostics.ReportInvalidNumberLiteral(span, text);
+        return MakeToken(TokenKind.IntegerLiteral, 0L);
+    }
+
     private Token ReadIdentifierOrKeyword()
     {
         while (_position < _source.Length && (char.IsAsciiLetterOrDigit(Current) || Current == '_'))
@@ -238,16 +313,39 @@ public sealed class Lexer
         return MakeToken(kind);
     }
 
-    private Token ReadString()
+    private Token ReadString(bool zeroTerminated)
     {
-        // Skip opening quote
+        // Skip opening quote (the 'z' prefix was already consumed by the caller if applicable)
         Advance();
+
+        System.Text.StringBuilder sb = new();
+        bool hasEscapeErrors = false;
 
         while (_position < _source.Length && Current != '"')
         {
             if (Current == '\n' || Current == '\r')
                 break;
-            Advance();
+
+            if (Current == '\\')
+            {
+                long codepoint = ReadEscapeSequence();
+                if (codepoint >= 0)
+                {
+                    if (codepoint <= 0x7F)
+                        sb.Append((char)codepoint);
+                    else
+                        sb.Append(char.ConvertFromUtf32((int)codepoint));
+                }
+                else
+                {
+                    hasEscapeErrors = true;
+                }
+            }
+            else
+            {
+                sb.Append(Current);
+                Advance();
+            }
         }
 
         if (_position >= _source.Length || Current != '"')
@@ -257,13 +355,136 @@ public sealed class Lexer
             return MakeToken(TokenKind.StringLiteral, "");
         }
 
-        // Extract string value (without quotes)
-        string value = _source.ToString(new TextSpan(_start + 1, _position - _start - 1));
+        // Skip closing quote
+        Advance();
+
+        _ = hasEscapeErrors; // diagnostic already reported in ReadEscapeSequence
+
+        return MakeToken(TokenKind.StringLiteral, sb.ToString());
+    }
+
+    private Token ReadCharLiteral()
+    {
+        // Skip opening quote
+        Advance();
+
+        long value;
+
+        if (Current == '\\')
+        {
+            value = ReadEscapeSequence();
+            if (value < 0)
+                value = 0;
+        }
+        else if (Current == '\'' || Current == '\0')
+        {
+            TextSpan span = new(_start, _position - _start);
+            _diagnostics.ReportUnterminatedString(span);
+            return MakeToken(TokenKind.CharLiteral, 0L);
+        }
+        else
+        {
+            value = Current;
+            Advance();
+        }
+
+        if (Current != '\'')
+        {
+            // Consume remaining characters until closing quote
+            while (_position < _source.Length && Current != '\'' && Current != '\n' && Current != '\r')
+                Advance();
+
+            if (Current == '\'')
+                Advance();
+
+            TextSpan span = new(_start, _position - _start);
+            _diagnostics.ReportInvalidCharacterLiteral(span);
+            return MakeToken(TokenKind.CharLiteral, value);
+        }
 
         // Skip closing quote
         Advance();
 
-        return MakeToken(TokenKind.StringLiteral, value);
+        return MakeToken(TokenKind.CharLiteral, value);
+    }
+
+    /// <summary>
+    /// Reads an escape sequence starting at the backslash.
+    /// Returns the codepoint value, or -1 on error (diagnostic already reported).
+    /// </summary>
+    private long ReadEscapeSequence()
+    {
+        int escapeStart = _position;
+        Advance(); // skip backslash
+
+        char esc = Current;
+        Advance();
+
+        switch (esc)
+        {
+            case '0': return 0x00;
+            case 't': return 0x09;
+            case 'n': return 0x0A;
+            case 'r': return 0x0D;
+            case 'e': return 0x1B;
+            case '\\': return '\\';
+            case '\'': return '\'';
+            case '"': return '"';
+
+            case 'x':
+            {
+                // \xHH — exactly 2 hex digits
+                if (IsHexDigit(Current) && IsHexDigit(Peek(1)))
+                {
+                    string hex = new string(new[] { Current, Peek(1) });
+                    Advance(2);
+                    return Convert.ToInt64(hex, 16);
+                }
+
+                TextSpan span = TextSpan.FromBounds(escapeStart, _position);
+                _diagnostics.ReportInvalidEscapeSequence(span);
+                return -1;
+            }
+
+            case 'u':
+            {
+                // \u{XXXXXX} — 1-6 hex digits in braces
+                if (Current != '{')
+                {
+                    TextSpan span = TextSpan.FromBounds(escapeStart, _position);
+                    _diagnostics.ReportInvalidEscapeSequence(span);
+                    return -1;
+                }
+
+                Advance(); // skip {
+                int digitStart = _position;
+
+                while (_position < _source.Length && IsHexDigit(Current))
+                    Advance();
+
+                int digitCount = _position - digitStart;
+
+                if (digitCount == 0 || digitCount > 6 || Current != '}')
+                {
+                    TextSpan span = TextSpan.FromBounds(escapeStart, _position);
+                    _diagnostics.ReportInvalidEscapeSequence(span);
+                    if (Current == '}')
+                        Advance();
+                    return -1;
+                }
+
+                string hex = _source.ToString(new TextSpan(digitStart, digitCount));
+                Advance(); // skip }
+                return Convert.ToInt64(hex, 16);
+            }
+
+            default:
+            {
+                TextSpan span = TextSpan.FromBounds(escapeStart, _position);
+                _diagnostics.ReportInvalidEscapeSequence(span);
+                return -1;
+            }
+        }
     }
 
     private Token ReadOperatorOrPunctuation()
@@ -290,9 +511,11 @@ public sealed class Lexer
                 if (Current == '<')
                 {
                     Advance();
+                    if (Current == '<') { Advance(); return MakeToken(TokenKind.LessLessLess); }
                     if (Current == '=') { Advance(); return MakeToken(TokenKind.LessLessEqual); }
                     return MakeToken(TokenKind.LessLess);
                 }
+                if (Current == '%' && Peek(1) == '<') { Advance(2); return MakeToken(TokenKind.RotateLeft); }
                 if (Current == '=') { Advance(); return MakeToken(TokenKind.LessEqual); }
                 return MakeToken(TokenKind.Less);
 
@@ -301,9 +524,11 @@ public sealed class Lexer
                 if (Current == '>')
                 {
                     Advance();
+                    if (Current == '>') { Advance(); return MakeToken(TokenKind.GreaterGreaterGreater); }
                     if (Current == '=') { Advance(); return MakeToken(TokenKind.GreaterGreaterEqual); }
                     return MakeToken(TokenKind.GreaterGreater);
                 }
+                if (Current == '%' && Peek(1) == '>') { Advance(2); return MakeToken(TokenKind.RotateRight); }
                 if (Current == '=') { Advance(); return MakeToken(TokenKind.GreaterEqual); }
                 return MakeToken(TokenKind.Greater);
 
@@ -334,9 +559,19 @@ public sealed class Lexer
 
             case '.':
                 Advance();
-                if (Current == '.') { Advance(); return MakeToken(TokenKind.DotDot); }
+                if (Current == '.')
+                {
+                    Advance();
+                    if (Current == '.') { Advance(); return MakeToken(TokenKind.DotDotDot); }
+                    return MakeToken(TokenKind.DotDot);
+                }
                 return MakeToken(TokenKind.Dot);
 
+            case '~': Advance(); return MakeToken(TokenKind.Tilde);
+            case '%':
+                Advance();
+                if (Current == '=') { Advance(); return MakeToken(TokenKind.PercentEqual); }
+                return MakeToken(TokenKind.Percent);
             case '@': Advance(); return MakeToken(TokenKind.At);
             case '#': Advance(); return MakeToken(TokenKind.Hash);
             case '*': Advance(); return MakeToken(TokenKind.Star);

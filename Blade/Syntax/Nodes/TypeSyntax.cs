@@ -59,31 +59,133 @@ public sealed class ArrayTypeSyntax : TypeSyntax
 public sealed class PointerTypeSyntax : TypeSyntax
 {
     public Token Star { get; }
+    public Token? StorageClassKeyword { get; }
     public Token? ConstKeyword { get; }
+    public Token? VolatileKeyword { get; }
+    public AlignClauseSyntax? AlignClause { get; }
     public TypeSyntax PointeeType { get; }
 
-    public PointerTypeSyntax(Token star, Token? constKeyword, TypeSyntax pointeeType)
+    public PointerTypeSyntax(Token star, Token? storageClassKeyword, Token? constKeyword,
+                             Token? volatileKeyword, AlignClauseSyntax? alignClause, TypeSyntax pointeeType)
         : base(TextSpan.FromBounds(star.Span.Start, Requires.NotNull(pointeeType).Span.End))
     {
         Star = star;
+        StorageClassKeyword = storageClassKeyword;
         ConstKeyword = constKeyword;
+        VolatileKeyword = volatileKeyword;
+        AlignClause = alignClause;
+        PointeeType = Requires.NotNull(pointeeType);
+    }
+}
+
+public sealed class MultiPointerTypeSyntax : TypeSyntax
+{
+    public Token OpenBracket { get; }
+    public Token Star { get; }
+    public Token CloseBracket { get; }
+    public Token? StorageClassKeyword { get; }
+    public Token? ConstKeyword { get; }
+    public Token? VolatileKeyword { get; }
+    public AlignClauseSyntax? AlignClause { get; }
+    public TypeSyntax PointeeType { get; }
+
+    public MultiPointerTypeSyntax(Token openBracket, Token star, Token closeBracket,
+                                  Token? storageClassKeyword, Token? constKeyword,
+                                  Token? volatileKeyword, AlignClauseSyntax? alignClause,
+                                  TypeSyntax pointeeType)
+        : base(TextSpan.FromBounds(openBracket.Span.Start, Requires.NotNull(pointeeType).Span.End))
+    {
+        OpenBracket = openBracket;
+        Star = star;
+        CloseBracket = closeBracket;
+        StorageClassKeyword = storageClassKeyword;
+        ConstKeyword = constKeyword;
+        VolatileKeyword = volatileKeyword;
+        AlignClause = alignClause;
         PointeeType = Requires.NotNull(pointeeType);
     }
 }
 
 public sealed class StructTypeSyntax : TypeSyntax
 {
-    public Token PackedKeyword { get; }
+    public Token? PackedKeyword { get; }
     public Token StructKeyword { get; }
     public Token OpenBrace { get; }
     public SeparatedSyntaxList<StructFieldSyntax> Fields { get; }
     public Token CloseBrace { get; }
 
-    public StructTypeSyntax(Token packedKeyword, Token structKeyword, Token openBrace, SeparatedSyntaxList<StructFieldSyntax> fields, Token closeBrace)
-        : base(TextSpan.FromBounds(packedKeyword.Span.Start, closeBrace.Span.End))
+    public StructTypeSyntax(Token? packedKeyword, Token structKeyword, Token openBrace,
+                            SeparatedSyntaxList<StructFieldSyntax> fields, Token closeBrace)
+        : base(TextSpan.FromBounds((packedKeyword ?? structKeyword).Span.Start, closeBrace.Span.End))
     {
         PackedKeyword = packedKeyword;
         StructKeyword = structKeyword;
+        OpenBrace = openBrace;
+        Fields = fields;
+        CloseBrace = closeBrace;
+    }
+}
+
+public sealed class UnionTypeSyntax : TypeSyntax
+{
+    public Token UnionKeyword { get; }
+    public Token OpenBrace { get; }
+    public SeparatedSyntaxList<StructFieldSyntax> Fields { get; }
+    public Token CloseBrace { get; }
+
+    public UnionTypeSyntax(Token unionKeyword, Token openBrace,
+                           SeparatedSyntaxList<StructFieldSyntax> fields, Token closeBrace)
+        : base(TextSpan.FromBounds(unionKeyword.Span.Start, closeBrace.Span.End))
+    {
+        UnionKeyword = unionKeyword;
+        OpenBrace = openBrace;
+        Fields = fields;
+        CloseBrace = closeBrace;
+    }
+}
+
+public sealed class EnumTypeSyntax : TypeSyntax
+{
+    public Token EnumKeyword { get; }
+    public Token OpenParen { get; }
+    public TypeSyntax BackingType { get; }
+    public Token CloseParen { get; }
+    public Token OpenBrace { get; }
+    public SeparatedSyntaxList<EnumMemberSyntax> Members { get; }
+    public Token CloseBrace { get; }
+
+    public EnumTypeSyntax(Token enumKeyword, Token openParen, TypeSyntax backingType, Token closeParen,
+                          Token openBrace, SeparatedSyntaxList<EnumMemberSyntax> members, Token closeBrace)
+        : base(TextSpan.FromBounds(enumKeyword.Span.Start, closeBrace.Span.End))
+    {
+        EnumKeyword = enumKeyword;
+        OpenParen = openParen;
+        BackingType = Requires.NotNull(backingType);
+        CloseParen = closeParen;
+        OpenBrace = openBrace;
+        Members = members;
+        CloseBrace = closeBrace;
+    }
+}
+
+public sealed class BitfieldTypeSyntax : TypeSyntax
+{
+    public Token BitfieldKeyword { get; }
+    public Token OpenParen { get; }
+    public TypeSyntax BackingType { get; }
+    public Token CloseParen { get; }
+    public Token OpenBrace { get; }
+    public SeparatedSyntaxList<StructFieldSyntax> Fields { get; }
+    public Token CloseBrace { get; }
+
+    public BitfieldTypeSyntax(Token bitfieldKeyword, Token openParen, TypeSyntax backingType, Token closeParen,
+                              Token openBrace, SeparatedSyntaxList<StructFieldSyntax> fields, Token closeBrace)
+        : base(TextSpan.FromBounds(bitfieldKeyword.Span.Start, closeBrace.Span.End))
+    {
+        BitfieldKeyword = bitfieldKeyword;
+        OpenParen = openParen;
+        BackingType = Requires.NotNull(backingType);
+        CloseParen = closeParen;
         OpenBrace = openBrace;
         Fields = fields;
         CloseBrace = closeBrace;

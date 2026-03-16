@@ -146,6 +146,14 @@ public class LexerTests
     [TestCase("i32", TokenKind.I32Keyword)]
     [TestCase("uint", TokenKind.UintKeyword)]
     [TestCase("int", TokenKind.IntKeyword)]
+    [TestCase("type", TokenKind.TypeKeyword)]
+    [TestCase("union", TokenKind.UnionKeyword)]
+    [TestCase("enum", TokenKind.EnumKeyword)]
+    [TestCase("bitfield", TokenKind.BitfieldKeyword)]
+    [TestCase("bitcast", TokenKind.BitcastKeyword)]
+    [TestCase("and", TokenKind.AndKeyword)]
+    [TestCase("or", TokenKind.OrKeyword)]
+    [TestCase("u8x4", TokenKind.U8x4Keyword)]
     public void Keywords(string text, TokenKind expectedKind)
     {
         List<Token> tokens = Lex(text);
@@ -330,6 +338,14 @@ public class LexerTests
     [TestCase("^=", TokenKind.CaretEqual)]
     [TestCase("<<=", TokenKind.LessLessEqual)]
     [TestCase(">>=", TokenKind.GreaterGreaterEqual)]
+    [TestCase("~", TokenKind.Tilde)]
+    [TestCase("%", TokenKind.Percent)]
+    [TestCase("%=", TokenKind.PercentEqual)]
+    [TestCase("...", TokenKind.DotDotDot)]
+    [TestCase("<<<", TokenKind.LessLessLess)]
+    [TestCase(">>>", TokenKind.GreaterGreaterGreater)]
+    [TestCase("<%<", TokenKind.RotateLeft)]
+    [TestCase(">%>", TokenKind.RotateRight)]
     public void Operators(string text, TokenKind expectedKind)
     {
         List<Token> tokens = Lex(text);
@@ -411,7 +427,7 @@ public class LexerTests
     [Test]
     public void UnexpectedCharacter_EmitsBadToken_AndContinues()
     {
-        List<Token> tokens = LexWithDiagnostics("42 ~ 7", out DiagnosticBag diagnostics);
+        List<Token> tokens = LexWithDiagnostics("42 ` 7", out DiagnosticBag diagnostics);
         Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.IntegerLiteral));
         Assert.That(tokens[1].Kind, Is.EqualTo(TokenKind.Bad));
         Assert.That(tokens[2].Kind, Is.EqualTo(TokenKind.IntegerLiteral));

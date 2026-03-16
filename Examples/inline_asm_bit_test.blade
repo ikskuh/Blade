@@ -19,9 +19,9 @@ fn test_and_set_bit(val: u32, bit_num: u32) -> u32 {
 }
 
 fn read_pin_to_carry(pin: u32) -> bool@C {
-    asm -> @C {
+    asm {
         TESTP {pin} WC
-    };
+    } -> result: bool@C;
 }
 
 flags = test_and_set_bit(flags, 5);

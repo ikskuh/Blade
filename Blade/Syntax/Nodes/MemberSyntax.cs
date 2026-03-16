@@ -15,20 +15,29 @@ public abstract class MemberSyntax : SyntaxNode
 public sealed class ImportDeclarationSyntax : MemberSyntax
 {
     public Token ImportKeyword { get; }
-    public Token Path { get; }
-    public Token AsKeyword { get; }
-    public Token Alias { get; }
+
+    /// <summary>
+    /// The import source: a string literal for file imports (<c>import "path" as alias;</c>)
+    /// or an identifier for named module imports (<c>import extmod;</c>).
+    /// </summary>
+    public Token Source { get; }
+
+    public Token? AsKeyword { get; }
+    public Token? Alias { get; }
     public Token Semicolon { get; }
 
-    public ImportDeclarationSyntax(Token importKeyword, Token path, Token asKeyword, Token alias, Token semicolon)
+    public ImportDeclarationSyntax(Token importKeyword, Token source, Token? asKeyword, Token? alias, Token semicolon)
         : base(TextSpan.FromBounds(importKeyword.Span.Start, semicolon.Span.End))
     {
         ImportKeyword = importKeyword;
-        Path = path;
+        Source = source;
         AsKeyword = asKeyword;
         Alias = alias;
         Semicolon = semicolon;
     }
+
+    /// <summary>True when the import source is a file path (string literal), false for named modules.</summary>
+    public bool IsFileImport => Source.Kind == TokenKind.StringLiteral;
 }
 
 public sealed class FunctionDeclarationSyntax : MemberSyntax
@@ -97,20 +106,56 @@ public sealed class VariableDeclarationSyntax : MemberSyntax
 
 public sealed class TypeAliasDeclarationSyntax : MemberSyntax
 {
-    public Token ConstKeyword { get; }
+    public Token TypeOrConstKeyword { get; }
     public Token Name { get; }
     public Token EqualsToken { get; }
     public TypeSyntax Type { get; }
     public Token Semicolon { get; }
 
-    public TypeAliasDeclarationSyntax(Token constKeyword, Token name, Token equalsToken, TypeSyntax type, Token semicolon)
-        : base(TextSpan.FromBounds(constKeyword.Span.Start, semicolon.Span.End))
+    public TypeAliasDeclarationSyntax(Token typeOrConstKeyword, Token name, Token equalsToken, TypeSyntax type, Token semicolon)
+        : base(TextSpan.FromBounds(typeOrConstKeyword.Span.Start, semicolon.Span.End))
     {
-        ConstKeyword = constKeyword;
+        TypeOrConstKeyword = typeOrConstKeyword;
         Name = name;
         EqualsToken = equalsToken;
         Type = Requires.NotNull(type);
         Semicolon = semicolon;
+    }
+}
+
+public sealed class AsmFunctionDeclarationSyntax : MemberSyntax
+{
+    public Token AsmKeyword { get; }
+    public Token? VolatileKeyword { get; }
+    public Token FnKeyword { get; }
+    public Token Name { get; }
+    public Token OpenParen { get; }
+    public SeparatedSyntaxList<ParameterSyntax> Parameters { get; }
+    public Token CloseParen { get; }
+    public Token? Arrow { get; }
+    public SeparatedSyntaxList<ReturnItemSyntax>? ReturnSpec { get; }
+    public Token OpenBrace { get; }
+    public string Body { get; }
+    public Token CloseBrace { get; }
+
+    public AsmFunctionDeclarationSyntax(Token asmKeyword, Token? volatileKeyword, Token fnKeyword, Token name,
+                                        Token openParen, SeparatedSyntaxList<ParameterSyntax> parameters, Token closeParen,
+                                        Token? arrow, SeparatedSyntaxList<ReturnItemSyntax>? returnSpec,
+                                        Token openBrace, string body, Token closeBrace)
+        : base(TextSpan.FromBounds(asmKeyword.Span.Start, closeBrace.Span.End))
+    {
+        AsmKeyword = asmKeyword;
+        VolatileKeyword = volatileKeyword;
+        FnKeyword = fnKeyword;
+        Name = name;
+        OpenParen = openParen;
+        Parameters = parameters;
+        CloseParen = closeParen;
+        Arrow = arrow;
+        ReturnSpec = returnSpec;
+        OpenBrace = openBrace;
+        Body = body;
+        CloseBrace = closeBrace;
     }
 }
 

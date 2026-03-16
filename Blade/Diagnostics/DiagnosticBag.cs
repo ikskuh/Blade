@@ -40,6 +40,16 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
         Report(DiagnosticCode.E0004_UnterminatedBlockComment, span, "Unterminated block comment.");
     }
 
+    public void ReportInvalidCharacterLiteral(TextSpan span)
+    {
+        Report(DiagnosticCode.E0005_InvalidCharacterLiteral, span, "Invalid character literal.");
+    }
+
+    public void ReportInvalidEscapeSequence(TextSpan span)
+    {
+        Report(DiagnosticCode.E0006_InvalidEscapeSequence, span, "Invalid escape sequence.");
+    }
+
     // Parser diagnostics
 
     public void ReportUnexpectedToken(TextSpan span, string expected, string actual)

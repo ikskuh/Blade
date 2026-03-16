@@ -3,13 +3,13 @@ reg var value: u32 = 0xAB;
 reg var bit_pos: u32 = 3;
 
 fn test_bit(val: u32, pos: u32) -> bool@C {
-    asm -> @C {
+    asm {
         TESTB {val}, {pos} WC
-    };
+    } -> result: bool@C;
 }
 
 fn check_zero(val: u32) -> bool@Z {
-    asm -> @Z {
+    asm {
         CMP {val}, #0 WZ
-    };
+    } -> result: bool@Z;
 }

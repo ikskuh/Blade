@@ -147,3 +147,75 @@ public sealed class AsmFlagOutputSyntax : SyntaxNode
         Flag = flag;
     }
 }
+
+public sealed class AsmOutputBindingSyntax : SyntaxNode
+{
+    public Token Arrow { get; }
+    public Token Name { get; }
+    public Token Colon { get; }
+    public TypeSyntax Type { get; }
+    public FlagAnnotationSyntax? FlagAnnotation { get; }
+
+    public AsmOutputBindingSyntax(Token arrow, Token name, Token colon, TypeSyntax type,
+                                  FlagAnnotationSyntax? flagAnnotation)
+        : base(TextSpan.FromBounds(arrow.Span.Start,
+            flagAnnotation?.Span.End ?? Requires.NotNull(type).Span.End))
+    {
+        Arrow = arrow;
+        Name = name;
+        Colon = colon;
+        Type = Requires.NotNull(type);
+        FlagAnnotation = flagAnnotation;
+    }
+}
+
+public sealed class EnumMemberSyntax : SyntaxNode
+{
+    public Token Name { get; }
+    public Token? EqualsToken { get; }
+    public ExpressionSyntax? Value { get; }
+    public bool IsOpenMarker { get; }
+
+    public EnumMemberSyntax(Token name, Token? equalsToken, ExpressionSyntax? value, bool isOpenMarker = false)
+        : base(TextSpan.FromBounds(name.Span.Start, value?.Span.End ?? name.Span.End))
+    {
+        Name = name;
+        EqualsToken = equalsToken;
+        Value = value;
+        IsOpenMarker = isOpenMarker;
+    }
+}
+
+public sealed class ForBindingSyntax : SyntaxNode
+{
+    public Token Arrow { get; }
+    public Token? Ampersand { get; }
+    public Token ItemName { get; }
+    public Token? Comma { get; }
+    public Token? IndexName { get; }
+
+    public ForBindingSyntax(Token arrow, Token? ampersand, Token itemName, Token? comma, Token? indexName)
+        : base(TextSpan.FromBounds(arrow.Span.Start, indexName?.Span.End ?? itemName.Span.End))
+    {
+        Arrow = arrow;
+        Ampersand = ampersand;
+        ItemName = itemName;
+        Comma = comma;
+        IndexName = indexName;
+    }
+}
+
+public sealed class NamedArgumentSyntax : ExpressionSyntax
+{
+    public Token Name { get; }
+    public Token EqualsToken { get; }
+    public ExpressionSyntax Value { get; }
+
+    public NamedArgumentSyntax(Token name, Token equalsToken, ExpressionSyntax value)
+        : base(TextSpan.FromBounds(name.Span.Start, Requires.NotNull(value).Span.End))
+    {
+        Name = name;
+        EqualsToken = equalsToken;
+        Value = Requires.NotNull(value);
+    }
+}

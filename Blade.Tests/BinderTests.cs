@@ -204,7 +204,7 @@ public class BinderTests
                 while (true) { break; }
                 loop { continue; }
                 rep loop (2) { sink = sink + 1; }
-                rep for (i in 1..2) { sink = sink + i; }
+                rep for (1..2) -> i { sink = sink + i; }
                 noirq { sink = sink + 1; }
 
                 sink = pair.left;

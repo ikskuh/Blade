@@ -54,11 +54,18 @@ public static class SyntaxFacts
         ["volatile"] = TokenKind.VolatileKeyword,
         ["packed"] = TokenKind.PackedKeyword,
         ["struct"] = TokenKind.StructKeyword,
+        ["union"] = TokenKind.UnionKeyword,
+        ["enum"] = TokenKind.EnumKeyword,
+        ["bitfield"] = TokenKind.BitfieldKeyword,
+        ["type"] = TokenKind.TypeKeyword,
+        ["bitcast"] = TokenKind.BitcastKeyword,
         ["undefined"] = TokenKind.UndefinedKeyword,
         ["align"] = TokenKind.AlignKeyword,
         ["void"] = TokenKind.VoidKeyword,
         ["true"] = TokenKind.TrueKeyword,
         ["false"] = TokenKind.FalseKeyword,
+        ["and"] = TokenKind.AndKeyword,
+        ["or"] = TokenKind.OrKeyword,
 
         // Type keywords
         ["bool"] = TokenKind.BoolKeyword,
@@ -73,6 +80,7 @@ public static class SyntaxFacts
         ["i32"] = TokenKind.I32Keyword,
         ["uint"] = TokenKind.UintKeyword,
         ["int"] = TokenKind.IntKeyword,
+        ["u8x4"] = TokenKind.U8x4Keyword,
     }.ToFrozenDictionary();
 
     /// <summary>
@@ -124,11 +132,18 @@ public static class SyntaxFacts
         TokenKind.VolatileKeyword => "volatile",
         TokenKind.PackedKeyword => "packed",
         TokenKind.StructKeyword => "struct",
+        TokenKind.UnionKeyword => "union",
+        TokenKind.EnumKeyword => "enum",
+        TokenKind.BitfieldKeyword => "bitfield",
+        TokenKind.TypeKeyword => "type",
+        TokenKind.BitcastKeyword => "bitcast",
         TokenKind.UndefinedKeyword => "undefined",
         TokenKind.AlignKeyword => "align",
         TokenKind.VoidKeyword => "void",
         TokenKind.TrueKeyword => "true",
         TokenKind.FalseKeyword => "false",
+        TokenKind.AndKeyword => "and",
+        TokenKind.OrKeyword => "or",
         TokenKind.BoolKeyword => "bool",
         TokenKind.BitKeyword => "bit",
         TokenKind.NitKeyword => "nit",
@@ -141,24 +156,32 @@ public static class SyntaxFacts
         TokenKind.I32Keyword => "i32",
         TokenKind.UintKeyword => "uint",
         TokenKind.IntKeyword => "int",
+        TokenKind.U8x4Keyword => "u8x4",
 
         // Operators
         TokenKind.Plus => "+",
         TokenKind.Minus => "-",
         TokenKind.Star => "*",
         TokenKind.Slash => "/",
+        TokenKind.Percent => "%",
         TokenKind.Ampersand => "&",
         TokenKind.Pipe => "|",
         TokenKind.Caret => "^",
+        TokenKind.Tilde => "~",
         TokenKind.Bang => "!",
         TokenKind.Dot => ".",
         TokenKind.At => "@",
         TokenKind.Arrow => "->",
         TokenKind.DotDot => "..",
+        TokenKind.DotDotDot => "...",
         TokenKind.PlusPlus => "++",
         TokenKind.MinusMinus => "--",
         TokenKind.LessLess => "<<",
         TokenKind.GreaterGreater => ">>",
+        TokenKind.LessLessLess => "<<<",
+        TokenKind.GreaterGreaterGreater => ">>>",
+        TokenKind.RotateLeft => "<%<",
+        TokenKind.RotateRight => ">%>",
         TokenKind.EqualEqual => "==",
         TokenKind.BangEqual => "!=",
         TokenKind.LessEqual => "<=",
@@ -168,6 +191,7 @@ public static class SyntaxFacts
         TokenKind.Equal => "=",
         TokenKind.PlusEqual => "+=",
         TokenKind.MinusEqual => "-=",
+        TokenKind.PercentEqual => "%=",
         TokenKind.AmpersandEqual => "&=",
         TokenKind.PipeEqual => "|=",
         TokenKind.CaretEqual => "^=",
@@ -194,14 +218,18 @@ public static class SyntaxFacts
     /// </summary>
     public static int GetBinaryOperatorPrecedence(TokenKind kind) => kind switch
     {
-        TokenKind.Star or TokenKind.Slash => 7,
-        TokenKind.Plus or TokenKind.Minus => 6,
-        TokenKind.LessLess or TokenKind.GreaterGreater => 5,
-        TokenKind.Ampersand => 4,
-        TokenKind.Caret => 3,
-        TokenKind.Pipe => 2,
+        TokenKind.Star or TokenKind.Slash or TokenKind.Percent => 9,
+        TokenKind.Plus or TokenKind.Minus => 8,
+        TokenKind.LessLess or TokenKind.GreaterGreater
+            or TokenKind.LessLessLess or TokenKind.GreaterGreaterGreater
+            or TokenKind.RotateLeft or TokenKind.RotateRight => 7,
+        TokenKind.Ampersand => 6,
+        TokenKind.Caret => 5,
+        TokenKind.Pipe => 4,
         TokenKind.Less or TokenKind.LessEqual or TokenKind.Greater or TokenKind.GreaterEqual
-            or TokenKind.EqualEqual or TokenKind.BangEqual => 1,
+            or TokenKind.EqualEqual or TokenKind.BangEqual => 3,
+        TokenKind.AndKeyword => 2,
+        TokenKind.OrKeyword => 1,
         _ => 0,
     };
 
@@ -210,7 +238,8 @@ public static class SyntaxFacts
     /// </summary>
     public static int GetUnaryOperatorPrecedence(TokenKind kind) => kind switch
     {
-        TokenKind.Bang or TokenKind.Minus or TokenKind.Star => 8,
+        TokenKind.Bang or TokenKind.Minus or TokenKind.Plus or TokenKind.Tilde
+            or TokenKind.Ampersand or TokenKind.Star => 10,
         _ => 0,
     };
 
@@ -219,7 +248,7 @@ public static class SyntaxFacts
     /// </summary>
     public static bool IsAssignmentOperator(TokenKind kind) => kind switch
     {
-        TokenKind.Equal or TokenKind.PlusEqual or TokenKind.MinusEqual
+        TokenKind.Equal or TokenKind.PlusEqual or TokenKind.MinusEqual or TokenKind.PercentEqual
             or TokenKind.AmpersandEqual or TokenKind.PipeEqual or TokenKind.CaretEqual
             or TokenKind.LessLessEqual or TokenKind.GreaterGreaterEqual => true,
         _ => false,

@@ -612,9 +612,9 @@ public class IrPipelineTests
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
             fn test_bit(val: u32, pos: u32) -> bool@C {
-                asm -> @C {
+                asm {
                     TESTB {val}, {pos} WC
-                };
+                } -> result: bool@C;
             }
 
             reg var sink: bool = test_bit(0, 1);
@@ -880,7 +880,7 @@ public class IrPipelineTests
                 while (true) { break; }
                 loop { continue; }
                 rep loop (2) { sink = sink + 1; }
-                rep for (i in 1..2) { sink = sink + i; }
+                rep for (1..2) -> i { sink = sink + i; }
                 noirq { sink = sink + 1; }
 
                 sink = pair.left;

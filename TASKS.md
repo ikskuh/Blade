@@ -1,304 +1,396 @@
-# Open Problems and Unimplemented Things
+# Difference between Implementation and Docs/reference.blade
 
-## Type System
-
-### T-01: No signedness tracking in the type system
-The design doc distinguishes signed vs unsigned types (e.g., `u8` vs `i8`, `u32` vs `i32`)
-and specifies different codegen: `ADD`/`SUB` for unsigned, `ADDS`/`SUBS`/`CMPS`/`SAR` for
-signed, and `MUL` vs `MULS`. The `PrimitiveTypeSymbol` only has `IsInteger: bool` — there is
-no `IsSigned`/`IsUnsigned` flag, no bit-width tracking, and the codegen always emits unsigned
-instructions (e.g., `SHR` instead of `SAR` for signed shift-right). All integer types are
-treated identically after binding.
-
-**Files**: `Semantics/TypeSymbol.cs`, `IR/Asm/AsmLowerer.cs`
-
-### T-02: `uint(N)` / `int(N)` generic-width types are parsed but not semantically supported
-The parser creates `GenericWidthTypeSyntax` nodes, but the binder maps `uint` and `int` to
-singleton `BuiltinTypes.Uint` / `BuiltinTypes.Int` without evaluating the width expression.
-The spec says `u8` = `uint(8)` etc. and that the compiler should insert `ZEROX`/`SIGNX`
-after arithmetic on sub-32-bit values. None of this happens.
-
-**Files**: `Semantics/Binder.cs` (BindType), `Semantics/TypeSymbol.cs`
-
-### T-03: Array types lack a size component
-`ArrayTypeSymbol` stores only `ElementType` — the array size expression is parsed but not
-persisted into the type. This means the compiler can't enforce bounds, compute register
-allocation requirements for packed arrays, or determine the number of registers needed.
-
-**Files**: `Semantics/TypeSymbol.cs` (ArrayTypeSymbol), `Semantics/Binder.cs`
-
-### T-04: Packed struct field layout is not computed
-`StructTypeSymbol` stores fields as a name-to-type dictionary, but does not compute bit
-offsets, total width, or validate that the struct fits in a register long. The spec requires
-packed structs to use `GETNIB`/`GETBYTE`/`TESTB` with compile-time-known bit positions.
-
-**Files**: `Semantics/TypeSymbol.cs` (StructTypeSymbol)
-
-### T-05: Packed array sub-register codegen is not implemented
-The spec details how sub-long types (`bit`, `nit`, `nib`, `u8`, `u16`) pack into registers
-and use `ALTGx`/`ALTSx` for indexed access. The compiler does not compute packing layouts
-or emit these instructions.
-
-**Files**: `IR/Asm/AsmLowerer.cs`
+Each change set is self-contained and ends with a green `just test && just regressions`.
+Sets are ordered by dependency — later sets may depend on earlier ones.
 
 ---
 
-## Calling Conventions
+## CS-1: New operators — binder + IR + codegen
 
-### T-06: `rec fn` does not emit CALLB/RETB or hub stack operations
-The `CallingConventionTier.Recursive` tier is identified, but the AsmLowerer emits a plain
-`CALL` instruction with a comment. No `CALLB`/`RETB`, no PTRB-based push/pop of locals and
-parameters, no hub stack frame management.
+The parser and precedence table already handle `~`, `%`, `<<<`, `>>>`, `<%<`, `>%>`,
+`and`, `or`, unary `+`, and unary `&`. The binder and IR layers do not recognise them.
 
-**Files**: `IR/Asm/AsmLowerer.cs` (LowerCall, LowerReturn)
+### CS-1a: Unary operators `~`, `+`, `&`
 
-### T-07: `coro fn` / `yieldto` codegen is a TODO stub
-`yieldto` and `yield` in the AsmLowerer emit only `AsmCommentNode("TODO: CALLD ...")`.
-No `CALLD` emission, no continuation register allocation, no initialization of continuation
-addresses at startup.
+- `BoundUnaryOperatorKind`: add `BitwiseNot`, `UnaryPlus`, `AddressOf`.
+- `BoundUnaryOperator.Bind()`: map `Tilde` → `BitwiseNot`, `Plus` → `UnaryPlus`,
+  `Ampersand` → `AddressOf`.
+- `UnaryPlus` is identity on integers.
+- `BitwiseNot` (`~x`): invert all bits. Valid on integer types.
+- `AddressOf` (`&x`): produces `*<storage> T`. Requires the operand to be an
+  addressable lvalue; report a diagnostic otherwise.
+  Needs a `PointerTypeSymbol` result whose storage class comes from the variable's
+  storage class.
+- MIR lowering: `BitwiseNot` → `NOT` pseudo-op, `UnaryPlus` → identity copy,
+  `AddressOf` → `LEA` pseudo-op (resolve during ASM emission).
+- LIR lowering: `NOT` → P2 `NOT`, `LEA` → immediate address.
+- Tests: accept tests for `~x`, `+x`, `&x`; reject test for `&(1+2)`.
 
-**Files**: `IR/Asm/AsmLowerer.cs` (LowerYield)
+### CS-1b: Binary operators `%`, `<<<`, `>>>`, `<%<`, `>%>`, `and`, `or`
 
-### T-08: Hardware stack depth verification is not implemented
-The spec mandates static verification that no call chain exceeds 8 levels for hardware-stack
-calling conventions, with a compile error suggesting `rec fn` on overflow. There is no such
-check anywhere in the compiler.
-
-**Files**: `IR/Asm/CallGraphAnalyzer.cs`
-
-### T-09: Tail call optimization is not implemented
-The spec says when a function's last action is calling another function, the compiler should
-emit `JMP` instead of `CALL`. No tail-call detection or optimization exists.
-
-**Files**: `IR/Asm/AsmLowerer.cs`, `IR/Asm/CallGraphAnalyzer.cs`
-
-### T-10: Multi-parameter calling conventions are not implemented
-CALLPA/CALLPB pass only one parameter (in PA/PB). The spec describes multi-parameter
-functions using global registers for the CALL tier, but the AsmLowerer only passes the first
-argument and ignores the rest.
-
-**Files**: `IR/Asm/AsmLowerer.cs` (LowerCall)
-
-### T-11: `leaf fn` constraint is not enforced
-Declaring `leaf fn` sets `FunctionKind.Leaf` and the call graph assigns `CallingConventionTier.Leaf`,
-but there is no validation that the function body actually contains no calls. The spec says
-any call in a `leaf fn` body is a compile error.
-
-**Files**: `Semantics/Binder.cs`, `IR/Asm/CallGraphAnalyzer.cs`
-
-### T-12: Return value flag annotations (@C/@Z) are parsed but not used
-`ReturnItemSyntax` stores `FlagAnnotationSyntax`, and the binder's `ResolveFunctionSignatures`
-reads the return type but discards the flag annotation. No `RET WC/WZ/WCZ` selection based on
-the 34-bit return channel (u32 + bool@C + bool@Z). Bool returns always go through a register,
-never through C/Z flags.
-
-**Files**: `Semantics/Binder.cs` (ResolveFunctionSignatures), `IR/Asm/AsmLowerer.cs` (LowerReturn)
-
-### T-13: `intN fn` interrupt handlers don't emit IJMP setup or yield (RESI) correctly
-The AsmLowerer emits `RETI1`/`RETI2`/`RETI3` for return, but: (a) there is no code to write
-the handler's entry address into `IJMPn` at startup, (b) `yield` inside `intN fn` should emit
-`RESIn` not the TODO stub, (c) on final return after exit from the handler loop, the spec
-requires writing the entry address back into `IRETn`.
-
-**Files**: `IR/Asm/AsmLowerer.cs` (LowerReturn, LowerYield)
+- `BoundBinaryOperatorKind`: add `Modulo`, `ArithmeticShiftLeft`,
+  `ArithmeticShiftRight`, `RotateLeft`, `RotateRight`,
+  `LogicalAnd`, `LogicalOr`.
+- `BoundBinaryOperator.Bind()`: map each `TokenKind` to the new kind.
+  `Modulo` valid on integer pairs.
+  `ArithmeticShift*` / `Rotate*` valid on integer pairs.
+  `LogicalAnd` / `LogicalOr` valid on bool pairs (short-circuit in lowering).
+- MIR lowering: new `MirBinaryOp` variants. `LogicalAnd`/`LogicalOr` lower to
+  branch-based short-circuit (two blocks, phi-like select).
+- LIR / codegen:
+  `Modulo` → call a helper (P2 has no native MOD; emit a QDIV-based sequence).
+  `ArithmeticShiftLeft` → `SHL` (same as logical on P2).
+  `ArithmeticShiftRight` → `SAR`.
+  `RotateLeft` → `ROL`. `RotateRight` → `ROR`.
+- Compound assignment `%=`: already parsed; needs `Modulo` wired through
+  `BindCompoundAssignment`.
+- Tests: expression-level tests for each new operator.
 
 ---
 
-## Semantic Analysis
+## CS-2: Type system — unions, enums, bitfields
 
-### T-14: `comptime` expressions are bound but produce BoundErrorExpression
-`BindComptimeExpression` binds the body block and then returns `BoundErrorExpression`. No
-compile-time evaluation is performed. `comptime fn` is parsed as a function kind but there
-is no evaluator.
+### CS-2a: Union type symbol + binding
 
-**Files**: `Semantics/Binder.cs` (BindComptimeExpression)
+- Add `UnionTypeSymbol` (like `StructTypeSymbol`, same offset for all fields,
+  size = max member size).
+- In `ResolveType`: handle `UnionTypeSyntax` → create `UnionTypeSymbol`.
+- `IsAssignable`: union ↔ union by structural match (same as struct rule).
+- Member access on unions: same as struct.
+- Tests: declare a `type U = union { ... }`, access fields, reject wrong field names.
 
-### T-15: No validation that `intN fn` are not called from code
-The spec says attempting to call an `intN fn` from Blade code is a compile error. The binder
-allows calling any function; no such check exists.
+### CS-2b: Enum type symbol + binding
 
-**Files**: `Semantics/Binder.cs` (BindCallExpression)
+- Add `EnumTypeSymbol`: backing type, member list (name → value), `IsOpen` flag.
+- `ResolveType`: handle `EnumTypeSyntax`. Evaluate member values (must be comptime
+  integer constants). Auto-increment from previous + 1 when value omitted.
+  `...` member sets `IsOpen = true`.
+- Add `BoundEnumLiteralExpression` to the binder: resolve `.member` against an
+  expected `EnumTypeSymbol` from context (assignment target type, parameter type).
+  Report diagnostic when the member doesn't exist.
+- `ClosedEnum.member` (qualified access via `MemberAccessExpressionSyntax` on a
+  type name): resolve to the enum constant.
+- `IsAssignable`: enum ↔ same enum. Open enum ↔ backing integer only through
+  explicit cast. Closed enum cannot convert to/from integer without `bitcast`.
+- MIR/LIR: enums lower to their backing integer; member values are immediates.
+- Tests: closed enum, open enum, `.member` literal, qualified access, reject
+  arithmetic on enums, reject cross-enum assignment.
 
-### T-16: `import` declarations are parsed but not implemented
-`ImportDeclarationSyntax` is created but silently ignored in `BindCompilationUnit`. There is
-no module system, no file resolution, no multi-file compilation.
+### CS-2c: Bitfield type symbol + binding
 
-**Files**: `Semantics/Binder.cs` (BindCompilationUnit)
-
-### T-17: `exec_mode` declaration is not parsed or used
-The spec shows `const exec_mode = .cog;` as a module-level declaration that selects COG vs
-LUT exec mode. The parser handles `const Name = ...` as a type alias or comptime const,
-but there is no special handling for `exec_mode` and no enum literal syntax for `.cog`.
-
-**Files**: `Syntax/Parser.cs`, `Semantics/Binder.cs`
-
-### T-18: Intrinsic return types are always u32
-`BindIntrinsicCallExpression` returns `BuiltinTypes.U32` for all intrinsics regardless of
-the actual intrinsic. For example, `@locktry` should return `bool`, `@locknew` returns a
-lock ID, `@getrnd` returns `u32`, etc. No intrinsic signature table exists.
-
-**Files**: `Semantics/Binder.cs` (BindIntrinsicCallExpression)
-
-### T-19: No validation of intrinsic names or argument counts
-Any `@foo(...)` is accepted as a valid intrinsic call. There is no table of known intrinsics,
-no arity checking, and no semantic validation.
-
-**Files**: `Semantics/Binder.cs` (BindIntrinsicCallExpression)
-
-### T-20: Parameter storage class on function params is rejected but spec allows it
-The spec example `fn read_struct(hub ptr: *MyStruct)` shows storage class on parameters
-(indicating the pointer targets hub memory). The binder reports
-`ReportInvalidParameterStorageClass` for any storage class on params.
-
-**Files**: `Semantics/Binder.cs` (ResolveFunctionSignatures)
+- Add `BitfieldTypeSymbol`: backing type, ordered field list with bit offsets/widths.
+  Compute offsets automatically (LSB → MSB, each field occupies its type's bit width).
+  Report diagnostic if total bits exceed backing type width.
+- `ResolveType`: handle `BitfieldTypeSyntax`.
+- Member read: extract bits via shift+mask. Member write: read-modify-write.
+- `IsAssignable`: bitfield ↔ same bitfield. Bitfield ↔ backing integer only
+  through `bitcast`.
+- MIR: field access lowers to shift+mask ops.
+- LIR/codegen: use P2 `GETBYTE`/`GETNIB`/`TESTB` where field boundaries align,
+  else generic shift+mask.
+- Tests: declare bitfield, read/write fields, reject overflow.
 
 ---
 
-## Pin and Event APIs
+## CS-3: Explicit conversions — `as` and `bitcast`
 
-### T-21: `pin.*` and `event.*` APIs are not implemented
-The spec defines `pin.high()`, `pin.low()`, `pin.toggle()`, `pin.read()`, `pin.mode()`,
-`pin.drvflag()`, `event.ct1.set()`, `event.ct1.wait()`, etc. None of these are recognized
-by the compiler. They would be parsed as member-access + call expressions but there is no
-binding to PASM2 instructions (`DRVH`, `DRVL`, `TESTP`, `WRPIN`, `WAITCT1`, etc.).
+### CS-3a: `as` cast expression
 
-**Files**: `Semantics/Binder.cs`, `IR/Asm/AsmLowerer.cs`
+- Add `BoundCastExpression` (source expression + target type).
+- `BindExpressionCore`: handle `CastExpressionSyntax`.
+- Rules: integer → integer (truncate/extend), integer ↔ open enum,
+  pointer → pointer (storage must match or be explicit). Reject: struct/union
+  casts, closed enum ↔ integer.
+- MIR: `Cast` instruction variant (truncate / zero-extend / sign-extend).
+- LIR/codegen: `AND` mask for truncation, identity for widening to u32 register.
+- Tests: `x as u8`, `x as OpenEnum`, reject `x as ClosedEnum`.
 
----
+### CS-3b: `bitcast` expression
 
-## Code Generation
-
-### T-22: Predication (cost-based) is not implemented
-The spec describes cost-based analysis to choose predicated execution over branching for
-if/else. The compiler always lowers if/else via branching (TJZ + JMP). No predicated IF_xx
-instructions are generated from Blade-level if statements (only from inline asm or phi moves).
-
-**Files**: `IR/Asm/AsmLowerer.cs` (LowerBranch)
-
-### T-23: REP body length is always 0 (placeholder)
-The `rep loop` and `noirq` lowering emits `REP #0, count` with a comment "body length TBD".
-The actual instruction count of the body is not computed, making the emitted REP incorrect.
-
-**Files**: `IR/Asm/AsmLowerer.cs` (LowerPseudo)
-
-### T-24: `for (count)` lowering does not use DJNZ
-The spec says `for (count) { ... }` should compile to a `DJNZ count, #loop` pattern.
-The bound `BoundForStatement` takes a symbol for the variable but there is no codegen path
-that emits DJNZ — it's lowered as a generic loop.
-
-**Files**: `IR/Mir/MirLowerer.cs`, `IR/Asm/AsmLowerer.cs`
-
-### T-25: SSA / backwards-working register allocation is not fully implemented
-The spec describes an "SSA-based register allocation" with a "backwards-working register
-allocator" that places parameter values directly into PA/PB/global param registers, eliding
-MOVs. The MIR layer uses SSA-like value IDs, but the register allocator
-(`RegisterAllocator.cs`) is a simple graph-coloring allocator that does not do backwards
-parameter placement or MOV elimination.
-
-**Files**: `IR/Asm/RegisterAllocator.cs`
-
-### T-26: Register budget and overflow checking is not implemented
-The spec says: "The compiler enforces [the 511-instruction limit] per-function and reports
-overflow with a register budget." Also: "The compiler must statically partition $000..$1EF
-between code and data." No such checks exist.
-
-**Files**: `IR/Asm/RegisterAllocator.cs`, `IR/Asm/FinalAssemblyWriter.cs`
+- Add `BoundBitcastExpression` (source expression + target type).
+- `BindExpressionCore`: handle `BitcastExpressionSyntax`.
+- Validate source and target have the same bit width. Report diagnostic otherwise.
+- Semantically a no-op (reinterpret bits). Lower to identity copy in MIR.
+- Tests: `bitcast(Bitfield, x)`, `bitcast(ClosedEnum, x)`, reject size mismatch.
 
 ---
 
-## Operators and Syntax
+## CS-4: Array literals
 
-### T-27: Missing `*=` and `/=` compound assignment operators
-The spec mentions multiplication and division operators, and the parser defines `*` and `/`
-as binary operators, but there are no `StarEqual` or `SlashEqual` token kinds. `*=` and `/=`
-are not parseable.
-
-**Files**: `Syntax/TokenKind.cs`, `Syntax/SyntaxFacts.cs`, `Syntax/Lexer.cs`
-
-### T-28: Tilde (`~`) bitwise NOT operator is missing
-The spec's type system mentions bitwise operations and the P2 has NOT/BITNOT instructions,
-but there is no `~` (bitwise complement) unary operator in the lexer or parser.
-
-**Files**: `Syntax/TokenKind.cs`, `Syntax/SyntaxFacts.cs`
-
-### T-29: Logical AND (`&&`) and OR (`||`) operators are missing
-The parser only has bitwise `&`, `|`, `^`. There are no short-circuit logical operators.
-The spec's "operators deferred to next iteration" note may cover this, but it's a gap.
-
-**Files**: `Syntax/TokenKind.cs`, `Syntax/SyntaxFacts.cs`
+- Add `BoundArrayLiteralExpression`: element list + optional spread flag on last
+  element + result `ArrayTypeSymbol`.
+- `BindExpressionCore`: handle `ArrayLiteralExpressionSyntax`.
+- Infer element type from context (assignment target) or from first element.
+- Validate all elements are assignable to the element type.
+- Spread (`elem...`): fill remaining slots with the spread value. Report error if
+  spread is not the last element.
+- Empty array `[]`: requires context type; fills with `undefined`.
+- MIR: sequence of store instructions to array slots.
+- Tests: `[1, 2, 3]`, `[0...]`, `[1, 2...]`, reject type mismatch, reject
+  spread not last.
 
 ---
 
-## Diagnostics
+## CS-5: Typed struct literals
 
-### T-30: Diagnostics do not use T4 templates as specified in CLAUDE.md
-The CLAUDE.md coding style requires diagnostics be projected from a dense definition table
-via T4 text templates. Currently `DiagnosticCode.cs` is a hand-written enum and
-`DiagnosticBag.cs` has hand-written report methods. No `.tt` files exist.
-
-**Files**: `Diagnostics/DiagnosticCode.cs`, `Diagnostics/DiagnosticBag.cs`
-
-### T-31: `HasErrors` always returns true if any diagnostic exists (including warnings)
-`DiagnosticBag.HasErrors` returns `_diagnostics.Count > 0`, but there is no severity level
-on `Diagnostic`. There's also no `DiagnosticSeverity` enum. All diagnostics are treated as
-errors, which means warnings would block compilation once they are added.
-
-**Files**: `Diagnostics/DiagnosticBag.cs`, `Diagnostics/Diagnostic.cs`
+- `BindExpressionCore`: handle `TypedStructLiteralExpressionSyntax`.
+- Resolve the type name to a `StructTypeSymbol`.
+- Bind each `.field = value` initializer against the struct's field types.
+- Reject: unknown fields, missing fields, duplicate fields.
+- Reuse existing `BoundStructLiteralExpression` with the resolved type.
+- Tests: `Point { .x = 10, .y = 20 }`, reject unknown field, reject missing field.
 
 ---
 
-## Miscellaneous
+## CS-6: Pointer type enrichment
 
-### T-32: `const` at top level without storage class — parsing workaround
-`ParseTypeAliasOrConstDeclaration` handles `const Name = expr;` (e.g., `const BIT_TICKS = comptime { ... }`)
-by fabricating a `TypeAliasDeclarationSyntax` with a fake `"auto"` named type. This means
-top-level constants without a storage class are misrepresented in the AST.
+The parser now produces `PointerTypeSyntax` with optional `StorageClassKeyword`,
+`VolatileKeyword`, and `AlignClause`. The type system ignores these.
 
-**Files**: `Syntax/Parser.cs` (ParseTypeAliasOrConstDeclaration)
+### CS-6a: Storage class on pointers
 
-### T-33: Enum literal syntax (`.cog`, `.lut`) is not supported
-The spec uses `.cog` as a value: `const exec_mode = .cog;`. The parser has no support for
-dot-prefixed enum literals outside of struct literals (`.{ ... }`).
+- `PointerTypeSymbol`: add `StorageClass` property (Reg/Lut/Hub/None).
+- `ResolveType` for `PointerTypeSyntax`: read `StorageClassKeyword` and set it.
+- `IsAssignable`: pointer storage classes must match (or source is `undefined`).
+- `&x` result type includes the variable's storage class.
+- Multi-pointer `[*]storage T` (`MultiPointerTypeSyntax`): add
+  `MultiPointerTypeSymbol` with storage class + pointee type. Resolve in binder.
+- Tests: `*reg u32`, `[*]hub u8`, reject `*reg` assigned to `*hub`.
 
-**Files**: `Syntax/Parser.cs`
+### CS-6b: Const / volatile / align on pointers
 
-### T-34: No lut/hub storage codegen
-Variables declared with `lut` or `hub` storage class are bound (and `hub`/`lut` reported as
-`UnsupportedStorageClass` in some paths), but no RDLUT/WRLUT or RDBYTE/RDWORD/RDLONG
-instructions are generated.
+- `PointerTypeSymbol`: add `IsVolatile`, `Alignment` properties.
+- Const already exists; volatile and align are new.
+- `IsAssignable`: `*const T` cannot be assigned to `*T` (losing const).
+  `*T` can be assigned to `*const T`.
+- Volatile: compiler must not elide loads/stores through volatile pointers.
+  Mark MIR load/store as volatile when the source pointer is volatile.
+- Align: informational; passed through to codegen for potential `RDLONG`
+  alignment assumptions.
+- Tests: `*reg const u32`, `*lut volatile u32`, `*hub const volatile align(4) u32`.
 
-**Files**: `IR/Asm/AsmLowerer.cs`, `Semantics/Binder.cs`
+---
 
-### T-35: `align(N)` is parsed and stored but never used
-The `VariableSymbol.Alignment` property is populated from the parser's `AlignClauseSyntax`,
-but the register allocator and codegen never consult it.
+## CS-7: For-loop semantic rework
 
-**Files**: `IR/Asm/RegisterAllocator.cs`, `IR/StoragePlace.cs`
+The parser now produces `ForStatementSyntax` with `ExpressionSyntax Iterable` and
+optional `ForBindingSyntax`. The binder has a backward-compat shim. Replace it.
 
-### T-36: `@(addr)` fixed address placement is partially implemented
-Fixed-address registers (`@(0x1FA)` for DIRA, etc.) are passed through to `StoragePlace` with
-`FixedAddress` and `StoragePlaceKind.FixedRegisterAlias`. However, the register allocator
-does not reserve these addresses or prevent conflicts.
+- `for(count)`: iterable is an integer expression → repeat body `count` times.
+  Equivalent to `for(0..count)`.
+- `for(count) -> index`: bind `index` as a loop variable counting `0..(count-1)`.
+- `for(array) -> item`: iterable is an array → iterate elements. `item` is a
+  const alias to the current element.
+- `for(array) -> &item`: mutable alias (lvalue).
+- `for(array) -> &item, index`: both item reference and index variable.
+- Rework `BoundForStatement` to carry: iterable expression, optional item variable
+  (with mutability flag), optional index variable.
+- MIR lowering: expand to a counted loop with index register. Array iteration:
+  compute base + index * element_size.
+- Tests: `for(4)`, `for(4) -> i`, `for(arr) -> x`, `for(arr) -> &x, i`.
 
-**Files**: `IR/Asm/RegisterAllocator.cs`
+---
 
-### T-37: Pointer dereference codegen does nothing useful
-`ptr.*` is parsed and bound as `BoundPointerDerefExpression`, but the IR lowering and codegen
-have no special handling for hub/lut pointer loads (`RDLONG`/`RDWORD`/`RDBYTE`). A dereference
-would need to know the storage class of the pointer target.
+## CS-8: `asm fn` declarations
 
-**Files**: `IR/Mir/MirLowerer.cs`, `IR/Asm/AsmLowerer.cs`
+The parser emits `AsmFunctionDeclarationSyntax` but the binder ignores it.
 
-### T-38: Register sharing across non-overlapping call graphs is not implemented
-The spec says "Functions not in the same call graph share parameter registers." The register
-allocator allocates independently per function but does not share slots across functions that
-are never active simultaneously.
+- `CollectTopLevelFunctions`: also scan for `AsmFunctionDeclarationSyntax`.
+  Create a `FunctionSymbol` with the correct kind (leaf-like, no body statements).
+- `BindProgram` member switch: handle `AsmFunctionDeclarationSyntax`.
+  Produce a `BoundFunctionMember` whose body is a single `BoundAsmStatement`
+  containing the raw assembly text.
+- Set volatility from `VolatileKeyword`.
+- Wire through MIR → LIR → ASM like a regular function but with the body replaced
+  by inline assembly text.
+- Tests: `asm fn add(a: u32, b: u32) -> u32 { ADD {a}, {b} }`,
+  `asm volatile fn nop() { NOP }`.
 
-**Files**: `IR/Asm/RegisterAllocator.cs`
+---
 
-### T-39: `inline fn` inlining at multiple call sites is not implemented
-`MirInliner.InlineMandatoryAndSingleCallsite` handles mandatory (`inline fn`) and single-call
-inlining, but the "mandatory" path in the inliner only applies when a function has a single
-call site. True forced inlining at multiple call sites for `inline fn` is not yet working.
+## CS-9: Character literals and string enhancements
 
-**Files**: `IR/Mir/MirInliner.cs`
+### CS-9a: Character literals
+
+The lexer produces `CharLiteral` tokens with a `long` value (the codepoint).
+The binder doesn't handle them yet.
+
+- `BindLiteralExpression`: handle `TokenKind.CharLiteral` → produce
+  `BoundLiteralExpression` with the codepoint value and type `u32`
+  (or inferred integer type from context).
+- Tests: `'A'` == 65, `'\n'` == 10, `'\x41'` == 65, `'\u{1F4A9}'`.
+
+### CS-9b: Zero-terminated strings
+
+The lexer already handles `z"..."` — check whether the token carries a
+flag or produces a distinct value. The binder should:
+- Produce an array type `[N+1]u8` (N chars + NUL terminator).
+- Append `\0` to the string value if not already present.
+- Tests: `z"hi!"` produces a `[4]u8` with trailing NUL.
+
+### CS-9c: String-to-array coercion
+
+`reference.blade` shows `var a: [4]u8 = "bye!";`.
+- `IsAssignable`: allow `string` → `[N]u8` when lengths match.
+- Lower string literal to array of bytes.
+- Tests: `var a: [4]u8 = "bye!"`, reject length mismatch.
+
+---
+
+## CS-10: Named arguments
+
+The parser produces `NamedArgumentSyntax` nodes in call argument lists.
+The binder's `BindCallExpression` ignores them.
+
+- When binding arguments, check for `NamedArgumentSyntax`. If present:
+  - Resolve the name to a parameter by name.
+  - Reorder arguments to match parameter order.
+  - Report diagnostic for: unknown parameter name, duplicate name,
+    positional after named, name conflict with positional.
+- Tests: `func_2(x=10, y=20)`, `func_2(10, y=20)`, reject `func_2(y=10, x=20, y=30)`.
+
+---
+
+## CS-11: Local `const` declarations
+
+The parser routes `const name: type = expr;` at statement level to a
+`VariableDeclarationStatementSyntax` with `MutabilityKeyword = const`.
+The binder already handles `const` globals. Verify that:
+
+- Local `const` variables are bound with `IsConst = true`.
+- Assignment to a local const reports `E0207_AssignmentToConst`.
+- The initializer may be a runtime expression (unlike global const which
+  requires comptime).
+- Tests: `const x: u32 = param * 2;`, reject `x = 3;`.
+
+---
+
+## CS-12: Non-packed structs
+
+The parser now accepts `struct { ... }` without `packed`.
+The binder's `ResolveType` for `StructTypeSyntax` likely requires `packed`.
+
+- Allow non-packed structs: fields are padded to their natural alignment.
+  Compute field offsets with alignment padding.
+- `packed struct`: fields are laid out without padding (existing behavior).
+- Both produce `StructTypeSymbol`; add `IsPacked` flag.
+- Impact on codegen: non-packed struct field access must account for padding
+  in offset calculations.
+- Tests: `type P = struct { x: u8, y: u32 }` — `y` at offset 4 (aligned),
+  vs `type Q = packed struct { x: u8, y: u32 }` — `y` at offset 1.
+
+---
+
+## CS-13: `u8x4` SIMD type
+
+`reference.blade` shows `var v: u8x4 = [1,2,3,4];`.
+
+- Add `BuiltinTypes.U8x4` as a primitive (32-bit, not `IsInteger`).
+- `IsAssignable`: `[4]u8` ↔ `u8x4` (implicit coercion both ways).
+- Integer literal → `u8x4` only through array literal `[a,b,c,d]`.
+- Future: swizzle operations (deferred, not in reference.blade).
+- Tests: `var v: u8x4 = [1,2,3,4];`, coerce from/to `[4]u8`.
+
+---
+
+## CS-14: `comptime` expression evaluation
+
+Currently `comptime { ... }` binds the body but returns `BoundErrorExpression`.
+
+- Implement a constant-folding evaluator that walks a `BoundBlockStatement` and
+  produces a compile-time value.
+- Supported subset: integer arithmetic, boolean logic, if/else, local variables,
+  function calls to `comptime fn`.
+- Return the evaluated value as a `BoundLiteralExpression`.
+- Report diagnostic for non-evaluable constructs (loops, asm, side effects).
+- Tests: `comptime { return 1 + 2; }` == 3, reject `comptime { asm { NOP }; }`.
+
+---
+
+## CS-15: Import declarations / module system
+
+`reference.blade` shows two import forms (both now parse correctly):
+
+1. **File import**: `import "./path/to/file.blade" as alias;`
+   Path is a string literal, `as alias` is mandatory.
+   All symbols from the file become accessible as `alias.SymName`.
+2. **Named module import**: `import extmod;` or `import extmod as alias;`
+   Module name is an identifier (defined via CLI). `as` rename is optional.
+   Symbols accessible as `extmod.SymName` or `alias.SymName`.
+
+**Invoking module top-level code**: `alias();` calls the imported module's
+top-level code as if it were a function.
+
+The parser now handles both forms (`ImportDeclarationSyntax` with `Source`
+as either `StringLiteral` or `Identifier`, optional `AsKeyword`/`Alias`).
+The binder silently ignores imports.
+
+### CS-15a: Binder stub — diagnostic for unsupported imports
+
+- In `BindProgram`, when encountering `ImportDeclarationSyntax`, report
+  a new diagnostic `W2xxx_ImportsNotYetSupported` instead of silently
+  skipping.
+- Tests: verify the warning is emitted for both file and named imports.
+
+### CS-15b: Module resolution and symbol import
+
+This is a large feature with cross-file implications:
+
+- Compile the imported file/module as a separate `CompilationUnitSyntax`.
+- Create a `ModuleSymbol` or namespace scope containing its exported
+  type aliases and function symbols.
+- Bind `alias.SymName` member access against the module's symbol table.
+- `alias()` invocation: emit the module's top-level code at the call site
+  (inline) or via a synthesized function.
+- Each module has its own import table; circular imports must be detected.
+- The same file may not appear in two modules.
+- Defer detailed design to a separate document.
+
+---
+
+## CS-16: Implicit return type `void`
+
+`reference.blade` shows `fn empty_call() { }` — no `-> void` in the signature.
+If the parser already allows omitting `-> returnType` and the binder treats
+missing return specs as void, this is done. Verify and add a test if missing.
+
+---
+
+## CS-17: Multiple return values
+
+`reference.blade` shows `fn get_three() -> u32, bool, bit { return 100, false, 1; }`.
+The parser supports `SeparatedSyntaxList<ReturnItemSyntax>` for return specs and
+`SeparatedSyntaxList<ExpressionSyntax>` for return values.
+
+- Verify binder handles multi-value returns: match count and types of return
+  expressions against the return spec.
+- `@reg`/`@C`/`@Z` placement annotations on return items: record them on
+  `FunctionSymbol` for codegen to use when selecting WC/WZ/WCZ on `RET`.
+- Callers receiving multi-value returns: how does `var x, y, z = get_three();`
+  work? (May not be in reference.blade — defer if not needed.)
+- Tests: 0-value, 1-value, 2-value, 3-value returns with placement annotations.
+
+---
+
+## Non-semantic items already complete (for reference)
+
+These were handled in the syntax frontend refactor and need no further work:
+
+- [x] `~` / `%` / `%=` / `<<<` / `>>>` / `<%<` / `>%>` / `...` tokens
+- [x] `and` / `or` / `type` / `union` / `enum` / `bitfield` / `bitcast` / `u8x4` keywords
+- [x] Character literals (`'x'`), escape sequences, `z"..."` strings
+- [x] Quaternary (`0q`) and octal (`0o`) number literals
+- [x] `asm { } -> name: type@Flag;` post-body output binding syntax
+- [x] `for(expr) -> [&]item[, index]` binding syntax
+- [x] `rep for(expr) -> binding` / `rep loop` (infinite) syntax
+- [x] `type Name = ...;` alias declarations
+- [x] `asm [volatile] fn name(...) -> ret { body }` declarations
+- [x] Union / enum / bitfield / non-packed struct type syntax nodes
+- [x] Multi-pointer `[*]` syntax
+- [x] Pointer attributes (storage, const, volatile, align) in syntax
+- [x] `expr as Type` cast syntax
+- [x] `bitcast(Type, expr)` syntax
+- [x] `.member` enum literal syntax
+- [x] `[expr, expr...]` array literal syntax
+- [x] `TypeName { .field = value }` typed struct literal syntax
+- [x] Named argument `name = expr` syntax

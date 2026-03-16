@@ -227,6 +227,105 @@ public sealed class IfExpressionSyntax : ExpressionSyntax
     }
 }
 
+public sealed class CastExpressionSyntax : ExpressionSyntax
+{
+    public ExpressionSyntax Expression { get; }
+    public Token AsKeyword { get; }
+    public TypeSyntax TargetType { get; }
+
+    public CastExpressionSyntax(ExpressionSyntax expression, Token asKeyword, TypeSyntax targetType)
+        : base(TextSpan.FromBounds(Requires.NotNull(expression).Span.Start, Requires.NotNull(targetType).Span.End))
+    {
+        Expression = Requires.NotNull(expression);
+        AsKeyword = asKeyword;
+        TargetType = Requires.NotNull(targetType);
+    }
+}
+
+public sealed class BitcastExpressionSyntax : ExpressionSyntax
+{
+    public Token BitcastKeyword { get; }
+    public Token OpenParen { get; }
+    public TypeSyntax TargetType { get; }
+    public Token Comma { get; }
+    public ExpressionSyntax Value { get; }
+    public Token CloseParen { get; }
+
+    public BitcastExpressionSyntax(Token bitcastKeyword, Token openParen, TypeSyntax targetType,
+                                   Token comma, ExpressionSyntax value, Token closeParen)
+        : base(TextSpan.FromBounds(bitcastKeyword.Span.Start, closeParen.Span.End))
+    {
+        BitcastKeyword = bitcastKeyword;
+        OpenParen = openParen;
+        TargetType = Requires.NotNull(targetType);
+        Comma = comma;
+        Value = Requires.NotNull(value);
+        CloseParen = closeParen;
+    }
+}
+
+public sealed class EnumLiteralExpressionSyntax : ExpressionSyntax
+{
+    public Token Dot { get; }
+    public Token MemberName { get; }
+
+    public EnumLiteralExpressionSyntax(Token dot, Token memberName)
+        : base(TextSpan.FromBounds(dot.Span.Start, memberName.Span.End))
+    {
+        Dot = dot;
+        MemberName = memberName;
+    }
+}
+
+public sealed class ArrayLiteralExpressionSyntax : ExpressionSyntax
+{
+    public Token OpenBracket { get; }
+    public SeparatedSyntaxList<ArrayElementSyntax> Elements { get; }
+    public Token CloseBracket { get; }
+
+    public ArrayLiteralExpressionSyntax(Token openBracket, SeparatedSyntaxList<ArrayElementSyntax> elements,
+                                        Token closeBracket)
+        : base(TextSpan.FromBounds(openBracket.Span.Start, closeBracket.Span.End))
+    {
+        OpenBracket = openBracket;
+        Elements = elements;
+        CloseBracket = closeBracket;
+    }
+}
+
+public sealed class ArrayElementSyntax : SyntaxNode
+{
+    public ExpressionSyntax Value { get; }
+    public Token? Spread { get; }
+
+    public ArrayElementSyntax(ExpressionSyntax value, Token? spread)
+        : base(TextSpan.FromBounds(Requires.NotNull(value).Span.Start,
+            spread?.Span.End ?? Requires.NotNull(value).Span.End))
+    {
+        Value = Requires.NotNull(value);
+        Spread = spread;
+    }
+}
+
+public sealed class TypedStructLiteralExpressionSyntax : ExpressionSyntax
+{
+    public ExpressionSyntax TypeName { get; }
+    public Token OpenBrace { get; }
+    public SeparatedSyntaxList<FieldInitializerSyntax> Initializers { get; }
+    public Token CloseBrace { get; }
+
+    public TypedStructLiteralExpressionSyntax(ExpressionSyntax typeName, Token openBrace,
+                                              SeparatedSyntaxList<FieldInitializerSyntax> initializers,
+                                              Token closeBrace)
+        : base(TextSpan.FromBounds(Requires.NotNull(typeName).Span.Start, closeBrace.Span.End))
+    {
+        TypeName = Requires.NotNull(typeName);
+        OpenBrace = openBrace;
+        Initializers = initializers;
+        CloseBrace = closeBrace;
+    }
+}
+
 public sealed class RangeExpressionSyntax : ExpressionSyntax
 {
     public ExpressionSyntax Start { get; }

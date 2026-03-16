@@ -62,10 +62,20 @@ public class SyntaxFactsTests
         [TokenKind.I32Keyword] = "i32",
         [TokenKind.UintKeyword] = "uint",
         [TokenKind.IntKeyword] = "int",
+        [TokenKind.TypeKeyword] = "type",
+        [TokenKind.UnionKeyword] = "union",
+        [TokenKind.EnumKeyword] = "enum",
+        [TokenKind.BitfieldKeyword] = "bitfield",
+        [TokenKind.BitcastKeyword] = "bitcast",
+        [TokenKind.AndKeyword] = "and",
+        [TokenKind.OrKeyword] = "or",
+        [TokenKind.U8x4Keyword] = "u8x4",
         [TokenKind.Plus] = "+",
         [TokenKind.Minus] = "-",
         [TokenKind.Star] = "*",
         [TokenKind.Slash] = "/",
+        [TokenKind.Percent] = "%",
+        [TokenKind.Tilde] = "~",
         [TokenKind.Ampersand] = "&",
         [TokenKind.Pipe] = "|",
         [TokenKind.Caret] = "^",
@@ -74,10 +84,15 @@ public class SyntaxFactsTests
         [TokenKind.At] = "@",
         [TokenKind.Arrow] = "->",
         [TokenKind.DotDot] = "..",
+        [TokenKind.DotDotDot] = "...",
         [TokenKind.PlusPlus] = "++",
         [TokenKind.MinusMinus] = "--",
         [TokenKind.LessLess] = "<<",
         [TokenKind.GreaterGreater] = ">>",
+        [TokenKind.LessLessLess] = "<<<",
+        [TokenKind.GreaterGreaterGreater] = ">>>",
+        [TokenKind.RotateLeft] = "<%<",
+        [TokenKind.RotateRight] = ">%>",
         [TokenKind.EqualEqual] = "==",
         [TokenKind.BangEqual] = "!=",
         [TokenKind.LessEqual] = "<=",
@@ -87,6 +102,7 @@ public class SyntaxFactsTests
         [TokenKind.Equal] = "=",
         [TokenKind.PlusEqual] = "+=",
         [TokenKind.MinusEqual] = "-=",
+        [TokenKind.PercentEqual] = "%=",
         [TokenKind.AmpersandEqual] = "&=",
         [TokenKind.PipeEqual] = "|=",
         [TokenKind.CaretEqual] = "^=",
@@ -105,21 +121,28 @@ public class SyntaxFactsTests
 
     private static readonly IReadOnlyDictionary<TokenKind, int> BinaryPrecedence = new Dictionary<TokenKind, int>
     {
-        [TokenKind.Star] = 7,
-        [TokenKind.Slash] = 7,
-        [TokenKind.Plus] = 6,
-        [TokenKind.Minus] = 6,
-        [TokenKind.LessLess] = 5,
-        [TokenKind.GreaterGreater] = 5,
-        [TokenKind.Ampersand] = 4,
-        [TokenKind.Caret] = 3,
-        [TokenKind.Pipe] = 2,
-        [TokenKind.Less] = 1,
-        [TokenKind.LessEqual] = 1,
-        [TokenKind.Greater] = 1,
-        [TokenKind.GreaterEqual] = 1,
-        [TokenKind.EqualEqual] = 1,
-        [TokenKind.BangEqual] = 1,
+        [TokenKind.Star] = 9,
+        [TokenKind.Slash] = 9,
+        [TokenKind.Percent] = 9,
+        [TokenKind.Plus] = 8,
+        [TokenKind.Minus] = 8,
+        [TokenKind.LessLess] = 7,
+        [TokenKind.GreaterGreater] = 7,
+        [TokenKind.LessLessLess] = 7,
+        [TokenKind.GreaterGreaterGreater] = 7,
+        [TokenKind.RotateLeft] = 7,
+        [TokenKind.RotateRight] = 7,
+        [TokenKind.Ampersand] = 6,
+        [TokenKind.Caret] = 5,
+        [TokenKind.Pipe] = 4,
+        [TokenKind.Less] = 3,
+        [TokenKind.LessEqual] = 3,
+        [TokenKind.Greater] = 3,
+        [TokenKind.GreaterEqual] = 3,
+        [TokenKind.EqualEqual] = 3,
+        [TokenKind.BangEqual] = 3,
+        [TokenKind.AndKeyword] = 2,
+        [TokenKind.OrKeyword] = 1,
     };
 
     [Test]
@@ -149,10 +172,12 @@ public class SyntaxFactsTests
     [Test]
     public void GetUnaryOperatorPrecedence_MatchesDefinition()
     {
-        Assert.That(SyntaxFacts.GetUnaryOperatorPrecedence(TokenKind.Bang), Is.EqualTo(8));
-        Assert.That(SyntaxFacts.GetUnaryOperatorPrecedence(TokenKind.Minus), Is.EqualTo(8));
-        Assert.That(SyntaxFacts.GetUnaryOperatorPrecedence(TokenKind.Star), Is.EqualTo(8));
-        Assert.That(SyntaxFacts.GetUnaryOperatorPrecedence(TokenKind.Plus), Is.EqualTo(0));
+        Assert.That(SyntaxFacts.GetUnaryOperatorPrecedence(TokenKind.Bang), Is.EqualTo(10));
+        Assert.That(SyntaxFacts.GetUnaryOperatorPrecedence(TokenKind.Minus), Is.EqualTo(10));
+        Assert.That(SyntaxFacts.GetUnaryOperatorPrecedence(TokenKind.Star), Is.EqualTo(10));
+        Assert.That(SyntaxFacts.GetUnaryOperatorPrecedence(TokenKind.Plus), Is.EqualTo(10));
+        Assert.That(SyntaxFacts.GetUnaryOperatorPrecedence(TokenKind.Tilde), Is.EqualTo(10));
+        Assert.That(SyntaxFacts.GetUnaryOperatorPrecedence(TokenKind.Ampersand), Is.EqualTo(10));
     }
 
     [Test]
@@ -163,6 +188,7 @@ public class SyntaxFactsTests
             TokenKind.Equal,
             TokenKind.PlusEqual,
             TokenKind.MinusEqual,
+            TokenKind.PercentEqual,
             TokenKind.AmpersandEqual,
             TokenKind.PipeEqual,
             TokenKind.CaretEqual,

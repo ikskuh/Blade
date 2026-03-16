@@ -305,7 +305,11 @@ public sealed class Binder
 
             case ForStatementSyntax forStatement:
             {
-                Symbol? variable = ResolveVariableSymbol(forStatement.Variable);
+                BoundExpression iterable = BindExpression(forStatement.Iterable);
+                // For now, try to resolve as a variable for backward compat
+                Symbol? variable = forStatement.Iterable is NameExpressionSyntax nameExpr
+                    ? _currentScope.TryLookup(nameExpr.Name.Text, out Symbol? s) ? s : null
+                    : null;
                 PushLoop(LoopContext.Regular);
                 BoundBlockStatement body = BindBlockStatement(forStatement.Body, createScope: true, isTopLevel: false);
                 PopLoop();
@@ -322,9 +326,18 @@ public sealed class Binder
 
             case RepLoopStatementSyntax repLoop:
             {
-                BoundExpression count = BindExpression(repLoop.Count);
-                if (!count.Type.IsInteger)
-                    _diagnostics.ReportTypeMismatch(repLoop.Count.Span, "integer", count.Type.Name);
+                BoundExpression count;
+                if (repLoop.Count is not null)
+                {
+                    count = BindExpression(repLoop.Count);
+                    if (!count.Type.IsInteger)
+                        _diagnostics.ReportTypeMismatch(repLoop.Count.Span, "integer", count.Type.Name);
+                }
+                else
+                {
+                    // Infinite rep loop — synthesize a zero-valued count placeholder
+                    count = new BoundLiteralExpression(0L, repLoop.Span, BuiltinTypes.U32);
+                }
 
                 PushLoop(LoopContext.Rep);
                 BoundBlockStatement body = BindBlockStatement(repLoop.Body, createScope: true, isTopLevel: false);
@@ -334,12 +347,25 @@ public sealed class Binder
 
             case RepForStatementSyntax repFor:
             {
-                BoundExpression start = BindExpression(repFor.Range.Start);
-                BoundExpression end = BindExpression(repFor.Range.End);
-                if (!start.Type.IsInteger)
-                    _diagnostics.ReportTypeMismatch(repFor.Range.Start.Span, "integer", start.Type.Name);
-                if (!end.Type.IsInteger)
-                    _diagnostics.ReportTypeMismatch(repFor.Range.End.Span, "integer", end.Type.Name);
+                // The iterable should be a range expression for rep for
+                BoundExpression iterable = BindExpression(repFor.Iterable);
+                BoundExpression start;
+                BoundExpression end;
+                if (repFor.Iterable is RangeExpressionSyntax range)
+                {
+                    start = BindExpression(range.Start);
+                    end = BindExpression(range.End);
+                    if (!start.Type.IsInteger)
+                        _diagnostics.ReportTypeMismatch(range.Start.Span, "integer", start.Type.Name);
+                    if (!end.Type.IsInteger)
+                        _diagnostics.ReportTypeMismatch(range.End.Span, "integer", end.Type.Name);
+                }
+                else
+                {
+                    // Non-range iterable — use as count (0..count)
+                    start = new BoundLiteralExpression(0L, repFor.Iterable.Span, BuiltinTypes.U32);
+                    end = iterable;
+                }
 
                 PushLoop(LoopContext.Rep);
                 BoundRepForStatement boundRepFor = BindRepForBody(repFor, start, end);
@@ -381,12 +407,12 @@ public sealed class Binder
             case AsmBlockStatementSyntax asm:
             {
                 string? flagOutput = null;
-                if (asm.FlagOutput is not null)
+                if (asm.OutputBinding is not null)
                 {
-                    string flag = asm.FlagOutput.Flag.Text;
+                    string flag = asm.OutputBinding.FlagAnnotation?.Flag.Text ?? "";
                     if (flag is not ("C" or "Z"))
                     {
-                        _diagnostics.ReportInlineAsmInvalidFlagOutput(asm.FlagOutput.Span, flag);
+                        _diagnostics.ReportInlineAsmInvalidFlagOutput(asm.OutputBinding.Span, flag);
                     }
                     flagOutput = $"@{flag}";
                 }
@@ -449,8 +475,9 @@ public sealed class Binder
         Scope previousScope = _currentScope;
         _currentScope = new Scope(previousScope);
 
+        string variableName = repFor.Binding?.ItemName.Text ?? "__rep_index";
         VariableSymbol variable = new(
-            repFor.Variable.Text,
+            variableName,
             BuiltinTypes.IntegerLiteral,
             isConst: true,
             VariableStorageClass.Automatic,

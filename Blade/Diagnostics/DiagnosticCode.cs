@@ -10,6 +10,8 @@ public enum DiagnosticCode
     E0002_UnterminatedString = 2,
     E0003_InvalidNumberLiteral = 3,
     E0004_UnterminatedBlockComment = 4,
+    E0005_InvalidCharacterLiteral = 5,
+    E0006_InvalidEscapeSequence = 6,
 
     // Parser errors
     E0101_UnexpectedToken = 101,

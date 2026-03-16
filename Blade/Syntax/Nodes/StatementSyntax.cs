@@ -115,17 +115,20 @@ public sealed class ForStatementSyntax : StatementSyntax
 {
     public Token ForKeyword { get; }
     public Token OpenParen { get; }
-    public Token Variable { get; }
+    public ExpressionSyntax Iterable { get; }
     public Token CloseParen { get; }
+    public ForBindingSyntax? Binding { get; }
     public BlockStatementSyntax Body { get; }
 
-    public ForStatementSyntax(Token forKeyword, Token openParen, Token variable, Token closeParen, BlockStatementSyntax body)
+    public ForStatementSyntax(Token forKeyword, Token openParen, ExpressionSyntax iterable,
+                              Token closeParen, ForBindingSyntax? binding, BlockStatementSyntax body)
         : base(TextSpan.FromBounds(forKeyword.Span.Start, Requires.NotNull(body).Span.End))
     {
         ForKeyword = forKeyword;
         OpenParen = openParen;
-        Variable = variable;
+        Iterable = Requires.NotNull(iterable);
         CloseParen = closeParen;
+        Binding = binding;
         Body = Requires.NotNull(body);
     }
 }
@@ -147,18 +150,19 @@ public sealed class RepLoopStatementSyntax : StatementSyntax
 {
     public Token RepKeyword { get; }
     public Token LoopKeyword { get; }
-    public Token OpenParen { get; }
-    public ExpressionSyntax Count { get; }
-    public Token CloseParen { get; }
+    public Token? OpenParen { get; }
+    public ExpressionSyntax? Count { get; }
+    public Token? CloseParen { get; }
     public BlockStatementSyntax Body { get; }
 
-    public RepLoopStatementSyntax(Token repKeyword, Token loopKeyword, Token openParen, ExpressionSyntax count, Token closeParen, BlockStatementSyntax body)
+    public RepLoopStatementSyntax(Token repKeyword, Token loopKeyword, Token? openParen,
+                                  ExpressionSyntax? count, Token? closeParen, BlockStatementSyntax body)
         : base(TextSpan.FromBounds(repKeyword.Span.Start, Requires.NotNull(body).Span.End))
     {
         RepKeyword = repKeyword;
         LoopKeyword = loopKeyword;
         OpenParen = openParen;
-        Count = Requires.NotNull(count);
+        Count = count;
         CloseParen = closeParen;
         Body = Requires.NotNull(body);
     }
@@ -169,23 +173,22 @@ public sealed class RepForStatementSyntax : StatementSyntax
     public Token RepKeyword { get; }
     public Token ForKeyword { get; }
     public Token OpenParen { get; }
-    public Token Variable { get; }
-    public Token InKeyword { get; }
-    public RangeExpressionSyntax Range { get; }
+    public ExpressionSyntax Iterable { get; }
     public Token CloseParen { get; }
+    public ForBindingSyntax? Binding { get; }
     public BlockStatementSyntax Body { get; }
 
-    public RepForStatementSyntax(Token repKeyword, Token forKeyword, Token openParen, Token variable, Token inKeyword,
-                                  RangeExpressionSyntax range, Token closeParen, BlockStatementSyntax body)
+    public RepForStatementSyntax(Token repKeyword, Token forKeyword, Token openParen,
+                                  ExpressionSyntax iterable, Token closeParen,
+                                  ForBindingSyntax? binding, BlockStatementSyntax body)
         : base(TextSpan.FromBounds(repKeyword.Span.Start, Requires.NotNull(body).Span.End))
     {
         RepKeyword = repKeyword;
         ForKeyword = forKeyword;
         OpenParen = openParen;
-        Variable = variable;
-        InKeyword = inKeyword;
-        Range = Requires.NotNull(range);
+        Iterable = Requires.NotNull(iterable);
         CloseParen = closeParen;
+        Binding = binding;
         Body = Requires.NotNull(body);
     }
 }
@@ -283,29 +286,29 @@ public sealed class AsmBlockStatementSyntax : StatementSyntax
 {
     public Token AsmKeyword { get; }
     public Token? VolatileKeyword { get; }
-    public AsmFlagOutputSyntax? FlagOutput { get; }
     public Token OpenBrace { get; }
     public string Body { get; }
     public Token CloseBrace { get; }
+    public AsmOutputBindingSyntax? OutputBinding { get; }
     public Token Semicolon { get; }
     public AsmVolatility Volatility => VolatileKeyword is null ? AsmVolatility.NonVolatile : AsmVolatility.Volatile;
 
     public AsmBlockStatementSyntax(
         Token asmKeyword,
         Token? volatileKeyword,
-        AsmFlagOutputSyntax? flagOutput,
         Token openBrace,
         string body,
         Token closeBrace,
+        AsmOutputBindingSyntax? outputBinding,
         Token semicolon)
         : base(TextSpan.FromBounds(asmKeyword.Span.Start, semicolon.Span.End))
     {
         AsmKeyword = asmKeyword;
         VolatileKeyword = volatileKeyword;
-        FlagOutput = flagOutput;
         OpenBrace = openBrace;
         Body = body;
         CloseBrace = closeBrace;
+        OutputBinding = outputBinding;
         Semicolon = semicolon;
     }
 }

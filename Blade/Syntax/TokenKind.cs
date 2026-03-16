@@ -13,6 +13,7 @@ public enum TokenKind
     // Literals
     IntegerLiteral,
     StringLiteral,
+    CharLiteral,
 
     // Storage class keywords
     RegKeyword,
@@ -58,11 +59,18 @@ public enum TokenKind
     VolatileKeyword,
     PackedKeyword,
     StructKeyword,
+    UnionKeyword,
+    EnumKeyword,
+    BitfieldKeyword,
+    TypeKeyword,
+    BitcastKeyword,
     UndefinedKeyword,
     AlignKeyword,
     VoidKeyword,
     TrueKeyword,
     FalseKeyword,
+    AndKeyword,
+    OrKeyword,
 
     // Type keywords
     BoolKeyword,
@@ -77,31 +85,39 @@ public enum TokenKind
     I32Keyword,
     UintKeyword,
     IntKeyword,
+    U8x4Keyword,
 
     // Operators
     Plus,
     Minus,
     Star,
     Slash,
+    Percent,
     Ampersand,
     Pipe,
     Caret,
+    Tilde,
     Bang,
     Dot,
     At,
     Hash,
 
     // Multi-char operators
-    Arrow,          // ->
-    DotDot,         // ..
-    PlusPlus,       // ++
-    MinusMinus,     // --
-    LessLess,       // <<
-    GreaterGreater, // >>
-    EqualEqual,     // ==
-    BangEqual,      // !=
-    LessEqual,      // <=
-    GreaterEqual,   // >=
+    Arrow,                  // ->
+    DotDot,                 // ..
+    DotDotDot,              // ...
+    PlusPlus,               // ++
+    MinusMinus,             // --
+    LessLess,               // <<
+    GreaterGreater,         // >>
+    LessLessLess,           // <<<
+    GreaterGreaterGreater,  // >>>
+    RotateLeft,             // <%<
+    RotateRight,            // >%>
+    EqualEqual,             // ==
+    BangEqual,              // !=
+    LessEqual,              // <=
+    GreaterEqual,           // >=
 
     // Comparison
     Less,
@@ -111,6 +127,7 @@ public enum TokenKind
     Equal,
     PlusEqual,
     MinusEqual,
+    PercentEqual,
     AmpersandEqual,
     PipeEqual,
     CaretEqual,

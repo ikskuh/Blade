@@ -233,15 +233,43 @@ public class ParserTests
     }
 
     [Test]
-    public void ImportDeclaration_ParsesCorrectly()
+    public void ImportDeclaration_FileImport_ParsesCorrectly()
     {
         (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("import \"math\" as math;");
         AssertNoDiagnostics(diag);
 
         Assert.That(unit.Members[0], Is.TypeOf<ImportDeclarationSyntax>());
         ImportDeclarationSyntax import = (ImportDeclarationSyntax)unit.Members[0];
-        Assert.That(import.Path.Value, Is.EqualTo("math"));
-        Assert.That(import.Alias.Text, Is.EqualTo("math"));
+        Assert.That(import.IsFileImport, Is.True);
+        Assert.That(import.Source.Value, Is.EqualTo("math"));
+        Assert.That(import.Alias!.Value.Text, Is.EqualTo("math"));
+    }
+
+    [Test]
+    public void ImportDeclaration_NamedModule_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("import extmod;");
+        AssertNoDiagnostics(diag);
+
+        Assert.That(unit.Members[0], Is.TypeOf<ImportDeclarationSyntax>());
+        ImportDeclarationSyntax import = (ImportDeclarationSyntax)unit.Members[0];
+        Assert.That(import.IsFileImport, Is.False);
+        Assert.That(import.Source.Text, Is.EqualTo("extmod"));
+        Assert.That(import.AsKeyword, Is.Null);
+        Assert.That(import.Alias, Is.Null);
+    }
+
+    [Test]
+    public void ImportDeclaration_NamedModuleWithAlias_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("import extmod as ext;");
+        AssertNoDiagnostics(diag);
+
+        Assert.That(unit.Members[0], Is.TypeOf<ImportDeclarationSyntax>());
+        ImportDeclarationSyntax import = (ImportDeclarationSyntax)unit.Members[0];
+        Assert.That(import.IsFileImport, Is.False);
+        Assert.That(import.Source.Text, Is.EqualTo("extmod"));
+        Assert.That(import.Alias!.Value.Text, Is.EqualTo("ext"));
     }
 
     [Test]
@@ -394,7 +422,7 @@ public class ParserTests
                 for (i) { }
                 loop { }
                 rep loop (4) { }
-                rep for (i in 1..4) { }
+                rep for (4) { }
                 noirq { }
                 break;
                 continue;
@@ -402,7 +430,7 @@ public class ParserTests
                 yieldto worker(a, b);
                 return;
                 return a, b;
-                asm -> @C { { } };
+                asm { { } } -> state: bool@C;
             }
             """);
         AssertNoDiagnostics(diag);
@@ -425,7 +453,7 @@ public class ParserTests
         Assert.That(block.Statements[11], Is.TypeOf<ReturnStatementSyntax>());
         Assert.That(((ReturnStatementSyntax)block.Statements[11]).Values?.Count, Is.EqualTo(2));
         Assert.That(block.Statements[12], Is.TypeOf<AsmBlockStatementSyntax>());
-        Assert.That(((AsmBlockStatementSyntax)block.Statements[12]).FlagOutput?.Flag.Text, Is.EqualTo("C"));
+        Assert.That(((AsmBlockStatementSyntax)block.Statements[12]).OutputBinding?.FlagAnnotation?.Flag.Text, Is.EqualTo("C"));
     }
 
     [Test]
@@ -615,7 +643,7 @@ public class ParserTests
     }
 
     [Test]
-    public void ParseExpression_OnInvalidDotPrimary_UsesRecoveryAndReportsDiagnostic()
+    public void ParseExpression_DotIdentifier_ParsesAsEnumLiteral()
     {
         Parser parser = CreateParser(
             new Token(TokenKind.Dot, new TextSpan(0, 1), "."),
@@ -624,8 +652,8 @@ public class ParserTests
 
         ExpressionSyntax expression = parser.ParseExpression();
 
-        Assert.That(expression, Is.TypeOf<MemberAccessExpressionSyntax>());
-        Assert.That(parser.Diagnostics.Count, Is.GreaterThan(0));
+        Assert.That(expression, Is.TypeOf<EnumLiteralExpressionSyntax>());
+        Assert.That(parser.Diagnostics.Count, Is.EqualTo(0));
     }
 
     [Test]
@@ -659,9 +687,14 @@ public class ParserTests
             TokenKind.VoidKeyword,
             TokenKind.UintKeyword,
             TokenKind.IntKeyword,
+            TokenKind.U8x4Keyword,
             TokenKind.Star,
             TokenKind.OpenBracket,
             TokenKind.PackedKeyword,
+            TokenKind.StructKeyword,
+            TokenKind.UnionKeyword,
+            TokenKind.EnumKeyword,
+            TokenKind.BitfieldKeyword,
             TokenKind.Identifier,
         };
 

@@ -20,7 +20,8 @@
 // diagnostic is emitted if the top-level code is interrupted by function or global declarations.
 // (this file will emit warnings so explanatory code is tight to the required explaining top-level code).
 //
-// Top-level code starts at the address `000`.
+// The root file's top-level code starts at address `000`.
+// Imported modules' top-level code is compiled as an implicit zero-argument procedure.
 //
 // Global variable declarations are not top-level code.
 empty_call();
@@ -759,3 +760,28 @@ fn values() {
     s.x = 10; // struct field write
     x = s.y;  // struct field read
 }
+
+
+//////////////////////////////////////////////////////////////////////////////
+// Module Subsystem
+//////////////////////////////////////////////////////////////////////////////
+
+// Imports the given file as a namespace.
+// Importing a module never executes its top-level code automatically.
+// Declarations from the imported file are visible through "alias.SymName".
+// The file path must be a relative path to the importing file, and use forward / as a file separator.
+import "./path/to/file.blade" as alias;
+
+// Calling the namespace executes the imported file's top-level code.
+// Each call re-executes that top-level code.
+// Top-level locals are created anew for each call; module globals persist.
+alias();
+
+// The compiler can also receive module definitions on the command line.
+// 
+// These modules are then imported through their identifier, and also allow potential renaming
+// through "as". While files require renaming ("file.blade" is not a valid identifier), modules
+// can be used through their import name or an alias name assigned with "as".
+// Each named module has it's own import table and is defined by a root file.
+// The same file may not be shared between two modules.
+import extmod;

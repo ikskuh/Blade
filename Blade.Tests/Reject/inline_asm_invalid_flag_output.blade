@@ -1,7 +1,7 @@
 // E0304
 fn f() void {
     var x: u32 = 0;
-    asm -> @X {
+    asm {
         MOV {x}, {x}
-    };
+    } -> state: bool@X;
 }
