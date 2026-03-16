@@ -612,6 +612,9 @@ fn expressions() {
     var b: bool = false;
     var c: bool = false;
     var p: *reg T = undefined;
+    var f: Bitfield = undefined;
+    var s: u8 = undefined;
+    var e: OpenEnum = undefined;
 
     x = y; // assignment is a statement, and cannot be nested into expressions
 
@@ -668,6 +671,28 @@ fn expressions() {
     y = p.*; // value-of operator
 
     x = (y); // parens overwrite precedence
+
+    // implicit coercion is allowed when all source values are representable in the
+    // target type:
+    x = s; // 8 bits into 32 bits works fine
+    // implicit coercion does not include coercion between enumerations and integers.
+
+    // explicit casts are required for lossy conversions and for conversions between
+    // different type classes, including integer/enum conversions.
+    s = x as u8; // 257 is truncated to 1.
+    e = s as OpenEnum; // s can be cast into an open enum safely
+    s = e as u8; // Open enum can be cast into a u8.
+
+    // bitcast reinterprets the bits of "x" as a "Bitfield".
+    // Target type and source value must have the same bit size.
+    f = bitcast(Bitfield, x);
+
+    // reinterpret is unsafe, but allowed. Casting an illegal value into a
+    // closed enum produces an invalid enum value.
+    // This is equivalent to a closed enum containing `undefined` data.
+    // Once a closed enum contains such an invalid value, subsequent behavior
+    // is undefined.
+    var foo: ClosedEnum = bitcast(ClosedEnum, x);
 }
 
 fn values() {
@@ -676,7 +701,6 @@ fn values() {
     var a: [4]u8 = undefined;
     var e: ClosedEnum = undefined;
     var s: Point = undefined;
-    var b: Bitfield = undefined;
 
     // "undefined" is a value that makes the compiler not initialize the value, but just leave it as is.
     // this is potentially unsafe, but allows good optimizations and communication that the value isn't
@@ -734,5 +758,4 @@ fn values() {
 
     s.x = 10; // struct field write
     x = s.y;  // struct field read
-
 }
