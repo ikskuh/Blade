@@ -1482,46 +1482,99 @@ public static class RegressionReportFormatter
         StringBuilder builder = new();
         foreach (RegressionFixtureResult fixtureResult in result.FixtureResults)
         {
-            builder.Append(fixtureResult.Outcome.ToString().ToUpperInvariant().PadRight(14));
+            builder.Append(FormatOutcomeLabel(fixtureResult.Outcome).PadRight(14));
             builder.Append(' ');
             builder.AppendLine(fixtureResult.RelativePath);
-            builder.Append("  ");
-            builder.AppendLine(fixtureResult.Summary);
-            bool skippedSummaryDetail = false;
-            foreach (string detail in fixtureResult.Details)
-            {
-                if (!skippedSummaryDetail && string.Equals(detail, fixtureResult.Summary, StringComparison.Ordinal))
-                {
-                    skippedSummaryDetail = true;
-                    continue;
-                }
-
-                builder.Append("  ");
-                builder.AppendLine(detail);
-            }
-            if (fixtureResult.ArtifactDirectoryPath is not null)
-            {
-                builder.Append("  artifacts: ");
-                builder.AppendLine(fixtureResult.ArtifactDirectoryPath);
-            }
         }
 
         builder.AppendLine();
-        builder.Append("Repository: ");
-        builder.AppendLine(result.RepositoryRootPath);
-        builder.Append("Fixtures  : ");
-        builder.AppendLine(result.FixtureResults.Count.ToString(CultureInfo.InvariantCulture));
-        builder.Append("Pass      : ");
-        builder.AppendLine(result.PassCount.ToString(CultureInfo.InvariantCulture));
-        builder.Append("XFail     : ");
-        builder.AppendLine(result.XFailCount.ToString(CultureInfo.InvariantCulture));
-        builder.Append("Fail      : ");
-        builder.AppendLine(result.FailCount.ToString(CultureInfo.InvariantCulture));
-        builder.Append("Unexpected: ");
-        builder.AppendLine(result.UnexpectedPassCount.ToString(CultureInfo.InvariantCulture));
-        builder.Append("Skipped   : ");
-        builder.AppendLine(result.SkipCount.ToString(CultureInfo.InvariantCulture));
+
+        List<RegressionFixtureResult> expandedResults = result.FixtureResults
+            .Where(ShouldExpandDetails)
+            .ToList();
+        if (expandedResults.Count > 0)
+        {
+            builder.AppendLine("---");
+            builder.AppendLine();
+
+            for (int i = 0; i < expandedResults.Count; i++)
+            {
+                RegressionFixtureResult fixtureResult = expandedResults[i];
+                builder.Append(FormatOutcomeLabel(fixtureResult.Outcome).PadRight(14));
+                builder.Append(' ');
+                builder.AppendLine(fixtureResult.RelativePath);
+
+                foreach (string detail in EnumerateDetailLines(result.RepositoryRootPath, fixtureResult))
+                {
+                    builder.Append("  ");
+                    builder.AppendLine(detail);
+                }
+
+                if (i < expandedResults.Count - 1)
+                    builder.AppendLine();
+            }
+
+            builder.AppendLine();
+        }
+
+        builder.AppendLine(BuildCompactSummary(result));
         return builder.ToString();
+    }
+
+    private static bool ShouldExpandDetails(RegressionFixtureResult fixtureResult)
+    {
+        return fixtureResult.Outcome is RegressionFixtureOutcome.Fail or RegressionFixtureOutcome.UnexpectedPass;
+    }
+
+    private static string FormatOutcomeLabel(RegressionFixtureOutcome outcome)
+    {
+        return outcome switch
+        {
+            RegressionFixtureOutcome.Pass => "PASS",
+            RegressionFixtureOutcome.Fail => "FAIL",
+            RegressionFixtureOutcome.XFail => "XFAIL",
+            RegressionFixtureOutcome.UnexpectedPass => "UNEXPECTED",
+            RegressionFixtureOutcome.Skipped => "SKIP",
+            _ => throw new InvalidOperationException($"Unknown fixture outcome '{outcome}'."),
+        };
+    }
+
+    private static IEnumerable<string> EnumerateDetailLines(string repositoryRootPath, RegressionFixtureResult fixtureResult)
+    {
+        bool sawSummary = false;
+        foreach (string detail in fixtureResult.Details)
+        {
+            if (!sawSummary && string.Equals(detail, fixtureResult.Summary, StringComparison.Ordinal))
+                sawSummary = true;
+
+            yield return detail;
+        }
+
+        if (!sawSummary && fixtureResult.Summary.Length > 0)
+            yield return fixtureResult.Summary;
+
+        if (fixtureResult.ArtifactDirectoryPath is not null)
+            yield return $"artifacts: {FormatArtifactPath(repositoryRootPath, fixtureResult.ArtifactDirectoryPath)}";
+    }
+
+    private static string FormatArtifactPath(string repositoryRootPath, string artifactDirectoryPath)
+    {
+        string relativePath = Path.GetRelativePath(repositoryRootPath, artifactDirectoryPath);
+        return relativePath.Replace('\\', '/');
+    }
+
+    private static string BuildCompactSummary(RegressionRunResult result)
+    {
+        List<string> parts = [];
+        if (result.FailCount > 0)
+            parts.Add(FormattableString.Invariant($"{result.FailCount} failed"));
+        if (result.XFailCount > 0)
+            parts.Add(FormattableString.Invariant($"{result.XFailCount} xfailed"));
+        if (result.PassCount > 0)
+            parts.Add(FormattableString.Invariant($"{result.PassCount} passed"));
+
+        parts.Add(FormattableString.Invariant($"{result.FixtureResults.Count} total"));
+        return string.Join(", ", parts);
     }
 }
 

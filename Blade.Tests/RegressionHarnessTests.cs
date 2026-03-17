@@ -8,9 +8,15 @@ namespace Blade.Tests;
 public sealed class RegressionHarnessTests
 {
     [Test]
-    public void RegressionReportFormatter_DoesNotRepeatSummaryInDetails()
+    public void RegressionReportFormatter_UsesCompactLayoutAndBottomFailureDetails()
     {
-        RegressionFixtureResult fixtureResult = new(
+        RegressionFixtureResult passResult = new(
+            "Demonstrators/Asm/asm_label.blade",
+            RegressionFixtureOutcome.Pass,
+            "passed",
+            [],
+            artifactDirectoryPath: null);
+        RegressionFixtureResult failResult = new(
             "Demonstrators/Language/integer_literals.blade",
             RegressionFixtureOutcome.Fail,
             "unexpected diagnostic: L5, E0101: Expected ';', got '456'.",
@@ -18,14 +24,53 @@ public sealed class RegressionHarnessTests
                 "unexpected diagnostic: L5, E0101: Expected ';', got '456'.",
                 "FlexSpin validation was required, but no assembly text was available",
             ],
+            artifactDirectoryPath: "/repo/.artifacts/regressions/run/fail");
+        RegressionFixtureResult xfailResult = new(
+            "RegressionTests/ExpectedFailures/hub_string_walk.blade",
+            RegressionFixtureOutcome.XFail,
+            "expected failure observed",
+            [
+                "missing diagnostic code E0202: expected at least 1, got 0",
+            ],
             artifactDirectoryPath: null);
-        RegressionRunResult result = new("/repo", [fixtureResult]);
+        RegressionRunResult result = new("/repo", [passResult, failResult, xfailResult]);
 
         string report = RegressionReportFormatter.Format(result);
+        string[] lines = report.Split(Environment.NewLine, StringSplitOptions.None);
 
+        Assert.That(lines[0], Is.EqualTo("PASS           Demonstrators/Asm/asm_label.blade"));
+        Assert.That(lines[1], Is.EqualTo("FAIL           Demonstrators/Language/integer_literals.blade"));
+        Assert.That(lines[2], Is.EqualTo("XFAIL          RegressionTests/ExpectedFailures/hub_string_walk.blade"));
+        Assert.That(report, Does.Not.Contain("PASS           Demonstrators/Asm/asm_label.blade" + Environment.NewLine + "  passed"));
+        Assert.That(report, Does.Not.Contain("XFAIL          RegressionTests/ExpectedFailures/hub_string_walk.blade" + Environment.NewLine + "  expected failure observed"));
+        Assert.That(report, Does.Contain(Environment.NewLine + "---" + Environment.NewLine + Environment.NewLine + "FAIL           Demonstrators/Language/integer_literals.blade"));
+        Assert.That(report, Does.Contain("  unexpected diagnostic: L5, E0101: Expected ';', got '456'."));
+        Assert.That(report, Does.Contain("  FlexSpin validation was required, but no assembly text was available"));
+        Assert.That(report, Does.Contain("  artifacts: .artifacts/regressions/run/fail"));
         Assert.That(
             report.Split(Environment.NewLine).Count(line => line.Contains("unexpected diagnostic: L5, E0101: Expected ';', got '456'.", StringComparison.Ordinal)),
             Is.EqualTo(1));
+        Assert.That(report.TrimEnd(), Does.EndWith("1 failed, 1 xfailed, 1 passed, 3 total"));
+    }
+
+    [Test]
+    public void RegressionReportFormatter_SkipsZeroCountSummaryEntriesAndDoesNotExpandSkips()
+    {
+        RegressionFixtureResult skipResult = new(
+            "RegressionTests/Assembly/raw_exact.pasm2",
+            RegressionFixtureOutcome.Skipped,
+            "skipped",
+            [
+                "skipped: flexspin is not available",
+            ],
+            artifactDirectoryPath: null);
+        RegressionRunResult result = new("/repo", [skipResult]);
+
+        string report = RegressionReportFormatter.Format(result);
+
+        Assert.That(report, Does.Not.Contain("---"));
+        Assert.That(report, Does.Not.Contain("skipped: flexspin is not available"));
+        Assert.That(report.TrimEnd(), Does.EndWith("1 total"));
     }
 
     [Test]
