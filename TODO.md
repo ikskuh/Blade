@@ -142,3 +142,12 @@ fn read_pin_to_carry(pin: u32) -> bool@C {
 ```blade
 reinterpreted_signed = bitcast(i8, 255 as u8);
 ```
+
+
+## AsmLegalizer.SelectAugPrefix needs a heavy overhaul
+
+Current AUG selection logic is still heuristic and should be reworked around explicit operand-role metadata (D vs S) for every instruction form.
+
+## Add `VariableStorageClass.Flag` and wire asm output binding through it
+
+Inline asm output bindings currently use `VariableStorageClass.Automatic`; introduce a dedicated `VariableStorageClass.Flag` and propagate it through binder/IR/codegen semantics.

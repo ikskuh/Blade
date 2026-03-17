@@ -321,6 +321,20 @@ public class BinderTests
     }
 
     [Test]
+    public void MissingReturnValue_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            fn read_pin_to_carry(pin: u32) -> bool@C {
+                asm {
+                    TESTP {pin} WC
+                } -> result: bool@C;
+            }
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0227_MissingReturnValue), Is.True);
+    }
+
+    [Test]
     public void CallArgumentCountMismatch_ReportsDiagnostic()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""

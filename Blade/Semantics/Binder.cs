@@ -228,10 +228,44 @@ public sealed class Binder
 
         BoundBlockStatement body = BindBlockStatement(functionSyntax.Body, createScope: false, isTopLevel: false);
 
+        if (function.ReturnTypes.Count > 0 && !AlwaysReturns(body))
+            _diagnostics.ReportMissingReturnValue(functionSyntax.Body.CloseBrace.Span, function.Name);
+
         _currentFunction = previousFunction;
         _currentScope = previousScope;
 
         return new BoundFunctionMember(function, body, functionSyntax.Span);
+    }
+
+    private static bool AlwaysReturns(BoundStatement statement)
+    {
+        switch (statement)
+        {
+            case BoundReturnStatement:
+                return true;
+
+            case BoundBlockStatement block:
+            {
+                foreach (BoundStatement child in block.Statements)
+                {
+                    if (AlwaysReturns(child))
+                        return true;
+                }
+
+                return false;
+            }
+
+            case BoundIfStatement ifStatement:
+                return ifStatement.ElseBody is not null
+                    && AlwaysReturns(ifStatement.ThenBody)
+                    && AlwaysReturns(ifStatement.ElseBody);
+
+            case BoundNoirqStatement noirqStatement:
+                return AlwaysReturns(noirqStatement.Body);
+
+            default:
+                return false;
+        }
     }
 
     private BoundBlockStatement BindBlockStatement(BlockStatementSyntax block, bool createScope, bool isTopLevel)
@@ -407,6 +441,7 @@ public sealed class Binder
             case AsmBlockStatementSyntax asm:
             {
                 string? flagOutput = null;
+                VariableSymbol? outputSymbol = null;
                 if (asm.OutputBinding is not null)
                 {
                     string flag = asm.OutputBinding.FlagAnnotation?.Flag.Text ?? "";
@@ -414,7 +449,24 @@ public sealed class Binder
                     {
                         _diagnostics.ReportInlineAsmInvalidFlagOutput(asm.OutputBinding.Span, flag);
                     }
+
                     flagOutput = $"@{flag}";
+                    TypeSymbol outputType = BindType(asm.OutputBinding.Type);
+                    VariableScopeKind outputScopeKind = _currentFunction is null
+                        ? VariableScopeKind.TopLevelAutomatic
+                        : VariableScopeKind.Local;
+                    outputSymbol = new VariableSymbol(
+                        asm.OutputBinding.Name.Text,
+                        outputType,
+                        isConst: false,
+                        VariableStorageClass.Automatic,
+                        outputScopeKind,
+                        isExtern: false,
+                        fixedAddress: null,
+                        alignment: null);
+
+                    if (!_currentScope.TryDeclare(outputSymbol))
+                        _diagnostics.ReportSymbolAlreadyDeclared(asm.OutputBinding.Name.Span, asm.OutputBinding.Name.Text);
                 }
 
                 // Collect available variables from current scope for validation
@@ -442,6 +494,9 @@ public sealed class Binder
                     if (_currentScope.TryLookup(name, out Symbol? referenced) && referenced is not null)
                         referencedSymbols[name] = referenced;
                 }
+
+                if (outputSymbol is not null)
+                    referencedSymbols[outputSymbol.Name] = outputSymbol;
 
                 return new BoundAsmStatement(asm.Volatility, asm.Body, flagOutput, validationResult.Lines, referencedSymbols, asm.Span);
             }

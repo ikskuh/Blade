@@ -101,6 +101,21 @@ public class IrPipelineTests
     }
 
     [Test]
+    public void BitcastToSignedByte_DoesNotEmitNegativeImmediateLiteral()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg var reinterpreted_signed: i8 = 0;
+            reinterpreted_signed = bitcast(i8, 255 as u8);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        IrBuildResult build = IrPipeline.Build(program);
+
+        Assert.That(build.AssemblyText, Does.Not.Contain("MOV g_reinterpreted_signed, #-1"));
+        Assert.That(build.AssemblyText, Does.Contain("MOV g_reinterpreted_signed, #511"));
+    }
+
+    [Test]
     public void InlineAsm_InlinedVolatileBindingValue_RemainsLiveThroughOptimization()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
@@ -864,6 +879,7 @@ public class IrPipelineTests
                 asm {
                     TESTB {val}, {pos} WC
                 } -> result: bool@C;
+                return result;
             }
 
             reg var sink: bool = test_bit(0, 1);

@@ -49,6 +49,7 @@ public enum DiagnosticCode
     E0224_InvalidExplicitCast = 224,
     E0225_BitcastSizeMismatch = 225,
     E0226_AddressOfRecursiveLocal = 226,
+    E0227_MissingReturnValue = 227,
 
     // Inline assembly errors
     E0301_InlineAsmUnknownInstruction = 301,

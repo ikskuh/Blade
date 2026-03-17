@@ -156,30 +156,12 @@ public static class AsmLegalizer
                         continue;
                     }
 
-                    // Determine which AUG prefix is needed based on operand slot
-                    bool isDField = (i == 0);
-                    bool isSField = (i == 1) || (instruction.Operands.Count == 1 && i == 0);
-
-                    // For single-operand instructions, the operand is in S-field
-                    // For two-operand: operand[0]=D, operand[1]=S
-                    if (instruction.Operands.Count == 1)
-                    {
-                        // Single operand → typically S-field (e.g., JMP #addr)
-                        augPrefix = "AUGS";
-                    }
-                    else if (i == 0)
-                    {
-                        // D-field immediate
-                        augPrefix = "AUGD";
-                    }
-                    else
-                    {
-                        // S-field immediate
-                        augPrefix = "AUGS";
-                    }
+                    // Determine which AUG prefix is needed based on instruction metadata.
+                    augPrefix = SelectAugPrefix(instruction, i);
 
                     augValue = uval >> 9;
-                    newOperands.Add(operand);
+                    long lowImmediateBits = uval & MaxImmediate9Bit;
+                    newOperands.Add(new AsmImmediateOperand(lowImmediateBits));
                     modified = true;
                 }
                 else
@@ -210,4 +192,16 @@ public static class AsmLegalizer
             nodes.Add(instruction);
         }
     }
+    private static string SelectAugPrefix(AsmInstructionNode instruction, int operandIndex)
+    {
+        if (instruction.Operands.Count == 1)
+        {
+            return P2InstructionMetadata.RequiresImmediateAddressPrefix(instruction.Opcode, instruction.Operands.Count, operandIndex)
+                ? "AUGS"
+                : "AUGD";
+        }
+
+        return operandIndex == 0 ? "AUGD" : "AUGS";
+    }
+
 }
