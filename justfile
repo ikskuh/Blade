@@ -13,13 +13,7 @@ coverage:
         --collect:"XPlat Code Coverage;Format=cobertura;Include=[blade]*;Exclude=[Blade.Regressions]*" \
         --results-directory coverage
     cp coverage/*/coverage.cobertura.xml coverage/coverage.cobertura.xml
-    @python3 -c " \
-        import xml.etree.ElementTree as ET; \
-        r = ET.parse('coverage/coverage.cobertura.xml').getroot(); \
-        lr=float(r.get('line-rate'))*100; br=float(r.get('branch-rate'))*100; \
-        print(f'Line coverage:   {lr:.1f}% ({r.get(\"lines-covered\")}/{r.get(\"lines-valid\")})'); \
-        print(f'Branch coverage: {br:.1f}% ({r.get(\"branches-covered\")}/{r.get(\"branches-valid\")})')"
-
+    @python3 Scripts/codecov-report.py coverage/coverage.cobertura.xml
 regressions:
     dotnet run --project Blade.Regressions --
 
