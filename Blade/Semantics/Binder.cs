@@ -619,9 +619,7 @@ public sealed class Binder
 
         foreach ((string moduleAlias, ImportedModule module) in _importedModules)
         {
-            if (!availableSymbols.ContainsKey(moduleAlias))
-                availableSymbols[moduleAlias] = new ModuleSymbol(moduleAlias, module);
-
+            _ = availableSymbols.TryAdd(moduleAlias, new ModuleSymbol(moduleAlias, module));
             CollectImportedModuleSymbols(moduleAlias, module, availableSymbols);
         }
 

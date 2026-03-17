@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -310,6 +311,42 @@ public class ProgramTests
         Assert.That(options, Is.Not.Null);
         System.Collections.IEnumerable directives = GetProperty<System.Collections.IEnumerable>(options!, "OptimizationDirectives");
         Assert.That(directives.Cast<object>().Count(), Is.EqualTo(5));
+    }
+
+
+    [Test]
+    public void CommandLineOptions_Parse_RecognizesModuleMappings()
+    {
+        object? options = ParseOptions("input.blade", "--module=extmod=./mods/ext.blade");
+
+        Assert.That(options, Is.Not.Null);
+        IReadOnlyDictionary<string, string> moduleRoots = GetProperty<IReadOnlyDictionary<string, string>>(options!, "NamedModuleRoots");
+        Assert.That(moduleRoots.ContainsKey("extmod"), Is.True);
+        Assert.That(Path.IsPathRooted(moduleRoots["extmod"]), Is.True);
+    }
+
+    [Test]
+    public void CommandLineOptions_Parse_RejectsInvalidModuleMappings()
+    {
+        (object? missingEquals, _, string missingEqualsErr) = CaptureConsole(() => ParseOptions("input.blade", "--module=extmod"));
+        Assert.That(missingEquals, Is.Null);
+        Assert.That(missingEqualsErr, Does.Contain("invalid module specification"));
+
+        (object? emptyName, _, string emptyNameErr) = CaptureConsole(() => ParseOptions("input.blade", "--module==path.blade"));
+        Assert.That(emptyName, Is.Null);
+        Assert.That(emptyNameErr, Does.Contain("invalid module specification"));
+
+        (object? emptyPath, _, string emptyPathErr) = CaptureConsole(() => ParseOptions("input.blade", "--module=extmod="));
+        Assert.That(emptyPath, Is.Null);
+        Assert.That(emptyPathErr, Does.Contain("invalid module specification"));
+
+        (object? blankPathAfterTrim, _, string blankPathAfterTrimErr) = CaptureConsole(() => ParseOptions("input.blade", "--module=extmod=   "));
+        Assert.That(blankPathAfterTrim, Is.Null);
+        Assert.That(blankPathAfterTrimErr, Does.Contain("invalid module specification"));
+
+        (object? blankNameAfterTrim, _, string blankNameAfterTrimErr) = CaptureConsole(() => ParseOptions("input.blade", "--module=   =path.blade"));
+        Assert.That(blankNameAfterTrim, Is.Null);
+        Assert.That(blankNameAfterTrimErr, Does.Contain("invalid module specification"));
     }
 
     [Test]
