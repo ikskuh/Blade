@@ -1323,6 +1323,383 @@ public class IrPipelineTests
         Assert.That(build.AssemblyText, Does.Contain("RETI1"));
     }
 
+    [Test]
+    public void BitfieldAlignedSignedExtracts_EmitGetByteGetWordAndSignExtension()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            type SignedFields = bitfield (u32) {
+                low: nib,
+                high: nib,
+                bytev: i8,
+                wordv: i16,
+            };
+
+            noinline fn demo(raw: u32) -> i32 {
+                var fields: SignedFields = bitcast(SignedFields, raw);
+                var a: i8 = fields.bytev;
+                var b: i16 = fields.wordv;
+                return (a as i32) + (b as i32);
+            }
+
+            var result: i32 = demo(0x80FF_0000);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        Assert.That(build.AssemblyText, Does.Contain("GETBYTE"));
+        Assert.That(build.AssemblyText, Does.Contain("GETWORD"));
+        Assert.That(build.AssemblyText, Does.Contain("SIGNX"));
+    }
+
+    [Test]
+    public void BitfieldUnalignedExtract_FallsBackToShiftAndMask()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            type UnalignedFields = bitfield (u32) {
+                flag: bool,
+                nibble: nib,
+            };
+
+            noinline fn demo(raw: u32) -> nib {
+                var fields: UnalignedFields = bitcast(UnalignedFields, raw);
+                return fields.nibble;
+            }
+
+            var result: nib = demo(0xFFFF_FFFF);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        Assert.That(build.AssemblyText, Does.Contain("SHR"));
+        Assert.That(build.AssemblyText, Does.Contain("ZEROX"));
+    }
+
+    [Test]
+    public void BitfieldUnalignedSignedExtract_UsesShiftAndSignExtension()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            type UnalignedFields = bitfield (u32) {
+                flag: bool,
+                bytev: i8,
+            };
+
+            noinline fn demo(raw: u32) -> i8 {
+                var fields: UnalignedFields = bitcast(UnalignedFields, raw);
+                return fields.bytev;
+            }
+
+            var result: i8 = demo(0xFFFF_FFFF);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        Assert.That(build.AssemblyText, Does.Contain("SHR"));
+        Assert.That(build.AssemblyText, Does.Contain("SIGNX"));
+    }
+
+    [Test]
+    public void BitfieldWholeWidthAndUnalignedInsert_CoverSpecialAndFallbackPaths()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            type WholeValue = bitfield (u32) {
+                all: u32,
+            };
+
+            type UnalignedFields = bitfield (u32) {
+                flag: bool,
+                nibble: nib,
+            };
+
+            noinline fn demo(raw: u32, value: nib) -> u32 {
+                var whole: WholeValue = bitcast(WholeValue, raw);
+                var unaligned: UnalignedFields = bitcast(UnalignedFields, raw);
+                whole.all = raw;
+                unaligned.nibble = value;
+                return bitcast(u32, whole);
+            }
+
+            var result: u32 = demo(1, 2);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        Assert.That(build.AssemblyText, Does.Contain("unhandled aligned fallback for bitfield.insert.1.4"));
+        Assert.That(build.AssemblyText, Does.Match(@"MOV _r\d+,\s+_r\d+"));
+    }
+
+    [Test]
+    public void BitfieldAlignedWordInsert_UsesSetWord()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            type WordFields = bitfield (u32) {
+                low: u16,
+                high: u16,
+            };
+
+            noinline fn demo(raw: u32, value: u16) -> u32 {
+                var fields: WordFields = bitcast(WordFields, raw);
+                fields.high = value;
+                return bitcast(u32, fields);
+            }
+
+            var result: u32 = demo(1, 2);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        Assert.That(build.AssemblyText, Does.Contain("SETWORD"));
+    }
+
+    [Test]
+    public void VolatileMultiPointerIndexRead_RemainsSideEffectfulInMir()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg var values: [4]u32 = undefined;
+
+            noinline fn demo(many: [*]reg volatile u32) -> u32 {
+                many[1];
+                return 0;
+            }
+
+            var sink: u32 = demo(&values);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = true,
+            EnableLirOptimizations = false,
+        });
+
+        string mir = MirTextWriter.Write(build.MirModule);
+        Assert.That(mir, Does.Contain("load.index"));
+        Assert.That(mir, Does.Contain("; sidefx"));
+    }
+
+    [Test]
+    public void CompoundAssignments_CoverNonVolatileIndexAndVolatileDerefReadPaths()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg var base: u32 = 7;
+            reg var values: [4]u32 = undefined;
+
+            noinline fn demo(ptr: *reg volatile u32, many: [*]reg u32) void {
+                many[0] += 1;
+                ptr.* += 1;
+            }
+
+            demo(&base, &values);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        MirModule mirModule = MirLowerer.Lower(program);
+        string mir = MirTextWriter.Write(mirModule);
+
+        Assert.That(mir, Does.Contain("load.index"));
+        Assert.That(mir, Does.Contain("load.deref"));
+        Assert.That(mir, Does.Contain("; sidefx"));
+    }
+
+    [Test]
+    public void CompoundAssignments_ExerciseMirAssignmentTargetReadPaths()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            type Pair = packed struct {
+                value: u32,
+            };
+
+            type Flags = bitfield (u32) {
+                low: nib,
+                high: nib,
+            };
+
+            noinline fn demo(ptr: *reg u32, many: [*]reg volatile u32) void {
+                var pair: Pair = .{ .value = 1 };
+                var flags: Flags = undefined;
+                pair.value += 1;
+                many[0] += 1;
+                ptr.* += 1;
+                flags.high += 1;
+            }
+
+            reg var base: u32 = 7;
+            reg var values: [4]u32 = undefined;
+            demo(&base, &values);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        MirModule mirModule = MirLowerer.Lower(program);
+        string mir = MirTextWriter.Write(mirModule);
+
+        Assert.That(mir, Does.Contain("load.member.value"));
+        Assert.That(mir, Does.Contain("load.index"));
+        Assert.That(mir, Does.Contain("load.deref"));
+        Assert.That(mir, Does.Contain("bitfield.extract.4.4"));
+        Assert.That(mir, Does.Contain("bitfield.insert.4.4"));
+    }
+
+    [Test]
+    public void ErrorAssignmentTarget_LowersToStoreError()
+    {
+        TextSpan span = new(0, 0);
+        BoundAssignmentStatement statement = new(
+            new BoundErrorAssignmentTarget(span),
+            new BoundLiteralExpression(1, span, BuiltinTypes.U32),
+            TokenKind.PlusEqual,
+            span);
+        BoundProgram program = new(
+            [statement],
+            [],
+            [],
+            new Dictionary<string, TypeSymbol>(),
+            new Dictionary<string, FunctionSymbol>(),
+            new Dictionary<string, ImportedModule>());
+
+        MirModule mirModule = MirLowerer.Lower(program);
+        string mir = MirTextWriter.Write(mirModule);
+
+        Assert.That(mir, Does.Contain("store.error"));
+    }
+
+    [Test]
+    public void AsmLowerer_InvalidBitfieldOpcodes_EmitComments()
+    {
+        TextSpan span = new(0, 0);
+        LirVirtualRegister sourceRegister = new(0);
+        LirVirtualRegister valueRegister = new(1);
+        LirVirtualRegister destinationRegister = new(2);
+        LirFunction function = new(
+            "demo",
+            isEntryPoint: true,
+            FunctionKind.Default,
+            [],
+            [
+                new LirBlock(
+                    "bb0",
+                    [],
+                    [
+                        new LirOpInstruction(
+                            "bitfield.extract.bad",
+                            destinationRegister,
+                            BuiltinTypes.U32,
+                            [new LirRegisterOperand(sourceRegister)],
+                            hasSideEffects: false,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                        new LirOpInstruction(
+                            "bitfield.insert.bad",
+                            destinationRegister,
+                            BuiltinTypes.U32,
+                            [new LirRegisterOperand(sourceRegister), new LirRegisterOperand(valueRegister)],
+                            hasSideEffects: false,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                    ],
+                    new LirReturnTerminator([], span)),
+            ]);
+
+        AsmModule asmModule = AsmLowerer.Lower(new LirModule([function]));
+        string asmir = AsmTextWriter.Write(asmModule);
+
+        Assert.That(asmir, Does.Contain("invalid bitfield.extract.bad"));
+        Assert.That(asmir, Does.Contain("invalid bitfield.insert.bad"));
+    }
+
+    [Test]
+    public void AsmLowerer_BitfieldExtractWithoutResultType_SkipsExtension()
+    {
+        TextSpan span = new(0, 0);
+        LirVirtualRegister sourceRegister = new(0);
+        LirVirtualRegister destinationRegister = new(1);
+        LirFunction function = new(
+            "demo",
+            isEntryPoint: true,
+            FunctionKind.Default,
+            [],
+            [
+                new LirBlock(
+                    "bb0",
+                    [],
+                    [
+                        new LirOpInstruction(
+                            "bitfield.extract.8.8",
+                            destinationRegister,
+                            resultType: null,
+                            [new LirRegisterOperand(sourceRegister)],
+                            hasSideEffects: false,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                        new LirOpInstruction(
+                            "bitfield.extract.16.16",
+                            destinationRegister,
+                            resultType: null,
+                            [new LirRegisterOperand(sourceRegister)],
+                            hasSideEffects: false,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                        new LirOpInstruction(
+                            "bitfield.extract.1.4",
+                            destinationRegister,
+                            resultType: null,
+                            [new LirRegisterOperand(sourceRegister)],
+                            hasSideEffects: false,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                    ],
+                    new LirReturnTerminator([], span)),
+            ]);
+
+        AsmModule asmModule = AsmLowerer.Lower(new LirModule([function]));
+        string asmir = AsmTextWriter.Write(asmModule);
+
+        Assert.That(asmir, Does.Contain("GETBYTE"));
+        Assert.That(asmir, Does.Contain("GETWORD"));
+        Assert.That(asmir, Does.Contain("SHR"));
+    }
+
     private static IEnumerable<string> AcceptProgramsForPipeline()
     {
         string[] files =

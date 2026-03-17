@@ -727,6 +727,58 @@ public class BinderTests
     }
 
     [Test]
+    public void AddressOfArrayParameter_BindsRegisterMultiPointerType()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn demo(values: [4]u32) void {
+                var p: [*]reg u32 = &values;
+            }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+
+        BoundFunctionMember function = program.Functions.Single();
+        BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)function.Body.Statements[0];
+        Assert.That(declaration.Initializer!.Type.Name, Is.EqualTo("[*]reg u32"));
+    }
+
+    [Test]
+    public void AddressOfFunction_ReportsInvalidTarget()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            fn demo() void {
+                &demo;
+            }
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0223_InvalidAddressOfTarget), Is.True);
+    }
+
+    [Test]
+    public void AddressOfMissingName_ReportsUndefinedName()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            fn demo() void {
+                &missing;
+            }
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0202_UndefinedName), Is.True);
+    }
+
+    [Test]
+    public void AddressOfRecursiveParameter_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            rec fn demo(value: u32) void {
+                var p: *reg u32 = &value;
+            }
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0226_AddressOfRecursiveLocal), Is.True);
+    }
+
+    [Test]
     public void PointerIndexing_ReportsDiagnosticForSinglePointer()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
@@ -739,6 +791,19 @@ public class BinderTests
     }
 
     [Test]
+    public void PointerIndexAssignment_ReportsDiagnosticForSinglePointerAndNonIntegerIndex()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            fn demo(p: *reg u32, values: [4]u32) void {
+                p[0] = 1;
+                values[false] = 2;
+            }
+            """);
+
+        Assert.That(diagnostics.Count(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.GreaterThanOrEqualTo(2));
+    }
+
+    [Test]
     public void MultiPointerDeref_ReportsDiagnostic()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
@@ -748,6 +813,31 @@ public class BinderTests
             """);
 
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
+    }
+
+    [Test]
+    public void AssignmentToFunction_ReportsInvalidAssignmentTargetAndWritesTargetError()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn demo() void {
+            }
+
+            demo = 1;
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0106_InvalidAssignmentTarget), Is.True);
+        string dump = BoundTreeWriter.Write(program);
+        Assert.That(dump, Does.Contain("TargetError"));
+    }
+
+    [Test]
+    public void InvalidLiteralAssignmentTarget_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            1 = 2;
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0106_InvalidAssignmentTarget), Is.True);
     }
 
     [Test]
@@ -795,6 +885,17 @@ public class BinderTests
     }
 
     [Test]
+    public void PointerAssignment_RejectsFamilyMismatch()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            reg var source: [*]reg u32 = undefined;
+            reg var sink: *reg u32 = source;
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
+    }
+
+    [Test]
     public void EnumLiteral_BindsFromExpectedContext()
     {
         (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
@@ -831,7 +932,7 @@ public class BinderTests
     [Test]
     public void BareEnumLiteral_WithoutContextReportsDiagnostic()
     {
-        (_, _, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
             type Mode = enum (u8) {
                 Idle = 0,
             };
@@ -840,6 +941,46 @@ public class BinderTests
             """);
 
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0232_EnumLiteralRequiresContext), Is.True);
+        string dump = BoundTreeWriter.Write(program);
+        Assert.That(dump, Does.Contain("ErrorExpr"));
+    }
+
+    [Test]
+    public void MissingTypeAliasQualifiedMember_ReportsUndefinedName()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            reg var value: u32 = MissingAlias.Member;
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0202_UndefinedName), Is.True);
+    }
+
+    [Test]
+    public void EnumLiteral_UnknownMemberReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            type Mode = enum (u8) {
+                Idle = 0,
+            };
+
+            reg var mode: Mode = .Missing;
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0202_UndefinedName), Is.True);
+    }
+
+    [Test]
+    public void QualifiedEnumMember_UnknownMemberReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            type Mode = enum (u8) {
+                Idle = 0,
+            };
+
+            reg var mode: Mode = Mode.Missing;
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0202_UndefinedName), Is.True);
     }
 
     [Test]
@@ -857,6 +998,81 @@ public class BinderTests
     }
 
     [Test]
+    public void OpenEnumExplicitCast_BindsButClosedEnumExplicitCastReportsDiagnostic()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            type OpenState = enum (u8) {
+                Idle = 0,
+                ...,
+            };
+
+            type ClosedState = enum (u8) {
+                Idle = 0,
+            };
+
+            reg var raw: u8 = ((2 as u8) as OpenState) as u8;
+            reg var closed: ClosedState = .Idle;
+            reg var bad: u8 = closed as u8;
+            """);
+
+        Assert.That(program.GlobalVariables.Single(global => global.Symbol.Name == "raw").Initializer, Is.TypeOf<BoundCastExpression>());
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0224_InvalidExplicitCast), Is.True);
+    }
+
+    [Test]
+    public void ClosedEnumBitcast_BindsAsBitcastExpression()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            type ClosedState = enum (u8) {
+                Idle = 0,
+            };
+
+            reg var closed: ClosedState = .Idle;
+            reg var raw: u8 = bitcast(u8, closed);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+        Assert.That(program.GlobalVariables.Single(global => global.Symbol.Name == "raw").Initializer, Is.TypeOf<BoundBitcastExpression>());
+    }
+
+    [Test]
+    public void EnumMembers_AutoIncrementAndRejectDuplicates()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            type Mode = enum (u8) {
+                Idle,
+                Busy = 5,
+                Done,
+                Done,
+            };
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0201_SymbolAlreadyDeclared), Is.True);
+        EnumTypeSymbol mode = (EnumTypeSymbol)program.TypeAliases["Mode"];
+        Assert.That(mode.Members["Idle"], Is.EqualTo(0));
+        Assert.That(mode.Members["Busy"], Is.EqualTo(5));
+        Assert.That(mode.Members["Done"], Is.EqualTo(6));
+    }
+
+    [Test]
+    public void EnumType_RejectsNonIntegerBackingAndNonConstantMemberValues()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            reg var seed: u32 = 1;
+
+            type BadBacking = enum (bool) {
+                A = 0,
+            };
+
+            type BadValue = enum (u8) {
+                A = seed,
+            };
+            """);
+
+        Assert.That(diagnostics.Count(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.GreaterThanOrEqualTo(2));
+    }
+
+    [Test]
     public void EnumArithmetic_ReportsDiagnostic()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
@@ -871,6 +1087,77 @@ public class BinderTests
             """);
 
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
+    }
+
+    [Test]
+    public void EmptyAggregateAndEnumAliases_BindWithoutDiagnostics()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            type EmptyStruct = packed struct {
+            };
+
+            type EmptyUnion = union {
+            };
+
+            type EmptyEnum = enum (u8) {
+            };
+
+            type EmptyFlags = bitfield (u32) {
+            };
+
+            reg var s: EmptyStruct = undefined;
+            reg var u: EmptyUnion = undefined;
+            reg var e: EmptyEnum = undefined;
+            reg var f: EmptyFlags = undefined;
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+        Assert.That(program.TypeAliases.Keys, Is.EquivalentTo(new[] { "EmptyStruct", "EmptyUnion", "EmptyEnum", "EmptyFlags" }));
+    }
+
+    [Test]
+    public void AnonymousUnionAndBitfieldTypes_BindWithGeneratedNames()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn demo() void {
+                var header: union {
+                    empty: void,
+                    raw: u32,
+                } = undefined;
+
+                var flags: bitfield (u32) {
+                    low: nib,
+                    high: nib,
+                } = undefined;
+            }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+
+        BoundFunctionMember function = program.Functions.Single();
+        BoundVariableDeclarationStatement headerDeclaration = (BoundVariableDeclarationStatement)function.Body.Statements[0];
+        BoundVariableDeclarationStatement flagsDeclaration = (BoundVariableDeclarationStatement)function.Body.Statements[1];
+
+        Assert.That(headerDeclaration.Symbol.Type.Name, Does.StartWith("<anon-union#"));
+        Assert.That(flagsDeclaration.Symbol.Type.Name, Does.StartWith("<anon-bitfield#"));
+    }
+
+    [Test]
+    public void DuplicateUnionAndBitfieldMembers_ReportDiagnostics()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            type Header = union {
+                lo: u32,
+                lo: u16,
+            };
+
+            type Flags = bitfield (u32) {
+                low: nib,
+                low: bit,
+            };
+            """);
+
+        Assert.That(diagnostics.Count(d => d.Code == DiagnosticCode.E0201_SymbolAlreadyDeclared), Is.EqualTo(2));
     }
 
     [Test]
@@ -892,6 +1179,61 @@ public class BinderTests
     }
 
     [Test]
+    public void UnknownUnionMemberAssignment_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            type Header = union {
+                lo: u32,
+            };
+
+            reg var header: Header = undefined;
+            header.hi = 1;
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0202_UndefinedName), Is.True);
+    }
+
+    [Test]
+    public void UnionAssignment_UsesStructuralCompatibility()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            type First = union {
+                lo: u32,
+                hi: u32,
+            };
+
+            type Second = union {
+                lo: u32,
+                hi: u32,
+            };
+
+            reg var first: First = undefined;
+            reg var second: Second = first;
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+    }
+
+    [Test]
+    public void UnionAssignment_RejectsMismatchedShapes()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            type First = union {
+                lo: u32,
+            };
+
+            type Second = union {
+                hi: u32,
+            };
+
+            reg var first: First = undefined;
+            reg var second: Second = first;
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
+    }
+
+    [Test]
     public void BitfieldOverflow_ReportsDiagnostic()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
@@ -901,6 +1243,41 @@ public class BinderTests
             """);
 
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0233_BitfieldWidthOverflow), Is.True);
+    }
+
+    [Test]
+    public void BitfieldType_RejectsNonIntegerBackingAndNonScalarFields()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            type BadBacking = bitfield (bool) {
+                flag: bool,
+            };
+
+            type BadFields = bitfield (u32) {
+                nested: void,
+            };
+            """);
+
+        Assert.That(diagnostics.Count(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.GreaterThanOrEqualTo(2));
+    }
+
+    [Test]
+    public void CrossBitfieldAssignment_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            type Left = bitfield (u32) {
+                low: nib,
+            };
+
+            type Right = bitfield (u32) {
+                low: nib,
+            };
+
+            reg var left: Left = undefined;
+            reg var right: Right = left;
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
     }
 
     [Test]
@@ -919,6 +1296,66 @@ public class BinderTests
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
         string dump = BoundTreeWriter.Write(program);
         Assert.That(dump, Does.Contain("TargetBitfield<nib> .high"));
+    }
+
+    [Test]
+    public void BitfieldPostIncrement_BindsThroughBitfieldTargetReadPath()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            type Flags = bitfield (u32) {
+                low: nib,
+                high: nib,
+            };
+
+            reg var flags: Flags = undefined;
+            flags.high++;
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+        string dump = BoundTreeWriter.Write(program);
+        Assert.That(dump, Does.Contain("Unary<nib> PostIncrement"));
+        Assert.That(dump, Does.Contain("Member<nib> .high"));
+    }
+
+    [Test]
+    public void PostfixMemberAndInvalidTargets_CoverRemainingBranches()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            type Pair = packed struct {
+                value: u32,
+            };
+
+            fn demo() void {
+            }
+
+            reg var pair: Pair = .{ .value = 1 };
+            pair.value--;
+            demo++;
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0106_InvalidAssignmentTarget), Is.True);
+        string dump = BoundTreeWriter.Write(program);
+        Assert.That(dump, Does.Contain("Member<u32> .value"));
+        Assert.That(dump, Does.Contain("ErrorExpr"));
+    }
+
+    [Test]
+    public void PostfixIncrement_CoversIndexAndDerefTargetsAndRejectsBool()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn demo(ptr: *reg u32) void {
+                var values: [2]u32 = undefined;
+                var flag: bool = false;
+                values[0]++;
+                ptr.*++;
+                flag++;
+            }
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
+        string dump = BoundTreeWriter.Write(program);
+        Assert.That(dump, Does.Contain("Index<u32>"));
+        Assert.That(dump, Does.Contain("Deref<u32>"));
     }
 
 
