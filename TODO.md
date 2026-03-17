@@ -143,7 +143,6 @@ fn read_pin_to_carry(pin: u32) -> bool@C {
 reinterpreted_signed = bitcast(i8, 255 as u8);
 ```
 
-
 ## AsmLegalizer.SelectAugPrefix needs a heavy overhaul
 
 Current AUG selection logic is still heuristic and should be reworked around explicit operand-role metadata (D vs S) for every instruction form.
@@ -161,7 +160,3 @@ public void QuaternaryInteger_CurrentlyThrowsForBase4Conversion()
     Assert.Throws<ArgumentException>(() => Lex("0q123"));
 }
 ```
-
-## Regression ARGS parser parity
-
-`Blade.Regressions.RegressionRunner.BuildCompilationOptions` should use the same argument parser logic as the Blade compiler itself to avoid drift in accepted syntax/validation.

@@ -126,9 +126,7 @@ internal sealed class CommandLineOptions
         bool dumpAsmir = false;
         bool dumpFinalAsm = false;
         bool dumpAll = false;
-        bool enableSingleCallsiteInlining = true;
-        List<OptimizationDirective> optimizationDirectives = [];
-        Dictionary<string, string> namedModuleRoots = new(StringComparer.Ordinal);
+        List<string> compilerArgs = [];
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -171,91 +169,9 @@ internal sealed class CommandLineOptions
                     dumpAll = true;
                     break;
 
-
-                case string value when value.StartsWith("-fmir-opt=", StringComparison.Ordinal):
-                {
-                    if (!TryParseOptimizationDirective(value, OptimizationStage.Mir, enable: true, out OptimizationDirective? directive, out string? errorMessage))
-                    {
-                        Console.Error.WriteLine(errorMessage);
-                        return null;
-                    }
-
-                    optimizationDirectives.Add(directive!.Value);
+                case string value when CompilationOptionsCommandLine.IsCompilationOption(value):
+                    compilerArgs.Add(value);
                     break;
-                }
-
-                case string value when value.StartsWith("-fno-mir-opt=", StringComparison.Ordinal):
-                {
-                    if (!TryParseOptimizationDirective(value, OptimizationStage.Mir, enable: false, out OptimizationDirective? directive, out string? errorMessage))
-                    {
-                        Console.Error.WriteLine(errorMessage);
-                        return null;
-                    }
-
-                    optimizationDirectives.Add(directive!.Value);
-                    break;
-                }
-
-                case string value when value.StartsWith("-flir-opt=", StringComparison.Ordinal):
-                {
-                    if (!TryParseOptimizationDirective(value, OptimizationStage.Lir, enable: true, out OptimizationDirective? directive, out string? errorMessage))
-                    {
-                        Console.Error.WriteLine(errorMessage);
-                        return null;
-                    }
-
-                    optimizationDirectives.Add(directive!.Value);
-                    break;
-                }
-
-                case string value when value.StartsWith("-fno-lir-opt=", StringComparison.Ordinal):
-                {
-                    if (!TryParseOptimizationDirective(value, OptimizationStage.Lir, enable: false, out OptimizationDirective? directive, out string? errorMessage))
-                    {
-                        Console.Error.WriteLine(errorMessage);
-                        return null;
-                    }
-
-                    optimizationDirectives.Add(directive!.Value);
-                    break;
-                }
-
-                case string value when value.StartsWith("-fasmir-opt=", StringComparison.Ordinal):
-                {
-                    if (!TryParseOptimizationDirective(value, OptimizationStage.Asmir, enable: true, out OptimizationDirective? directive, out string? errorMessage))
-                    {
-                        Console.Error.WriteLine(errorMessage);
-                        return null;
-                    }
-
-                    optimizationDirectives.Add(directive!.Value);
-                    break;
-                }
-
-                case string value when value.StartsWith("-fno-asmir-opt=", StringComparison.Ordinal):
-                {
-                    if (!TryParseOptimizationDirective(value, OptimizationStage.Asmir, enable: false, out OptimizationDirective? directive, out string? errorMessage))
-                    {
-                        Console.Error.WriteLine(errorMessage);
-                        return null;
-                    }
-
-                    optimizationDirectives.Add(directive!.Value);
-                    break;
-                }
-
-
-                case string value when value.StartsWith("--module=", StringComparison.Ordinal):
-                {
-                    if (!TryParseModuleSpecification(value, out string? moduleName, out string? modulePath, out string? moduleError))
-                    {
-                        Console.Error.WriteLine(moduleError);
-                        return null;
-                    }
-
-                    namedModuleRoots[moduleName!] = modulePath!;
-                    break;
-                }
 
                 case "--dump-dir":
                     if (i + 1 >= args.Length)
@@ -284,6 +200,12 @@ internal sealed class CommandLineOptions
                     filePath = arg;
                     break;
             }
+        }
+
+        if (!CompilationOptionsCommandLine.TryParse(compilerArgs, Environment.CurrentDirectory, out CompilationOptions compilerOptions, out string? compilerError))
+        {
+            Console.Error.WriteLine(compilerError);
+            return null;
         }
 
         if (filePath is null)
@@ -317,83 +239,10 @@ internal sealed class CommandLineOptions
             DumpAsmir = dumpAsmir,
             DumpFinalAsm = dumpFinalAsm,
             DumpDirectory = dumpDirectory,
-            EnableSingleCallsiteInlining = enableSingleCallsiteInlining,
-            OptimizationDirectives = optimizationDirectives,
-            NamedModuleRoots = namedModuleRoots,
+            EnableSingleCallsiteInlining = compilerOptions.EnableSingleCallsiteInlining,
+            OptimizationDirectives = compilerOptions.OptimizationDirectives,
+            NamedModuleRoots = compilerOptions.NamedModuleRoots,
         };
-    }
-
-    private static bool TryParseOptimizationDirective(
-        string arg,
-        OptimizationStage stage,
-        bool enable,
-        out OptimizationDirective? directive,
-        out string? errorMessage)
-    {
-        directive = null;
-        errorMessage = null;
-        int equalsIndex = arg.IndexOf('=', StringComparison.Ordinal);
-        if (equalsIndex < 0 || equalsIndex == arg.Length - 1)
-        {
-            errorMessage = $"error: missing optimization list in '{arg}'";
-            return false;
-        }
-
-        string csv = arg[(equalsIndex + 1)..];
-        string[] rawNames = csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (rawNames.Length == 0)
-        {
-            errorMessage = $"error: missing optimization list in '{arg}'";
-            return false;
-        }
-
-        List<string> names = new(rawNames.Length);
-        foreach (string name in rawNames)
-        {
-            if (name == "*")
-            {
-                names.Add(name);
-                continue;
-            }
-
-            if (!OptimizationCatalog.IsKnown(stage, name))
-            {
-                errorMessage = $"error: unknown {stage.ToString().ToLowerInvariant()} optimization '{name}'";
-                return false;
-            }
-
-            names.Add(name);
-        }
-
-        directive = new OptimizationDirective(stage, enable, names);
-        return true;
-    }
-
-
-    private static bool TryParseModuleSpecification(string arg, out string? moduleName, out string? modulePath, out string? errorMessage)
-    {
-        moduleName = null;
-        modulePath = null;
-        errorMessage = null;
-        string payload = arg["--module=".Length..];
-        int equalsIndex = payload.IndexOf('=', StringComparison.Ordinal);
-        if (equalsIndex <= 0 || equalsIndex == payload.Length - 1)
-        {
-            errorMessage = $"error: invalid module specification '{arg}'. Expected --module=<name>=<path>.";
-            return false;
-        }
-
-        string name = payload[..equalsIndex].Trim();
-        string path = payload[(equalsIndex + 1)..].Trim();
-        if (name.Length == 0 || path.Length == 0)
-        {
-            errorMessage = $"error: invalid module specification '{arg}'. Expected --module=<name>=<path>.";
-            return false;
-        }
-
-        moduleName = name;
-        modulePath = Path.GetFullPath(path);
-        return true;
     }
 
     private static void PrintUsage()
