@@ -63,9 +63,10 @@ public class DiagnosticBagTests
         bag.ReportInlineAsmUndefinedVariable(Span, "x");
         bag.ReportInlineAsmEmptyInstruction(Span);
         bag.ReportInlineAsmInvalidFlagOutput(Span, "Q");
+        bag.ReportUnsupportedLowering(Span, "store.index");
 
-        Assert.That(bag.Count, Is.EqualTo(49));
+        Assert.That(bag.Count, Is.EqualTo(50));
         Assert.That(bag.HasErrors, Is.True);
-        Assert.That(bag.Last().Code, Is.EqualTo(DiagnosticCode.E0304_InlineAsmInvalidFlagOutput));
+        Assert.That(bag.Last().Code, Is.EqualTo(DiagnosticCode.E0401_UnsupportedLowering));
     }
 }

@@ -64,7 +64,7 @@ public static class CompilerDriver
                 EnableSingleCallsiteInlining = effectiveOptions.EnableSingleCallsiteInlining,
                 OptimizationDirectives = effectiveOptions.OptimizationDirectives,
             };
-            irBuildResult = IrPipeline.Build(boundProgram, pipelineOptions);
+            irBuildResult = IrPipeline.Build(boundProgram, pipelineOptions, diagnostics);
         }
 
         List<Diagnostic> diagnosticList = diagnostics.ToList();

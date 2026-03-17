@@ -1,10 +1,12 @@
-// EXPECT: pass
+// EXPECT: xfail
+// DIAGNOSTICS:
+// - L12, E0401
 // STAGE: bound
 // CONTAINS:
 // - ArrayLit<[4]bool>
 // - [1]...
 // NOTE:
 //   Array literals work for non-`u32` element types too; this one uses `bool`
-//   with a trailing spread fill.
+//   with a trailing spread fill. Final backend lowering still fails on indexed stores.
 
 reg var flags: [4]bool = [true, false...];

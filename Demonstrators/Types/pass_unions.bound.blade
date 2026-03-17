@@ -1,10 +1,14 @@
-// EXPECT: pass
+// EXPECT: xfail
+// DIAGNOSTICS:
+// - L25, E0401
+// - L26, E0401
 // STAGE: bound
 // CONTAINS:
 // - Member<u32> .lo
 // - TargetMember<u32> .hi
 // NOTE:
-//   Union members bind through the same aggregate-field path as structs.
+//   Union members bind through the same aggregate-field path as structs,
+//   but final aggregate member lowering is not implemented yet.
 
 type Pair = packed struct {
     lo: u32,

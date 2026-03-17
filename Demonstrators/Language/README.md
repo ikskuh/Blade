@@ -2,10 +2,10 @@
 
 These examples exercise recently implemented frontend and lowering features:
 
-- `pass_array_literals.bound.blade`: bound-tree view of explicit, spread, and empty contextual array literals.
-- `pass_array_literals_bool.bound.blade`: bound-tree view of non-`u32` array literals using `bool` elements and spread fill.
+- `pass_array_literals.bound.blade`: bound-tree view of explicit, spread, and empty contextual array literals; currently `xfail` because backend indexed-store lowering is missing.
+- `pass_array_literals_bool.bound.blade`: bound-tree view of non-`u32` array literals using `bool` elements and spread fill; currently `xfail` because backend indexed-store lowering is missing.
 - `pass_array_literal_inference.bound.blade`: array literal element-type inference without an expected target type.
-- `pass_array_literals_mir.blade`: MIR lowering for explicit, spread, and empty array literals.
+- `pass_array_literals_mir.blade`: MIR lowering for explicit, spread, and empty array literals; currently `xfail` because backend indexed-store lowering is missing.
 - `fail_array_literal_type_mismatch.blade`: rejects array elements that are not assignable to the inferred/contextual element type.
 - `fail_array_literal_bool_type_mismatch.blade`: rejects non-`u32` array literals whose elements do not match the contextual `bool` element type.
 - `fail_array_literal_spread_not_last.blade`: rejects spread elements that are not in the final slot.

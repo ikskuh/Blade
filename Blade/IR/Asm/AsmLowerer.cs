@@ -4,9 +4,11 @@ using System.Globalization;
 using System.Linq;
 using System.Text;
 using Blade;
+using Blade.Diagnostics;
 using Blade.IR.Lir;
 using Blade.Semantics;
 using Blade.Semantics.Bound;
+using Blade.Source;
 
 namespace Blade.IR.Asm;
 
@@ -17,7 +19,7 @@ namespace Blade.IR.Asm;
 /// </summary>
 public static class AsmLowerer
 {
-    public static AsmModule Lower(LirModule module)
+    public static AsmModule Lower(LirModule module, DiagnosticBag? diagnostics = null)
     {
         Requires.NotNull(module);
 
@@ -43,7 +45,7 @@ public static class AsmLowerer
                 continue;
 
             CallingConventionTier tier = cgResult.Tiers.GetValueOrDefault(function.Name, CallingConventionTier.General);
-            LoweringContext ctx = new(function, functionOrdinal: functions.Count, tier, cgResult.Tiers, blockParamMap[function.Name]);
+            LoweringContext ctx = new(function, functionOrdinal: functions.Count, tier, cgResult.Tiers, blockParamMap[function.Name], diagnostics);
             functions.Add(LowerFunction(ctx));
         }
 
@@ -57,6 +59,8 @@ public static class AsmLowerer
         public CallingConventionTier Tier { get; }
         public Dictionary<string, CallingConventionTier> CalleeTiers { get; }
         public Dictionary<string, IReadOnlyList<LirBlockParameter>> BlockParams { get; }
+        public DiagnosticBag? Diagnostics { get; }
+        public HashSet<string> ReportedUnsupportedLowerings { get; } = new(StringComparer.Ordinal);
         public int NextInlineAsmBlockOrdinal { get; set; }
 
         public LoweringContext(
@@ -64,13 +68,15 @@ public static class AsmLowerer
             int functionOrdinal,
             CallingConventionTier tier,
             Dictionary<string, CallingConventionTier> calleeTiers,
-            Dictionary<string, IReadOnlyList<LirBlockParameter>> blockParams)
+            Dictionary<string, IReadOnlyList<LirBlockParameter>> blockParams,
+            DiagnosticBag? diagnostics)
         {
             Function = function;
             FunctionOrdinal = functionOrdinal;
             Tier = tier;
             CalleeTiers = calleeTiers;
             BlockParams = blockParams;
+            Diagnostics = diagnostics;
         }
     }
 
@@ -103,6 +109,7 @@ public static class AsmLowerer
 
         if (instruction is not LirOpInstruction op)
         {
+            ReportUnsupportedOpcode(ctx, instruction.Span, instruction.Opcode);
             nodes.Add(new AsmCommentNode($"unknown instruction: {instruction.Opcode}"));
             return;
         }
@@ -135,26 +142,29 @@ public static class AsmLowerer
                 break;
             default:
                 if (op.Opcode.StartsWith("binary.", StringComparison.Ordinal))
-                    LowerBinary(nodes, op);
+                    LowerBinary(nodes, op, ctx);
                 else if (op.Opcode.StartsWith("unary.", StringComparison.Ordinal))
-                    LowerUnary(nodes, op);
+                    LowerUnary(nodes, op, ctx);
                 else if (op.Opcode.StartsWith("bitfield.extract.", StringComparison.Ordinal))
-                    LowerBitfieldExtract(nodes, op);
+                    LowerBitfieldExtract(nodes, op, ctx);
                 else if (op.Opcode.StartsWith("bitfield.insert.", StringComparison.Ordinal))
-                    LowerBitfieldInsert(nodes, op);
+                    LowerBitfieldInsert(nodes, op, ctx);
                 else if (op.Opcode == "store.place")
                     LowerStorePlace(nodes, op);
                 else if (op.Opcode.StartsWith("update.place.", StringComparison.Ordinal))
                     LowerUpdatePlace(nodes, op);
                 else if (op.Opcode.StartsWith("store.", StringComparison.Ordinal))
-                    LowerStore(nodes, op);
+                    LowerStore(nodes, op, ctx);
                 else if (op.Opcode.StartsWith("pseudo.", StringComparison.Ordinal))
-                    LowerPseudo(nodes, op);
+                    LowerPseudo(nodes, op, ctx);
                 else if (op.Opcode.StartsWith("yieldto:", StringComparison.Ordinal)
                          || op.Opcode == "yield")
-                    LowerYield(nodes, op);
+                    LowerYield(nodes, op, ctx);
                 else
+                {
+                    ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
                     nodes.Add(new AsmCommentNode($"unhandled: {op.Opcode}"));
+                }
                 break;
         }
     }
@@ -627,10 +637,11 @@ public static class AsmLowerer
             : Emit("ZEROX", dest, new AsmImmediateOperand(width - 1)));
     }
 
-    private static void LowerBitfieldExtract(List<AsmNode> nodes, LirOpInstruction op)
+    private static void LowerBitfieldExtract(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
         if (!TryParseBitfieldOpcode(op.Opcode, "bitfield.extract.", out int bitOffset, out int bitWidth))
         {
+            ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
             nodes.Add(new AsmCommentNode($"invalid {op.Opcode}"));
             return;
         }
@@ -679,10 +690,11 @@ public static class AsmLowerer
         }
     }
 
-    private static void LowerBitfieldInsert(List<AsmNode> nodes, LirOpInstruction op)
+    private static void LowerBitfieldInsert(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
         if (!TryParseBitfieldOpcode(op.Opcode, "bitfield.insert.", out int bitOffset, out int bitWidth))
         {
+            ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
             nodes.Add(new AsmCommentNode($"invalid {op.Opcode}"));
             return;
         }
@@ -724,10 +736,11 @@ public static class AsmLowerer
             return;
         }
 
+        ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
         nodes.Add(new AsmCommentNode($"unhandled aligned fallback for {op.Opcode}"));
     }
 
-    private static void LowerBinary(List<AsmNode> nodes, LirOpInstruction op)
+    private static void LowerBinary(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
         string operatorName = op.Opcode["binary.".Length..];
         AsmRegisterOperand dest = DestReg(op);
@@ -736,6 +749,7 @@ public static class AsmLowerer
 
         if (!Enum.TryParse<BoundBinaryOperatorKind>(operatorName, out BoundBinaryOperatorKind kind))
         {
+            ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
             nodes.Add(new AsmCommentNode($"unknown binary op: {operatorName}"));
             return;
         }
@@ -844,7 +858,7 @@ public static class AsmLowerer
         }
     }
 
-    private static void LowerUnary(List<AsmNode> nodes, LirOpInstruction op)
+    private static void LowerUnary(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
         string operatorName = op.Opcode["unary.".Length..];
         AsmRegisterOperand dest = DestReg(op);
@@ -852,6 +866,7 @@ public static class AsmLowerer
 
         if (!Enum.TryParse<BoundUnaryOperatorKind>(operatorName, out BoundUnaryOperatorKind kind))
         {
+            ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
             nodes.Add(new AsmCommentNode($"unknown unary op: {operatorName}"));
             return;
         }
@@ -1000,7 +1015,7 @@ public static class AsmLowerer
         return operand.Access is P2OperandAccess.Write or P2OperandAccess.ReadWrite;
     }
 
-    private static void LowerStore(List<AsmNode> nodes, LirOpInstruction op)
+    private static void LowerStore(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
         string target = op.Opcode["store.".Length..];
 
@@ -1011,6 +1026,7 @@ public static class AsmLowerer
         }
         else if (op.Operands.Count >= 2)
         {
+            ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
             AsmOperand targetOp = LowerOperand(op.Operands[0]);
             AsmOperand valueOp = LowerOperand(op.Operands[^1]);
             nodes.Add(new AsmCommentNode($"store.{target}"));
@@ -1065,9 +1081,10 @@ public static class AsmLowerer
         nodes.Add(new AsmInstructionNode(opcode, [place, value]));
     }
 
-    private static void LowerPseudo(List<AsmNode> nodes, LirOpInstruction op)
+    private static void LowerPseudo(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
         string pseudoOp = op.Opcode["pseudo.".Length..];
+        ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
 
         switch (pseudoOp)
         {
@@ -1109,8 +1126,9 @@ public static class AsmLowerer
         }
     }
 
-    private static void LowerYield(List<AsmNode> nodes, LirOpInstruction op)
+    private static void LowerYield(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
+        ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
         if (op.Opcode.StartsWith("yieldto:", StringComparison.Ordinal))
         {
             string target = op.Opcode["yieldto:".Length..];
@@ -1272,6 +1290,7 @@ public static class AsmLowerer
             else
             {
                 // Fallback: emit as comment if we can't resolve target param
+                ReportUnsupportedLowering(ctx, new TextSpan(0, 0), "phi-move");
                 string prefix = predicate is not null ? $"{predicate} " : "";
                 nodes.Add(new AsmCommentNode($"{prefix}phi[{i}] = {src.Format()} -> {ctx.Function.Name}_{targetLabel}"));
             }
@@ -1286,6 +1305,36 @@ public static class AsmLowerer
         string predicate)
     {
         EmitPhiMoves(nodes, arguments, ctx, targetLabel, predicate);
+    }
+
+    private static void ReportUnsupportedOpcode(LoweringContext ctx, TextSpan span, string opcode)
+    {
+        ReportUnsupportedLowering(ctx, span, NormalizeUnsupportedLoweringName(opcode));
+    }
+
+    private static void ReportUnsupportedLowering(LoweringContext ctx, TextSpan span, string lowering)
+    {
+        if (ctx.Diagnostics is null)
+            return;
+
+        string key = $"{span.Start}:{span.Length}:{lowering}";
+        if (!ctx.ReportedUnsupportedLowerings.Add(key))
+            return;
+
+        ctx.Diagnostics.ReportUnsupportedLowering(span, lowering);
+    }
+
+    private static string NormalizeUnsupportedLoweringName(string opcode)
+    {
+        if (opcode.StartsWith("load.member", StringComparison.Ordinal))
+            return "load.member";
+        if (opcode.StartsWith("store.member", StringComparison.Ordinal))
+            return "store.member";
+        if (opcode.StartsWith("structlit", StringComparison.Ordinal))
+            return "structlit";
+        if (opcode.StartsWith("yieldto:", StringComparison.Ordinal))
+            return "yieldto";
+        return opcode;
     }
 
     // --- Helpers ---

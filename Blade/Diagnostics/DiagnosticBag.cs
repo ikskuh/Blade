@@ -314,6 +314,14 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
         Report(DiagnosticCode.E0304_InlineAsmInvalidFlagOutput, span, $"Invalid flag output '@{flag}' in inline assembly. Expected '@C' or '@Z'.");
     }
 
+    public void ReportUnsupportedLowering(TextSpan span, string lowering)
+    {
+        Report(
+            DiagnosticCode.E0401_UnsupportedLowering,
+            span,
+            $"Backend lowering for '{lowering}' is not implemented yet.");
+    }
+
     public IEnumerator<Diagnostic> GetEnumerator() => _diagnostics.GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();

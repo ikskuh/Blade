@@ -510,6 +510,18 @@ public class IrPipelineTests
     }
 
     [Test]
+    public void CompilerDriver_ArrayLiteralReportsUnsupportedLowering()
+    {
+        CompilationResult compilation = CompilerDriver.Compile("""
+            reg var values: [2]u32 = [1, 2];
+            """, "array_literal.blade");
+
+        Assert.That(compilation.IrBuildResult, Is.Not.Null);
+        Assert.That(compilation.Diagnostics.Any(d => d.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.True);
+        Assert.That(compilation.Diagnostics.Any(d => d.Message.Contains("'store.index'", StringComparison.Ordinal)), Is.True);
+    }
+
+    [Test]
     public void ArrayLiteral_SpreadWithExactContextLengthDoesNotAddExtraStores()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
@@ -1343,9 +1355,9 @@ public class IrPipelineTests
     }
 
     [Test]
-    public void AdvancedSemantics_CanFlowThroughEntireIrPipeline()
+    public void AdvancedSemantics_CompilerDriverReportsUnsupportedLowerings()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        CompilationResult compilation = CompilerDriver.Compile("""
             const Pair = packed struct { left: u32, right: u32 };
 
             coro fn worker(seed: u32) -> u32 {
@@ -1381,27 +1393,12 @@ public class IrPipelineTests
             }
 
             yieldto worker(1);
-            """);
+            """, "advanced_semantics.blade");
 
-        Assert.That(diagnostics.Count, Is.EqualTo(0));
-
-        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
-        {
-            EnableMirOptimizations = true,
-            EnableLirOptimizations = true,
-            EnableSingleCallsiteInlining = true,
-        });
-
-        string mir = MirTextWriter.Write(build.MirModule);
-        string lir = LirTextWriter.Write(build.LirModule);
-        string asmir = AsmTextWriter.Write(build.AsmModule);
-
-        Assert.That(build.MirModule.Functions.Count, Is.EqualTo(3));
-        Assert.That(mir, Does.Contain("worker"));
-        Assert.That(lir, Does.Contain("worker"));
-        Assert.That(asmir, Does.Contain("irq"));
-        Assert.That(build.AssemblyText, Does.Contain("TODO: CALLD (yieldto worker)"));
-        Assert.That(build.AssemblyText, Does.Contain("RETI1"));
+        Assert.That(compilation.IrBuildResult, Is.Not.Null);
+        Assert.That(compilation.Diagnostics.Any(d => d.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.True);
+        Assert.That(compilation.Diagnostics.Any(d => d.Message.Contains("'yieldto'", StringComparison.Ordinal)), Is.True);
+        Assert.That(compilation.Diagnostics.Any(d => d.Message.Contains("'yield'", StringComparison.Ordinal)), Is.True);
     }
 
     [Test]
@@ -1785,13 +1782,9 @@ public class IrPipelineTests
     {
         string[] files =
         [
-            "advanced_semantics.blade",
-            "control_flow.blade",
             "empty.blade",
             "expressions.blade",
-            "function_declarations.blade",
             "intrinsics.blade",
-            "struct_types.blade",
             "types.blade",
             "variable_declarations.blade",
             Path.Combine("InlineAsm", "basic_instructions.blade"),
@@ -1815,6 +1808,32 @@ public class IrPipelineTests
         Assert.That(compilation.Diagnostics, Is.Empty, path + Environment.NewLine + string.Join(Environment.NewLine, compilation.Diagnostics));
         Assert.That(compilation.IrBuildResult, Is.Not.Null);
         Assert.That(compilation.IrBuildResult!.AssemblyText, Does.StartWith("DAT"));
+    }
+
+    private static IEnumerable<string> AcceptProgramsWithUnsupportedLowerings()
+    {
+        string[] files =
+        [
+            "advanced_semantics.blade",
+            "control_flow.blade",
+            "function_declarations.blade",
+            "struct_types.blade",
+        ];
+
+        foreach (string file in files)
+            yield return Path.Combine("Accept", file);
+    }
+
+    [TestCaseSource(nameof(AcceptProgramsWithUnsupportedLowerings))]
+    public void AcceptProgram_WithUnsupportedLowerings_ReportsDiagnostics(string path)
+    {
+        string repoTestsRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Blade.Tests"));
+        string fullPath = Path.Combine(repoTestsRoot, path);
+        string source = File.ReadAllText(fullPath);
+        CompilationResult compilation = CompilerDriver.Compile(source, fullPath);
+
+        Assert.That(compilation.Diagnostics.Any(d => d.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.True, path);
+        Assert.That(compilation.IrBuildResult, Is.Not.Null, path);
     }
 
 

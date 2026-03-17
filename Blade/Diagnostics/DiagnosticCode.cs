@@ -64,4 +64,7 @@ public enum DiagnosticCode
     E0302_InlineAsmUndefinedVariable = 302,
     E0303_InlineAsmEmptyInstruction = 303,
     E0304_InlineAsmInvalidFlagOutput = 304,
+
+    // Backend lowering errors
+    E0401_UnsupportedLowering = 401,
 }

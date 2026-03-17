@@ -157,6 +157,8 @@ hand-written assembly through FlexSpin.
 - `Examples/` must stay pristine: no expectation headers, zero diagnostics only.
 - `Demonstrators/` may contain expectation headers and are part of the regression corpus.
 - `RegressionTests/` holds focused bug, diagnostic, and assembly fixtures.
+- Use `EXPECT: fail` only for malformed or semantically invalid programs where failure is the correct result.
+- Use `EXPECT: xfail` for valid programs that should compile but currently fail because of a known compiler bug or missing implementation, such as an unimplemented lowering.
 
 The header format and directive semantics are documented in `Docs/TestHarness.md`.
 

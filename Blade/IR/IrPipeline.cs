@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Blade.Diagnostics;
 using Blade.IR.Asm;
 using Blade.IR.Lir;
 using Blade.IR.Mir;
@@ -10,7 +11,7 @@ namespace Blade.IR;
 
 public static class IrPipeline
 {
-    public static IrBuildResult Build(BoundProgram boundProgram, IrPipelineOptions? options = null)
+    public static IrBuildResult Build(BoundProgram boundProgram, IrPipelineOptions? options = null, DiagnosticBag? diagnostics = null)
     {
         options ??= new IrPipelineOptions();
 
@@ -43,7 +44,7 @@ public static class IrPipeline
                 options.MaxOptimizationIterations,
                 OptimizationCatalog.ResolveEnabled(OptimizationStage.Lir, options.OptimizationDirectives));
 
-        AsmModule asmModule = AsmLowerer.Lower(lirModule);
+        AsmModule asmModule = AsmLowerer.Lower(lirModule, diagnostics);
         AsmModule preOptimizationAsmModule = asmModule;
 
         IrBuildResult preEmit = new(

@@ -1,4 +1,7 @@
-// EXPECT: pass
+// EXPECT: xfail
+// DIAGNOSTICS:
+// - L19, E0401
+// - L20, E0401
 // STAGE: mir
 // ARGS:
 // - -fmir-opt=dce
@@ -7,7 +10,7 @@
 // - load.index
 // NOTE:
 //   `*T` and `[*]T` stay separate, `&array` yields a multipointer, and volatile
-//   pointer reads survive MIR DCE.
+//   pointer reads survive MIR DCE, but final deref/index lowering is not implemented yet.
 
 reg var sink: u32 = 0;
 reg var values: [4]u32 = undefined;
