@@ -272,4 +272,68 @@ public class ProgramTests
             File.Delete(filePath);
         }
     }
+
+    [Test]
+    public void CommandLineOptions_Parse_RejectsMalformedOptimizationLists()
+    {
+        (object? missingCsv, _, string missingCsvErr) = CaptureConsole(() => ParseOptions("input.blade", "-fmir-opt="));
+        Assert.That(missingCsv, Is.Null);
+        Assert.That(missingCsvErr, Does.Contain("missing optimization list"));
+
+        (object? emptyCsv, _, string emptyCsvErr) = CaptureConsole(() => ParseOptions("input.blade", "-fmir-opt=, ,"));
+        Assert.That(emptyCsv, Is.Null);
+        Assert.That(emptyCsvErr, Does.Contain("missing optimization list"));
+    }
+
+    [Test]
+    public void CommandLineOptions_Parse_AcceptsWildcardOptimizationEntries()
+    {
+        object? options = ParseOptions("input.blade", "-fmir-opt=*", "-flir-opt=*", "-fasmir-opt=*");
+
+        Assert.That(options, Is.Not.Null);
+        System.Collections.IEnumerable directives = GetProperty<System.Collections.IEnumerable>(options!, "OptimizationDirectives");
+        Assert.That(directives.Cast<object>().Count(), Is.EqualTo(3));
+    }
+
+
+    [Test]
+    public void CommandLineOptions_Parse_CoversAllOptimizationStagesAndDisableForms()
+    {
+        object? options = ParseOptions(
+            "input.blade",
+            "-fno-mir-opt=const-prop",
+            "-flir-opt=dce",
+            "-fno-lir-opt=copy-prop",
+            "-fasmir-opt=elide-nops",
+            "-fno-asmir-opt=copy-prop");
+
+        Assert.That(options, Is.Not.Null);
+        System.Collections.IEnumerable directives = GetProperty<System.Collections.IEnumerable>(options!, "OptimizationDirectives");
+        Assert.That(directives.Cast<object>().Count(), Is.EqualTo(5));
+    }
+
+    [Test]
+    public void CommandLineOptions_Parse_ReportsUnknownOptimizationPerStage()
+    {
+        (object? badNoMir, _, string badNoMirErr) = CaptureConsole(() => ParseOptions("input.blade", "-fno-mir-opt=bad"));
+        Assert.That(badNoMir, Is.Null);
+        Assert.That(badNoMirErr, Does.Contain("unknown mir optimization"));
+
+        (object? badLir, _, string badLirErr) = CaptureConsole(() => ParseOptions("input.blade", "-flir-opt=bad"));
+        Assert.That(badLir, Is.Null);
+        Assert.That(badLirErr, Does.Contain("unknown lir optimization"));
+
+        (object? badNoLir, _, string badNoLirErr) = CaptureConsole(() => ParseOptions("input.blade", "-fno-lir-opt=bad"));
+        Assert.That(badNoLir, Is.Null);
+        Assert.That(badNoLirErr, Does.Contain("unknown lir optimization"));
+
+        (object? badAsmir, _, string badAsmirErr) = CaptureConsole(() => ParseOptions("input.blade", "-fasmir-opt=bad"));
+        Assert.That(badAsmir, Is.Null);
+        Assert.That(badAsmirErr, Does.Contain("unknown asmir optimization"));
+
+        (object? badNoAsmir, _, string badNoAsmirErr) = CaptureConsole(() => ParseOptions("input.blade", "-fno-asmir-opt=bad"));
+        Assert.That(badNoAsmir, Is.Null);
+        Assert.That(badNoAsmirErr, Does.Contain("unknown asmir optimization"));
+    }
+
 }
