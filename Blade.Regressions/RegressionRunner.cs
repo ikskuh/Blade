@@ -344,7 +344,7 @@ public static class RegressionRunner
 
     private static EvaluatedFixture ExecuteBladeFixture(RegressionFixture fixture)
     {
-        CompilationOptions options = BuildCompilationOptions(fixture.Expectation.CompilerArgs);
+        CompilationOptions options = BuildCompilationOptions(fixture.Expectation.CompilerArgs, fixture.AbsolutePath);
         CompilationResult compilation = CompilerDriver.Compile(fixture.Text, fixture.AbsolutePath, options);
         List<ActualDiagnostic> diagnostics = compilation.Diagnostics
             .Select(diag =>
@@ -387,10 +387,11 @@ public static class RegressionRunner
             fixture.BodyText);
     }
 
-    private static CompilationOptions BuildCompilationOptions(IReadOnlyList<string> compilerArgs)
+    private static CompilationOptions BuildCompilationOptions(IReadOnlyList<string> compilerArgs, string fixturePath)
     {
         bool enableSingleCallsiteInlining = true;
         List<OptimizationDirective> directives = [];
+        Dictionary<string, string> namedModuleRoots = new(StringComparer.Ordinal);
 
         foreach (string arg in compilerArgs)
         {
@@ -405,6 +406,13 @@ public static class RegressionRunner
                 continue;
             }
 
+
+            if (TryParseModuleSpecification(arg, fixturePath, out string? moduleName, out string? modulePath))
+            {
+                namedModuleRoots[moduleName!] = modulePath!;
+                continue;
+            }
+
             throw new InvalidOperationException($"Unsupported ARGS option '{arg}'.");
         }
 
@@ -412,7 +420,33 @@ public static class RegressionRunner
         {
             EnableSingleCallsiteInlining = enableSingleCallsiteInlining,
             OptimizationDirectives = directives,
+            NamedModuleRoots = namedModuleRoots,
         };
+    }
+
+
+    private static bool TryParseModuleSpecification(string arg, string fixturePath, out string? moduleName, out string? modulePath)
+    {
+        moduleName = null;
+        modulePath = null;
+        if (!arg.StartsWith("--module=", StringComparison.Ordinal))
+            return false;
+
+        string payload = arg["--module=".Length..];
+        int equalsIndex = payload.IndexOf('=', StringComparison.Ordinal);
+        if (equalsIndex <= 0 || equalsIndex == payload.Length - 1)
+            throw new InvalidOperationException($"Invalid module specification '{arg}'. Expected --module=<name>=<path>.");
+
+        string name = payload[..equalsIndex].Trim();
+        string pathText = payload[(equalsIndex + 1)..].Trim();
+        if (name.Length == 0 || pathText.Length == 0)
+            throw new InvalidOperationException($"Invalid module specification '{arg}'. Expected --module=<name>=<path>.");
+
+        string baseDirectory = Path.GetDirectoryName(fixturePath) ?? string.Empty;
+        string resolvedPath = Path.GetFullPath(Path.Combine(baseDirectory, pathText));
+        moduleName = name;
+        modulePath = resolvedPath;
+        return true;
     }
 
     private static bool TryParseOptimizationDirective(

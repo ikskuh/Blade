@@ -122,6 +122,17 @@ public sealed class FunctionSymbol : Symbol
     public IReadOnlyList<TypeSymbol> ReturnTypes { get; set; } = [];
 }
 
+public sealed class ModuleSymbol : Symbol
+{
+    public ModuleSymbol(string name, ImportedModule module)
+        : base(name)
+    {
+        Module = Requires.NotNull(module);
+    }
+
+    public ImportedModule Module { get; }
+}
+
 public sealed class Scope
 {
     private readonly Dictionary<string, Symbol> _symbols = new();

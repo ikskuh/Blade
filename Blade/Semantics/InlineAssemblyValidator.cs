@@ -157,7 +157,7 @@ public static class InlineAssemblyValidator
         foreach (string operand in operands)
         {
             // Find all {varname} references
-            MatchCollection matches = Regex.Matches(operand, @"\{(\w+)\}");
+            MatchCollection matches = Regex.Matches(operand, @"\{([A-Za-z0-9_$.]+)\}");
             foreach (Match match in matches)
             {
                 string varName = match.Groups[1].Value;

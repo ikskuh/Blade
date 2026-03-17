@@ -38,7 +38,7 @@ public class WriterAndSymbolTests
     [Test]
     public void DumpContentBuilder_ReturnsFinalAssemblyWhenNoExplicitDumpFlagsAreSet()
     {
-        BoundProgram program = new([], [], [], new Dictionary<string, TypeSymbol>(), new Dictionary<string, FunctionSymbol>());
+        BoundProgram program = new([], [], [], new Dictionary<string, TypeSymbol>(), new Dictionary<string, FunctionSymbol>(), new Dictionary<string, ImportedModule>());
         MirModule mir = new([]);
         LirModule lir = new([]);
         AsmModule asm = new([]);

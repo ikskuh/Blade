@@ -27,7 +27,7 @@ public class AcceptRejectTests
         int parserDiagnosticCount = diagnostics.Count;
         if (parserDiagnosticCount == 0)
         {
-            BoundProgram program = Binder.Bind(unit, diagnostics);
+            BoundProgram program = Binder.Bind(unit, diagnostics, source.FilePath, null);
             _ = program;
         }
         return unit;

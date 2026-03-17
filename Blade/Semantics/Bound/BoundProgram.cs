@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Blade;
+using Blade.Semantics;
 using Blade.Source;
 
 namespace Blade.Semantics.Bound;
@@ -11,7 +12,8 @@ public sealed class BoundProgram : BoundNode
         IReadOnlyList<BoundGlobalVariableMember> globalVariables,
         IReadOnlyList<BoundFunctionMember> functions,
         IReadOnlyDictionary<string, TypeSymbol> typeAliases,
-        IReadOnlyDictionary<string, FunctionSymbol> functionLookup)
+        IReadOnlyDictionary<string, FunctionSymbol> functionLookup,
+        IReadOnlyDictionary<string, ImportedModule> importedModules)
         : base(BoundNodeKind.Program, Requires.NotNull(topLevelStatements).Count > 0
             ? TextSpan.FromBounds(topLevelStatements[0].Span.Start, topLevelStatements[^1].Span.End)
             : new TextSpan(0, 0))
@@ -21,6 +23,7 @@ public sealed class BoundProgram : BoundNode
         Functions = Requires.NotNull(functions);
         TypeAliases = Requires.NotNull(typeAliases);
         FunctionLookup = Requires.NotNull(functionLookup);
+        ImportedModules = Requires.NotNull(importedModules);
     }
 
     public IReadOnlyList<BoundStatement> TopLevelStatements { get; }
@@ -28,6 +31,7 @@ public sealed class BoundProgram : BoundNode
     public IReadOnlyList<BoundFunctionMember> Functions { get; }
     public IReadOnlyDictionary<string, TypeSymbol> TypeAliases { get; }
     public IReadOnlyDictionary<string, FunctionSymbol> FunctionLookup { get; }
+    public IReadOnlyDictionary<string, ImportedModule> ImportedModules { get; }
 }
 
 public abstract class BoundMember : BoundNode

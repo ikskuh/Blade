@@ -175,6 +175,8 @@ Run with:
 dotnet test
 ```
 
+When a unit test needs filesystem access, use `Blade.Tests/TempDirectory` instead of hand-rolled `Path.GetTempPath()` / manual cleanup logic.
+
 ### Justfile Commands
 
 The repo has a `justfile` with a few convenience commands:

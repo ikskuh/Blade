@@ -175,6 +175,10 @@ public static class MirLowerer
                 foreach (BoundExpression argument in call.Arguments)
                     CollectAddressTakenSymbols(argument, symbols);
                 break;
+            case BoundModuleCallExpression moduleCall:
+                foreach (BoundStatement statement in moduleCall.Module.Program.TopLevelStatements)
+                    CollectAddressTakenSymbols(statement, symbols);
+                break;
             case BoundIntrinsicCallExpression intrinsic:
                 foreach (BoundExpression argument in intrinsic.Arguments)
                     CollectAddressTakenSymbols(argument, symbols);
@@ -360,7 +364,15 @@ public static class MirLowerer
                     break;
 
                 case BoundExpressionStatement expressionStatement:
-                    _ = LowerExpression(expressionStatement.Expression);
+                    if (expressionStatement.Expression is BoundModuleCallExpression moduleCallExpression)
+                    {
+                        foreach (BoundStatement moduleStatement in moduleCallExpression.Module.Program.TopLevelStatements)
+                            LowerStatement(moduleStatement);
+                    }
+                    else
+                    {
+                        _ = LowerExpression(expressionStatement.Expression);
+                    }
                     break;
 
                 case BoundIfStatement ifStatement:
@@ -801,6 +813,11 @@ public static class MirLowerer
 
                 case BoundCallExpression callExpression:
                     return LowerCallExpression(callExpression);
+
+                case BoundModuleCallExpression moduleCallExpression:
+                    foreach (BoundStatement moduleStatement in moduleCallExpression.Module.Program.TopLevelStatements)
+                        LowerStatement(moduleStatement);
+                    return EmitConstant(null, BuiltinTypes.Void, moduleCallExpression.Span);
 
                 case BoundIntrinsicCallExpression intrinsicCall:
                 {

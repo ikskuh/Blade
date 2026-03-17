@@ -239,6 +239,27 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
         Report(DiagnosticCode.E0227_MissingReturnValue, span, $"Function '{functionName}' must return a value on all control-flow paths.");
     }
 
+
+    public void ReportFileImportAliasRequired(TextSpan span)
+    {
+        Report(DiagnosticCode.E0228_FileImportAliasRequired, span, "File imports require an alias: use 'import \"path\" as alias;'.");
+    }
+
+    public void ReportUnknownNamedModule(TextSpan span, string moduleName)
+    {
+        Report(DiagnosticCode.E0229_UnknownNamedModule, span, $"Named module '{moduleName}' is not defined.");
+    }
+
+    public void ReportImportFileNotFound(TextSpan span, string path)
+    {
+        Report(DiagnosticCode.E0230_ImportFileNotFound, span, $"Imported file '{path}' was not found.");
+    }
+
+    public void ReportCircularImport(TextSpan span, string path)
+    {
+        Report(DiagnosticCode.E0231_CircularImport, span, $"Circular import detected at '{path}'.");
+    }
+
     // Inline assembly diagnostics
 
     public void ReportInlineAsmUnknownInstruction(TextSpan span, string mnemonic)

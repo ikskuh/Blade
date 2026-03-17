@@ -23,7 +23,7 @@ public class IrPipelineTests
         DiagnosticBag diagnostics = new();
         Parser parser = Parser.Create(source, diagnostics);
         CompilationUnitSyntax unit = parser.ParseCompilationUnit();
-        BoundProgram program = Binder.Bind(unit, diagnostics);
+        BoundProgram program = Binder.Bind(unit, diagnostics, source.FilePath, null);
         return (program, diagnostics);
     }
 

@@ -17,7 +17,18 @@ public class BinderTests
         DiagnosticBag diagnostics = new();
         Parser parser = Parser.Create(source, diagnostics);
         CompilationUnitSyntax unit = parser.ParseCompilationUnit();
-        BoundProgram program = Binder.Bind(unit, diagnostics);
+        BoundProgram program = Binder.Bind(unit, diagnostics, source.FilePath, null);
+        return (unit, program, diagnostics);
+    }
+
+
+    private static (CompilationUnitSyntax Unit, BoundProgram Program, DiagnosticBag Diagnostics) Bind(string text, string filePath, IReadOnlyDictionary<string, string>? namedModuleRoots = null)
+    {
+        SourceText source = new(text, filePath);
+        DiagnosticBag diagnostics = new();
+        Parser parser = Parser.Create(source, diagnostics);
+        CompilationUnitSyntax unit = parser.ParseCompilationUnit();
+        BoundProgram program = Binder.Bind(unit, diagnostics, filePath, namedModuleRoots);
         return (unit, program, diagnostics);
     }
 
@@ -558,4 +569,145 @@ public class BinderTests
         Assert.That(dump, Does.Contain("Intrinsic<u32> @encod"));
         Assert.That(dump, Does.Contain("Asm [NonVolatile]"));
     }
+
+    [Test]
+    public void FileImport_BindsModuleAliasMemberFunctionAndCall()
+    {
+        using TempDirectory temp = new();
+        temp.WriteFile("math.blade", "fn inc(x: u32) -> u32 { return x + 1; } var seed: u32 = 1;");
+
+        string sourcePath = temp.GetFullPath("main.blade");
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""import "./math.blade" as math; var outv: u32 = math.inc(2); math();""", sourcePath);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+        Assert.That(program.ImportedModules.ContainsKey("math"), Is.True);
+        Assert.That(program.ImportedModules["math"].ExportedFunctions.ContainsKey("inc"), Is.True);
+    }
+
+    [Test]
+    public void NamedModuleImport_BindsAliasFromNamedModuleMap()
+    {
+        using TempDirectory temp = new();
+        temp.WriteFile("ext.blade", "fn plus(a: u32, b: u32) -> u32 { return a + b; }");
+        string modulePath = temp.GetFullPath("ext.blade");
+        string sourcePath = temp.GetFullPath("main.blade");
+
+        Dictionary<string, string> namedModules = new(StringComparer.Ordinal)
+        {
+            ["extmod"] = modulePath,
+        };
+
+        (_, _, DiagnosticBag diagnostics) = Bind("import extmod as ext; var v: u32 = ext.plus(1, 2);", sourcePath, namedModules);
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+    }
+
+
+
+    [Test]
+    public void MissingImportFile_ReportsDiagnostic()
+    {
+        using TempDirectory temp = new();
+        string sourcePath = temp.GetFullPath("main.blade");
+        (_, _, DiagnosticBag diagnostics) = Bind("""import "./missing.mod" as missing;""", sourcePath);
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0230_ImportFileNotFound), Is.True);
+    }
+
+    [Test]
+    public void CircularImport_ReportsDiagnostic()
+    {
+        using TempDirectory temp = new();
+        temp.MakeDir("circular");
+        temp.WriteFile("circular/a.mod", """import "./b.mod" as b;""");
+        temp.WriteFile("circular/b.mod", """import "./a.mod" as a;""");
+
+        string sourcePath = temp.GetFullPath("main.blade");
+        (_, _, DiagnosticBag diagnostics) = Bind("""import "./circular/a.mod" as a;""", sourcePath);
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0231_CircularImport), Is.True);
+    }
+
+    [Test]
+    public void FileImportWithoutAlias_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""import "./module.blade";""", "/tmp/main.blade");
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0228_FileImportAliasRequired), Is.True);
+    }
+
+    [Test]
+    public void UnknownNamedModule_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("import extmod;", "/tmp/main.blade", new Dictionary<string, string>());
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0229_UnknownNamedModule), Is.True);
+    }
+
+
+
+    [Test]
+    public void StructMemberAccess_UnknownFieldReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            type P = packed struct { x: u32 };
+            var p: P = .{ .x = 1 };
+            var y: u32 = p.missing;
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0202_UndefinedName), Is.True);
+    }
+
+
+    [Test]
+    public void DuplicateImportAlias_ReportsDiagnostic()
+    {
+        using TempDirectory temp = new();
+        temp.WriteFile("ext.blade", "fn plus(a: u32, b: u32) -> u32 { return a + b; }");
+        string sourcePath = temp.GetFullPath("main.blade");
+        Dictionary<string, string> namedModules = new(StringComparer.Ordinal)
+        {
+            ["extmod"] = temp.GetFullPath("ext.blade"),
+        };
+
+        (_, _, DiagnosticBag diagnostics) = Bind("import extmod as ext; import extmod as ext;", sourcePath, namedModules);
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0201_SymbolAlreadyDeclared), Is.True);
+    }
+
+    [Test]
+    public void ImportedModule_MetadataIncludesTypesAndPropertiesAreReadable()
+    {
+        using TempDirectory temp = new();
+        temp.WriteFile("types.blade", "type Alias = u32; fn id(x: u32) -> u32 { return x; }");
+        string sourcePath = temp.GetFullPath("main.blade");
+
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""import "./types.blade" as t;""", sourcePath);
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        ImportedModule module = program.ImportedModules["t"];
+        Assert.That(module.SourceName, Is.EqualTo("./types.blade"));
+        Assert.That(module.ResolvedFilePath, Is.EqualTo(temp.GetFullPath("types.blade")));
+        Assert.That(module.DefaultAlias, Is.EqualTo("t"));
+        Assert.That(module.Syntax, Is.Not.Null);
+        Assert.That(module.ExportedTypes.ContainsKey("Alias"), Is.True);
+    }
+
+    [Test]
+    public void ModuleMemberAccess_UnknownMemberReportsDiagnostic()
+    {
+        using TempDirectory temp = new();
+        temp.WriteFile("math.blade", "fn inc(x: u32) -> u32 { return x + 1; }");
+        string sourcePath = temp.GetFullPath("main.blade");
+
+        (_, _, DiagnosticBag diagnostics) = Bind("""import "./math.blade" as math; var y: u32 = math.missing;""", sourcePath);
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0202_UndefinedName), Is.True);
+    }
+
+    [Test]
+    public void ModuleCall_WithArgumentsReportsArgumentCountMismatch()
+    {
+        using TempDirectory temp = new();
+        temp.WriteFile("math.blade", "fn inc(x: u32) -> u32 { return x + 1; }");
+        string sourcePath = temp.GetFullPath("main.blade");
+
+        (_, _, DiagnosticBag diagnostics) = Bind("""import "./math.blade" as math; math(1);""", sourcePath);
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0207_ArgumentCountMismatch), Is.True);
+    }
+
+
 }

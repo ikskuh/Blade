@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Blade.Source;
+using Blade.Semantics;
 using Blade.Syntax;
 
 namespace Blade.Semantics.Bound;
@@ -184,6 +185,18 @@ public sealed class BoundCallExpression : BoundExpression
 
     public FunctionSymbol Function { get; }
     public IReadOnlyList<BoundExpression> Arguments { get; }
+}
+
+
+public sealed class BoundModuleCallExpression : BoundExpression
+{
+    public BoundModuleCallExpression(ImportedModule module, TextSpan span)
+        : base(BoundNodeKind.ModuleCallExpression, span, BuiltinTypes.Void)
+    {
+        Module = Requires.NotNull(module);
+    }
+
+    public ImportedModule Module { get; }
 }
 
 public sealed class BoundIntrinsicCallExpression : BoundExpression

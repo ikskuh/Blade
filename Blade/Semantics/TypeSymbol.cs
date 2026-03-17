@@ -101,6 +101,18 @@ public sealed class FunctionTypeSymbol : TypeSymbol
     public FunctionSymbol Function { get; }
 }
 
+
+public sealed class ModuleTypeSymbol : TypeSymbol
+{
+    public ModuleTypeSymbol(ModuleSymbol module)
+        : base($"module {Requires.NotNull(module).Name}")
+    {
+        Module = Requires.NotNull(module);
+    }
+
+    public ModuleSymbol Module { get; }
+}
+
 public sealed class UnknownTypeSymbol : TypeSymbol
 {
     public UnknownTypeSymbol() : base("<unknown>")
