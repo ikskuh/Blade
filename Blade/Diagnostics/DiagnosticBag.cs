@@ -234,6 +234,11 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
         Report(DiagnosticCode.E0226_AddressOfRecursiveLocal, span, $"Cannot take the address of local '{name}' inside a recursive function.");
     }
 
+    public void ReportMissingReturnValue(TextSpan span, string functionName)
+    {
+        Report(DiagnosticCode.E0227_MissingReturnValue, span, $"Function '{functionName}' must return a value on all control-flow paths.");
+    }
+
     // Inline assembly diagnostics
 
     public void ReportInlineAsmUnknownInstruction(TextSpan span, string mnemonic)

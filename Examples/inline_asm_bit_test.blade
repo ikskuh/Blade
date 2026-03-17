@@ -22,6 +22,7 @@ fn read_pin_to_carry(pin: u32) -> bool@C {
     asm {
         TESTP {pin} WC
     } -> result: bool@C;
+    return result;
 }
 
 flags = test_and_set_bit(flags, 5);
