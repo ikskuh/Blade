@@ -121,6 +121,14 @@ public class ParserTests
         Assert.That(binary.Left, Is.TypeOf<ParenthesizedExpressionSyntax>());
     }
 
+    [Test]
+    public void InvalidQuaternaryLiteral_DoesNotCascadeIntoUnexpectedToken()
+    {
+        (_, DiagnosticBag diag) = Parse("reg var x: u32 = 0q123_456;");
+
+        Assert.That(diag.Select(diagnostic => diagnostic.Code), Is.EqualTo([DiagnosticCode.E0003_InvalidNumberLiteral]));
+    }
+
     // ── Statements ──
 
     [Test]

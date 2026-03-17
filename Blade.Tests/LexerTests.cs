@@ -317,10 +317,36 @@ public class LexerTests
     }
 
     [Test]
+    public void QuaternaryIntegerWithOutOfRadixDigits_StaysSingleTokenAndReportsDiagnostic()
+    {
+        List<Token> tokens = LexWithDiagnostics("0q123_456", out DiagnosticBag diagnostics);
+        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.IntegerLiteral));
+        Assert.That(tokens[0].Text, Is.EqualTo("0q123_456"));
+        Assert.That(tokens[0].Value, Is.EqualTo(0L));
+        Assert.That(tokens, Has.Count.EqualTo(2));
+        Assert.That(diagnostics.Count, Is.EqualTo(1));
+        Assert.That(diagnostics.Single().Code, Is.EqualTo(DiagnosticCode.E0003_InvalidNumberLiteral));
+    }
+
+    [Test]
     public void OctalIntegerWithoutDigits_ReportsDiagnostic()
     {
         List<Token> tokens = LexWithDiagnostics("0o", out DiagnosticBag diagnostics);
         Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.IntegerLiteral));
+        Assert.That(tokens[0].Value, Is.EqualTo(0L));
+        Assert.That(diagnostics.Count, Is.EqualTo(1));
+        Assert.That(diagnostics.Single().Code, Is.EqualTo(DiagnosticCode.E0003_InvalidNumberLiteral));
+    }
+
+    [TestCase("123_")]
+    [TestCase("1__23")]
+    [TestCase("0x_112")]
+    [TestCase("0o8")]
+    public void InvalidIntegerSeparatorsOrDigits_ReportInvalidNumberLiteral(string text)
+    {
+        List<Token> tokens = LexWithDiagnostics(text, out DiagnosticBag diagnostics);
+        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.IntegerLiteral));
+        Assert.That(tokens[0].Text, Is.EqualTo(text));
         Assert.That(tokens[0].Value, Is.EqualTo(0L));
         Assert.That(diagnostics.Count, Is.EqualTo(1));
         Assert.That(diagnostics.Single().Code, Is.EqualTo(DiagnosticCode.E0003_InvalidNumberLiteral));

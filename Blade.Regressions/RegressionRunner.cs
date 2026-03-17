@@ -1487,8 +1487,15 @@ public static class RegressionReportFormatter
             builder.AppendLine(fixtureResult.RelativePath);
             builder.Append("  ");
             builder.AppendLine(fixtureResult.Summary);
+            bool skippedSummaryDetail = false;
             foreach (string detail in fixtureResult.Details)
             {
+                if (!skippedSummaryDetail && string.Equals(detail, fixtureResult.Summary, StringComparison.Ordinal))
+                {
+                    skippedSummaryDetail = true;
+                    continue;
+                }
+
                 builder.Append("  ");
                 builder.AppendLine(detail);
             }

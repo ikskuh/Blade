@@ -165,3 +165,36 @@ public void QuaternaryInteger_CurrentlyThrowsForBase4Conversion()
 ## Regression ARGS parser parity
 
 `Blade.Regressions.RegressionRunner.BuildCompilationOptions` should use the same argument parser logic as the Blade compiler itself to avoid drift in accepted syntax/validation.
+
+## Improve regression runner output
+
+Make the regression runner less verbose and make it easier to find failed tests by always putting them on the bottom of the output.
+
+Desired output would roughly look like this:
+
+```
+PASS           Demonstrators/Asm/asm_label.blade
+PASS           Demonstrators/Asm/io_regular_asm.blade
+PASS           Demonstrators/Asm/math_routines.blade
+PASS           Demonstrators/Asm/optimizer_exercises.blade
+PASS           Demonstrators/Asm/volatile_routines.blade
+PASS           Demonstrators/Bugs/bitcast_i8_immediate_encoding.blade
+FAIL           Demonstrators/Language/integer_literals.blade
+XFAIL          Demonstrators/Optimizations/asmir-conditional-move-fusion-enabled.blade
+PASS           RegressionTests/Assembly/raw_exact.pasm2
+PASS           RegressionTests/Assembly/wrapped_example.spin2
+PASS           RegressionTests/Diagnostics/undefined_name_exact.blade
+PASS           RegressionTests/Diagnostics/unsupported_storage_class_loose.blade
+XFAIL          RegressionTests/ExpectedFailures/hub_string_walk.blade
+
+---
+
+FAIL           Demonstrators/Language/integer_literals.blade
+  unexpected diagnostic: L5, E0101: Expected ';', got '456'.
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260317T175026756Z/Demonstrators_Language_integer_literals.blade
+
+1 failed, 2 xfailed, 10 passed, 13 total
+```
+
+The last line contains only non-zero entires (skipping "skipped" and "unexpected")
