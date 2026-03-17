@@ -1,0 +1,16 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - L10, E0205
+// - L13, E0205
+// - L16, E0205
+// NOTE:
+//   Reject qualifier dropping, weaker source alignment, and storage mismatch.
+
+reg var drop_qualifiers_src: *reg const volatile u32 = undefined;
+reg var drop_qualifiers_dst: *reg u32 = drop_qualifiers_src;
+
+reg var weak_align_src: *reg align(4) u32 = undefined;
+reg var weak_align_dst: *reg align(8) u32 = weak_align_src;
+
+reg var storage_src: *reg u32 = undefined;
+reg var storage_dst: *hub u32 = storage_src;

@@ -1,0 +1,33 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - GETNIB
+// - GETBYTE
+// - TESTB
+// - SETNIB
+// - SETBYTE
+// - BITC
+// NOTE:
+//   Shows aligned bitfield reads and writes lowering to specialized P2 instructions.
+
+type Flags = bitfield (u32) {
+    lower: nib,
+    upper: nib,
+    bytev: u8,
+    flag: bool,
+};
+
+reg var output: u32 = 0;
+
+noinline fn demo(raw: u32) -> u32 {
+    var flags: Flags = bitcast(Flags, raw);
+    var lower: nib = flags.lower;
+    var bytev: u8 = flags.bytev;
+    var flag: bool = flags.flag;
+    flags.upper = lower;
+    flags.bytev = bytev;
+    flags.flag = flag;
+    return bitcast(u32, flags);
+}
+
+output = demo(0x1234_5678);

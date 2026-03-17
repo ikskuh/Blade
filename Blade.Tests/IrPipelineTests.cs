@@ -402,6 +402,136 @@ public class IrPipelineTests
     }
 
     [Test]
+    public void VolatilePointerDeref_RemainsInMirAsSideEffect()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            noinline fn demo(p: *reg volatile u32) -> u32 {
+                p.*;
+                return 0;
+            }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = true,
+            EnableLirOptimizations = false,
+        });
+
+        string mir = MirTextWriter.Write(build.MirModule);
+        Assert.That(mir, Does.Contain("load.deref"));
+        Assert.That(mir, Does.Contain("sidefx"));
+    }
+
+    [Test]
+    public void VolatileMultiPointerIndex_RemainsInMirAsSideEffect()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            noinline fn demo(p: [*]reg volatile u32, i: u32) -> u32 {
+                p[i];
+                return 0;
+            }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = true,
+            EnableLirOptimizations = false,
+        });
+
+        string mir = MirTextWriter.Write(build.MirModule);
+        Assert.That(mir, Does.Contain("load.index"));
+        Assert.That(mir, Does.Contain("sidefx"));
+    }
+
+    [Test]
+    public void EnumLiteral_GlobalInitializer_LowersToImmediateBackingValue()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            type Mode = enum (u8) {
+                Off = 0,
+                On = 1,
+                ...,
+            };
+
+            reg var mode: Mode = .On;
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        Assert.That(build.AssemblyText, Does.Match(@"MOV g_mode, #1"));
+    }
+
+    [Test]
+    public void BitfieldAssignment_LowersToInsertMirOpcode()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            type Flags = bitfield (u32) {
+                pad0: nib,
+                high: nib,
+            };
+
+            reg var flags: Flags = undefined;
+            flags.high = 3;
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        string mir = MirTextWriter.Write(build.MirModule);
+        Assert.That(mir, Does.Contain("bitfield.insert.4.4"));
+    }
+
+    [Test]
+    public void BitfieldAlignedReads_SelectSpecializedP2Instructions()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            type Flags = bitfield (u32) {
+                pad0: nib,
+                low: nib,
+                bytev: u8,
+                flag: bool,
+            };
+
+            noinline fn demo(raw: u32) -> u32 {
+                var flags: Flags = bitcast(Flags, raw);
+                var low: nib = flags.low;
+                var bytev: u8 = flags.bytev;
+                var flag: bool = flags.flag;
+                return (low as u32) + (bytev as u32);
+            }
+
+            reg var outv: u32 = demo(0);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        Assert.That(build.AssemblyText, Does.Contain("GETNIB"));
+        Assert.That(build.AssemblyText, Does.Contain("GETBYTE"));
+        Assert.That(build.AssemblyText, Does.Contain("TESTB"));
+    }
+
+    [Test]
     public void ModuloCompoundAssignment_UsesUpdatePlaceLowering()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""

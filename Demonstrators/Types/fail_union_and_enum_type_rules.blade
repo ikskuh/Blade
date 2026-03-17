@@ -1,0 +1,32 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - L25, E0202
+// - L28, E0205
+// - L31, E0205
+// - L31, E0205
+// NOTE:
+//   Unknown union members are rejected, enums do not assign across enum types,
+//   and enums do not participate in arithmetic.
+
+type Header = union {
+    lo: u32,
+    hi: u32,
+};
+
+type Left = enum (u8) {
+    A = 0,
+};
+
+type Right = enum (u8) {
+    A = 0,
+};
+
+reg var header: Header = undefined;
+reg var missing: u32 = header.missing;
+
+reg var left: Left = .A;
+reg var right: Right = left;
+
+fn demo(value: Left) -> u32 {
+    return value + 1;
+}

@@ -260,6 +260,22 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
         Report(DiagnosticCode.E0231_CircularImport, span, $"Circular import detected at '{path}'.");
     }
 
+    public void ReportEnumLiteralRequiresContext(TextSpan span, string memberName)
+    {
+        Report(
+            DiagnosticCode.E0232_EnumLiteralRequiresContext,
+            span,
+            $"Enum literal '.{memberName}' requires an expected enum type.");
+    }
+
+    public void ReportBitfieldWidthOverflow(TextSpan span, string bitfieldName, string fieldName, int usedBits, int backingBits)
+    {
+        Report(
+            DiagnosticCode.E0233_BitfieldWidthOverflow,
+            span,
+            $"Bitfield '{bitfieldName}' field '{fieldName}' uses {usedBits} bits, exceeding backing width {backingBits}.");
+    }
+
     // Inline assembly diagnostics
 
     public void ReportInlineAsmUnknownInstruction(TextSpan span, string mnemonic)

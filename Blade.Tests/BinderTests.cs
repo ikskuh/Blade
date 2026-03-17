@@ -709,5 +709,217 @@ public class BinderTests
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0207_ArgumentCountMismatch), Is.True);
     }
 
+    [Test]
+    public void AddressOfArray_BindsRegisterMultiPointerType()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn demo() void {
+                var values: [4]u32 = undefined;
+                var p: [*]reg u32 = &values;
+            }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+
+        BoundFunctionMember function = program.Functions.Single();
+        BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)function.Body.Statements[1];
+        Assert.That(declaration.Initializer!.Type.Name, Is.EqualTo("[*]reg u32"));
+    }
+
+    [Test]
+    public void PointerIndexing_ReportsDiagnosticForSinglePointer()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            fn demo(p: *reg u32) -> u32 {
+                return p[0];
+            }
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
+    }
+
+    [Test]
+    public void MultiPointerDeref_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            fn demo(p: [*]reg u32) -> u32 {
+                return p.*;
+            }
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
+    }
+
+    [Test]
+    public void PointerQualifiers_AllowAddingConstAndVolatile()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            reg var source: *reg u32 = undefined;
+            reg var sink: *reg const volatile u32 = source;
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+    }
+
+    [Test]
+    public void PointerQualifiers_RejectDroppingConstOrVolatile()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            reg var source: *reg const volatile u32 = undefined;
+            reg var sink: *reg u32 = source;
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
+    }
+
+    [Test]
+    public void PointerAlignment_AllowsStrongerSourceAlignment()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            reg var source: *reg align(8) u32 = undefined;
+            reg var sink: *reg align(4) u32 = source;
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+    }
+
+    [Test]
+    public void PointerAlignment_RejectsWeakerSourceAlignment()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            reg var source: *reg align(4) u32 = undefined;
+            reg var sink: *reg align(8) u32 = source;
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
+    }
+
+    [Test]
+    public void EnumLiteral_BindsFromExpectedContext()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            type Mode = enum (u8) {
+                Idle = 0,
+                Busy = 1,
+            };
+
+            reg var mode: Mode = .Busy;
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+        string dump = BoundTreeWriter.Write(program);
+        Assert.That(dump, Does.Contain("EnumLiteral<Mode> .Busy = 1"));
+    }
+
+    [Test]
+    public void QualifiedEnumMember_BindsWithoutValueScopeEntry()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            type Mode = enum (u8) {
+                Idle = 0,
+                Busy = 1,
+            };
+
+            reg var mode: Mode = Mode.Busy;
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+        string dump = BoundTreeWriter.Write(program);
+        Assert.That(dump, Does.Contain("EnumLiteral<Mode> .Busy = 1"));
+    }
+
+    [Test]
+    public void BareEnumLiteral_WithoutContextReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            type Mode = enum (u8) {
+                Idle = 0,
+            };
+
+            .Idle;
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0232_EnumLiteralRequiresContext), Is.True);
+    }
+
+    [Test]
+    public void CrossEnumAssignment_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            type First = enum (u8) { A = 0, };
+            type Second = enum (u8) { A = 0, };
+
+            reg var first: First = .A;
+            reg var second: Second = first;
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
+    }
+
+    [Test]
+    public void EnumArithmetic_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            type Mode = enum (u8) {
+                Idle = 0,
+                Busy = 1,
+            };
+
+            fn demo(mode: Mode) -> u32 {
+                return mode + 1;
+            }
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
+    }
+
+    [Test]
+    public void UnionMemberAccess_BindsLikeStruct()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            type Header = union {
+                lo: u32,
+                hi: u32,
+            };
+
+            reg var header: Header = undefined;
+            reg var value: u32 = header.lo;
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+        string dump = BoundTreeWriter.Write(program);
+        Assert.That(dump, Does.Contain("Member<u32> .lo"));
+    }
+
+    [Test]
+    public void BitfieldOverflow_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            type Flags = bitfield (u8) {
+                wide: u16,
+            };
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0233_BitfieldWidthOverflow), Is.True);
+    }
+
+    [Test]
+    public void BitfieldMemberAssignment_BindsDedicatedTarget()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            type Flags = bitfield (u32) {
+                low: nib,
+                high: nib,
+            };
+
+            reg var flags: Flags = undefined;
+            flags.high = 3;
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+        string dump = BoundTreeWriter.Write(program);
+        Assert.That(dump, Does.Contain("TargetBitfield<nib> .high"));
+    }
+
 
 }

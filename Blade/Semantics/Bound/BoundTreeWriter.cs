@@ -177,6 +177,10 @@ public static class BoundTreeWriter
                     WriteExpression(sb, indent + 1, arg);
                 break;
 
+            case BoundEnumLiteralExpression enumLiteral:
+                AppendLine(sb, indent, $"EnumLiteral<{enumLiteral.Type.Name}> .{enumLiteral.MemberName} = {enumLiteral.Value}");
+                break;
+
             case BoundMemberAccessExpression member:
                 AppendLine(sb, indent, $"Member<{member.Type.Name}> .{member.MemberName}");
                 WriteExpression(sb, indent + 1, member.Receiver);
@@ -246,6 +250,10 @@ public static class BoundTreeWriter
             case BoundMemberAssignmentTarget member:
                 AppendLine(sb, indent, $"TargetMember<{member.Type.Name}> .{member.MemberName}");
                 WriteExpression(sb, indent + 1, member.Receiver);
+                break;
+            case BoundBitfieldAssignmentTarget bitfield:
+                AppendLine(sb, indent, $"TargetBitfield<{bitfield.Type.Name}> .{bitfield.Member.Name}");
+                WriteExpression(sb, indent + 1, bitfield.ReceiverValue);
                 break;
             case BoundIndexAssignmentTarget index:
                 AppendLine(sb, indent, $"TargetIndex<{index.Type.Name}>");

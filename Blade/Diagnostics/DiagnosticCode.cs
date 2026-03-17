@@ -54,6 +54,8 @@ public enum DiagnosticCode
     E0229_UnknownNamedModule = 229,
     E0230_ImportFileNotFound = 230,
     E0231_CircularImport = 231,
+    E0232_EnumLiteralRequiresContext = 232,
+    E0233_BitfieldWidthOverflow = 233,
 
     // Inline assembly errors
     E0301_InlineAsmUnknownInstruction = 301,

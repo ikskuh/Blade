@@ -1,0 +1,9 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - L8, E0233
+// NOTE:
+//   The field widths exceed the backing integer width.
+
+type Flags = bitfield (u8) {
+    wide: u16,
+};

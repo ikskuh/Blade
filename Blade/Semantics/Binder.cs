@@ -772,19 +772,27 @@ public sealed class Binder
             {
                 BoundExpression receiver = BindExpression(memberAccess.Expression);
                 TypeSymbol type = BuiltinTypes.Unknown;
-                if (receiver.Type is StructTypeSymbol structType)
+                if (TryGetAggregateMember(receiver.Type, memberAccess.Member.Text, out AggregateMemberSymbol? member)
+                    && member is not null)
                 {
-                    if (structType.Fields.TryGetValue(memberAccess.Member.Text, out TypeSymbol? fieldType))
+                    if (member.IsBitfield)
                     {
-                        type = fieldType;
+                        BoundAssignmentTarget receiverTarget = BindAssignmentTarget(memberAccess.Expression);
+                        return new BoundBitfieldAssignmentTarget(receiverTarget, receiver, member, target.Span);
                     }
-                    else
-                    {
-                        _diagnostics.ReportUndefinedName(memberAccess.Member.Span, memberAccess.Member.Text);
-                    }
+
+                    return new BoundMemberAssignmentTarget(receiver, member, target.Span);
                 }
 
-                return new BoundMemberAssignmentTarget(receiver, memberAccess.Member.Text, target.Span, type);
+                if (receiver.Type is StructTypeSymbol or UnionTypeSymbol or BitfieldTypeSymbol)
+                {
+                    _diagnostics.ReportUndefinedName(memberAccess.Member.Span, memberAccess.Member.Text);
+                }
+
+                return new BoundMemberAssignmentTarget(
+                    receiver,
+                    new AggregateMemberSymbol(memberAccess.Member.Text, BuiltinTypes.Unknown, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false),
+                    target.Span);
             }
 
             case IndexExpressionSyntax index:
@@ -797,9 +805,12 @@ public sealed class Binder
                 TypeSymbol type = expression.Type switch
                 {
                     ArrayTypeSymbol array => array.ElementType,
-                    PointerTypeSymbol pointer => pointer.PointeeType,
+                    MultiPointerTypeSymbol pointer => pointer.PointeeType,
                     _ => BuiltinTypes.Unknown,
                 };
+
+                if (expression.Type is PointerTypeSymbol)
+                    _diagnostics.ReportTypeMismatch(index.Expression.Span, "array or [*]pointer", expression.Type.Name);
 
                 return new BoundIndexAssignmentTarget(expression, indexExpr, target.Span, type);
             }
@@ -893,6 +904,9 @@ public sealed class Binder
 
             case StructLiteralExpressionSyntax structLiteral:
                 return BindStructLiteralExpression(structLiteral, expectedType);
+
+            case EnumLiteralExpressionSyntax enumLiteral:
+                return BindEnumLiteralExpression(enumLiteral, expectedType);
 
             case CastExpressionSyntax castExpression:
                 return BindCastExpression(castExpression);
@@ -1031,7 +1045,9 @@ public sealed class Binder
         VariableStorageClass storageClass = variable.IsAutomatic
             ? VariableStorageClass.Reg
             : variable.StorageClass;
-        PointerTypeSymbol pointerType = new(variable.Type, variable.IsConst, storageClass);
+        TypeSymbol pointerType = variable.Type is ArrayTypeSymbol arrayType
+            ? new MultiPointerTypeSymbol(arrayType.ElementType, variable.IsConst, storageClass: storageClass)
+            : new PointerTypeSymbol(variable.Type, variable.IsConst, storageClass: storageClass);
         BoundSymbolExpression operand = new(variable, unary.Operand.Span, variable.Type);
         return new BoundUnaryExpression(op, operand, unary.Span, pointerType);
     }
@@ -1044,7 +1060,9 @@ public sealed class Binder
             return new BoundErrorExpression(unary.Span);
         }
 
-        PointerTypeSymbol pointerType = new(parameter.Type, isConst: false, VariableStorageClass.Reg);
+        TypeSymbol pointerType = parameter.Type is ArrayTypeSymbol arrayType
+            ? new MultiPointerTypeSymbol(arrayType.ElementType, isConst: false, storageClass: VariableStorageClass.Reg)
+            : new PointerTypeSymbol(parameter.Type, isConst: false, storageClass: VariableStorageClass.Reg);
         BoundSymbolExpression operand = new(parameter, unary.Operand.Span, parameter.Type);
         return new BoundUnaryExpression(op, operand, unary.Span, pointerType);
     }
@@ -1064,7 +1082,8 @@ public sealed class Binder
         BoundExpression operandExpression = target switch
         {
             BoundSymbolAssignmentTarget symbol => new BoundSymbolExpression(symbol.Symbol, postfixUnary.Operand.Span, symbol.Type),
-            BoundMemberAssignmentTarget member => new BoundMemberAccessExpression(member.Receiver, member.MemberName, postfixUnary.Operand.Span, member.Type),
+            BoundMemberAssignmentTarget member => new BoundMemberAccessExpression(member.Receiver, member.Member, postfixUnary.Operand.Span),
+            BoundBitfieldAssignmentTarget bitfield => new BoundMemberAccessExpression(bitfield.ReceiverValue, bitfield.Member, postfixUnary.Operand.Span),
             BoundIndexAssignmentTarget index => new BoundIndexExpression(index.Expression, index.Index, postfixUnary.Operand.Span, index.Type),
             BoundPointerDerefAssignmentTarget deref => new BoundPointerDerefExpression(deref.Expression, postfixUnary.Operand.Span, deref.Type),
             _ => new BoundErrorExpression(postfixUnary.Operand.Span),
@@ -1125,11 +1144,19 @@ public sealed class Binder
 
     private BoundExpression BindMemberAccessExpression(MemberAccessExpressionSyntax memberAccess)
     {
-        BoundExpression receiver = BindExpression(memberAccess.Expression);
-        if (receiver.Type is StructTypeSymbol structType
-            && structType.Fields.TryGetValue(memberAccess.Member.Text, out TypeSymbol? fieldType))
+        if (memberAccess.Expression is NameExpressionSyntax nameExpression
+            && !_currentScope.TryLookup(nameExpression.Name.Text, out _)
+            && TryResolveEnumTypeAlias(nameExpression.Name.Text, nameExpression.Name.Span, out EnumTypeSymbol? qualifiedEnum)
+            && qualifiedEnum is not null)
         {
-            return new BoundMemberAccessExpression(receiver, memberAccess.Member.Text, memberAccess.Span, fieldType);
+            return BindQualifiedEnumMember(memberAccess, qualifiedEnum);
+        }
+
+        BoundExpression receiver = BindExpression(memberAccess.Expression);
+        if (TryGetAggregateMember(receiver.Type, memberAccess.Member.Text, out AggregateMemberSymbol? member)
+            && member is not null)
+        {
+            return new BoundMemberAccessExpression(receiver, member, memberAccess.Span);
         }
 
         if (receiver.Type is ModuleTypeSymbol moduleType)
@@ -1148,10 +1175,13 @@ public sealed class Binder
             return new BoundErrorExpression(memberAccess.Span);
         }
 
-        if (receiver.Type is StructTypeSymbol)
+        if (receiver.Type is StructTypeSymbol or UnionTypeSymbol or BitfieldTypeSymbol)
             _diagnostics.ReportUndefinedName(memberAccess.Member.Span, memberAccess.Member.Text);
 
-        return new BoundMemberAccessExpression(receiver, memberAccess.Member.Text, memberAccess.Span, BuiltinTypes.Unknown);
+        return new BoundMemberAccessExpression(
+            receiver,
+            new AggregateMemberSymbol(memberAccess.Member.Text, BuiltinTypes.Unknown, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false),
+            memberAccess.Span);
     }
 
     private BoundExpression BindPointerDerefExpression(PointerDerefExpressionSyntax pointerDeref)
@@ -1180,11 +1210,75 @@ public sealed class Binder
         TypeSymbol type = expression.Type switch
         {
             ArrayTypeSymbol array => array.ElementType,
-            PointerTypeSymbol pointer => pointer.PointeeType,
+            MultiPointerTypeSymbol pointer => pointer.PointeeType,
             _ => BuiltinTypes.Unknown,
         };
 
+        if (expression.Type is PointerTypeSymbol)
+            _diagnostics.ReportTypeMismatch(indexExpression.Expression.Span, "array or [*]pointer", expression.Type.Name);
+
         return new BoundIndexExpression(expression, index, indexExpression.Span, type);
+    }
+
+    private BoundExpression BindEnumLiteralExpression(EnumLiteralExpressionSyntax enumLiteral, TypeSymbol? expectedType)
+    {
+        if (expectedType is not EnumTypeSymbol enumType)
+        {
+            _diagnostics.ReportEnumLiteralRequiresContext(enumLiteral.Span, enumLiteral.MemberName.Text);
+            return new BoundErrorExpression(enumLiteral.Span);
+        }
+
+        if (!enumType.Members.TryGetValue(enumLiteral.MemberName.Text, out long value))
+        {
+            _diagnostics.ReportUndefinedName(enumLiteral.MemberName.Span, enumLiteral.MemberName.Text);
+            return new BoundErrorExpression(enumLiteral.Span);
+        }
+
+        return new BoundEnumLiteralExpression(enumType, enumLiteral.MemberName.Text, value, enumLiteral.Span);
+    }
+
+    private BoundExpression BindQualifiedEnumMember(MemberAccessExpressionSyntax memberAccess, EnumTypeSymbol enumType)
+    {
+        if (!enumType.Members.TryGetValue(memberAccess.Member.Text, out long value))
+        {
+            _diagnostics.ReportUndefinedName(memberAccess.Member.Span, memberAccess.Member.Text);
+            return new BoundErrorExpression(memberAccess.Span);
+        }
+
+        return new BoundEnumLiteralExpression(enumType, memberAccess.Member.Text, value, memberAccess.Span);
+    }
+
+    private bool TryResolveEnumTypeAlias(string aliasName, TextSpan span, out EnumTypeSymbol? enumType)
+    {
+        if (!_resolvedTypeAliases.ContainsKey(aliasName) && !_typeAliases.ContainsKey(aliasName))
+        {
+            enumType = null;
+            return false;
+        }
+
+        TypeSymbol resolved = ResolveTypeAlias(aliasName, span);
+        enumType = resolved as EnumTypeSymbol;
+        return enumType is not null;
+    }
+
+    private static bool TryGetAggregateMember(TypeSymbol type, string memberName, out AggregateMemberSymbol? member)
+    {
+        IReadOnlyDictionary<string, AggregateMemberSymbol>? members = type switch
+        {
+            StructTypeSymbol structType => structType.Members,
+            UnionTypeSymbol unionType => unionType.Members,
+            BitfieldTypeSymbol bitfieldType => bitfieldType.Members,
+            _ => null,
+        };
+
+        if (members is not null && members.TryGetValue(memberName, out AggregateMemberSymbol? resolvedMember))
+        {
+            member = resolvedMember;
+            return true;
+        }
+
+        member = null;
+        return false;
     }
 
     private BoundExpression BindCallExpression(CallExpressionSyntax callExpression)
@@ -1515,6 +1609,28 @@ public sealed class Binder
         if (sourceType.IsUnknown || targetType.IsUnknown)
             return true;
 
+        if (ReferenceEquals(sourceType, targetType))
+            return true;
+
+        if (sourceType is EnumTypeSymbol sourceEnum && targetType is EnumTypeSymbol targetEnum)
+            return ReferenceEquals(sourceEnum, targetEnum);
+
+        if (sourceType is EnumTypeSymbol openEnumSource
+            && openEnumSource.IsOpen
+            && targetType.IsInteger
+            && openEnumSource.BackingType.Name == targetType.Name)
+        {
+            return true;
+        }
+
+        if (targetType is EnumTypeSymbol openEnumTarget
+            && openEnumTarget.IsOpen
+            && sourceType.IsInteger
+            && openEnumTarget.BackingType.Name == sourceType.Name)
+        {
+            return true;
+        }
+
         if (sourceType.IsInteger
             && targetType.IsInteger
             && TypeFacts.TryGetIntegerWidth(sourceType, out _)
@@ -1523,7 +1639,7 @@ public sealed class Binder
             return true;
         }
 
-        return sourceType is PointerTypeSymbol && targetType is PointerTypeSymbol;
+        return sourceType is PointerLikeTypeSymbol && targetType is PointerLikeTypeSymbol;
     }
 
     private Symbol? ResolveVariableSymbol(Token token)
@@ -1681,8 +1797,19 @@ public sealed class Binder
             PointerTypeSyntax pointer => new PointerTypeSymbol(
                 BindType(pointer.PointeeType),
                 pointer.ConstKeyword is not null,
+                pointer.VolatileKeyword is not null,
+                TryEvaluateConstantInt(pointer.AlignClause?.Alignment),
                 MapStorageClass(pointer.StorageClassKeyword)),
+            MultiPointerTypeSyntax multiPointer => new MultiPointerTypeSymbol(
+                BindType(multiPointer.PointeeType),
+                multiPointer.ConstKeyword is not null,
+                multiPointer.VolatileKeyword is not null,
+                TryEvaluateConstantInt(multiPointer.AlignClause?.Alignment),
+                MapStorageClass(multiPointer.StorageClassKeyword)),
             StructTypeSyntax structType => BindStructType(structType, aliasName),
+            UnionTypeSyntax unionType => BindUnionType(unionType, aliasName),
+            EnumTypeSyntax enumType => BindEnumType(enumType, aliasName),
+            BitfieldTypeSyntax bitfieldType => BindBitfieldType(bitfieldType, aliasName),
             NamedTypeSyntax named => BindNamedType(named),
             _ => BuiltinTypes.Unknown,
         };
@@ -1713,21 +1840,152 @@ public sealed class Binder
             _diagnostics.ReportTypeMismatch(arrayType.Size.Span, "integer", size.Type.Name);
 
         TypeSymbol elementType = BindType(arrayType.ElementType);
-        return new ArrayTypeSymbol(elementType);
+        return new ArrayTypeSymbol(elementType, TryEvaluateConstantInt(size));
     }
 
     private TypeSymbol BindStructType(StructTypeSyntax structType, string? aliasName)
     {
         Dictionary<string, TypeSymbol> fields = new(StringComparer.Ordinal);
+        Dictionary<string, AggregateMemberSymbol> members = new(StringComparer.Ordinal);
+        int nextOffset = 0;
+        int maxAlignment = 1;
         foreach (StructFieldSyntax field in structType.Fields)
         {
             TypeSymbol fieldType = BindType(field.Type);
             if (!fields.TryAdd(field.Name.Text, fieldType))
+            {
                 _diagnostics.ReportSymbolAlreadyDeclared(field.Name.Span, field.Name.Text);
+                continue;
+            }
+
+            int fieldSize = TypeFacts.TryGetSizeBytes(fieldType, out int computedFieldSize) ? computedFieldSize : 0;
+            int fieldAlignment = TypeFacts.TryGetAlignmentBytes(fieldType, out int computedFieldAlignment) ? computedFieldAlignment : 1;
+            members[field.Name.Text] = new AggregateMemberSymbol(field.Name.Text, fieldType, nextOffset, bitOffset: 0, bitWidth: 0, isBitfield: false);
+            nextOffset += fieldSize;
+            maxAlignment = Math.Max(maxAlignment, fieldAlignment);
         }
 
         string name = aliasName ?? $"<anon-struct#{++_anonymousStructIndex}>";
-        return new StructTypeSymbol(name, fields);
+        return new StructTypeSymbol(name, fields, members, nextOffset, maxAlignment);
+    }
+
+    private TypeSymbol BindUnionType(UnionTypeSyntax unionType, string? aliasName)
+    {
+        Dictionary<string, TypeSymbol> fields = new(StringComparer.Ordinal);
+        Dictionary<string, AggregateMemberSymbol> members = new(StringComparer.Ordinal);
+        int maxSize = 0;
+        int maxAlignment = 1;
+        foreach (StructFieldSyntax field in unionType.Fields)
+        {
+            TypeSymbol fieldType = BindType(field.Type);
+            if (!fields.TryAdd(field.Name.Text, fieldType))
+            {
+                _diagnostics.ReportSymbolAlreadyDeclared(field.Name.Span, field.Name.Text);
+                continue;
+            }
+
+            int fieldSize = TypeFacts.TryGetSizeBytes(fieldType, out int computedFieldSize) ? computedFieldSize : 0;
+            int fieldAlignment = TypeFacts.TryGetAlignmentBytes(fieldType, out int computedFieldAlignment) ? computedFieldAlignment : 1;
+            members[field.Name.Text] = new AggregateMemberSymbol(field.Name.Text, fieldType, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false);
+            maxSize = Math.Max(maxSize, fieldSize);
+            maxAlignment = Math.Max(maxAlignment, fieldAlignment);
+        }
+
+        string name = aliasName ?? $"<anon-union#{++_anonymousStructIndex}>";
+        return new UnionTypeSymbol(name, fields, members, maxSize, maxAlignment);
+    }
+
+    private TypeSymbol BindEnumType(EnumTypeSyntax enumTypeSyntax, string? aliasName)
+    {
+        TypeSymbol backingType = BindType(enumTypeSyntax.BackingType);
+        if (!backingType.IsInteger)
+            _diagnostics.ReportTypeMismatch(enumTypeSyntax.BackingType.Span, "integer", backingType.Name);
+
+        Dictionary<string, long> members = new(StringComparer.Ordinal);
+        long nextValue = 0;
+        bool hasPreviousValue = false;
+        bool isOpen = false;
+
+        foreach (EnumMemberSyntax member in enumTypeSyntax.Members)
+        {
+            if (member.IsOpenMarker)
+            {
+                isOpen = true;
+                continue;
+            }
+
+            if (members.ContainsKey(member.Name.Text))
+            {
+                _diagnostics.ReportSymbolAlreadyDeclared(member.Name.Span, member.Name.Text);
+                continue;
+            }
+
+            long value;
+            if (member.Value is not null)
+            {
+                BoundExpression boundValue = BindExpression(member.Value);
+                int? constantValue = TryEvaluateConstantInt(boundValue);
+                if (constantValue is null)
+                {
+                    _diagnostics.ReportTypeMismatch(member.Value.Span, "comptime integer", boundValue.Type.Name);
+                    value = nextValue;
+                }
+                else
+                {
+                    value = constantValue.Value;
+                    nextValue = value + 1;
+                    hasPreviousValue = true;
+                }
+            }
+            else
+            {
+                value = hasPreviousValue ? nextValue : 0;
+                nextValue = value + 1;
+                hasPreviousValue = true;
+            }
+
+            members[member.Name.Text] = value;
+        }
+
+        string name = aliasName ?? $"<anon-enum#{++_anonymousStructIndex}>";
+        return new EnumTypeSymbol(name, backingType, members, isOpen);
+    }
+
+    private TypeSymbol BindBitfieldType(BitfieldTypeSyntax bitfieldTypeSyntax, string? aliasName)
+    {
+        TypeSymbol backingType = BindType(bitfieldTypeSyntax.BackingType);
+        if (!backingType.IsInteger)
+            _diagnostics.ReportTypeMismatch(bitfieldTypeSyntax.BackingType.Span, "integer", backingType.Name);
+
+        Dictionary<string, TypeSymbol> fields = new(StringComparer.Ordinal);
+        Dictionary<string, AggregateMemberSymbol> members = new(StringComparer.Ordinal);
+        int bitOffset = 0;
+        int backingWidth = TypeFacts.TryGetIntegerWidth(backingType, out int width) ? width : 0;
+
+        foreach (StructFieldSyntax field in bitfieldTypeSyntax.Fields)
+        {
+            TypeSymbol fieldType = BindType(field.Type);
+            if (!fields.TryAdd(field.Name.Text, fieldType))
+            {
+                _diagnostics.ReportSymbolAlreadyDeclared(field.Name.Span, field.Name.Text);
+                continue;
+            }
+
+            if (!TypeFacts.TryGetBitfieldFieldWidth(fieldType, out int fieldWidth))
+            {
+                _diagnostics.ReportTypeMismatch(field.Type.Span, "bitfield scalar", fieldType.Name);
+                fieldWidth = 0;
+            }
+
+            if (bitOffset + fieldWidth > backingWidth)
+                _diagnostics.ReportBitfieldWidthOverflow(field.Span, aliasName ?? "<anon-bitfield>", field.Name.Text, bitOffset + fieldWidth, backingWidth);
+
+            members[field.Name.Text] = new AggregateMemberSymbol(field.Name.Text, fieldType, byteOffset: 0, bitOffset, fieldWidth, isBitfield: true);
+            bitOffset += fieldWidth;
+        }
+
+        string name = aliasName ?? $"<anon-bitfield#{++_anonymousStructIndex}>";
+        return new BitfieldTypeSymbol(name, backingType, fields, members);
     }
 
     private TypeSymbol BindNamedType(NamedTypeSyntax namedType)
@@ -1791,12 +2049,22 @@ public sealed class Binder
             return true;
         if (source.IsUndefinedLiteral)
             return true;
+        if (target is PointerLikeTypeSymbol && source.IsUndefinedLiteral)
+            return true;
+
+        if (target is EnumTypeSymbol targetEnum && source is EnumTypeSymbol sourceEnum)
+            return ReferenceEquals(targetEnum, sourceEnum);
+
+        if (target is BitfieldTypeSymbol targetBitfield && source is BitfieldTypeSymbol sourceBitfield)
+            return ReferenceEquals(targetBitfield, sourceBitfield);
+
         if (target.IsInteger && source.IsInteger)
             return true;
         if (target.IsBool && source.IsBool)
             return true;
-        if (target is PointerTypeSymbol && source.IsUndefinedLiteral)
-            return true;
+
+        if (target is PointerLikeTypeSymbol targetPointer && source is PointerLikeTypeSymbol sourcePointer)
+            return IsPointerAssignable(targetPointer, sourcePointer);
 
         if (target is StructTypeSymbol targetStruct && source is StructTypeSymbol sourceStruct)
         {
@@ -1817,7 +2085,49 @@ public sealed class Binder
             return true;
         }
 
+        if (target is UnionTypeSymbol targetUnion && source is UnionTypeSymbol sourceUnion)
+        {
+            if (ReferenceEquals(targetUnion, sourceUnion))
+                return true;
+
+            if (targetUnion.Fields.Count != sourceUnion.Fields.Count)
+                return false;
+
+            foreach ((string fieldName, TypeSymbol fieldType) in targetUnion.Fields)
+            {
+                if (!sourceUnion.Fields.TryGetValue(fieldName, out TypeSymbol? sourceFieldType))
+                    return false;
+                if (!IsAssignable(fieldType, sourceFieldType))
+                    return false;
+            }
+
+            return true;
+        }
+
         return target.Name == source.Name;
+    }
+
+    private static bool IsPointerAssignable(PointerLikeTypeSymbol target, PointerLikeTypeSymbol source)
+    {
+        if (target.GetType() != source.GetType())
+            return false;
+
+        if (target.StorageClass != source.StorageClass)
+            return false;
+
+        if (!target.IsConst && source.IsConst)
+            return false;
+
+        if (!target.IsVolatile && source.IsVolatile)
+            return false;
+
+        if (target.Alignment is int requiredAlignment)
+        {
+            if (source.Alignment is not int sourceAlignment || sourceAlignment < requiredAlignment)
+                return false;
+        }
+
+        return IsAssignable(target.PointeeType, source.PointeeType);
     }
 
     private void PushLoop(LoopContext kind) => _loopStack.Push(kind);

@@ -1,0 +1,22 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - Member<u32> .lo
+// - TargetMember<u32> .hi
+// NOTE:
+//   Union members bind through the same aggregate-field path as structs.
+
+type Pair = packed struct {
+    lo: u32,
+    hi: u32,
+};
+
+type Header = union {
+    pair: Pair,
+    lo: u32,
+    hi: u32,
+};
+
+reg var header: Header = undefined;
+reg var first: u32 = header.lo;
+header.hi = first;

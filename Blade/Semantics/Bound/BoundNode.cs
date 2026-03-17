@@ -34,6 +34,7 @@ public enum BoundNodeKind
     CallExpression,
     ModuleCallExpression,
     IntrinsicCallExpression,
+    EnumLiteralExpression,
     MemberAccessExpression,
     IndexExpression,
     PointerDerefExpression,
@@ -47,6 +48,7 @@ public enum BoundNodeKind
 
     SymbolAssignmentTarget,
     MemberAssignmentTarget,
+    BitfieldAssignmentTarget,
     IndexAssignmentTarget,
     PointerDerefAssignmentTarget,
     ErrorAssignmentTarget,

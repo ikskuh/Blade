@@ -165,28 +165,51 @@ fn parsed_but_not_fully_emitted() -> value: u32, ok: bool @C {
   - `int(expr)`
 - Composite syntax accepted:
   - arrays: `[expr]T`
-  - pointers: `*T`, `*const T`
+  - single pointers: `*storage [const] [volatile] [align(expr)] T`
+  - multi-pointers: `[*]storage [const] [volatile] [align(expr)] T`
   - packed structs: `packed struct { field: T, ... }`
+  - unions: `union { field: T, ... }`
+  - enums: `enum (T) { member = value, ... }`
+  - bitfields: `bitfield (T) { field: T, ... }`
   - named types: `MyAlias`
 - Actual type information preserved by binder:
   - primitive identity
-  - pointer pointee type + `const` bit
-  - array element type only
-  - struct field map only
+  - pointer family, storage class, pointee type, `const`, `volatile`, and `align(...)`
+  - array element type and constant length when available
+  - struct field map
+  - union field map
+  - enum backing type, members, and open/closed state
+  - bitfield backing type plus computed member bit offsets and widths
 - Actual type information lost by binder:
   - `uint(5)` vs `uint(12)` vs `uint(31)` all collapse to plain `uint`
   - `int(5)` vs `int(12)` vs `int(31)` all collapse to plain `int`
-  - `[4]u8` vs `[1024]u8` both collapse to "array of `u8`" with no stored length
-  - struct packing/layout offsets are not modeled
+  - non-constant `align(...)` expressions still fold to `null`
+  - aggregate lowering is still incomplete for general member/index/deref codegen
 
 ```blade
 var a: uint(5) = 0;                   // width parsed; semantic type is plain `uint`
-var b: [16]u8 = undefined;            // size parsed; semantic type stores only element type
-var p: *const u32 = undefined;        // constness bit is preserved in the type
+var b: [16]u8 = undefined;            // constant array length is preserved
+var p: *hub const volatile align(4) u32 = undefined;
+var many: [*]reg u8 = undefined;
 
 const Pair = packed struct {
     lo: u16,
     hi: u16,
+};
+
+type Header = union {
+    pair: Pair,
+    raw: u32,
+};
+
+type Mode = enum (u8) {
+    Off = 0,
+    On,
+};
+
+type Flags = bitfield (u32) {
+    low: nib,
+    high: nib,
 };
 ```
 
@@ -263,8 +286,8 @@ rep for (i in 0..8) {                 // binds
 
 ```blade
 @pinwrite(pin, 1)                     // intrinsic call, always typed as `u32`
-ptr.*                                 // parsed pointer deref
-*ptr                                  // also parsed pointer deref
+ptr.*                                 // deref allowed for `*T`
+many[0]                               // indexing allowed for arrays and `[*]T`
 if (x == 0) 1 else 2                  // real expression form
 .{ .lo = 1, .hi = 2 }                 // struct literal
 ```
@@ -364,21 +387,44 @@ fn pair() -> u32, bool {
   - same field count
   - same field names
   - recursively assignable field types
-- Pointer `const` is stored in the type, but not enforced on assignment targets:
-  - assigning through `*const T` is not rejected by binder today
+- Union assignment is structural using the same field-name/type matching rule.
+- Enum assignment allows only the same enum type.
+- Open enums can be explicitly cast to and from their backing integer type.
+- Closed enums require `bitcast` to cross the enum/integer boundary.
+- Bitfield assignment allows only the same bitfield type; integer conversion uses `bitcast`.
+- Pointer assignability tracks:
+  - pointer family (`*T` vs `[*]T`)
+  - storage class
+  - pointee type
+  - qualifier-safe `const` / `volatile`
+  - minimum alignment
 - Array indexing allows:
   - arrays
-  - pointers
+  - multi-pointers
+- Pointer dereference allows:
+  - single pointers only
 - Member access allows:
-  - structs only
+  - structs
+  - unions
+  - bitfields
+- Enum literals:
+  - `.member` requires expected enum context
+  - `TypeName.member` resolves through type aliases without entering value scope
 - Intrinsic calls always bind as result type `u32`.
 
 ```blade
-var p: *const u32 = undefined;
-*p = 1;                              // currently not rejected by binder
+var source: *reg u32 = undefined;
+var sink: *reg const volatile u32 = source;
 
 var x: uint(5) = 1;
 var y: uint(31) = x;                 // both are plain `uint` semantically
+
+type Mode = enum (u8) { Off = 0, On = 1, };
+var mode: Mode = .On;                // contextual enum literal
+
+type Flags = bitfield (u32) { low: nib, high: nib, };
+var flags: Flags = undefined;
+flags.high = 3;                      // lowers as bitfield insert
 ```
 
 ### Control-Flow Checks
@@ -527,6 +573,10 @@ asm volatile -> @C {
   - scalar binary ops
   - scalar `select`
   - `intrinsic` -> direct uppercase mnemonic
+  - aligned bitfield extract/insert ops:
+    - `TESTB` / `WRC`
+    - `GETNIB`, `GETBYTE`, `GETWORD`
+    - `BITC`, `SETNIB`, `SETBYTE`, `SETWORD`
   - `store.place`
   - `update.place.<op>`
   - branches / gotos / returns
@@ -638,6 +688,9 @@ DAT
 - Top-level `$top` entrypoint generation.
 - Top-level `reg` globals, including constant static initialization.
 - Packed-struct type aliases as type names.
+- Union, enum, and bitfield type aliases in the binder.
+- Contextual and qualified enum literals.
+- Pointer storage/volatile/align metadata in the type system.
 - MIR/LIR optimization and aggressive inlining.
 - Register allocation, immediate legalization, and final PASM2 text emission.
 - Typed inline asm when the operand shapes stay simple enough.
@@ -646,7 +699,11 @@ DAT
 
 - Arrays.
 - Pointers.
-- Struct values and member loads/stores.
+- Struct and union values/member loads/stores.
+- Bitfields:
+  - semantic model is complete
+  - aligned extract/insert cases are instruction-selected
+  - generic unaligned fallback codegen is still incomplete
 - Multi-value returns.
 - Generic-width integer syntax.
 - Alignment/fixed-address metadata.
@@ -666,7 +723,6 @@ DAT
 - `yield` / `yieldto` lower to TODO comments, not working coroutine machinery.
 - general call lowering does not move arguments/results.
 - recursive tier does not yet emit `CALLB` / `RETB`.
-- member/index/deref/range/struct-literal ops are not fully instruction-selected.
-- pointer `const` is not enforced by binder.
+- general member/index/deref/range/struct-literal ops are not fully instruction-selected.
 - non-constant `@(...)` / `align(...)` silently drop to `null`.
 - coroutine reachability through `yieldto` is not modeled by dead-function analysis.

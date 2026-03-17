@@ -57,11 +57,6 @@ In FinalAssemblyWriter.WriteConBlock, skip CON alias emission when the fixed-add
 
 - Distinct between `[*]T` and `*T` like in Zig. This gives better quality code without basically any drawbacks.
 
-
-## `@waitx(10)`
-
-does not compile properly at all.
-
 ## constant file rendering is broken
 
 uses the old rendering method which is weirdly formatted.

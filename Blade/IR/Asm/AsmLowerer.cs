@@ -138,6 +138,10 @@ public static class AsmLowerer
                     LowerBinary(nodes, op);
                 else if (op.Opcode.StartsWith("unary.", StringComparison.Ordinal))
                     LowerUnary(nodes, op);
+                else if (op.Opcode.StartsWith("bitfield.extract.", StringComparison.Ordinal))
+                    LowerBitfieldExtract(nodes, op);
+                else if (op.Opcode.StartsWith("bitfield.insert.", StringComparison.Ordinal))
+                    LowerBitfieldInsert(nodes, op);
                 else if (op.Opcode == "store.place")
                     LowerStorePlace(nodes, op);
                 else if (op.Opcode.StartsWith("update.place.", StringComparison.Ordinal))
@@ -621,6 +625,106 @@ public static class AsmLowerer
         nodes.Add(TypeFacts.IsSignedInteger(op.ResultType)
             ? Emit("SIGNX", dest, new AsmImmediateOperand(width - 1))
             : Emit("ZEROX", dest, new AsmImmediateOperand(width - 1)));
+    }
+
+    private static void LowerBitfieldExtract(List<AsmNode> nodes, LirOpInstruction op)
+    {
+        if (!TryParseBitfieldOpcode(op.Opcode, "bitfield.extract.", out int bitOffset, out int bitWidth))
+        {
+            nodes.Add(new AsmCommentNode($"invalid {op.Opcode}"));
+            return;
+        }
+
+        AsmRegisterOperand dest = DestReg(op);
+        AsmRegisterOperand src = OpReg(op.Operands[0]);
+
+        if (bitWidth == 1)
+        {
+            nodes.Add(Emit("TESTB", src, new AsmImmediateOperand(bitOffset), flagEffect: AsmFlagEffect.WC));
+            nodes.Add(Emit("WRC", dest));
+            return;
+        }
+
+        if (bitWidth == 4 && bitOffset % 4 == 0)
+        {
+            nodes.Add(new AsmInstructionNode("GETNIB", [dest, src, new AsmImmediateOperand(bitOffset / 4)]));
+            return;
+        }
+
+        if (bitWidth == 8 && bitOffset % 8 == 0)
+        {
+            nodes.Add(new AsmInstructionNode("GETBYTE", [dest, src, new AsmImmediateOperand(bitOffset / 8)]));
+            if (op.ResultType is not null && TypeFacts.IsSignedInteger(op.ResultType))
+                nodes.Add(Emit("SIGNX", dest, new AsmImmediateOperand(7)));
+            return;
+        }
+
+        if (bitWidth == 16 && bitOffset % 16 == 0)
+        {
+            nodes.Add(new AsmInstructionNode("GETWORD", [dest, src, new AsmImmediateOperand(bitOffset / 16)]));
+            if (op.ResultType is not null && TypeFacts.IsSignedInteger(op.ResultType))
+                nodes.Add(Emit("SIGNX", dest, new AsmImmediateOperand(15)));
+            return;
+        }
+
+        nodes.Add(Emit("MOV", dest, src));
+        if (bitOffset != 0)
+            nodes.Add(Emit("SHR", dest, new AsmImmediateOperand(bitOffset)));
+
+        if (bitWidth < 32 && op.ResultType is not null)
+        {
+            nodes.Add(TypeFacts.IsSignedInteger(op.ResultType)
+                ? Emit("SIGNX", dest, new AsmImmediateOperand(bitWidth - 1))
+                : Emit("ZEROX", dest, new AsmImmediateOperand(bitWidth - 1)));
+        }
+    }
+
+    private static void LowerBitfieldInsert(List<AsmNode> nodes, LirOpInstruction op)
+    {
+        if (!TryParseBitfieldOpcode(op.Opcode, "bitfield.insert.", out int bitOffset, out int bitWidth))
+        {
+            nodes.Add(new AsmCommentNode($"invalid {op.Opcode}"));
+            return;
+        }
+
+        AsmRegisterOperand dest = DestReg(op);
+        AsmRegisterOperand source = OpReg(op.Operands[0]);
+        AsmRegisterOperand value = OpReg(op.Operands[1]);
+
+        nodes.Add(Emit("MOV", dest, source));
+
+        if (bitWidth == 32 && bitOffset == 0)
+        {
+            nodes.Add(Emit("MOV", dest, value));
+            return;
+        }
+
+        if (bitWidth == 1)
+        {
+            nodes.Add(Emit("TESTB", value, new AsmImmediateOperand(0), flagEffect: AsmFlagEffect.WC));
+            nodes.Add(Emit("BITC", dest, new AsmImmediateOperand(bitOffset)));
+            return;
+        }
+
+        if (bitWidth == 4 && bitOffset % 4 == 0)
+        {
+            nodes.Add(new AsmInstructionNode("SETNIB", [dest, value, new AsmImmediateOperand(bitOffset / 4)]));
+            return;
+        }
+
+        if (bitWidth == 8 && bitOffset % 8 == 0)
+        {
+            nodes.Add(new AsmInstructionNode("SETBYTE", [dest, value, new AsmImmediateOperand(bitOffset / 8)]));
+            return;
+        }
+
+        if (bitWidth == 16 && bitOffset % 16 == 0)
+        {
+            nodes.Add(new AsmInstructionNode("SETWORD", [dest, value, new AsmImmediateOperand(bitOffset / 16)]));
+            return;
+        }
+
+        nodes.Add(new AsmCommentNode($"unhandled aligned fallback for {op.Opcode}"));
     }
 
     private static void LowerBinary(List<AsmNode> nodes, LirOpInstruction op)
@@ -1235,6 +1339,19 @@ public static class AsmLowerer
             ushort u => u,
             _ => Convert.ToInt64(imm.Value, CultureInfo.InvariantCulture),
         };
+    }
+
+    private static bool TryParseBitfieldOpcode(string opcode, string prefix, out int bitOffset, out int bitWidth)
+    {
+        bitOffset = 0;
+        bitWidth = 0;
+        if (!opcode.StartsWith(prefix, StringComparison.Ordinal))
+            return false;
+
+        string[] parts = opcode[prefix.Length..].Split('.', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 2
+            && int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out bitOffset)
+            && int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out bitWidth);
     }
 
     private static AsmInstructionNode Emit(

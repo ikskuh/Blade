@@ -40,30 +40,69 @@ public sealed class PrimitiveTypeSymbol : TypeSymbol
 
 public sealed class ArrayTypeSymbol : TypeSymbol
 {
-    public ArrayTypeSymbol(TypeSymbol elementType)
-        : base($"[{Requires.NotNull(elementType).Name}]")
+    public ArrayTypeSymbol(TypeSymbol elementType, int? length = null)
+        : base(BuildName(elementType, length))
     {
         ElementType = Requires.NotNull(elementType);
+        Length = length;
     }
 
     public TypeSymbol ElementType { get; }
+    public int? Length { get; }
+
+    private static string BuildName(TypeSymbol elementType, int? length)
+    {
+        return length is int knownLength
+            ? $"[{knownLength}]{Requires.NotNull(elementType).Name}"
+            : $"[{Requires.NotNull(elementType).Name}]";
+    }
 }
 
-public sealed class PointerTypeSymbol : TypeSymbol
+public sealed class AggregateMemberSymbol
 {
-    public PointerTypeSymbol(TypeSymbol pointeeType, bool isConst, VariableStorageClass storageClass = VariableStorageClass.Automatic)
-        : base(BuildName(pointeeType, isConst, storageClass))
+    public AggregateMemberSymbol(string name, TypeSymbol type, int byteOffset, int bitOffset, int bitWidth, bool isBitfield)
+    {
+        Name = Requires.NotNull(name);
+        Type = Requires.NotNull(type);
+        ByteOffset = byteOffset;
+        BitOffset = bitOffset;
+        BitWidth = bitWidth;
+        IsBitfield = isBitfield;
+    }
+
+    public string Name { get; }
+    public TypeSymbol Type { get; }
+    public int ByteOffset { get; }
+    public int BitOffset { get; }
+    public int BitWidth { get; }
+    public bool IsBitfield { get; }
+}
+
+public abstract class PointerLikeTypeSymbol : TypeSymbol
+{
+    protected PointerLikeTypeSymbol(string prefix, TypeSymbol pointeeType, bool isConst, bool isVolatile, int? alignment, VariableStorageClass storageClass)
+        : base(BuildName(prefix, pointeeType, isConst, isVolatile, alignment, storageClass))
     {
         PointeeType = Requires.NotNull(pointeeType);
         IsConst = isConst;
+        IsVolatile = isVolatile;
+        Alignment = alignment;
         StorageClass = storageClass;
     }
 
     public TypeSymbol PointeeType { get; }
     public bool IsConst { get; }
+    public bool IsVolatile { get; }
+    public int? Alignment { get; }
     public VariableStorageClass StorageClass { get; }
 
-    private static string BuildName(TypeSymbol pointeeType, bool isConst, VariableStorageClass storageClass)
+    private static string BuildName(
+        string prefix,
+        TypeSymbol pointeeType,
+        bool isConst,
+        bool isVolatile,
+        int? alignment,
+        VariableStorageClass storageClass)
     {
         string storageText = storageClass switch
         {
@@ -73,21 +112,132 @@ public sealed class PointerTypeSymbol : TypeSymbol
             _ => string.Empty,
         };
 
-        return isConst
-            ? $"*{storageText}const {Requires.NotNull(pointeeType).Name}"
-            : $"*{storageText}{Requires.NotNull(pointeeType).Name}";
+        List<string> parts = [$"{prefix}{storageText}".TrimEnd()];
+        if (isConst)
+            parts.Add("const");
+        if (isVolatile)
+            parts.Add("volatile");
+        if (alignment is int knownAlignment)
+            parts.Add(FormattableString.Invariant($"align({knownAlignment})"));
+        parts.Add(Requires.NotNull(pointeeType).Name);
+        return string.Join(' ', parts);
+    }
+}
+
+public sealed class PointerTypeSymbol : PointerLikeTypeSymbol
+{
+    public PointerTypeSymbol(
+        TypeSymbol pointeeType,
+        bool isConst,
+        bool isVolatile = false,
+        int? alignment = null,
+        VariableStorageClass storageClass = VariableStorageClass.Automatic)
+        : base("*", pointeeType, isConst, isVolatile, alignment, storageClass)
+    {
+    }
+}
+
+public sealed class MultiPointerTypeSymbol : PointerLikeTypeSymbol
+{
+    public MultiPointerTypeSymbol(
+        TypeSymbol pointeeType,
+        bool isConst,
+        bool isVolatile = false,
+        int? alignment = null,
+        VariableStorageClass storageClass = VariableStorageClass.Automatic)
+        : base("[*]", pointeeType, isConst, isVolatile, alignment, storageClass)
+    {
     }
 }
 
 public sealed class StructTypeSymbol : TypeSymbol
 {
-    public StructTypeSymbol(string name, IReadOnlyDictionary<string, TypeSymbol> fields)
+    public StructTypeSymbol(
+        string name,
+        IReadOnlyDictionary<string, TypeSymbol> fields,
+        IReadOnlyDictionary<string, AggregateMemberSymbol>? members = null,
+        int sizeBytes = 0,
+        int alignmentBytes = 1)
         : base(name)
     {
         Fields = Requires.NotNull(fields);
+        Members = members ?? BuildMembers(fields);
+        SizeBytes = sizeBytes;
+        AlignmentBytes = alignmentBytes;
     }
 
     public IReadOnlyDictionary<string, TypeSymbol> Fields { get; }
+    public IReadOnlyDictionary<string, AggregateMemberSymbol> Members { get; }
+    public int SizeBytes { get; }
+    public int AlignmentBytes { get; }
+
+    private static IReadOnlyDictionary<string, AggregateMemberSymbol> BuildMembers(IReadOnlyDictionary<string, TypeSymbol> fields)
+    {
+        Dictionary<string, AggregateMemberSymbol> members = new(StringComparer.Ordinal);
+        foreach ((string fieldName, TypeSymbol fieldType) in fields)
+            members[fieldName] = new AggregateMemberSymbol(fieldName, fieldType, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false);
+        return members;
+    }
+}
+
+public sealed class UnionTypeSymbol : TypeSymbol
+{
+    public UnionTypeSymbol(
+        string name,
+        IReadOnlyDictionary<string, TypeSymbol> fields,
+        IReadOnlyDictionary<string, AggregateMemberSymbol> members,
+        int sizeBytes,
+        int alignmentBytes)
+        : base(name)
+    {
+        Fields = Requires.NotNull(fields);
+        Members = Requires.NotNull(members);
+        SizeBytes = sizeBytes;
+        AlignmentBytes = alignmentBytes;
+    }
+
+    public IReadOnlyDictionary<string, TypeSymbol> Fields { get; }
+    public IReadOnlyDictionary<string, AggregateMemberSymbol> Members { get; }
+    public int SizeBytes { get; }
+    public int AlignmentBytes { get; }
+}
+
+public sealed class EnumTypeSymbol : TypeSymbol
+{
+    public EnumTypeSymbol(
+        string name,
+        TypeSymbol backingType,
+        IReadOnlyDictionary<string, long> members,
+        bool isOpen)
+        : base(name)
+    {
+        BackingType = Requires.NotNull(backingType);
+        Members = Requires.NotNull(members);
+        IsOpen = isOpen;
+    }
+
+    public TypeSymbol BackingType { get; }
+    public IReadOnlyDictionary<string, long> Members { get; }
+    public bool IsOpen { get; }
+}
+
+public sealed class BitfieldTypeSymbol : TypeSymbol
+{
+    public BitfieldTypeSymbol(
+        string name,
+        TypeSymbol backingType,
+        IReadOnlyDictionary<string, TypeSymbol> fields,
+        IReadOnlyDictionary<string, AggregateMemberSymbol> members)
+        : base(name)
+    {
+        BackingType = Requires.NotNull(backingType);
+        Fields = Requires.NotNull(fields);
+        Members = Requires.NotNull(members);
+    }
+
+    public TypeSymbol BackingType { get; }
+    public IReadOnlyDictionary<string, TypeSymbol> Fields { get; }
+    public IReadOnlyDictionary<string, AggregateMemberSymbol> Members { get; }
 }
 
 public sealed class FunctionTypeSymbol : TypeSymbol
@@ -188,6 +338,12 @@ public static class TypeFacts
 {
     public static bool TryGetIntegerWidth(TypeSymbol type, out int width)
     {
+        if (type is EnumTypeSymbol enumType)
+            return TryGetIntegerWidth(enumType.BackingType, out width);
+
+        if (type is BitfieldTypeSymbol bitfieldType)
+            return TryGetIntegerWidth(bitfieldType.BackingType, out width);
+
         width = 0;
         if (ReferenceEquals(type, BuiltinTypes.IntegerLiteral))
         {
@@ -233,13 +389,135 @@ public static class TypeFacts
 
     public static bool TryGetScalarWidth(TypeSymbol type, out int width)
     {
-        if (type is PointerTypeSymbol)
+        if (type is PointerLikeTypeSymbol)
         {
             width = 32;
             return true;
         }
 
         return TryGetIntegerWidth(type, out width);
+    }
+
+    public static bool TryGetBitfieldFieldWidth(TypeSymbol type, out int width)
+    {
+        if (ReferenceEquals(type, BuiltinTypes.Bool))
+        {
+            width = 1;
+            return true;
+        }
+
+        return TryGetIntegerWidth(type, out width);
+    }
+
+    public static bool TryGetAlignmentBytes(TypeSymbol type, out int alignmentBytes)
+    {
+        if (type is StructTypeSymbol structType)
+        {
+            alignmentBytes = Math.Max(1, structType.AlignmentBytes);
+            return true;
+        }
+
+        if (type is UnionTypeSymbol unionType)
+        {
+            alignmentBytes = Math.Max(1, unionType.AlignmentBytes);
+            return true;
+        }
+
+        if (type is BitfieldTypeSymbol bitfieldType)
+            return TryGetAlignmentBytes(bitfieldType.BackingType, out alignmentBytes);
+
+        if (type is EnumTypeSymbol enumType)
+            return TryGetAlignmentBytes(enumType.BackingType, out alignmentBytes);
+
+        if (type is PointerLikeTypeSymbol)
+        {
+            alignmentBytes = 4;
+            return true;
+        }
+
+        if (ReferenceEquals(type, BuiltinTypes.Bool)
+            || ReferenceEquals(type, BuiltinTypes.Bit)
+            || ReferenceEquals(type, BuiltinTypes.Nit)
+            || ReferenceEquals(type, BuiltinTypes.Nib)
+            || ReferenceEquals(type, BuiltinTypes.U8)
+            || ReferenceEquals(type, BuiltinTypes.I8))
+        {
+            alignmentBytes = 1;
+            return true;
+        }
+
+        if (ReferenceEquals(type, BuiltinTypes.U16) || ReferenceEquals(type, BuiltinTypes.I16))
+        {
+            alignmentBytes = 2;
+            return true;
+        }
+
+        if (TryGetIntegerWidth(type, out int width))
+        {
+            alignmentBytes = Math.Max(1, width / 8);
+            return true;
+        }
+
+        if (type is ArrayTypeSymbol array
+            && array.Length is int knownLength
+            && TryGetAlignmentBytes(array.ElementType, out alignmentBytes)
+            && knownLength >= 0)
+        {
+            return true;
+        }
+
+        alignmentBytes = 0;
+        return false;
+    }
+
+    public static bool TryGetSizeBytes(TypeSymbol type, out int sizeBytes)
+    {
+        if (type is StructTypeSymbol structType)
+        {
+            sizeBytes = Math.Max(0, structType.SizeBytes);
+            return true;
+        }
+
+        if (type is UnionTypeSymbol unionType)
+        {
+            sizeBytes = Math.Max(0, unionType.SizeBytes);
+            return true;
+        }
+
+        if (type is BitfieldTypeSymbol bitfieldType)
+            return TryGetSizeBytes(bitfieldType.BackingType, out sizeBytes);
+
+        if (type is EnumTypeSymbol enumType)
+            return TryGetSizeBytes(enumType.BackingType, out sizeBytes);
+
+        if (type is PointerLikeTypeSymbol)
+        {
+            sizeBytes = 4;
+            return true;
+        }
+
+        if (type is ArrayTypeSymbol array
+            && array.Length is int knownLength
+            && TryGetSizeBytes(array.ElementType, out int elementSize))
+        {
+            sizeBytes = elementSize * knownLength;
+            return true;
+        }
+
+        if (ReferenceEquals(type, BuiltinTypes.Bool))
+        {
+            sizeBytes = 1;
+            return true;
+        }
+
+        if (TryGetIntegerWidth(type, out int width))
+        {
+            sizeBytes = Math.Max(1, (width + 7) / 8);
+            return true;
+        }
+
+        sizeBytes = 0;
+        return false;
     }
 
     public static bool IsSignedInteger(TypeSymbol type)
@@ -268,11 +546,17 @@ public static class TypeFacts
         uint rawBits = unchecked((uint)Convert.ToInt64(value, CultureInfo.InvariantCulture));
         uint maskedBits = width >= 32 ? rawBits : rawBits & ((1u << width) - 1u);
 
-        if (targetType is PointerTypeSymbol)
+        if (targetType is PointerLikeTypeSymbol)
         {
             normalized = maskedBits;
             return true;
         }
+
+        if (targetType is EnumTypeSymbol enumType)
+            return TryNormalizeValue(value, enumType.BackingType, out normalized);
+
+        if (targetType is BitfieldTypeSymbol bitfieldType)
+            return TryNormalizeValue(value, bitfieldType.BackingType, out normalized);
 
         if (IsSignedInteger(targetType))
         {

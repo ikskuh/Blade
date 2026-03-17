@@ -1,0 +1,27 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - MOV g_mode, #1
+// - MOV g_other, #0
+// - g_raw LONG 2
+// NOTE:
+//   Exercises contextual enum literals, qualified enum members, and open-enum casts.
+
+type Mode = enum (u8) {
+    Off = 0,
+    On,
+};
+
+type OtherMode = enum (u8) {
+    Off = 0,
+};
+
+type OpenState = enum (u8) {
+    Idle = 0,
+    Busy = 1,
+    ...,
+};
+
+reg var mode: Mode = .On;
+reg var other: OtherMode = OtherMode.Off;
+reg var raw: u8 = ((2 as u8) as OpenState) as u8;

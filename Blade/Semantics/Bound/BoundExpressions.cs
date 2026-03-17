@@ -212,17 +212,33 @@ public sealed class BoundIntrinsicCallExpression : BoundExpression
     public IReadOnlyList<BoundExpression> Arguments { get; }
 }
 
+public sealed class BoundEnumLiteralExpression : BoundExpression
+{
+    public BoundEnumLiteralExpression(EnumTypeSymbol enumType, string memberName, long value, TextSpan span)
+        : base(BoundNodeKind.EnumLiteralExpression, span, enumType)
+    {
+        EnumType = enumType;
+        MemberName = memberName;
+        Value = value;
+    }
+
+    public EnumTypeSymbol EnumType { get; }
+    public string MemberName { get; }
+    public long Value { get; }
+}
+
 public sealed class BoundMemberAccessExpression : BoundExpression
 {
-    public BoundMemberAccessExpression(BoundExpression receiver, string memberName, TextSpan span, TypeSymbol type)
-        : base(BoundNodeKind.MemberAccessExpression, span, type)
+    public BoundMemberAccessExpression(BoundExpression receiver, AggregateMemberSymbol member, TextSpan span)
+        : base(BoundNodeKind.MemberAccessExpression, span, Requires.NotNull(member).Type)
     {
         Receiver = receiver;
-        MemberName = memberName;
+        Member = Requires.NotNull(member);
     }
 
     public BoundExpression Receiver { get; }
-    public string MemberName { get; }
+    public AggregateMemberSymbol Member { get; }
+    public string MemberName => Member.Name;
 }
 
 public sealed class BoundIndexExpression : BoundExpression
@@ -365,15 +381,31 @@ public sealed class BoundSymbolAssignmentTarget : BoundAssignmentTarget
 
 public sealed class BoundMemberAssignmentTarget : BoundAssignmentTarget
 {
-    public BoundMemberAssignmentTarget(BoundExpression receiver, string memberName, TextSpan span, TypeSymbol type)
-        : base(BoundNodeKind.MemberAssignmentTarget, span, type)
+    public BoundMemberAssignmentTarget(BoundExpression receiver, AggregateMemberSymbol member, TextSpan span)
+        : base(BoundNodeKind.MemberAssignmentTarget, span, Requires.NotNull(member).Type)
     {
         Receiver = receiver;
-        MemberName = memberName;
+        Member = Requires.NotNull(member);
     }
 
     public BoundExpression Receiver { get; }
-    public string MemberName { get; }
+    public AggregateMemberSymbol Member { get; }
+    public string MemberName => Member.Name;
+}
+
+public sealed class BoundBitfieldAssignmentTarget : BoundAssignmentTarget
+{
+    public BoundBitfieldAssignmentTarget(BoundAssignmentTarget receiverTarget, BoundExpression receiverValue, AggregateMemberSymbol member, TextSpan span)
+        : base(BoundNodeKind.BitfieldAssignmentTarget, span, Requires.NotNull(member).Type)
+    {
+        ReceiverTarget = receiverTarget;
+        ReceiverValue = receiverValue;
+        Member = Requires.NotNull(member);
+    }
+
+    public BoundAssignmentTarget ReceiverTarget { get; }
+    public BoundExpression ReceiverValue { get; }
+    public AggregateMemberSymbol Member { get; }
 }
 
 public sealed class BoundIndexAssignmentTarget : BoundAssignmentTarget

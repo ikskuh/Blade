@@ -1,0 +1,11 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - L11, E0232
+// NOTE:
+//   Bare enum literals need an expected enum type from context.
+
+type Mode = enum (u8) {
+    Idle = 0,
+};
+
+.Idle;

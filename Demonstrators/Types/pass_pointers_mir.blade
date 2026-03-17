@@ -1,0 +1,22 @@
+// EXPECT: pass
+// STAGE: mir
+// ARGS:
+// - -fmir-opt=dce
+// CONTAINS:
+// - load.deref
+// - load.index
+// NOTE:
+//   `*T` and `[*]T` stay separate, `&array` yields a multipointer, and volatile
+//   pointer reads survive MIR DCE.
+
+reg var sink: u32 = 0;
+reg var values: [4]u32 = undefined;
+
+noinline fn demo(ptr: *reg volatile u32, many: [*]reg volatile u32) -> u32 {
+    ptr.*;
+    many[1];
+    return 0;
+}
+
+reg var base: u32 = 7;
+sink = demo(&base, &values);
