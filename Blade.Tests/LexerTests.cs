@@ -264,7 +264,6 @@ public class LexerTests
         Assert.That(diagnostics.Count, Is.EqualTo(1));
     }
 
-
     [Test]
     public void QuaternaryInteger()
     {
@@ -359,7 +358,6 @@ public class LexerTests
         Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.StringLiteral));
         Assert.That(tokens[0].Value, Is.EqualTo("ok"));
     }
-
 
     // --- String Literals ---
 
