@@ -41,6 +41,14 @@ public enum DiagnosticCode
     E0216_InvalidExternScope = 216,
     E0217_InvalidParameterStorageClass = 217,
     E0218_UnsupportedStorageClass = 218,
+    E0219_UnknownNamedArgument = 219,
+    E0220_DuplicateNamedArgument = 220,
+    E0221_PositionalArgumentAfterNamed = 221,
+    E0222_NamedArgumentConflictsWithPositional = 222,
+    E0223_InvalidAddressOfTarget = 223,
+    E0224_InvalidExplicitCast = 224,
+    E0225_BitcastSizeMismatch = 225,
+    E0226_AddressOfRecursiveLocal = 226,
 
     // Inline assembly errors
     E0301_InlineAsmUnknownInstruction = 301,

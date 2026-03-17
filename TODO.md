@@ -136,3 +136,9 @@ fn read_pin_to_carry(pin: u32) -> bool@C {
     } -> result: bool@C;
 }
 ```
+
+## Problem with negative literals emitted
+
+```blade
+reinterpreted_signed = bitcast(i8, 255 as u8);
+```

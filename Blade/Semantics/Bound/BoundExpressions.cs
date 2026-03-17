@@ -41,6 +41,9 @@ public enum BoundUnaryOperatorKind
 {
     LogicalNot,
     Negation,
+    BitwiseNot,
+    UnaryPlus,
+    AddressOf,
     PostIncrement,
     PostDecrement,
 }
@@ -62,6 +65,9 @@ public sealed class BoundUnaryOperator
         {
             TokenKind.Bang => new BoundUnaryOperator(kind, BoundUnaryOperatorKind.LogicalNot),
             TokenKind.Minus => new BoundUnaryOperator(kind, BoundUnaryOperatorKind.Negation),
+            TokenKind.Tilde => new BoundUnaryOperator(kind, BoundUnaryOperatorKind.BitwiseNot),
+            TokenKind.Plus => new BoundUnaryOperator(kind, BoundUnaryOperatorKind.UnaryPlus),
+            TokenKind.Ampersand => new BoundUnaryOperator(kind, BoundUnaryOperatorKind.AddressOf),
             TokenKind.PlusPlus => new BoundUnaryOperator(kind, BoundUnaryOperatorKind.PostIncrement),
             TokenKind.MinusMinus => new BoundUnaryOperator(kind, BoundUnaryOperatorKind.PostDecrement),
             _ => null,
@@ -88,11 +94,18 @@ public enum BoundBinaryOperatorKind
     Subtract,
     Multiply,
     Divide,
+    Modulo,
     BitwiseAnd,
     BitwiseOr,
     BitwiseXor,
     ShiftLeft,
     ShiftRight,
+    ArithmeticShiftLeft,
+    ArithmeticShiftRight,
+    RotateLeft,
+    RotateRight,
+    LogicalAnd,
+    LogicalOr,
     Equals,
     NotEquals,
     Less,
@@ -122,11 +135,18 @@ public sealed class BoundBinaryOperator
             TokenKind.Minus => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.Subtract, isComparison: false),
             TokenKind.Star => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.Multiply, isComparison: false),
             TokenKind.Slash => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.Divide, isComparison: false),
+            TokenKind.Percent => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.Modulo, isComparison: false),
             TokenKind.Ampersand => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.BitwiseAnd, isComparison: false),
             TokenKind.Pipe => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.BitwiseOr, isComparison: false),
             TokenKind.Caret => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.BitwiseXor, isComparison: false),
             TokenKind.LessLess => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.ShiftLeft, isComparison: false),
             TokenKind.GreaterGreater => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.ShiftRight, isComparison: false),
+            TokenKind.LessLessLess => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.ArithmeticShiftLeft, isComparison: false),
+            TokenKind.GreaterGreaterGreater => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.ArithmeticShiftRight, isComparison: false),
+            TokenKind.RotateLeft => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.RotateLeft, isComparison: false),
+            TokenKind.RotateRight => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.RotateRight, isComparison: false),
+            TokenKind.AndKeyword => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.LogicalAnd, isComparison: false),
+            TokenKind.OrKeyword => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.LogicalOr, isComparison: false),
             TokenKind.EqualEqual => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.Equals, isComparison: true),
             TokenKind.BangEqual => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.NotEquals, isComparison: true),
             TokenKind.Less => new BoundBinaryOperator(kind, BoundBinaryOperatorKind.Less, isComparison: true),
@@ -271,6 +291,28 @@ public sealed class BoundConversionExpression : BoundExpression
 {
     public BoundConversionExpression(BoundExpression expression, TextSpan span, TypeSymbol targetType)
         : base(BoundNodeKind.ConversionExpression, span, targetType)
+    {
+        Expression = expression;
+    }
+
+    public BoundExpression Expression { get; }
+}
+
+public sealed class BoundCastExpression : BoundExpression
+{
+    public BoundCastExpression(BoundExpression expression, TextSpan span, TypeSymbol targetType)
+        : base(BoundNodeKind.CastExpression, span, targetType)
+    {
+        Expression = expression;
+    }
+
+    public BoundExpression Expression { get; }
+}
+
+public sealed class BoundBitcastExpression : BoundExpression
+{
+    public BoundBitcastExpression(BoundExpression expression, TextSpan span, TypeSymbol targetType)
+        : base(BoundNodeKind.BitcastExpression, span, targetType)
     {
         Expression = expression;
     }

@@ -40,6 +40,8 @@ public enum BoundNodeKind
     RangeExpression,
     StructLiteralExpression,
     ConversionExpression,
+    CastExpression,
+    BitcastExpression,
     ErrorExpression,
 
     SymbolAssignmentTarget,

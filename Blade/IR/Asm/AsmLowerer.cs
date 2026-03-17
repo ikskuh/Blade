@@ -580,7 +580,11 @@ public static class AsmLowerer
     private static void LowerConst(List<AsmNode> nodes, LirOpInstruction op)
     {
         AsmRegisterOperand dest = DestReg(op);
-        long value = GetImmediateValue(op.Operands[0]);
+        object? rawValue = ((LirImmediateOperand)op.Operands[0]).Value;
+        object? normalizedValue = rawValue;
+        if (op.ResultType is not null && TypeFacts.TryNormalizeValue(rawValue, op.ResultType, out object? converted))
+            normalizedValue = converted;
+        long value = GetImmediateValue(new LirImmediateOperand(normalizedValue, op.ResultType ?? BuiltinTypes.Unknown));
         nodes.Add(Emit("MOV", dest, new AsmImmediateOperand(value)));
     }
 
@@ -610,6 +614,13 @@ public static class AsmLowerer
         AsmRegisterOperand dest = DestReg(op);
         AsmRegisterOperand src = OpReg(op.Operands[0]);
         nodes.Add(Emit("MOV", dest, src));
+
+        if (op.ResultType is null || !TypeFacts.TryGetIntegerWidth(op.ResultType, out int width) || width >= 32)
+            return;
+
+        nodes.Add(TypeFacts.IsSignedInteger(op.ResultType)
+            ? Emit("SIGNX", dest, new AsmImmediateOperand(width - 1))
+            : Emit("ZEROX", dest, new AsmImmediateOperand(width - 1)));
     }
 
     private static void LowerBinary(List<AsmNode> nodes, LirOpInstruction op)
@@ -647,6 +658,11 @@ public static class AsmLowerer
                 nodes.Add(Emit("GETQX", dest));
                 break;
 
+            case BoundBinaryOperatorKind.Modulo:
+                nodes.Add(Emit("QDIV", left, right));
+                nodes.Add(Emit("GETQY", dest));
+                break;
+
             case BoundBinaryOperatorKind.BitwiseAnd:
                 nodes.Add(Emit("MOV", dest, left));
                 nodes.Add(Emit("AND", dest, right));
@@ -670,6 +686,26 @@ public static class AsmLowerer
             case BoundBinaryOperatorKind.ShiftRight:
                 nodes.Add(Emit("MOV", dest, left));
                 nodes.Add(Emit("SHR", dest, right));
+                break;
+
+            case BoundBinaryOperatorKind.ArithmeticShiftLeft:
+                nodes.Add(Emit("MOV", dest, left));
+                nodes.Add(Emit("SHL", dest, right));
+                break;
+
+            case BoundBinaryOperatorKind.ArithmeticShiftRight:
+                nodes.Add(Emit("MOV", dest, left));
+                nodes.Add(Emit("SAR", dest, right));
+                break;
+
+            case BoundBinaryOperatorKind.RotateLeft:
+                nodes.Add(Emit("MOV", dest, left));
+                nodes.Add(Emit("ROL", dest, right));
+                break;
+
+            case BoundBinaryOperatorKind.RotateRight:
+                nodes.Add(Emit("MOV", dest, left));
+                nodes.Add(Emit("ROR", dest, right));
                 break;
 
             case BoundBinaryOperatorKind.Equals:
@@ -725,6 +761,15 @@ public static class AsmLowerer
             case BoundUnaryOperatorKind.LogicalNot:
                 nodes.Add(Emit("CMP", src, new AsmImmediateOperand(0), flagEffect: AsmFlagEffect.WZ));
                 nodes.Add(Emit("WRZ", dest));
+                break;
+
+            case BoundUnaryOperatorKind.BitwiseNot:
+                nodes.Add(Emit("MOV", dest, src));
+                nodes.Add(Emit("NOT", dest));
+                break;
+
+            case BoundUnaryOperatorKind.UnaryPlus:
+                nodes.Add(Emit("MOV", dest, src));
                 break;
 
             case BoundUnaryOperatorKind.PostIncrement:
@@ -867,12 +912,22 @@ public static class AsmLowerer
                 BoundBinaryOperatorKind.BitwiseXor => "XOR",
                 BoundBinaryOperatorKind.ShiftLeft => "SHL",
                 BoundBinaryOperatorKind.ShiftRight => "SHR",
+                BoundBinaryOperatorKind.ArithmeticShiftLeft => "SHL",
+                BoundBinaryOperatorKind.ArithmeticShiftRight => "SAR",
                 _ => string.Empty,
             }
             : string.Empty;
 
         if (string.IsNullOrEmpty(opcode))
         {
+            if (Enum.TryParse<BoundBinaryOperatorKind>(operatorName, out kind)
+                && kind == BoundBinaryOperatorKind.Modulo)
+            {
+                nodes.Add(new AsmInstructionNode("QDIV", [place, value]));
+                nodes.Add(new AsmInstructionNode("GETQY", [place]));
+                return;
+            }
+
             nodes.Add(new AsmCommentNode($"unhandled update place: {operatorName}"));
             nodes.Add(new AsmInstructionNode("MOV", [place, value]));
             return;

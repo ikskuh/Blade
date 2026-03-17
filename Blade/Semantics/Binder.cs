@@ -705,6 +705,12 @@ public sealed class Binder
             case StructLiteralExpressionSyntax structLiteral:
                 return BindStructLiteralExpression(structLiteral, expectedType);
 
+            case CastExpressionSyntax castExpression:
+                return BindCastExpression(castExpression);
+
+            case BitcastExpressionSyntax bitcastExpression:
+                return BindBitcastExpression(bitcastExpression);
+
             case ComptimeExpressionSyntax comptime:
                 return BindComptimeExpression(comptime);
 
@@ -777,8 +783,85 @@ public sealed class Binder
                     _diagnostics.ReportTypeMismatch(unary.Operand.Span, "integer", operand.Type.Name);
                 return new BoundUnaryExpression(op, operand, unary.Span, operand.Type.IsInteger ? operand.Type : BuiltinTypes.Unknown);
             }
+
+            case BoundUnaryOperatorKind.BitwiseNot:
+            {
+                BoundExpression operand = BindExpression(unary.Operand);
+                if (!operand.Type.IsInteger)
+                    _diagnostics.ReportTypeMismatch(unary.Operand.Span, "integer", operand.Type.Name);
+                return new BoundUnaryExpression(op, operand, unary.Span, operand.Type.IsInteger ? operand.Type : BuiltinTypes.Unknown);
+            }
+
+            case BoundUnaryOperatorKind.UnaryPlus:
+            {
+                BoundExpression operand = BindExpression(unary.Operand);
+                if (!operand.Type.IsInteger)
+                    _diagnostics.ReportTypeMismatch(unary.Operand.Span, "integer", operand.Type.Name);
+                return new BoundUnaryExpression(op, operand, unary.Span, operand.Type.IsInteger ? operand.Type : BuiltinTypes.Unknown);
+            }
+
+            case BoundUnaryOperatorKind.AddressOf:
+                return BindAddressOfExpression(unary, op);
         }
 
+        return new BoundErrorExpression(unary.Span);
+    }
+
+    private BoundExpression BindAddressOfExpression(UnaryExpressionSyntax unary, BoundUnaryOperator op)
+    {
+        if (unary.Operand is not NameExpressionSyntax nameExpression)
+        {
+            _diagnostics.ReportInvalidAddressOfTarget(unary.Operand.Span);
+            _ = BindExpression(unary.Operand);
+            return new BoundErrorExpression(unary.Span);
+        }
+
+        if (!_currentScope.TryLookup(nameExpression.Name.Text, out Symbol? symbol) || symbol is null)
+        {
+            _diagnostics.ReportUndefinedName(nameExpression.Name.Span, nameExpression.Name.Text);
+            return new BoundErrorExpression(unary.Span);
+        }
+
+        return symbol switch
+        {
+            VariableSymbol variable => BindAddressOfVariable(unary, op, variable),
+            ParameterSymbol parameter => BindAddressOfParameter(unary, op, parameter),
+            _ => ReportInvalidAddressOfTarget(unary),
+        };
+    }
+
+    private BoundExpression BindAddressOfVariable(UnaryExpressionSyntax unary, BoundUnaryOperator op, VariableSymbol variable)
+    {
+        if (_currentFunction?.Kind == FunctionKind.Rec && variable.ScopeKind == VariableScopeKind.Local)
+        {
+            _diagnostics.ReportAddressOfRecursiveLocal(unary.Operand.Span, variable.Name);
+            return new BoundErrorExpression(unary.Span);
+        }
+
+        VariableStorageClass storageClass = variable.IsAutomatic
+            ? VariableStorageClass.Reg
+            : variable.StorageClass;
+        PointerTypeSymbol pointerType = new(variable.Type, variable.IsConst, storageClass);
+        BoundSymbolExpression operand = new(variable, unary.Operand.Span, variable.Type);
+        return new BoundUnaryExpression(op, operand, unary.Span, pointerType);
+    }
+
+    private BoundExpression BindAddressOfParameter(UnaryExpressionSyntax unary, BoundUnaryOperator op, ParameterSymbol parameter)
+    {
+        if (_currentFunction?.Kind == FunctionKind.Rec)
+        {
+            _diagnostics.ReportAddressOfRecursiveLocal(unary.Operand.Span, parameter.Name);
+            return new BoundErrorExpression(unary.Span);
+        }
+
+        PointerTypeSymbol pointerType = new(parameter.Type, isConst: false, VariableStorageClass.Reg);
+        BoundSymbolExpression operand = new(parameter, unary.Operand.Span, parameter.Type);
+        return new BoundUnaryExpression(op, operand, unary.Span, pointerType);
+    }
+
+    private BoundExpression ReportInvalidAddressOfTarget(UnaryExpressionSyntax unary)
+    {
+        _diagnostics.ReportInvalidAddressOfTarget(unary.Operand.Span);
         return new BoundErrorExpression(unary.Span);
     }
 
@@ -829,6 +912,15 @@ public sealed class Binder
                 right = BindConversion(right, numericType, right.Span, reportMismatch: false);
             }
 
+            return new BoundBinaryExpression(left, op, right, binary.Span, BuiltinTypes.Bool);
+        }
+
+        if (op.Kind is BoundBinaryOperatorKind.LogicalAnd or BoundBinaryOperatorKind.LogicalOr)
+        {
+            if (!left.Type.IsBool || !right.Type.IsBool)
+                _diagnostics.ReportTypeMismatch(binary.Span, "bool", $"{left.Type.Name}, {right.Type.Name}");
+            left = BindConversion(left, BuiltinTypes.Bool, left.Span, reportMismatch: false);
+            right = BindConversion(right, BuiltinTypes.Bool, right.Span, reportMismatch: false);
             return new BoundBinaryExpression(left, op, right, binary.Span, BuiltinTypes.Bool);
         }
 
@@ -997,25 +1089,167 @@ public sealed class Binder
         return new BoundRangeExpression(start, end, rangeExpression.Span);
     }
 
+    private BoundExpression BindCastExpression(CastExpressionSyntax castExpression)
+    {
+        BoundExpression expression = BindExpression(castExpression.Expression);
+        TypeSymbol targetType = BindType(castExpression.TargetType);
+
+        if (!CanExplicitlyCast(expression.Type, targetType))
+        {
+            _diagnostics.ReportInvalidExplicitCast(castExpression.Span, expression.Type.Name, targetType.Name);
+            return new BoundErrorExpression(castExpression.Span);
+        }
+
+        return new BoundCastExpression(expression, castExpression.Span, targetType);
+    }
+
+    private BoundExpression BindBitcastExpression(BitcastExpressionSyntax bitcastExpression)
+    {
+        BoundExpression expression = BindExpression(bitcastExpression.Value);
+        TypeSymbol targetType = BindType(bitcastExpression.TargetType);
+
+        if (!TypeFacts.IsScalarCastType(expression.Type) || !TypeFacts.IsScalarCastType(targetType))
+        {
+            _diagnostics.ReportInvalidExplicitCast(bitcastExpression.Span, expression.Type.Name, targetType.Name);
+            return new BoundErrorExpression(bitcastExpression.Span);
+        }
+
+        if (!TypeFacts.TryGetScalarWidth(expression.Type, out int sourceWidth)
+            || !TypeFacts.TryGetScalarWidth(targetType, out int targetWidth))
+        {
+            _diagnostics.ReportInvalidExplicitCast(bitcastExpression.Span, expression.Type.Name, targetType.Name);
+            return new BoundErrorExpression(bitcastExpression.Span);
+        }
+
+        if (sourceWidth != targetWidth)
+        {
+            _diagnostics.ReportBitcastSizeMismatch(bitcastExpression.Span, expression.Type.Name, targetType.Name);
+            return new BoundErrorExpression(bitcastExpression.Span);
+        }
+
+        return new BoundBitcastExpression(expression, bitcastExpression.Span, targetType);
+    }
+
     private List<BoundExpression> BindCallArguments(
         FunctionSymbol function,
         SeparatedSyntaxList<ExpressionSyntax> arguments,
         TextSpan callSiteSpan)
     {
-        if (arguments.Count != function.Parameters.Count)
+        bool hasNamedArguments = false;
+        foreach (ExpressionSyntax argument in arguments)
         {
-            _diagnostics.ReportArgumentCountMismatch(callSiteSpan, function.Name, function.Parameters.Count, arguments.Count);
+            if (argument is NamedArgumentSyntax)
+            {
+                hasNamedArguments = true;
+                break;
+            }
         }
 
-        List<BoundExpression> boundArguments = new(arguments.Count);
-        int compared = Math.Min(arguments.Count, function.Parameters.Count);
-        for (int i = 0; i < compared; i++)
-            boundArguments.Add(BindExpression(arguments[i], function.Parameters[i].Type));
+        if (!hasNamedArguments)
+        {
+            if (arguments.Count != function.Parameters.Count)
+            {
+                _diagnostics.ReportArgumentCountMismatch(callSiteSpan, function.Name, function.Parameters.Count, arguments.Count);
+            }
 
-        for (int i = compared; i < arguments.Count; i++)
-            boundArguments.Add(BindExpression(arguments[i]));
+            List<BoundExpression> positionalArguments = new(arguments.Count);
+            int compared = Math.Min(arguments.Count, function.Parameters.Count);
+            for (int i = 0; i < compared; i++)
+                positionalArguments.Add(BindExpression(arguments[i], function.Parameters[i].Type));
+
+            for (int i = compared; i < arguments.Count; i++)
+                positionalArguments.Add(BindExpression(arguments[i]));
+
+            return positionalArguments;
+        }
+
+        BoundExpression?[] reordered = new BoundExpression?[function.Parameters.Count];
+        bool[] filled = new bool[function.Parameters.Count];
+        bool[] filledByNamed = new bool[function.Parameters.Count];
+        bool sawNamedArgument = false;
+        int nextPositionalIndex = 0;
+        int filledCount = 0;
+
+        foreach (ExpressionSyntax argument in arguments)
+        {
+            if (argument is NamedArgumentSyntax namedArgument)
+            {
+                sawNamedArgument = true;
+                int parameterIndex = FindParameterIndex(function, namedArgument.Name.Text);
+                if (parameterIndex < 0)
+                {
+                    _diagnostics.ReportUnknownNamedArgument(namedArgument.Name.Span, function.Name, namedArgument.Name.Text);
+                    _ = BindExpression(namedArgument.Value);
+                    continue;
+                }
+
+                TypeSymbol parameterType = function.Parameters[parameterIndex].Type;
+                BoundExpression boundValue = BindExpression(namedArgument.Value, parameterType);
+                if (filled[parameterIndex])
+                {
+                    if (filledByNamed[parameterIndex])
+                    {
+                        _diagnostics.ReportDuplicateNamedArgument(namedArgument.Name.Span, namedArgument.Name.Text);
+                    }
+                    else
+                    {
+                        _diagnostics.ReportNamedArgumentConflictsWithPositional(namedArgument.Name.Span, namedArgument.Name.Text);
+                    }
+
+                    continue;
+                }
+
+                reordered[parameterIndex] = boundValue;
+                filled[parameterIndex] = true;
+                filledByNamed[parameterIndex] = true;
+                filledCount++;
+                continue;
+            }
+
+            if (sawNamedArgument)
+            {
+                _diagnostics.ReportPositionalArgumentAfterNamed(argument.Span, function.Name);
+                _ = BindExpression(argument);
+                continue;
+            }
+
+            if (nextPositionalIndex < function.Parameters.Count)
+            {
+                reordered[nextPositionalIndex] = BindExpression(argument, function.Parameters[nextPositionalIndex].Type);
+                filled[nextPositionalIndex] = true;
+                filledCount++;
+            }
+            else
+            {
+                _ = BindExpression(argument);
+            }
+
+            nextPositionalIndex++;
+        }
+
+        if (filledCount != function.Parameters.Count)
+        {
+            _diagnostics.ReportArgumentCountMismatch(callSiteSpan, function.Name, function.Parameters.Count, filledCount);
+        }
+
+        List<BoundExpression> boundArguments = new(function.Parameters.Count);
+        for (int i = 0; i < function.Parameters.Count; i++)
+        {
+            boundArguments.Add(reordered[i] ?? new BoundErrorExpression(callSiteSpan));
+        }
 
         return boundArguments;
+    }
+
+    private static int FindParameterIndex(FunctionSymbol function, string parameterName)
+    {
+        for (int i = 0; i < function.Parameters.Count; i++)
+        {
+            if (string.Equals(function.Parameters[i].Name, parameterName, StringComparison.Ordinal))
+                return i;
+        }
+
+        return -1;
     }
 
     private List<BoundExpression> BindArgumentsLoose(SeparatedSyntaxList<ExpressionSyntax> arguments)
@@ -1060,6 +1294,22 @@ public sealed class Binder
         }
 
         return new BoundConversionExpression(expression, span, targetType);
+    }
+
+    private static bool CanExplicitlyCast(TypeSymbol sourceType, TypeSymbol targetType)
+    {
+        if (sourceType.IsUnknown || targetType.IsUnknown)
+            return true;
+
+        if (sourceType.IsInteger
+            && targetType.IsInteger
+            && TypeFacts.TryGetIntegerWidth(sourceType, out _)
+            && TypeFacts.TryGetIntegerWidth(targetType, out _))
+        {
+            return true;
+        }
+
+        return sourceType is PointerTypeSymbol && targetType is PointerTypeSymbol;
     }
 
     private Symbol? ResolveVariableSymbol(Token token)
@@ -1151,9 +1401,21 @@ public sealed class Binder
             BoundLiteralExpression literal when literal.Value is byte value => value,
             BoundLiteralExpression literal when literal.Value is sbyte value => value,
             BoundConversionExpression conversion => TryEvaluateConstantInt(conversion.Expression),
+            BoundCastExpression cast when TryEvaluateConstantInt(cast.Expression) is int castOperand
+                && TypeFacts.TryNormalizeValue(castOperand, cast.Type, out object? castValue)
+                => ToInt32Unchecked(castValue),
+            BoundBitcastExpression bitcast when TryEvaluateConstantInt(bitcast.Expression) is int bitcastOperand
+                && TypeFacts.TryNormalizeValue(bitcastOperand, bitcast.Type, out object? bitcastValue)
+                => ToInt32Unchecked(bitcastValue),
             BoundUnaryExpression unary when unary.Operator.Kind == BoundUnaryOperatorKind.Negation
                 && TryEvaluateConstantInt(unary.Operand) is int operand
                 => -operand,
+            BoundUnaryExpression unary when unary.Operator.Kind == BoundUnaryOperatorKind.BitwiseNot
+                && TryEvaluateConstantInt(unary.Operand) is int bitwiseOperand
+                => ~bitwiseOperand,
+            BoundUnaryExpression unary when unary.Operator.Kind == BoundUnaryOperatorKind.UnaryPlus
+                && TryEvaluateConstantInt(unary.Operand) is int plusOperand
+                => plusOperand,
             BoundBinaryExpression binary when TryEvaluateConstantInt(binary.Left) is int left
                 && TryEvaluateConstantInt(binary.Right) is int right
                 => binary.Operator.Kind switch
@@ -1162,14 +1424,36 @@ public sealed class Binder
                     BoundBinaryOperatorKind.Subtract => left - right,
                     BoundBinaryOperatorKind.Multiply => left * right,
                     BoundBinaryOperatorKind.Divide => right == 0 ? null : left / right,
+                    BoundBinaryOperatorKind.Modulo => right == 0 ? null : left % right,
                     BoundBinaryOperatorKind.BitwiseAnd => left & right,
                     BoundBinaryOperatorKind.BitwiseOr => left | right,
                     BoundBinaryOperatorKind.BitwiseXor => left ^ right,
                     BoundBinaryOperatorKind.ShiftLeft => left << right,
                     BoundBinaryOperatorKind.ShiftRight => left >> right,
+                    BoundBinaryOperatorKind.ArithmeticShiftLeft => left << right,
+                    BoundBinaryOperatorKind.ArithmeticShiftRight => left >> right,
+                    BoundBinaryOperatorKind.RotateLeft => (int)((uint)left << right | (uint)left >> (32 - (right & 31))),
+                    BoundBinaryOperatorKind.RotateRight => (int)((uint)left >> right | (uint)left << (32 - (right & 31))),
                     _ => null,
                 },
             _ => null,
+        };
+    }
+
+    private static int ToInt32Unchecked(object? value)
+    {
+        return value switch
+        {
+            null => 0,
+            int i => i,
+            uint u => unchecked((int)u),
+            long l => unchecked((int)l),
+            ulong u => unchecked((int)u),
+            short s => s,
+            ushort u => u,
+            byte b => b,
+            sbyte s => s,
+            _ => unchecked((int)Convert.ToInt64(value, System.Globalization.CultureInfo.InvariantCulture)),
         };
     }
 
@@ -1180,7 +1464,10 @@ public sealed class Binder
             PrimitiveTypeSyntax primitive => BindPrimitiveType(primitive.Keyword),
             GenericWidthTypeSyntax generic => BindGenericWidthType(generic),
             ArrayTypeSyntax array => BindArrayType(array),
-            PointerTypeSyntax pointer => new PointerTypeSymbol(BindType(pointer.PointeeType), pointer.ConstKeyword is not null),
+            PointerTypeSyntax pointer => new PointerTypeSymbol(
+                BindType(pointer.PointeeType),
+                pointer.ConstKeyword is not null,
+                MapStorageClass(pointer.StorageClassKeyword)),
             StructTypeSyntax structType => BindStructType(structType, aliasName),
             NamedTypeSyntax named => BindNamedType(named),
             _ => BuiltinTypes.Unknown,

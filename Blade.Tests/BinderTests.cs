@@ -66,6 +66,38 @@ public class BinderTests
     }
 
     [Test]
+    public void LocalConst_RuntimeInitializer_BindsAsConstVariable()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn demo(param: u32) void {
+                const x: u32 = param * 2;
+            }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+
+        BoundFunctionMember function = program.Functions.Single();
+        BoundBlockStatement body = function.Body;
+        BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)body.Statements[0];
+
+        Assert.That(declaration.Symbol.IsConst, Is.True);
+        Assert.That(declaration.Initializer, Is.TypeOf<BoundBinaryExpression>());
+    }
+
+    [Test]
+    public void AssignmentToLocalConst_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            fn demo(param: u32) void {
+                const x: u32 = param * 2;
+                x = 3;
+            }
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0204_CannotAssignToConstant), Is.True);
+    }
+
+    [Test]
     public void DuplicateLocalVariable_ReportsDiagnostic()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
@@ -76,6 +108,167 @@ public class BinderTests
             """);
 
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0201_SymbolAlreadyDeclared), Is.True);
+    }
+
+    [Test]
+    public void AddressOfLocalVariable_BindsRegisterPointerType()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn demo(param: u32) void {
+                var x: u32 = param;
+                var p: *reg u32 = &x;
+            }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+
+        BoundFunctionMember function = program.Functions.Single();
+        BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)function.Body.Statements[1];
+        BoundUnaryExpression initializer = (BoundUnaryExpression)declaration.Initializer!;
+
+        Assert.That(initializer.Operator.Kind, Is.EqualTo(BoundUnaryOperatorKind.AddressOf));
+        Assert.That(initializer.Type.Name, Is.EqualTo("*reg u32"));
+    }
+
+    [Test]
+    public void AddressOfParameter_BindsRegisterPointerType()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn demo(param: u32) void {
+                var p: *reg u32 = &param;
+            }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+
+        BoundFunctionMember function = program.Functions.Single();
+        BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)function.Body.Statements[0];
+        BoundUnaryExpression initializer = (BoundUnaryExpression)declaration.Initializer!;
+
+        Assert.That(initializer.Operator.Kind, Is.EqualTo(BoundUnaryOperatorKind.AddressOf));
+        Assert.That(initializer.Type.Name, Is.EqualTo("*reg u32"));
+    }
+
+    [Test]
+    public void AddressOfNonName_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            fn demo() void {
+                &(1 + 2);
+            }
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0223_InvalidAddressOfTarget), Is.True);
+    }
+
+    [Test]
+    public void AddressOfRecursiveLocal_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            rec fn demo(bound: u32) void {
+                var x: u32 = bound;
+                var p: *reg u32 = &x;
+            }
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0226_AddressOfRecursiveLocal), Is.True);
+    }
+
+    [Test]
+    public void UnaryPlusAndBitwiseNot_OnNonInteger_ReportDiagnostics()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            fn demo(flag: bool) void {
+                +flag;
+                ~flag;
+            }
+            """);
+
+        Assert.That(diagnostics.Count(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.EqualTo(2));
+    }
+
+    [Test]
+    public void ExplicitIntegerCast_BindsCastExpression()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn demo(x: u32) void {
+                var y: u8 = x as u8;
+            }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+
+        BoundFunctionMember function = program.Functions.Single();
+        BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)function.Body.Statements[0];
+
+        Assert.That(declaration.Initializer, Is.TypeOf<BoundCastExpression>());
+        Assert.That(declaration.Initializer!.Type, Is.EqualTo(BuiltinTypes.U8));
+    }
+
+    [Test]
+    public void ExplicitPointerCast_BindsCastExpression()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg var value: u32 = 1;
+            reg var source: *reg u32 = &value;
+            reg var sink: *hub u32 = source as *hub u32;
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+
+        BoundGlobalVariableMember declaration = program.GlobalVariables.Single(global => global.Symbol.Name == "sink");
+        Assert.That(declaration.Initializer, Is.TypeOf<BoundCastExpression>());
+        Assert.That(declaration.Initializer!.Type.Name, Is.EqualTo("*hub u32"));
+    }
+
+    [Test]
+    public void InvalidExplicitCast_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            fn demo(flag: bool) void {
+                var value: u8 = flag as u8;
+            }
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0224_InvalidExplicitCast), Is.True);
+    }
+
+    [Test]
+    public void Bitcast_BindsBitcastExpression()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg var raw: u32 = 1;
+            reg var ptr: *reg u32 = bitcast(*reg u32, raw);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+
+        BoundGlobalVariableMember declaration = program.GlobalVariables.Single(global => global.Symbol.Name == "ptr");
+        Assert.That(declaration.Initializer, Is.TypeOf<BoundBitcastExpression>());
+        Assert.That(declaration.Initializer!.Type.Name, Is.EqualTo("*reg u32"));
+    }
+
+    [Test]
+    public void BitcastSizeMismatch_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            reg var raw: u32 = 1;
+            reg var narrowed: u16 = bitcast(u16, raw);
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0225_BitcastSizeMismatch), Is.True);
+    }
+
+    [Test]
+    public void BitcastUnsupportedType_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            fn demo(flag: bool) void {
+                var raw: u32 = bitcast(u32, flag);
+            }
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0224_InvalidExplicitCast), Is.True);
     }
 
     [Test]
@@ -139,6 +332,102 @@ public class BinderTests
             """);
 
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0207_ArgumentCountMismatch), Is.True);
+    }
+
+    [Test]
+    public void NamedArguments_AreReorderedToParameterOrder()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn pair(x: u32, y: u32) -> u32 {
+                return x + y;
+            }
+
+            var result: u32 = pair(y=20, x=10);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+
+        BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)program.TopLevelStatements.Single();
+        BoundCallExpression call = (BoundCallExpression)declaration.Initializer!;
+
+        Assert.That(((BoundLiteralExpression)((BoundConversionExpression)call.Arguments[0]).Expression).Value, Is.EqualTo(10L));
+        Assert.That(((BoundLiteralExpression)((BoundConversionExpression)call.Arguments[1]).Expression).Value, Is.EqualTo(20L));
+    }
+
+    [Test]
+    public void MixedNamedArguments_AreReorderedToParameterOrder()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn pair(x: u32, y: u32) -> u32 {
+                return x + y;
+            }
+
+            var result: u32 = pair(10, y=20);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+
+        BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)program.TopLevelStatements.Single();
+        BoundCallExpression call = (BoundCallExpression)declaration.Initializer!;
+
+        Assert.That(((BoundLiteralExpression)((BoundConversionExpression)call.Arguments[0]).Expression).Value, Is.EqualTo(10L));
+        Assert.That(((BoundLiteralExpression)((BoundConversionExpression)call.Arguments[1]).Expression).Value, Is.EqualTo(20L));
+    }
+
+    [Test]
+    public void UnknownNamedArgument_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            fn pair(x: u32, y: u32) -> u32 {
+                return x + y;
+            }
+
+            var result: u32 = pair(z=10, y=20);
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0219_UnknownNamedArgument), Is.True);
+    }
+
+    [Test]
+    public void DuplicateNamedArgument_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            fn pair(x: u32, y: u32) -> u32 {
+                return x + y;
+            }
+
+            var result: u32 = pair(y=10, x=20, y=30);
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0220_DuplicateNamedArgument), Is.True);
+    }
+
+    [Test]
+    public void PositionalArgumentAfterNamed_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            fn pair(x: u32, y: u32) -> u32 {
+                return x + y;
+            }
+
+            var result: u32 = pair(y=10, 20);
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0221_PositionalArgumentAfterNamed), Is.True);
+    }
+
+    [Test]
+    public void NamedArgumentConflictingWithPositional_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            fn pair(x: u32, y: u32) -> u32 {
+                return x + y;
+            }
+
+            var result: u32 = pair(10, x=20);
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0222_NamedArgumentConflictsWithPositional), Is.True);
     }
 
     [Test]

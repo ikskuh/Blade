@@ -1,0 +1,23 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - ZEROX
+// - SIGNX
+// NOTE:
+//   Shows explicit narrowing casts, reinterpretation with bitcast, and a
+//   pointer round-trip through an integer register value.
+
+reg var narrowed_unsigned: u8 = 0;
+reg var reinterpreted_signed: i8 = 0;
+reg var roundtrip_bits: u32 = 0;
+
+noinline fn normalize(x: u32) -> u32 {
+    var lo: u8 = x as u8;
+    var hi: i8 = x as i8;
+    var pointer: *reg u32 = bitcast(*reg u32, x);
+    return (lo as u32) + (hi as u32) + bitcast(u32, pointer);
+}
+
+narrowed_unsigned = 257 as u8;
+reinterpreted_signed = bitcast(i8, 1 as u8);
+roundtrip_bits = normalize(255);

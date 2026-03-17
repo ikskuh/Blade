@@ -50,6 +50,7 @@ public static class MirLowerer
     private static List<StoragePlace> CollectStoragePlaces(BoundProgram program)
     {
         List<StoragePlace> places = new(program.GlobalVariables.Count);
+        HashSet<int> seenSymbolIds = [];
         foreach (BoundGlobalVariableMember global in program.GlobalVariables)
         {
             VariableSymbol symbol = global.Symbol;
@@ -71,9 +72,146 @@ public static class MirLowerer
             }
 
             places.Add(new StoragePlace(symbol, kind, symbol.FixedAddress, staticInitializer));
+            seenSymbolIds.Add(symbol.Id);
+        }
+
+        foreach (Symbol symbol in CollectAddressTakenSymbols(program))
+        {
+            if (!seenSymbolIds.Add(symbol.Id))
+                continue;
+
+            places.Add(new StoragePlace(symbol, StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, staticInitializer: null));
         }
 
         return places;
+    }
+
+    private static IReadOnlyList<Symbol> CollectAddressTakenSymbols(BoundProgram program)
+    {
+        Dictionary<int, Symbol> symbols = [];
+
+        foreach (BoundStatement statement in program.TopLevelStatements)
+            CollectAddressTakenSymbols(statement, symbols);
+
+        foreach (BoundFunctionMember function in program.Functions)
+            CollectAddressTakenSymbols(function.Body, symbols);
+
+        return [.. symbols.Values];
+    }
+
+    private static void CollectAddressTakenSymbols(BoundStatement statement, IDictionary<int, Symbol> symbols)
+    {
+        switch (statement)
+        {
+            case BoundBlockStatement block:
+                foreach (BoundStatement nested in block.Statements)
+                    CollectAddressTakenSymbols(nested, symbols);
+                break;
+            case BoundVariableDeclarationStatement variableDeclaration:
+                if (variableDeclaration.Initializer is not null)
+                    CollectAddressTakenSymbols(variableDeclaration.Initializer, symbols);
+                break;
+            case BoundAssignmentStatement assignment:
+                CollectAddressTakenSymbols(assignment.Value, symbols);
+                break;
+            case BoundExpressionStatement expressionStatement:
+                CollectAddressTakenSymbols(expressionStatement.Expression, symbols);
+                break;
+            case BoundIfStatement ifStatement:
+                CollectAddressTakenSymbols(ifStatement.Condition, symbols);
+                CollectAddressTakenSymbols(ifStatement.ThenBody, symbols);
+                if (ifStatement.ElseBody is not null)
+                    CollectAddressTakenSymbols(ifStatement.ElseBody, symbols);
+                break;
+            case BoundWhileStatement whileStatement:
+                CollectAddressTakenSymbols(whileStatement.Condition, symbols);
+                CollectAddressTakenSymbols(whileStatement.Body, symbols);
+                break;
+            case BoundForStatement forStatement:
+                CollectAddressTakenSymbols(forStatement.Body, symbols);
+                break;
+            case BoundLoopStatement loopStatement:
+                CollectAddressTakenSymbols(loopStatement.Body, symbols);
+                break;
+            case BoundRepLoopStatement repLoop:
+                CollectAddressTakenSymbols(repLoop.Count, symbols);
+                CollectAddressTakenSymbols(repLoop.Body, symbols);
+                break;
+            case BoundRepForStatement repFor:
+                CollectAddressTakenSymbols(repFor.Start, symbols);
+                CollectAddressTakenSymbols(repFor.End, symbols);
+                CollectAddressTakenSymbols(repFor.Body, symbols);
+                break;
+            case BoundNoirqStatement noirq:
+                CollectAddressTakenSymbols(noirq.Body, symbols);
+                break;
+            case BoundReturnStatement ret:
+                foreach (BoundExpression value in ret.Values)
+                    CollectAddressTakenSymbols(value, symbols);
+                break;
+            case BoundYieldtoStatement yieldto:
+                foreach (BoundExpression argument in yieldto.Arguments)
+                    CollectAddressTakenSymbols(argument, symbols);
+                break;
+        }
+    }
+
+    private static void CollectAddressTakenSymbols(BoundExpression expression, IDictionary<int, Symbol> symbols)
+    {
+        switch (expression)
+        {
+            case BoundUnaryExpression unary when unary.Operator.Kind == BoundUnaryOperatorKind.AddressOf
+                && unary.Operand is BoundSymbolExpression symbolExpression:
+                symbols[symbolExpression.Symbol.Id] = symbolExpression.Symbol;
+                break;
+            case BoundUnaryExpression unary:
+                CollectAddressTakenSymbols(unary.Operand, symbols);
+                break;
+            case BoundBinaryExpression binary:
+                CollectAddressTakenSymbols(binary.Left, symbols);
+                CollectAddressTakenSymbols(binary.Right, symbols);
+                break;
+            case BoundCallExpression call:
+                foreach (BoundExpression argument in call.Arguments)
+                    CollectAddressTakenSymbols(argument, symbols);
+                break;
+            case BoundIntrinsicCallExpression intrinsic:
+                foreach (BoundExpression argument in intrinsic.Arguments)
+                    CollectAddressTakenSymbols(argument, symbols);
+                break;
+            case BoundMemberAccessExpression member:
+                CollectAddressTakenSymbols(member.Receiver, symbols);
+                break;
+            case BoundIndexExpression index:
+                CollectAddressTakenSymbols(index.Expression, symbols);
+                CollectAddressTakenSymbols(index.Index, symbols);
+                break;
+            case BoundPointerDerefExpression deref:
+                CollectAddressTakenSymbols(deref.Expression, symbols);
+                break;
+            case BoundIfExpression ifExpression:
+                CollectAddressTakenSymbols(ifExpression.Condition, symbols);
+                CollectAddressTakenSymbols(ifExpression.ThenExpression, symbols);
+                CollectAddressTakenSymbols(ifExpression.ElseExpression, symbols);
+                break;
+            case BoundRangeExpression range:
+                CollectAddressTakenSymbols(range.Start, symbols);
+                CollectAddressTakenSymbols(range.End, symbols);
+                break;
+            case BoundStructLiteralExpression structLiteral:
+                foreach (BoundStructFieldInitializer field in structLiteral.Fields)
+                    CollectAddressTakenSymbols(field.Value, symbols);
+                break;
+            case BoundConversionExpression conversion:
+                CollectAddressTakenSymbols(conversion.Expression, symbols);
+                break;
+            case BoundCastExpression cast:
+                CollectAddressTakenSymbols(cast.Expression, symbols);
+                break;
+            case BoundBitcastExpression bitcast:
+                CollectAddressTakenSymbols(bitcast.Expression, symbols);
+                break;
+        }
     }
 
     private sealed class FunctionLoweringContext
@@ -147,6 +285,8 @@ public static class MirLowerer
                 MirValueId parameterValue = NextValue();
                 _entryBlock.Parameters.Add(new MirBlockParameter(parameterValue, parameter.Name, parameter.Type));
                 _currentValues[parameter] = parameterValue;
+                if (TryGetStoragePlace(parameter, out StoragePlace place))
+                    EmitStorePlace(place, parameterValue, body.Span);
             }
 
             LowerStatement(body);
@@ -657,19 +797,7 @@ public static class MirLowerer
                     return LowerUnaryExpression(unaryExpression);
 
                 case BoundBinaryExpression binaryExpression:
-                {
-                    MirValueId left = LowerExpression(binaryExpression.Left);
-                    MirValueId right = LowerExpression(binaryExpression.Right);
-                    MirValueId result = NextValue();
-                    _currentBlock.Instructions.Add(new MirBinaryInstruction(
-                        result,
-                        binaryExpression.Type,
-                        binaryExpression.Operator.Kind,
-                        left,
-                        right,
-                        binaryExpression.Span));
-                    return result;
-                }
+                    return LowerBinaryExpression(binaryExpression);
 
                 case BoundCallExpression callExpression:
                     return LowerCallExpression(callExpression);
@@ -743,6 +871,20 @@ public static class MirLowerer
                     return EmitOp("convert", conversionExpression.Type, [operand], hasSideEffects: false, conversionExpression.Span);
                 }
 
+                case BoundCastExpression castExpression:
+                {
+                    MirValueId operand = LowerExpression(castExpression.Expression);
+                    return EmitOp("convert", castExpression.Type, [operand], hasSideEffects: false, castExpression.Span);
+                }
+
+                case BoundBitcastExpression bitcastExpression:
+                {
+                    MirValueId operand = LowerExpression(bitcastExpression.Expression);
+                    MirValueId result = NextValue();
+                    _currentBlock.Instructions.Add(new MirCopyInstruction(result, bitcastExpression.Type, operand, bitcastExpression.Span));
+                    return result;
+                }
+
                 case BoundErrorExpression errorExpression:
                     return EmitConstant(null, BuiltinTypes.Unknown, errorExpression.Span);
             }
@@ -752,6 +894,19 @@ public static class MirLowerer
 
         private MirValueId LowerUnaryExpression(BoundUnaryExpression unaryExpression)
         {
+            if (unaryExpression.Operator.Kind == BoundUnaryOperatorKind.AddressOf
+                && unaryExpression.Operand is BoundSymbolExpression symbolExpression
+                && TryGetStoragePlace(symbolExpression.Symbol, out StoragePlace addressPlace))
+            {
+                MirValueId addressResult = NextValue();
+                _currentBlock.Instructions.Add(new MirLoadSymbolInstruction(
+                    addressResult,
+                    unaryExpression.Type,
+                    addressPlace.EmittedName,
+                    unaryExpression.Span));
+                return addressResult;
+            }
+
             MirValueId operand = LowerExpression(unaryExpression.Operand);
             if (unaryExpression.Operator.Kind is BoundUnaryOperatorKind.PostIncrement or BoundUnaryOperatorKind.PostDecrement)
             {
@@ -768,6 +923,13 @@ public static class MirLowerer
                     one,
                     unaryExpression.Span));
                 return updated;
+            }
+
+            if (unaryExpression.Operator.Kind == BoundUnaryOperatorKind.UnaryPlus)
+            {
+                MirValueId copyResult = NextValue();
+                _currentBlock.Instructions.Add(new MirCopyInstruction(copyResult, unaryExpression.Type, operand, unaryExpression.Span));
+                return copyResult;
             }
 
             MirValueId result = NextValue();
@@ -795,6 +957,70 @@ public static class MirLowerer
                 callExpression.Span));
 
             return result ?? EmitConstant(null, BuiltinTypes.Unknown, callExpression.Span);
+        }
+
+        private MirValueId LowerBinaryExpression(BoundBinaryExpression binaryExpression)
+        {
+            if (binaryExpression.Operator.Kind is BoundBinaryOperatorKind.LogicalAnd or BoundBinaryOperatorKind.LogicalOr)
+                return LowerShortCircuitBinaryExpression(binaryExpression);
+
+            MirValueId left = LowerExpression(binaryExpression.Left);
+            MirValueId right = LowerExpression(binaryExpression.Right);
+            MirValueId result = NextValue();
+            _currentBlock.Instructions.Add(new MirBinaryInstruction(
+                result,
+                binaryExpression.Type,
+                binaryExpression.Operator.Kind,
+                left,
+                right,
+                binaryExpression.Span));
+            return result;
+        }
+
+        private MirValueId LowerShortCircuitBinaryExpression(BoundBinaryExpression binaryExpression)
+        {
+            Dictionary<Symbol, MirValueId> beforeEnv = SnapshotAutomaticEnvironment();
+            IReadOnlyList<Symbol> envSymbols = GetOrderedAutomaticSymbols(beforeEnv);
+
+            MirValueId left = LowerExpression(binaryExpression.Left);
+            BlockBuilder rhsBlock = CreateBlock();
+            BlockBuilder shortCircuitBlock = CreateBlock();
+            BlockBuilder mergeBlock = CreateBlock();
+            MirValueId result = NextValue();
+            mergeBlock.Parameters.Add(new MirBlockParameter(result, "logic", BuiltinTypes.Bool));
+            Dictionary<Symbol, MirValueId> mergeEnv = CreateEnvironmentParameters(mergeBlock, envSymbols, "logic");
+
+            bool isLogicalAnd = binaryExpression.Operator.Kind == BoundBinaryOperatorKind.LogicalAnd;
+            string trueLabel = isLogicalAnd ? rhsBlock.Label : shortCircuitBlock.Label;
+            string falseLabel = isLogicalAnd ? shortCircuitBlock.Label : rhsBlock.Label;
+            _currentBlock.Terminator = new MirBranchTerminator(
+                left,
+                trueLabel,
+                falseLabel,
+                [],
+                [],
+                binaryExpression.Left.Span);
+
+            _currentBlock = shortCircuitBlock;
+            ReplaceAutomaticEnvironment(beforeEnv);
+            MirValueId shortCircuitValue = EmitConstant(!isLogicalAnd, BuiltinTypes.Bool, binaryExpression.Span);
+            List<MirValueId> shortCircuitArguments = new() { shortCircuitValue };
+            shortCircuitArguments.AddRange(BuildEnvironmentArguments(envSymbols, binaryExpression.Span));
+            _currentBlock.Terminator = new MirGotoTerminator(mergeBlock.Label, shortCircuitArguments, binaryExpression.Span);
+
+            _currentBlock = rhsBlock;
+            ReplaceAutomaticEnvironment(beforeEnv);
+            MirValueId right = LowerExpression(binaryExpression.Right);
+            if (_currentBlock.Terminator is null)
+            {
+                List<MirValueId> rhsArguments = new() { right };
+                rhsArguments.AddRange(BuildEnvironmentArguments(envSymbols, binaryExpression.Right.Span));
+                _currentBlock.Terminator = new MirGotoTerminator(mergeBlock.Label, rhsArguments, binaryExpression.Right.Span);
+            }
+
+            _currentBlock = mergeBlock;
+            ReplaceAutomaticEnvironment(mergeEnv);
+            return result;
         }
 
         private MirValueId LowerIfExpression(BoundIfExpression ifExpression)
@@ -932,7 +1158,7 @@ public static class MirLowerer
 
         private bool TryGetStoragePlace(Symbol symbol, out StoragePlace place)
         {
-            if (symbol is VariableSymbol variable && _storagePlacesBySymbolId.TryGetValue(variable.Id, out StoragePlace? resolved))
+            if (_storagePlacesBySymbolId.TryGetValue(symbol.Id, out StoragePlace? resolved))
             {
                 place = resolved;
                 return true;
@@ -1036,6 +1262,7 @@ public static class MirLowerer
             {
                 TokenKind.PlusEqual => BoundBinaryOperatorKind.Add,
                 TokenKind.MinusEqual => BoundBinaryOperatorKind.Subtract,
+                TokenKind.PercentEqual => BoundBinaryOperatorKind.Modulo,
                 TokenKind.AmpersandEqual => BoundBinaryOperatorKind.BitwiseAnd,
                 TokenKind.PipeEqual => BoundBinaryOperatorKind.BitwiseOr,
                 TokenKind.CaretEqual => BoundBinaryOperatorKind.BitwiseXor,
@@ -1046,6 +1273,7 @@ public static class MirLowerer
 
             return operatorKind is TokenKind.PlusEqual
                 or TokenKind.MinusEqual
+                or TokenKind.PercentEqual
                 or TokenKind.AmpersandEqual
                 or TokenKind.PipeEqual
                 or TokenKind.CaretEqual
@@ -1124,7 +1352,13 @@ public static class MirLowerer
                 return true;
 
             case BoundConversionExpression conversion:
-                return TryEvaluateStaticValue(conversion.Expression, out value);
+                return TryEvaluateConvertedValue(conversion.Expression, conversion.Type, out value);
+
+            case BoundCastExpression cast:
+                return TryEvaluateConvertedValue(cast.Expression, cast.Type, out value);
+
+            case BoundBitcastExpression bitcast:
+                return TryEvaluateConvertedValue(bitcast.Expression, bitcast.Type, out value);
 
             case BoundUnaryExpression unary when TryEvaluateStaticValue(unary.Operand, out object? unaryValue):
                 value = unary.Operator.Kind switch
@@ -1132,6 +1366,10 @@ public static class MirLowerer
                     BoundUnaryOperatorKind.Negation when unaryValue is IConvertible
                         => -Convert.ToInt64(unaryValue, CultureInfo.InvariantCulture),
                     BoundUnaryOperatorKind.LogicalNot when unaryValue is bool boolean => !boolean,
+                    BoundUnaryOperatorKind.BitwiseNot when unaryValue is IConvertible
+                        => ~Convert.ToInt64(unaryValue, CultureInfo.InvariantCulture),
+                    BoundUnaryOperatorKind.UnaryPlus when unaryValue is IConvertible
+                        => Convert.ToInt64(unaryValue, CultureInfo.InvariantCulture),
                     _ => null,
                 };
                 return value is not null;
@@ -1147,12 +1385,25 @@ public static class MirLowerer
         return false;
     }
 
+    private static bool TryEvaluateConvertedValue(BoundExpression expression, TypeSymbol targetType, out object? value)
+    {
+        if (!TryEvaluateStaticValue(expression, out object? operandValue))
+        {
+            value = null;
+            return false;
+        }
+
+        return TypeFacts.TryNormalizeValue(operandValue, targetType, out value);
+    }
+
     private static object? EvaluateBinary(BoundBinaryOperatorKind kind, object? leftValue, object? rightValue)
     {
         if (leftValue is bool leftBool && rightValue is bool rightBool)
         {
             return kind switch
             {
+                BoundBinaryOperatorKind.LogicalAnd => leftBool && rightBool,
+                BoundBinaryOperatorKind.LogicalOr => leftBool || rightBool,
                 BoundBinaryOperatorKind.Equals => leftBool == rightBool,
                 BoundBinaryOperatorKind.NotEquals => leftBool != rightBool,
                 _ => null,
@@ -1170,11 +1421,16 @@ public static class MirLowerer
             BoundBinaryOperatorKind.Subtract => left - right,
             BoundBinaryOperatorKind.Multiply => left * right,
             BoundBinaryOperatorKind.Divide => right == 0 ? null : left / right,
+            BoundBinaryOperatorKind.Modulo => right == 0 ? null : left % right,
             BoundBinaryOperatorKind.BitwiseAnd => left & right,
             BoundBinaryOperatorKind.BitwiseOr => left | right,
             BoundBinaryOperatorKind.BitwiseXor => left ^ right,
             BoundBinaryOperatorKind.ShiftLeft => left << (int)right,
             BoundBinaryOperatorKind.ShiftRight => left >> (int)right,
+            BoundBinaryOperatorKind.ArithmeticShiftLeft => left << (int)right,
+            BoundBinaryOperatorKind.ArithmeticShiftRight => left >> (int)right,
+            BoundBinaryOperatorKind.RotateLeft => RotateLeft(left, right),
+            BoundBinaryOperatorKind.RotateRight => RotateRight(left, right),
             BoundBinaryOperatorKind.Equals => left == right,
             BoundBinaryOperatorKind.NotEquals => left != right,
             BoundBinaryOperatorKind.Less => left < right,
@@ -1183,5 +1439,19 @@ public static class MirLowerer
             BoundBinaryOperatorKind.GreaterOrEqual => left >= right,
             _ => null,
         };
+    }
+
+    private static long RotateLeft(long value, long shift)
+    {
+        int amount = (int)(shift & 31);
+        uint bits = unchecked((uint)value);
+        return unchecked((int)((bits << amount) | (bits >> ((32 - amount) & 31))));
+    }
+
+    private static long RotateRight(long value, long shift)
+    {
+        int amount = (int)(shift & 31);
+        uint bits = unchecked((uint)value);
+        return unchecked((int)((bits >> amount) | (bits << ((32 - amount) & 31))));
     }
 }

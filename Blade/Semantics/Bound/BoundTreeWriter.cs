@@ -220,6 +220,16 @@ public static class BoundTreeWriter
                 WriteExpression(sb, indent + 1, conversion.Expression);
                 break;
 
+            case BoundCastExpression cast:
+                AppendLine(sb, indent, $"Cast<{cast.Type.Name}>");
+                WriteExpression(sb, indent + 1, cast.Expression);
+                break;
+
+            case BoundBitcastExpression bitcast:
+                AppendLine(sb, indent, $"Bitcast<{bitcast.Type.Name}>");
+                WriteExpression(sb, indent + 1, bitcast.Expression);
+                break;
+
             case BoundErrorExpression:
                 AppendLine(sb, indent, "ErrorExpr");
                 break;

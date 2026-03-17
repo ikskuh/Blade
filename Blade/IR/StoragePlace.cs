@@ -13,7 +13,7 @@ public enum StoragePlaceKind
 public sealed class StoragePlace
 {
     public StoragePlace(
-        VariableSymbol symbol,
+        Symbol symbol,
         StoragePlaceKind kind,
         int? fixedAddress,
         object? staticInitializer)
@@ -24,7 +24,7 @@ public sealed class StoragePlace
         StaticInitializer = staticInitializer;
     }
 
-    public VariableSymbol Symbol { get; }
+    public Symbol Symbol { get; }
     public StoragePlaceKind Kind { get; }
     public int? FixedAddress { get; }
     public object? StaticInitializer { get; }
@@ -35,8 +35,18 @@ public sealed class StoragePlace
     {
         StoragePlaceKind.FixedRegisterAlias => Symbol.Name,
         StoragePlaceKind.ExternalAlias => Symbol.Name,
-        _ => $"g_{Sanitize(Symbol.Name)}",
+        _ => BuildAllocatableName(Symbol),
     };
+
+    private static string BuildAllocatableName(Symbol symbol)
+    {
+        string sanitizedName = Sanitize(symbol.Name);
+        return symbol switch
+        {
+            VariableSymbol variable when variable.IsGlobalStorage => $"g_{sanitizedName}",
+            _ => $"g_{sanitizedName}_{symbol.Id}",
+        };
+    }
 
     private static string Sanitize(string name)
     {

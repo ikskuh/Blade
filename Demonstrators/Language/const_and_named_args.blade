@@ -1,0 +1,13 @@
+// Local const bindings can depend on runtime values, and named arguments can
+// reorder call sites without changing parameter order in the callee.
+
+reg var named_total: u32 = 0;
+reg var mixed_total: u32 = 0;
+
+fn blend(scale: u32, value: u32) -> u32 {
+    const doubled: u32 = value * 2;
+    return doubled + scale;
+}
+
+named_total = blend(value=10, scale=3);
+mixed_total = blend(4, value=11);

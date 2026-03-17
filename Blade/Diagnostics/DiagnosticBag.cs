@@ -185,6 +185,55 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
         Report(DiagnosticCode.E0218_UnsupportedStorageClass, span, $"Storage class '{storageClass}' is not supported yet.");
     }
 
+    public void ReportUnknownNamedArgument(TextSpan span, string functionName, string parameterName)
+    {
+        Report(
+            DiagnosticCode.E0219_UnknownNamedArgument,
+            span,
+            $"Function '{functionName}' does not have a parameter named '{parameterName}'.");
+    }
+
+    public void ReportDuplicateNamedArgument(TextSpan span, string parameterName)
+    {
+        Report(DiagnosticCode.E0220_DuplicateNamedArgument, span, $"Named argument '{parameterName}' is specified more than once.");
+    }
+
+    public void ReportPositionalArgumentAfterNamed(TextSpan span, string functionName)
+    {
+        Report(
+            DiagnosticCode.E0221_PositionalArgumentAfterNamed,
+            span,
+            $"Function '{functionName}' does not allow positional arguments after named arguments.");
+    }
+
+    public void ReportNamedArgumentConflictsWithPositional(TextSpan span, string parameterName)
+    {
+        Report(
+            DiagnosticCode.E0222_NamedArgumentConflictsWithPositional,
+            span,
+            $"Named argument '{parameterName}' conflicts with a positional argument.");
+    }
+
+    public void ReportInvalidAddressOfTarget(TextSpan span)
+    {
+        Report(DiagnosticCode.E0223_InvalidAddressOfTarget, span, "Address-of requires an addressable variable or parameter.");
+    }
+
+    public void ReportInvalidExplicitCast(TextSpan span, string sourceType, string targetType)
+    {
+        Report(DiagnosticCode.E0224_InvalidExplicitCast, span, $"Cannot explicitly cast from '{sourceType}' to '{targetType}'.");
+    }
+
+    public void ReportBitcastSizeMismatch(TextSpan span, string sourceType, string targetType)
+    {
+        Report(DiagnosticCode.E0225_BitcastSizeMismatch, span, $"Cannot bitcast from '{sourceType}' to '{targetType}' because their sizes differ.");
+    }
+
+    public void ReportAddressOfRecursiveLocal(TextSpan span, string name)
+    {
+        Report(DiagnosticCode.E0226_AddressOfRecursiveLocal, span, $"Cannot take the address of local '{name}' inside a recursive function.");
+    }
+
     // Inline assembly diagnostics
 
     public void ReportInlineAsmUnknownInstruction(TextSpan span, string mnemonic)

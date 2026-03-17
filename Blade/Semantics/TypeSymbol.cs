@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Globalization;
 using Blade;
 
 namespace Blade.Semantics;
@@ -49,17 +51,32 @@ public sealed class ArrayTypeSymbol : TypeSymbol
 
 public sealed class PointerTypeSymbol : TypeSymbol
 {
-    public PointerTypeSymbol(TypeSymbol pointeeType, bool isConst)
-        : base(isConst
-            ? $"*const {Requires.NotNull(pointeeType).Name}"
-            : $"*{Requires.NotNull(pointeeType).Name}")
+    public PointerTypeSymbol(TypeSymbol pointeeType, bool isConst, VariableStorageClass storageClass = VariableStorageClass.Automatic)
+        : base(BuildName(pointeeType, isConst, storageClass))
     {
         PointeeType = Requires.NotNull(pointeeType);
         IsConst = isConst;
+        StorageClass = storageClass;
     }
 
     public TypeSymbol PointeeType { get; }
     public bool IsConst { get; }
+    public VariableStorageClass StorageClass { get; }
+
+    private static string BuildName(TypeSymbol pointeeType, bool isConst, VariableStorageClass storageClass)
+    {
+        string storageText = storageClass switch
+        {
+            VariableStorageClass.Reg => "reg ",
+            VariableStorageClass.Lut => "lut ",
+            VariableStorageClass.Hub => "hub ",
+            _ => string.Empty,
+        };
+
+        return isConst
+            ? $"*{storageText}const {Requires.NotNull(pointeeType).Name}"
+            : $"*{storageText}{Requires.NotNull(pointeeType).Name}";
+    }
 }
 
 public sealed class StructTypeSymbol : TypeSymbol
@@ -152,5 +169,113 @@ public static class BuiltinTypes
     public static bool TryGet(string name, out TypeSymbol type)
     {
         return Builtins.TryGetValue(name, out type!);
+    }
+}
+
+public static class TypeFacts
+{
+    public static bool TryGetIntegerWidth(TypeSymbol type, out int width)
+    {
+        width = 0;
+        if (ReferenceEquals(type, BuiltinTypes.IntegerLiteral))
+        {
+            width = 32;
+            return true;
+        }
+
+        if (ReferenceEquals(type, BuiltinTypes.Bit) || ReferenceEquals(type, BuiltinTypes.Nit))
+        {
+            width = 1;
+            return true;
+        }
+
+        if (ReferenceEquals(type, BuiltinTypes.Nib))
+        {
+            width = 4;
+            return true;
+        }
+
+        if (ReferenceEquals(type, BuiltinTypes.U8) || ReferenceEquals(type, BuiltinTypes.I8))
+        {
+            width = 8;
+            return true;
+        }
+
+        if (ReferenceEquals(type, BuiltinTypes.U16) || ReferenceEquals(type, BuiltinTypes.I16))
+        {
+            width = 16;
+            return true;
+        }
+
+        if (ReferenceEquals(type, BuiltinTypes.U32)
+            || ReferenceEquals(type, BuiltinTypes.I32)
+            || ReferenceEquals(type, BuiltinTypes.Uint)
+            || ReferenceEquals(type, BuiltinTypes.Int))
+        {
+            width = 32;
+            return true;
+        }
+
+        return false;
+    }
+
+    public static bool TryGetScalarWidth(TypeSymbol type, out int width)
+    {
+        if (type is PointerTypeSymbol)
+        {
+            width = 32;
+            return true;
+        }
+
+        return TryGetIntegerWidth(type, out width);
+    }
+
+    public static bool IsSignedInteger(TypeSymbol type)
+    {
+        return ReferenceEquals(type, BuiltinTypes.Nit)
+            || ReferenceEquals(type, BuiltinTypes.I8)
+            || ReferenceEquals(type, BuiltinTypes.I16)
+            || ReferenceEquals(type, BuiltinTypes.I32)
+            || ReferenceEquals(type, BuiltinTypes.Int);
+    }
+
+    public static bool IsScalarCastType(TypeSymbol type)
+    {
+        return TryGetScalarWidth(type, out _);
+    }
+
+    public static bool TryNormalizeValue(object? value, TypeSymbol targetType, out object? normalized)
+    {
+        normalized = value;
+        if (value is null)
+            return true;
+
+        if (!TryGetScalarWidth(targetType, out int width))
+            return false;
+
+        uint rawBits = unchecked((uint)Convert.ToInt64(value, CultureInfo.InvariantCulture));
+        uint maskedBits = width >= 32 ? rawBits : rawBits & ((1u << width) - 1u);
+
+        if (targetType is PointerTypeSymbol)
+        {
+            normalized = maskedBits;
+            return true;
+        }
+
+        if (IsSignedInteger(targetType))
+        {
+            if (width >= 32)
+            {
+                normalized = unchecked((int)maskedBits);
+                return true;
+            }
+
+            int shift = 32 - width;
+            normalized = (int)(maskedBits << shift) >> shift;
+            return true;
+        }
+
+        normalized = maskedBits;
+        return true;
     }
 }

@@ -5,49 +5,6 @@ Sets are ordered by dependency — later sets may depend on earlier ones.
 
 ---
 
-## CS-1: New operators — binder + IR + codegen
-
-The parser and precedence table already handle `~`, `%`, `<<<`, `>>>`, `<%<`, `>%>`,
-`and`, `or`, unary `+`, and unary `&`. The binder and IR layers do not recognise them.
-
-### CS-1a: Unary operators `~`, `+`, `&`
-
-- `BoundUnaryOperatorKind`: add `BitwiseNot`, `UnaryPlus`, `AddressOf`.
-- `BoundUnaryOperator.Bind()`: map `Tilde` → `BitwiseNot`, `Plus` → `UnaryPlus`,
-  `Ampersand` → `AddressOf`.
-- `UnaryPlus` is identity on integers.
-- `BitwiseNot` (`~x`): invert all bits. Valid on integer types.
-- `AddressOf` (`&x`): produces `*<storage> T`. Requires the operand to be an
-  addressable lvalue; report a diagnostic otherwise.
-  Needs a `PointerTypeSymbol` result whose storage class comes from the variable's
-  storage class.
-- MIR lowering: `BitwiseNot` → `NOT` pseudo-op, `UnaryPlus` → identity copy,
-  `AddressOf` → `LEA` pseudo-op (resolve during ASM emission).
-- LIR lowering: `NOT` → P2 `NOT`, `LEA` → immediate address.
-- Tests: accept tests for `~x`, `+x`, `&x`; reject test for `&(1+2)`.
-
-### CS-1b: Binary operators `%`, `<<<`, `>>>`, `<%<`, `>%>`, `and`, `or`
-
-- `BoundBinaryOperatorKind`: add `Modulo`, `ArithmeticShiftLeft`,
-  `ArithmeticShiftRight`, `RotateLeft`, `RotateRight`,
-  `LogicalAnd`, `LogicalOr`.
-- `BoundBinaryOperator.Bind()`: map each `TokenKind` to the new kind.
-  `Modulo` valid on integer pairs.
-  `ArithmeticShift*` / `Rotate*` valid on integer pairs.
-  `LogicalAnd` / `LogicalOr` valid on bool pairs (short-circuit in lowering).
-- MIR lowering: new `MirBinaryOp` variants. `LogicalAnd`/`LogicalOr` lower to
-  branch-based short-circuit (two blocks, phi-like select).
-- LIR / codegen:
-  `Modulo` → call a helper (P2 has no native MOD; emit a QDIV-based sequence).
-  `ArithmeticShiftLeft` → `SHL` (same as logical on P2).
-  `ArithmeticShiftRight` → `SAR`.
-  `RotateLeft` → `ROL`. `RotateRight` → `ROR`.
-- Compound assignment `%=`: already parsed; needs `Modulo` wired through
-  `BindCompoundAssignment`.
-- Tests: expression-level tests for each new operator.
-
----
-
 ## CS-2: Type system — unions, enums, bitfields
 
 ### CS-2a: Union type symbol + binding
@@ -89,29 +46,6 @@ The parser and precedence table already handle `~`, `%`, `<<<`, `>>>`, `<%<`, `>
 - LIR/codegen: use P2 `GETBYTE`/`GETNIB`/`TESTB` where field boundaries align,
   else generic shift+mask.
 - Tests: declare bitfield, read/write fields, reject overflow.
-
----
-
-## CS-3: Explicit conversions — `as` and `bitcast`
-
-### CS-3a: `as` cast expression
-
-- Add `BoundCastExpression` (source expression + target type).
-- `BindExpressionCore`: handle `CastExpressionSyntax`.
-- Rules: integer → integer (truncate/extend), integer ↔ open enum,
-  pointer → pointer (storage must match or be explicit). Reject: struct/union
-  casts, closed enum ↔ integer.
-- MIR: `Cast` instruction variant (truncate / zero-extend / sign-extend).
-- LIR/codegen: `AND` mask for truncation, identity for widening to u32 register.
-- Tests: `x as u8`, `x as OpenEnum`, reject `x as ClosedEnum`.
-
-### CS-3b: `bitcast` expression
-
-- Add `BoundBitcastExpression` (source expression + target type).
-- `BindExpressionCore`: handle `BitcastExpressionSyntax`.
-- Validate source and target have the same bit width. Report diagnostic otherwise.
-- Semantically a no-op (reinterpret bits). Lower to identity copy in MIR.
-- Tests: `bitcast(Bitfield, x)`, `bitcast(ClosedEnum, x)`, reject size mismatch.
 
 ---
 
@@ -234,34 +168,6 @@ flag or produces a distinct value. The binder should:
 - `IsAssignable`: allow `string` → `[N]u8` when lengths match.
 - Lower string literal to array of bytes.
 - Tests: `var a: [4]u8 = "bye!"`, reject length mismatch.
-
----
-
-## CS-10: Named arguments
-
-The parser produces `NamedArgumentSyntax` nodes in call argument lists.
-The binder's `BindCallExpression` ignores them.
-
-- When binding arguments, check for `NamedArgumentSyntax`. If present:
-  - Resolve the name to a parameter by name.
-  - Reorder arguments to match parameter order.
-  - Report diagnostic for: unknown parameter name, duplicate name,
-    positional after named, name conflict with positional.
-- Tests: `func_2(x=10, y=20)`, `func_2(10, y=20)`, reject `func_2(y=10, x=20, y=30)`.
-
----
-
-## CS-11: Local `const` declarations
-
-The parser routes `const name: type = expr;` at statement level to a
-`VariableDeclarationStatementSyntax` with `MutabilityKeyword = const`.
-The binder already handles `const` globals. Verify that:
-
-- Local `const` variables are bound with `IsConst = true`.
-- Assignment to a local const reports `E0207_AssignmentToConst`.
-- The initializer may be a runtime expression (unlike global const which
-  requires comptime).
-- Tests: `const x: u32 = param * 2;`, reject `x = 3;`.
 
 ---
 

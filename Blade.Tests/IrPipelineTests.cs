@@ -157,6 +157,255 @@ public class IrPipelineTests
     }
 
     [Test]
+    public void NamedArguments_BuildThroughIrPipeline()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn pair(x: u32, y: u32) -> u32 {
+                return x + y;
+            }
+
+            var result: u32 = pair(10, y=20);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        string mir = MirTextWriter.Write(build.MirModule);
+        string lir = LirTextWriter.Write(build.LirModule);
+
+        Assert.That(mir, Does.Contain("const 10"));
+        Assert.That(mir, Does.Contain("const 20"));
+        Assert.That(mir, Does.Contain("fn pair"));
+        Assert.That(lir, Does.Contain("binary.Add"));
+    }
+
+    [Test]
+    public void ExplicitIntegerCasts_EmitExtensionInstructions()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            noinline fn demo(x: u32) -> u32 {
+                var lo: u8 = x as u8;
+                var hi: i8 = x as i8;
+                return lo + (hi as u32);
+            }
+
+            var result: u32 = demo(255);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        Assert.That(MirTextWriter.Write(build.MirModule), Does.Contain("convert"));
+        Assert.That(build.AssemblyText, Does.Contain("ZEROX"));
+        Assert.That(build.AssemblyText, Does.Contain("SIGNX"));
+    }
+
+    [Test]
+    public void ExplicitCast_StaticInitializer_IsNormalized()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg var narrowed: u8 = 257 as u8;
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        Assert.That(build.AssemblyText, Does.Match(@"g_narrowed\s+LONG\s+1"));
+    }
+
+    [Test]
+    public void Bitcast_LowersAsCopy()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            noinline fn demo(raw: u32) -> u32 {
+                var ptr: *reg u32 = bitcast(*reg u32, raw);
+                return bitcast(u32, ptr);
+            }
+
+            var result: u32 = demo(1);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        string mir = MirTextWriter.Write(build.MirModule);
+
+        Assert.That(mir, Does.Contain("copy"));
+    }
+
+    [Test]
+    public void Bitcast_StaticInitializer_ReinterpretsBits()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg var signed: i8 = bitcast(i8, 255 as u8);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        Assert.That(build.AssemblyText, Does.Match(@"g_signed\s+LONG\s+-1"));
+    }
+
+    [Test]
+    public void LogicalOperators_LowerWithShortCircuitControlFlow()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn demo(a: bool, b: bool) -> bool {
+                return (a and b) or a;
+            }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+        });
+
+        string mir = MirTextWriter.Write(build.MirModule);
+
+        Assert.That(mir, Does.Contain("branch "));
+        Assert.That(mir, Does.Not.Contain("binary.LogicalAnd"));
+        Assert.That(mir, Does.Not.Contain("binary.LogicalOr"));
+    }
+
+    [Test]
+    public void NewIntegerOperators_EmitExpectedAssemblyInstructions()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            noinline fn demo(x: u32, y: u32) -> u32 {
+                var plus: u32 = +x;
+                var inv: u32 = ~x;
+                var rem: u32 = x % y;
+                var sal: u32 = x <<< y;
+                var sar: u32 = x >>> y;
+                var rol: u32 = x <%< y;
+                var ror: u32 = x >%> y;
+                return plus + inv + rem + sal + sar + rol + ror;
+            }
+
+            var result: u32 = demo(8, 1);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        Assert.That(build.AssemblyText, Does.Contain("NOT"));
+        Assert.That(build.AssemblyText, Does.Contain("GETQY"));
+        Assert.That(build.AssemblyText, Does.Contain("SHL"));
+        Assert.That(build.AssemblyText, Does.Contain("SAR"));
+        Assert.That(build.AssemblyText, Does.Contain("ROL"));
+        Assert.That(build.AssemblyText, Does.Contain("ROR"));
+    }
+
+    [Test]
+    public void AddressOfLocal_EmitsSymbolAddressForSyntheticStorage()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            noinline fn demo(param: u32) -> u32 {
+                var x: u32 = param;
+                var p: *reg u32 = &x;
+                var sink: u32 = 0;
+                asm volatile {
+                    MOV {sink}, {p}
+                };
+                return sink;
+            }
+
+            var result: u32 = demo(1);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        Assert.That(MirTextWriter.Write(build.MirModule), Does.Match(@"load @g_x_\d+"));
+        Assert.That(build.AssemblyText, Does.Match(@"MOV _r\d+,\s+g_x_\d+"));
+    }
+
+    [Test]
+    public void AddressOfParameter_EmitsSyntheticStorage()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            noinline fn demo(param: u32) -> u32 {
+                var p: *reg u32 = &param;
+                var sink: u32 = 0;
+                asm volatile {
+                    MOV {sink}, {p}
+                };
+                return sink;
+            }
+
+            var result: u32 = demo(1);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        Assert.That(MirTextWriter.Write(build.MirModule), Does.Match(@"load @g_param_\d+"));
+        Assert.That(build.AssemblyText, Does.Match(@"MOV g_param_\d+,\s+_r1"));
+    }
+
+    [Test]
+    public void ModuloCompoundAssignment_UsesUpdatePlaceLowering()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg var acc: u32 = 17;
+            acc %= 3;
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        Assert.That(MirTextWriter.Write(build.MirModule), Does.Contain("update.place g_acc Modulo"));
+        Assert.That(build.AssemblyText, Does.Contain("GETQY"));
+    }
+
+    [Test]
     public void FinalAssemblyWriter_FormatsInlineAsmAndRegisterFileForReadability()
     {
         AsmModule module = new([],

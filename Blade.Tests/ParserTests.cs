@@ -457,6 +457,25 @@ public class ParserTests
     }
 
     [Test]
+    public void LocalConstDeclaration_ParsesAsVariableDeclarationStatement()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("""
+            fn demo(param: u32) void {
+                const x: u32 = param * 2;
+            }
+            """);
+        AssertNoDiagnostics(diag);
+
+        FunctionDeclarationSyntax function = (FunctionDeclarationSyntax)unit.Members[0];
+        VariableDeclarationStatementSyntax statement = (VariableDeclarationStatementSyntax)function.Body.Statements[0];
+        VariableDeclarationSyntax declaration = statement.Declaration;
+
+        Assert.That(declaration.MutabilityKeyword.Kind, Is.EqualTo(TokenKind.ConstKeyword));
+        Assert.That(declaration.Name.Text, Is.EqualTo("x"));
+        Assert.That(declaration.Initializer, Is.TypeOf<BinaryExpressionSyntax>());
+    }
+
+    [Test]
     public void RangeExpression_ParsesCorrectly()
     {
         (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var span: u32 = 1..4;");
@@ -506,6 +525,48 @@ public class ParserTests
         Assert.That(((ExpressionStatementSyntax)block.Statements[1]).Expression, Is.TypeOf<CallExpressionSyntax>());
         Assert.That(((ExpressionStatementSyntax)block.Statements[2]).Expression, Is.TypeOf<PostfixUnaryExpressionSyntax>());
         Assert.That(((ExpressionStatementSyntax)block.Statements[3]).Expression, Is.TypeOf<PostfixUnaryExpressionSyntax>());
+    }
+
+    [Test]
+    public void CallExpression_WithNamedArguments_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("invoke(x=10, y=20);");
+        AssertNoDiagnostics(diag);
+
+        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
+        ExpressionStatementSyntax statement = (ExpressionStatementSyntax)global.Statement;
+        CallExpressionSyntax call = (CallExpressionSyntax)statement.Expression;
+
+        Assert.That(call.Arguments[0], Is.TypeOf<NamedArgumentSyntax>());
+        Assert.That(call.Arguments[1], Is.TypeOf<NamedArgumentSyntax>());
+    }
+
+    [Test]
+    public void CastExpression_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("value as u8;");
+        AssertNoDiagnostics(diag);
+
+        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
+        ExpressionStatementSyntax statement = (ExpressionStatementSyntax)global.Statement;
+        CastExpressionSyntax cast = (CastExpressionSyntax)statement.Expression;
+
+        Assert.That(cast.Expression, Is.TypeOf<NameExpressionSyntax>());
+        Assert.That(cast.TargetType, Is.TypeOf<PrimitiveTypeSyntax>());
+    }
+
+    [Test]
+    public void BitcastExpression_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("bitcast(*reg u32, value);");
+        AssertNoDiagnostics(diag);
+
+        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
+        ExpressionStatementSyntax statement = (ExpressionStatementSyntax)global.Statement;
+        BitcastExpressionSyntax bitcast = (BitcastExpressionSyntax)statement.Expression;
+
+        Assert.That(bitcast.Value, Is.TypeOf<NameExpressionSyntax>());
+        Assert.That(bitcast.TargetType, Is.TypeOf<PointerTypeSyntax>());
     }
 
     [Test]

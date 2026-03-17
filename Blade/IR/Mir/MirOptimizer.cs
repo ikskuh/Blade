@@ -85,9 +85,10 @@ public static class MirOptimizer
                         && op.Opcode == "convert"
                         && op.Result is MirValueId convertResult
                         && op.Operands.Count == 1
-                        && TryGetConstant(constants, op.Operands[0], out object? convertValue))
+                        && TryGetConstant(constants, op.Operands[0], out object? convertValue)
+                        && TypeFacts.TryNormalizeValue(convertValue, op.ResultType!, out object? normalizedValue))
                     {
-                        rewritten = new MirConstantInstruction(convertResult, op.ResultType!, convertValue, op.Span);
+                        rewritten = new MirConstantInstruction(convertResult, op.ResultType!, normalizedValue, op.Span);
                     }
 
                     if (rewritten.Result is MirValueId result)
@@ -577,6 +578,12 @@ public static class MirOptimizer
             case BoundUnaryOperatorKind.Negation when TryGetInteger(operand, out long integer):
                 result = -integer;
                 return true;
+            case BoundUnaryOperatorKind.BitwiseNot when TryGetInteger(operand, out long bitwiseInteger):
+                result = ~bitwiseInteger;
+                return true;
+            case BoundUnaryOperatorKind.UnaryPlus when TryGetInteger(operand, out long identityInteger):
+                result = identityInteger;
+                return true;
         }
 
         return false;
@@ -601,6 +608,9 @@ public static class MirOptimizer
                 case BoundBinaryOperatorKind.Divide:
                     result = rightInt == 0 ? leftInt : leftInt / rightInt;
                     return true;
+                case BoundBinaryOperatorKind.Modulo:
+                    result = rightInt == 0 ? leftInt : leftInt % rightInt;
+                    return true;
                 case BoundBinaryOperatorKind.BitwiseAnd:
                     result = leftInt & rightInt;
                     return true;
@@ -615,6 +625,18 @@ public static class MirOptimizer
                     return true;
                 case BoundBinaryOperatorKind.ShiftRight:
                     result = leftInt >> (int)(rightInt & 63);
+                    return true;
+                case BoundBinaryOperatorKind.ArithmeticShiftLeft:
+                    result = leftInt << (int)(rightInt & 63);
+                    return true;
+                case BoundBinaryOperatorKind.ArithmeticShiftRight:
+                    result = leftInt >> (int)(rightInt & 63);
+                    return true;
+                case BoundBinaryOperatorKind.RotateLeft:
+                    result = RotateLeft(leftInt, rightInt);
+                    return true;
+                case BoundBinaryOperatorKind.RotateRight:
+                    result = RotateRight(leftInt, rightInt);
                     return true;
                 case BoundBinaryOperatorKind.Equals:
                     result = leftInt == rightInt;
@@ -644,7 +666,34 @@ public static class MirOptimizer
             return true;
         }
 
+        if (TryGetBool(left, out bool leftBool) && TryGetBool(right, out bool rightBool))
+        {
+            switch (kind)
+            {
+                case BoundBinaryOperatorKind.LogicalAnd:
+                    result = leftBool && rightBool;
+                    return true;
+                case BoundBinaryOperatorKind.LogicalOr:
+                    result = leftBool || rightBool;
+                    return true;
+            }
+        }
+
         return false;
+    }
+
+    private static long RotateLeft(long value, long shift)
+    {
+        int amount = (int)(shift & 31);
+        uint bits = unchecked((uint)value);
+        return unchecked((int)((bits << amount) | (bits >> ((32 - amount) & 31))));
+    }
+
+    private static long RotateRight(long value, long shift)
+    {
+        int amount = (int)(shift & 31);
+        uint bits = unchecked((uint)value);
+        return unchecked((int)((bits >> amount) | (bits << ((32 - amount) & 31))));
     }
 
     private static bool TryGetInteger(object? value, out long result)
