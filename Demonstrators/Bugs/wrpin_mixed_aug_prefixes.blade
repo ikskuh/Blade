@@ -1,0 +1,13 @@
+// EXPECT: pass
+// STAGE: final-asm
+// SEQUENCE:
+// - AUGD #2
+// - AUGS #3
+// - WRPIN #86, #393
+// NOTE:
+//   WRPIN accepts immediate syntax in both D and S fields.
+//   The legalizer must choose AUGD for operand 0 and AUGS for operand 1.
+
+asm {
+    WRPIN #1110, #1929
+};

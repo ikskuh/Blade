@@ -862,13 +862,38 @@ public static class AsmLowerer
         if (name.StartsWith('@'))
             name = name[1..];
 
+        string opcode = name.ToUpperInvariant();
         List<AsmOperand> operands = [];
-        if (op.Destination is { } dest)
-            operands.Add(new AsmRegisterOperand(dest.Id));
         for (int i = 1; i < op.Operands.Count; i++)
             operands.Add(LowerOperand(op.Operands[i]));
 
-        nodes.Add(new AsmInstructionNode(name.ToUpperInvariant(), operands));
+        if (op.Destination is { } dest
+            && ShouldEmitIntrinsicDestination(opcode, operands.Count))
+        {
+            operands.Insert(0, new AsmRegisterOperand(dest.Id));
+        }
+
+        nodes.Add(new AsmInstructionNode(opcode, operands));
+    }
+
+    private static bool ShouldEmitIntrinsicDestination(string opcode, int explicitOperandCount)
+    {
+        if (P2InstructionMetadata.TryGetInstructionForm(opcode, explicitOperandCount + 1, out P2InstructionFormInfo formWithDestination))
+            return FormWritesOperand(formWithDestination);
+
+        return !P2InstructionMetadata.TryGetInstructionForm(opcode, explicitOperandCount, out _);
+    }
+
+    private static bool FormWritesOperand(P2InstructionFormInfo form)
+    {
+        return OperandWrites(form.Operand0)
+            || OperandWrites(form.Operand1)
+            || OperandWrites(form.Operand2);
+    }
+
+    private static bool OperandWrites(P2InstructionOperandInfo operand)
+    {
+        return operand.Access is P2OperandAccess.Write or P2OperandAccess.ReadWrite;
     }
 
     private static void LowerStore(List<AsmNode> nodes, LirOpInstruction op)

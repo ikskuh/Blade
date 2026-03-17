@@ -483,10 +483,7 @@ public static class AsmOptimizer
             return true;
 
         return P2InstructionMetadata.IsControlFlow(instruction.Opcode, instruction.Operands.Count)
-            || P2InstructionMetadata.RequiresImmediateAddressPrefix(
-                instruction.Opcode,
-                instruction.Operands.Count,
-                instruction.Operands.Count - 1);
+            || HasImmediateSymbolOperand(instruction);
     }
 
     private static bool IsPureRegisterLocalInstruction(AsmInstructionNode instruction)
@@ -541,6 +538,20 @@ public static class AsmOptimizer
         }
 
         return targets;
+    }
+
+    private static bool HasImmediateSymbolOperand(AsmInstructionNode instruction)
+    {
+        for (int operandIndex = 0; operandIndex < instruction.Operands.Count; operandIndex++)
+        {
+            if (instruction.Operands[operandIndex] is not AsmSymbolOperand)
+                continue;
+
+            if (P2InstructionMetadata.UsesImmediateSymbolSyntax(instruction.Opcode, instruction.Operands.Count, operandIndex))
+                return true;
+        }
+
+        return false;
     }
 
     private static bool EndsWithTargetedLabel(IReadOnlyList<AsmNode> nodes, IReadOnlySet<string> targets)

@@ -1,0 +1,15 @@
+// EXPECT: pass
+// STAGE: final-asm
+// SEQUENCE:
+// - AUGS #2
+// - GETNIB g_nibble, #86, #3
+// NOT_CONTAINS:
+// - AUGD
+// NOTE:
+//   GETNIB may AUG-extend the S operand, but the #N operand is immediate-only and must not trigger AUGD/AUGS.
+
+reg var nibble: u32 = 0;
+
+asm {
+    GETNIB {nibble}, #1110, #3
+};

@@ -53,11 +53,6 @@ In FinalAssemblyWriter.WriteConBlock, skip CON alias emission when the fixed-add
 
 ## `undefined` keyword for no-init locals
 
-
-## Add configuration for each optimization pass
-
-This is a no-brainer, but we need to have optimizations to be enabled and disabled so we can see if they are effective.
-
 ## Type improvements
 
 - Distinct between `[*]T` and `*T` like in Zig. This gives better quality code without basically any drawbacks.
@@ -71,25 +66,6 @@ does not compile properly at all.
 
 uses the old rendering method which is weirdly formatted.
 
-## CLAUDE.md
-
-Codify that changes in the syntax must be reflected in "VSCode/blade-lang/syntaxes/blade.tmLanguage.json" and
-the language docs under "Docs/Blade.md".
-
-Codify builds must yield zero warnings.
-
-## Support Inline assembly labels
-
-This is a huge important thing, we need to be able to use this:
-
-```
-asm {
-    IF_Z JMP #label
-    MOV {sink}, #1
-label: // derive from the PASM syntax to make parsing simpler
-}
-```
-
 ## Optimizer removes the required NOP
 
 ```
@@ -101,62 +77,26 @@ gets optimized by the NOP optimizer
 
 this means we need a way to handle the "TRAP" as a single ASMIR instruction
 
-
-
----
-
-## `asm volatile { }` blocks
-
-Right now, all blocks are inherently volatile.
-
-If we can make this an optional keyword, we can change the semantics:
-
-- `asm { … }` is hand-written assembly code, but *may* be optimized by an ASMIR or ASM optimizer.
-- `asm volatile { … }` must be taken verbatim by the assembler.
-
-This would allow optimizing user-written assembly code and elide unnecessary MOV or copies emitted by the compiler.
-
-## Test strategy to find regressions and miscompilations
-
-Right now, nothing is really tested except for the unit tests, which have bad coverage atm.
-
-The idea is that we introduce a proper testing framework or test runner outside NUnit Tests which:
-
-- Can run on a lot of files
-- Can validate generated instruction sequences
-- Can validate/match on generated code snippets (only raw code, always ignores comments and whitespace)
-- Can be used to run hand-written tests against hand-optimized assembly code
-
-## Function without return value compiles
-
-```blade
-fn read_pin_to_carry(pin: u32) -> bool@C {
-    asm {
-        TESTP {pin} WC
-    } -> result: bool@C;
-}
-```
-
-## Problem with negative literals emitted
-
-```blade
-reinterpreted_signed = bitcast(i8, 255 as u8);
-```
-
-## AsmLegalizer.SelectAugPrefix needs a heavy overhaul
-
-Current AUG selection logic is still heuristic and should be reworked around explicit operand-role metadata (D vs S) for every instruction form.
-
 ## Add `VariableStorageClass.Flag` and wire asm output binding through it
 
 Inline asm output bindings currently use `VariableStorageClass.Automatic`; introduce a dedicated `VariableStorageClass.Flag` and propagate it through binder/IR/codegen semantics.
 
-## Lexer quaternary integer parsing should not throw
+## KNOWN SILICON BUGS
 
-```csharp
-[Test]
-public void QuaternaryInteger_CurrentlyThrowsForBase4Conversion()
-{
-    Assert.Throws<ArgumentException>(() => Lex("0q123"));
-}
-```
+Intervening ALTx/AUGS/AUGD instructions between SETQ/SETQ2 and RDLONG/WRLONG/WMLONG-PTRx instructions will cancel
+the special-case block-size PTRx deltas. The expected number of longs will transfer, but PTRx will only be modified according to
+normal PTRx expression behavior:
+
+  SETQ  #16-1    'ready to load 16 longs
+  ALTD  start_reg  'alter start register (ALTD cancels block-size PTRx deltas)
+  RDLONG 0,ptra++  'ptra will only be incremented by 4 (1 long), not 16*4 as anticipated!!!
+
+Intervening ALTx instructions with an immediate #S operand, between AUGS and the AUGS' intended target instruction (which would
+have an immediate #S operand), will use the AUGS value, but not cancel it. So, the intended AUGS target instruction will use and
+cancel the AUGS value, as expected, but the intervening ALTx instruction will also use the AUGS value (if it has an immediate #S
+operand). To avoid problems in these circumstances, use a register for the S operand of the ALTx instruction, and not an immediate #S
+operand.
+
+  AUGS  #$FFFFF123  'This AUGS is intended for the ADD instruction.
+  ALTD  index,#base  'Look out! AUGS will affect #base, too. Use a register, instead.
+  ADD  0-0,#$123  '#$123 will be augmented by the AUGS and cancel the AUGS.

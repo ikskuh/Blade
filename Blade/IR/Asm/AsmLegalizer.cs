@@ -9,20 +9,13 @@ namespace Blade.IR.Asm;
 /// Post-register-allocation legalization pass for ASMIR (whole-program).
 /// Handles:
 /// 1. Immediate range checks — inserts AUGS/AUGD for values that don't fit
-///    in the 9-bit S or D field, or promotes to a shared constant register
+///    in their encoded operand field, or promotes to a shared constant register
 ///    when the same bit pattern appears multiple times.
 /// 2. Operates on the entire module, not per-function, since code + data
 ///    share the same 512-long COG register file.
 /// </summary>
 public static class AsmLegalizer
 {
-    /// <summary>
-    /// P2 instruction S-field and D-field are 9 bits wide.
-    /// An immediate value fits if its uint32 representation is 0..511.
-    /// Negative values like -8 are 0xFFFFFFF8 as uint32, which does NOT fit.
-    /// </summary>
-    private const uint MaxImmediate9Bit = 511;
-
     public static AsmModule Legalize(AsmModule module)
     {
         Requires.NotNull(module);
@@ -92,12 +85,20 @@ public static class AsmLegalizer
         AsmInstructionNode instruction,
         Dictionary<uint, int> counts)
     {
-        foreach (AsmOperand operand in instruction.Operands)
+        for (int operandIndex = 0; operandIndex < instruction.Operands.Count; operandIndex++)
         {
+            AsmOperand operand = instruction.Operands[operandIndex];
             if (operand is AsmImmediateOperand imm)
             {
+                P2InstructionOperandInfo operandInfo = P2InstructionMetadata.GetOperandInfo(
+                    instruction.Opcode,
+                    instruction.Operands.Count,
+                    operandIndex);
+                if (!CanUseSharedConstant(operandInfo))
+                    continue;
+
                 uint uval = unchecked((uint)imm.Value);
-                if (uval > MaxImmediate9Bit)
+                if (!FitsInOperandField(uval, operandInfo.BitWidth))
                 {
                     counts.TryGetValue(uval, out int existing);
                     counts[uval] = existing + 1;
@@ -128,27 +129,30 @@ public static class AsmLegalizer
         AsmInstructionNode instruction,
         Dictionary<uint, string> constantRegisters)
     {
-        // P2 instruction format: OPCODE D, S
-        // Operand 0 = D-field, Operand 1 = S-field (when both present)
-        // Some instructions are single-operand (D-field only, e.g., GETQX D)
-
         bool modified = false;
         List<AsmOperand> newOperands = new(instruction.Operands.Count);
-        string? augPrefix = null;
-        long augValue = 0;
+        List<(string Opcode, long Value)> prefixes = [];
 
         for (int i = 0; i < instruction.Operands.Count; i++)
         {
             AsmOperand operand = instruction.Operands[i];
+            P2InstructionOperandInfo operandInfo = P2InstructionMetadata.GetOperandInfo(
+                instruction.Opcode,
+                instruction.Operands.Count,
+                i);
 
             if (operand is AsmImmediateOperand imm)
             {
+                if (!operandInfo.SupportsImmediateSyntax || operandInfo.BitWidth <= 0)
+                    throw new InvalidOperationException($"Instruction '{instruction.Opcode}' operand {i} does not support immediate syntax.");
+
                 uint uval = unchecked((uint)imm.Value);
 
-                if (uval > MaxImmediate9Bit)
+                if (!FitsInOperandField(uval, operandInfo.BitWidth))
                 {
                     // Check if this value has a shared constant register
-                    if (constantRegisters.TryGetValue(uval, out string? constLabel))
+                    if (CanUseSharedConstant(operandInfo)
+                        && constantRegisters.TryGetValue(uval, out string? constLabel))
                     {
                         // Replace immediate with reference to constant register
                         newOperands.Add(new AsmSymbolOperand(constLabel));
@@ -156,11 +160,14 @@ public static class AsmLegalizer
                         continue;
                     }
 
-                    // Determine which AUG prefix is needed based on instruction metadata.
-                    augPrefix = SelectAugPrefix(instruction, i);
+                    if (operandInfo.AugPrefix == P2AugPrefixKind.None)
+                    {
+                        throw new InvalidOperationException(
+                            $"Immediate value #{imm.Value} does not fit operand {i} of instruction '{instruction.Opcode}' and cannot be AUG-extended.");
+                    }
 
-                    augValue = uval >> 9;
-                    long lowImmediateBits = uval & MaxImmediate9Bit;
+                    prefixes.Add((GetAugOpcode(operandInfo.AugPrefix), unchecked((long)(uval >> operandInfo.BitWidth))));
+                    long lowImmediateBits = unchecked((long)(uval & GetOperandMask(operandInfo.BitWidth)));
                     newOperands.Add(new AsmImmediateOperand(lowImmediateBits));
                     modified = true;
                 }
@@ -175,11 +182,10 @@ public static class AsmLegalizer
             }
         }
 
-        // Emit AUG prefix if needed (must come immediately before the instruction)
-        if (augPrefix is not null)
+        // Emit AUG prefixes immediately before the instruction in operand order.
+        foreach ((string opcode, long value) in prefixes)
         {
-            nodes.Add(new AsmInstructionNode(augPrefix,
-                [new AsmImmediateOperand(augValue)]));
+            nodes.Add(new AsmInstructionNode(opcode, [new AsmImmediateOperand(value)]));
         }
 
         if (modified)
@@ -192,16 +198,43 @@ public static class AsmLegalizer
             nodes.Add(instruction);
         }
     }
-    private static string SelectAugPrefix(AsmInstructionNode instruction, int operandIndex)
-    {
-        if (instruction.Operands.Count == 1)
-        {
-            return P2InstructionMetadata.RequiresImmediateAddressPrefix(instruction.Opcode, instruction.Operands.Count, operandIndex)
-                ? "AUGS"
-                : "AUGD";
-        }
 
-        return operandIndex == 0 ? "AUGD" : "AUGS";
+    private static bool CanUseSharedConstant(P2InstructionOperandInfo operandInfo)
+    {
+        return operandInfo.SupportsImmediateSyntax
+            && operandInfo.BitWidth > 0
+            && operandInfo.AugPrefix != P2AugPrefixKind.None;
     }
 
+    private static bool FitsInOperandField(uint value, int bitWidth)
+    {
+        if (bitWidth <= 0)
+            return false;
+
+        if (bitWidth >= 32)
+            return true;
+
+        return value <= GetOperandMask(bitWidth);
+    }
+
+    private static uint GetOperandMask(int bitWidth)
+    {
+        if (bitWidth <= 0)
+            return 0;
+
+        if (bitWidth >= 32)
+            return uint.MaxValue;
+
+        return (1u << bitWidth) - 1u;
+    }
+
+    private static string GetAugOpcode(P2AugPrefixKind augPrefix)
+    {
+        return augPrefix switch
+        {
+            P2AugPrefixKind.AUGD => "AUGD",
+            P2AugPrefixKind.AUGS => "AUGS",
+            _ => throw new InvalidOperationException($"Unsupported AUG prefix kind '{augPrefix}'."),
+        };
+    }
 }

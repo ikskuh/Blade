@@ -10,10 +10,6 @@ namespace Blade.IR.Asm;
 
 public static class FinalAssemblyWriter
 {
-    /// <summary>
-    /// Opcodes where the S-field symbol operand is a jump/call target address
-    /// (needs # prefix). All other symbol operands are register references.
-    /// </summary>
     private static bool IsDataDirective(string text)
     {
         ReadOnlySpan<char> t = text.AsSpan().TrimStart();
@@ -347,10 +343,9 @@ public static class FinalAssemblyWriter
     }
 
     /// <summary>
-    /// Format a symbol operand with or without # prefix depending on context.
-    /// - Jump/call targets in S-field: #label (immediate address)
-    /// - Register references in D-field or S-field: plain label
-    /// - Special registers (PA, PB, etc.): plain name
+    /// Format a symbol operand with or without # prefix depending on the operand form.
+    /// - Immediate-form operands use #label
+    /// - Register/special-register references stay plain
     /// </summary>
     private static string FormatSymbolOperand(
         AsmSymbolOperand sym,
@@ -365,8 +360,7 @@ public static class FinalAssemblyWriter
         if (sym.Name == "$")
             return "#$";
 
-        // Jump/call opcodes: the target (last operand) gets # prefix
-        if (P2InstructionMetadata.RequiresImmediateAddressPrefix(instruction.Opcode, instruction.Operands.Count, operandIndex))
+        if (P2InstructionMetadata.UsesImmediateSymbolSyntax(instruction.Opcode, instruction.Operands.Count, operandIndex))
         {
             return $"#{FormatIdentifier(sym.Name)}";
         }

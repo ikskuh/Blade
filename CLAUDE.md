@@ -105,10 +105,11 @@ Build incrementally. Each stage should be independently testable.
 - **`Docs/reference.blade` is the syntax authority.** Every change to the parser,
   lexer, or AST must be justified by a construct defined in `Docs/reference.blade`.
   Do not invent syntax that is not in the reference.
-- **Mirror into the TextMate grammar.** Any token, keyword, operator, or syntactic
-  form added to the compiler frontend must also be reflected in
-  `VSCode/blade-lang/syntaxes/blade.tmLanguage.json` so that editor highlighting
-  stays in sync with the language.
+- **Mirror syntax changes into the shipped docs and editor grammar.** Any token,
+  keyword, operator, or syntactic form added to or changed in the compiler frontend
+  must also be reflected in `VSCode/blade-lang/syntaxes/blade.tmLanguage.json` and
+  documented in `Docs/Blade.md` so that editor highlighting and user-facing language
+  documentation stay in sync with the implementation.
 - **Update tests.** Parser and lexer changes require corresponding test updates in
   `Blade.Tests/`.
 
@@ -176,6 +177,12 @@ dotnet test
 ```
 
 When a unit test needs filesystem access, use `Blade.Tests/TempDirectory` instead of hand-rolled `Path.GetTempPath()` / manual cleanup logic.
+
+### Build Hygiene
+
+- **Builds must be warning-free.** `dotnet build`, `just build`, and the full local
+  verification flow are expected to complete with zero warnings. New warnings are
+  treated as regressions and should be fixed rather than tolerated.
 
 ### Justfile Commands
 

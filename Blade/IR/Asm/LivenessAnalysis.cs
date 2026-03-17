@@ -191,9 +191,7 @@ public static class LivenessAnalyzer
             {
                 // Find branch target
                 AsmSymbolOperand? target = hasForm
-                    && lastInstructionForm.ImmediateLabelOperandIndex >= 0
-                    && lastInstructionForm.ImmediateLabelOperandIndex < lastInstruction.Operands.Count
-                    ? lastInstruction.Operands[lastInstructionForm.ImmediateLabelOperandIndex] as AsmSymbolOperand
+                    ? FindImmediateSymbolTarget(lastInstruction)
                     : null;
 
                 if (target is not null && labelToBlock.TryGetValue(target.Name, out int targetBlock))
@@ -463,6 +461,19 @@ public static class LivenessAnalyzer
                 defs.Add(register.RegisterId);
             }
         }
+    }
+
+    private static AsmSymbolOperand? FindImmediateSymbolTarget(AsmInstructionNode instruction)
+    {
+        for (int operandIndex = instruction.Operands.Count - 1; operandIndex >= 0; operandIndex--)
+        {
+            if (!P2InstructionMetadata.UsesImmediateSymbolSyntax(instruction.Opcode, instruction.Operands.Count, operandIndex))
+                continue;
+
+            return instruction.Operands[operandIndex] as AsmSymbolOperand;
+        }
+
+        return null;
     }
 
     private static void EnsureNode(Dictionary<int, HashSet<int>> graph, int id)
