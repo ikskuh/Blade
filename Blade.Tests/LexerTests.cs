@@ -264,6 +264,13 @@ public class LexerTests
         Assert.That(diagnostics.Count, Is.EqualTo(1));
     }
 
+    [Test]
+    public void QuaternaryInteger()
+    {
+        List<Token> tokens = Lex("0q123");
+        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.IntegerLiteral));
+        Assert.That(tokens[0].Value, Is.EqualTo(27L));
+    }
 
     [Test]
     public void OctalInteger()
@@ -345,11 +352,11 @@ public class LexerTests
     }
 
     [Test]
-    public void ZeroTerminatedString_IsLexedAsIdentifierFollowedByString_WithCurrentLexerOrder()
+    public void ZeroTerminatedString_IsLexedAsSingleStringLiteral()
     {
-        List<Token> tokens = Lex("z" + "\"ok\"");
-        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.Identifier));
-        Assert.That(tokens[1].Kind, Is.EqualTo(TokenKind.StringLiteral));
+        List<Token> tokens = Lex("z\"ok\"");
+        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.StringLiteral));
+        Assert.That(tokens[0].Value, Is.EqualTo("ok"));
     }
 
     // --- String Literals ---
