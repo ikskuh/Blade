@@ -266,12 +266,6 @@ public class LexerTests
 
 
     [Test]
-    public void QuaternaryInteger_CurrentlyThrowsForBase4Conversion()
-    {
-        Assert.Throws<ArgumentException>(() => Lex("0q123"));
-    }
-
-    [Test]
     public void OctalInteger()
     {
         List<Token> tokens = Lex("0o17");
@@ -286,6 +280,7 @@ public class LexerTests
         Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.IntegerLiteral));
         Assert.That(tokens[0].Value, Is.EqualTo(0L));
         Assert.That(diagnostics.Count, Is.EqualTo(1));
+        Assert.That(diagnostics.Single().Code, Is.EqualTo(DiagnosticCode.E0003_InvalidNumberLiteral));
     }
 
     [Test]
@@ -295,6 +290,7 @@ public class LexerTests
         Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.IntegerLiteral));
         Assert.That(tokens[0].Value, Is.EqualTo(0L));
         Assert.That(diagnostics.Count, Is.EqualTo(1));
+        Assert.That(diagnostics.Single().Code, Is.EqualTo(DiagnosticCode.E0003_InvalidNumberLiteral));
     }
 
     [Test]
@@ -319,6 +315,7 @@ public class LexerTests
         List<Token> tokens = LexWithDiagnostics("'ab'", out DiagnosticBag diagnostics);
         Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.CharLiteral));
         Assert.That(diagnostics.Count, Is.EqualTo(1));
+        Assert.That(diagnostics.Single().Code, Is.EqualTo(DiagnosticCode.E0005_InvalidCharacterLiteral));
     }
 
     [Test]
@@ -327,6 +324,7 @@ public class LexerTests
         List<Token> tokens = LexWithDiagnostics("'", out DiagnosticBag diagnostics);
         Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.CharLiteral));
         Assert.That(diagnostics.Count, Is.EqualTo(1));
+        Assert.That(diagnostics.Single().Code, Is.EqualTo(DiagnosticCode.E0002_UnterminatedString));
     }
 
     [Test]
@@ -343,6 +341,7 @@ public class LexerTests
         List<Token> tokens = LexWithDiagnostics("\"" + "\\q" + "\"", out DiagnosticBag diagnostics);
         Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.StringLiteral));
         Assert.That(diagnostics.Count, Is.EqualTo(1));
+        Assert.That(diagnostics.Single().Code, Is.EqualTo(DiagnosticCode.E0006_InvalidEscapeSequence));
     }
 
     [Test]

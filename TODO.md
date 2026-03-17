@@ -151,3 +151,13 @@ Current AUG selection logic is still heuristic and should be reworked around exp
 ## Add `VariableStorageClass.Flag` and wire asm output binding through it
 
 Inline asm output bindings currently use `VariableStorageClass.Automatic`; introduce a dedicated `VariableStorageClass.Flag` and propagate it through binder/IR/codegen semantics.
+
+## Lexer quaternary integer parsing should not throw
+
+```csharp
+[Test]
+public void QuaternaryInteger_CurrentlyThrowsForBase4Conversion()
+{
+    Assert.Throws<ArgumentException>(() => Lex("0q123"));
+}
+```
