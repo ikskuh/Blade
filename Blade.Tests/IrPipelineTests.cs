@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text.RegularExpressions;
 using Blade;
 using Blade.Diagnostics;
@@ -1191,4 +1192,77 @@ public class IrPipelineTests
         Assert.That(build.AssemblyText, Does.Contain("TODO: CALLD (yieldto worker)"));
         Assert.That(build.AssemblyText, Does.Contain("RETI1"));
     }
+
+    private static IEnumerable<string> AcceptProgramsForPipeline()
+    {
+        string[] files =
+        [
+            "advanced_semantics.blade",
+            "control_flow.blade",
+            "empty.blade",
+            "expressions.blade",
+            "function_declarations.blade",
+            "intrinsics.blade",
+            "struct_types.blade",
+            "types.blade",
+            "variable_declarations.blade",
+            Path.Combine("InlineAsm", "basic_instructions.blade"),
+            Path.Combine("InlineAsm", "condition_prefixes.blade"),
+            Path.Combine("InlineAsm", "flag_output.blade"),
+            Path.Combine("InlineAsm", "volatile_basic.blade"),
+        ];
+
+        foreach (string file in files)
+            yield return Path.Combine("Accept", file);
+    }
+
+    [TestCaseSource(nameof(AcceptProgramsForPipeline))]
+    public void AcceptProgram_CanRunFullIrPipeline(string path)
+    {
+        string repoTestsRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Blade.Tests"));
+        string fullPath = Path.Combine(repoTestsRoot, path);
+        string source = File.ReadAllText(fullPath);
+        CompilationResult compilation = CompilerDriver.Compile(source, fullPath);
+
+        Assert.That(compilation.Diagnostics, Is.Empty, path + Environment.NewLine + string.Join(Environment.NewLine, compilation.Diagnostics));
+        Assert.That(compilation.IrBuildResult, Is.Not.Null);
+        Assert.That(compilation.IrBuildResult!.AssemblyText, Does.StartWith("DAT"));
+    }
+
+
+    private static IEnumerable<string> RepositorySamplesForPipeline()
+    {
+        string[] files =
+        [
+            Path.Combine("Examples", "blinky.blade"),
+            Path.Combine("Examples", "clamp.blade"),
+            Path.Combine("Examples", "fibonacci.blade"),
+            Path.Combine("Examples", "inline_asm_bit_test.blade"),
+            Path.Combine("Examples", "inline_asm_cordic.blade"),
+            Path.Combine("Examples", "inline_asm_streamer.blade"),
+            Path.Combine("Examples", "register_aliases.blade"),
+            Path.Combine("Examples", "sum_loop.blade"),
+            Path.Combine("Demonstrators", "Asm", "volatile_routines.blade"),
+            Path.Combine("Demonstrators", "Asm", "optimizer_exercises.blade"),
+            Path.Combine("Demonstrators", "Asm", "io_regular_asm.blade"),
+            Path.Combine("Demonstrators", "Asm", "math_routines.blade"),
+            Path.Combine("Demonstrators", "Bugs", "missing-copy.blade"),
+        ];
+
+        foreach (string file in files)
+            yield return file;
+    }
+
+    [TestCaseSource(nameof(RepositorySamplesForPipeline))]
+    public void RepositorySample_CanRunFullIrPipeline(string relativePath)
+    {
+        string fullPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", relativePath));
+        string source = File.ReadAllText(fullPath);
+        CompilationResult compilation = CompilerDriver.Compile(source, fullPath);
+
+        Assert.That(compilation.Diagnostics, Is.Empty, relativePath + Environment.NewLine + string.Join(Environment.NewLine, compilation.Diagnostics));
+        Assert.That(compilation.IrBuildResult, Is.Not.Null);
+        Assert.That(compilation.IrBuildResult!.AssemblyText, Does.StartWith("DAT"));
+    }
+
 }

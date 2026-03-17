@@ -766,4 +766,93 @@ public class ParserTests
             Assert.That(actual, Is.EqualTo(expected), $"Unexpected IsTypeStart result for {kind}");
         }
     }
+
+    [Test]
+    public void AsmFunctionDeclaration_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("""
+            asm fn add_flags(a: u32, b: u32) -> bool@C {
+                ADD {a}, {b} WC
+            }
+            """);
+        AssertNoDiagnostics(diag);
+
+        AsmFunctionDeclarationSyntax function = (AsmFunctionDeclarationSyntax)unit.Members[0];
+        Assert.That(function.Name.Text, Is.EqualTo("add_flags"));
+        Assert.That(function.VolatileKeyword, Is.Null);
+        Assert.That(function.ReturnSpec, Is.Not.Null);
+        Assert.That(function.ReturnSpec![0].FlagAnnotation?.Flag.Text, Is.EqualTo("C"));
+    }
+
+    [Test]
+    public void AsmVolatileFunctionDeclaration_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("""
+            asm volatile fn read_value() -> u32 {
+                MOV {return}, #10
+            }
+            """);
+        AssertNoDiagnostics(diag);
+
+        AsmFunctionDeclarationSyntax function = (AsmFunctionDeclarationSyntax)unit.Members[0];
+        Assert.That(function.VolatileKeyword, Is.Not.Null);
+        Assert.That(function.ReturnSpec![0].Type, Is.TypeOf<PrimitiveTypeSyntax>());
+    }
+
+    [Test]
+    public void AggregateTypes_ParseCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("""
+            type Header = union {
+                lo: u16,
+                hi: u16,
+            };
+            type Status = enum (u8) {
+                Idle,
+                Busy = 2,
+                ...,
+            };
+            type Flags = bitfield (u32) {
+                carry: bool,
+                zero: bool,
+            };
+            """);
+        AssertNoDiagnostics(diag);
+
+        Assert.That(((TypeAliasDeclarationSyntax)unit.Members[0]).Type, Is.TypeOf<UnionTypeSyntax>());
+        Assert.That(((TypeAliasDeclarationSyntax)unit.Members[1]).Type, Is.TypeOf<EnumTypeSyntax>());
+        Assert.That(((TypeAliasDeclarationSyntax)unit.Members[2]).Type, Is.TypeOf<BitfieldTypeSyntax>());
+    }
+
+    [Test]
+    public void MultiPointerType_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var p: [*]reg u32 = undefined;");
+        AssertNoDiagnostics(diag);
+
+        VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
+        Assert.That(decl.Type, Is.TypeOf<MultiPointerTypeSyntax>());
+    }
+
+    [Test]
+    public void ArrayAndTypedStructLiterals_ParseCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("""
+            {
+                [1, 2...];
+                Pixel { .r = 1, .g = 2 };
+            }
+            """);
+        AssertNoDiagnostics(diag);
+
+        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
+        BlockStatementSyntax block = (BlockStatementSyntax)global.Statement;
+
+        ArrayLiteralExpressionSyntax array = (ArrayLiteralExpressionSyntax)((ExpressionStatementSyntax)block.Statements[0]).Expression;
+        Assert.That(array.Elements.Count, Is.EqualTo(2));
+        Assert.That(array.Elements[1].Spread, Is.Not.Null);
+
+        ExpressionStatementSyntax typedStructStatement = (ExpressionStatementSyntax)block.Statements[1];
+        Assert.That(typedStructStatement.Expression, Is.TypeOf<TypedStructLiteralExpressionSyntax>());
+    }
 }

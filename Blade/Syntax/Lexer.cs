@@ -66,16 +66,16 @@ public sealed class Lexer
         if (char.IsAsciiDigit(c))
             return ReadNumber();
 
-        // Identifiers and keywords
-        if (char.IsAsciiLetter(c) || c == '_')
-            return ReadIdentifierOrKeyword();
-
         // Zero-terminated strings: z"..."
         if (c == 'z' && Lookahead == '"')
         {
             Advance(); // skip 'z'
             return ReadString(zeroTerminated: true);
         }
+
+        // Identifiers and keywords
+        if (char.IsAsciiLetter(c) || c == '_')
+            return ReadIdentifierOrKeyword();
 
         // Strings
         if (c == '"')
@@ -224,18 +224,8 @@ public sealed class Lexer
         string text = _source.ToString(span);
         string digits = text.Substring(2).Replace("_", "", StringComparison.Ordinal);
 
-        if (digits.Length > 0)
-        {
-            try
-            {
-                long value = Convert.ToInt64(digits, 2);
-                return MakeToken(TokenKind.IntegerLiteral, value);
-            }
-            catch (OverflowException)
-            {
-                // fall through to error
-            }
-        }
+        if (TryParseIntegerLiteral(digits, 2, out long value))
+            return MakeToken(TokenKind.IntegerLiteral, value);
 
         _diagnostics.ReportInvalidNumberLiteral(span, text);
         return MakeToken(TokenKind.IntegerLiteral, 0L);
@@ -253,18 +243,8 @@ public sealed class Lexer
         string text = _source.ToString(span);
         string digits = text.Substring(2).Replace("_", "", StringComparison.Ordinal);
 
-        if (digits.Length > 0)
-        {
-            try
-            {
-                long value = Convert.ToInt64(digits, 4);
-                return MakeToken(TokenKind.IntegerLiteral, value);
-            }
-            catch (OverflowException)
-            {
-                // fall through to error
-            }
-        }
+        if (TryParseIntegerLiteral(digits, 4, out long value))
+            return MakeToken(TokenKind.IntegerLiteral, value);
 
         _diagnostics.ReportInvalidNumberLiteral(span, text);
         return MakeToken(TokenKind.IntegerLiteral, 0L);
@@ -282,18 +262,8 @@ public sealed class Lexer
         string text = _source.ToString(span);
         string digits = text.Substring(2).Replace("_", "", StringComparison.Ordinal);
 
-        if (digits.Length > 0)
-        {
-            try
-            {
-                long value = Convert.ToInt64(digits, 8);
-                return MakeToken(TokenKind.IntegerLiteral, value);
-            }
-            catch (OverflowException)
-            {
-                // fall through to error
-            }
-        }
+        if (TryParseIntegerLiteral(digits, 8, out long value))
+            return MakeToken(TokenKind.IntegerLiteral, value);
 
         _diagnostics.ReportInvalidNumberLiteral(span, text);
         return MakeToken(TokenKind.IntegerLiteral, 0L);
@@ -590,6 +560,41 @@ public sealed class Lexer
                 TextSpan span = new(_start, 1);
                 _diagnostics.ReportUnexpectedCharacter(span, c);
                 return MakeToken(TokenKind.Bad);
+        }
+    }
+
+    private static bool TryParseIntegerLiteral(string digits, int radix, out long value)
+    {
+        value = 0;
+        if (digits.Length == 0)
+            return false;
+
+        checked
+        {
+            try
+            {
+                for (int i = 0; i < digits.Length; i++)
+                {
+                    int digit = digits[i] switch
+                    {
+                        >= '0' and <= '9' => digits[i] - '0',
+                        >= 'a' and <= 'f' => digits[i] - 'a' + 10,
+                        >= 'A' and <= 'F' => digits[i] - 'A' + 10,
+                        _ => -1,
+                    };
+
+                    if (digit < 0 || digit >= radix)
+                        return false;
+
+                    value = (value * radix) + digit;
+                }
+
+                return true;
+            }
+            catch (OverflowException)
+            {
+                return false;
+            }
         }
     }
 

@@ -264,6 +264,103 @@ public class LexerTests
         Assert.That(diagnostics.Count, Is.EqualTo(1));
     }
 
+
+    [Test]
+    public void QuaternaryInteger()
+    {
+        List<Token> tokens = Lex("0q123");
+        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.IntegerLiteral));
+        Assert.That(tokens[0].Value, Is.EqualTo(27L));
+    }
+
+    [Test]
+    public void OctalInteger()
+    {
+        List<Token> tokens = Lex("0o17");
+        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.IntegerLiteral));
+        Assert.That(tokens[0].Value, Is.EqualTo(15L));
+    }
+
+    [Test]
+    public void QuaternaryIntegerWithoutDigits_ReportsDiagnostic()
+    {
+        List<Token> tokens = LexWithDiagnostics("0q", out DiagnosticBag diagnostics);
+        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.IntegerLiteral));
+        Assert.That(tokens[0].Value, Is.EqualTo(0L));
+        Assert.That(diagnostics.Count, Is.EqualTo(1));
+        Assert.That(diagnostics.Single().Code, Is.EqualTo(DiagnosticCode.E0003_InvalidNumberLiteral));
+    }
+
+    [Test]
+    public void OctalIntegerWithoutDigits_ReportsDiagnostic()
+    {
+        List<Token> tokens = LexWithDiagnostics("0o", out DiagnosticBag diagnostics);
+        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.IntegerLiteral));
+        Assert.That(tokens[0].Value, Is.EqualTo(0L));
+        Assert.That(diagnostics.Count, Is.EqualTo(1));
+        Assert.That(diagnostics.Single().Code, Is.EqualTo(DiagnosticCode.E0003_InvalidNumberLiteral));
+    }
+
+    [Test]
+    public void CharLiteral_SimpleCharacter()
+    {
+        List<Token> tokens = Lex("'A'");
+        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.CharLiteral));
+        Assert.That(tokens[0].Value, Is.EqualTo((long)'A'));
+    }
+
+    [Test]
+    public void CharLiteral_WithEscapeSequence()
+    {
+        List<Token> tokens = Lex("'\n'");
+        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.CharLiteral));
+        Assert.That(tokens[0].Value, Is.EqualTo(10L));
+    }
+
+    [Test]
+    public void CharLiteral_InvalidTooManyCharacters_ReportsDiagnostic()
+    {
+        List<Token> tokens = LexWithDiagnostics("'ab'", out DiagnosticBag diagnostics);
+        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.CharLiteral));
+        Assert.That(diagnostics.Count, Is.EqualTo(1));
+        Assert.That(diagnostics.Single().Code, Is.EqualTo(DiagnosticCode.E0005_InvalidCharacterLiteral));
+    }
+
+    [Test]
+    public void CharLiteral_Unterminated_ReportsDiagnostic()
+    {
+        List<Token> tokens = LexWithDiagnostics("'", out DiagnosticBag diagnostics);
+        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.CharLiteral));
+        Assert.That(diagnostics.Count, Is.EqualTo(1));
+        Assert.That(diagnostics.Single().Code, Is.EqualTo(DiagnosticCode.E0002_UnterminatedString));
+    }
+
+    [Test]
+    public void StringLiteral_WithUnicodeEscape()
+    {
+        List<Token> tokens = Lex("\"" + "\\u{41}\\x42" + "\"");
+        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.StringLiteral));
+        Assert.That(tokens[0].Value, Is.EqualTo("AB"));
+    }
+
+    [Test]
+    public void StringLiteral_InvalidEscape_ReportsDiagnostic()
+    {
+        List<Token> tokens = LexWithDiagnostics("\"" + "\\q" + "\"", out DiagnosticBag diagnostics);
+        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.StringLiteral));
+        Assert.That(diagnostics.Count, Is.EqualTo(1));
+        Assert.That(diagnostics.Single().Code, Is.EqualTo(DiagnosticCode.E0006_InvalidEscapeSequence));
+    }
+
+    [Test]
+    public void ZeroTerminatedString_IsLexedAsSingleStringLiteral()
+    {
+        List<Token> tokens = Lex("z\"ok\"");
+        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.StringLiteral));
+        Assert.That(tokens[0].Value, Is.EqualTo("ok"));
+    }
+
+
     // --- String Literals ---
 
     [Test]
@@ -318,6 +415,7 @@ public class LexerTests
     [TestCase("!", TokenKind.Bang)]
     [TestCase(".", TokenKind.Dot)]
     [TestCase("@", TokenKind.At)]
+    [TestCase("#", TokenKind.Hash)]
     [TestCase("->", TokenKind.Arrow)]
     [TestCase("..", TokenKind.DotDot)]
     [TestCase("++", TokenKind.PlusPlus)]
