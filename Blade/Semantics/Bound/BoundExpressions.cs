@@ -227,6 +227,20 @@ public sealed class BoundEnumLiteralExpression : BoundExpression
     public long Value { get; }
 }
 
+public sealed class BoundArrayLiteralExpression : BoundExpression
+{
+    public BoundArrayLiteralExpression(IReadOnlyList<BoundExpression> elements, bool lastElementIsSpread, TextSpan span, ArrayTypeSymbol type)
+        : base(BoundNodeKind.ArrayLiteralExpression, span, type)
+    {
+        Elements = Requires.NotNull(elements);
+        LastElementIsSpread = lastElementIsSpread;
+    }
+
+    public IReadOnlyList<BoundExpression> Elements { get; }
+    public bool LastElementIsSpread { get; }
+    public new ArrayTypeSymbol Type => (ArrayTypeSymbol)base.Type;
+}
+
 public sealed class BoundMemberAccessExpression : BoundExpression
 {
     public BoundMemberAccessExpression(BoundExpression receiver, AggregateMemberSymbol member, TextSpan span)

@@ -902,6 +902,9 @@ public sealed class Binder
             case IntrinsicCallExpressionSyntax intrinsic:
                 return BindIntrinsicCallExpression(intrinsic);
 
+            case ArrayLiteralExpressionSyntax arrayLiteral:
+                return BindArrayLiteralExpression(arrayLiteral, expectedType);
+
             case StructLiteralExpressionSyntax structLiteral:
                 return BindStructLiteralExpression(structLiteral, expectedType);
 
@@ -1354,6 +1357,68 @@ public sealed class Binder
         _anonymousStructIndex++;
         StructTypeSymbol inferredType = new($"<struct#{_anonymousStructIndex}>", fields);
         return new BoundStructLiteralExpression(inferredInitializers, structLiteral.Span, inferredType);
+    }
+
+    private BoundExpression BindArrayLiteralExpression(ArrayLiteralExpressionSyntax arrayLiteral, TypeSymbol? expectedType)
+    {
+        ArrayTypeSymbol? expectedArrayType = expectedType as ArrayTypeSymbol;
+        int? expectedLength = expectedArrayType?.Length;
+        TypeSymbol? elementType = expectedArrayType?.ElementType;
+
+        bool lastElementIsSpread = false;
+        for (int i = 0; i < arrayLiteral.Elements.Count; i++)
+        {
+            ArrayElementSyntax element = arrayLiteral.Elements[i];
+            if (element.Spread is null)
+                continue;
+
+            Token spreadToken = element.Spread.Value;
+            if (i != arrayLiteral.Elements.Count - 1)
+                _diagnostics.ReportArrayLiteralSpreadMustBeLast(spreadToken.Span);
+            else
+                lastElementIsSpread = true;
+        }
+
+        if ((arrayLiteral.Elements.Count == 0 || lastElementIsSpread) && expectedLength is null)
+        {
+            _diagnostics.ReportArrayLiteralRequiresContext(arrayLiteral.Span);
+            foreach (ArrayElementSyntax element in arrayLiteral.Elements)
+                _ = BindExpression(element.Value, elementType);
+            return new BoundErrorExpression(arrayLiteral.Span);
+        }
+
+        List<BoundExpression> boundElements = new(arrayLiteral.Elements.Count);
+        for (int i = 0; i < arrayLiteral.Elements.Count; i++)
+        {
+            ArrayElementSyntax element = arrayLiteral.Elements[i];
+            BoundExpression boundElement;
+            if (elementType is null)
+            {
+                boundElement = BindExpression(element.Value);
+                elementType = boundElement.Type;
+            }
+            else
+            {
+                boundElement = BindExpression(element.Value, elementType);
+            }
+
+            boundElements.Add(boundElement);
+        }
+
+        int explicitCount = boundElements.Count;
+        int producedLength = explicitCount;
+        if (explicitCount == 0)
+        {
+            producedLength = expectedLength!.Value;
+        }
+        else if (lastElementIsSpread && expectedLength is int knownSpreadLength && knownSpreadLength > explicitCount)
+            producedLength = knownSpreadLength;
+
+        TypeSymbol resolvedElementType = Requires.NotNull(elementType);
+        ArrayTypeSymbol resultType = expectedArrayType is not null && expectedArrayType.Length is null
+            ? new ArrayTypeSymbol(resolvedElementType)
+            : new ArrayTypeSymbol(resolvedElementType, producedLength);
+        return new BoundArrayLiteralExpression(boundElements, lastElementIsSpread, arrayLiteral.Span, resultType);
     }
 
     private BoundExpression BindComptimeExpression(ComptimeExpressionSyntax comptime)

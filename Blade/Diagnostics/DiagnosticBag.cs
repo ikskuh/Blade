@@ -276,6 +276,22 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
             $"Bitfield '{bitfieldName}' field '{fieldName}' uses {usedBits} bits, exceeding backing width {backingBits}.");
     }
 
+    public void ReportArrayLiteralRequiresContext(TextSpan span)
+    {
+        Report(
+            DiagnosticCode.E0234_ArrayLiteralRequiresContext,
+            span,
+            "Array literal requires an expected array type.");
+    }
+
+    public void ReportArrayLiteralSpreadMustBeLast(TextSpan span)
+    {
+        Report(
+            DiagnosticCode.E0235_ArrayLiteralSpreadMustBeLast,
+            span,
+            "Array literal spread element must be the last element.");
+    }
+
     // Inline assembly diagnostics
 
     public void ReportInlineAsmUnknownInstruction(TextSpan span, string mnemonic)

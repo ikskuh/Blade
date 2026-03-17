@@ -1358,5 +1358,112 @@ public class BinderTests
         Assert.That(dump, Does.Contain("Deref<u32>"));
     }
 
+    [Test]
+    public void ArrayLiteral_BindsFromElementInference()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn demo() void {
+                [1, 2, 3];
+            }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+        BoundFunctionMember function = program.Functions.Single();
+        BoundExpressionStatement statement = (BoundExpressionStatement)function.Body.Statements[0];
+        BoundArrayLiteralExpression literal = (BoundArrayLiteralExpression)statement.Expression;
+        Assert.That(literal.Type.Name, Is.EqualTo("[3]<int-literal>"));
+        Assert.That(literal.Elements.Count, Is.EqualTo(3));
+    }
+
+    [Test]
+    public void ArrayLiteral_UsesExpectedElementTypeAndSpread()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg var values: [4]u32 = [1, 2...];
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+        BoundGlobalVariableMember declaration = program.GlobalVariables.Single();
+        Assert.That(declaration.Initializer, Is.TypeOf<BoundArrayLiteralExpression>());
+        BoundArrayLiteralExpression literal = (BoundArrayLiteralExpression)declaration.Initializer!;
+        Assert.That(literal.Type.Name, Is.EqualTo("[4]u32"));
+        Assert.That(literal.LastElementIsSpread, Is.True);
+        Assert.That(literal.Elements.Count, Is.EqualTo(2));
+    }
+
+    [Test]
+    public void ArrayLiteral_WithNonConstantContextLengthBindsLengthlessArrayType()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn demo(count: u32) void {
+                var values: [count]u32 = [1, 2, 3];
+            }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+        BoundFunctionMember function = program.Functions.Single();
+        BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)function.Body.Statements[0];
+        BoundArrayLiteralExpression literal = (BoundArrayLiteralExpression)declaration.Initializer!;
+        Assert.That(literal.Type.Name, Is.EqualTo("[u32]"));
+        Assert.That(literal.Type.Length, Is.Null);
+    }
+
+    [Test]
+    public void EmptyArrayLiteral_RequiresContextAndBindsWithExpectedType()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg var values: [3]u32 = [];
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+        BoundArrayLiteralExpression literal = (BoundArrayLiteralExpression)program.GlobalVariables.Single().Initializer!;
+        Assert.That(literal.Type.Name, Is.EqualTo("[3]u32"));
+        Assert.That(literal.Elements, Is.Empty);
+    }
+
+    [Test]
+    public void ArrayLiteral_BoundTreeWriterMarksSpreadElement()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg var values: [4]u32 = [1, 2...];
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+        string dump = BoundTreeWriter.Write(program);
+        Assert.That(dump, Does.Contain("ArrayLit<[4]u32>"));
+        Assert.That(dump, Does.Contain("[1]..."));
+    }
+
+    [Test]
+    public void ArrayLiteral_ElementTypeMismatchReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            reg var values: [2]u32 = [1, false];
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
+    }
+
+    [Test]
+    public void ArrayLiteral_SpreadMustBeLastReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            reg var values: [4]u32 = [1..., 2];
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0235_ArrayLiteralSpreadMustBeLast), Is.True);
+    }
+
+    [Test]
+    public void ArrayLiteral_EmptyOrSpreadWithoutContextReportDiagnostics()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            [];
+            [1...];
+            """);
+
+        Assert.That(diagnostics.Count(d => d.Code == DiagnosticCode.E0234_ArrayLiteralRequiresContext), Is.EqualTo(2));
+    }
+
 
 }

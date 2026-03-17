@@ -273,6 +273,7 @@ rep for (i in 0..8) {                 // binds
   - indexing: `expr[index]`
   - calls: `callee(args...)`
   - intrinsic calls: `@name(args...)`
+  - array literals: `[a, b, c]`, `[value...]`, `[head, tail...]`, `[]`
   - struct literals: `.{ .field = expr, ... }`
   - `comptime { ... }`
   - `if (cond) thenExpr else elseExpr`
@@ -288,6 +289,8 @@ rep for (i in 0..8) {                 // binds
 @pinwrite(pin, 1)                     // intrinsic call, always typed as `u32`
 ptr.*                                 // deref allowed for `*T`
 many[0]                               // indexing allowed for arrays and `[*]T`
+[1, 2, 3]                             // array literal, element type inferred from first element
+[1, 2...]                             // trailing spread fills the remaining contextual slots
 if (x == 0) 1 else 2                  // real expression form
 .{ .lo = 1, .hi = 2 }                 // struct literal
 ```
@@ -407,6 +410,12 @@ fn pair() -> u32, bool {
   - structs
   - unions
   - bitfields
+- Array literals:
+  - infer element type from the expected array type when available
+  - otherwise infer from the first element
+  - require every element to be assignable to the chosen element type
+  - allow a trailing `...` only on the final element
+  - require a known contextual array length for `[]` and any spread form
 - Enum literals:
   - `.member` requires expected enum context
   - `TypeName.member` resolves through type aliases without entering value scope
@@ -418,6 +427,10 @@ var sink: *reg const volatile u32 = source;
 
 var x: uint(5) = 1;
 var y: uint(31) = x;                 // both are plain `uint` semantically
+
+var direct: [3]u32 = [1, 2, 3];
+var fill: [4]u32 = [7...];
+var empty: [2]u32 = [];
 
 type Mode = enum (u8) { Off = 0, On = 1, };
 var mode: Mode = .On;                // contextual enum literal

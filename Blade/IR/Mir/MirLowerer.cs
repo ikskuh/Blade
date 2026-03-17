@@ -206,6 +206,10 @@ public static class MirLowerer
                 foreach (BoundStructFieldInitializer field in structLiteral.Fields)
                     CollectAddressTakenSymbols(field.Value, symbols);
                 break;
+            case BoundArrayLiteralExpression arrayLiteral:
+                foreach (BoundExpression element in arrayLiteral.Elements)
+                    CollectAddressTakenSymbols(element, symbols);
+                break;
             case BoundConversionExpression conversion:
                 CollectAddressTakenSymbols(conversion.Expression, symbols);
                 break;
@@ -838,6 +842,9 @@ public static class MirLowerer
                 case BoundEnumLiteralExpression enumLiteral:
                     return EmitConstant(enumLiteral.Value, enumLiteral.Type, enumLiteral.Span);
 
+                case BoundArrayLiteralExpression arrayLiteral:
+                    return LowerArrayLiteralExpression(arrayLiteral);
+
                 case BoundMemberAccessExpression memberAccess:
                 {
                     MirValueId receiver = LowerExpression(memberAccess.Receiver);
@@ -915,6 +922,44 @@ public static class MirLowerer
             }
 
             return EmitConstant(null, BuiltinTypes.Unknown, expression.Span);
+        }
+
+        private MirValueId LowerArrayLiteralExpression(BoundArrayLiteralExpression arrayLiteral)
+        {
+            MirValueId arrayValue = EmitConstant(null, arrayLiteral.Type, arrayLiteral.Span);
+            int explicitCount = arrayLiteral.Elements.Count;
+            int producedLength = arrayLiteral.Type.Length ?? explicitCount;
+
+            List<MirValueId> elementValues = new(explicitCount);
+            foreach (BoundExpression element in arrayLiteral.Elements)
+                elementValues.Add(LowerExpression(element));
+
+            for (int i = 0; i < explicitCount; i++)
+            {
+                MirValueId indexValue = EmitConstant(i, BuiltinTypes.IntegerLiteral, arrayLiteral.Span);
+                EmitStore("index", [arrayValue, indexValue, elementValues[i]], arrayLiteral.Span);
+            }
+
+            if (arrayLiteral.LastElementIsSpread && explicitCount > 0)
+            {
+                MirValueId spreadValue = elementValues[^1];
+                for (int i = explicitCount; i < producedLength; i++)
+                {
+                    MirValueId indexValue = EmitConstant(i, BuiltinTypes.IntegerLiteral, arrayLiteral.Span);
+                    EmitStore("index", [arrayValue, indexValue, spreadValue], arrayLiteral.Span);
+                }
+            }
+            else if (explicitCount == 0)
+            {
+                for (int i = 0; i < producedLength; i++)
+                {
+                    MirValueId indexValue = EmitConstant(i, BuiltinTypes.IntegerLiteral, arrayLiteral.Span);
+                    MirValueId defaultValue = EmitDefaultValue(arrayLiteral.Type.ElementType, arrayLiteral.Span);
+                    EmitStore("index", [arrayValue, indexValue, defaultValue], arrayLiteral.Span);
+                }
+            }
+
+            return arrayValue;
         }
 
         private MirValueId LowerUnaryExpression(BoundUnaryExpression unaryExpression)

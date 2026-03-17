@@ -57,12 +57,14 @@ public class DiagnosticBagTests
         bag.ReportMissingReturnValue(Span, "f");
         bag.ReportEnumLiteralRequiresContext(Span, "Idle");
         bag.ReportBitfieldWidthOverflow(Span, "Flags", "wide", 40, 32);
+        bag.ReportArrayLiteralRequiresContext(Span);
+        bag.ReportArrayLiteralSpreadMustBeLast(Span);
         bag.ReportInlineAsmUnknownInstruction(Span, "BLAH");
         bag.ReportInlineAsmUndefinedVariable(Span, "x");
         bag.ReportInlineAsmEmptyInstruction(Span);
         bag.ReportInlineAsmInvalidFlagOutput(Span, "Q");
 
-        Assert.That(bag.Count, Is.EqualTo(47));
+        Assert.That(bag.Count, Is.EqualTo(49));
         Assert.That(bag.HasErrors, Is.True);
         Assert.That(bag.Last().Code, Is.EqualTo(DiagnosticCode.E0304_InlineAsmInvalidFlagOutput));
     }

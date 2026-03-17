@@ -56,6 +56,8 @@ public enum DiagnosticCode
     E0231_CircularImport = 231,
     E0232_EnumLiteralRequiresContext = 232,
     E0233_BitfieldWidthOverflow = 233,
+    E0234_ArrayLiteralRequiresContext = 234,
+    E0235_ArrayLiteralSpreadMustBeLast = 235,
 
     // Inline assembly errors
     E0301_InlineAsmUnknownInstruction = 301,

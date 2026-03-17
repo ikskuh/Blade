@@ -448,6 +448,87 @@ public class IrPipelineTests
     }
 
     [Test]
+    public void ArrayLiteral_LowersExplicitElementsToIndexedStores()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg var values: [3]u32 = [1, 2, 3];
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        string mir = MirTextWriter.Write(build.MirModule);
+        Assert.That(mir, Does.Contain("%v0:[3]u32 = const null"));
+        Assert.That(Regex.Matches(mir, @"store index\(").Count, Is.EqualTo(3), mir);
+        Assert.That(mir, Does.Contain("store.place g_values"));
+    }
+
+    [Test]
+    public void ArrayLiteral_SpreadFillsRemainingSlotsInMir()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg var values: [4]u32 = [1, 2...];
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        string mir = MirTextWriter.Write(build.MirModule);
+        Assert.That(Regex.Matches(mir, @"store index\(").Count, Is.EqualTo(4), mir);
+        Assert.That(mir, Does.Contain("const 2"));
+        Assert.That(mir, Does.Contain("const 3"));
+    }
+
+    [Test]
+    public void EmptyArrayLiteral_FillsEachSlotInMir()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg var values: [2]u32 = [];
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        string mir = MirTextWriter.Write(build.MirModule);
+        Assert.That(Regex.Matches(mir, @"store index\(").Count, Is.EqualTo(2), mir);
+        Assert.That(Regex.Matches(mir, @"const 0").Count, Is.GreaterThanOrEqualTo(2), mir);
+    }
+
+    [Test]
+    public void ArrayLiteral_SpreadWithExactContextLengthDoesNotAddExtraStores()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg var values: [2]u32 = [1, 2...];
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        string mir = MirTextWriter.Write(build.MirModule);
+        Assert.That(Regex.Matches(mir, @"store index\(").Count, Is.EqualTo(2), mir);
+    }
+
+    [Test]
     public void EnumLiteral_GlobalInitializer_LowersToImmediateBackingValue()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""

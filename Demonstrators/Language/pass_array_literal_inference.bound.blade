@@ -1,0 +1,10 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - ArrayLit<[3]<int-literal>>
+// NOTE:
+//   Expression-position array literals infer their element type from the first element.
+
+fn demo() void {
+    [1, 2, 3];
+}

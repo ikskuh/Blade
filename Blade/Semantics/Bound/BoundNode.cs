@@ -35,6 +35,7 @@ public enum BoundNodeKind
     ModuleCallExpression,
     IntrinsicCallExpression,
     EnumLiteralExpression,
+    ArrayLiteralExpression,
     MemberAccessExpression,
     IndexExpression,
     PointerDerefExpression,

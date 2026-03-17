@@ -3,24 +3,6 @@
 Each change set is self-contained and ends with a green `just test && just regressions`.
 Sets are ordered by dependency — later sets may depend on earlier ones.
 
----
-
-## CS-4: Array literals
-
-- Add `BoundArrayLiteralExpression`: element list + optional spread flag on last
-  element + result `ArrayTypeSymbol`.
-- `BindExpressionCore`: handle `ArrayLiteralExpressionSyntax`.
-- Infer element type from context (assignment target) or from first element.
-- Validate all elements are assignable to the element type.
-- Spread (`elem...`): fill remaining slots with the spread value. Report error if
-  spread is not the last element.
-- Empty array `[]`: requires context type; fills with `undefined`.
-- MIR: sequence of store instructions to array slots.
-- Tests: `[1, 2, 3]`, `[0...]`, `[1, 2...]`, reject type mismatch, reject
-  spread not last.
-
----
-
 ## CS-5: Typed struct literals
 
 - `BindExpressionCore`: handle `TypedStructLiteralExpressionSyntax`.

@@ -181,6 +181,18 @@ public static class BoundTreeWriter
                 AppendLine(sb, indent, $"EnumLiteral<{enumLiteral.Type.Name}> .{enumLiteral.MemberName} = {enumLiteral.Value}");
                 break;
 
+            case BoundArrayLiteralExpression arrayLiteral:
+                AppendLine(sb, indent, $"ArrayLit<{arrayLiteral.Type.Name}>");
+                for (int i = 0; i < arrayLiteral.Elements.Count; i++)
+                {
+                    string label = i == arrayLiteral.Elements.Count - 1 && arrayLiteral.LastElementIsSpread
+                        ? $"[{i}]..."
+                        : $"[{i}]";
+                    AppendLine(sb, indent + 1, label);
+                    WriteExpression(sb, indent + 2, arrayLiteral.Elements[i]);
+                }
+                break;
+
             case BoundMemberAccessExpression member:
                 AppendLine(sb, indent, $"Member<{member.Type.Name}> .{member.MemberName}");
                 WriteExpression(sb, indent + 1, member.Receiver);

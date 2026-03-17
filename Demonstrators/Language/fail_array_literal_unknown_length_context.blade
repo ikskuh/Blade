@@ -1,0 +1,9 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - L7, E0234
+// - L8, E0234
+
+fn demo(count: u32) void {
+    var spread: [count]u32 = [0...];
+    var empty: [count]u32 = [];
+}
