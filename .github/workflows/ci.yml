@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install apt packages (cached)
+        uses: awalsh128/cache-apt-pkgs-action@v1.4.3
+        with:
+          packages: just build-essential
+          version: 1.0
+
+      - name: Resolve flexspin HEAD
+        id: flexspin-ref
+        run: |
+          set -euo pipefail
+          FLEXSPIN_HEAD="$(git ls-remote https://github.com/totalspectrum/spin2cpp.git HEAD | cut -f1)"
+          echo "head=$FLEXSPIN_HEAD" >> "$GITHUB_OUTPUT"
+
+      - name: Restore flexspin cache
+        id: flexspin-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/flexspin
+          key: flexspin-${{ runner.os }}-${{ steps.flexspin-ref.outputs.head }}
+
+      - name: Build flexspin
+        if: steps.flexspin-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/spin2cpp
+          git clone --depth 1 https://github.com/totalspectrum/spin2cpp.git /tmp/spin2cpp
+          make -C /tmp/spin2cpp
+          mkdir -p ~/.cache/flexspin/bin
+          cp /tmp/spin2cpp/build/flexspin ~/.cache/flexspin/bin/flexspin
+          cp /tmp/spin2cpp/build/flexcc ~/.cache/flexspin/bin/flexcc
+          cp /tmp/spin2cpp/build/spin2cpp ~/.cache/flexspin/bin/spin2cpp
+
+      - name: Add flexspin to PATH
+        run: echo "$HOME/.cache/flexspin/bin" >> "$GITHUB_PATH"
+
+      - name: Verify toolchain
+        run: |
+          dotnet --info
+          just --version
+          flexspin --version
+
+      - name: just build
+        run: just build
+
+      - name: just test
+        run: just test
+
+      - name: just regressions
+        run: just regressions
+
+      - name: just coverage
+        run: just coverage
+
+      - name: Publish coverage summary to GitHub Actions
+        uses: irongut/CodeCoverageSummary@v1.3.0
+        with:
+          filename: coverage/coverage.cobertura.xml
+          badge: true
+          format: markdown
+          output: both
+          fail_below_min: true
+          hide_branch_rate: false
+          hide_complexity: true
+          indicators: true
+          thresholds: "90 98"
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cobertura-coverage
+          path: coverage/coverage.cobertura.xml
+          if-no-files-found: error
