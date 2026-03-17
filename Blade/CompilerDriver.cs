@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Blade.Diagnostics;
@@ -14,6 +15,7 @@ public sealed class CompilationOptions
 {
     public bool EnableSingleCallsiteInlining { get; init; } = true;
     public IReadOnlyList<OptimizationDirective> OptimizationDirectives { get; init; } = [];
+    public IReadOnlyDictionary<string, string> NamedModuleRoots { get; init; } = new Dictionary<string, string>();
 }
 
 public sealed class CompilationResult
@@ -52,7 +54,7 @@ public static class CompilerDriver
 
         Parser parser = Parser.Create(source, diagnostics);
         CompilationUnitSyntax unit = parser.ParseCompilationUnit();
-        BoundProgram boundProgram = Binder.Bind(unit, diagnostics);
+        BoundProgram boundProgram = Binder.Bind(unit, diagnostics, filePath, effectiveOptions.NamedModuleRoots);
 
         IrBuildResult? irBuildResult = null;
         if (diagnostics.Count == 0)

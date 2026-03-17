@@ -27,6 +27,7 @@ CompilationResult compilation = CompilerDriver.Compile(
     {
         EnableSingleCallsiteInlining = options.EnableSingleCallsiteInlining,
         OptimizationDirectives = options.OptimizationDirectives,
+        NamedModuleRoots = options.NamedModuleRoots,
     });
 sw.Stop();
 
@@ -104,6 +105,7 @@ internal sealed class CommandLineOptions
     public string? DumpDirectory { get; init; }
     public bool EnableSingleCallsiteInlining { get; init; }
     public IReadOnlyList<OptimizationDirective> OptimizationDirectives { get; init; } = [];
+    public IReadOnlyDictionary<string, string> NamedModuleRoots { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
 
     public static CommandLineOptions? Parse(string[] args)
     {
@@ -126,6 +128,7 @@ internal sealed class CommandLineOptions
         bool dumpAll = false;
         bool enableSingleCallsiteInlining = true;
         List<OptimizationDirective> optimizationDirectives = [];
+        Dictionary<string, string> namedModuleRoots = new(StringComparer.Ordinal);
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -241,6 +244,19 @@ internal sealed class CommandLineOptions
                     break;
                 }
 
+
+                case string value when value.StartsWith("--module=", StringComparison.Ordinal):
+                {
+                    if (!TryParseModuleSpecification(value, out string? moduleName, out string? modulePath, out string? moduleError))
+                    {
+                        Console.Error.WriteLine(moduleError);
+                        return null;
+                    }
+
+                    namedModuleRoots[moduleName!] = modulePath!;
+                    break;
+                }
+
                 case "--dump-dir":
                     if (i + 1 >= args.Length)
                     {
@@ -303,6 +319,7 @@ internal sealed class CommandLineOptions
             DumpDirectory = dumpDirectory,
             EnableSingleCallsiteInlining = enableSingleCallsiteInlining,
             OptimizationDirectives = optimizationDirectives,
+            NamedModuleRoots = namedModuleRoots,
         };
     }
 
@@ -352,6 +369,33 @@ internal sealed class CommandLineOptions
         return true;
     }
 
+
+    private static bool TryParseModuleSpecification(string arg, out string? moduleName, out string? modulePath, out string? errorMessage)
+    {
+        moduleName = null;
+        modulePath = null;
+        errorMessage = null;
+        string payload = arg["--module=".Length..];
+        int equalsIndex = payload.IndexOf('=', StringComparison.Ordinal);
+        if (equalsIndex <= 0 || equalsIndex == payload.Length - 1)
+        {
+            errorMessage = $"error: invalid module specification '{arg}'. Expected --module=<name>=<path>.";
+            return false;
+        }
+
+        string name = payload[..equalsIndex].Trim();
+        string path = payload[(equalsIndex + 1)..].Trim();
+        if (name.Length == 0 || path.Length == 0)
+        {
+            errorMessage = $"error: invalid module specification '{arg}'. Expected --module=<name>=<path>.";
+            return false;
+        }
+
+        moduleName = name;
+        modulePath = Path.GetFullPath(path);
+        return true;
+    }
+
     private static void PrintUsage()
     {
         Console.Error.WriteLine("Usage: blade <file.blade> [options]");
@@ -369,5 +413,6 @@ internal sealed class CommandLineOptions
         Console.Error.WriteLine("  -fmir-opt=<csv> / -fno-mir-opt=<csv>");
         Console.Error.WriteLine("  -flir-opt=<csv> / -fno-lir-opt=<csv>");
         Console.Error.WriteLine("  -fasmir-opt=<csv> / -fno-asmir-opt=<csv>");
+        Console.Error.WriteLine("  --module=<name>=<path>");
     }
 }

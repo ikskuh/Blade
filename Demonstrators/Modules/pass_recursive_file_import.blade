@@ -1,0 +1,7 @@
+// EXPECT: pass
+
+import "./nested/root.mod" as root;
+
+root();
+root.child.touched = 2;
+asm { MOV {root.child.touched}, #1 };

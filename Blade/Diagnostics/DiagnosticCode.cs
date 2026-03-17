@@ -50,6 +50,10 @@ public enum DiagnosticCode
     E0225_BitcastSizeMismatch = 225,
     E0226_AddressOfRecursiveLocal = 226,
     E0227_MissingReturnValue = 227,
+    E0228_FileImportAliasRequired = 228,
+    E0229_UnknownNamedModule = 229,
+    E0230_ImportFileNotFound = 230,
+    E0231_CircularImport = 231,
 
     // Inline assembly errors
     E0301_InlineAsmUnknownInstruction = 301,

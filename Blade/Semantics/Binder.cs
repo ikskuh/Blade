@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Blade;
 using Blade.Diagnostics;
 using Blade.Semantics.Bound;
@@ -16,6 +17,8 @@ public sealed class Binder
     private readonly Dictionary<string, TypeSymbol> _resolvedTypeAliases = new(StringComparer.Ordinal);
     private readonly HashSet<string> _typeAliasResolutionStack = new(StringComparer.Ordinal);
     private readonly Dictionary<string, FunctionSymbol> _functions = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ImportedModule> _importedModules = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _moduleBindingStack;
     private readonly Scope _globalScope;
     private readonly Scope _topLevelScope;
     private Scope _currentScope;
@@ -23,25 +26,32 @@ public sealed class Binder
     private readonly Stack<LoopContext> _loopStack = new();
     private int _anonymousStructIndex;
 
-    private Binder(DiagnosticBag diagnostics)
+    private Binder(DiagnosticBag diagnostics, HashSet<string> moduleBindingStack)
     {
         _diagnostics = diagnostics;
+        _moduleBindingStack = Requires.NotNull(moduleBindingStack);
         _globalScope = new Scope(parent: null);
         _topLevelScope = new Scope(_globalScope);
         _currentScope = _globalScope;
     }
 
-    public static BoundProgram Bind(CompilationUnitSyntax unit, DiagnosticBag diagnostics)
+    public static BoundProgram Bind(CompilationUnitSyntax unit, DiagnosticBag diagnostics, string rootFilePath, IReadOnlyDictionary<string, string>? namedModuleRoots)
     {
         Requires.NotNull(unit);
         Requires.NotNull(diagnostics);
+        Requires.NotNull(rootFilePath);
 
-        Binder binder = new(diagnostics);
-        return binder.BindCompilationUnit(unit);
+        HashSet<string> moduleBindingStack = new(StringComparer.OrdinalIgnoreCase)
+        {
+            Path.GetFullPath(rootFilePath),
+        };
+        Binder binder = new(diagnostics, moduleBindingStack);
+        return binder.BindCompilationUnit(unit, Path.GetFullPath(rootFilePath), namedModuleRoots ?? new Dictionary<string, string>(StringComparer.Ordinal));
     }
 
-    private BoundProgram BindCompilationUnit(CompilationUnitSyntax unit)
+    private BoundProgram BindCompilationUnit(CompilationUnitSyntax unit, string rootFilePath, IReadOnlyDictionary<string, string> namedModuleRoots)
     {
+        BindImports(unit, rootFilePath, namedModuleRoots);
         CollectTopLevelTypes(unit);
         CollectTopLevelFunctions(unit);
         ResolveFunctionSignatures();
@@ -84,7 +94,97 @@ public sealed class Binder
             boundGlobals,
             boundFunctions,
             _resolvedTypeAliases,
-            _functions);
+            _functions,
+            _importedModules);
+    }
+
+
+    private void BindImports(CompilationUnitSyntax unit, string importerFilePath, IReadOnlyDictionary<string, string> namedModuleRoots)
+    {
+        foreach (MemberSyntax member in unit.Members)
+        {
+            if (member is not ImportDeclarationSyntax import)
+                continue;
+
+            if (import.IsFileImport && import.Alias is null)
+            {
+                _diagnostics.ReportFileImportAliasRequired(import.Source.Span);
+                continue;
+            }
+
+            string alias = import.Alias?.Text ?? import.Source.Text;
+            string sourceName = import.Source.Value as string ?? import.Source.Text;
+            string resolvedPath;
+            if (import.IsFileImport)
+            {
+                string importerDir = Path.GetDirectoryName(importerFilePath) ?? string.Empty;
+                resolvedPath = Path.GetFullPath(Path.Combine(importerDir, sourceName));
+            }
+            else
+            {
+                if (!namedModuleRoots.TryGetValue(sourceName, out string? namedModulePath))
+                {
+                    _diagnostics.ReportUnknownNamedModule(import.Source.Span, sourceName);
+                    continue;
+                }
+
+                resolvedPath = Path.GetFullPath(namedModulePath);
+            }
+
+            ImportedModule imported = LoadAndBindModule(sourceName, alias, resolvedPath, namedModuleRoots);
+            _importedModules[alias] = imported;
+            if (!_globalScope.TryDeclare(new ModuleSymbol(alias, imported)))
+                _diagnostics.ReportSymbolAlreadyDeclared(import.Alias?.Span ?? import.Source.Span, alias);
+        }
+    }
+
+    private ImportedModule LoadAndBindModule(string sourceName, string alias, string resolvedPath, IReadOnlyDictionary<string, string> namedModuleRoots)
+    {
+        if (!File.Exists(resolvedPath))
+        {
+            _diagnostics.ReportImportFileNotFound(new TextSpan(0, 0), resolvedPath);
+            return new ImportedModule(sourceName, resolvedPath, alias, new CompilationUnitSyntax([], new Token(TokenKind.EndOfFile, new TextSpan(0, 0), string.Empty)), new BoundProgram([], [], [], new Dictionary<string, TypeSymbol>(), new Dictionary<string, FunctionSymbol>(), new Dictionary<string, ImportedModule>()), new Dictionary<string, FunctionSymbol>(), new Dictionary<string, TypeSymbol>(), new Dictionary<string, VariableSymbol>(), new Dictionary<string, ImportedModule>());
+        }
+
+        string text = File.ReadAllText(resolvedPath);
+        SourceText source = new(text, resolvedPath);
+        Parser parser = Parser.Create(source, _diagnostics);
+        CompilationUnitSyntax syntax = parser.ParseCompilationUnit();
+        if (_moduleBindingStack.Contains(resolvedPath))
+        {
+            _diagnostics.ReportCircularImport(new TextSpan(0, 0), resolvedPath);
+            return new ImportedModule(sourceName, resolvedPath, alias, syntax, new BoundProgram([], [], [], new Dictionary<string, TypeSymbol>(), new Dictionary<string, FunctionSymbol>(), new Dictionary<string, ImportedModule>()), new Dictionary<string, FunctionSymbol>(), new Dictionary<string, TypeSymbol>(), new Dictionary<string, VariableSymbol>(), new Dictionary<string, ImportedModule>());
+        }
+
+        _moduleBindingStack.Add(resolvedPath);
+        BoundProgram program;
+        try
+        {
+            Binder nestedBinder = new(_diagnostics, _moduleBindingStack);
+            program = nestedBinder.BindCompilationUnit(syntax, resolvedPath, namedModuleRoots);
+        }
+        finally
+        {
+            _moduleBindingStack.Remove(resolvedPath);
+        }
+
+        Dictionary<string, FunctionSymbol> functions = new(StringComparer.Ordinal);
+        foreach ((string name, FunctionSymbol function) in program.FunctionLookup)
+            functions[name] = function;
+
+        Dictionary<string, TypeSymbol> types = new(StringComparer.Ordinal);
+        foreach ((string name, TypeSymbol type) in program.TypeAliases)
+            types[name] = type;
+
+        Dictionary<string, VariableSymbol> variables = new(StringComparer.Ordinal);
+        foreach (BoundGlobalVariableMember global in program.GlobalVariables)
+            variables[global.Symbol.Name] = global.Symbol;
+
+        Dictionary<string, ImportedModule> importedModules = new(StringComparer.Ordinal);
+        foreach ((string name, ImportedModule importedModule) in program.ImportedModules)
+            importedModules[name] = importedModule;
+
+        return new ImportedModule(sourceName, resolvedPath, alias, syntax, program, functions, types, variables, importedModules);
     }
 
     private void CollectTopLevelTypes(CompilationUnitSyntax unit)
@@ -469,21 +569,8 @@ public sealed class Binder
                         _diagnostics.ReportSymbolAlreadyDeclared(asm.OutputBinding.Name.Span, asm.OutputBinding.Name.Text);
                 }
 
-                // Collect available variables from current scope for validation
-                HashSet<string> availableVars = new(StringComparer.Ordinal);
-                Scope? scope = _currentScope;
-                while (scope is not null)
-                {
-                    foreach (string name in scope.GetDeclaredNames())
-                        availableVars.Add(name);
-                    scope = scope.Parent;
-                }
-                // Also add function parameters
-                if (_currentFunction is not null)
-                {
-                    foreach (ParameterSymbol param in _currentFunction.Parameters)
-                        availableVars.Add(param.Name);
-                }
+                Dictionary<string, Symbol> availableSymbols = CollectInlineAsmAvailableSymbols();
+                HashSet<string> availableVars = new(availableSymbols.Keys, StringComparer.Ordinal);
 
                 InlineAssemblyValidator.ValidationResult validationResult =
                     InlineAssemblyValidator.Validate(asm.Body, asm.Span, availableVars, _diagnostics);
@@ -491,7 +578,7 @@ public sealed class Binder
                 Dictionary<string, Symbol> referencedSymbols = new(StringComparer.Ordinal);
                 foreach (string name in validationResult.ReferencedVariables)
                 {
-                    if (_currentScope.TryLookup(name, out Symbol? referenced) && referenced is not null)
+                    if (availableSymbols.TryGetValue(name, out Symbol? referenced))
                         referencedSymbols[name] = referenced;
                 }
 
@@ -503,6 +590,55 @@ public sealed class Binder
         }
 
         return new BoundErrorStatement(statement.Span);
+    }
+
+
+    private Dictionary<string, Symbol> CollectInlineAsmAvailableSymbols()
+    {
+        Dictionary<string, Symbol> availableSymbols = new(StringComparer.Ordinal);
+        Scope? scope = _currentScope;
+        while (scope is not null)
+        {
+            foreach (string name in scope.GetDeclaredNames())
+            {
+                if (availableSymbols.ContainsKey(name))
+                    continue;
+
+                if (scope.TryLookup(name, out Symbol? symbol) && symbol is not null)
+                    availableSymbols[name] = symbol;
+            }
+
+            scope = scope.Parent;
+        }
+
+        if (_currentFunction is not null)
+        {
+            foreach (ParameterSymbol param in _currentFunction.Parameters)
+                availableSymbols[param.Name] = param;
+        }
+
+        foreach ((string moduleAlias, ImportedModule module) in _importedModules)
+        {
+            if (!availableSymbols.ContainsKey(moduleAlias))
+                availableSymbols[moduleAlias] = new ModuleSymbol(moduleAlias, module);
+
+            CollectImportedModuleSymbols(moduleAlias, module, availableSymbols);
+        }
+
+        return availableSymbols;
+    }
+
+    private static void CollectImportedModuleSymbols(string prefix, ImportedModule module, IDictionary<string, Symbol> symbols)
+    {
+        foreach ((string name, VariableSymbol variable) in module.ExportedVariables)
+            symbols[$"{prefix}.{name}"] = variable;
+
+        foreach ((string alias, ImportedModule nestedModule) in module.ImportedModules)
+        {
+            string nestedPrefix = $"{prefix}.{alias}";
+            symbols[nestedPrefix] = new ModuleSymbol(alias, nestedModule);
+            CollectImportedModuleSymbols(nestedPrefix, nestedModule, symbols);
+        }
     }
 
     private BoundVariableDeclarationStatement BindLocalVariableDeclaration(VariableDeclarationSyntax declaration)
@@ -806,6 +942,7 @@ public sealed class Binder
             VariableSymbol variable => new BoundSymbolExpression(symbol, nameExpression.Span, variable.Type),
             ParameterSymbol parameter => new BoundSymbolExpression(symbol, nameExpression.Span, parameter.Type),
             FunctionSymbol function => new BoundSymbolExpression(symbol, nameExpression.Span, new FunctionTypeSymbol(function)),
+            ModuleSymbol module => new BoundSymbolExpression(symbol, nameExpression.Span, new ModuleTypeSymbol(module)),
             _ => new BoundErrorExpression(nameExpression.Span),
         };
     }
@@ -997,6 +1134,22 @@ public sealed class Binder
             return new BoundMemberAccessExpression(receiver, memberAccess.Member.Text, memberAccess.Span, fieldType);
         }
 
+        if (receiver.Type is ModuleTypeSymbol moduleType)
+        {
+            ImportedModule module = moduleType.Module.Module;
+            if (module.ExportedFunctions.TryGetValue(memberAccess.Member.Text, out FunctionSymbol? function))
+                return new BoundSymbolExpression(function, memberAccess.Span, new FunctionTypeSymbol(function));
+
+            if (module.ExportedVariables.TryGetValue(memberAccess.Member.Text, out VariableSymbol? variable))
+                return new BoundSymbolExpression(variable, memberAccess.Span, variable.Type);
+
+            if (module.ImportedModules.TryGetValue(memberAccess.Member.Text, out ImportedModule? importedModule))
+                return new BoundSymbolExpression(new ModuleSymbol(memberAccess.Member.Text, importedModule), memberAccess.Span, new ModuleTypeSymbol(new ModuleSymbol(memberAccess.Member.Text, importedModule)));
+
+            _diagnostics.ReportUndefinedName(memberAccess.Member.Span, memberAccess.Member.Text);
+            return new BoundErrorExpression(memberAccess.Span);
+        }
+
         if (receiver.Type is StructTypeSymbol)
             _diagnostics.ReportUndefinedName(memberAccess.Member.Span, memberAccess.Member.Text);
 
@@ -1039,6 +1192,14 @@ public sealed class Binder
     private BoundExpression BindCallExpression(CallExpressionSyntax callExpression)
     {
         BoundExpression callee = BindExpression(callExpression.Callee);
+        if (callee.Type is ModuleTypeSymbol moduleType)
+        {
+            if (callExpression.Arguments.Count != 0)
+                _diagnostics.ReportArgumentCountMismatch(callExpression.Span, moduleType.Module.Name, 0, callExpression.Arguments.Count);
+            _ = BindArgumentsLoose(callExpression.Arguments);
+            return new BoundModuleCallExpression(moduleType.Module.Module, callExpression.Span);
+        }
+
         if (!TryGetFunctionSymbol(callee, out FunctionSymbol? maybeFunction) || maybeFunction is null)
         {
             _diagnostics.ReportNotCallable(callExpression.Callee.Span, callee.Type.Name);

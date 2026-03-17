@@ -161,3 +161,7 @@ public void QuaternaryInteger_CurrentlyThrowsForBase4Conversion()
     Assert.Throws<ArgumentException>(() => Lex("0q123"));
 }
 ```
+
+## Regression ARGS parser parity
+
+`Blade.Regressions.RegressionRunner.BuildCompilationOptions` should use the same argument parser logic as the Blade compiler itself to avoid drift in accepted syntax/validation.
