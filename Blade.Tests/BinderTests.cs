@@ -1465,5 +1465,72 @@ public class BinderTests
         Assert.That(diagnostics.Count(d => d.Code == DiagnosticCode.E0234_ArrayLiteralRequiresContext), Is.EqualTo(2));
     }
 
+    [Test]
+    public void TypedStructLiteral_BindsCorrectly()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            type Point = packed struct { x: u32, y: u32 };
+            var p: Point = Point { .x = 10, .y = 20 };
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        string dump = BoundTreeWriter.Write(program);
+        Assert.That(dump, Does.Contain("StructLit<Point>"));
+    }
+
+    [Test]
+    public void TypedStructLiteral_UnknownField_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            type Point = packed struct { x: u32, y: u32 };
+            var p: Point = Point { .x = 10, .z = 20 };
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0236_StructUnknownField), Is.True);
+    }
+
+    [Test]
+    public void TypedStructLiteral_MissingField_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            type Point = packed struct { x: u32, y: u32 };
+            var p: Point = Point { .x = 10 };
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0237_StructMissingFields), Is.True);
+    }
+
+    [Test]
+    public void TypedStructLiteral_DuplicateField_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            type Point = packed struct { x: u32, y: u32 };
+            var p: Point = Point { .x = 1, .x = 2, .y = 3 };
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0238_StructDuplicateField), Is.True);
+    }
+
+    [Test]
+    public void TypedStructLiteral_NonStructType_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            type Alias = u32;
+            var x: u32 = Alias { .x = 10 };
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
+    }
+
+    [Test]
+    public void TypedStructLiteral_UndefinedType_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            var x: u32 = Unknown { .x = 10 };
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0203_UndefinedType), Is.True);
+    }
+
 
 }

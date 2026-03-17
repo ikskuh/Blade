@@ -18,7 +18,15 @@
       "Bash(dotnet test:*)",
       "Bash(just regressions:*)",
       "Bash(just compile-all-samples:*)",
-      "Bash(ls -la /home/felix/projects/nerdgruppe/blade/Blade.Regressions/*.cs)"
+      "Bash(ls -la /home/felix/projects/nerdgruppe/blade/Blade.Regressions/*.cs)",
+      "Bash(find /home/felix/projects/nerdgruppe/blade/Examples /home/felix/projects/nerdgruppe/blade/RegressionTests /home/felix/projects/nerdgruppe/blade/Demonstrators -name *.blade)",
+      "Bash(grep -r 'type.*= struct' /home/felix/projects/nerdgruppe/blade/Examples /home/felix/projects/nerdgruppe/blade/RegressionTests --include=*.blade)",
+      "Bash(just test:*)",
+      "Bash(just compile-sample:*)",
+      "Bash(just all:*)",
+      "Bash(just coverage:*)",
+      "Bash(dotnet run:*)",
+      "Bash(python3 -c \":*)"
     ]
   }
 }

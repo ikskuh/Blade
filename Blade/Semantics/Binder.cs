@@ -908,6 +908,9 @@ public sealed class Binder
             case StructLiteralExpressionSyntax structLiteral:
                 return BindStructLiteralExpression(structLiteral, expectedType);
 
+            case TypedStructLiteralExpressionSyntax typedStructLiteral:
+                return BindTypedStructLiteralExpression(typedStructLiteral);
+
             case EnumLiteralExpressionSyntax enumLiteral:
                 return BindEnumLiteralExpression(enumLiteral, expectedType);
 
@@ -1357,6 +1360,59 @@ public sealed class Binder
         _anonymousStructIndex++;
         StructTypeSymbol inferredType = new($"<struct#{_anonymousStructIndex}>", fields);
         return new BoundStructLiteralExpression(inferredInitializers, structLiteral.Span, inferredType);
+    }
+
+    private BoundExpression BindTypedStructLiteralExpression(TypedStructLiteralExpressionSyntax syntax)
+    {
+        // The parser guarantees TypeName is a NameExpressionSyntax.
+        NameExpressionSyntax nameExpr = (NameExpressionSyntax)syntax.TypeName;
+        TypeSymbol resolvedType = ResolveTypeAlias(nameExpr.Name.Text, nameExpr.Name.Span);
+        if (resolvedType is not StructTypeSymbol structType)
+        {
+            if (!resolvedType.IsUnknown)
+                _diagnostics.ReportTypeMismatch(nameExpr.Name.Span, "struct", resolvedType.Name);
+            return new BoundErrorExpression(syntax.Span);
+        }
+
+        // Bind each field initializer.
+        HashSet<string> seen = new(StringComparer.Ordinal);
+        List<BoundStructFieldInitializer> initializers = new(syntax.Initializers.Count);
+        foreach (FieldInitializerSyntax initializer in syntax.Initializers)
+        {
+            string fieldName = initializer.Name.Text;
+
+            if (!seen.Add(fieldName))
+            {
+                _diagnostics.ReportStructDuplicateField(initializer.Name.Span, fieldName);
+                BindExpression(initializer.Value);
+                continue;
+            }
+
+            if (!structType.Fields.TryGetValue(fieldName, out TypeSymbol? fieldType))
+            {
+                _diagnostics.ReportStructUnknownField(initializer.Name.Span, structType.Name, fieldName);
+                BindExpression(initializer.Value);
+                continue;
+            }
+
+            BoundExpression value = BindExpression(initializer.Value, fieldType);
+            initializers.Add(new BoundStructFieldInitializer(fieldName, value));
+        }
+
+        // Check for missing fields.
+        List<string>? missing = null;
+        foreach (string fieldName in structType.Fields.Keys)
+        {
+            if (!seen.Contains(fieldName))
+                (missing ??= new List<string>()).Add(fieldName);
+        }
+
+        if (missing is not null)
+        {
+            _diagnostics.ReportStructMissingFields(syntax.CloseBrace.Span, structType.Name, string.Join(", ", missing));
+        }
+
+        return new BoundStructLiteralExpression(initializers, syntax.Span, structType);
     }
 
     private BoundExpression BindArrayLiteralExpression(ArrayLiteralExpressionSyntax arrayLiteral, TypeSymbol? expectedType)

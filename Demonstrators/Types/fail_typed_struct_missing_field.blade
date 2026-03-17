@@ -1,0 +1,12 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - E0237
+// NOTE:
+//   Typed struct literals reject missing fields.
+
+type Point = packed struct {
+    x: u32,
+    y: u32,
+};
+
+var p: Point = Point { .x = 10 };

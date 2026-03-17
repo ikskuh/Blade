@@ -1,0 +1,12 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - E0238
+// NOTE:
+//   Typed struct literals reject duplicate fields.
+
+type Point = packed struct {
+    x: u32,
+    y: u32,
+};
+
+var p: Point = Point { .x = 10, .x = 20, .y = 30 };

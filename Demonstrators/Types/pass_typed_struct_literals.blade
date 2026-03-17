@@ -1,0 +1,15 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - StructLit<Point>
+// - Literal<<int-literal>> 10
+// - Literal<<int-literal>> 20
+// NOTE:
+//   Typed struct literals resolve the type name and bind field initializers.
+
+type Point = packed struct {
+    x: u32,
+    y: u32,
+};
+
+var p: Point = Point { .x = 10, .y = 20 };

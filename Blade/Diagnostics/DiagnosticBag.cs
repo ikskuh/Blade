@@ -292,6 +292,21 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
             "Array literal spread element must be the last element.");
     }
 
+    public void ReportStructUnknownField(TextSpan span, string structName, string fieldName)
+    {
+        Report(DiagnosticCode.E0236_StructUnknownField, span, $"Struct '{structName}' does not have a field named '{fieldName}'.");
+    }
+
+    public void ReportStructMissingFields(TextSpan span, string structName, string missingFields)
+    {
+        Report(DiagnosticCode.E0237_StructMissingFields, span, $"Struct literal for '{structName}' is missing field(s): {missingFields}.");
+    }
+
+    public void ReportStructDuplicateField(TextSpan span, string fieldName)
+    {
+        Report(DiagnosticCode.E0238_StructDuplicateField, span, $"Field '{fieldName}' is specified more than once.");
+    }
+
     // Inline assembly diagnostics
 
     public void ReportInlineAsmUnknownInstruction(TextSpan span, string mnemonic)

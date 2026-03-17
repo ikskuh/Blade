@@ -58,6 +58,9 @@ public enum DiagnosticCode
     E0233_BitfieldWidthOverflow = 233,
     E0234_ArrayLiteralRequiresContext = 234,
     E0235_ArrayLiteralSpreadMustBeLast = 235,
+    E0236_StructUnknownField = 236,
+    E0237_StructMissingFields = 237,
+    E0238_StructDuplicateField = 238,
 
     // Inline assembly errors
     E0301_InlineAsmUnknownInstruction = 301,
