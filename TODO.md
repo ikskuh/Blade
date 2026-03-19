@@ -179,3 +179,25 @@ Right now, booleans are lowered to integers, then upgraded to flags
 when needed for branching. This can be inverted to lower them to flags
 first, then upgrade to integers when out of flags.
 
+## `count` value gets swallowed and won't be incremented
+
+```blade
+hub var greeting: [16]u8 = undefined;
+
+fn count_string(ptr: [*]hub const u8) -> u32 {
+    var count: u32 = 0;
+
+    while(ptr[0] != 0) {
+        count += 1;
+        ptr = bitcast([*]hub const u8, bitcast(u32, ptr) + 1);
+    }
+
+    return count;
+}
+
+reg var length: u32 = 0;
+
+length = count_string(&greeting);
+```
+
+has no sign of `ADD`, `#1` or `INC` included.

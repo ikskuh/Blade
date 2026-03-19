@@ -602,6 +602,12 @@ public static class RegressionRunner
             if (matched && LooksLikeUnexpectedPass(fixture, evaluatedFixture))
                 return RegressionFixtureOutcome.UnexpectedPass;
 
+            // If the fixture expected error diagnostics but the compiler
+            // now produces none, the underlying issue was fixed and the
+            // xfail should be promoted — flag it as unexpected pass.
+            if (LooksLikeExpectedDiagnosticsResolved(fixture, evaluatedFixture))
+                return RegressionFixtureOutcome.UnexpectedPass;
+
             return RegressionFixtureOutcome.XFail;
         }
 
@@ -614,6 +620,23 @@ public static class RegressionRunner
             return true;
 
         return evaluatedFixture.Diagnostics.Count == 0 && evaluatedFixture.FinalAssemblyText is not null;
+    }
+
+    /// <summary>
+    /// Detects when an xfail fixture expected error diagnostics but the
+    /// compiler now produces none — the underlying bug was fixed and the
+    /// fixture should be promoted to EXPECT: pass.
+    /// </summary>
+    private static bool LooksLikeExpectedDiagnosticsResolved(RegressionFixture fixture, EvaluatedFixture evaluatedFixture)
+    {
+        if (fixture.Kind != RegressionFixtureKind.Blade)
+            return false;
+
+        RegressionExpectation expectation = fixture.Expectation;
+        bool expectedErrors = expectation.LooseDiagnosticCodes.Any(code => code.StartsWith('E'))
+            || expectation.ExactDiagnostics.Any(diag => diag.Code.StartsWith('E'));
+
+        return expectedErrors && !evaluatedFixture.Diagnostics.Any(diag => diag.Code.StartsWith('E'));
     }
 
     private static string BuildSummary(
