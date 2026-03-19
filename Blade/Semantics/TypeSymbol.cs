@@ -540,6 +540,9 @@ public static class TypeFacts
         if (value is null)
             return true;
 
+        if (value is string)
+            return false;
+
         if (!TryGetScalarWidth(targetType, out int width))
             return false;
 

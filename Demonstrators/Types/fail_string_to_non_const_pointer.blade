@@ -1,0 +1,11 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0240, E0240, E0240
+// NOTE:
+//   String literals cannot be assigned to non-const pointers.
+//   All three storage classes must be rejected.
+
+fn test() {
+    var hstr: [*]hub u8 = "hub string";
+    var lstr: [*]lut u8 = "lut string";
+    var rstr: [*]reg u8 = "reg string";
+}

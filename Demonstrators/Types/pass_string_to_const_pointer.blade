@@ -1,0 +1,10 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - Conversion<[*]reg const u8>
+// NOTE:
+//   String literals can be implicitly coerced to [*]<storage> const u8.
+
+fn test_reg() {
+    var s: [*]reg const u8 = "hello";
+}
