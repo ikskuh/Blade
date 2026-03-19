@@ -9,7 +9,7 @@
 
 hub var greeting: [16]u8 = undefined;
 
-noinline fn count_string(ptr: [*]hub const u8) -> u32 {
+fn count_string(ptr: [*]hub const u8) -> u32 {
     var count: u32 = 0;
 
     while(ptr[0] != 0) {

@@ -326,6 +326,9 @@ public static class MirLowerer
                 if (place.Kind == StoragePlaceKind.AllocatableGlobalRegister && place.HasStaticInitializer)
                     continue;
 
+                if (IsUndefinedInitializer(global.Initializer))
+                    continue;
+
                 MirValueId initializerValue = LowerExpression(global.Initializer);
                 EmitStorePlace(place, initializerValue, global.Span);
             }
@@ -406,7 +409,8 @@ public static class MirLowerer
                     break;
 
                 case BoundVariableDeclarationStatement variableDeclaration:
-                    if (variableDeclaration.Initializer is not null)
+                    if (variableDeclaration.Initializer is not null
+                        && !IsUndefinedInitializer(variableDeclaration.Initializer))
                     {
                         MirValueId initializer = LowerExpression(variableDeclaration.Initializer);
                         WriteSymbol(variableDeclaration.Symbol, initializer, statement.Span);
@@ -1559,6 +1563,16 @@ public static class MirLowerer
         }
 
         private readonly record struct LoopContext(string BreakLabel, string ContinueLabel, IReadOnlyList<Symbol> Symbols);
+    }
+
+    private static bool IsUndefinedInitializer(BoundExpression expression)
+    {
+        // Unwrap conversions to find the underlying literal.
+        BoundExpression inner = expression;
+        while (inner is BoundConversionExpression conversion)
+            inner = conversion.Expression;
+
+        return inner.Type.IsUndefinedLiteral;
     }
 
     private static bool TryEvaluateStaticValue(BoundExpression expression, out object? value)

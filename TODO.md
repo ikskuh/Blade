@@ -18,8 +18,6 @@ Validate that `rec fn` uses CALLB and stack spilling when calling other rec func
 
 In FinalAssemblyWriter.WriteConBlock, skip CON alias emission when the fixed-address alias name is already a real hardware register identifier (DIRA, OUTA, INA, etc.).
 
-## `undefined` keyword for no-init locals
-
 ## Type improvements
 
 - Distinct between `[*]T` and `*T` like in Zig. This gives better quality code without basically any drawbacks.
