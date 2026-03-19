@@ -173,68 +173,237 @@ The parser supports `SeparatedSyntaxList<ReturnItemSyntax>` for return specs and
 
 ## CS-18: external variables
 
-`reference.blade` shows `extern reg var ext_var;`
+`reference.blade` models `extern` as a top-level storage declaration:
 
-TODO: Write task description
+- `extern reg var ext_var: u32;`
+- `extern lut var ext_lut_var: u32;`
+- `extern hub var ext_hub_var: u32;`
+- `extern reg var OUTA: u32 @(0x1FC);`
+- `extern reg const INA: u32 @(0x1FE);`
+
+Important current-state note: the compiler already has partial support for this.
+
+- The parser already accepts `extern`.
+- `VariableSymbol` already records `IsExtern` and `FixedAddress`.
+- MIR/ASM already distinguish `ExternalAlias` and `FixedRegisterAlias`.
+- There are already IR tests proving `extern reg var FOO: u32;` and
+  `extern reg var OUTA: u32 @(0x1FC);` lower correctly.
+
+The remaining task is to make the feature description match the current compiler
+and the reference precisely:
+
+- `extern` remains valid only on top-level storage declarations. Local `extern`
+  stays rejected with `E0216`.
+- For `extern reg`:
+  - no storage is allocated in the generated data section;
+  - the symbol is emitted as a bare assembler symbol;
+  - `@(addr)` turns the declaration into a fixed register alias;
+  - `const` still participates in the normal assignment checks, so writes to
+    `extern reg const` must fail.
+- `extern reg` must keep normal variable semantics in the binder:
+  reads, writes, address-of, and type checking should behave like a global
+  register variable, only without owned storage allocation.
+
+Full reference parity for `extern lut` / `extern hub` is blocked by the broader
+global-storage gap:
+
+- The current compiler still rejects top-level `lut` / `hub` storage with `E0218`.
+- Do not describe this task as "just add extern everywhere"; the implementation
+  must either:
+  - explicitly scope `CS-18` to finishing and locking down `extern reg`, or
+  - treat `extern lut` / `extern hub` as dependent on the later work that adds
+    non-register global storage to the backend.
+
+Tests to require:
+
+- `extern reg var FOO: u32;` lowers to direct symbol use with no allocated `LONG`.
+- `extern reg var OUTA: u32 @(0x1FC);` lowers as a fixed register alias.
+- `extern reg const INA: u32 @(0x1FE); INA = 1;` is rejected as assignment to const.
+- `fn f() { extern reg var x: u32; }` still reports `E0216`.
 
 ---
 
 ## CS-19: "builtin" module
 
-- Global module `builtin` which is always available
-- Forbidden to name your own module `builtin` (yields command line error)
-- Compiler provides a default implementation for this module
-- Contains:
-  - `MemorySpace` enumeration (see `type MemorySpace = enum` in `reference.blade`)
+`reference.blade` defines a compiler-provided module named `builtin` and uses it
+as `builtin.MemorySpace`.
+
+This task is not just "add a module entry". On the current compiler it requires
+connecting the existing import/module machinery to compiler-synthesized content.
+
+- The compiler must force the module into existence even when the user does not
+  pass `--module=...`.
+- However, `builtin` is not automatically visible. Access requires an explicit
+  `import builtin;` or `import builtin as alias;`.
+- This keeps the module compiler-provided without creating a magic always-in-scope
+  global/module name.
+- `--module=builtin=...` must be rejected in `CompilationOptionsCommandLine`.
+  The name is reserved for the compiler-provided module.
+- `import builtin;` and `import builtin as alias;` should bind to the synthesized
+  builtin module instead of trying to resolve a filesystem or CLI module entry.
+
+Current implementation detail that matters:
+
+- Named/file imports already bind to `ImportedModule` / `ModuleSymbol`.
+- Module member access already resolves exported functions, variables, and nested
+  modules.
+- The missing piece for `builtin.MemorySpace` is exported **types** and qualified
+  **type syntax**. `TypeSyntax` currently only supports a single identifier
+  (`NamedTypeSyntax`), so `builtin.MemorySpace` cannot be written in type
+  position yet.
+
+Implementation shape:
+
+- Synthesize an `ImportedModule` for `builtin` before or during `BindImports`.
+- Give it empty top-level code and no exported functions/variables.
+- Export a single type:
+  - `MemorySpace = enum(u32) { reg, lut, hub };`
+- Extend type parsing/binding so a qualified type name like `builtin.MemorySpace`
+  resolves against a module's exported types. A dedicated syntax node such as
+  `QualifiedTypeSyntax` is cleaner than trying to reuse expression syntax here.
+
+This task exists mainly to unblock `CS-20`.
+
+Tests:
+
+- `var cls: builtin.MemorySpace = .reg;` fails to bind as "builtin" is not imported.
+- `import builtin; var cls: builtin.MemorySpace = .hub;` binds successfully.
+- `import builtin as b; var cls: b.MemorySpace = .lut;` binds successfully.
+- `--module=builtin=mods/ext.blade` fails with a command-line error.
 
 ---
 
 ## CS-20: Query operators sizeof, alignof, memoryof
 
-Implement the three new operators:
+`reference.blade` adds three compile-time query operators:
 
-- `sizeof`: Returns the storage size of a `var` or `const` declaration or of a type.
-- `alignof`: Returns the memory alignment of a `var` or `const` declaration or of a type.
-- `memoryof`: Returns the memory space of a `var` or `const` declaration.
+- `sizeof(decl)`
+- `sizeof(T, builtin.MemorySpace.hub)` and `sizeof(T, .hub)`
+- `alignof(decl)`
+- `alignof(T, builtin.MemorySpace.hub)` and `alignof(T, .hub)`
+- `memoryof(decl)`
 
-The legal forms are
+On the current compiler this is a frontend + binder feature, not a backend one.
+The operators should fold directly to constants during binding.
 
-- `sizeof(decl)`: Returns the storage size of a declaration relative to its memory space.
-- `sizeof(T, builtin.MemorySpace)`: Returns the size of a type if stored in the given memory space.
-- `alignof(decl)`: Returns the memory alignment of a declaration relative to its memory space.
-- `alignof(T, builtin.MemorySpace)`: Returns the memory alignment of a type if stored in the given memory space.
-- `memoryof(decl)`: Returns the memory space of a declaration.
+Parser work required:
 
-Important things to keep in mind:
+- Add lexer/parser support for the keywords `sizeof`, `alignof`, and `memoryof`.
+- Do not model them as generic function calls. The forms are not ordinary calls
+  because the first argument may be a `TypeSyntax`, not an `ExpressionSyntax`.
+- Add dedicated syntax nodes, similar in spirit to `BitcastExpressionSyntax`:
+  - `sizeof` / `alignof` need two forms:
+    - declaration operand
+    - type + memory-space operand
+  - `memoryof` only accepts a declaration operand
 
-- `memoryof` doesn't make sense for types, only for declarations.
-- `sizeof` and `alignof` depend on the memory space:
-  - Registers and LUT only allow 32-bit addressing, so everything <= 32 bit has size 1 and alignment 1.
-    - `sizeof(u8, .reg) == 1`, `align(u8, .reg) == 1`
-    - `sizeof(u16, .reg) == 1`, `align(u16, .reg) == 1`
-    - `sizeof(u32, .reg) == 1`, `align(u32, .reg) == 1`
-  - Hub is 8-bit addressed, so this is a more typical memory model with byte-alignments:
-    - `sizeof(u8, .hub) == 1`, `align(u8, .hub) == 1`
-    - `sizeof(u16, .hub) == 2`, `align(u16, .hub) == 2`
-    - `sizeof(u32, .hub) == 4`, `align(u32, .hub) == 4`
+Binder work required:
+
+- `sizeof` and `alignof` return an integer-literal-typed constant, not a forced
+  `u32` value. This keeps them usable in normal integer-literal inference
+  contexts without extra casts.
+- `memoryof` returns `builtin.MemorySpace`, so `CS-19` is a dependency.
+- The result should be a `BoundLiteralExpression` (or another trivially constant
+  bound node) so later phases see a plain constant.
+- The declaration operand should resolve to a declaration with a defined storage
+  class. This is important on the current compiler:
+  - top-level `reg` / `extern reg` declarations are well-defined;
+  - top-level `lut` / `hub` will only work once those storage classes are supported;
+  - automatic locals do **not** have a stable source-level memory space and should
+    be rejected instead of guessed.
+- `memoryof(type)` is invalid by definition and should report a dedicated diagnostic.
+
+Do not reuse `TypeFacts.TryGetSizeBytes` / `TryGetAlignmentBytes` as-is.
+Those helpers currently encode the byte-addressed hub model only. This feature
+needs memory-space-aware queries, for example:
+
+- register / LUT space are word-addressed:
+  - `sizeof(u8, .reg) == 1`
+  - `sizeof(u16, .reg) == 1`
+  - `sizeof(u32, .reg) == 1`
+  - `alignof(u8, .reg) == 1`
+  - `alignof(u16, .reg) == 1`
+  - `alignof(u32, .reg) == 1`
+- hub space is byte-addressed:
+  - `sizeof(u8, .hub) == 1`
+  - `sizeof(u16, .hub) == 2`
+  - `sizeof(u32, .hub) == 4`
+  - `alignof(u8, .hub) == 1`
+  - `alignof(u16, .hub) == 2`
+  - `alignof(u32, .hub) == 4`
+
+Recommended implementation shape:
+
+- Introduce helpers like `TryGetStorageSize(TypeSymbol type, VariableStorageClass storage, out int size)`
+  and `TryGetStorageAlignment(...)` rather than overloading the existing byte-based helpers.
+- Map `builtin.MemorySpace.reg|lut|hub` to `VariableStorageClass.Reg|Lut|Hub`.
+- Keep the operators compile-time only; there is no MIR/LIR/ASM lowering work if
+  binding always folds them.
+
+Tests:
+
+- `sizeof(ext_var)` and `alignof(ext_var)` on `extern reg var ext_var: u32;`
+- `sizeof(u32, builtin.MemorySpace.hub) == 4`
+- `sizeof(u32, .reg) == 1`
+- `alignof(u16, .hub) == 2`
+- `memoryof(rv_01) == .reg`
+- reject `memoryof(u32)`
+- reject queries on automatic locals whose memory space is not defined
 
 ---
 
 ## CS-21: "assert" statement
 
-Implement the `assert` statement which performs compile-time assertions.
+`reference.blade` defines `assert` as a statement-like compile-time check:
 
-Check `reference.blade` chapter "Assertions" to see how to use it.
+- `assert <condition>;`
+- `assert <condition>, "message";`
 
-Two forms are legal:
+This needs explicit syntax support. The current lexer/parser do not know the
+`assert` keyword and there is no statement node for it.
 
-- `assert <condition>;`: Fails with a generic "assertion <condition> failed" compiler diagnostic
-- `assert <condition>, <message>;`: Fails with a specific "assertion <condition> failed: <message>" compiler diagnostic.
+Syntax/frontend work:
 
-Both forms use the same diagnostic, just with a different message.
+- Add `assert` as a keyword token.
+- Add `AssertStatementSyntax`.
+- Parse both legal forms in statement position, so `assert` works both at
+  top-level and inside function bodies.
+- Parse the optional message as a string literal token, not as a general
+  expression. The reference explicitly says the message cannot be a variable
+  reference, so the syntax should enforce that directly.
 
-- `<condition>` must be a boolean compile-time evaluated value
-- `<message>` must be a string literal (it cannot be a variable reference)
+Binder/semantic work:
+
+- `assert` is compile-time only. It should not survive into MIR.
+- Bind the condition as an expression and evaluate it immediately.
+- The condition must fold to a boolean constant.
+- Reuse or generalize the current constant-evaluation helpers. `TryEvaluateConstantInt`
+  is too narrow for this task; `assert` needs boolean results, and `CS-20` query
+  operators should be usable inside assertions.
+- When the condition is `false`, emit one diagnostic code for assertion failure:
+  - without message: `assertion failed`
+  - with message: `assertion failed: <message>`
+- Non-constant conditions should report a separate diagnostic instead of silently
+  becoming runtime checks.
+- Non-boolean conditions should still use normal type checking.
+
+Recommended implementation shape:
+
+- Introduce a bound statement node for `assert` only if it helps the binder
+  pipeline; otherwise the binder can consume the syntax and emit either nothing
+  or an error immediately.
+- Prefer a reusable `TryEvaluateConstantValue(BoundExpression, out object?)`
+  helper over baking the logic into the `assert` path. That helper will also be
+  useful for future `comptime` work.
+
+Tests:
+
+- `assert true;` produces no diagnostics.
+- `assert false;` produces the generic assertion-failed diagnostic.
+- `assert false, "must hold";` produces the same diagnostic code with the custom message.
+- `assert 1;` reports a type mismatch against `bool`.
+- `const msg: [4]u8 = "oops"; assert false, msg;` is rejected because the message is not a string literal.
+- `var x: u32 = 1; assert x == 1;` is rejected because the condition is not compile-time constant.
 
 ---
 
