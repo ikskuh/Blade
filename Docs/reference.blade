@@ -278,18 +278,27 @@ fn showcase_locals(param: u32) {
 var toplevel_var: u32 = 0;
 
 // TODO: reg var foo: align(value) = 0;
-// TODO: extern reg var foo;
-// TODO: extern reg var foo @(0x1FA);
-// extern reg var DIRA: u32 @(0x1FA);
-// extern reg var DIRB: u32 @(0x1FB);
-// extern reg var OUTA: u32 @(0x1FC);
-// extern reg var OUTB: u32 @(0x1FD);
-// extern reg const INA: u32 @(0x1FE);
-// extern reg const INB: u32 @(0x1FF);
-// extern reg var PTRA: u32 @(0x1F8);    // free for user (hub data access)
-// extern reg var PTRB: u32 @(0x1F9);    // reserved for rec fn stack
-// extern reg var PA: u32 @(0x1F6);
-// extern reg var PB: u32 @(0x1F7);
+
+// This declaration creates an external variable:
+extern reg var ext_var: u32;
+
+// external variables are available for all storage kinds:
+extern reg var ext_reg_var: u32;
+extern lut var ext_lut_var: u32;
+extern hub var ext_hub_var: u32;
+
+// External variables can also be explicitly allocated instead
+// of needing a true external source:
+extern reg var DIRA: u32 @(0x1FA); // assigns "DIRA" the location 0x1FA
+extern reg var DIRB: u32 @(0x1FB); // this is basically an alias type which
+extern reg var OUTA: u32 @(0x1FC); // replaces a global constant pointer which
+extern reg var OUTB: u32 @(0x1FD); // would need deref/ref semantics
+extern reg const INA: u32 @(0x1FE); // external variables can also be assigned const,
+extern reg const INB: u32 @(0x1FF); // which prevents writing to them.
+extern reg var PTRA: u32 @(0x1F8);
+extern reg var PTRB: u32 @(0x1F9);
+extern reg var PA: u32 @(0x1F6);
+extern reg var PB: u32 @(0x1F7);
 
 //////////////////////////////////////////////////////////////////////////////
 // Control Flow
@@ -589,6 +598,30 @@ type Bitfield = bitfield (u32) {
     msb: bit, // bit offset 31
 };
 
+//////////////////////////////////////////////////////////////////////////////
+// Built-in Types
+//////////////////////////////////////////////////////////////////////////////
+
+import builtin; // see "Module Subsystem" for explanations
+
+// All of the following types are defined in the "builtin" module, which is always
+// available and provided by the compiler.
+// Thus, they need to be addresses "builtin.MemorySpace" instead of "MemorySpace" in
+// the code!
+
+// <start contents of "builtin" module>
+
+// This type is the return value of the "memoryof" operator:
+type MemorySpace = enum(u32) {
+    // The item is stored in registers.
+    reg,
+    // The item is stored in the LUT.
+    lut,
+    // The item is stored in the Hub.
+    hub,
+};
+
+// <end contents of "builtin" module>
 
 //////////////////////////////////////////////////////////////////////////////
 // Expressions & Operators
@@ -694,6 +727,20 @@ fn expressions() {
     // Once a closed enum contains such an invalid value, subsequent behavior
     // is undefined.
     var foo: ClosedEnum = bitcast(ClosedEnum, x);
+
+    x = sizeof(ext_var); // returns the size of the "ext_var" variable
+    x = sizeof(u32, builtin.MemorySpace.hub); // returns the size of the "u32" type when stored in hub
+    x = sizeof(u32, builtin.MemorySpace.reg); // this distinction is important as registers and LUT are addressed with 32 bit elements, while Hub is addressed byte-wise.
+    x = alignof(ext_var); // Returns the memory alignment of the "ext_var" variable
+    x = alignof(u32, builtin.MemorySpace.hub); // Returns the alignment of the given type in the memory space. Same as with sizeof: It needs to know the memory space for proper values
+
+    x = sizeof(u32, .hub); // we can also always use a enum literal here
+
+    // The "memoryof" operator returns the storage class for a given variable:
+    var cls: builtin.MemorySpace = undefined;
+    cls = memoryof(rv_01); // returns MemorySpace.reg
+    cls = memoryof(lv_01); // returns MemorySpace.lut
+    cls = memoryof(hv_01); // returns MemorySpace.hub
 }
 
 fn values() {
@@ -702,6 +749,7 @@ fn values() {
     var a: [4]u8 = undefined;
     var e: ClosedEnum = undefined;
     var s: Point = undefined;
+    var str: [*]reg const u8 = undefined;
 
     // "undefined" is a value that makes the compiler not initialize the value, but just leave it as is.
     // this is potentially unsafe, but allows good optimizations and communication that the value isn't
@@ -734,6 +782,11 @@ fn values() {
     a = [ 0,0,0,0 ]; // array "literal", evaluates to an array of 4 u8 in this case
     a = "bye!"; // string literal, evaluates to an array of 4 u8
     a = z"hi!"; // zero-terminated string literal, evaluates to an array of 4 u8
+
+    // Strings can also be implicitly passed to a `[*]<storage> const u8` and will
+    // allocate the required memory inside the storage type:
+    str = "hello";
+    str = z"hello";
 
     // Escape sequences are valid for strings and character literals:
     x = '\0'; // NUL escape = 0x00
@@ -785,3 +838,26 @@ alias();
 // Each named module has it's own import table and is defined by a root file.
 // The same file may not be shared between two modules.
 import extmod;
+
+//////////////////////////////////////////////////////////////////////////////
+// Assertions
+//////////////////////////////////////////////////////////////////////////////
+
+// The language supports a statement-like construct for compile-time assertions:
+assert true;
+
+// This construct takes one or two parameters:
+assert true; // Will print an error if "false" is passed instead
+
+assert true, "Assertion description"; // Will print the given message string when "false" is passed instead.
+
+// Assertions always evaluate at compile time, thus they can only operate on constant values. As the compiler
+// is free to inline constant values (and omit their storage unless their address is taken), we can do the following:
+
+reg const global_state: u32 = 100;
+assert global_state < 200, "global_state must always be less than 200!";
+
+// We can also use state queries with the builtin operators:
+assert sizeof(global_state) == 1;
+assert alignof(global_state) >= 1; // don't be confused, a u32 reg var is aligned to 1 as the addressible unit is 32 bit wide!
+assert memoryof(global_state) == .reg; // assert variables have proper placement

@@ -33,6 +33,7 @@ The binder doesn't handle them yet.
 
 The lexer already handles `z"..."` — check whether the token carries a
 flag or produces a distinct value. The binder should:
+
 - Produce an array type `[N+1]u8` (N chars + NUL terminator).
 - Append `\0` to the string value if not already present.
 - Tests: `z"hi!"` produces a `[4]u8` with trailing NUL.
@@ -40,9 +41,26 @@ flag or produces a distinct value. The binder should:
 ### CS-9c: String-to-array coercion
 
 `reference.blade` shows `var a: [4]u8 = "bye!";`.
+
 - `IsAssignable`: allow `string` → `[N]u8` when lengths match.
 - Lower string literal to array of bytes.
 - Tests: `var a: [4]u8 = "bye!"`, reject length mismatch.
+
+### CS-9d: String-to-pointer coercion
+
+- `reference.blade` shows `str = "hello";`.
+- `reference.blade` shows `str = z"hello";`.
+- `IsAssignable`: allow `string` → `[*]<storage> const u8`
+- Forbid assignment to mutable pointer `string` → `[*]<storage> u8`.
+- Tests:
+  - positive:
+    - `var hstr: [*]hub const u8 = "hub string";`
+    - `var lstr: [*]lut const u8 = "lut string";`
+    - `var rstr: [*]reg const u8 = "reg string";`
+  - negative (requires new diagnostic "string cannot be assigned to non-const pointer")
+    - `var hstr: [*]hub u8 = "hub string";`
+    - `var lstr: [*]lut u8 = "lut string";`
+    - `var rstr: [*]reg u8 = "reg string";`
 
 ---
 
@@ -150,6 +168,73 @@ The parser supports `SeparatedSyntaxList<ReturnItemSyntax>` for return specs and
 - Callers receiving multi-value returns: how does `var x, y, z = get_three();`
   work? (May not be in reference.blade — defer if not needed.)
 - Tests: 0-value, 1-value, 2-value, 3-value returns with placement annotations.
+
+---
+
+## CS-18: external variables
+
+`reference.blade` shows `extern reg var ext_var;`
+
+TODO: Write task description
+
+---
+
+## CS-19: "builtin" module
+
+- Global module `builtin` which is always available
+- Forbidden to name your own module `builtin` (yields command line error)
+- Compiler provides a default implementation for this module
+- Contains:
+  - `MemorySpace` enumeration (see `type MemorySpace = enum` in `reference.blade`)
+
+---
+
+## CS-20: Query operators sizeof, alignof, memoryof
+
+Implement the three new operators:
+
+- `sizeof`: Returns the storage size of a `var` or `const` declaration or of a type.
+- `alignof`: Returns the memory alignment of a `var` or `const` declaration or of a type.
+- `memoryof`: Returns the memory space of a `var` or `const` declaration.
+
+The legal forms are
+
+- `sizeof(decl)`: Returns the storage size of a declaration relative to its memory space.
+- `sizeof(T, builtin.MemorySpace)`: Returns the size of a type if stored in the given memory space.
+- `alignof(decl)`: Returns the memory alignment of a declaration relative to its memory space.
+- `alignof(T, builtin.MemorySpace)`: Returns the memory alignment of a type if stored in the given memory space.
+- `memoryof(decl)`: Returns the memory space of a declaration.
+
+Important things to keep in mind:
+
+- `memoryof` doesn't make sense for types, only for declarations.
+- `sizeof` and `alignof` depend on the memory space:
+  - Registers and LUT only allow 32-bit addressing, so everything <= 32 bit has size 1 and alignment 1.
+    - `sizeof(u8, .reg) == 1`, `align(u8, .reg) == 1`
+    - `sizeof(u16, .reg) == 1`, `align(u16, .reg) == 1`
+    - `sizeof(u32, .reg) == 1`, `align(u32, .reg) == 1`
+  - Hub is 8-bit addressed, so this is a more typical memory model with byte-alignments:
+    - `sizeof(u8, .hub) == 1`, `align(u8, .hub) == 1`
+    - `sizeof(u16, .hub) == 2`, `align(u16, .hub) == 2`
+    - `sizeof(u32, .hub) == 4`, `align(u32, .hub) == 4`
+
+---
+
+## CS-21: "assert" statement
+
+Implement the `assert` statement which performs compile-time assertions.
+
+Check `reference.blade` chapter "Assertions" to see how to use it.
+
+Two forms are legal:
+
+- `assert <condition>;`: Fails with a generic "assertion <condition> failed" compiler diagnostic
+- `assert <condition>, <message>;`: Fails with a specific "assertion <condition> failed: <message>" compiler diagnostic.
+
+Both forms use the same diagnostic, just with a different message.
+
+- `<condition>` must be a boolean compile-time evaluated value
+- `<message>` must be a string literal (it cannot be a variable reference)
 
 ---
 
