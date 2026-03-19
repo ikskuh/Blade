@@ -201,3 +201,15 @@ length = count_string(&greeting);
 ```
 
 has no sign of `ADD`, `#1` or `INC` included.
+
+## Implement REP through magic "relative labels"
+
+```pasm
+
+  REP @.end, count
+    NOP
+    NOP
+.end
+
+
+```

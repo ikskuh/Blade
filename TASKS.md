@@ -34,10 +34,14 @@ Currently `comptime { ... }` binds the body but returns `BoundErrorExpression`.
 
 - Implement a constant-folding evaluator that walks a `BoundBlockStatement` and
   produces a compile-time value.
-- Supported subset: integer arithmetic, boolean logic, if/else, local variables,
+- Supported subset: integer arithmetic, boolean logic, if/else, loops, local variables,
   function calls to `comptime fn`.
+- For each call, use a fuel based approach, where fuel gets spent every backwards branch
+  in an unbounded loop (for loops are always bounded). This prevents halting the compiler
+  through evaluation of endless loops. Running out of fuel yields a fatal diagnostic.
+- Default fuel is 250, can be changed through the command line.
 - Return the evaluated value as a `BoundLiteralExpression`.
-- Report diagnostic for non-evaluable constructs (loops, asm, side effects).
+- Report diagnostic for non-evaluable constructs (asm, side effects).
 - Tests: `comptime { return 1 + 2; }` == 3, reject `comptime { asm { NOP }; }`.
 
 ---

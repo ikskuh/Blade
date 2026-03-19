@@ -5,7 +5,7 @@
 Blade is a tiny systems programming language that compiles to PASM2 (Propeller 2 assembly).
 It targets COG execution mode on the Parallax Propeller 2 microcontroller. Think "C for the
 PDP-11" — a high-level assembler with Zig/Rust-inspired syntax where every construct maps to
-1–3 PASM2 instructions. See `Docs/blade_language_design_v3.md` for the full language spec.
+1–3 PASM2 instructions. See `Docs/reference.blade` for the full language spec.
 
 ## Project Structure
 
@@ -13,7 +13,7 @@ PDP-11" — a high-level assembler with Zig/Rust-inspired syntax where every con
 Blade/                          # Main compiler project (C#)
 Blade.Tests/                    # Unit tests (NUnit)
 Docs/                           # Reference documentation
-  blade_language_design_v3.md   # Language specification
+  Docs/reference.blade          # Language specification
   Propeller 2 Documentation v35 - Rev B_C Silicon.pdf
   Propeller-2-Hardware-Manual-20221101.pdf
   Propeller2-P2X8C4M64P-Datasheet-20221101.pdf
