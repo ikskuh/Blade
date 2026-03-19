@@ -1,0 +1,13 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - RDBYTE
+// - WRBYTE
+// NOTE:
+//   Hub u8 array access uses RDBYTE/WRBYTE (no index scaling needed for byte-sized elements).
+
+hub var buf: [8]u8 = undefined;
+reg var sink: u32 = 0;
+
+sink = buf[3];
+buf[0] = 0xFF;

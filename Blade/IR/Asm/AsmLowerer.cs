@@ -149,10 +149,18 @@ public static class AsmLowerer
                     LowerBitfieldExtract(nodes, op, ctx);
                 else if (op.Opcode.StartsWith("bitfield.insert.", StringComparison.Ordinal))
                     LowerBitfieldInsert(nodes, op, ctx);
+                else if (op.Opcode.StartsWith("load.deref.", StringComparison.Ordinal))
+                    LowerLoadDeref(nodes, op, ctx);
+                else if (op.Opcode.StartsWith("load.index.", StringComparison.Ordinal))
+                    LowerLoadIndex(nodes, op, ctx);
                 else if (op.Opcode == "store.place")
                     LowerStorePlace(nodes, op);
                 else if (op.Opcode.StartsWith("update.place.", StringComparison.Ordinal))
                     LowerUpdatePlace(nodes, op);
+                else if (op.Opcode.StartsWith("store.deref.", StringComparison.Ordinal))
+                    LowerStoreDeref(nodes, op, ctx);
+                else if (op.Opcode.StartsWith("store.index.", StringComparison.Ordinal))
+                    LowerStoreIndex(nodes, op, ctx);
                 else if (op.Opcode.StartsWith("store.", StringComparison.Ordinal))
                     LowerStore(nodes, op, ctx);
                 else if (op.Opcode.StartsWith("pseudo.", StringComparison.Ordinal))
@@ -620,8 +628,155 @@ public static class AsmLowerer
     {
         AsmRegisterOperand dest = DestReg(op);
         AsmPlaceOperand place = (AsmPlaceOperand)LowerOperand(op.Operands[0]);
-        nodes.Add(Emit("MOV", dest, place));
+
+        // For array-typed places in LUT/Hub, produce the base address (not the
+        // stored value) because subsequent index operations need an address to
+        // offset from.  FormatPlaceOperand already renders #label (hub) or
+        // #label - $200 (LUT), so a plain MOV gives us the address immediate.
+        bool isArrayBase = op.ResultType is ArrayTypeSymbol;
+
+        switch (place.Place.StorageClass)
+        {
+            case VariableStorageClass.Lut:
+                nodes.Add(Emit(isArrayBase ? "MOV" : "RDLUT", dest, place));
+                break;
+            case VariableStorageClass.Hub:
+                nodes.Add(Emit(isArrayBase ? "MOV" : SelectHubReadOpcode(op.ResultType), dest, place));
+                break;
+            default:
+                nodes.Add(Emit("MOV", dest, place));
+                break;
+        }
     }
+
+    private static VariableStorageClass ParseStorageClassSuffix(string opcode, string prefix)
+    {
+        string suffix = opcode[prefix.Length..];
+        return suffix switch
+        {
+            "lut" => VariableStorageClass.Lut,
+            "hub" => VariableStorageClass.Hub,
+            _ => VariableStorageClass.Reg,
+        };
+    }
+
+    private static void LowerLoadDeref(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
+    {
+        AsmRegisterOperand dest = DestReg(op);
+        AsmRegisterOperand pointer = OpReg(op.Operands[0]);
+        VariableStorageClass storageClass = ParseStorageClassSuffix(op.Opcode, "load.deref.");
+
+        switch (storageClass)
+        {
+            case VariableStorageClass.Lut:
+                nodes.Add(Emit("RDLUT", dest, pointer));
+                break;
+            case VariableStorageClass.Hub:
+                nodes.Add(Emit(SelectHubReadOpcode(op.ResultType), dest, pointer));
+                break;
+            default:
+                ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
+                nodes.Add(new AsmCommentNode($"unhandled: {op.Opcode}"));
+                break;
+        }
+    }
+
+    private static void LowerLoadIndex(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
+    {
+        AsmRegisterOperand dest = DestReg(op);
+        AsmOperand baseOp = LowerOperand(op.Operands[0]);
+        AsmRegisterOperand index = OpReg(op.Operands[1]);
+        VariableStorageClass storageClass = ParseStorageClassSuffix(op.Opcode, "load.index.");
+
+        switch (storageClass)
+        {
+            case VariableStorageClass.Lut:
+                nodes.Add(Emit("ADD", index, baseOp));
+                nodes.Add(Emit("RDLUT", dest, index));
+                break;
+            case VariableStorageClass.Hub:
+            {
+                int elemSize = GetHubElementSize(op.ResultType);
+                if (elemSize > 1)
+                    nodes.Add(Emit("SHL", index, new AsmImmediateOperand(ShiftForSize(elemSize))));
+                nodes.Add(Emit("ADD", index, baseOp));
+                nodes.Add(Emit(SelectHubReadOpcode(op.ResultType), dest, index));
+                break;
+            }
+            default:
+                ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
+                nodes.Add(new AsmCommentNode($"unhandled: {op.Opcode}"));
+                break;
+        }
+    }
+
+    private static void LowerStoreDeref(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
+    {
+        AsmRegisterOperand pointer = OpReg(op.Operands[0]);
+        AsmOperand value = LowerOperand(op.Operands[^1]);
+        VariableStorageClass storageClass = ParseStorageClassSuffix(op.Opcode, "store.deref.");
+
+        switch (storageClass)
+        {
+            case VariableStorageClass.Lut:
+                nodes.Add(new AsmInstructionNode("WRLUT", [value, pointer]));
+                break;
+            case VariableStorageClass.Hub:
+                nodes.Add(new AsmInstructionNode(SelectHubWriteOpcode(op.ResultType), [value, pointer]));
+                break;
+            default:
+                ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
+                nodes.Add(new AsmCommentNode($"unhandled: {op.Opcode}"));
+                break;
+        }
+    }
+
+    private static void LowerStoreIndex(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
+    {
+        AsmOperand baseOp = LowerOperand(op.Operands[0]);
+        AsmRegisterOperand index = OpReg(op.Operands[1]);
+        AsmOperand value = LowerOperand(op.Operands[^1]);
+        VariableStorageClass storageClass = ParseStorageClassSuffix(op.Opcode, "store.index.");
+
+        switch (storageClass)
+        {
+            case VariableStorageClass.Lut:
+                nodes.Add(Emit("ADD", index, baseOp));
+                nodes.Add(new AsmInstructionNode("WRLUT", [value, index]));
+                break;
+            case VariableStorageClass.Hub:
+            {
+                int elemSize = GetHubElementSize(op.ResultType);
+                if (elemSize > 1)
+                    nodes.Add(Emit("SHL", index, new AsmImmediateOperand(ShiftForSize(elemSize))));
+                nodes.Add(Emit("ADD", index, baseOp));
+                nodes.Add(new AsmInstructionNode(SelectHubWriteOpcode(op.ResultType), [value, index]));
+                break;
+            }
+            default:
+                ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
+                nodes.Add(new AsmCommentNode($"unhandled: {op.Opcode}"));
+                break;
+        }
+    }
+
+    private static int GetHubElementSize(TypeSymbol? type)
+    {
+        if (type is not null && TypeFacts.TryGetIntegerWidth(type, out int width))
+        {
+            if (width <= 8) return 1;
+            if (width <= 16) return 2;
+        }
+
+        return 4;
+    }
+
+    private static int ShiftForSize(int size) => size switch
+    {
+        2 => 1,
+        4 => 2,
+        _ => 0,
+    };
 
     private static void LowerConvert(List<AsmNode> nodes, LirOpInstruction op)
     {
@@ -1038,7 +1193,21 @@ public static class AsmLowerer
     {
         AsmPlaceOperand place = (AsmPlaceOperand)LowerOperand(op.Operands[0]);
         AsmOperand valueOp = LowerOperand(op.Operands[1]);
-        nodes.Add(new AsmInstructionNode("MOV", [place, valueOp]));
+
+        TypeSymbol? placeType = (place.Place.Symbol as VariableSymbol)?.Type;
+
+        switch (place.Place.StorageClass)
+        {
+            case VariableStorageClass.Lut:
+                nodes.Add(new AsmInstructionNode("WRLUT", [valueOp, place]));
+                break;
+            case VariableStorageClass.Hub:
+                nodes.Add(new AsmInstructionNode(SelectHubWriteOpcode(placeType), [valueOp, place]));
+                break;
+            default:
+                nodes.Add(new AsmInstructionNode("MOV", [place, valueOp]));
+                break;
+        }
     }
 
     private static void LowerUpdatePlace(List<AsmNode> nodes, LirOpInstruction op)
@@ -1079,6 +1248,32 @@ public static class AsmLowerer
         }
 
         nodes.Add(new AsmInstructionNode(opcode, [place, value]));
+    }
+
+    private static string SelectHubReadOpcode(TypeSymbol? type)
+    {
+        if (type is not null && TypeFacts.TryGetIntegerWidth(type, out int width))
+        {
+            if (width <= 8)
+                return "RDBYTE";
+            if (width <= 16)
+                return "RDWORD";
+        }
+
+        return "RDLONG";
+    }
+
+    private static string SelectHubWriteOpcode(TypeSymbol? type)
+    {
+        if (type is not null && TypeFacts.TryGetIntegerWidth(type, out int width))
+        {
+            if (width <= 8)
+                return "WRBYTE";
+            if (width <= 16)
+                return "WRWORD";
+        }
+
+        return "WRLONG";
     }
 
     private static void LowerPseudo(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)

@@ -9,7 +9,10 @@
       "Bash(python3 Scripts/extract.py:*)",
       "Bash(python Scripts/coverage_range.py:*)",
       "Bash(python Scripts/extract.py:*)",
-      "Bash(Blade/bin/Debug/net10.0/blade:*)"
+      "Bash(Blade/bin/Debug/net10.0/blade:*)",
+      "Bash(cat .artifacts:*)",
+      "Bash(ls Demonstrators:*)",
+      "Bash(flexspin:*)"
     ]
   }
 }

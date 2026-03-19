@@ -420,7 +420,7 @@ public class IrPipelineTests
         });
 
         string mir = MirTextWriter.Write(build.MirModule);
-        Assert.That(mir, Does.Contain("load.deref"));
+        Assert.That(mir, Does.Contain("load.deref.reg"));
         Assert.That(mir, Does.Contain("sidefx"));
     }
 
@@ -443,7 +443,7 @@ public class IrPipelineTests
         });
 
         string mir = MirTextWriter.Write(build.MirModule);
-        Assert.That(mir, Does.Contain("load.index"));
+        Assert.That(mir, Does.Contain("load.index.reg"));
         Assert.That(mir, Does.Contain("sidefx"));
     }
 
@@ -464,7 +464,7 @@ public class IrPipelineTests
 
         string mir = MirTextWriter.Write(build.MirModule);
         Assert.That(mir, Does.Contain("%v0:[3]u32 = const null"));
-        Assert.That(Regex.Matches(mir, @"store index\(").Count, Is.EqualTo(3), mir);
+        Assert.That(Regex.Matches(mir, @"store index\.reg\(").Count, Is.EqualTo(3), mir);
         Assert.That(mir, Does.Contain("store.place g_values"));
     }
 
@@ -484,7 +484,7 @@ public class IrPipelineTests
         });
 
         string mir = MirTextWriter.Write(build.MirModule);
-        Assert.That(Regex.Matches(mir, @"store index\(").Count, Is.EqualTo(4), mir);
+        Assert.That(Regex.Matches(mir, @"store index\.reg\(").Count, Is.EqualTo(4), mir);
         Assert.That(mir, Does.Contain("const 2"));
         Assert.That(mir, Does.Contain("const 3"));
     }
@@ -505,7 +505,7 @@ public class IrPipelineTests
         });
 
         string mir = MirTextWriter.Write(build.MirModule);
-        Assert.That(Regex.Matches(mir, @"store index\(").Count, Is.EqualTo(2), mir);
+        Assert.That(Regex.Matches(mir, @"store index\.reg\(").Count, Is.EqualTo(2), mir);
         Assert.That(Regex.Matches(mir, @"const 0").Count, Is.GreaterThanOrEqualTo(2), mir);
     }
 
@@ -518,7 +518,7 @@ public class IrPipelineTests
 
         Assert.That(compilation.IrBuildResult, Is.Not.Null);
         Assert.That(compilation.Diagnostics.Any(d => d.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.True);
-        Assert.That(compilation.Diagnostics.Any(d => d.Message.Contains("'store.index'", StringComparison.Ordinal)), Is.True);
+        Assert.That(compilation.Diagnostics.Any(d => d.Message.Contains("'store.index.reg'", StringComparison.Ordinal)), Is.True);
     }
 
     [Test]
@@ -537,7 +537,7 @@ public class IrPipelineTests
         });
 
         string mir = MirTextWriter.Write(build.MirModule);
-        Assert.That(Regex.Matches(mir, @"store index\(").Count, Is.EqualTo(2), mir);
+        Assert.That(Regex.Matches(mir, @"store index\.reg\(").Count, Is.EqualTo(2), mir);
     }
 
     [Test]
@@ -1581,7 +1581,7 @@ public class IrPipelineTests
         });
 
         string mir = MirTextWriter.Write(build.MirModule);
-        Assert.That(mir, Does.Contain("load.index"));
+        Assert.That(mir, Does.Contain("load.index.reg"));
         Assert.That(mir, Does.Contain("; sidefx"));
     }
 
@@ -1605,8 +1605,8 @@ public class IrPipelineTests
         MirModule mirModule = MirLowerer.Lower(program);
         string mir = MirTextWriter.Write(mirModule);
 
-        Assert.That(mir, Does.Contain("load.index"));
-        Assert.That(mir, Does.Contain("load.deref"));
+        Assert.That(mir, Does.Contain("load.index.reg"));
+        Assert.That(mir, Does.Contain("load.deref.reg"));
         Assert.That(mir, Does.Contain("; sidefx"));
     }
 
@@ -1643,8 +1643,8 @@ public class IrPipelineTests
         string mir = MirTextWriter.Write(mirModule);
 
         Assert.That(mir, Does.Contain("load.member.value"));
-        Assert.That(mir, Does.Contain("load.index"));
-        Assert.That(mir, Does.Contain("load.deref"));
+        Assert.That(mir, Does.Contain("load.index.reg"));
+        Assert.That(mir, Does.Contain("load.deref.reg"));
         Assert.That(mir, Does.Contain("bitfield.extract.4.4"));
         Assert.That(mir, Does.Contain("bitfield.insert.4.4"));
     }

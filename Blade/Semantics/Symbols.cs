@@ -64,6 +64,8 @@ public sealed class VariableSymbol : Symbol
     public bool IsAutomatic => ScopeKind is VariableScopeKind.Local or VariableScopeKind.TopLevelAutomatic;
     public bool IsGlobalStorage => ScopeKind == VariableScopeKind.GlobalStorage;
     public bool UsesGlobalRegisterStorage => IsGlobalStorage && StorageClass == VariableStorageClass.Reg;
+    public bool UsesGlobalLutStorage => IsGlobalStorage && StorageClass == VariableStorageClass.Lut;
+    public bool UsesGlobalHubStorage => IsGlobalStorage && StorageClass == VariableStorageClass.Hub;
 }
 
 public sealed class ParameterSymbol : Symbol

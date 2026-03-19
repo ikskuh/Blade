@@ -2031,14 +2031,6 @@ public sealed class Binder
                 _diagnostics.ReportInvalidLocalStorageClass(storageClassKeyword.Span, storageClassKeyword.Text);
         }
 
-        if (isGlobalStorage && storageClass is VariableStorageClass.Lut or VariableStorageClass.Hub)
-        {
-            if (declaration.StorageClassKeyword is Token storageClassKeyword)
-                _diagnostics.ReportUnsupportedStorageClass(storageClassKeyword.Span, storageClassKeyword.Text);
-            else
-                _diagnostics.ReportUnsupportedStorageClass(declaration.Span, declaration.MutabilityKeyword.Text);
-        }
-
         int? fixedAddress = TryEvaluateConstantInt(declaration.AtClause?.Address);
         int? alignment = TryEvaluateConstantInt(declaration.AlignClause?.Alignment);
 

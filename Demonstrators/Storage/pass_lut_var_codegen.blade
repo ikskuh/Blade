@@ -1,0 +1,13 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - RDLUT
+// - WRLUT
+// NOTE:
+//   Basic lut var read and write emit RDLUT/WRLUT instructions.
+
+lut var buffer: u32 = 42;
+reg var sink: u32 = 0;
+
+sink = buffer;
+buffer = 7;

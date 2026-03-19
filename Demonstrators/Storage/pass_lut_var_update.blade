@@ -1,0 +1,12 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - RDLUT
+// - WRLUT
+// - ADD
+// NOTE:
+//   Compound assignment on lut var decomposes into read-modify-write.
+
+lut var counter: u32 = 0;
+
+counter += 1;

@@ -72,7 +72,7 @@ else
         if (!first)
             Console.WriteLine();
         first = false;
-        Console.WriteLine($";; {fileName}");
+        Console.WriteLine($"' {fileName}");
         Console.WriteLine(content);
     }
 }

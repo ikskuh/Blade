@@ -28,7 +28,7 @@ public class OptimizerTests
                 new MirBlock("bb1", [new MirBlockParameter(threaded, "x", BuiltinTypes.U32)], [],
                     new MirGotoTerminator("bb2", [threaded], Span)),
                 new MirBlock("bb2", [new MirBlockParameter(merged, "y", BuiltinTypes.U32)],
-                    [new MirStoreInstruction("result", [merged], Span)],
+                    [new MirStoreInstruction("result", null, [merged], Span)],
                     new MirReturnTerminator([], Span)),
                 new MirBlock("dead", [], [], new MirReturnTerminator([], Span)),
             ]),

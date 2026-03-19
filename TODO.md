@@ -10,14 +10,6 @@ This plays together nicely with the register allocator running backwards.
 
 Right now only the high-level part is implemented, but lowering the array access is not.
 
-## Implementation of `lut var`
-
-LUT variables need explicit indexing through RDLUT, WRLUT
-
-## Implementation of `hub var`
-
-LUT variables need explicit indexing through different RD/WR instructions.
-
 ## `rec fn` seems to miscompile
 
 Validate that `rec fn` uses CALLB and stack spilling when calling other rec functions.
@@ -127,4 +119,65 @@ The same for sequence:
 
 This means the sequence must be ADD, no MOV, then ADD again, which allows
 us testing better for compiler optimizations.
+
+## Bug: Address of array element
+
+`ptr = &ptr[1];` yields `E0223: Address-of requires an addressable variable or parameter.`
+
+## Pointer arithmetic
+
+Implement `ptr = ptr + 1` for `[*]T`
+
+## Spurious WRLONG on pointer ref?
+
+```blade
+hub var greeting: [16]u8 = undefined;
+length = count_string(&greeting);
+```
+
+compiles to
+
+```spin2
+l_top_bb0
+    MOV _r1, #0
+    WRLONG _r1, h_greeting
+    MOV PA, h_greeting
+    CALLPA PA, #count_string
+    MOV g_length, PA
+    ' halt: endless loop
+    REP #1, #0
+```
+
+## Missing optimizations
+
+```
+    ' function count_string (Leaf)
+  count_string
+  count_string_bb0
+    MOV _r2, _r2
+    MOV _r1, #0
+    JMP #count_string_bb2
+  count_string_bb1
+    _RET_ MOV PA, _r3
+  count_string_bb2
+    MOV _r4, #0
+    ADD _r4, _r2
+    RDBYTE _r5, _r4
+    MOV _r4, #0
+    CMP _r5, _r4 WZ
+    WRNZ _r4
+    CMP _r4, #0 WZ
+    IF_Z MOV _r3, _r1
+    IF_Z JMP #count_string_bb1
+  count_string_bb3
+    JMP #count_string_bb2
+```
+
+is far from optimal code
+
+## Implement booleans as flags as long as possible
+
+Right now, booleans are lowered to integers, then upgraded to flags
+when needed for branching. This can be inverted to lower them to flags
+first, then upgrade to integers when out of flags.
 

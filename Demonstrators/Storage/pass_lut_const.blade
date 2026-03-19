@@ -1,0 +1,11 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - RDLUT
+// NOTE:
+//   lut const variables emit RDLUT for reads.
+
+lut const table: u32 = 0xFF;
+reg var sink: u32 = 0;
+
+sink = table;

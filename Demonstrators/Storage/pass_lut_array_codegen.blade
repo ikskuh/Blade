@@ -1,0 +1,14 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - RDLUT
+// - WRLUT
+// NOTE:
+//   LUT array access emits RDLUT/WRLUT with base address offset.
+//   Uses undefined init because array literal lowering is not yet implemented.
+
+lut var data: [4]u32 = undefined;
+reg var sink: u32 = 0;
+
+sink = data[2];
+data[0] = 42;

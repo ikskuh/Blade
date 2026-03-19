@@ -6,8 +6,8 @@
 // ARGS:
 // - -fmir-opt=dce
 // CONTAINS:
-// - load.deref
-// - load.index
+// - load.deref.reg
+// - load.index.reg
 // NOTE:
 //   `*T` and `[*]T` stay separate, `&array` yields a multipointer, and volatile
 //   pointer reads survive MIR DCE, but final deref/index lowering is not implemented yet.

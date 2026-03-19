@@ -251,7 +251,7 @@ public static class MirInliner
                 MirSelectInstruction select => new MirSelectInstruction(newResult!.Value, select.ResultType!, select.Condition, select.WhenTrue, select.WhenFalse, select.Span),
                 MirCallInstruction call => new MirCallInstruction(newResult, call.ResultType, call.FunctionName, call.Arguments, call.Span),
                 MirIntrinsicCallInstruction intrinsic => new MirIntrinsicCallInstruction(newResult, intrinsic.ResultType, intrinsic.IntrinsicName, intrinsic.Arguments, intrinsic.Span),
-                MirStoreInstruction store => new MirStoreInstruction(store.Target, store.Operands, store.Span),
+                MirStoreInstruction store => new MirStoreInstruction(store.Target, store.ResultType, store.Operands, store.Span),
                 MirStorePlaceInstruction storePlace => new MirStorePlaceInstruction(storePlace.Place, storePlace.Value, storePlace.Span),
                 MirUpdatePlaceInstruction updatePlace => new MirUpdatePlaceInstruction(updatePlace.Place, updatePlace.OperatorKind, updatePlace.Value, updatePlace.Span),
                 MirInlineAsmInstruction inlineAsm => new MirInlineAsmInstruction(

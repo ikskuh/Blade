@@ -1,0 +1,13 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - RDBYTE
+// - WRBYTE
+// NOTE:
+//   Hub var of u8 type emits RDBYTE/WRBYTE instructions.
+
+hub var byte_val: u8 = 0;
+reg var sink: u32 = 0;
+
+sink = byte_val;
+byte_val = 42;

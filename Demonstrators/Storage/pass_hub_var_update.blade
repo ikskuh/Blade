@@ -1,0 +1,12 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - RDLONG
+// - WRLONG
+// - ADD
+// NOTE:
+//   Compound assignment on hub var decomposes into read-modify-write.
+
+hub var counter: u32 = 0;
+
+counter += 1;

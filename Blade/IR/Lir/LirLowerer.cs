@@ -185,7 +185,7 @@ public static class LirLowerer
             MirStoreInstruction store => new LirOpInstruction(
                 $"store.{store.Target}",
                 destination: null,
-                resultType: null,
+                resultType: store.ResultType,
                 LowerOperands(store.Operands, getRegister),
                 hasSideEffects: true,
                 predicate: null,

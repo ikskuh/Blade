@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using Blade;
 using Blade.IR;
+using Blade.Semantics;
 
 namespace Blade.IR.Asm;
 
@@ -556,6 +557,41 @@ public static class RegisterAllocator
             extendedNodes.Add(new AsmDirectiveNode("LONG 0"));
         }
 
+        // Emit LUT variable storage places
+        IReadOnlyList<StoragePlace> lutPlaces = module.StoragePlaces
+            .Where(p => p.Kind == StoragePlaceKind.AllocatableLutEntry)
+            .ToList();
+        if (lutPlaces.Count > 0)
+        {
+            extendedNodes.Add(new AsmCommentNode("--- lut file ---"));
+            foreach (StoragePlace place in lutPlaces)
+            {
+                extendedNodes.Add(new AsmLabelNode(place.EmittedName));
+                int count = GetPlaceEntryCount(place);
+                string initValue = FormatStaticInitializer(place.StaticInitializer);
+                string directive = count > 1 ? $"LONG {initValue}[{count}]" : $"LONG {initValue}";
+                extendedNodes.Add(new AsmDirectiveNode(directive));
+            }
+        }
+
+        // Emit Hub variable storage places
+        IReadOnlyList<StoragePlace> hubPlaces = module.StoragePlaces
+            .Where(p => p.Kind == StoragePlaceKind.AllocatableHubEntry)
+            .ToList();
+        if (hubPlaces.Count > 0)
+        {
+            extendedNodes.Add(new AsmCommentNode("--- hub file ---"));
+            foreach (StoragePlace place in hubPlaces)
+            {
+                string elemDirective = SelectHubDirective(place);
+                int count = GetPlaceEntryCount(place);
+                string initValue = FormatStaticInitializer(place.StaticInitializer);
+                string directive = count > 1 ? $"{elemDirective} {initValue}[{count}]" : $"{elemDirective} {initValue}";
+                extendedNodes.Add(new AsmLabelNode(place.EmittedName));
+                extendedNodes.Add(new AsmDirectiveNode(directive));
+            }
+        }
+
         functions[targetIdx] = new AsmFunction(target.Name, target.IsEntryPoint, target.CcTier, extendedNodes);
         return new AsmModule(module.StoragePlaces, functions);
     }
@@ -628,6 +664,38 @@ public static class RegisterAllocator
     }
 
     private static string SlotLabel(int slot) => $"_r{slot}";
+
+    private static string SelectHubDirective(StoragePlace place)
+    {
+        TypeSymbol type = GetPlaceElementType(place);
+        if (TypeFacts.TryGetIntegerWidth(type, out int width))
+        {
+            if (width <= 8) return "BYTE";
+            if (width <= 16) return "WORD";
+        }
+
+        return "LONG";
+    }
+
+    private static int GetPlaceEntryCount(StoragePlace place)
+    {
+        if (place.Symbol is VariableSymbol { Type: ArrayTypeSymbol arrayType } && arrayType.Length.HasValue)
+            return arrayType.Length.Value;
+
+        return 1;
+    }
+
+    private static TypeSymbol GetPlaceElementType(StoragePlace place)
+    {
+        if (place.Symbol is VariableSymbol variable)
+        {
+            if (variable.Type is ArrayTypeSymbol arrayType)
+                return arrayType.ElementType;
+            return variable.Type;
+        }
+
+        return BuiltinTypes.U32;
+    }
 
     private static string FormatStaticInitializer(object? value)
     {

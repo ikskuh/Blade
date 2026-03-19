@@ -361,8 +361,8 @@ public sealed class MirIntrinsicCallInstruction : MirInstruction
 
 public sealed class MirStoreInstruction : MirInstruction
 {
-    public MirStoreInstruction(string target, IReadOnlyList<MirValueId> operands, TextSpan span)
-        : base(result: null, resultType: null, span, hasSideEffects: true)
+    public MirStoreInstruction(string target, TypeSymbol? elementType, IReadOnlyList<MirValueId> operands, TextSpan span)
+        : base(result: null, resultType: elementType, span, hasSideEffects: true)
     {
         Target = target;
         Operands = operands;
@@ -384,7 +384,7 @@ public sealed class MirStoreInstruction : MirInstruction
             changed |= mapped != op;
         }
 
-        return changed ? new MirStoreInstruction(Target, rewritten, Span) : this;
+        return changed ? new MirStoreInstruction(Target, ResultType, rewritten, Span) : this;
     }
 }
 

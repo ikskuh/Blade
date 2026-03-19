@@ -243,7 +243,7 @@ public class ProgramTests
 
             Assert.That(exitCode, Is.EqualTo(0));
             Assert.That(stderr, Is.Empty);
-            Assert.That(stdout, Does.Contain(";; 00_bound.ir"));
+            Assert.That(stdout, Does.Contain("' 00_bound.ir"));
             Assert.That(stdout, Does.Contain("Program"));
             Assert.That(stdout, Does.Contain("errors : 0"));
         }
@@ -265,8 +265,8 @@ public class ProgramTests
 
             Assert.That(exitCode, Is.EqualTo(0));
             Assert.That(stderr, Is.Empty);
-            Assert.That(stdout, Does.Contain(";; 00_bound.ir"));
-            Assert.That(stdout, Does.Contain(";; 40_final.spin2"));
+            Assert.That(stdout, Does.Contain("' 00_bound.ir"));
+            Assert.That(stdout, Does.Contain("' 40_final.spin2"));
         }
         finally
         {

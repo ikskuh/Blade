@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using Blade;
 using Blade.IR;
+using Blade.Semantics;
 
 namespace Blade.IR.Asm;
 
@@ -49,7 +50,10 @@ public static class FinalAssemblyWriter
         bool wroteHeader = false;
         foreach (StoragePlace place in module.StoragePlaces)
         {
-            if (place.Kind != StoragePlaceKind.FixedRegisterAlias || !place.FixedAddress.HasValue)
+            if (place.Kind is not (StoragePlaceKind.FixedRegisterAlias
+                    or StoragePlaceKind.FixedLutAlias
+                    or StoragePlaceKind.FixedHubAlias)
+                || !place.FixedAddress.HasValue)
                 continue;
 
             if (P2InstructionMetadata.IsSpecialRegisterName(place.EmittedName))
@@ -78,6 +82,12 @@ public static class FinalAssemblyWriter
         while (index < nodes.Count)
         {
             if (TryWriteRegisterFile(sb, nodes, ref index))
+                continue;
+
+            if (TryWriteLutFile(sb, nodes, ref index))
+                continue;
+
+            if (TryWriteHubFile(sb, nodes, ref index))
                 continue;
 
             if (TryWriteConstantFile(sb, nodes, ref index))
@@ -133,6 +143,75 @@ public static class FinalAssemblyWriter
         return true;
     }
 
+
+    private static bool TryWriteDataFileSection(
+        StringBuilder sb,
+        IReadOnlyList<AsmNode> nodes,
+        ref int index,
+        string sectionMarker,
+        string sectionHeader)
+    {
+        if (nodes[index] is not AsmCommentNode comment || comment.Text != sectionMarker)
+            return false;
+
+        List<(string Label, string Directive, string Value)> rows = [];
+        int rowIndex = index + 1;
+        while (rowIndex + 1 < nodes.Count
+            && nodes[rowIndex] is AsmLabelNode label
+            && nodes[rowIndex + 1] is AsmDirectiveNode directive
+            && TryParseDataDirective(directive.Text, out string directiveName, out string valueText))
+        {
+            rows.Add((label.Name, directiveName, valueText));
+            rowIndex += 2;
+        }
+
+        sb.AppendLine();
+        sb.AppendLine(sectionHeader);
+        if (rows.Count > 0)
+        {
+            int maxLabelWidth = rows.Max(static row => row.Label.Length);
+            int maxDirectiveWidth = rows.Max(static row => row.Directive.Length);
+            int maxValueWidth = rows.Max(static row => row.Value.Length);
+
+            foreach ((string label, string directive, string value) in rows)
+            {
+                sb.Append(FormatIdentifier(label).PadRight(maxLabelWidth));
+                sb.Append(' ');
+                sb.Append(directive.PadRight(maxDirectiveWidth));
+                sb.Append(' ');
+                sb.Append(value.PadLeft(maxValueWidth));
+                sb.AppendLine();
+            }
+        }
+
+        index = rowIndex;
+        return true;
+    }
+
+    private static bool TryWriteLutFile(StringBuilder sb, IReadOnlyList<AsmNode> nodes, ref int index)
+    {
+        if (nodes[index] is not AsmCommentNode comment || comment.Text != "--- lut file ---")
+            return false;
+
+        // COG code/data must fit within the first 512 longs; LUT starts at $200.
+        sb.AppendLine();
+        sb.AppendLine("    fit $200");
+        sb.AppendLine("    org $200");
+
+        return TryWriteDataFileSection(sb, nodes, ref index, "--- lut file ---", "' --- lut file ---");
+    }
+
+    private static bool TryWriteHubFile(StringBuilder sb, IReadOnlyList<AsmNode> nodes, ref int index)
+    {
+        if (nodes[index] is not AsmCommentNode comment || comment.Text != "--- hub file ---")
+            return false;
+
+        // Switch from COG/LUT addressing to hub addressing.
+        sb.AppendLine();
+        sb.AppendLine("    orgh");
+
+        return TryWriteDataFileSection(sb, nodes, ref index, "--- hub file ---", "' --- hub file ---");
+    }
 
     private static bool TryWriteConstantFile(StringBuilder sb, IReadOnlyList<AsmNode> nodes, ref int index)
     {
@@ -336,10 +415,28 @@ public static class FinalAssemblyWriter
             AsmPhysicalRegisterOperand phys => phys.Name,
             AsmRegisterOperand virt => virt.Format(),
             AsmImmediateOperand imm => imm.Format(),
-            AsmPlaceOperand place => FormatIdentifier(place.Place.EmittedName),
+            AsmPlaceOperand place => FormatPlaceOperand(place),
             AsmSymbolOperand sym => FormatSymbolOperand(sym, instruction, operandIndex),
             _ => operand.Format(),
         };
+    }
+
+    private static string FormatPlaceOperand(AsmPlaceOperand place)
+    {
+        string name = FormatIdentifier(place.Place.EmittedName);
+
+        // LUT places live at org $200+ in the unified address space, but
+        // RDLUT/WRLUT expect a 9-bit LUT-relative index (0–511).  Emit
+        // #label - $200 so the assembler computes the correct offset.
+        if (place.Place.StorageClass == VariableStorageClass.Lut)
+            return $"#{name} - $200";
+
+        // Hub places live after orgh.  Labels in hub mode already evaluate
+        // to hub addresses, so #label gives the correct immediate value.
+        if (place.Place.StorageClass == VariableStorageClass.Hub)
+            return $"#{name}";
+
+        return name;
     }
 
     /// <summary>
