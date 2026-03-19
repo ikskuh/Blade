@@ -1,0 +1,13 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - ADD
+// NOTE:
+//   asm fn with flag return annotation (-> bool@C).
+
+asm fn add_with_carry(a: u32, b: u32) -> bool@C {
+    ADD {a}, {b} WC
+}
+
+reg var flag: bool = false;
+flag = add_with_carry(0xFFFF_FFFF, 1);

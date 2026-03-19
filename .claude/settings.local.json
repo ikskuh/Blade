@@ -6,7 +6,10 @@
       "Bash(dotnet test:*)",
       "Bash(dotnet run:*)",
       "Bash(python3 Scripts/coverage_range.py:*)",
-      "Bash(python3 Scripts/extract.py:*)"
+      "Bash(python3 Scripts/extract.py:*)",
+      "Bash(python Scripts/coverage_range.py:*)",
+      "Bash(python Scripts/extract.py:*)",
+      "Bash(Blade/bin/Debug/net10.0/blade:*)"
     ]
   }
 }

@@ -1,0 +1,9 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0302
+// NOTE:
+//   asm fn that references an undefined variable binding should report E0302.
+asm fn bad_ref(a: u32) -> u32 {
+    MOV {return}, {nonexistent}
+}
+
+reg var sink: u32 = bad_ref(1);

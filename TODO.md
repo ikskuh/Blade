@@ -18,35 +18,6 @@ LUT variables need explicit indexing through RDLUT, WRLUT
 
 LUT variables need explicit indexing through different RD/WR instructions.
 
-## `asm fn`
-
-Similar to a Zig proposal:
-
-- Function body is only inline assembly.
-- Function contract must be obeyed by the implementor
-- Storage for parameters is allocated
-
-```blade
-// with inline asm:
-fn test_and_set_bit(val: u32, bit_num: u32) -> u32 {
-    reg var out: u32 = 0;
-    asm {
-        MOV   {out}, {val}
-        TESTB {out}, {bit_num} WC
-        IF_NC BITH  {out}, {bit_num}
-    };
-    return out;
-}
-
-// with asm fn:
-asm fn test_and_set_bit(val: u32, bit_num: u32) -> u32, bool@C {
-          MOV   {out}, {val}
-          TESTB {out}, {bit_num} WC
-    IF_NC BITH  {out}, {bit_num}
-          RET   WZ
-}
-```
-
 ## `rec fn` seems to miscompile
 
 Validate that `rec fn` uses CALLB and stack spilling when calling other rec functions.
@@ -99,3 +70,61 @@ operand.
   AUGS  #$FFFFF123  'This AUGS is intended for the ADD instruction.
   ALTD  index,#base  'Look out! AUGS will affect #base, too. Use a register, instead.
   ADD  0-0,#$123  '#$123 will be augmented by the AUGS and cancel the AUGS.
+
+## Return values don't properly compile at all for bit-style return values
+
+```blade
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - ADD
+// NOTE:
+//   asm fn with flag return annotation (-> bool@C).
+
+asm fn add_with_carry(a: u32, b: u32) -> bool@C {
+    ADD {a}, {b} WC
+}
+
+reg var flag: bool = false;
+flag = add_with_carry(0xFFFF_FFFF, 1);
+```
+
+will yield
+
+```pasm
+AUGS #8388607
+MOV _r1, #511
+MOV _r2, #1
+' inline asm flag-output @C begin
+
+ADD _r1, _r2 WC
+
+' inline asm flag-output @C end
+MOV g_flag, #0
+```
+
+## Implement "negtive SEQ" and "negative CONTAINS" items
+
+Replace "CONTAINS_NOT:" with "CONTAINS:" and use an explicit marker for that:
+
+```blade
+// CONTAINS:
+// - FOO
+// ! BAR
+```
+
+where `! BAR` means that `BAR` must not be contained.
+
+The same for sequence:
+
+
+```blade
+// CONTAINS:
+// - ADD
+// ! MOV
+// - ADD
+```
+
+This means the sequence must be ADD, no MOV, then ADD again, which allows
+us testing better for compiler optimizations.
+

@@ -1,22 +1,5 @@
 # Difference between Implementation and Docs/reference.blade
 
-## CS-8: `asm fn` declarations
-
-The parser emits `AsmFunctionDeclarationSyntax` but the binder ignores it.
-
-- `CollectTopLevelFunctions`: also scan for `AsmFunctionDeclarationSyntax`.
-  Create a `FunctionSymbol` with the correct kind (leaf-like, no body statements).
-- `BindProgram` member switch: handle `AsmFunctionDeclarationSyntax`.
-  Produce a `BoundFunctionMember` whose body is a single `BoundAsmStatement`
-  containing the raw assembly text.
-- Set volatility from `VolatileKeyword`.
-- Wire through MIR → LIR → ASM like a regular function but with the body replaced
-  by inline assembly text.
-- Tests: `asm fn add(a: u32, b: u32) -> u32 { ADD {a}, {b} }`,
-  `asm volatile fn nop() { NOP }`.
-
----
-
 ## CS-9: Character literals and string enhancements
 
 ### CS-9a: Character literals

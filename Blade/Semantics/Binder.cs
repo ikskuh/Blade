@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using Blade;
 using Blade.Diagnostics;
@@ -81,6 +82,10 @@ public sealed class Binder
 
                 case FunctionDeclarationSyntax function:
                     boundFunctions.Add(BindFunction(function));
+                    break;
+
+                case AsmFunctionDeclarationSyntax asmFunction:
+                    boundFunctions.Add(BindAsmFunction(asmFunction));
                     break;
 
                 case GlobalStatementSyntax globalStatement:
@@ -205,14 +210,29 @@ public sealed class Binder
         _currentScope = _globalScope;
         foreach (MemberSyntax member in unit.Members)
         {
-            if (member is not FunctionDeclarationSyntax functionDecl)
-                continue;
+            IFunctionSignatureSyntax syntax;
+            FunctionKind kind;
 
-            FunctionKind kind = GetFunctionKind(functionDecl.FuncKindKeyword?.Kind);
-            FunctionSymbol function = new(functionDecl.Name.Text, functionDecl, kind);
+            switch (member)
+            {
+                case FunctionDeclarationSyntax functionDecl:
+                    syntax = functionDecl;
+                    kind = GetFunctionKind(functionDecl.FuncKindKeyword?.Kind);
+                    break;
+
+                case AsmFunctionDeclarationSyntax asmFunctionDecl:
+                    syntax = asmFunctionDecl;
+                    kind = FunctionKind.Leaf;
+                    break;
+
+                default:
+                    continue;
+            }
+
+            FunctionSymbol function = new(syntax.Name.Text, syntax, kind);
             if (!_functions.TryAdd(function.Name, function))
             {
-                _diagnostics.ReportSymbolAlreadyDeclared(functionDecl.Name.Span, function.Name);
+                _diagnostics.ReportSymbolAlreadyDeclared(syntax.Name.Span, function.Name);
                 continue;
             }
 
@@ -306,13 +326,8 @@ public sealed class Binder
 
     private BoundFunctionMember BindFunction(FunctionDeclarationSyntax functionSyntax)
     {
-        if (!_functions.TryGetValue(functionSyntax.Name.Text, out FunctionSymbol? function))
-        {
-            return new BoundFunctionMember(
-                new FunctionSymbol(functionSyntax.Name.Text, functionSyntax, FunctionKind.Default),
-                new BoundBlockStatement([], functionSyntax.Body.Span),
-                functionSyntax.Span);
-        }
+        bool found = _functions.TryGetValue(functionSyntax.Name.Text, out FunctionSymbol? function);
+        Debug.Assert(found && function is not null, "CollectTopLevelFunctions must register every function before binding.");
 
         Scope previousScope = _currentScope;
         FunctionSymbol? previousFunction = _currentFunction;
@@ -322,8 +337,8 @@ public sealed class Binder
 
         foreach (ParameterSymbol parameter in function.Parameters)
         {
-            if (!_currentScope.TryDeclare(parameter))
-                _diagnostics.ReportSymbolAlreadyDeclared(functionSyntax.Name.Span, parameter.Name);
+            bool declared = _currentScope.TryDeclare(parameter);
+            Debug.Assert(declared, "ResolveFunctionSignatures must deduplicate parameters before binding.");
         }
 
         BoundBlockStatement body = BindBlockStatement(functionSyntax.Body, createScope: false, isTopLevel: false);
@@ -335,6 +350,90 @@ public sealed class Binder
         _currentScope = previousScope;
 
         return new BoundFunctionMember(function, body, functionSyntax.Span);
+    }
+
+    private BoundFunctionMember BindAsmFunction(AsmFunctionDeclarationSyntax asmSyntax)
+    {
+        bool found = _functions.TryGetValue(asmSyntax.Name.Text, out FunctionSymbol? function);
+        Debug.Assert(found && function is not null, "CollectTopLevelFunctions must register every asm function before binding.");
+
+        Scope previousScope = _currentScope;
+        FunctionSymbol? previousFunction = _currentFunction;
+
+        _currentScope = new Scope(_globalScope);
+        _currentFunction = function;
+
+        foreach (ParameterSymbol parameter in function.Parameters)
+        {
+            bool declared = _currentScope.TryDeclare(parameter);
+            Debug.Assert(declared, "ResolveFunctionSignatures must deduplicate parameters before binding.");
+        }
+
+        // For asm fn, the "return" keyword is a valid binding name referencing the return value.
+        // Add a synthetic variable so the validator accepts {return} references.
+        VariableSymbol? returnSymbol = null;
+        if (function.ReturnTypes.Count > 0)
+        {
+            returnSymbol = new VariableSymbol(
+                "return",
+                function.ReturnTypes[0],
+                isConst: false,
+                VariableStorageClass.Automatic,
+                VariableScopeKind.Local,
+                isExtern: false,
+                fixedAddress: null,
+                alignment: null);
+            _currentScope.TryDeclare(returnSymbol);
+        }
+
+        AsmVolatility volatility = asmSyntax.VolatileKeyword is not null
+            ? AsmVolatility.Volatile
+            : AsmVolatility.NonVolatile;
+
+        // Determine flag output from return spec annotations (e.g. -> bool@C)
+        string? flagOutput = null;
+        if (asmSyntax.ReturnSpec is not null && asmSyntax.ReturnSpec.Count > 0)
+        {
+            ReturnItemSyntax firstReturn = asmSyntax.ReturnSpec[0];
+            if (firstReturn.FlagAnnotation is not null)
+                flagOutput = $"@{firstReturn.FlagAnnotation.Flag.Text}";
+        }
+
+        Dictionary<string, Symbol> availableSymbols = CollectInlineAsmAvailableSymbols();
+        HashSet<string> availableVars = new(availableSymbols.Keys, StringComparer.Ordinal);
+
+        InlineAssemblyValidator.ValidationResult validationResult =
+            InlineAssemblyValidator.Validate(asmSyntax.Body, asmSyntax.Span, availableVars, _diagnostics);
+
+        Dictionary<string, Symbol> referencedSymbols = new(StringComparer.Ordinal);
+        foreach (string name in validationResult.ReferencedVariables)
+        {
+            if (availableSymbols.TryGetValue(name, out Symbol? referenced))
+                referencedSymbols[name] = referenced;
+        }
+
+        BoundAsmStatement asmStatement = new(volatility, asmSyntax.Body, flagOutput, validationResult.Lines, referencedSymbols, asmSyntax.Span);
+
+        // Synthesize an implicit return after the asm body.
+        // If the function has a return type, the return reads the synthetic {return} variable
+        // so the register allocator correctly propagates the asm-written value.
+        List<BoundStatement> bodyStatements = [asmStatement];
+        if (returnSymbol is not null)
+        {
+            BoundExpression returnRead = new BoundSymbolExpression(returnSymbol, asmSyntax.Span, returnSymbol.Type);
+            bodyStatements.Add(new BoundReturnStatement([returnRead], asmSyntax.Span));
+        }
+        else
+        {
+            bodyStatements.Add(new BoundReturnStatement([], asmSyntax.Span));
+        }
+
+        BoundBlockStatement body = new(bodyStatements, asmSyntax.Span);
+
+        _currentFunction = previousFunction;
+        _currentScope = previousScope;
+
+        return new BoundFunctionMember(function, body, asmSyntax.Span);
     }
 
     private static bool AlwaysReturns(BoundStatement statement)

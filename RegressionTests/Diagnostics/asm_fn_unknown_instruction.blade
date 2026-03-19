@@ -1,0 +1,9 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0301
+// NOTE:
+//   asm fn with an unknown P2 instruction should report E0301.
+asm fn bad_insn(a: u32) -> u32 {
+    FAKEINSTR {a}
+}
+
+reg var sink: u32 = bad_insn(1);

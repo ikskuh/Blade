@@ -87,6 +87,12 @@ Build incrementally. Each stage should be independently testable.
 - **Minimal exceptions.** Use result types / error returns for expected failures.
   Exceptions are for programmer errors (bugs), not user input errors.
 - **Proper error handling.** Every error path must be handled, not swallowed.
+- **Assert invariants, don't handle programmer errors.** When a condition must
+  hold because earlier pipeline stages guarantee it, use `Debug.Assert` to
+  document the invariant — never write fallback code that silently handles
+  "impossible" states. Defensive programming means asserting that invariants
+  hold, not writing unreachable recovery code that hides intent and makes the
+  code harder to reason about.
 - **No `var` where the type isn't obvious.** Prefer explicit types on declarations
   when the RHS doesn't make the type self-evident.
 - **Validate externally visible inputs with `Blade/Requires.cs`.** When analyzers
@@ -168,6 +174,14 @@ hand-written assembly through FlexSpin.
 - Use `EXPECT: xfail` for valid programs that should compile but currently fail because of a known compiler bug or missing implementation, such as an unimplemented lowering.
 
 The header format and directive semantics are documented in `Docs/TestHarness.md`.
+
+### Smoke Testing New Features
+
+**Never use ad-hoc temp files for smoke testing.** When testing a new compiler
+feature, create a demonstrator or regression test file first and use
+`just compile-sample <path>` or `just regressions` to test it. Demonstrator
+files are reusable, checked into the repo, and serve as permanent regression
+fixtures.
 
 ### Accept/Reject Test Files
 

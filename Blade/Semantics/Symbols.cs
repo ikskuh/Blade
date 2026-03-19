@@ -109,15 +109,16 @@ public enum FunctionKind
 
 public sealed class FunctionSymbol : Symbol
 {
-    public FunctionSymbol(string name, FunctionDeclarationSyntax syntax, FunctionKind kind)
+    public FunctionSymbol(string name, IFunctionSignatureSyntax syntax, FunctionKind kind)
         : base(name)
     {
         Syntax = Requires.NotNull(syntax);
         Kind = kind;
     }
 
-    public FunctionDeclarationSyntax Syntax { get; }
+    public IFunctionSignatureSyntax Syntax { get; }
     public FunctionKind Kind { get; }
+    public bool IsAsmFunction => Syntax is AsmFunctionDeclarationSyntax;
     public IReadOnlyList<ParameterSymbol> Parameters { get; set; } = [];
     public IReadOnlyList<TypeSymbol> ReturnTypes { get; set; } = [];
 }

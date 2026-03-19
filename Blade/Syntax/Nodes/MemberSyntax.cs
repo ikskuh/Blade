@@ -12,6 +12,19 @@ public abstract class MemberSyntax : SyntaxNode
     protected MemberSyntax(TextSpan span) : base(span) { }
 }
 
+/// <summary>
+/// Common interface for function declaration syntax nodes that carry a signature
+/// (name, parameters, return spec). Implemented by both <see cref="FunctionDeclarationSyntax"/>
+/// and <see cref="AsmFunctionDeclarationSyntax"/>.
+/// </summary>
+public interface IFunctionSignatureSyntax
+{
+    Token Name { get; }
+    SeparatedSyntaxList<ParameterSyntax> Parameters { get; }
+    Token? Arrow { get; }
+    SeparatedSyntaxList<ReturnItemSyntax>? ReturnSpec { get; }
+}
+
 public sealed class ImportDeclarationSyntax : MemberSyntax
 {
     public Token ImportKeyword { get; }
@@ -40,7 +53,7 @@ public sealed class ImportDeclarationSyntax : MemberSyntax
     public bool IsFileImport => Source.Kind == TokenKind.StringLiteral;
 }
 
-public sealed class FunctionDeclarationSyntax : MemberSyntax
+public sealed class FunctionDeclarationSyntax : MemberSyntax, IFunctionSignatureSyntax
 {
     public Token? FuncKindKeyword { get; }
     public Token FnKeyword { get; }
@@ -123,7 +136,7 @@ public sealed class TypeAliasDeclarationSyntax : MemberSyntax
     }
 }
 
-public sealed class AsmFunctionDeclarationSyntax : MemberSyntax
+public sealed class AsmFunctionDeclarationSyntax : MemberSyntax, IFunctionSignatureSyntax
 {
     public Token AsmKeyword { get; }
     public Token? VolatileKeyword { get; }
