@@ -1,52 +1,5 @@
 # Difference between Implementation and Docs/reference.blade
 
-## CS-9: Character literals and string enhancements
-
-### CS-9a: Character literals
-
-The lexer produces `CharLiteral` tokens with a `long` value (the codepoint).
-The binder doesn't handle them yet.
-
-- `BindLiteralExpression`: handle `TokenKind.CharLiteral` → produce
-  `BoundLiteralExpression` with the codepoint value and type `u32`
-  (or inferred integer type from context).
-- Tests: `'A'` == 65, `'\n'` == 10, `'\x41'` == 65, `'\u{1F4A9}'`.
-
-### CS-9b: Zero-terminated strings
-
-The lexer already handles `z"..."` — check whether the token carries a
-flag or produces a distinct value. The binder should:
-
-- Produce an array type `[N+1]u8` (N chars + NUL terminator).
-- Append `\0` to the string value if not already present.
-- Tests: `z"hi!"` produces a `[4]u8` with trailing NUL.
-
-### CS-9c: String-to-array coercion
-
-`reference.blade` shows `var a: [4]u8 = "bye!";`.
-
-- `IsAssignable`: allow `string` → `[N]u8` when lengths match.
-- Lower string literal to array of bytes.
-- Tests: `var a: [4]u8 = "bye!"`, reject length mismatch.
-
-### CS-9d: String-to-pointer coercion
-
-- `reference.blade` shows `str = "hello";`.
-- `reference.blade` shows `str = z"hello";`.
-- `IsAssignable`: allow `string` → `[*]<storage> const u8`
-- Forbid assignment to mutable pointer `string` → `[*]<storage> u8`.
-- Tests:
-  - positive:
-    - `var hstr: [*]hub const u8 = "hub string";`
-    - `var lstr: [*]lut const u8 = "lut string";`
-    - `var rstr: [*]reg const u8 = "reg string";`
-  - negative (requires new diagnostic "string cannot be assigned to non-const pointer")
-    - `var hstr: [*]hub u8 = "hub string";`
-    - `var lstr: [*]lut u8 = "lut string";`
-    - `var rstr: [*]reg u8 = "reg string";`
-
----
-
 ## CS-12: Non-packed structs
 
 The parser now accepts `struct { ... }` without `packed`.
