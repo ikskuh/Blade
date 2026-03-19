@@ -609,18 +609,19 @@ import builtin; // see "Module Subsystem" for explanations
 // Thus, they need to be addresses "builtin.MemorySpace" instead of "MemorySpace" in
 // the code!
 
+// The builtin module looks like this:
 // <start contents of "builtin" module>
-
-// This type is the return value of the "memoryof" operator:
-type MemorySpace = enum(u32) {
-    // The item is stored in registers.
-    reg,
-    // The item is stored in the LUT.
-    lut,
-    // The item is stored in the Hub.
-    hub,
-};
-
+//
+//      // This type is the return value of the "memoryof" operator:
+//      type MemorySpace = enum(u32) {
+//          // The item is stored in registers.
+//          reg,
+//          // The item is stored in the LUT.
+//          lut,
+//          // The item is stored in the Hub.
+//          hub,
+//      };
+//
 // <end contents of "builtin" module>
 
 //////////////////////////////////////////////////////////////////////////////
