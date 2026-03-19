@@ -307,6 +307,22 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
         Report(DiagnosticCode.E0238_StructDuplicateField, span, $"Field '{fieldName}' is specified more than once.");
     }
 
+    public void ReportStringLengthMismatch(TextSpan span, int expectedLength, int actualLength)
+    {
+        Report(
+            DiagnosticCode.E0239_StringLengthMismatch,
+            span,
+            $"String length {actualLength} does not match array length {expectedLength}.");
+    }
+
+    public void ReportStringToNonConstPointer(TextSpan span)
+    {
+        Report(
+            DiagnosticCode.E0240_StringToNonConstPointer,
+            span,
+            "String literal cannot be assigned to a non-const pointer.");
+    }
+
     // Inline assembly diagnostics
 
     public void ReportInlineAsmUnknownInstruction(TextSpan span, string mnemonic)

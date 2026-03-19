@@ -1117,7 +1117,7 @@ public sealed class Parser
     {
         switch (Current.Kind)
         {
-            case TokenKind.IntegerLiteral or TokenKind.StringLiteral or TokenKind.CharLiteral:
+            case TokenKind.IntegerLiteral or TokenKind.StringLiteral or TokenKind.ZeroTerminatedStringLiteral or TokenKind.CharLiteral:
                 return new LiteralExpressionSyntax(NextToken());
 
             case TokenKind.TrueKeyword or TokenKind.FalseKeyword or TokenKind.UndefinedKeyword:

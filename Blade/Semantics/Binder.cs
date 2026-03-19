@@ -1126,13 +1126,19 @@ public sealed class Binder
         TypeSymbol type = literal.Token.Kind switch
         {
             TokenKind.TrueKeyword or TokenKind.FalseKeyword => BuiltinTypes.Bool,
-            TokenKind.StringLiteral => BuiltinTypes.String,
+            TokenKind.StringLiteral or TokenKind.ZeroTerminatedStringLiteral => BuiltinTypes.String,
             TokenKind.UndefinedKeyword => BuiltinTypes.UndefinedLiteral,
-            TokenKind.IntegerLiteral => BuiltinTypes.IntegerLiteral,
+            TokenKind.IntegerLiteral or TokenKind.CharLiteral => BuiltinTypes.IntegerLiteral,
             _ => BuiltinTypes.Unknown,
         };
 
-        return new BoundLiteralExpression(literal.Token.Value, literal.Span, type);
+        object? value = literal.Token.Value;
+
+        // For zero-terminated strings, append NUL to the stored value
+        if (literal.Token.Kind == TokenKind.ZeroTerminatedStringLiteral && value is string zStr)
+            value = zStr + "\0";
+
+        return new BoundLiteralExpression(value, literal.Span, type);
     }
 
     private BoundExpression BindNameExpression(NameExpressionSyntax nameExpression)
@@ -1903,6 +1909,15 @@ public sealed class Binder
         if (targetType.Name == expression.Type.Name)
             return expression;
 
+        // String literal → [*]<storage> u8 (non-const) is rejected with a dedicated diagnostic
+        if (ReferenceEquals(expression.Type, BuiltinTypes.String)
+            && targetType is MultiPointerTypeSymbol { PointeeType: var pointeeType, IsConst: false }
+            && ReferenceEquals(pointeeType, BuiltinTypes.U8))
+        {
+            _diagnostics.ReportStringToNonConstPointer(span);
+            return new BoundErrorExpression(span);
+        }
+
         if (!IsAssignable(targetType, expression.Type))
         {
             if (reportMismatch)
@@ -1910,7 +1925,38 @@ public sealed class Binder
             return new BoundErrorExpression(span);
         }
 
+        // String literal → [N]u8: synthesize an array literal from the string bytes
+        if (ReferenceEquals(expression.Type, BuiltinTypes.String)
+            && targetType is ArrayTypeSymbol targetArray
+            && ReferenceEquals(targetArray.ElementType, BuiltinTypes.U8)
+            && targetArray.Length is int targetLength
+            && expression is BoundLiteralExpression { Value: string stringValue })
+        {
+            return LowerStringToArrayLiteral(stringValue, targetArray, targetLength, span, reportMismatch);
+        }
+
         return new BoundConversionExpression(expression, span, targetType);
+    }
+
+    private BoundExpression LowerStringToArrayLiteral(
+        string stringValue,
+        ArrayTypeSymbol targetArray, int targetLength,
+        TextSpan span, bool reportMismatch)
+    {
+        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(stringValue);
+
+        if (bytes.Length != targetLength)
+        {
+            if (reportMismatch)
+                _diagnostics.ReportStringLengthMismatch(span, targetLength, bytes.Length);
+            return new BoundErrorExpression(span);
+        }
+
+        List<BoundExpression> elements = new(targetLength);
+        foreach (byte b in bytes)
+            elements.Add(new BoundLiteralExpression((long)b, span, BuiltinTypes.IntegerLiteral));
+
+        return new BoundArrayLiteralExpression(elements, lastElementIsSpread: false, span, targetArray);
     }
 
     private static bool CanExplicitlyCast(TypeSymbol sourceType, TypeSymbol targetType)
@@ -2371,6 +2417,22 @@ public sealed class Binder
             return true;
         if (target.IsBool && source.IsBool)
             return true;
+
+        // String literal → [N]u8 coercion (length check deferred to BindConversion)
+        if (ReferenceEquals(source, BuiltinTypes.String)
+            && target is ArrayTypeSymbol { ElementType: var elemType, Length: not null }
+            && ReferenceEquals(elemType, BuiltinTypes.U8))
+        {
+            return true;
+        }
+
+        // String literal → [*]<storage> const u8 coercion
+        if (ReferenceEquals(source, BuiltinTypes.String)
+            && target is MultiPointerTypeSymbol { PointeeType: var pointeeType, IsConst: true }
+            && ReferenceEquals(pointeeType, BuiltinTypes.U8))
+        {
+            return true;
+        }
 
         if (target is PointerLikeTypeSymbol targetPointer && source is PointerLikeTypeSymbol sourcePointer)
             return IsPointerAssignable(targetPointer, sourcePointer);

@@ -13,6 +13,7 @@ public enum TokenKind
     // Literals
     IntegerLiteral,
     StringLiteral,
+    ZeroTerminatedStringLiteral,
     CharLiteral,
 
     // Storage class keywords

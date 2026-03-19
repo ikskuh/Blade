@@ -294,7 +294,8 @@ public sealed class Lexer
         {
             TextSpan span = new(_start, _position - _start);
             _diagnostics.ReportUnterminatedString(span);
-            return MakeToken(TokenKind.StringLiteral, "");
+            TokenKind errorKind = zeroTerminated ? TokenKind.ZeroTerminatedStringLiteral : TokenKind.StringLiteral;
+            return MakeToken(errorKind, "");
         }
 
         // Skip closing quote
@@ -302,7 +303,8 @@ public sealed class Lexer
 
         _ = hasEscapeErrors; // diagnostic already reported in ReadEscapeSequence
 
-        return MakeToken(TokenKind.StringLiteral, sb.ToString());
+        TokenKind kind = zeroTerminated ? TokenKind.ZeroTerminatedStringLiteral : TokenKind.StringLiteral;
+        return MakeToken(kind, sb.ToString());
     }
 
     private Token ReadCharLiteral()

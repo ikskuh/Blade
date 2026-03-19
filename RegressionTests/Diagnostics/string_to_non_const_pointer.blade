@@ -1,0 +1,5 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0240
+// NOTE:
+//   A string literal cannot be assigned to a non-const pointer.
+reg var s: [*]reg u8 = "hello";

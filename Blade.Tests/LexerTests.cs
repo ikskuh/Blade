@@ -482,10 +482,10 @@ public class LexerTests
     }
 
     [Test]
-    public void ZeroTerminatedString_IsLexedAsSingleStringLiteral()
+    public void ZeroTerminatedString_IsLexedAsZeroTerminatedStringLiteral()
     {
         List<Token> tokens = Lex("z\"ok\"");
-        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.StringLiteral));
+        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.ZeroTerminatedStringLiteral));
         Assert.That(tokens[0].Value, Is.EqualTo("ok"));
     }
 

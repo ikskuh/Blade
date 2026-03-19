@@ -61,6 +61,8 @@ public enum DiagnosticCode
     E0236_StructUnknownField = 236,
     E0237_StructMissingFields = 237,
     E0238_StructDuplicateField = 238,
+    E0239_StringLengthMismatch = 239,
+    E0240_StringToNonConstPointer = 240,
 
     // Inline assembly errors
     E0301_InlineAsmUnknownInstruction = 301,

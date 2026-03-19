@@ -1633,5 +1633,76 @@ public class BinderTests
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
     }
 
+    // --- CS-9: Character and string literal tests ---
+
+    [Test]
+    public void CharLiteral_BindsAsIntegerLiteral()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("reg var x: u32 = 'A';");
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        string dump = BoundTreeWriter.Write(program);
+        Assert.That(dump, Does.Contain("65"));
+    }
+
+    [Test]
+    public void CharLiteral_EscapeSequence_BindsCorrectly()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("reg var x: u32 = '\\n';");
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        string dump = BoundTreeWriter.Write(program);
+        Assert.That(dump, Does.Contain("10"));
+    }
+
+    [Test]
+    public void StringLiteral_CoercesToByteArray_WhenLengthMatches()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("reg var a: [4]u8 = \"bye!\";");
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        string dump = BoundTreeWriter.Write(program);
+        Assert.That(dump, Does.Contain("ArrayLit"));
+    }
+
+    [Test]
+    public void ZeroTerminatedString_CoercesToByteArray_WithNul()
+    {
+        // z"hi!" is 3 chars + NUL = 4 bytes, matching [4]u8
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("reg var a: [4]u8 = z\"hi!\";");
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        string dump = BoundTreeWriter.Write(program);
+        Assert.That(dump, Does.Contain("ArrayLit"));
+    }
+
+    [Test]
+    public void StringLiteral_LengthMismatch_ReportsE0239()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("reg var a: [3]u8 = \"bye!\";");
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0239_StringLengthMismatch), Is.True);
+    }
+
+    [Test]
+    public void ZeroTerminatedString_LengthMismatch_ReportsE0239()
+    {
+        // z"hi!" is 4 bytes (3 + NUL), does not fit in [3]u8
+        (_, _, DiagnosticBag diagnostics) = Bind("reg var a: [3]u8 = z\"hi!\";");
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0239_StringLengthMismatch), Is.True);
+    }
+
+    [Test]
+    public void StringLiteral_ToNonConstPointer_ReportsE0240()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("reg var s: [*]reg u8 = \"hello\";");
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0240_StringToNonConstPointer), Is.True);
+    }
+
+    [Test]
+    public void StringLiteral_ToConstPointer_IsAssignable()
+    {
+        // Verify binding succeeds (even though backend lowering is not implemented)
+        (_, _, DiagnosticBag diagnostics) = Bind("reg var s: [*]reg const u8 = \"hello\";");
+        // Should not report type mismatch or string-to-non-const errors
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.False);
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0240_StringToNonConstPointer), Is.False);
+    }
+
 
 }

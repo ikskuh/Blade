@@ -1,0 +1,5 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0239
+// NOTE:
+//   A string literal assigned to an array with mismatched length should report E0239.
+reg var a: [3]u8 = "bye!";

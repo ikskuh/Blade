@@ -1,0 +1,10 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - g_a LONG 65
+// - g_newline LONG 10
+// NOTE:
+//   Character literals evaluate to their unicode codepoint as integer values.
+
+reg var a: u32 = 'A';
+reg var newline: u32 = '\n';
