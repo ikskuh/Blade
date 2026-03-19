@@ -10,3 +10,9 @@
 - `store.*` lowering for multi-operand forms reports unsupported lowering and falls back to comment+`MOV` instead of complete store semantics.
 - SSA phi move emission has an unsupported fallback when target block parameter registers cannot be resolved.
 - Call-graph driven liveness/export features via attributes (e.g., `[Used]`, `[LinkName]`) are still TODO and not wired through parser→binder→IR→codegen.
+
+## Incomplete spec (from `Docs/reference.blade`, excluding items already tracked in `TASKS.md` / `TODO.md`)
+
+- `assert` statements from the reference language are not implemented in the frontend/binder pipeline yet (no `assert` keyword handling or assert statement binding).
+- The reference says interleaving top-level code with declarations should emit a warning, but diagnostics currently define only `E*` codes and no warning path for that rule.
+- Integer literals are currently lexed into signed `long` values, so reference examples that exceed signed-64 range (e.g. `0xFEdcBA9876543210`) are rejected during lexing.
