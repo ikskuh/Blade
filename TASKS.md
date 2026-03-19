@@ -1,39 +1,5 @@
 # Difference between Implementation and Docs/reference.blade
 
-Each change set is self-contained and ends with a green `just test && just regressions`.
-Sets are ordered by dependency — later sets may depend on earlier ones.
-
-## CS-5: Typed struct literals
-
-- `BindExpressionCore`: handle `TypedStructLiteralExpressionSyntax`.
-- Resolve the type name to a `StructTypeSymbol`.
-- Bind each `.field = value` initializer against the struct's field types.
-- Reject: unknown fields, missing fields, duplicate fields.
-- Reuse existing `BoundStructLiteralExpression` with the resolved type.
-- Tests: `Point { .x = 10, .y = 20 }`, reject unknown field, reject missing field.
-
----
-
-## CS-7: For-loop semantic rework
-
-The parser now produces `ForStatementSyntax` with `ExpressionSyntax Iterable` and
-optional `ForBindingSyntax`. The binder has a backward-compat shim. Replace it.
-
-- `for(count)`: iterable is an integer expression → repeat body `count` times.
-  Equivalent to `for(0..count)`.
-- `for(count) -> index`: bind `index` as a loop variable counting `0..(count-1)`.
-- `for(array) -> item`: iterable is an array → iterate elements. `item` is a
-  const alias to the current element.
-- `for(array) -> &item`: mutable alias (lvalue).
-- `for(array) -> &item, index`: both item reference and index variable.
-- Rework `BoundForStatement` to carry: iterable expression, optional item variable
-  (with mutability flag), optional index variable.
-- MIR lowering: expand to a counted loop with index register. Array iteration:
-  compute base + index * element_size.
-- Tests: `for(4)`, `for(4) -> i`, `for(arr) -> x`, `for(arr) -> &x, i`.
-
----
-
 ## CS-8: `asm fn` declarations
 
 The parser emits `AsmFunctionDeclarationSyntax` but the binder ignores it.

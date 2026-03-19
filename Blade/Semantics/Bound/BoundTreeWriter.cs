@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Text;
 using Blade;
@@ -81,9 +82,24 @@ public static class BoundTreeWriter
                 break;
 
             case BoundForStatement forStatement:
-                AppendLine(sb, indent, $"For ({forStatement.Variable?.Name ?? "<error>"})");
+            {
+                string binding = "";
+                if (forStatement.ItemVariable is not null)
+                {
+                    string prefix = forStatement.ItemIsMutable ? "&" : "";
+                    binding = $" -> {prefix}{forStatement.ItemVariable.Name}";
+                    if (forStatement.IndexVariable is not null && !forStatement.IndexVariable.Name.StartsWith("__", StringComparison.Ordinal))
+                        binding += $", {forStatement.IndexVariable.Name}";
+                }
+                else if (forStatement.IndexVariable is not null && !forStatement.IndexVariable.Name.StartsWith("__", StringComparison.Ordinal))
+                {
+                    binding = $" -> {forStatement.IndexVariable.Name}";
+                }
+                AppendLine(sb, indent, $"For{binding}");
+                WriteExpression(sb, indent + 1, forStatement.Iterable);
                 WriteStatement(sb, indent + 1, forStatement.Body);
                 break;
+            }
 
             case BoundLoopStatement loopStatement:
                 AppendLine(sb, indent, "Loop");

@@ -619,6 +619,32 @@ public static class MirLowerer
 
         private void LowerForStatement(BoundForStatement forStatement)
         {
+            // The binder guarantees IndexVariable is always present for valid for-loops.
+            if (forStatement.IndexVariable is null)
+            {
+                LowerStatement(forStatement.Body);
+                return;
+            }
+
+            // Lower the iterable expression and determine the loop count.
+            MirValueId iterableValue = LowerExpression(forStatement.Iterable);
+            bool isArrayIteration = forStatement.Iterable.Type is ArrayTypeSymbol;
+            MirValueId count;
+            if (isArrayIteration)
+            {
+                ArrayTypeSymbol arrayType = (ArrayTypeSymbol)forStatement.Iterable.Type;
+                count = EmitConstant((long)(arrayType.Length ?? 0), BuiltinTypes.U32, forStatement.Span);
+            }
+            else
+            {
+                count = iterableValue;
+            }
+
+            // Initialize index to 0.
+            MirValueId zero = EmitConstant(0L, BuiltinTypes.U32, forStatement.Span);
+            MirValueId one = EmitConstant(1L, BuiltinTypes.U32, forStatement.Span);
+            WriteSymbol(forStatement.IndexVariable, zero, forStatement.Span);
+
             Dictionary<Symbol, MirValueId> beforeEnv = SnapshotAutomaticEnvironment();
             IReadOnlyList<Symbol> envSymbols = GetOrderedAutomaticSymbols(beforeEnv);
 
@@ -631,11 +657,14 @@ public static class MirLowerer
 
             _currentBlock.Terminator = new MirGotoTerminator(conditionBlock.Label, BuildEnvironmentArguments(envSymbols, forStatement.Span), forStatement.Span);
 
+            // Condition block: compare index < count.
             _currentBlock = conditionBlock;
             ReplaceAutomaticEnvironment(conditionEnv);
-            MirValueId condition = forStatement.Variable is null
-                ? EmitConstant(true, BuiltinTypes.Bool, forStatement.Span)
-                : LowerConditionVariable(forStatement.Variable, forStatement.Span);
+            MirValueId currentIndex = ReadSymbol(forStatement.IndexVariable, BuiltinTypes.U32, forStatement.Span);
+            MirValueId condition = NextValue();
+            _currentBlock.Instructions.Add(new MirBinaryInstruction(
+                condition, BuiltinTypes.Bool, BoundBinaryOperatorKind.Less,
+                currentIndex, count, forStatement.Span));
 
             _currentBlock.Terminator = new MirBranchTerminator(
                 condition,
@@ -645,12 +674,44 @@ public static class MirLowerer
                 BuildEnvironmentArguments(envSymbols, forStatement.Span),
                 forStatement.Span);
 
+            // Body block.
             _loopStack.Push(new LoopContext(exitBlock.Label, conditionBlock.Label, envSymbols));
             _currentBlock = bodyBlock;
             ReplaceAutomaticEnvironment(bodyEnv);
+            MirValueId bodyIndex = ReadSymbol(forStatement.IndexVariable, BuiltinTypes.U32, forStatement.Span);
+
+            // For array iteration, load element at current index.
+            if (isArrayIteration && forStatement.ItemVariable is not null)
+            {
+                MirValueId element = EmitOp(
+                    "load.index",
+                    ((ArrayTypeSymbol)forStatement.Iterable.Type).ElementType,
+                    [iterableValue, bodyIndex],
+                    hasSideEffects: false,
+                    forStatement.Span);
+                WriteSymbol(forStatement.ItemVariable, element, forStatement.Span);
+            }
+
             LowerStatement(forStatement.Body);
+
+            // Increment index and loop back.
             if (_currentBlock.Terminator is null)
             {
+                MirValueId postIndex = ReadSymbol(forStatement.IndexVariable, BuiltinTypes.U32, forStatement.Body.Span);
+
+                // Write back mutable item if needed.
+                if (isArrayIteration && forStatement.ItemVariable is not null && forStatement.ItemIsMutable)
+                {
+                    MirValueId updatedItem = ReadSymbol(forStatement.ItemVariable, ((ArrayTypeSymbol)forStatement.Iterable.Type).ElementType, forStatement.Body.Span);
+                    EmitStore("index", [iterableValue, postIndex, updatedItem], forStatement.Body.Span);
+                }
+
+                MirValueId incremented = NextValue();
+                _currentBlock.Instructions.Add(new MirBinaryInstruction(
+                    incremented, BuiltinTypes.U32, BoundBinaryOperatorKind.Add,
+                    postIndex, one, forStatement.Body.Span));
+                WriteSymbol(forStatement.IndexVariable, incremented, forStatement.Body.Span);
+
                 _currentBlock.Terminator = new MirGotoTerminator(
                     conditionBlock.Label,
                     BuildEnvironmentArguments(envSymbols, forStatement.Body.Span),
@@ -660,12 +721,6 @@ public static class MirLowerer
 
             _currentBlock = exitBlock;
             ReplaceAutomaticEnvironment(exitEnv);
-        }
-
-        private MirValueId LowerConditionVariable(Symbol symbol, TextSpan span)
-        {
-            TypeSymbol type = GetSymbolType(symbol);
-            return ReadSymbol(symbol, type, span);
         }
 
         private void LowerLoopStatement(BoundLoopStatement loopStatement)

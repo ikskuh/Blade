@@ -1872,4 +1872,19 @@ public class IrPipelineTests
         Assert.That(compilation.IrBuildResult!.AssemblyText, Does.StartWith("DAT"));
     }
 
+    [Test]
+    public void ForLoop_NonIterableWithBinding_LowersWithoutCrash()
+    {
+        // When the iterable is not an integer or array, the binder reports a
+        // diagnostic but produces a BoundForStatement with IndexVariable = null.
+        // The MIR lowerer must handle this gracefully.
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            var x: bool = true;
+            for (x) -> item { }
+            """);
+
+        Assert.That(diagnostics.Count, Is.GreaterThan(0));
+        Assert.DoesNotThrow(() => IrPipeline.Build(program, new IrPipelineOptions()));
+    }
+
 }

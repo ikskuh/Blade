@@ -1532,5 +1532,106 @@ public class BinderTests
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0203_UndefinedType), Is.True);
     }
 
+    [Test]
+    public void ForLoop_CountOnly_BindsCorrectly()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg var count: u32 = 4;
+            reg var sink: u32 = 0;
+            for (count) { sink = sink + 1; }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        string dump = BoundTreeWriter.Write(program);
+        Assert.That(dump, Does.Contain("For\n"));
+    }
+
+    [Test]
+    public void ForLoop_CountWithIndex_BindsCorrectly()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg var count: u32 = 4;
+            reg var sink: u32 = 0;
+            for (count) -> i { sink = sink + i; }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        string dump = BoundTreeWriter.Write(program);
+        Assert.That(dump, Does.Contain("For -> i"));
+    }
+
+    [Test]
+    public void ForLoop_ArrayWithItem_BindsCorrectly()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            var arr: [4]u32 = [1,2,3,4];
+            reg var sink: u32 = 0;
+            for (arr) -> x { sink = sink + x; }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        string dump = BoundTreeWriter.Write(program);
+        Assert.That(dump, Does.Contain("For -> x"));
+    }
+
+    [Test]
+    public void ForLoop_ArrayWithMutableItem_BindsCorrectly()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            var arr: [4]u32 = [1,2,3,4];
+            for (arr) -> &x { x = 10; }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        string dump = BoundTreeWriter.Write(program);
+        Assert.That(dump, Does.Contain("For -> &x"));
+    }
+
+    [Test]
+    public void ForLoop_ArrayWithMutableItemAndIndex_BindsCorrectly()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            var arr: [4]u32 = [1,2,3,4];
+            for (arr) -> &x, i { x = i; }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        string dump = BoundTreeWriter.Write(program);
+        Assert.That(dump, Does.Contain("For -> &x, i"));
+    }
+
+    [Test]
+    public void ForLoop_NonIterableType_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            var x: bool = true;
+            for (x) { }
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
+    }
+
+    [Test]
+    public void ForLoop_MutableRefOnCount_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            reg var count: u32 = 4;
+            for (count) -> &i { }
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
+    }
+
+    [Test]
+    public void ForLoop_NonIterableWithBinding_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            var x: bool = true;
+            for (x) -> item { }
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
+    }
+
 
 }

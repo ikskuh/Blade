@@ -93,14 +93,26 @@ public sealed class BoundWhileStatement : BoundStatement
 
 public sealed class BoundForStatement : BoundStatement
 {
-    public BoundForStatement(Symbol? variable, BoundBlockStatement body, TextSpan span)
+    public BoundForStatement(
+        BoundExpression iterable,
+        VariableSymbol? itemVariable,
+        bool itemIsMutable,
+        VariableSymbol? indexVariable,
+        BoundBlockStatement body,
+        TextSpan span)
         : base(BoundNodeKind.ForStatement, span)
     {
-        Variable = variable;
+        Iterable = iterable;
+        ItemVariable = itemVariable;
+        ItemIsMutable = itemIsMutable;
+        IndexVariable = indexVariable;
         Body = body;
     }
 
-    public Symbol? Variable { get; }
+    public BoundExpression Iterable { get; }
+    public VariableSymbol? ItemVariable { get; }
+    public bool ItemIsMutable { get; }
+    public VariableSymbol? IndexVariable { get; }
     public BoundBlockStatement Body { get; }
 }
 

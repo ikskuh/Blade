@@ -147,6 +147,13 @@ to verify. The report covers the `Blade` assembly (the regression suite contribu
 to coverage but is not itself measured) and writes results to
 `coverage/coverage.cobertura.xml`.
 
+To query uncovered lines in a specific class and line range:
+
+```sh
+python Scripts/coverage_range.py <class_pattern> <start_line> <end_line>
+# Example: python Scripts/coverage_range.py Binder 652 740
+```
+
 ### Regression Harness
 
 The main behavioral gate is the external regression harness in `Blade.Regressions`.

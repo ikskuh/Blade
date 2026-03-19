@@ -1,32 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(dotnet build)",
-      "Bash(dotnet test)",
-      "Bash(dotnet build --nologo -v q)",
-      "Bash(dotnet test --nologo -v q)",
-      "Bash(dotnet test --nologo -v n)",
-      "Bash(dotnet build -q)",
-      "Bash(dotnet run --project Blade/blade.csproj -- Blade.Tests/Accept/function_declarations.blade)",
-      "Bash(dotnet run --project Blade/blade.csproj -- Blade.Tests/Reject/missing_semicolon.blade)",
-      "Bash(dotnet run --project Blade/blade.csproj)",
-      "Bash(dotnet run --project Blade/blade.csproj -- nonexistent.blade)",
-      "Bash(dotnet test --no-build)",
-      "Bash(dotnet run --project Blade -- --dump-final-asm --dump-asmir Blade.Tests/Accept/expressions.blade)",
-      "Bash(dotnet run --project Blade -- --dump-asmir Blade.Tests/Accept/control_flow.blade)",
-      "Bash(dotnet run --project Blade -- --dump-asmir Blade.Tests/Accept/function_declarations.blade)",
+      "Bash(just:*)",
+      "Bash(dotnet build:*)",
       "Bash(dotnet test:*)",
-      "Bash(just regressions:*)",
-      "Bash(just compile-all-samples:*)",
-      "Bash(ls -la /home/felix/projects/nerdgruppe/blade/Blade.Regressions/*.cs)",
-      "Bash(find /home/felix/projects/nerdgruppe/blade/Examples /home/felix/projects/nerdgruppe/blade/RegressionTests /home/felix/projects/nerdgruppe/blade/Demonstrators -name *.blade)",
-      "Bash(grep -r 'type.*= struct' /home/felix/projects/nerdgruppe/blade/Examples /home/felix/projects/nerdgruppe/blade/RegressionTests --include=*.blade)",
-      "Bash(just test:*)",
-      "Bash(just compile-sample:*)",
-      "Bash(just all:*)",
-      "Bash(just coverage:*)",
       "Bash(dotnet run:*)",
-      "Bash(python3 -c \":*)"
+      "Bash(python3 Scripts/coverage_range.py:*)",
+      "Bash(python3 Scripts/extract.py:*)"
     ]
   }
 }

@@ -6,6 +6,10 @@ Leaf functions through CALL/PA should prefer the "PA" parameter for their first 
 
 This plays together nicely with the register allocator running backwards.
 
+## Implementation of array loads/stores
+
+Right now only the high-level part is implemented, but lowering the array access is not.
+
 ## Implementation of `lut var`
 
 LUT variables need explicit indexing through RDLUT, WRLUT

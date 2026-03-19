@@ -438,17 +438,7 @@ public sealed class Binder
             }
 
             case ForStatementSyntax forStatement:
-            {
-                BoundExpression iterable = BindExpression(forStatement.Iterable);
-                // For now, try to resolve as a variable for backward compat
-                Symbol? variable = forStatement.Iterable is NameExpressionSyntax nameExpr
-                    ? _currentScope.TryLookup(nameExpr.Name.Text, out Symbol? s) ? s : null
-                    : null;
-                PushLoop(LoopContext.Regular);
-                BoundBlockStatement body = BindBlockStatement(forStatement.Body, createScope: true, isTopLevel: false);
-                PopLoop();
-                return new BoundForStatement(variable, body, forStatement.Span);
-            }
+                return BindForStatement(forStatement);
 
             case LoopStatementSyntax loopStatement:
             {
@@ -657,6 +647,105 @@ public sealed class Binder
             initializer = BindExpression(declaration.Initializer, variableType);
 
         return new BoundVariableDeclarationStatement(variableSymbol, initializer, declaration.Span);
+    }
+
+    private BoundStatement BindForStatement(ForStatementSyntax forStatement)
+    {
+        BoundExpression iterable = BindExpression(forStatement.Iterable);
+        ForBindingSyntax? binding = forStatement.Binding;
+        bool isArrayIteration = iterable.Type is ArrayTypeSymbol;
+        bool isIntegerIteration = iterable.Type.IsInteger || iterable.Type == BuiltinTypes.IntegerLiteral;
+
+        VariableSymbol? itemVariable = null;
+        bool itemIsMutable = false;
+        VariableSymbol? indexVariable = null;
+
+        Scope previousScope = _currentScope;
+        _currentScope = new Scope(previousScope);
+
+        if (binding is not null)
+        {
+            itemIsMutable = binding.Ampersand is not null;
+
+            if (isArrayIteration)
+            {
+                ArrayTypeSymbol arrayType = (ArrayTypeSymbol)iterable.Type;
+                TypeSymbol elementType = arrayType.ElementType;
+
+                // Item variable — const or mutable alias to the element
+                itemVariable = new VariableSymbol(
+                    binding.ItemName.Text,
+                    elementType,
+                    isConst: !itemIsMutable,
+                    VariableStorageClass.Automatic,
+                    VariableScopeKind.Local,
+                    isExtern: false,
+                    fixedAddress: null,
+                    alignment: null);
+                _currentScope.TryDeclare(itemVariable);
+
+                // Index variable — user-provided or synthetic
+                string indexName = binding.IndexName?.Text ?? "__for_index";
+                indexVariable = new VariableSymbol(
+                    indexName,
+                    BuiltinTypes.U32,
+                    isConst: true,
+                    VariableStorageClass.Automatic,
+                    VariableScopeKind.Local,
+                    isExtern: false,
+                    fixedAddress: null,
+                    alignment: null);
+                _currentScope.TryDeclare(indexVariable);
+            }
+            else if (isIntegerIteration)
+            {
+                // for(count) -> index: the binding variable is an index
+                if (itemIsMutable)
+                {
+                    _diagnostics.ReportTypeMismatch(binding.Ampersand!.Value.Span, "array", iterable.Type.Name);
+                }
+
+                indexVariable = new VariableSymbol(
+                    binding.ItemName.Text,
+                    BuiltinTypes.U32,
+                    isConst: true,
+                    VariableStorageClass.Automatic,
+                    VariableScopeKind.Local,
+                    isExtern: false,
+                    fixedAddress: null,
+                    alignment: null);
+                _currentScope.TryDeclare(indexVariable);
+            }
+            else
+            {
+                _diagnostics.ReportTypeMismatch(forStatement.Iterable.Span, "integer or array", iterable.Type.Name);
+            }
+        }
+        else if (isIntegerIteration || isArrayIteration)
+        {
+            // No binding — create synthetic index for internal counting
+            indexVariable = new VariableSymbol(
+                "__for_index",
+                BuiltinTypes.U32,
+                isConst: true,
+                VariableStorageClass.Automatic,
+                VariableScopeKind.Local,
+                isExtern: false,
+                fixedAddress: null,
+                alignment: null);
+            _currentScope.TryDeclare(indexVariable);
+        }
+        else if (!iterable.Type.IsUnknown)
+        {
+            _diagnostics.ReportTypeMismatch(forStatement.Iterable.Span, "integer or array", iterable.Type.Name);
+        }
+
+        PushLoop(LoopContext.Regular);
+        BoundBlockStatement body = BindBlockStatement(forStatement.Body, createScope: false, isTopLevel: false);
+        PopLoop();
+
+        _currentScope = previousScope;
+        return new BoundForStatement(iterable, itemVariable, itemIsMutable, indexVariable, body, forStatement.Span);
     }
 
     private BoundRepForStatement BindRepForBody(RepForStatementSyntax repFor, BoundExpression start, BoundExpression end)

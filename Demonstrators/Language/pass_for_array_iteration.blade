@@ -1,0 +1,11 @@
+// EXPECT: xfail
+// NOTE:
+//   Exercises for-loop array iteration forms. Currently xfail because
+//   load.index / store.index lowering is not yet implemented.
+
+var arr: [4]u32 = [1,2,3,4];
+reg var sink: u32 = 0;
+
+for (arr) -> x { sink = sink + x; }
+for (arr) -> &x { x = 10; }
+for (arr) -> &x, i { x = i; }
