@@ -74,7 +74,8 @@ public static class LirOptimizer
                 function.IsEntryPoint,
                 function.Kind,
                 function.ReturnTypes,
-                blocks));
+                blocks,
+                function.ReturnSlots));
         }
 
         return new LirModule(module.StoragePlaces, functions);
@@ -92,7 +93,8 @@ public static class LirOptimizer
                 function.IsEntryPoint,
                 function.Kind,
                 function.ReturnTypes,
-                merged));
+                merged,
+                function.ReturnSlots));
         }
 
         return new LirModule(module.StoragePlaces, functions);
@@ -139,7 +141,8 @@ public static class LirOptimizer
                 function.IsEntryPoint,
                 function.Kind,
                 function.ReturnTypes,
-                blocks));
+                blocks,
+                function.ReturnSlots));
         }
 
         return new LirModule(module.StoragePlaces, functions);

@@ -42,7 +42,8 @@ public static class MirLowerer
             isEntryPoint: false,
             symbol.Kind,
             symbol.ReturnTypes,
-            storagePlaces);
+            storagePlaces,
+            symbol.ReturnSlots);
         context.LowerFunctionBody(functionMember.Body, symbol.Parameters);
         return context.Build();
     }
@@ -299,6 +300,9 @@ public static class MirLowerer
         private readonly bool _isEntryPoint;
         private readonly FunctionKind _kind;
         private readonly IReadOnlyList<TypeSymbol> _returnTypes;
+        private readonly IReadOnlyList<ReturnSlot> _returnSlots;
+        private readonly Dictionary<MirValueId, MirFlag> _flagValues = [];
+        private readonly List<MirValueId> _pendingFlagReturns = [];
         private readonly List<BlockBuilder> _blocks = [];
         private readonly Stack<LoopContext> _loopStack = [];
         private readonly Dictionary<int, StoragePlace> _storagePlacesBySymbolId = [];
@@ -314,12 +318,14 @@ public static class MirLowerer
             bool isEntryPoint,
             FunctionKind kind,
             IReadOnlyList<TypeSymbol> returnTypes,
-            IReadOnlyList<StoragePlace> storagePlaces)
+            IReadOnlyList<StoragePlace> storagePlaces,
+            IReadOnlyList<ReturnSlot>? returnSlots = null)
         {
             _name = name;
             _isEntryPoint = isEntryPoint;
             _kind = kind;
             _returnTypes = returnTypes;
+            _returnSlots = returnSlots ?? [];
             foreach (StoragePlace place in storagePlaces)
                 _storagePlacesBySymbolId[place.Symbol.Id] = place;
 
@@ -392,7 +398,7 @@ public static class MirLowerer
                 blocks.Add(new MirBlock(block.Label, block.Parameters, block.Instructions, terminator));
             }
 
-            return new MirFunction(_name, _isEntryPoint, _kind, _returnTypes, blocks);
+            return new MirFunction(_name, _isEntryPoint, _kind, _returnTypes, blocks, _returnSlots, _flagValues);
         }
 
         private void EmitFallthroughReturn(TextSpan span)
@@ -548,13 +554,33 @@ public static class MirLowerer
                 }
             }
 
+            // When the inline asm has a flag output (@C or @Z), it produces a flag-typed result.
+            // This value represents the flag state after the asm executes and can be used
+            // directly by branches or materialized to a register when needed.
+            MirValueId? flagResult = null;
+            TypeSymbol? flagResultType = null;
+            if (asmStatement.FlagOutput is not null)
+            {
+                flagResult = NextValue();
+                flagResultType = BuiltinTypes.Bool;
+                MirFlag flag = asmStatement.FlagOutput == "@C" ? MirFlag.C : MirFlag.Z;
+                _flagValues[flagResult.Value] = flag;
+            }
+
             _currentBlock.Instructions.Add(new MirInlineAsmInstruction(
                 asmStatement.Volatility,
                 asmStatement.Body,
                 asmStatement.FlagOutput,
                 asmStatement.ParsedLines,
                 bindings,
-                asmStatement.Span));
+                asmStatement.Span,
+                flagResult,
+                flagResultType));
+
+            // Track flag results so that empty return statements in asm functions
+            // can pick them up as implicit return values.
+            if (flagResult is not null)
+                _pendingFlagReturns.Add(flagResult.Value);
         }
 
         private void LowerLoopTransfer(bool isBreak, TextSpan span)
@@ -615,13 +641,15 @@ public static class MirLowerer
             BlockBuilder mergeBlock = CreateBlock();
             Dictionary<Symbol, MirValueId> mergeEnv = CreateEnvironmentParameters(mergeBlock, envSymbols, "if");
 
+            _flagValues.TryGetValue(condition, out MirFlag conditionFlag);
             _currentBlock.Terminator = new MirBranchTerminator(
                 condition,
                 thenBlock.Label,
                 elseBlock.Label,
                 [],
                 [],
-                ifStatement.Span);
+                ifStatement.Span,
+                _flagValues.ContainsKey(condition) ? conditionFlag : null);
 
             _currentBlock = thenBlock;
             ReplaceAutomaticEnvironment(beforeEnv);
@@ -908,12 +936,26 @@ public static class MirLowerer
 
         private List<MirValueId> BuildReturnArguments(IReadOnlyList<MirValueId> values, TextSpan span)
         {
+            // Combine explicit return values with any pending flag return values.
+            // For asm functions that return via flags (e.g. -> bool@C), the explicit
+            // return values list is empty, but _pendingFlagReturns holds the flag results.
+            List<MirValueId> allValues = new(values);
+            if (allValues.Count < _exitBlock.Parameters.Count && _pendingFlagReturns.Count > 0)
+            {
+                foreach (MirValueId flagReturn in _pendingFlagReturns)
+                {
+                    if (allValues.Count >= _exitBlock.Parameters.Count)
+                        break;
+                    allValues.Add(flagReturn);
+                }
+            }
+
             List<MirValueId> arguments = [];
             for (int i = 0; i < _exitBlock.Parameters.Count; i++)
             {
-                if (i < values.Count)
+                if (i < allValues.Count)
                 {
-                    arguments.Add(values[i]);
+                    arguments.Add(allValues[i]);
                 }
                 else
                 {
@@ -1180,6 +1222,22 @@ public static class MirLowerer
                 left,
                 right,
                 binaryExpression.Span));
+
+            // Comparison operators produce flag values: equality tests use Z, ordering tests use C.
+            MirFlag? flag = binaryExpression.Operator.Kind switch
+            {
+                BoundBinaryOperatorKind.Equals => MirFlag.Z,
+                BoundBinaryOperatorKind.NotEquals => MirFlag.Z,
+                BoundBinaryOperatorKind.Less => MirFlag.C,
+                BoundBinaryOperatorKind.LessOrEqual => MirFlag.C,
+                BoundBinaryOperatorKind.Greater => MirFlag.C,
+                BoundBinaryOperatorKind.GreaterOrEqual => MirFlag.C,
+                _ => null,
+            };
+
+            if (flag is not null)
+                _flagValues[result] = flag.Value;
+
             return result;
         }
 

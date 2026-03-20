@@ -243,6 +243,12 @@ public static class MirTextWriter
             case MirBranchTerminator branch:
                 sb.Append("branch ");
                 sb.Append(branch.Condition);
+                if (branch.ConditionFlag is not null)
+                {
+                    sb.Append(" [flag:");
+                    sb.Append(branch.ConditionFlag.Value.ToString());
+                    sb.Append(']');
+                }
                 sb.Append(" ? ");
                 sb.Append(branch.TrueLabel);
                 sb.Append('(');

@@ -6,6 +6,11 @@ using Blade.Source;
 
 namespace Blade.IR.Mir;
 
+/// <summary>
+/// Identifies which hardware flag (C or Z) a value resides in.
+/// </summary>
+public enum MirFlag { C, Z }
+
 public readonly record struct MirValueId(int Id)
 {
     public override string ToString() => $"%v{Id}";
@@ -35,12 +40,16 @@ public sealed class MirFunction
         bool isEntryPoint,
         FunctionKind kind,
         IReadOnlyList<TypeSymbol> returnTypes,
-        IReadOnlyList<MirBlock> blocks)
+        IReadOnlyList<MirBlock> blocks,
+        IReadOnlyList<ReturnSlot>? returnSlots = null,
+        IReadOnlyDictionary<MirValueId, MirFlag>? flagValues = null)
     {
         Name = name;
         IsEntryPoint = isEntryPoint;
         Kind = kind;
         ReturnTypes = returnTypes;
+        ReturnSlots = returnSlots ?? [];
+        FlagValues = flagValues ?? new Dictionary<MirValueId, MirFlag>();
         Blocks = blocks;
     }
 
@@ -48,6 +57,8 @@ public sealed class MirFunction
     public bool IsEntryPoint { get; }
     public FunctionKind Kind { get; }
     public IReadOnlyList<TypeSymbol> ReturnTypes { get; }
+    public IReadOnlyList<ReturnSlot> ReturnSlots { get; }
+    public IReadOnlyDictionary<MirValueId, MirFlag> FlagValues { get; }
     public IReadOnlyList<MirBlock> Blocks { get; }
 }
 
@@ -456,8 +467,10 @@ public sealed class MirInlineAsmInstruction : MirInstruction
         string? flagOutput,
         IReadOnlyList<InlineAssemblyValidator.AsmLine> parsedLines,
         IReadOnlyList<MirInlineAsmBinding> bindings,
-        TextSpan span)
-        : base(result: null, resultType: null, span, hasSideEffects: true)
+        TextSpan span,
+        MirValueId? flagResult = null,
+        TypeSymbol? flagResultType = null)
+        : base(result: flagResult, resultType: flagResultType, span, hasSideEffects: true)
     {
         Volatility = volatility;
         Body = body;
@@ -503,7 +516,7 @@ public sealed class MirInlineAsmInstruction : MirInstruction
             rewritten[i] = new MirInlineAsmBinding(binding.Name, mapped, binding.Place, binding.Access);
         }
 
-        return rewritten is null ? this : new MirInlineAsmInstruction(Volatility, Body, FlagOutput, ParsedLines, rewritten, Span);
+        return rewritten is null ? this : new MirInlineAsmInstruction(Volatility, Body, FlagOutput, ParsedLines, rewritten, Span, Result, ResultType);
     }
 }
 
@@ -585,7 +598,8 @@ public sealed class MirBranchTerminator : MirTerminator
         string falseLabel,
         IReadOnlyList<MirValueId> trueArguments,
         IReadOnlyList<MirValueId> falseArguments,
-        TextSpan span)
+        TextSpan span,
+        MirFlag? conditionFlag = null)
         : base(span)
     {
         Condition = condition;
@@ -593,6 +607,7 @@ public sealed class MirBranchTerminator : MirTerminator
         FalseLabel = falseLabel;
         TrueArguments = trueArguments;
         FalseArguments = falseArguments;
+        ConditionFlag = conditionFlag;
     }
 
     public MirValueId Condition { get; }
@@ -600,6 +615,11 @@ public sealed class MirBranchTerminator : MirTerminator
     public string FalseLabel { get; }
     public IReadOnlyList<MirValueId> TrueArguments { get; }
     public IReadOnlyList<MirValueId> FalseArguments { get; }
+
+    /// <summary>
+    /// When set, the branch consumes the hardware flag directly instead of testing a register.
+    /// </summary>
+    public MirFlag? ConditionFlag { get; }
 
     public override IReadOnlyList<MirValueId> Uses
     {
@@ -634,7 +654,7 @@ public sealed class MirBranchTerminator : MirTerminator
         }
 
         return changed
-            ? new MirBranchTerminator(condition, TrueLabel, FalseLabel, rewrittenTrue, rewrittenFalse, Span)
+            ? new MirBranchTerminator(condition, TrueLabel, FalseLabel, rewrittenTrue, rewrittenFalse, Span, ConditionFlag)
             : this;
     }
 }

@@ -260,7 +260,9 @@ public static class MirInliner
                     inlineAsm.FlagOutput,
                     inlineAsm.ParsedLines,
                     inlineAsm.Bindings,
-                    inlineAsm.Span),
+                    inlineAsm.Span,
+                    newResult,
+                    inlineAsm.ResultType),
                 MirPseudoInstruction pseudo => new MirPseudoInstruction(pseudo.Opcode, pseudo.Operands, pseudo.HasSideEffects, pseudo.Span),
                 _ => rewritten,
             };
@@ -290,7 +292,8 @@ public static class MirInliner
                         labelMap[branch.FalseLabel],
                         branch.TrueArguments,
                         branch.FalseArguments,
-                        branch.Span);
+                        branch.Span,
+                        branch.ConditionFlag);
 
                 case MirReturnTerminator ret:
                 {
@@ -434,7 +437,7 @@ public static class MirInliner
                     block.Terminator));
             }
 
-            return new MirFunction(_source.Name, _source.IsEntryPoint, _source.Kind, _source.ReturnTypes, blocks);
+            return new MirFunction(_source.Name, _source.IsEntryPoint, _source.Kind, _source.ReturnTypes, blocks, _source.ReturnSlots);
         }
     }
 

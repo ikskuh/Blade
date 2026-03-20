@@ -1,0 +1,18 @@
+// EXPECT: pass
+// NOTE:
+//   Goal: emit CMP + IF_NZ JMP without WRZ/TJZ.
+//   Code assertions will be added after flag-aware code generation is implemented.
+
+reg var a: u32 = 0;
+reg var b: u32 = 0;
+
+if(a == b) {
+    asm volatile { 
+        COGATN #1 
+    };
+}
+else {
+    asm volatile { 
+        COGATN #2
+    };
+}

@@ -287,3 +287,84 @@ var reg fptr2: *fn(a: u32, b: u32) -> u32 = undefined;
 fptr1(10, 20);
 var out: u32 = fptr2(10, 20);
 ```
+
+## Suboptimal code order generation for blocks
+
+```blade
+reg var a: u32 = 0;
+reg var b: u32 = 0;
+
+if(a == b) { // MARKER 1
+    asm volatile { 
+        COGATN #1  // MARKER 2
+    };
+}
+else { // MARKER 3
+    asm volatile { 
+        COGATN #2 // MARKER 4
+    };
+}
+// MARKER 5
+```
+
+```spin2
+  l_top
+  l_top_bb0
+    MOV _r3, g_a
+    MOV _r2, g_b
+    CMP _r3, _r2 WZ 
+    WRZ _r2
+    TJZ _r2, #l_top_bb3   ' MARKER 3
+    JMP #l_top_bb2        ' MARKER 1
+  l_top_bb1
+    REP #1, #0            ' MARKER 5
+  l_top_bb2
+    COGATN #1             ' MARKER 2
+    JMP #l_top_bb1
+  l_top_bb3
+    COGATN #2             ' MARKER 4
+    JMP #l_top_bb1
+```
+
+is definitly worse than
+
+```spin2
+  l_top
+  l_top_bb0
+    MOV _r3, g_a
+    MOV _r2, g_b
+    CMP _r3, _r2 WZ
+    WRZ _r2
+    TJZ _r2, #l_top_bb3   ' MARKER 3
+                          ' MARKER 1 (no instruction/branch necessary)
+    COGATN #1             ' MARKER 2
+    JMP #l_top_bb1
+  l_top_bb3
+    COGATN #2             ' MARKER 4
+                          ' (no instruction/branch necessary)
+  l_top_bb1
+    REP #1, #0            ' MARKER 5
+```
+
+## Optimize storage of global `bool` variables
+
+`bool` variables can be trivially tightly packed into a register. Each boolean
+variable takes exactly a single bit.
+
+The following operations map incredibly nicely to the Propeller 2 architecture:
+
+- `a = true;` => `BITH backing, #index`
+- `a = false;` => `BITL backing, #index`
+- `a = !a` => `BITNOT backing, #index`
+- `if(a)` => `TESTB backing, #index WZ`, `IF_Z JMP`
+- `if(!a)` => `TESTB backing, #index WZ`, `IF_NZ JMP`
+- `if(a & b)` => `TESTB backing, #index_a WZ`, `TESTB backing, #index_b ANDZ`, `IF_Z JMP`
+- `if(a | b)` => `TESTB backing, #index_a WZ`, `TESTB backing, #index_b ORZ`, `IF_Z JMP`
+- `if(a ^ b)` => `TESTB backing, #index_a WZ`, `TESTB backing, #index_b XORZ`, `IF_Z JMP`
+- `if(a != b)` => `TESTB backing, #index_a WZ`, `TESTB backing, #index_b XORZ`, `IF_Z JMP`
+- `if(a == b)` => `TESTB backing, #index_a WZ`, `TESTB backing, #index_b XORZ`, `IF_NZ JMP`
+- `a = (x == y)` => `CMP x, y WZ`, `BITZ backing, #index`
+- `a = (x != y)` => `CMP x, y WZ`, `BITNZ backing, #index`
+- `if(a) { x |= 0x23; } else { x &= ~0x23; }` is `TESTB backing, #index WZ`, `MUXZ x, #$23`
+- `if(a) { x = -x; }` is `TESTB backing, #index WZ`, `NEGC x`
+- `if(a) { x += y; } else { x -= y; }` is `TESTB backing, #index WZ`, `SUMC x, y`

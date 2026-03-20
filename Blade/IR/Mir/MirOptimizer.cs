@@ -41,7 +41,94 @@ public static class MirOptimizer
                 break;
         }
 
+        // After all optimization iterations, propagate flag annotations to branches.
+        // This must run after inlining so that inlined flag-producing instructions
+        // (e.g., inline asm with @C output, comparisons) can be matched to branches.
+        current = RunFlagPropagation(current);
+
         return current;
+    }
+
+    /// <summary>
+    /// Scans each block for branches whose condition is produced by a flag-writing
+    /// instruction (inline asm with FlagOutput, or comparison) in the same block.
+    /// Sets ConditionFlag on the branch so codegen can use predicated jumps.
+    /// </summary>
+    private static MirModule RunFlagPropagation(MirModule module)
+    {
+        List<MirFunction> functions = new(module.Functions.Count);
+        bool anyChanged = false;
+
+        foreach (MirFunction function in module.Functions)
+        {
+            // Build a combined flag map: function-level annotations + per-block analysis.
+            Dictionary<MirValueId, MirFlag> flagMap = new(function.FlagValues);
+
+            // Also discover flag-producing instructions within each block.
+            foreach (MirBlock block in function.Blocks)
+            {
+                foreach (MirInstruction instruction in block.Instructions)
+                {
+                    if (instruction is MirInlineAsmInstruction asm && asm.FlagOutput is not null && asm.Result is MirValueId asmResult)
+                    {
+                        MirFlag flag = asm.FlagOutput == "@C" ? MirFlag.C : MirFlag.Z;
+                        flagMap[asmResult] = flag;
+                    }
+                    else if (instruction is MirBinaryInstruction binary && binary.Result is MirValueId binResult)
+                    {
+                        MirFlag? flag = binary.Operator switch
+                        {
+                            BoundBinaryOperatorKind.Equals => MirFlag.Z,
+                            BoundBinaryOperatorKind.NotEquals => MirFlag.Z,
+                            BoundBinaryOperatorKind.Less => MirFlag.C,
+                            BoundBinaryOperatorKind.LessOrEqual => MirFlag.C,
+                            BoundBinaryOperatorKind.Greater => MirFlag.C,
+                            BoundBinaryOperatorKind.GreaterOrEqual => MirFlag.C,
+                            _ => null,
+                        };
+
+                        if (flag is not null)
+                            flagMap[binResult] = flag.Value;
+                    }
+                }
+            }
+
+            // Now rewrite branches that consume flag values.
+            List<MirBlock> blocks = new(function.Blocks.Count);
+            foreach (MirBlock block in function.Blocks)
+            {
+                if (block.Terminator is MirBranchTerminator branch
+                    && branch.ConditionFlag is null
+                    && flagMap.TryGetValue(branch.Condition, out MirFlag condFlag))
+                {
+                    MirBranchTerminator updated = new(
+                        branch.Condition,
+                        branch.TrueLabel,
+                        branch.FalseLabel,
+                        branch.TrueArguments,
+                        branch.FalseArguments,
+                        branch.Span,
+                        condFlag);
+                    blocks.Add(new MirBlock(block.Label, block.Parameters, block.Instructions, updated));
+                    anyChanged = true;
+                }
+                else
+                {
+                    blocks.Add(block);
+                }
+            }
+
+            functions.Add(new MirFunction(
+                function.Name,
+                function.IsEntryPoint,
+                function.Kind,
+                function.ReturnTypes,
+                blocks,
+                function.ReturnSlots,
+                flagMap));
+        }
+
+        return anyChanged ? new MirModule(module.StoragePlaces, functions) : module;
     }
 
     private static MirModule RunConstantPropagation(MirModule module)
@@ -124,7 +211,8 @@ public static class MirOptimizer
                 function.IsEntryPoint,
                 function.Kind,
                 function.ReturnTypes,
-                blocks));
+                blocks,
+                function.ReturnSlots));
         }
 
         return new MirModule(module.StoragePlaces, functions);
@@ -165,7 +253,8 @@ public static class MirOptimizer
                 function.IsEntryPoint,
                 function.Kind,
                 function.ReturnTypes,
-                blocks));
+                blocks,
+                function.ReturnSlots));
         }
 
         return new MirModule(module.StoragePlaces, functions);
@@ -230,7 +319,8 @@ public static class MirOptimizer
                 function.IsEntryPoint,
                 function.Kind,
                 function.ReturnTypes,
-                blocks));
+                blocks,
+                function.ReturnSlots));
         }
 
         return new MirModule(module.StoragePlaces, functions);
@@ -345,7 +435,8 @@ public static class MirOptimizer
             falseLabel,
             trueArguments,
             falseArguments,
-            terminator.Span);
+            terminator.Span,
+            terminator.ConditionFlag);
     }
 
     private static (string Label, IReadOnlyList<MirValueId> Arguments) ResolveSuccessor(

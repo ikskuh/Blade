@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Blade.IR;
+using Blade.IR.Mir;
 using Blade.Semantics;
 using Blade.Source;
 
@@ -34,12 +35,14 @@ public sealed class LirFunction
         bool isEntryPoint,
         FunctionKind kind,
         IReadOnlyList<TypeSymbol> returnTypes,
-        IReadOnlyList<LirBlock> blocks)
+        IReadOnlyList<LirBlock> blocks,
+        IReadOnlyList<ReturnSlot>? returnSlots = null)
     {
         Name = name;
         IsEntryPoint = isEntryPoint;
         Kind = kind;
         ReturnTypes = returnTypes;
+        ReturnSlots = returnSlots ?? [];
         Blocks = blocks;
     }
 
@@ -47,6 +50,7 @@ public sealed class LirFunction
     public bool IsEntryPoint { get; }
     public FunctionKind Kind { get; }
     public IReadOnlyList<TypeSymbol> ReturnTypes { get; }
+    public IReadOnlyList<ReturnSlot> ReturnSlots { get; }
     public IReadOnlyList<LirBlock> Blocks { get; }
 }
 
@@ -261,7 +265,8 @@ public sealed class LirBranchTerminator : LirTerminator
         string falseLabel,
         IReadOnlyList<LirOperand> trueArguments,
         IReadOnlyList<LirOperand> falseArguments,
-        TextSpan span)
+        TextSpan span,
+        MirFlag? conditionFlag = null)
         : base(span)
     {
         Condition = condition;
@@ -269,6 +274,7 @@ public sealed class LirBranchTerminator : LirTerminator
         FalseLabel = falseLabel;
         TrueArguments = trueArguments;
         FalseArguments = falseArguments;
+        ConditionFlag = conditionFlag;
     }
 
     public LirOperand Condition { get; }
@@ -276,6 +282,11 @@ public sealed class LirBranchTerminator : LirTerminator
     public string FalseLabel { get; }
     public IReadOnlyList<LirOperand> TrueArguments { get; }
     public IReadOnlyList<LirOperand> FalseArguments { get; }
+
+    /// <summary>
+    /// When set, the branch uses the hardware flag directly instead of testing a register.
+    /// </summary>
+    public MirFlag? ConditionFlag { get; }
 }
 
 public sealed class LirReturnTerminator : LirTerminator

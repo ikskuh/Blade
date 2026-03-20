@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Threading;
 using Blade;
 using Blade.Syntax.Nodes;
@@ -115,6 +116,18 @@ public enum FunctionKind
     Int3,
 }
 
+public enum ReturnPlacement
+{
+    Register,
+    FlagC,
+    FlagZ,
+}
+
+public readonly record struct ReturnSlot(TypeSymbol Type, ReturnPlacement Placement)
+{
+    public bool IsFlagPlaced => Placement is ReturnPlacement.FlagC or ReturnPlacement.FlagZ;
+}
+
 public sealed class FunctionSymbol : Symbol
 {
     public FunctionSymbol(string name, IFunctionSignatureSyntax syntax, FunctionKind kind)
@@ -128,7 +141,11 @@ public sealed class FunctionSymbol : Symbol
     public FunctionKind Kind { get; }
     public bool IsAsmFunction => Syntax is AsmFunctionDeclarationSyntax;
     public IReadOnlyList<ParameterSymbol> Parameters { get; set; } = [];
-    public IReadOnlyList<TypeSymbol> ReturnTypes { get; set; } = [];
+    public IReadOnlyList<ReturnSlot> ReturnSlots { get; set; } = [];
+    public IReadOnlyList<TypeSymbol> ReturnTypes => System.Array.ConvertAll(
+        System.Linq.Enumerable.ToArray(ReturnSlots),
+        static slot => slot.Type);
+    public bool HasFlagReturns => ReturnSlots.Any(s => s.IsFlagPlaced);
 }
 
 public sealed class ModuleSymbol : Symbol

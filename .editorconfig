@@ -46,6 +46,9 @@ dotnet_diagnostic.CA1515.severity = none
 # Instance helper methods do not need to be churned into static-only style.
 dotnet_diagnostic.CA1822.severity = none
 
+# Domain types like MirFlag legitimately end in "Flag".
+dotnet_diagnostic.CA1711.severity = none
+
 
 [Blade/Diagnostics/DiagnosticCode.cs]
 

@@ -55,7 +55,8 @@ public static class LirLowerer
             mirFunction.IsEntryPoint,
             mirFunction.Kind,
             mirFunction.ReturnTypes,
-            blocks);
+            blocks,
+            mirFunction.ReturnSlots);
     }
 
     private static LirInstruction LowerInstruction(
@@ -264,7 +265,8 @@ public static class LirLowerer
                 branch.FalseLabel,
                 LowerOperands(branch.TrueArguments, getRegister),
                 LowerOperands(branch.FalseArguments, getRegister),
-                branch.Span),
+                branch.Span,
+                branch.ConditionFlag),
 
             MirReturnTerminator ret => new LirReturnTerminator(
                 LowerOperands(ret.Values, getRegister),

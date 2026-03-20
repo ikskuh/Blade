@@ -102,7 +102,7 @@ public sealed class ComptimeBinderHelperTests
         FunctionDeclarationSyntax syntax = ParseFunctionSyntax($"fn {name}() -> u32 {{ return 0; }}");
         FunctionSymbol function = new(name, syntax, kind)
         {
-            ReturnTypes = returnTypes,
+            ReturnSlots = System.Array.ConvertAll(returnTypes, static t => new ReturnSlot(t, ReturnPlacement.Register)),
         };
         return function;
     }

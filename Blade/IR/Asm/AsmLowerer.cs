@@ -6,6 +6,7 @@ using System.Text;
 using Blade;
 using Blade.Diagnostics;
 using Blade.IR.Lir;
+using Blade.IR.Mir;
 using Blade.Semantics;
 using Blade.Semantics.Bound;
 using Blade.Source;
@@ -1432,10 +1433,49 @@ public static class AsmLowerer
 
     private static void LowerBranch(List<AsmNode> nodes, LoweringContext ctx, LirBranchTerminator branch)
     {
-        AsmRegisterOperand cond = OpReg(branch.Condition);
         string functionName = ctx.Function.Name;
         string trueLabel = $"{functionName}_{branch.TrueLabel}";
         string falseLabel = $"{functionName}_{branch.FalseLabel}";
+
+        // Flag-aware branch: the condition already lives in a hardware flag (C or Z).
+        // Use predicated jumps directly — no register test needed.
+        if (branch.ConditionFlag is not null)
+        {
+            // Determine predicates based on which flag and the branch sense.
+            // For Z-flag conditions: Z=1 after CMP means equal (true for Equals),
+            //   but for general bool conditions, true = non-zero, so Z=0 means true.
+            // For C-flag conditions: C=1 means the condition is true.
+            string truePredicate = branch.ConditionFlag.Value switch
+            {
+                MirFlag.C => "IF_C",
+                MirFlag.Z => "IF_NZ",
+                _ => "IF_NZ",
+            };
+            string falsePredicate = branch.ConditionFlag.Value switch
+            {
+                MirFlag.C => "IF_NC",
+                MirFlag.Z => "IF_Z",
+                _ => "IF_Z",
+            };
+
+            if (branch.TrueArguments.Count == 0 && branch.FalseArguments.Count == 0)
+            {
+                nodes.Add(Emit("JMP", new AsmSymbolOperand(falseLabel), predicate: falsePredicate));
+                nodes.Add(Emit("JMP", new AsmSymbolOperand(trueLabel)));
+            }
+            else
+            {
+                EmitPhiMovesConditioned(nodes, branch.FalseArguments, ctx, branch.FalseLabel, falsePredicate);
+                nodes.Add(Emit("JMP", new AsmSymbolOperand(falseLabel), predicate: falsePredicate));
+                EmitPhiMoves(nodes, branch.TrueArguments, ctx, branch.TrueLabel);
+                nodes.Add(Emit("JMP", new AsmSymbolOperand(trueLabel)));
+            }
+
+            return;
+        }
+
+        // Register-based branch: test the condition register.
+        AsmRegisterOperand cond = OpReg(branch.Condition);
 
         if (branch.TrueArguments.Count == 0 && branch.FalseArguments.Count == 0)
         {

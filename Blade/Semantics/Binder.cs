@@ -322,21 +322,32 @@ public sealed class Binder
                 parameters.Add(new ParameterSymbol(param.Name.Text, parameterType));
             }
 
-            List<TypeSymbol> returns = new();
+            List<ReturnSlot> returnSlots = new();
             if (function.Syntax.ReturnSpec is not null)
             {
                 foreach (ReturnItemSyntax returnItem in function.Syntax.ReturnSpec)
                 {
                     TypeSymbol returnType = BindType(returnItem.Type);
-                    returns.Add(returnType);
+                    ReturnPlacement placement = ReturnPlacement.Register;
+                    if (returnItem.FlagAnnotation is not null)
+                    {
+                        placement = returnItem.FlagAnnotation.Flag.Text.ToUpperInvariant() switch
+                        {
+                            "C" => ReturnPlacement.FlagC,
+                            "Z" => ReturnPlacement.FlagZ,
+                            _ => ReturnPlacement.Register,
+                        };
+                    }
+
+                    returnSlots.Add(new ReturnSlot(returnType, placement));
                 }
             }
 
-            if (returns.Count == 1 && returns[0].IsVoid)
-                returns.Clear();
+            if (returnSlots.Count == 1 && returnSlots[0].Type.IsVoid)
+                returnSlots.Clear();
 
             function.Parameters = parameters;
-            function.ReturnTypes = returns;
+            function.ReturnSlots = returnSlots;
         }
     }
 
@@ -428,12 +439,16 @@ public sealed class Binder
 
         // For asm fn, the "return" keyword is a valid binding name referencing the return value.
         // Add a synthetic variable so the validator accepts {return} references.
+        // For flag-only returns (e.g. -> bool@C), no {return} variable is needed because
+        // the return value lives in the flag, not in a register.
         VariableSymbol? returnSymbol = null;
-        if (function.ReturnTypes.Count > 0)
+        bool hasRegisterReturn = function.ReturnSlots.Any(s => s.Placement == ReturnPlacement.Register);
+        if (hasRegisterReturn)
         {
+            TypeSymbol firstRegisterType = function.ReturnSlots.First(s => s.Placement == ReturnPlacement.Register).Type;
             returnSymbol = new VariableSymbol(
                 "return",
-                function.ReturnTypes[0],
+                firstRegisterType,
                 isConst: false,
                 VariableStorageClass.Automatic,
                 VariableScopeKind.Local,
@@ -447,13 +462,12 @@ public sealed class Binder
             ? AsmVolatility.Volatile
             : AsmVolatility.NonVolatile;
 
-        // Determine flag output from return spec annotations (e.g. -> bool@C)
+        // Determine flag output from return spec placement annotations.
         string? flagOutput = null;
-        if (asmSyntax.ReturnSpec is not null && asmSyntax.ReturnSpec.Count > 0)
+        ReturnSlot? firstFlagSlot = function.ReturnSlots.Cast<ReturnSlot?>().FirstOrDefault(s => s!.Value.IsFlagPlaced);
+        if (firstFlagSlot is not null)
         {
-            ReturnItemSyntax firstReturn = asmSyntax.ReturnSpec[0];
-            if (firstReturn.FlagAnnotation is not null)
-                flagOutput = $"@{firstReturn.FlagAnnotation.Flag.Text}";
+            flagOutput = firstFlagSlot.Value.Placement == ReturnPlacement.FlagC ? "@C" : "@Z";
         }
 
         Dictionary<string, Symbol> availableSymbols = CollectInlineAsmAvailableSymbols();
