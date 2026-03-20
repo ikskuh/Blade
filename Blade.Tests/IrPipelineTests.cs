@@ -1,3 +1,4 @@
+using System.Linq;
 using System.IO;
 using System.Text.RegularExpressions;
 using Blade;
@@ -1892,6 +1893,91 @@ public class IrPipelineTests
 
         Assert.That(diagnostics.Count, Is.GreaterThan(0));
         Assert.DoesNotThrow(() => IrPipeline.Build(program, new IrPipelineOptions()));
+    }
+
+    [Test]
+    public void ImportedModuleGlobals_AreAllocatedOnceAcrossRepeatedModuleCalls()
+    {
+        using TempDirectory temp = new();
+        temp.WriteFile("extmod.mod", """
+            reg var seed: u32 = 7;
+            seed = seed + 1;
+            """);
+        string sourcePath = temp.GetFullPath("main.blade");
+        string source = """
+            import extmod as ext;
+            ext();
+            ext();
+            var after: u32 = ext.seed;
+            """;
+
+        CompilationResult compilation = CompilerDriver.Compile(
+            source,
+            sourcePath,
+            new CompilationOptions
+            {
+                NamedModuleRoots = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["extmod"] = temp.GetFullPath("extmod.mod"),
+                },
+            });
+
+        Assert.That(compilation.Diagnostics, Is.Empty, string.Join(Environment.NewLine, compilation.Diagnostics));
+        Assert.That(compilation.IrBuildResult, Is.Not.Null);
+
+        IReadOnlyList<StoragePlace> storagePlaces = compilation.IrBuildResult!.AsmModule.StoragePlaces;
+        Assert.That(storagePlaces.Count(place => place.Symbol is VariableSymbol { Name: "seed" }), Is.EqualTo(1));
+    }
+
+    [Test]
+    public void TopLevelAutomaticVariables_DoNotAllocateStoragePlaces()
+    {
+        VariableSymbol symbol = new(
+            "local",
+            BuiltinTypes.U32,
+            isConst: false,
+            VariableStorageClass.Automatic,
+            VariableScopeKind.TopLevelAutomatic,
+            isExtern: false,
+            fixedAddress: null,
+            alignment: null);
+        BoundProgram program = new(
+            [],
+            [new BoundGlobalVariableMember(symbol, new BoundLiteralExpression(1u, new TextSpan(0, 0), BuiltinTypes.U32), new TextSpan(0, 0))],
+            [],
+            new Dictionary<string, TypeSymbol>(),
+            new Dictionary<string, FunctionSymbol>(),
+            new Dictionary<string, ImportedModule>());
+
+        MirModule mirModule = MirLowerer.Lower(program);
+
+        Assert.That(mirModule.StoragePlaces.Any(place => place.Symbol is VariableSymbol { Name: "local" }), Is.False);
+    }
+
+    [Test]
+    public void DuplicateFileImportAliases_ShareImportedGlobalStorage()
+    {
+        using TempDirectory temp = new();
+        temp.WriteFile("shared.mod", """
+            reg var seed: u32 = 7;
+            """);
+
+        string sourcePath = temp.GetFullPath("main.blade");
+        string source = """
+            import "./shared.mod" as a;
+            import "./shared.mod" as b;
+
+            var left: u32 = a.seed;
+            var right: u32 = b.seed;
+            """;
+
+        CompilationResult compilation = CompilerDriver.Compile(source, sourcePath, new CompilationOptions());
+
+        Assert.That(compilation.Diagnostics, Is.Empty, string.Join(Environment.NewLine, compilation.Diagnostics));
+        Assert.That(compilation.IrBuildResult, Is.Not.Null);
+
+        IReadOnlyList<StoragePlace> storagePlaces = compilation.IrBuildResult!.AsmModule.StoragePlaces;
+        Assert.That(storagePlaces.Count(place => place.Symbol is VariableSymbol { Name: "seed" }), Is.EqualTo(1));
     }
 
 }

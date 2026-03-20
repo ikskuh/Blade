@@ -615,7 +615,7 @@ public static class RegisterAllocator
 
         string rewritten = Regex.Replace(
             codeText,
-            @"\{(\w+)\}",
+            @"\{([A-Za-z0-9_$.]+)\}",
             match =>
             {
                 string name = match.Groups[1].Value;

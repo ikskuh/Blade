@@ -32,7 +32,18 @@ public sealed class ComptimeBinderHelperTests
         ConstructorInfo constructor = typeof(SemanticBinder)
             .GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic)
             .Single();
-        return (SemanticBinder)constructor.Invoke([diagnostics, new HashSet<string>(StringComparer.OrdinalIgnoreCase), 250]);
+        Type importedModuleDefinitionType = typeof(SemanticBinder).Assembly.GetType("Blade.Semantics.ImportedModuleDefinition", throwOnError: true)!;
+        object moduleDefinitionCache = Activator.CreateInstance(
+            typeof(Dictionary<,>).MakeGenericType(typeof(string), importedModuleDefinitionType),
+            StringComparer.OrdinalIgnoreCase)!;
+        return (SemanticBinder)constructor.Invoke(
+        [
+            diagnostics,
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+            moduleDefinitionCache,
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+            250,
+        ]);
     }
 
     private static MethodInfo GetBinderStaticMethod(string name, params Type[] parameterTypes)

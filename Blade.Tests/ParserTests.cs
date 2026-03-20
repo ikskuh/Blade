@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Reflection;
 using Blade.Diagnostics;
 using Blade.Source;
@@ -661,6 +662,19 @@ public class ParserTests
 
         VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
         Assert.That(decl.Type, Is.TypeOf<NamedTypeSyntax>());
+    }
+
+    [Test]
+    public void QualifiedType_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("var value: mod.TypeName = undefined;");
+        AssertNoDiagnostics(diag);
+
+        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
+        VariableDeclarationStatementSyntax declaration = (VariableDeclarationStatementSyntax)global.Statement;
+        Assert.That(declaration.Declaration.Type, Is.TypeOf<QualifiedTypeSyntax>());
+        QualifiedTypeSyntax qualified = (QualifiedTypeSyntax)declaration.Declaration.Type;
+        Assert.That(qualified.Parts.Select(part => part.Text), Is.EqualTo(["mod", "TypeName"]));
     }
 
     [Test]

@@ -831,6 +831,9 @@ import "./path/to/file.blade" as alias;
 // Top-level locals are created anew for each call; module globals persist.
 alias();
 
+// There's nothing that forbids callign a top-level module code twice:
+alias();
+
 // The compiler can also receive module definitions on the command line.
 // 
 // These modules are then imported through their identifier, and also allow potential renaming

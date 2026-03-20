@@ -67,6 +67,7 @@ public enum DiagnosticCode
     E0242_ComptimeUnsupportedConstruct = 242,
     E0243_ComptimeForbiddenSymbolAccess = 243,
     E0244_ComptimeFuelExhausted = 244,
+    E0245_DuplicateNamedModuleRoot = 245,
 
     // Inline assembly errors
     E0301_InlineAsmUnknownInstruction = 301,

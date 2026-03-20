@@ -118,6 +118,17 @@ The same for sequence:
 This means the sequence must be ADD, no MOV, then ADD again, which allows
 us testing better for compiler optimizations.
 
+This can even be optimized into a more general form:
+
+```blade
+// - A dash means at least once for CONTAINS and once for SEQUENCE
+// ! A bang menas never for CONTAINS and "not between this and the next positive item"
+// 1x A decimal + "x" means "exactly that many times" for SEQUENCE AND CONTAINS, while "0x" is an alias for "!"
+```
+
+This allows us to check potential loop unrolling, the exact number of things generated
+and so on.
+
 ## Bug: Address of array element
 
 `ptr = &ptr[1];` yields `E0223: Address-of requires an addressable variable or parameter.`

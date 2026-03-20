@@ -38,3 +38,46 @@ public sealed class ImportedModule
     public IReadOnlyDictionary<string, VariableSymbol> ExportedVariables { get; }
     public IReadOnlyDictionary<string, ImportedModule> ImportedModules { get; }
 }
+
+internal sealed class ImportedModuleDefinition
+{
+    public ImportedModuleDefinition(
+        string resolvedFilePath,
+        CompilationUnitSyntax syntax,
+        BoundProgram program,
+        IReadOnlyDictionary<string, FunctionSymbol> exportedFunctions,
+        IReadOnlyDictionary<string, TypeSymbol> exportedTypes,
+        IReadOnlyDictionary<string, VariableSymbol> exportedVariables,
+        IReadOnlyDictionary<string, ImportedModule> importedModules)
+    {
+        ResolvedFilePath = Requires.NotNull(resolvedFilePath);
+        Syntax = Requires.NotNull(syntax);
+        Program = Requires.NotNull(program);
+        ExportedFunctions = Requires.NotNull(exportedFunctions);
+        ExportedTypes = Requires.NotNull(exportedTypes);
+        ExportedVariables = Requires.NotNull(exportedVariables);
+        ImportedModules = Requires.NotNull(importedModules);
+    }
+
+    public string ResolvedFilePath { get; }
+    public CompilationUnitSyntax Syntax { get; }
+    public BoundProgram Program { get; }
+    public IReadOnlyDictionary<string, FunctionSymbol> ExportedFunctions { get; }
+    public IReadOnlyDictionary<string, TypeSymbol> ExportedTypes { get; }
+    public IReadOnlyDictionary<string, VariableSymbol> ExportedVariables { get; }
+    public IReadOnlyDictionary<string, ImportedModule> ImportedModules { get; }
+
+    public ImportedModule CreateImport(string sourceName, string alias)
+    {
+        return new ImportedModule(
+            sourceName,
+            ResolvedFilePath,
+            alias,
+            Syntax,
+            Program,
+            ExportedFunctions,
+            ExportedTypes,
+            ExportedVariables,
+            ImportedModules);
+    }
+}

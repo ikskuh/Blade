@@ -355,6 +355,14 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
             "Comptime evaluation ran out of fuel.");
     }
 
+    public void ReportDuplicateNamedModuleRoot(TextSpan span, string firstModuleName, string secondModuleName, string path)
+    {
+        Report(
+            DiagnosticCode.E0245_DuplicateNamedModuleRoot,
+            span,
+            $"Named modules '{firstModuleName}' and '{secondModuleName}' both resolve to '{path}'.");
+    }
+
     // Inline assembly diagnostics
 
     public void ReportInlineAsmUnknownInstruction(TextSpan span, string mnemonic)

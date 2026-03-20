@@ -1,0 +1,17 @@
+// EXPECT: pass
+// STAGE: final-asm
+// SEQUENCE:
+// - MOV _r1, g_seed
+// - ADD _r1, #1
+// - MOV g_seed, _r1
+// - MOV _r1, g_seed
+// - ADD _r1, #1
+// - MOV g_seed, _r1
+// - g_seed LONG 7
+// ARGS:
+// - --module=extmod=extmod.mod
+
+import extmod as ext;
+
+ext();
+ext();

@@ -699,6 +699,47 @@ public class BinderTests
     }
 
     [Test]
+    public void ImportedQualifiedType_BindsSuccessfully()
+    {
+        using TempDirectory temp = new();
+        temp.WriteFile("types.blade", """
+            type Mode = enum (u32) {
+                Off = 0,
+                On = 1,
+            };
+            """);
+        string sourcePath = temp.GetFullPath("main.blade");
+
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            import "./types.blade" as t;
+            var mode: t.Mode = .On;
+            """, sourcePath);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+        string dump = BoundTreeWriter.Write(program);
+        Assert.That(dump, Does.Contain("VarDecl mode: Mode"));
+        Assert.That(dump, Does.Contain("Literal<Mode> 1"));
+    }
+
+    [Test]
+    public void NamedModules_SharingSameRootFile_ReportDiagnostic()
+    {
+        using TempDirectory temp = new();
+        temp.WriteFile("ext.blade", "fn plus(a: u32, b: u32) -> u32 { return a + b; }");
+        string sourcePath = temp.GetFullPath("main.blade");
+        string modulePath = temp.GetFullPath("ext.blade");
+        Dictionary<string, string> namedModules = new(StringComparer.Ordinal)
+        {
+            ["ext_a"] = modulePath,
+            ["ext_b"] = modulePath,
+        };
+
+        (_, _, DiagnosticBag diagnostics) = Bind("import ext_a; import ext_b;", sourcePath, namedModules);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0245_DuplicateNamedModuleRoot), Is.True);
+    }
+
+    [Test]
     public void ModuleMemberAccess_UnknownMemberReportsDiagnostic()
     {
         using TempDirectory temp = new();
@@ -706,6 +747,17 @@ public class BinderTests
         string sourcePath = temp.GetFullPath("main.blade");
 
         (_, _, DiagnosticBag diagnostics) = Bind("""import "./math.blade" as math; var y: u32 = math.missing;""", sourcePath);
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0202_UndefinedName), Is.True);
+    }
+
+    [Test]
+    public void ModuleMemberAssignment_UnknownMemberReportsDiagnostic()
+    {
+        using TempDirectory temp = new();
+        temp.WriteFile("math.blade", "fn inc(x: u32) -> u32 { return x + 1; }");
+        string sourcePath = temp.GetFullPath("main.blade");
+
+        (_, _, DiagnosticBag diagnostics) = Bind("""import "./math.blade" as math; math.missing = 1;""", sourcePath);
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0202_UndefinedName), Is.True);
     }
 
@@ -718,6 +770,16 @@ public class BinderTests
 
         (_, _, DiagnosticBag diagnostics) = Bind("""import "./math.blade" as math; math(1);""", sourcePath);
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0207_ArgumentCountMismatch), Is.True);
+    }
+
+    [Test]
+    public void LogicalOperators_WithNonBoolOperandsReportTypeMismatch()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            var value: bool = 1 and 2;
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
     }
 
     [Test]

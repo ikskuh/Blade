@@ -24,6 +24,7 @@ public class SyntaxNodeConstructionTests
         EnumTypeSyntax enumType = new(Tok(TokenKind.EnumKeyword, 0, 4, "enum"), Tok(TokenKind.OpenParen, 5, 1, "("), backing, Tok(TokenKind.CloseParen, 9, 1, ")"), Tok(TokenKind.OpenBrace, 11, 1, "{"), enumMembers, Tok(TokenKind.CloseBrace, 41, 1, "}"));
         BitfieldTypeSyntax bitfieldType = new(Tok(TokenKind.BitfieldKeyword, 0, 8, "bitfield"), Tok(TokenKind.OpenParen, 8, 1, "("), backing, Tok(TokenKind.CloseParen, 12, 1, ")"), Tok(TokenKind.OpenBrace, 14, 1, "{"), structFields, Tok(TokenKind.CloseBrace, 42, 1, "}"));
         MultiPointerTypeSyntax multiPointer = new(Tok(TokenKind.OpenBracket, 0, 1, "["), Tok(TokenKind.Star, 1, 1, "*"), Tok(TokenKind.CloseBracket, 2, 1, "]"), Tok(TokenKind.RegKeyword, 3, 3, "reg"), null, null, null, backing);
+        QualifiedTypeSyntax qualified = new([Tok(TokenKind.Identifier, 50, 3, "mod"), Tok(TokenKind.Identifier, 54, 4, "Type")]);
 
         Assert.That(unionType.UnionKeyword.Kind, Is.EqualTo(TokenKind.UnionKeyword));
         Assert.That(unionType.OpenBrace.Kind, Is.EqualTo(TokenKind.OpenBrace));
@@ -54,6 +55,10 @@ public class SyntaxNodeConstructionTests
         Assert.That(multiPointer.VolatileKeyword, Is.Null);
         Assert.That(multiPointer.AlignClause, Is.Null);
         Assert.That(multiPointer.PointeeType, Is.SameAs(backing));
+
+        Assert.That(qualified.Parts.Count, Is.EqualTo(2));
+        Assert.That(qualified.Parts[0].Text, Is.EqualTo("mod"));
+        Assert.That(qualified.Parts[1].Text, Is.EqualTo("Type"));
     }
 
     [Test]

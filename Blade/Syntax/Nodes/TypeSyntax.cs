@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Blade;
 using Blade.Source;
 
@@ -201,4 +202,15 @@ public sealed class NamedTypeSyntax : TypeSyntax
     {
         Name = name;
     }
+}
+
+public sealed class QualifiedTypeSyntax : TypeSyntax
+{
+    public QualifiedTypeSyntax(IReadOnlyList<Token> parts)
+        : base(TextSpan.FromBounds(Requires.NotNull(parts)[0].Span.Start, parts[^1].Span.End))
+    {
+        Parts = parts;
+    }
+
+    public IReadOnlyList<Token> Parts { get; }
 }

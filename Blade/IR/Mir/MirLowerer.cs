@@ -51,13 +51,31 @@ public static class MirLowerer
     {
         List<StoragePlace> places = new(program.GlobalVariables.Count);
         HashSet<int> seenSymbolIds = [];
-        foreach (BoundGlobalVariableMember global in program.GlobalVariables)
+        HashSet<string> visitedModules = new(StringComparer.OrdinalIgnoreCase);
+        CollectStoragePlaces(program.GlobalVariables, places, seenSymbolIds);
+        foreach (ImportedModule importedModule in program.ImportedModules.Values)
+            CollectStoragePlaces(importedModule, places, seenSymbolIds, visitedModules);
+
+        foreach (Symbol symbol in CollectAddressTakenSymbols(program))
         {
-            VariableSymbol symbol = global.Symbol;
-            if (!symbol.IsGlobalStorage)
+            if (!seenSymbolIds.Add(symbol.Id))
                 continue;
 
-            if (symbol.StorageClass == VariableStorageClass.Automatic)
+            places.Add(new StoragePlace(symbol, StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, staticInitializer: null));
+        }
+
+        return places;
+    }
+
+    private static void CollectStoragePlaces(
+        IReadOnlyList<BoundGlobalVariableMember> globals,
+        ICollection<StoragePlace> places,
+        ISet<int> seenSymbolIds)
+    {
+        foreach (BoundGlobalVariableMember global in globals)
+        {
+            VariableSymbol symbol = global.Symbol;
+            if (!symbol.IsGlobalStorage || symbol.StorageClass == VariableStorageClass.Automatic || !seenSymbolIds.Add(symbol.Id))
                 continue;
 
             StoragePlaceKind kind = MapStoragePlaceKind(symbol);
@@ -73,18 +91,21 @@ public static class MirLowerer
             }
 
             places.Add(new StoragePlace(symbol, kind, symbol.FixedAddress, staticInitializer));
-            seenSymbolIds.Add(symbol.Id);
         }
+    }
 
-        foreach (Symbol symbol in CollectAddressTakenSymbols(program))
-        {
-            if (!seenSymbolIds.Add(symbol.Id))
-                continue;
+    private static void CollectStoragePlaces(
+        ImportedModule module,
+        ICollection<StoragePlace> places,
+        ISet<int> seenSymbolIds,
+        ISet<string> visitedModules)
+    {
+        if (!visitedModules.Add(module.ResolvedFilePath))
+            return;
 
-            places.Add(new StoragePlace(symbol, StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, staticInitializer: null));
-        }
-
-        return places;
+        CollectStoragePlaces(module.Program.GlobalVariables, places, seenSymbolIds);
+        foreach (ImportedModule nestedModule in module.ImportedModules.Values)
+            CollectStoragePlaces(nestedModule, places, seenSymbolIds, visitedModules);
     }
 
     private static StoragePlaceKind MapStoragePlaceKind(VariableSymbol symbol)

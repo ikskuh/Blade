@@ -746,7 +746,18 @@ public sealed class Parser
 
             // Named type (user-defined)
             case TokenKind.Identifier:
-                return new NamedTypeSyntax(NextToken());
+            {
+                List<Token> parts = [NextToken()];
+                while (Current.Kind == TokenKind.Dot && Peek(1).Kind == TokenKind.Identifier)
+                {
+                    _ = NextToken();
+                    parts.Add(NextToken());
+                }
+
+                return parts.Count == 1
+                    ? new NamedTypeSyntax(parts[0])
+                    : new QualifiedTypeSyntax(parts);
+            }
 
             default:
                 _diagnostics.ReportExpectedTypeName(Current.Span);
