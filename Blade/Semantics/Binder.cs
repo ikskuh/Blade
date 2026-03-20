@@ -2398,22 +2398,6 @@ public sealed class Binder
         return sourceType is PointerLikeTypeSymbol && targetType is PointerLikeTypeSymbol;
     }
 
-    private Symbol? ResolveVariableSymbol(Token token)
-    {
-        if (!_currentScope.TryLookup(token.Text, out Symbol? symbol) || symbol is null)
-        {
-            _diagnostics.ReportUndefinedName(token.Span, token.Text);
-            return null;
-        }
-
-        return symbol switch
-        {
-            VariableSymbol variable => variable,
-            ParameterSymbol parameter => parameter,
-            _ => null,
-        };
-    }
-
     private VariableSymbol CreateVariableSymbol(
         VariableDeclarationSyntax declaration,
         TypeSymbol variableType,
