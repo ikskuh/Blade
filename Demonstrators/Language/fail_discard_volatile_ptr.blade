@@ -1,0 +1,10 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - L9, E0205
+// - L10, E0205
+
+var vptr_one: *hub volatile u32 = undefined;
+var vptr_arr: [*]hub volatile u32 = undefined;
+
+var nvptr_one: *hub u32 = vptr_one;
+var nvptr_arr: [*]hub u32 = vptr_arr;

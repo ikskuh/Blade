@@ -2547,7 +2547,7 @@ public sealed class Binder
             BitfieldTypeSyntax bitfieldType => BindBitfieldType(bitfieldType, aliasName),
             NamedTypeSyntax named => BindNamedType(named),
             QualifiedTypeSyntax qualified => BindQualifiedType(qualified),
-            _ => BuiltinTypes.Unknown,
+            _ => BuiltinTypes.Unknown, // blade:no-codecov
         };
     }
 

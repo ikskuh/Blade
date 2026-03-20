@@ -7,24 +7,6 @@ It targets COG execution mode on the Parallax Propeller 2 microcontroller. Think
 PDP-11" — a high-level assembler with Zig/Rust-inspired syntax where every construct maps to
 1–3 PASM2 instructions. See `Docs/reference.blade` for the full language spec.
 
-## Project Structure
-
-```
-Blade/                          # Main compiler project (C#)
-Blade.Tests/                    # Unit tests (NUnit)
-Docs/                           # Reference documentation
-  Docs/reference.blade          # Language specification
-  Propeller 2 Documentation v35 - Rev B_C Silicon.pdf
-  Propeller-2-Hardware-Manual-20221101.pdf
-  Propeller2-P2X8C4M64P-Datasheet-20221101.pdf
-  Parallax Propeller 2 Instructions v35 - Rev B_C Silicon.csv
-  propeller2-instructions.xlsx  # Preprocessed instruction workbook (source for generated metadata)
-Scripts/
-  extract.py                    # Generates Blade/P2InstructionMetadata.g.cs from the workbook
-Blade/
-  P2InstructionMetadata.g.cs    # Generated singular source of truth for instruction metadata
-```
-
 ## Host Environment
 
 The following tools are available on the host:
@@ -196,7 +178,7 @@ lexer token sequences, parser AST shapes, semantic checks, codegen output.
 
 Run with:
 ```sh
-dotnet test
+just test
 ```
 
 When a unit test needs filesystem access, use `Blade.Tests/TempDirectory` instead of hand-rolled `Path.GetTempPath()` / manual cleanup logic.
@@ -223,21 +205,6 @@ The repo has a `justfile` with a few convenience commands:
 - `just compile-sample <path>` runs `Blade/bin/Debug/net10.0/blade --dump-all`
   for one sample path and writes the dump beside the source file.
 
-## P2 Architecture Quick Reference
-
-Key facts for compiler developers (see docs for full details):
-
-- **COG exec**: code + data share 512 × 32-bit Register RAM ($000–$1FF)
-- **Usable registers**: $000–$1EF (496 general purpose)
-- **Special registers**: $1F0–$1F7 (dual-purpose: IJMP/IRET/PA/PB), $1F8–$1FF (PTRA/PTRB/DIR/OUT/IN)
-- **Hardware stack**: 8 levels deep, stores {C, Z, PC}
-- **All functions ≤ 511 instructions** (architectural limit in COG/LUT exec)
-- **Instruction CSV**: `Docs/Parallax Propeller 2 Instructions v35 - Rev B_C Silicon.csv`
-  has the full ISA with encodings, cycle counts, and flag effects
-- **Instruction metadata source of truth**: `Blade/P2InstructionMetadata.g.cs` is generated from
-  `Docs/propeller2-instructions.xlsx` by `Scripts/extract.py`. Do not hand-edit generated
-  instruction metadata. Regenerate it instead.
-
 ## Generated Instruction Metadata
 
 - All instruction-related metadata queries must go through `Blade/P2InstructionMetadata.g.cs`.
@@ -249,30 +216,3 @@ Key facts for compiler developers (see docs for full details):
 - `Scripts/extract.py` records the generation timestamp and command line in the generated file
   header. If the workbook changes, rerun the generator and review the resulting diff.
 
-## Calling Convention Tiering (Compiler Must Implement)
-
-The compiler analyzes the static call graph and auto-assigns:
-
-| Shape                        | Mechanism     | Key constraint                          |
-|------------------------------|---------------|-----------------------------------------|
-| Calls nothing (leaf)         | CALLPA + RET  | Param in PA, result in PA               |
-| Calls only CALLPA-leaves     | CALLPB + RET  | Param in PB; child leaves use PA freely |
-| Calls non-leaves             | CALL + RET    | Params in global registers              |
-| Recursive (explicit)         | CALLB + RETB  | Hub stack via PTRB                      |
-| Coroutine (explicit)         | CALLD + CALLD | Continuation register per coro          |
-| Interrupt (hardware-entered) | IJMPn/RETIn   | Not callable from code                  |
-
-Functions not in the same call graph share parameter registers. Single-call
-functions are always inlined. Tail calls emit JMP instead of CALL.
-
-## Key Design Decisions to Remember
-
-- `rec fn` uses PTRB (not PTRA) — PTRA is free for user hub pointer ops.
-- `intN fn` are **not callable** — hardware-entered only.
-- `intN fn` with `yield`: on return, write entry address to IRETn (constant, no save needed).
-- REP + branch = **undefined behavior** on final silicon. REP + conditional execution (IF_xx) is fine.
-- `noirq { }` = REP with count 1 (interrupt shielding, no repeat).
-- RET supports WC, WZ, WCZ independently — functions can preserve/clobber flags selectively.
-- Bool returns via C/Z flags — the 34-bit return channel (u32 + bool@C + bool@Z).
-- BITx with WCZ = test-and-set in one instruction (read original bit, then modify).
-- Top-level code is the entry point — no implicit `main()`.

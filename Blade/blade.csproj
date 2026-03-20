@@ -12,4 +12,17 @@
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
   </PropertyGroup>
 
+
+  <PropertyGroup>
+    <!-- 
+      Configure the compiler for more exhaustive handling of enums to ease code coverage:
+      CS8120: The switch case is unreachable. It has already been handled by a previous case or it is impossible to match.
+      CS8509: The switch expression does not handle all possible values of its input type (it is not exhaustive). For example, the pattern '...' is not covered.
+      CS8510: The pattern is unreachable. It has already been handled by a previous arm of the switch expression or it is impossible to match.
+      CS8518: An expression of type can never match the provided pattern.
+      CS8519: The given expression never matches the provided pattern.
+    -->
+    <WarningsAsErrors>CS8120;CS8509;CS8510;CS8518;CS8519</WarningsAsErrors>
+  </PropertyGroup>
+
 </Project>
