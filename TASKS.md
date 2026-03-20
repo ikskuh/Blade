@@ -1,21 +1,5 @@
 # Difference between Implementation and Docs/reference.blade
 
-## CS-12: Non-packed structs
-
-The parser now accepts `struct { ... }` without `packed`.
-The binder's `ResolveType` for `StructTypeSyntax` likely requires `packed`.
-
-- Allow non-packed structs: fields are padded to their natural alignment.
-  Compute field offsets with alignment padding.
-- `packed struct`: fields are laid out without padding (existing behavior).
-- Both produce `StructTypeSymbol`; add `IsPacked` flag.
-- Impact on codegen: non-packed struct field access must account for padding
-  in offset calculations.
-- Tests: `type P = struct { x: u8, y: u32 }` — `y` at offset 4 (aligned),
-  vs `type Q = packed struct { x: u8, y: u32 }` — `y` at offset 1.
-
----
-
 ## CS-13: `u8x4` SIMD type
 
 `reference.blade` shows `var v: u8x4 = [1,2,3,4];`.
@@ -25,14 +9,6 @@ The binder's `ResolveType` for `StructTypeSyntax` likely requires `packed`.
 - Integer literal → `u8x4` only through array literal `[a,b,c,d]`.
 - Future: swizzle operations (deferred, not in reference.blade).
 - Tests: `var v: u8x4 = [1,2,3,4];`, coerce from/to `[4]u8`.
-
----
-
-## CS-16: Implicit return type `void`
-
-`reference.blade` shows `fn empty_call() { }` — no `-> void` in the signature.
-If the parser already allows omitting `-> returnType` and the binder treats
-missing return specs as void, this is done. Verify and add a test if missing.
 
 ---
 
