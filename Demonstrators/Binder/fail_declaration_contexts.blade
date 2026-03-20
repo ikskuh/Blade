@@ -1,0 +1,23 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0201, E0215, E0216, E0217
+// NOTE:
+//   Covers duplicate declarations plus invalid local storage/extern usage.
+
+type Pair = struct {
+    value: u32,
+};
+
+type Pair = struct {
+    other: u32,
+};
+
+reg var sink: u32 = 0;
+reg var sink: u32 = 1;
+
+fn bad(reg value: u32, value: u32) {
+    extern var local_extern: u32 = 0;
+    hub var local_storage: u32 = 0;
+
+    var dup: u32 = 1;
+    var dup: u32 = 2;
+}

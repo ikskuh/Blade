@@ -1,0 +1,11 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0205, E0224, E0225
+// NOTE:
+//   Covers generic-width and array-size type checks plus invalid bitcast forms.
+
+reg var width_u: uint(false) = 0;
+reg var width_i: int(false) = 0;
+reg var sized: [false]u32 = undefined;
+
+reg var bad_bitcast_type: u32 = bitcast(u32, false);
+reg var bad_bitcast_size: u16 = bitcast(u16, 1 as u32);

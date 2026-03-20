@@ -1,0 +1,10 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0205
+// NOTE:
+//   Covers the remaining if-expression and standalone range-expression type checks.
+
+fn demo(flag: bool, ptr: *reg u32) {
+    var chosen: *reg u32 = if (flag) undefined else ptr;
+    var mismatch: u32 = if (flag) 1 else false;
+    false..true;
+}

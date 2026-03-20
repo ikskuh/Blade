@@ -1,0 +1,28 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0106, E0202, E0204, E0205, E0223, E0226
+// NOTE:
+//   Covers invalid assignment targets, recursive address-of checks, and pointer-family errors.
+
+reg const limit: u32 = 1;
+
+fn demo() {
+}
+
+fn pointer_cases(ptr: *reg u32, many: [*]reg u32, values: [2]u32) {
+    &(1 + 2);
+    &missing;
+
+    ptr[0] = 1;
+    values[false] = 2;
+    many.*;
+}
+
+rec fn recursive_local(value: u32) {
+    var local: u32 = value;
+    var p_local: *reg u32 = &local;
+    var p_param: *reg u32 = &value;
+}
+
+limit = 2;
+demo = 1;
+1 = 2;

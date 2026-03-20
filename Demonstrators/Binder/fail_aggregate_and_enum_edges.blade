@@ -1,0 +1,37 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0201, E0202, E0205, E0224, E0225, E0232, E0233
+// NOTE:
+//   Covers aggregate duplicate members, enum edge cases, invalid casts, and bitcast size checks.
+
+type Pair = struct {
+    left: u32,
+    left: u16,
+};
+
+type Header = union {
+    lo: u32,
+    lo: u16,
+};
+
+type Flags = bitfield (u8) {
+    wide: u16,
+    nested: void,
+    nested: nib,
+};
+
+type Mode = enum (bool) {
+    Idle = 0,
+    Busy = 1,
+    Busy,
+};
+
+type ClosedState = enum (u8) {
+    Idle = 0,
+};
+
+reg var raw: u32 = 1;
+reg var narrowed: u16 = bitcast(u16, raw);
+reg var cast_bad: u8 = false as u8;
+reg var bare: u32 = .Idle;
+reg var qualified_missing: ClosedState = ClosedState.Missing;
+reg var contextual_missing: ClosedState = .Missing;

@@ -1,0 +1,12 @@
+// EXPECT: xfail
+// NOTE:
+//   Struct literals are defined in Docs/reference.blade, but final lowering
+//   currently reports E0401_UnsupportedLowering for opcode 'structlit'.
+
+type Pair = struct {
+    value: u32,
+};
+
+reg var pair: Pair = Pair {
+    .value = 1,
+};

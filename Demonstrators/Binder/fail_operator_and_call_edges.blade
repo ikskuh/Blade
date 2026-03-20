@@ -1,0 +1,36 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0205, E0206, E0207, E0212
+// NOTE:
+//   Covers unary/binary type errors, not-callable expressions, and call-shape edge cases.
+
+type Pair = struct {
+    value: u32,
+};
+
+fn pair_sum(x: u32, y: u32) -> u32 {
+    return x + y;
+}
+
+fn multi() -> u32, bool {
+    return 1, false;
+}
+
+fn demo(flag: bool, values: [2]u32, pair: Pair) {
+    !1;
+    -flag;
+    ~flag;
+    +flag;
+    flag++;
+    pair == values[0];
+    1 && 2;
+    values[false];
+}
+
+var extra_positional: u32 = pair_sum(1, 2, 3, y=4);
+var too_many_args: u32 = pair_sum(1, 2, 3);
+var not_callable: u32 = 1();
+var multi_value: u32 = multi();
+
+fn too_many_returns() -> u32 {
+    return 1, 2;
+}

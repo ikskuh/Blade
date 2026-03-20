@@ -1,0 +1,42 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0201, E0202, E0205, E0304
+// NOTE:
+//   Covers statement-shape binder branches that were still missing from demonstrators.
+
+import "../Modules/types.blade" as types;
+
+type Pair = struct {
+    value: u32,
+};
+
+type Flags = bitfield (u32) {
+    low: nib,
+};
+
+reg var pair: Pair = undefined;
+reg var flags: Flags = undefined;
+
+{
+}
+
+rep loop (false) {
+}
+
+rep for(false..true) {
+}
+
+for(false) -> item {
+}
+
+missing = 1;
+types = 1;
+
+pair.missing = 1;
+flags.missing = 1;
+
+fn asm_demo() {
+    var state: bool = false;
+    asm {
+        MOV {state}, {state}
+    } -> state: bool@X;
+}

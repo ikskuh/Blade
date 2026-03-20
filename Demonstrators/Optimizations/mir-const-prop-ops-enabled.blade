@@ -1,0 +1,57 @@
+// EXPECT: pass
+// STAGE: mir
+// FLEXSPIN: forbidden
+// ARGS:
+// - -fno-mir-opt=*
+// - -fmir-opt=const-prop
+// NOTE:
+//   Exercises MIR constant propagation across unary, integer-binary, comparison,
+//   and boolean operators using runtime symbols initialized from constants.
+
+reg var sink_u: u32 = 0;
+reg var sink_b: bool = false;
+
+noinline fn demo() {
+    var zero: u32 = 0;
+    var one: u32 = 1;
+    var two: u32 = 2;
+    var seven: u32 = 7;
+    var eight: u32 = 8;
+    var signed_one: i32 = 1;
+    var truthy: bool = true;
+    var falsy: bool = false;
+
+    var add: u32 = one + two;
+    var sub: u32 = two - one;
+    var mul: u32 = two * two;
+    var div: u32 = eight / two;
+    var mod: u32 = seven % two;
+    var band: u32 = seven & two;
+    var bor: u32 = one | two;
+    var bxor: u32 = seven ^ two;
+    var shl: u32 = one << two;
+    var shr: u32 = eight >> one;
+    var ashl: u32 = one <<< two;
+    var ashr: u32 = eight >>> one;
+    var rotl: u32 = one <%< two;
+    var rotr: u32 = eight >%> one;
+
+    var neg: i32 = -signed_one;
+    var bitnot: u32 = ~zero;
+    var plus: u32 = +two;
+    var not_falsy: bool = !falsy;
+
+    var eq: bool = one == one;
+    var ne: bool = one != two;
+    var lt: bool = one < two;
+    var le: bool = one <= two;
+    var gt: bool = two > one;
+    var ge: bool = two >= one;
+    var land: bool = truthy and falsy;
+    var lor: bool = truthy or falsy;
+
+    sink_u = add + sub + mul + div + mod + band + bor + bxor + shl + shr + ashl + ashr + rotl + rotr + plus + (neg as u32) + bitnot;
+    sink_b = eq or ne or lt or le or gt or ge or land or lor or not_falsy;
+}
+
+demo();

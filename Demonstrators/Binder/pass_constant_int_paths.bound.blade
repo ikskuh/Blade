@@ -1,0 +1,30 @@
+// EXPECT: pass
+// STAGE: bound
+// FLEXSPIN: forbidden
+// NOTE:
+//   Exercises constant-int evaluation through at-clauses, align-clauses, casts, bitcasts,
+//   unary operators, and the binary arithmetic/bitwise family.
+
+extern reg var A0: u32 @(1);
+extern reg var A1: u32 @((+3) as u8);
+extern reg var A2: u32 @((~0) as u8);
+extern reg var A3: u32 @((-1) as u8);
+extern reg var A4: u32 @(bitcast(u8, 5 as u8));
+
+reg var width_u: uint(5) = 0;
+reg var width_i: int(5) = 0;
+
+reg var p_add: *reg align(1 + 2) u32 = undefined;
+reg var p_sub: *reg align(9 - 1) u32 = undefined;
+reg var p_mul: *reg align(2 * 3) u32 = undefined;
+reg var p_div: *reg align(8 / 2) u32 = undefined;
+reg var p_mod: *reg align(9 % 4) u32 = undefined;
+reg var p_and: *reg align(6 & 7) u32 = undefined;
+reg var p_or: *reg align(1 | 2) u32 = undefined;
+reg var p_xor: *reg align(7 ^ 3) u32 = undefined;
+reg var p_shl: *reg align(1 << 2) u32 = undefined;
+reg var p_shr: *reg align(8 >> 1) u32 = undefined;
+reg var p_ashl: *reg align(1 <<< 2) u32 = undefined;
+reg var p_ashr: *reg align(8 >>> 1) u32 = undefined;
+reg var p_rotl: *reg align(1 <%< 2) u32 = undefined;
+reg var p_rotr: *reg align(8 >%> 1) u32 = undefined;
