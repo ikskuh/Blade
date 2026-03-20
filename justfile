@@ -25,11 +25,21 @@ coverage:
 
     @python3 Scripts/codecov-report.py coverage/coverage.cobertura.xml
 
+coverage-regressions:
+    rm -rf coverage
+    dotnet test \
+        --collect:"XPlat Code Coverage;Format=cobertura;Include=[blade]*;Exclude=[Blade.Regressions]*" \
+        --results-directory coverage \
+        --filter "FullyQualifiedName=Blade.Tests.RegressionHarnessTests.FullRegressionSuite_Passes"
+    cp coverage/*/coverage.cobertura.xml coverage/coverage.cobertura.xml
+
+    @python3 Scripts/codecov-report.py coverage/coverage.cobertura.xml
+
 coverage-report: coverage
     {{reportgenerator}} \
         -reports:"coverage/coverage.cobertura.xml" \
         -targetdir:"coverage/results" \
-        -reporttypes:Html 
+        "-reporttypes:Html;TextSummary;CsvSummary"
 
 regressions:
     dotnet run --project Blade.Regressions --

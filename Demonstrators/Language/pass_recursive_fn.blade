@@ -1,0 +1,22 @@
+// EXPECT: xfail
+// STAGE: final-asm
+// CONTAINS:
+// - CALLA
+// - RETA
+// NOTE:
+//   Exercises recursive function (rec fn) calling convention with
+//   hub-based stack via PTRB. Currently xfail because rec fn emits
+//   CALL/RET instead of CALLA/RETA.
+
+extern reg var OUTA: u32 @(0x1FC);
+
+rec fn factorial(n: u32) -> u32 {
+    if (n < 2) {
+        return 1;
+    } else {
+        return n * factorial(n - 1);
+    }
+}
+
+reg var n: u32 = 5;
+OUTA = factorial(n);

@@ -1,0 +1,32 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - VarDecl sum_result: u32
+// - Literal<u32> 10
+// - VarDecl count_result: u32
+// - Literal<u32> 5
+// NOT_CONTAINS:
+// - Call<u32> ct_rep_for
+// - Call<u32> ct_rep_for_no_index
+// NOTE:
+//   Exercises rep for loop (with and without index) in comptime evaluation.
+
+comptime fn ct_rep_for(n: u32) -> u32 {
+    var sum: u32 = 0;
+    rep for(n) -> i {
+        sum = sum + i;
+    }
+    return sum;
+}
+
+comptime fn ct_rep_for_no_index(n: u32) -> u32 {
+    var count: u32 = 0;
+    rep for(n) {
+        count = count + 1;
+    }
+    return count;
+}
+
+// 0+1+2+3+4 = 10
+var sum_result: u32 = ct_rep_for(5);
+var count_result: u32 = ct_rep_for_no_index(5);

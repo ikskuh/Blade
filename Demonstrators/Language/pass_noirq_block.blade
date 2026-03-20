@@ -1,0 +1,17 @@
+// EXPECT: xfail
+// NOTE:
+//   Exercises noirq block lowering to REP #1.
+//   Currently xfail because noirq codegen is not fully implemented.
+
+extern reg var OUTA: u32 @(0x1FC);
+
+noinline fn atomic_update(value: u32) -> u32 {
+    var result: u32 = value;
+    noirq {
+        result = result + 1;
+    }
+    return result;
+}
+
+reg var v: u32 = 10;
+OUTA = atomic_update(v);

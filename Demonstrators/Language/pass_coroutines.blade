@@ -1,0 +1,24 @@
+// EXPECT: xfail
+// NOTE:
+//   Exercises coroutine (coro fn) and yieldto lowering. Currently xfail
+//   because yield/yieldto codegen is not yet fully implemented.
+
+extern reg var OUTA: u32 @(0x1FC);
+
+reg var shared: u32 = 0;
+
+coro fn producer() {
+    loop {
+        shared = shared + 1;
+        yieldto consumer();
+    }
+}
+
+coro fn consumer() {
+    loop {
+        OUTA = shared;
+        yieldto producer();
+    }
+}
+
+yieldto producer();

@@ -1,0 +1,23 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - VarDecl neg_result: i32
+// - VarDecl bitnot_result: u32
+// - VarDecl plus_result: u32
+// - Literal<u32> 42
+// NOT_CONTAINS:
+// - Call<i32> ct_neg
+// - Call<u32> ct_bitnot
+// - Call<u32> ct_plus
+// NOTE:
+//   Exercises unary operators (negation, bitwise not, unary plus)
+//   in comptime evaluation. Logical not is omitted because bool literals
+//   are null-valued in the token and can't be comptime-evaluated.
+
+comptime fn ct_neg(a: i32) -> i32 { return -a; }
+comptime fn ct_bitnot(a: u32) -> u32 { return ~a; }
+comptime fn ct_plus(a: u32) -> u32 { return +a; }
+
+var neg_result: i32 = ct_neg(42);
+var bitnot_result: u32 = ct_bitnot(0);
+var plus_result: u32 = ct_plus(42);

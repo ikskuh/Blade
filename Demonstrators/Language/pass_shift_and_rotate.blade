@@ -1,0 +1,26 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - SHL
+// - SHR
+// - SAR
+// - ROL
+// - ROR
+// NOTE:
+//   Exercises shift and rotate operators through full codegen pipeline.
+
+extern reg var OUTA: u32 @(0x1FC);
+
+noinline fn shifts(val: u32, amount: u32) -> u32 {
+    var a: u32 = val << amount;
+    var b: u32 = val >> amount;
+    var c: u32 = val <<< amount;
+    var d: u32 = val >>> amount;
+    var e: u32 = val <%< amount;
+    var f: u32 = val >%> amount;
+    return a + b + c + d + e + f;
+}
+
+reg var val: u32 = 0x8000_0001;
+reg var amount: u32 = 4;
+OUTA = shifts(val, amount);

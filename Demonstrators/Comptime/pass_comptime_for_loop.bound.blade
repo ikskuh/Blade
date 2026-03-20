@@ -1,0 +1,24 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - VarDecl result: u32
+// - Literal<u32> 15
+// NOT_CONTAINS:
+// - Call<u32> ct_for
+// NOTE:
+//   Exercises for-loop and expression-statement in comptime evaluation.
+
+comptime fn ct_noop() {
+    return;
+}
+
+comptime fn ct_for() -> u32 {
+    var sum: u32 = 0;
+    for(6) -> i {
+        sum = sum + i;
+    }
+    ct_noop();
+    return sum;
+}
+
+var result: u32 = ct_for();

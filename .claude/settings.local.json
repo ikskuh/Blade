@@ -12,7 +12,12 @@
       "Bash(Blade/bin/Debug/net10.0/blade:*)",
       "Bash(cat .artifacts:*)",
       "Bash(ls Demonstrators:*)",
-      "Bash(flexspin:*)"
+      "Bash(flexspin:*)",
+      "Bash(python Scripts/coverage_gaps.py:*)",
+      "Bash(python /home/felix/projects/nerdgruppe/blade/Scripts/coverage_range.py:*)",
+      "Bash(/home/felix/projects/nerdgruppe/blade/Blade/bin/Debug/net10.0/blade --dump-all /dev/stdin)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(python3 -c \":*)"
     ]
   }
 }

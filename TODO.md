@@ -237,3 +237,53 @@ if (mode_b == .Off) {
   // must work
 }
 ```
+
+## just coverage-report with delta information is super helpful for agents
+
+TextDeltaSummary
+
+https://reportgenerator.io/usage
+
+
+## compiler bugs 
+
+Found it! if without else inside a comptime function body triggers the bug. The binder likely
+lowers bare if differently when constant-folding for comptime - perhaps transforming it into a
+naked BoundBlockStatement when the then-branch evaluates to true. This is a compiler bug.
+
+
+## New rules on interrupt handlers + function pointers
+
+Interrupt handlers must be installed similar to this:
+
+```blade
+// Function pointer syntax:
+type Int3Handler = *int3 fn();
+
+// Extern variables for the handler locations:
+extern reg var IRET1: u32         @(0x1F5);
+extern reg var IJMP1: *int1 fn()  @(0x1F4);
+extern reg var IRET2: u32         @(0x1F3);
+extern reg var IJMP2: *int2 fn()  @(0x1F2);
+extern reg var IRET3: u32         @(0x1F1);
+extern reg var IJMP3: Int3Handler @(0x1F0);
+
+// Handler functions:
+int1 fn int1_fn() {}
+int2 fn int2_fn() {}
+int3 fn int3_fn() {}
+
+// Functions that are having a pointer taken must not be elided and are considered reachable,
+// otherwise they'd be eliminted by DCE and the pointers would go into emptyness.
+// Setup of the handlers must work like this:
+IJMP1 = &int1_fn;
+IJMP2 = &int2_fn;
+IJMP3 = &int3_fn;
+
+// Function pointers require explicit calling convention annotation:
+var reg fptr1: *fn(a: u32, b: u32) = undefined;
+var reg fptr2: *fn(a: u32, b: u32) -> u32 = undefined;
+
+fptr1(10, 20);
+var out: u32 = fptr2(10, 20);
+```

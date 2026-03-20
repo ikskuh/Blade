@@ -1,0 +1,33 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - VarDecl and_result: u32
+// - Literal<u32> 16
+// - VarDecl or_result: u32
+// - Literal<u32> 31
+// - VarDecl xor_result: u32
+// - Literal<u32> 15
+// - VarDecl shl_result: u32
+// - Literal<u32> 80
+// - VarDecl shr_result: u32
+// - Literal<u32> 5
+// NOT_CONTAINS:
+// - Call<u32> ct_and
+// - Call<u32> ct_or
+// - Call<u32> ct_xor
+// - Call<u32> ct_shl
+// - Call<u32> ct_shr
+// NOTE:
+//   Exercises all bitwise binary operators in comptime evaluation.
+
+comptime fn ct_and(a: u32, b: u32) -> u32 { return a & b; }
+comptime fn ct_or(a: u32, b: u32) -> u32 { return a | b; }
+comptime fn ct_xor(a: u32, b: u32) -> u32 { return a ^ b; }
+comptime fn ct_shl(a: u32, b: u32) -> u32 { return a << b; }
+comptime fn ct_shr(a: u32, b: u32) -> u32 { return a >> b; }
+
+var and_result: u32 = ct_and(0x1F, 0x10);
+var or_result: u32 = ct_or(0x0F, 0x10);
+var xor_result: u32 = ct_xor(0x1F, 0x10);
+var shl_result: u32 = ct_shl(10, 3);
+var shr_result: u32 = ct_shr(10, 1);

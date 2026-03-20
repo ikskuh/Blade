@@ -1,0 +1,15 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - VarDecl result: u32
+// - Literal<u32> 42
+// NOT_CONTAINS:
+// - Call<u32> ct_if_expr
+// NOTE:
+//   Exercises if-expressions in comptime evaluation.
+
+comptime fn ct_if_expr(cond: u32) -> u32 {
+    return if (cond > 0) 42 else 99;
+}
+
+var result: u32 = ct_if_expr(1);

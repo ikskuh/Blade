@@ -1,0 +1,26 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - VarDecl result: u32
+// - Literal<u32> 12
+// NOT_CONTAINS:
+// - Call<u32> ct_loop_break
+// NOTE:
+//   Exercises loop/break/continue and if/else in comptime evaluation.
+//   All ifs use else branches because bare if isn't supported in comptime.
+
+comptime fn ct_loop_break(limit: u32) -> u32 {
+    var sum: u32 = 0;
+    var i: u32 = 0;
+    while (i < limit) {
+        i = i + 1;
+        if (i == 3) {
+            sum = sum;
+        } else {
+            sum = sum + i;
+        }
+    }
+    return sum;
+}
+
+var result: u32 = ct_loop_break(5);
