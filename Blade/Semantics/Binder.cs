@@ -363,19 +363,9 @@ public sealed class Binder
 
     private BoundGlobalVariableMember BindGlobalVariable(VariableDeclarationSyntax variable)
     {
-        if (!_globalScope.TryLookup(variable.Name.Text, out Symbol? symbol) || symbol is not VariableSymbol variableSymbol)
-        {
-            VariableSymbol errorSymbol = new(
-                variable.Name.Text,
-                BuiltinTypes.Unknown,
-                isConst: false,
-                VariableStorageClass.Reg,
-                VariableScopeKind.GlobalStorage,
-                isExtern: false,
-                fixedAddress: null,
-                alignment: null);
-            return new BoundGlobalVariableMember(errorSymbol, initializer: null, variable.Span);
-        }
+        bool found = _globalScope.TryLookup(variable.Name.Text, out Symbol? symbol);
+        Debug.Assert(found && symbol is VariableSymbol, "DeclareTopLevelVariables must register every top-level variable before binding.");
+        VariableSymbol variableSymbol = (VariableSymbol)Requires.NotNull(symbol as VariableSymbol);
 
         ResolveLayoutMetadata(variable, variableSymbol);
 
@@ -1237,14 +1227,16 @@ public sealed class Binder
             return new BoundErrorExpression(nameExpression.Span);
         }
 
-        return symbol switch
-        {
-            VariableSymbol variable => new BoundSymbolExpression(symbol, nameExpression.Span, variable.Type),
-            ParameterSymbol parameter => new BoundSymbolExpression(symbol, nameExpression.Span, parameter.Type),
-            FunctionSymbol function => new BoundSymbolExpression(symbol, nameExpression.Span, new FunctionTypeSymbol(function)),
-            ModuleSymbol module => new BoundSymbolExpression(symbol, nameExpression.Span, new ModuleTypeSymbol(module)),
-            _ => new BoundErrorExpression(nameExpression.Span),
-        };
+        if (symbol is VariableSymbol variable)
+            return new BoundSymbolExpression(symbol, nameExpression.Span, variable.Type);
+        if (symbol is ParameterSymbol parameter)
+            return new BoundSymbolExpression(symbol, nameExpression.Span, parameter.Type);
+        if (symbol is FunctionSymbol function)
+            return new BoundSymbolExpression(symbol, nameExpression.Span, new FunctionTypeSymbol(function));
+
+        Debug.Assert(symbol is ModuleSymbol, "Name expressions should only resolve to variables, parameters, functions, or modules.");
+        ModuleSymbol module = (ModuleSymbol)Requires.NotNull(symbol as ModuleSymbol);
+        return new BoundSymbolExpression(module, nameExpression.Span, new ModuleTypeSymbol(module));
     }
 
     private BoundExpression BindUnaryExpression(UnaryExpressionSyntax unary)
@@ -1257,15 +1249,15 @@ public sealed class Binder
         }
 
         BoundUnaryOperator? op = BoundUnaryOperator.Bind(unary.Operator.Kind);
-        if (op is null)
-            return new BoundErrorExpression(unary.Span);
+        Debug.Assert(op is not null, "Parser should only produce unary operators that the binder understands.");
+        BoundUnaryOperator unaryOperator = Requires.NotNull(op);
 
-        switch (op.Kind)
+        switch (unaryOperator.Kind)
         {
             case BoundUnaryOperatorKind.LogicalNot:
             {
                 BoundExpression operand = BindExpression(unary.Operand, BuiltinTypes.Bool);
-                return new BoundUnaryExpression(op, operand, unary.Span, BuiltinTypes.Bool);
+                return new BoundUnaryExpression(unaryOperator, operand, unary.Span, BuiltinTypes.Bool);
             }
 
             case BoundUnaryOperatorKind.Negation:
@@ -1273,7 +1265,7 @@ public sealed class Binder
                 BoundExpression operand = BindExpression(unary.Operand);
                 if (!operand.Type.IsInteger)
                     _diagnostics.ReportTypeMismatch(unary.Operand.Span, "integer", operand.Type.Name);
-                return new BoundUnaryExpression(op, operand, unary.Span, operand.Type.IsInteger ? operand.Type : BuiltinTypes.Unknown);
+                return new BoundUnaryExpression(unaryOperator, operand, unary.Span, operand.Type.IsInteger ? operand.Type : BuiltinTypes.Unknown);
             }
 
             case BoundUnaryOperatorKind.BitwiseNot:
@@ -1281,7 +1273,7 @@ public sealed class Binder
                 BoundExpression operand = BindExpression(unary.Operand);
                 if (!operand.Type.IsInteger)
                     _diagnostics.ReportTypeMismatch(unary.Operand.Span, "integer", operand.Type.Name);
-                return new BoundUnaryExpression(op, operand, unary.Span, operand.Type.IsInteger ? operand.Type : BuiltinTypes.Unknown);
+                return new BoundUnaryExpression(unaryOperator, operand, unary.Span, operand.Type.IsInteger ? operand.Type : BuiltinTypes.Unknown);
             }
 
             case BoundUnaryOperatorKind.UnaryPlus:
@@ -1289,13 +1281,16 @@ public sealed class Binder
                 BoundExpression operand = BindExpression(unary.Operand);
                 if (!operand.Type.IsInteger)
                     _diagnostics.ReportTypeMismatch(unary.Operand.Span, "integer", operand.Type.Name);
-                return new BoundUnaryExpression(op, operand, unary.Span, operand.Type.IsInteger ? operand.Type : BuiltinTypes.Unknown);
+                return new BoundUnaryExpression(unaryOperator, operand, unary.Span, operand.Type.IsInteger ? operand.Type : BuiltinTypes.Unknown);
             }
 
             case BoundUnaryOperatorKind.AddressOf:
-                return BindAddressOfExpression(unary, op);
+                return BindAddressOfExpression(unary, unaryOperator);
         }
 
+        Debug.Assert(
+            unaryOperator.Kind is BoundUnaryOperatorKind.PostIncrement or BoundUnaryOperatorKind.PostDecrement,
+            "BindUnaryExpression should only see prefix unary operators.");
         return new BoundErrorExpression(unary.Span);
     }
 
@@ -1314,12 +1309,14 @@ public sealed class Binder
             return new BoundErrorExpression(unary.Span);
         }
 
-        return symbol switch
-        {
-            VariableSymbol variable => BindAddressOfVariable(unary, op, variable),
-            ParameterSymbol parameter => BindAddressOfParameter(unary, op, parameter),
-            _ => ReportInvalidAddressOfTarget(unary),
-        };
+        if (symbol is VariableSymbol variable)
+            return BindAddressOfVariable(unary, op, variable);
+        if (symbol is ParameterSymbol parameter)
+            return BindAddressOfParameter(unary, op, parameter);
+
+        Debug.Assert(false, "Address-of should only resolve to variables or parameters after lookup succeeds.");
+        _diagnostics.ReportInvalidAddressOfTarget(unary.Operand.Span);
+        return new BoundErrorExpression(unary.Span);
     }
 
     private BoundExpression BindAddressOfVariable(UnaryExpressionSyntax unary, BoundUnaryOperator op, VariableSymbol variable)
@@ -1355,12 +1352,6 @@ public sealed class Binder
         return new BoundUnaryExpression(op, operand, unary.Span, pointerType);
     }
 
-    private BoundExpression ReportInvalidAddressOfTarget(UnaryExpressionSyntax unary)
-    {
-        _diagnostics.ReportInvalidAddressOfTarget(unary.Operand.Span);
-        return new BoundErrorExpression(unary.Span);
-    }
-
     private BoundExpression BindPostfixUnaryExpression(PostfixUnaryExpressionSyntax postfixUnary)
     {
         BoundAssignmentTarget target = BindAssignmentTarget(postfixUnary.Operand);
@@ -1391,13 +1382,13 @@ public sealed class Binder
     private BoundExpression BindBinaryExpression(BinaryExpressionSyntax binary)
     {
         BoundBinaryOperator? op = BoundBinaryOperator.Bind(binary.Operator.Kind);
-        if (op is null)
-            return new BoundErrorExpression(binary.Span);
+        Debug.Assert(op is not null, "Parser should only produce binary operators that the binder understands.");
+        BoundBinaryOperator binaryOperator = Requires.NotNull(op);
 
         BoundExpression left = BindExpression(binary.Left);
         BoundExpression right = BindExpression(binary.Right);
 
-        if (op.IsComparison)
+        if (binaryOperator.IsComparison)
         {
             if (!IsComparable(left.Type, right.Type))
                 _diagnostics.ReportTypeMismatch(binary.Span, left.Type.Name, right.Type.Name);
@@ -1409,16 +1400,16 @@ public sealed class Binder
                 right = BindConversion(right, numericType, right.Span, reportMismatch: false);
             }
 
-            return new BoundBinaryExpression(left, op, right, binary.Span, BuiltinTypes.Bool);
+            return new BoundBinaryExpression(left, binaryOperator, right, binary.Span, BuiltinTypes.Bool);
         }
 
-        if (op.Kind is BoundBinaryOperatorKind.LogicalAnd or BoundBinaryOperatorKind.LogicalOr)
+        if (binaryOperator.Kind is BoundBinaryOperatorKind.LogicalAnd or BoundBinaryOperatorKind.LogicalOr)
         {
             if (!left.Type.IsBool || !right.Type.IsBool)
                 _diagnostics.ReportTypeMismatch(binary.Span, "bool", $"{left.Type.Name}, {right.Type.Name}");
             left = BindConversion(left, BuiltinTypes.Bool, left.Span, reportMismatch: false);
             right = BindConversion(right, BuiltinTypes.Bool, right.Span, reportMismatch: false);
-            return new BoundBinaryExpression(left, op, right, binary.Span, BuiltinTypes.Bool);
+            return new BoundBinaryExpression(left, binaryOperator, right, binary.Span, BuiltinTypes.Bool);
         }
 
         if (!left.Type.IsInteger || !right.Type.IsInteger)
@@ -1427,7 +1418,7 @@ public sealed class Binder
         TypeSymbol resultType = BestNumericType(left.Type, right.Type);
         left = BindConversion(left, resultType, left.Span, reportMismatch: false);
         right = BindConversion(right, resultType, right.Span, reportMismatch: false);
-        return new BoundBinaryExpression(left, op, right, binary.Span, resultType);
+        return new BoundBinaryExpression(left, binaryOperator, right, binary.Span, resultType);
     }
 
     private BoundExpression BindMemberAccessExpression(MemberAccessExpressionSyntax memberAccess)
@@ -1880,23 +1871,17 @@ public sealed class Binder
             return cached;
 
         BoundBlockStatement? body = ResolveFunctionBodyForComptime(function);
-        if (body is null)
-        {
-            ComptimeSupportResult missing = new(false, new ComptimeFailure(ComptimeFailureKind.NotEvaluable, new TextSpan(0, 0), $"function body for '{function.Name}' is unavailable during comptime evaluation."));
-            _comptimeSupportCache[function] = missing;
-            return missing;
-        }
+        Debug.Assert(body is not null, "Comptime support analysis should only run after body resolution succeeds.");
 
         ComptimeFunctionSupportAnalyzer analyzer = new();
-        ComptimeSupportResult analyzed = analyzer.Analyze(function, body);
+        ComptimeSupportResult analyzed = analyzer.Analyze(function, Requires.NotNull(body));
         _comptimeSupportCache[function] = analyzed;
         return analyzed;
     }
 
     private void ReportComptimeFailure(ComptimeFailure failure)
     {
-        if (failure.Kind == ComptimeFailureKind.None)
-            return;
+        Debug.Assert(failure.Kind != ComptimeFailureKind.None, "ReportComptimeFailure should only be called with an actual failure.");
 
         switch (failure.Kind)
         {
@@ -2138,12 +2123,9 @@ public sealed class Binder
             return new BoundErrorExpression(bitcastExpression.Span);
         }
 
-        if (!TypeFacts.TryGetScalarWidth(expression.Type, out int sourceWidth)
-            || !TypeFacts.TryGetScalarWidth(targetType, out int targetWidth))
-        {
-            _diagnostics.ReportInvalidExplicitCast(bitcastExpression.Span, expression.Type.Name, targetType.Name);
-            return new BoundErrorExpression(bitcastExpression.Span);
-        }
+        bool gotSourceWidth = TypeFacts.TryGetScalarWidth(expression.Type, out int sourceWidth);
+        bool gotTargetWidth = TypeFacts.TryGetScalarWidth(targetType, out int targetWidth);
+        Debug.Assert(gotSourceWidth && gotTargetWidth, "Scalar cast types must always report a scalar width.");
 
         if (sourceWidth != targetWidth)
         {
@@ -2745,9 +2727,7 @@ public sealed class Binder
 
     private TypeSymbol BindNamedType(NamedTypeSyntax namedType)
     {
-        if (BuiltinTypes.TryGet(namedType.Name.Text, out TypeSymbol builtin))
-            return builtin;
-
+        Debug.Assert(!BuiltinTypes.TryGet(namedType.Name.Text, out _), "Builtin type keywords should bind as PrimitiveTypeSyntax, not NamedTypeSyntax.");
         return ResolveTypeAlias(namedType.Name.Text, namedType.Name.Span);
     }
 
@@ -2836,8 +2816,6 @@ public sealed class Binder
         if (target.IsUnknown || source.IsUnknown)
             return true;
         if (source.IsUndefinedLiteral)
-            return true;
-        if (target is PointerLikeTypeSymbol && source.IsUndefinedLiteral)
             return true;
 
         if (target is EnumTypeSymbol targetEnum && source is EnumTypeSymbol sourceEnum)

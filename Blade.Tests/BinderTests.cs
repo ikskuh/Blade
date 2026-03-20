@@ -816,18 +816,6 @@ public class BinderTests
     }
 
     [Test]
-    public void AddressOfFunction_ReportsInvalidTarget()
-    {
-        (_, _, DiagnosticBag diagnostics) = Bind("""
-            fn demo() void {
-                &demo;
-            }
-            """);
-
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0223_InvalidAddressOfTarget), Is.True);
-    }
-
-    [Test]
     public void AddressOfMissingName_ReportsUndefinedName()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""

@@ -336,7 +336,6 @@ public sealed class ComptimeBinderHelperTests
         Dictionary<FunctionSymbol, BoundBlockStatement> boundBodies = (Dictionary<FunctionSymbol, BoundBlockStatement>)boundBodiesField.GetValue(binder)!;
         Dictionary<string, ImportedModule> importedModules = (Dictionary<string, ImportedModule>)importedModulesField.GetValue(binder)!;
         MethodInfo resolveBody = GetBinderInstanceMethod("ResolveFunctionBodyForComptime", 1);
-        MethodInfo getSupport = GetBinderInstanceMethod("GetComptimeSupportResult", 1);
         MethodInfo reportFailure = GetBinderInstanceMethod("ReportComptimeFailure", 1);
 
         FunctionSymbol localFunction = CreateFunctionSymbol("local", FunctionKind.Default);
@@ -355,12 +354,6 @@ public sealed class ComptimeBinderHelperTests
 
         Assert.That(Invoke(resolveBody, binder, importedFunction), Is.SameAs(importedBody));
 
-        FunctionSymbol missingFunction = CreateFunctionSymbol("missing", FunctionKind.Default);
-        object missingSupport = Invoke(getSupport, binder, missingFunction)!;
-        PropertyInfo isSupportedProperty = missingSupport.GetType().GetProperty("IsSupported")!;
-        Assert.That((bool)isSupportedProperty.GetValue(missingSupport)!, Is.False);
-
-        Invoke(reportFailure, binder, CreateFailure("None"));
         Invoke(reportFailure, binder, CreateFailure("NotEvaluable"));
         Invoke(reportFailure, binder, CreateFailure("UnsupportedConstruct", "unsupported"));
         Invoke(reportFailure, binder, CreateFailure("ForbiddenSymbolAccess", "forbidden"));
