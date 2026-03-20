@@ -1899,7 +1899,7 @@ public class IrPipelineTests
     public void ImportedModuleGlobals_AreAllocatedOnceAcrossRepeatedModuleCalls()
     {
         using TempDirectory temp = new();
-        temp.WriteFile("extmod.mod", """
+        temp.WriteFile("extmod.blade", """
             reg var seed: u32 = 7;
             seed = seed + 1;
             """);
@@ -1918,7 +1918,7 @@ public class IrPipelineTests
             {
                 NamedModuleRoots = new Dictionary<string, string>(StringComparer.Ordinal)
                 {
-                    ["extmod"] = temp.GetFullPath("extmod.mod"),
+                    ["extmod"] = temp.GetFullPath("extmod.blade"),
                 },
             });
 

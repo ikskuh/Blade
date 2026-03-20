@@ -227,3 +227,13 @@ has no sign of `ADD`, `#1` or `INC` included.
 
 This includes eager constant folding and comptime evaluation.
 
+## Missing peer type resolution for enum literals in comparison operators
+
+```blade
+type Mode = enum(u8) { On, Off };
+
+var mode_b: Mode = .Off;
+if (mode_b == .Off) {
+  // must work
+}
+```
