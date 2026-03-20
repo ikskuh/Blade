@@ -1,3 +1,12 @@
+set unstable
+
+# TODO: Use {{dotnet}} variable
+dotnet := require("dotnet")
+
+reportgenerator := which('reportgenerator') || which('dotnet-reportgenerator')
+
+demo:
+    echo "{{reportgenerator}}"
 
 all: build test regressions compile-all-samples
 
@@ -13,7 +22,15 @@ coverage:
         --collect:"XPlat Code Coverage;Format=cobertura;Include=[blade]*;Exclude=[Blade.Regressions]*" \
         --results-directory coverage
     cp coverage/*/coverage.cobertura.xml coverage/coverage.cobertura.xml
+
     @python3 Scripts/codecov-report.py coverage/coverage.cobertura.xml
+
+coverage-report: coverage
+    {{reportgenerator}} \
+        -reports:"coverage/coverage.cobertura.xml" \
+        -targetdir:"coverage/results" \
+        -reporttypes:Html 
+
 regressions:
     dotnet run --project Blade.Regressions --
 
