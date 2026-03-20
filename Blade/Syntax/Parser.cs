@@ -724,11 +724,6 @@ public sealed class Parser
             case TokenKind.Star:
                 return ParsePointerType();
 
-            // Packed struct
-            case TokenKind.PackedKeyword:
-                return ParseStructType();
-
-            // Non-packed struct
             case TokenKind.StructKeyword:
                 return ParseStructType();
 
@@ -841,10 +836,6 @@ public sealed class Parser
 
     private StructTypeSyntax ParseStructType()
     {
-        Token? packedKw = null;
-        if (Current.Kind == TokenKind.PackedKeyword)
-            packedKw = NextToken();
-
         Token structKw = MatchToken(TokenKind.StructKeyword);
         Token openBrace = MatchToken(TokenKind.OpenBrace);
 
@@ -863,7 +854,7 @@ public sealed class Parser
         }
 
         Token closeBrace = MatchToken(TokenKind.CloseBrace);
-        return new StructTypeSyntax(packedKw, structKw, openBrace, new SeparatedSyntaxList<StructFieldSyntax>(fieldsAndSeparators), closeBrace);
+        return new StructTypeSyntax(structKw, openBrace, new SeparatedSyntaxList<StructFieldSyntax>(fieldsAndSeparators), closeBrace);
     }
 
     private UnionTypeSyntax ParseUnionType()
@@ -1301,7 +1292,7 @@ public sealed class Parser
             or TokenKind.U8Keyword or TokenKind.I8Keyword or TokenKind.U16Keyword or TokenKind.I16Keyword
             or TokenKind.U32Keyword or TokenKind.I32Keyword or TokenKind.VoidKeyword or TokenKind.U8x4Keyword
             or TokenKind.UintKeyword or TokenKind.IntKeyword
-            or TokenKind.Star or TokenKind.OpenBracket or TokenKind.PackedKeyword
+            or TokenKind.Star or TokenKind.OpenBracket
             or TokenKind.StructKeyword or TokenKind.UnionKeyword or TokenKind.EnumKeyword
             or TokenKind.BitfieldKeyword
             or TokenKind.Identifier => true,

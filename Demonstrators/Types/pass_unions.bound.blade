@@ -10,7 +10,7 @@
 //   Union members bind through the same aggregate-field path as structs,
 //   but final aggregate member lowering is not implemented yet.
 
-type Pair = packed struct {
+type Pair = struct {
     lo: u32,
     hi: u32,
 };

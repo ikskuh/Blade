@@ -101,7 +101,7 @@ reg var g: u32 = 1;                   // real global storage
 var x: u32 = g;                       // top-level runtime local inside `$top`
 const y: u32 = x + 1;                 // same declaration form as function-local const
 
-type PinCfg = packed struct {
+type PinCfg = struct {
     mode: nib,
     enabled: bool,
 };
@@ -165,7 +165,7 @@ fn parsed_but_not_fully_emitted() -> value: u32, ok: bool @C {
   - arrays: `[expr]T`
   - single pointers: `*storage [const] [volatile] [align(expr)] T`
   - multi-pointers: `[*]storage [const] [volatile] [align(expr)] T`
-  - packed structs: `packed struct { field: T, ... }`
+  - structs: `struct { field: T, ... }`
   - unions: `union { field: T, ... }`
   - enums: `enum (T) { member = value, ... }`
   - bitfields: `bitfield (T) { field: T, ... }`
@@ -189,7 +189,7 @@ var b: [16]u8 = undefined;            // constant array length is preserved
 var p: *hub const volatile align(4) u32 = undefined;
 var many: [*]reg u8 = undefined;
 
-type Pair = packed struct {
+type Pair = struct {
     lo: u16,
     hi: u16,
 };
@@ -381,11 +381,8 @@ fn pair() -> u32, bool {
 - Integer literals start as special type `<int-literal>`.
 - Integer-to-integer assignment/conversion is broadly allowed.
 - `undefined` is assignable to most targets, including pointers.
-- Struct assignment is structural:
-  - same field count
-  - same field names
-  - recursively assignable field types
-- Union assignment is structural using the same field-name/type matching rule.
+- Struct assignment allows only the same struct type.
+- Union assignment allows only the same union type.
 - Enum assignment allows only the same enum type.
 - Open enums can be explicitly cast to and from their backing integer type.
 - Closed enums require `bitcast` to cross the enum/integer boundary.

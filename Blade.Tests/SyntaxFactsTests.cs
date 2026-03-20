@@ -43,7 +43,6 @@ public class SyntaxFactsTests
         [TokenKind.AsKeyword] = "as",
         [TokenKind.AsmKeyword] = "asm",
         [TokenKind.VolatileKeyword] = "volatile",
-        [TokenKind.PackedKeyword] = "packed",
         [TokenKind.StructKeyword] = "struct",
         [TokenKind.UndefinedKeyword] = "undefined",
         [TokenKind.AlignKeyword] = "align",

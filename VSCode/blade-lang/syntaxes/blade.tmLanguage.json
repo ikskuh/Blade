@@ -184,15 +184,12 @@
     "compound-types": {
       "patterns": [
         {
-          "begin": "\\b(?:(packed)\\s+)?(struct)\\s*(\\{)",
+          "begin": "\\b(struct)\\s*(\\{)",
           "beginCaptures": {
             "1": {
-              "name": "storage.modifier.blade"
-            },
-            "2": {
               "name": "storage.type.struct.blade"
             },
-            "3": {
+            "2": {
               "name": "punctuation.section.block.begin.blade"
             }
           },
@@ -482,7 +479,7 @@
           "name": "storage.modifier.blade"
         },
         {
-          "match": "\\b(?:fn|leaf|inline|noinline|rec|coro|comptime|int1|int2|int3|asm|align|packed|struct|union|enum|bitfield|bitcast|type|import|as)\\b",
+          "match": "\\b(?:fn|leaf|inline|noinline|rec|coro|comptime|int1|int2|int3|asm|align|struct|union|enum|bitfield|bitcast|type|import|as)\\b",
           "name": "keyword.other.blade"
         },
         {

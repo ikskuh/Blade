@@ -2596,13 +2596,16 @@ public sealed class Binder
 
             int fieldSize = TypeFacts.TryGetSizeBytes(fieldType, out int computedFieldSize) ? computedFieldSize : 0;
             int fieldAlignment = TypeFacts.TryGetAlignmentBytes(fieldType, out int computedFieldAlignment) ? computedFieldAlignment : 1;
+            nextOffset = AlignTo(nextOffset, fieldAlignment);
+
             members[field.Name.Text] = new AggregateMemberSymbol(field.Name.Text, fieldType, nextOffset, bitOffset: 0, bitWidth: 0, isBitfield: false);
             nextOffset += fieldSize;
             maxAlignment = Math.Max(maxAlignment, fieldAlignment);
         }
 
         string name = aliasName ?? $"<anon-struct#{++_anonymousStructIndex}>";
-        return new StructTypeSymbol(name, fields, members, nextOffset, maxAlignment);
+        int sizeBytes = AlignTo(nextOffset, maxAlignment);
+        return new StructTypeSymbol(name, fields, members, sizeBytes, maxAlignment);
     }
 
     private TypeSymbol BindUnionType(UnionTypeSyntax unionType, string? aliasName)
@@ -2848,45 +2851,19 @@ public sealed class Binder
         if (target is PointerLikeTypeSymbol targetPointer && source is PointerLikeTypeSymbol sourcePointer)
             return IsPointerAssignable(targetPointer, sourcePointer);
 
-        if (target is StructTypeSymbol targetStruct && source is StructTypeSymbol sourceStruct)
-        {
-            if (ReferenceEquals(targetStruct, sourceStruct))
-                return true;
-
-            if (targetStruct.Fields.Count != sourceStruct.Fields.Count)
-                return false;
-
-            foreach ((string fieldName, TypeSymbol fieldType) in targetStruct.Fields)
-            {
-                if (!sourceStruct.Fields.TryGetValue(fieldName, out TypeSymbol? sourceFieldType))
-                    return false;
-                if (!IsAssignable(fieldType, sourceFieldType))
-                    return false;
-            }
-
-            return true;
-        }
-
-        if (target is UnionTypeSymbol targetUnion && source is UnionTypeSymbol sourceUnion)
-        {
-            if (ReferenceEquals(targetUnion, sourceUnion))
-                return true;
-
-            if (targetUnion.Fields.Count != sourceUnion.Fields.Count)
-                return false;
-
-            foreach ((string fieldName, TypeSymbol fieldType) in targetUnion.Fields)
-            {
-                if (!sourceUnion.Fields.TryGetValue(fieldName, out TypeSymbol? sourceFieldType))
-                    return false;
-                if (!IsAssignable(fieldType, sourceFieldType))
-                    return false;
-            }
-
-            return true;
-        }
+        if (target is StructTypeSymbol or UnionTypeSymbol)
+            return ReferenceEquals(target, source);
 
         return target.Name == source.Name;
+    }
+
+    private static int AlignTo(int value, int alignment)
+    {
+        if (alignment <= 1)
+            return value;
+
+        int remainder = value % alignment;
+        return remainder == 0 ? value : value + (alignment - remainder);
     }
 
     private static bool IsPointerAssignable(PointerLikeTypeSymbol target, PointerLikeTypeSymbol source)

@@ -16,7 +16,7 @@ import "./support/qualified/root.mod" as root;
 
 type Local = u32;
 type Word = u32;
-type Pair = packed struct {
+type Pair = struct {
     value: u32,
 };
 type Alias = root.child.Leaf;

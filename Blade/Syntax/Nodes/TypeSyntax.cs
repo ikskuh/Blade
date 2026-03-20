@@ -109,17 +109,15 @@ public sealed class MultiPointerTypeSyntax : TypeSyntax
 
 public sealed class StructTypeSyntax : TypeSyntax
 {
-    public Token? PackedKeyword { get; }
     public Token StructKeyword { get; }
     public Token OpenBrace { get; }
     public SeparatedSyntaxList<StructFieldSyntax> Fields { get; }
     public Token CloseBrace { get; }
 
-    public StructTypeSyntax(Token? packedKeyword, Token structKeyword, Token openBrace,
+    public StructTypeSyntax(Token structKeyword, Token openBrace,
                             SeparatedSyntaxList<StructFieldSyntax> fields, Token closeBrace)
-        : base(TextSpan.FromBounds((packedKeyword ?? structKeyword).Span.Start, closeBrace.Span.End))
+        : base(TextSpan.FromBounds(structKeyword.Span.Start, closeBrace.Span.End))
     {
-        PackedKeyword = packedKeyword;
         StructKeyword = structKeyword;
         OpenBrace = openBrace;
         Fields = fields;

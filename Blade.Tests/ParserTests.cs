@@ -304,15 +304,22 @@ public class ParserTests
     }
 
     [Test]
-    public void PackedStructTypeAlias_ParsesCorrectly()
+    public void StructTypeAlias_ParsesCorrectly()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("type Header = packed struct { lo: u8, hi: u8 };");
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("type Header = struct { lo: u8, hi: u8 };");
         AssertNoDiagnostics(diag);
 
         TypeAliasDeclarationSyntax alias = (TypeAliasDeclarationSyntax)unit.Members[0];
         Assert.That(alias.Type, Is.TypeOf<StructTypeSyntax>());
         StructTypeSyntax type = (StructTypeSyntax)alias.Type;
         Assert.That(type.Fields.Count, Is.EqualTo(2));
+    }
+
+    [Test]
+    public void PackedStructTypeAlias_IsRejected()
+    {
+        (CompilationUnitSyntax _, DiagnosticBag diag) = Parse("type Header = packed struct { lo: u8, hi: u32 };");
+        Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0101_UnexpectedToken), Is.True);
     }
 
     [Test]
@@ -336,7 +343,7 @@ public class ParserTests
     [Test]
     public void AliasThroughConst_IsRejected()
     {
-        (CompilationUnitSyntax _, DiagnosticBag diag) = Parse("const Header = packed struct { lo: u8, hi: u8 };");
+        (CompilationUnitSyntax _, DiagnosticBag diag) = Parse("const Header = struct { lo: u8, hi: u8 };");
 
         Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0102_ExpectedExpression || d.Code == DiagnosticCode.E0101_UnexpectedToken), Is.True);
     }
@@ -350,6 +357,17 @@ public class ParserTests
         FunctionDeclarationSyntax func = (FunctionDeclarationSyntax)unit.Members[0];
         Assert.That(func.FuncKindKeyword?.Kind, Is.EqualTo(TokenKind.ComptimeKeyword));
         Assert.That(func.Name.Text, Is.EqualTo("init"));
+    }
+
+    [Test]
+    public void FunctionWithoutReturnSpec_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("fn empty_call() { }");
+        AssertNoDiagnostics(diag);
+
+        FunctionDeclarationSyntax func = (FunctionDeclarationSyntax)unit.Members[0];
+        Assert.That(func.Arrow, Is.Null);
+        Assert.That(func.ReturnSpec, Is.Null);
     }
 
     [Test]
@@ -390,9 +408,9 @@ public class ParserTests
     }
 
     [Test]
-    public void FunctionWithBarePackedStructReturnType_ParsesCorrectly()
+    public void FunctionWithBareStructReturnType_ParsesCorrectly()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("fn f() packed struct { lo: u8, hi: u8 } { return; }");
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("fn f() struct { lo: u8, hi: u8 } { return; }");
         AssertNoDiagnostics(diag);
 
         FunctionDeclarationSyntax func = (FunctionDeclarationSyntax)unit.Members[0];
@@ -785,7 +803,6 @@ public class ParserTests
             TokenKind.U8x4Keyword,
             TokenKind.Star,
             TokenKind.OpenBracket,
-            TokenKind.PackedKeyword,
             TokenKind.StructKeyword,
             TokenKind.UnionKeyword,
             TokenKind.EnumKeyword,

@@ -1,0 +1,15 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0205
+// NOTE:
+//   Struct assignment is nominal. Matching fields are not enough.
+
+type Left = struct {
+    value: u32,
+};
+
+type Right = struct {
+    value: u32,
+};
+
+var right: Right = undefined;
+var left: Left = right;

@@ -1,0 +1,17 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0205
+// NOTE:
+//   Union assignment is nominal. Matching fields are not enough.
+
+type Left = union {
+    value: u32,
+    flag: bool,
+};
+
+type Right = union {
+    value: u32,
+    flag: bool,
+};
+
+var right: Right = undefined;
+var left: Left = right;

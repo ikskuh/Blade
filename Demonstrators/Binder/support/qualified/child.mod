@@ -1,3 +1,3 @@
-type Leaf = packed struct {
+type Leaf = struct {
     value: u32,
 };

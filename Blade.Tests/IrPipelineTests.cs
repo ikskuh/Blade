@@ -1366,7 +1366,7 @@ public class IrPipelineTests
     public void AdvancedSemantics_CompilerDriverReportsUnsupportedLowerings()
     {
         CompilationResult compilation = CompilerDriver.Compile("""
-            type Pair = packed struct { left: u32, right: u32 };
+            type Pair = struct { left: u32, right: u32 };
 
             coro fn worker(seed: u32) -> u32 {
                 var pair: Pair = .{ .left = seed, .right = seed };
@@ -1622,7 +1622,7 @@ public class IrPipelineTests
     public void CompoundAssignments_ExerciseMirAssignmentTargetReadPaths()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            type Pair = packed struct {
+            type Pair = struct {
                 value: u32,
             };
 
@@ -1655,6 +1655,30 @@ public class IrPipelineTests
         Assert.That(mir, Does.Contain("load.deref.reg"));
         Assert.That(mir, Does.Contain("bitfield.extract.4.4"));
         Assert.That(mir, Does.Contain("bitfield.insert.4.4"));
+    }
+
+    [Test]
+    public void NonPackedStructMemberAccess_PreservesAlignedByteOffsetInMir()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            type Pair = struct {
+                pad: u8,
+                value: u32,
+            };
+
+            noinline fn demo() void {
+                var pair: Pair = undefined;
+                pair.value += 1;
+            }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        MirModule mirModule = MirLowerer.Lower(program);
+        string mir = MirTextWriter.Write(mirModule);
+
+        Assert.That(mir, Does.Contain("load.member.value.4"));
+        Assert.That(mir, Does.Contain("store member:value:4"));
     }
 
     [Test]

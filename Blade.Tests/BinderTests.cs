@@ -351,6 +351,20 @@ public class BinderTests
     }
 
     [Test]
+    public void FunctionWithoutReturnSpec_BindsAsVoid()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn empty_call() {
+            }
+
+            empty_call();
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+        Assert.That(program.Functions.Single().Symbol.ReturnTypes, Is.Empty);
+    }
+
+    [Test]
     public void CallArgumentCountMismatch_ReportsDiagnostic()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
@@ -477,8 +491,8 @@ public class BinderTests
     public void DuplicateTypeAlias_ReportsDiagnostic()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
-            type A = packed struct { x: u32, };
-            type A = packed struct { y: u32, };
+            type A = struct { x: u32, };
+            type A = struct { y: u32, };
             """);
 
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0201_SymbolAlreadyDeclared), Is.True);
@@ -518,7 +532,7 @@ public class BinderTests
     public void BoundTreeWriter_CoversAdvancedStatementsAndExpressions()
     {
         (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            type Pair = packed struct { left: u32, right: u32 };
+            type Pair = struct { left: u32, right: u32 };
 
             coro fn worker(seed: u32) -> u32 {
                 var pair: Pair = .{ .left = seed, .right = seed };
@@ -656,7 +670,7 @@ public class BinderTests
     public void StructMemberAccess_UnknownFieldReportsDiagnostic()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
-            type P = packed struct { x: u32 };
+            type P = struct { x: u32 };
             var p: P = .{ .x = 1 };
             var y: u32 = p.missing;
             """);
@@ -1162,7 +1176,7 @@ public class BinderTests
     public void EmptyAggregateAndEnumAliases_BindWithoutDiagnostics()
     {
         (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            type EmptyStruct = packed struct {
+            type EmptyStruct = struct {
             };
 
             type EmptyUnion = union {
@@ -1182,6 +1196,40 @@ public class BinderTests
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
         Assert.That(program.TypeAliases.Keys, Is.EquivalentTo(new[] { "EmptyStruct", "EmptyUnion", "EmptyEnum", "EmptyFlags" }));
+    }
+
+    [Test]
+    public void NonPackedStruct_AlignsFieldsAndRoundsSize()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            type P = struct { x: u8, y: u32 };
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+
+        StructTypeSymbol p = (StructTypeSymbol)program.TypeAliases["P"];
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(p.Members["x"].ByteOffset, Is.EqualTo(0));
+            Assert.That(p.Members["y"].ByteOffset, Is.EqualTo(4));
+            Assert.That(p.SizeBytes, Is.EqualTo(8));
+            Assert.That(p.AlignmentBytes, Is.EqualTo(4));
+        });
+    }
+
+    [Test]
+    public void DistinctStructTypes_AreNotAssignable()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            type P = struct { x: u8, y: u32 };
+            type Q = struct { x: u8, y: u32 };
+
+            var p: P = undefined;
+            var q: Q = p;
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
     }
 
     [Test]
@@ -1263,7 +1311,7 @@ public class BinderTests
     }
 
     [Test]
-    public void UnionAssignment_UsesStructuralCompatibility()
+    public void DistinctUnionTypes_AreNotAssignable()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
             type First = union {
@@ -1278,25 +1326,6 @@ public class BinderTests
 
             var first: First = undefined;
             var second: Second = first;
-            """);
-
-        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
-    }
-
-    [Test]
-    public void UnionAssignment_RejectsMismatchedShapes()
-    {
-        (_, _, DiagnosticBag diagnostics) = Bind("""
-            type First = union {
-                lo: u32,
-            };
-
-            type Second = union {
-                hi: u32,
-            };
-
-            reg var first: First = undefined;
-            reg var second: Second = first;
             """);
 
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
@@ -1390,7 +1419,7 @@ public class BinderTests
     public void PostfixMemberAndInvalidTargets_CoverRemainingBranches()
     {
         (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            type Pair = packed struct {
+            type Pair = struct {
                 value: u32,
             };
 
@@ -1538,7 +1567,7 @@ public class BinderTests
     public void TypedStructLiteral_BindsCorrectly()
     {
         (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            type Point = packed struct { x: u32, y: u32 };
+            type Point = struct { x: u32, y: u32 };
             var p: Point = Point { .x = 10, .y = 20 };
             """);
 
@@ -1551,7 +1580,7 @@ public class BinderTests
     public void TypedStructLiteral_UnknownField_ReportsDiagnostic()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
-            type Point = packed struct { x: u32, y: u32 };
+            type Point = struct { x: u32, y: u32 };
             var p: Point = Point { .x = 10, .z = 20 };
             """);
 
@@ -1562,7 +1591,7 @@ public class BinderTests
     public void TypedStructLiteral_MissingField_ReportsDiagnostic()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
-            type Point = packed struct { x: u32, y: u32 };
+            type Point = struct { x: u32, y: u32 };
             var p: Point = Point { .x = 10 };
             """);
 
@@ -1573,7 +1602,7 @@ public class BinderTests
     public void TypedStructLiteral_DuplicateField_ReportsDiagnostic()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
-            type Point = packed struct { x: u32, y: u32 };
+            type Point = struct { x: u32, y: u32 };
             var p: Point = Point { .x = 1, .x = 2, .y = 3 };
             """);
 

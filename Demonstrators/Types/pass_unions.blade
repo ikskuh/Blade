@@ -1,0 +1,11 @@
+// EXPECT: pass
+// NOTE:
+//   Same-type union values assign and store like other nominal aggregate values.
+
+type Header = union {
+    word: u32,
+    low: u16,
+};
+
+var source: Header = undefined;
+var dest: Header = source;

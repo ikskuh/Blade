@@ -58,7 +58,6 @@ public enum TokenKind
     AsKeyword,
     AsmKeyword,
     VolatileKeyword,
-    PackedKeyword,
     StructKeyword,
     UnionKeyword,
     EnumKeyword,

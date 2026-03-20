@@ -984,7 +984,7 @@ public static class MirLowerer
                         return EmitBitfieldExtract(receiver, memberAccess.Member, memberAccess.Span);
 
                     return EmitOp(
-                        $"load.member.{memberAccess.MemberName}",
+                        $"load.member.{memberAccess.MemberName}.{memberAccess.Member.ByteOffset}",
                         memberAccess.Type,
                         [receiver],
                         hasSideEffects: false,
@@ -1281,7 +1281,7 @@ public static class MirLowerer
             {
                 BoundSymbolAssignmentTarget symbolTarget => ReadSymbol(symbolTarget.Symbol, symbolTarget.Type, target.Span),
                 BoundMemberAssignmentTarget memberTarget => EmitOp(
-                    $"load.member.{memberTarget.MemberName}",
+                    $"load.member.{memberTarget.MemberName}.{memberTarget.Member.ByteOffset}",
                     memberTarget.Type,
                     [LowerExpression(memberTarget.Receiver)],
                     hasSideEffects: false,
@@ -1317,7 +1317,7 @@ public static class MirLowerer
                 case BoundMemberAssignmentTarget memberTarget:
                 {
                     MirValueId receiver = LowerExpression(memberTarget.Receiver);
-                    EmitStore("member:" + memberTarget.MemberName, memberTarget.Type, [receiver, value], span);
+                    EmitStore($"member:{memberTarget.MemberName}:{memberTarget.Member.ByteOffset}", memberTarget.Type, [receiver, value], span);
                     return;
                 }
 

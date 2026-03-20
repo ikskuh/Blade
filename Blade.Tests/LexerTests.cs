@@ -139,7 +139,6 @@ public class LexerTests
     [TestCase("as", TokenKind.AsKeyword)]
     [TestCase("asm", TokenKind.AsmKeyword)]
     [TestCase("volatile", TokenKind.VolatileKeyword)]
-    [TestCase("packed", TokenKind.PackedKeyword)]
     [TestCase("struct", TokenKind.StructKeyword)]
     [TestCase("undefined", TokenKind.UndefinedKeyword)]
     [TestCase("align", TokenKind.AlignKeyword)]
@@ -171,6 +170,14 @@ public class LexerTests
         List<Token> tokens = Lex(text);
         Assert.That(tokens[0].Kind, Is.EqualTo(expectedKind));
         Assert.That(tokens[0].Text, Is.EqualTo(text));
+    }
+
+    [Test]
+    public void Packed_LexesAsIdentifier()
+    {
+        List<Token> tokens = Lex("packed");
+        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.Identifier));
+        Assert.That(tokens[0].Text, Is.EqualTo("packed"));
     }
 
     // --- Integer Literals ---

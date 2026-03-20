@@ -5,9 +5,6 @@ dotnet := require("dotnet")
 
 reportgenerator := which('reportgenerator') || which('dotnet-reportgenerator')
 
-demo:
-    echo "{{reportgenerator}}"
-
 all: build test regressions compile-all-samples
 
 build:

@@ -1,7 +1,8 @@
 // EXPECT: fail
 // DIAGNOSTICS: E0205
 // NOTE:
-//   Covers structural assignability checks for distinct structs and unions.
+//   Distinct structs and unions are nominally incompatible, even when their
+//   field layouts match exactly.
 
 type StructLeft = struct {
     a: u32,
@@ -34,9 +35,9 @@ type UnionWrong = union {
 };
 
 var s_right: StructRight = undefined;
-var s_ok: StructLeft = s_right;
-var s_bad: StructWrong = s_right;
+var s_left: StructLeft = s_right;
+var s_wrong: StructWrong = s_right;
 
 var u_right: UnionRight = undefined;
-var u_ok: UnionLeft = u_right;
-var u_bad: UnionWrong = u_right;
+var u_left: UnionLeft = u_right;
+var u_wrong: UnionWrong = u_right;

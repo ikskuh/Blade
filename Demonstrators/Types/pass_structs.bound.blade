@@ -1,0 +1,16 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - StructLit<Point>
+// - point: Point
+// - copy: Point
+// NOTE:
+//   Plain structs are nominal aggregate record types with aligned fields.
+
+type Point = struct {
+    x: u8,
+    y: u32,
+};
+
+var point: Point = Point { .x = 1, .y = 2 };
+var copy: Point = point;
