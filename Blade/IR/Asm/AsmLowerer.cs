@@ -64,6 +64,13 @@ public static class AsmLowerer
         public HashSet<string> ReportedUnsupportedLowerings { get; } = new(StringComparer.Ordinal);
         public int NextInlineAsmBlockOrdinal { get; set; }
 
+        /// <summary>
+        /// Registers whose values are only consumed as hardware flags (by a flag-aware branch),
+        /// not as register values. Comparisons writing to these can skip materialization (WRZ/WRC).
+        /// Recomputed per block.
+        /// </summary>
+        public HashSet<int> FlagOnlyRegisters { get; } = [];
+
         public LoweringContext(
             LirFunction function,
             int functionOrdinal,
@@ -91,6 +98,8 @@ public static class AsmLowerer
             string blockLabel = $"{ctx.Function.Name}_{block.Label}";
             nodes.Add(new AsmLabelNode(blockLabel));
 
+            ComputeFlagOnlyRegisters(ctx, block);
+
             foreach (LirInstruction instruction in block.Instructions)
                 LowerInstruction(nodes, instruction, ctx);
 
@@ -98,6 +107,50 @@ public static class AsmLowerer
         }
 
         return new AsmFunction(ctx.Function.Name, ctx.Function.IsEntryPoint, ctx.Tier, nodes);
+    }
+
+    /// <summary>
+    /// Identifies registers whose values are consumed only as hardware flags, not as register
+    /// values. A comparison writing to such a register can skip materialization (WRZ/WRC).
+    /// </summary>
+    private static void ComputeFlagOnlyRegisters(LoweringContext ctx, LirBlock block)
+    {
+        ctx.FlagOnlyRegisters.Clear();
+
+        // Only relevant when the terminator is a flag-aware branch.
+        if (block.Terminator is not LirBranchTerminator branch || branch.ConditionFlag is null)
+            return;
+
+        if (branch.Condition is not LirRegisterOperand condReg)
+            return;
+
+        int condId = condReg.Register.Id;
+
+        // Check that no instruction in the block uses this register as an operand
+        // (other than the instruction that defines it).
+        foreach (LirInstruction instruction in block.Instructions)
+        {
+            foreach (LirOperand operand in instruction.Operands)
+            {
+                if (operand is LirRegisterOperand reg && reg.Register.Id == condId)
+                    return; // Used as an operand somewhere — need materialization.
+            }
+        }
+
+        // Also check terminator arguments (phi moves).
+        foreach (LirOperand operand in branch.TrueArguments)
+        {
+            if (operand is LirRegisterOperand reg && reg.Register.Id == condId)
+                return;
+        }
+
+        foreach (LirOperand operand in branch.FalseArguments)
+        {
+            if (operand is LirRegisterOperand reg && reg.Register.Id == condId)
+                return;
+        }
+
+        ctx.FlagOnlyRegisters.Add(condId);
     }
 
     private static void LowerInstruction(List<AsmNode> nodes, LirInstruction instruction, LoweringContext ctx)
@@ -902,6 +955,7 @@ public static class AsmLowerer
         AsmRegisterOperand dest = DestReg(op);
         AsmRegisterOperand left = OpReg(op.Operands[0]);
         AsmRegisterOperand right = OpReg(op.Operands[1]);
+        bool isFlagOnly = op.Destination is { } d && ctx.FlagOnlyRegisters.Contains(d.Id);
 
         if (!Enum.TryParse<BoundBinaryOperatorKind>(operatorName, out BoundBinaryOperatorKind kind))
         {
@@ -984,32 +1038,38 @@ public static class AsmLowerer
 
             case BoundBinaryOperatorKind.Equals:
                 nodes.Add(Emit("CMP", left, right, flagEffect: AsmFlagEffect.WZ));
-                nodes.Add(Emit("WRZ", dest));
+                if (!isFlagOnly)
+                    nodes.Add(Emit("WRZ", dest));
                 break;
 
             case BoundBinaryOperatorKind.NotEquals:
                 nodes.Add(Emit("CMP", left, right, flagEffect: AsmFlagEffect.WZ));
-                nodes.Add(Emit("WRNZ", dest));
+                if (!isFlagOnly)
+                    nodes.Add(Emit("WRNZ", dest));
                 break;
 
             case BoundBinaryOperatorKind.Less:
                 nodes.Add(Emit("CMP", left, right, flagEffect: AsmFlagEffect.WC));
-                nodes.Add(Emit("WRC", dest));
+                if (!isFlagOnly)
+                    nodes.Add(Emit("WRC", dest));
                 break;
 
             case BoundBinaryOperatorKind.LessOrEqual:
                 nodes.Add(Emit("CMP", right, left, flagEffect: AsmFlagEffect.WC));
-                nodes.Add(Emit("WRNC", dest));
+                if (!isFlagOnly)
+                    nodes.Add(Emit("WRNC", dest));
                 break;
 
             case BoundBinaryOperatorKind.Greater:
                 nodes.Add(Emit("CMP", right, left, flagEffect: AsmFlagEffect.WC));
-                nodes.Add(Emit("WRC", dest));
+                if (!isFlagOnly)
+                    nodes.Add(Emit("WRC", dest));
                 break;
 
             case BoundBinaryOperatorKind.GreaterOrEqual:
                 nodes.Add(Emit("CMP", left, right, flagEffect: AsmFlagEffect.WC));
-                nodes.Add(Emit("WRNC", dest));
+                if (!isFlagOnly)
+                    nodes.Add(Emit("WRNC", dest));
                 break;
         }
     }
@@ -1441,20 +1501,22 @@ public static class AsmLowerer
         // Use predicated jumps directly — no register test needed.
         if (branch.ConditionFlag is not null)
         {
-            // Determine predicates based on which flag and the branch sense.
-            // For Z-flag conditions: Z=1 after CMP means equal (true for Equals),
-            //   but for general bool conditions, true = non-zero, so Z=0 means true.
-            // For C-flag conditions: C=1 means the condition is true.
+            // The MirFlag encodes polarity: C/Z mean "true when flag set",
+            // NC/NZ mean "true when flag clear".
             string truePredicate = branch.ConditionFlag.Value switch
             {
                 MirFlag.C => "IF_C",
-                MirFlag.Z => "IF_NZ",
+                MirFlag.NC => "IF_NC",
+                MirFlag.Z => "IF_Z",
+                MirFlag.NZ => "IF_NZ",
                 _ => "IF_NZ",
             };
             string falsePredicate = branch.ConditionFlag.Value switch
             {
                 MirFlag.C => "IF_NC",
-                MirFlag.Z => "IF_Z",
+                MirFlag.NC => "IF_C",
+                MirFlag.Z => "IF_NZ",
+                MirFlag.NZ => "IF_Z",
                 _ => "IF_Z",
             };
 

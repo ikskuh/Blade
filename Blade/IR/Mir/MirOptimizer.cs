@@ -79,11 +79,11 @@ public static class MirOptimizer
                         MirFlag? flag = binary.Operator switch
                         {
                             BoundBinaryOperatorKind.Equals => MirFlag.Z,
-                            BoundBinaryOperatorKind.NotEquals => MirFlag.Z,
+                            BoundBinaryOperatorKind.NotEquals => MirFlag.NZ,
                             BoundBinaryOperatorKind.Less => MirFlag.C,
-                            BoundBinaryOperatorKind.LessOrEqual => MirFlag.C,
+                            BoundBinaryOperatorKind.LessOrEqual => MirFlag.NC,
                             BoundBinaryOperatorKind.Greater => MirFlag.C,
-                            BoundBinaryOperatorKind.GreaterOrEqual => MirFlag.C,
+                            BoundBinaryOperatorKind.GreaterOrEqual => MirFlag.NC,
                             _ => null,
                         };
 

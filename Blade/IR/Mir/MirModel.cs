@@ -7,9 +7,10 @@ using Blade.Source;
 namespace Blade.IR.Mir;
 
 /// <summary>
-/// Identifies which hardware flag (C or Z) a value resides in.
+/// Identifies which hardware flag a value resides in, with polarity.
+/// C/Z mean "value is true when flag is set"; NC/NZ mean "value is true when flag is clear".
 /// </summary>
-public enum MirFlag { C, Z }
+public enum MirFlag { C, Z, NC, NZ }
 
 public readonly record struct MirValueId(int Id)
 {

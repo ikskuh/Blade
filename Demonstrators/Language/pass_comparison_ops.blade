@@ -2,13 +2,14 @@
 // STAGE: final-asm
 // CONTAINS:
 // - CMP
-// - WRNC
-// - WRZ
-// - WRNZ
-// - WRC
+// - IF_NZ
+// - IF_Z
+// - IF_NC
+// - IF_C
 // NOTE:
-//   Exercises comparison operators where the bool result is stored to a
-//   register, requiring CMP + WRx flag-capture instructions.
+//   Exercises comparison operators. Because each comparison result is used
+//   only as a branch condition, the compiler emits CMP + predicated JMP
+//   without materializing into a register (no WRZ/WRC).
 
 extern reg var OUTA: u32 @(0x1FC);
 
