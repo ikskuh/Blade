@@ -16,6 +16,7 @@ public sealed class CompilationOptions
     public bool EnableSingleCallsiteInlining { get; init; } = true;
     public IReadOnlyList<OptimizationDirective> OptimizationDirectives { get; init; } = [];
     public IReadOnlyDictionary<string, string> NamedModuleRoots { get; init; } = new Dictionary<string, string>();
+    public int ComptimeFuel { get; init; } = 250;
 }
 
 public sealed class CompilationResult
@@ -54,7 +55,7 @@ public static class CompilerDriver
 
         Parser parser = Parser.Create(source, diagnostics);
         CompilationUnitSyntax unit = parser.ParseCompilationUnit();
-        BoundProgram boundProgram = Binder.Bind(unit, diagnostics, filePath, effectiveOptions.NamedModuleRoots);
+        BoundProgram boundProgram = Binder.Bind(unit, diagnostics, filePath, effectiveOptions.NamedModuleRoots, effectiveOptions.ComptimeFuel);
 
         IrBuildResult? irBuildResult = null;
         if (diagnostics.Count == 0)

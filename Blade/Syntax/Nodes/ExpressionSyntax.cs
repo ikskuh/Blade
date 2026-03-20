@@ -190,19 +190,6 @@ public sealed class StructLiteralExpressionSyntax : ExpressionSyntax
     }
 }
 
-public sealed class ComptimeExpressionSyntax : ExpressionSyntax
-{
-    public Token ComptimeKeyword { get; }
-    public BlockStatementSyntax Body { get; }
-
-    public ComptimeExpressionSyntax(Token comptimeKeyword, BlockStatementSyntax body)
-        : base(TextSpan.FromBounds(comptimeKeyword.Span.Start, Requires.NotNull(body).Span.End))
-    {
-        ComptimeKeyword = comptimeKeyword;
-        Body = Requires.NotNull(body);
-    }
-}
-
 public sealed class IfExpressionSyntax : ExpressionSyntax
 {
     public Token IfKeyword { get; }

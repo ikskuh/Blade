@@ -194,10 +194,9 @@ public class IrPipelineTests
         string mir = MirTextWriter.Write(build.MirModule);
         string lir = LirTextWriter.Write(build.LirModule);
 
-        Assert.That(mir, Does.Contain("const 10"));
-        Assert.That(mir, Does.Contain("const 20"));
+        Assert.That(mir, Does.Contain("const 30"));
         Assert.That(mir, Does.Contain("fn pair"));
-        Assert.That(lir, Does.Contain("binary.Add"));
+        Assert.That(lir, Does.Not.Contain("call pair"));
     }
 
     [Test]
@@ -210,7 +209,8 @@ public class IrPipelineTests
                 return lo + (hi as u32);
             }
 
-            var result: u32 = demo(255);
+            var input: u32 = 255;
+            var result: u32 = demo(input);
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
@@ -325,7 +325,9 @@ public class IrPipelineTests
                 return plus + inv + rem + sal + sar + rol + ror;
             }
 
-            var result: u32 = demo(8, 1);
+            var x: u32 = 8;
+            var y: u32 = 1;
+            var result: u32 = demo(x, y);
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
@@ -561,7 +563,7 @@ public class IrPipelineTests
             EnableLirOptimizations = false,
         });
 
-        Assert.That(build.AssemblyText, Does.Match(@"MOV g_mode, #1"));
+        Assert.That(build.AssemblyText, Does.Contain("g_mode LONG 1"));
     }
 
     [Test]
@@ -608,7 +610,7 @@ public class IrPipelineTests
                 return (low as u32) + (bytev as u32);
             }
 
-            reg var outv: u32 = demo(0);
+            var outv: u32 = demo(0);
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
@@ -818,7 +820,7 @@ public class IrPipelineTests
                 return out;
             }
 
-            reg var sink: u32 = f(1);
+            var sink: u32 = f(1);
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
@@ -853,7 +855,7 @@ public class IrPipelineTests
                 return out;
             }
 
-            reg var sink: u32 = f(1);
+            var sink: u32 = f(1);
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
@@ -886,7 +888,7 @@ public class IrPipelineTests
                 return out;
             }
 
-            reg var flags: u32 = test_and_set_bit(0, 5);
+            var flags: u32 = test_and_set_bit(0, 5);
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
@@ -916,7 +918,7 @@ public class IrPipelineTests
                 return out;
             }
 
-            reg var sink: u32 = f(1);
+            var sink: u32 = f(1);
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
@@ -947,7 +949,7 @@ public class IrPipelineTests
                 return out;
             }
 
-            reg var sink: u32 = f(1);
+            var sink: u32 = f(1);
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
@@ -987,7 +989,7 @@ public class IrPipelineTests
                 return out;
             }
 
-            reg var sink: u32 = f(1);
+            var sink: u32 = f(1);
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
@@ -1018,7 +1020,7 @@ public class IrPipelineTests
                 return out;
             }
 
-            reg var sink: u32 = f(1);
+            var sink: u32 = f(1);
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
@@ -1048,7 +1050,7 @@ public class IrPipelineTests
                 return out;
             }
 
-            reg var sink: u32 = f(1);
+            var sink: u32 = f(1);
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
@@ -1077,7 +1079,7 @@ public class IrPipelineTests
                 return out;
             }
 
-            reg var sink: u32 = f(1);
+            var sink: u32 = f(1);
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
@@ -1106,7 +1108,7 @@ public class IrPipelineTests
                 return result;
             }
 
-            reg var sink: bool = test_bit(0, 1);
+            var sink: bool = test_bit(0, 1);
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
@@ -1305,7 +1307,12 @@ public class IrPipelineTests
                 return x + x;
             }
 
-            reg var result: u32 = double(42);
+            noinline fn use_value(x: u32) -> u32 {
+                return double(x);
+            }
+
+            var input: u32 = 42;
+            var result: u32 = use_value(input);
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
@@ -1358,7 +1365,7 @@ public class IrPipelineTests
     public void AdvancedSemantics_CompilerDriverReportsUnsupportedLowerings()
     {
         CompilationResult compilation = CompilerDriver.Compile("""
-            const Pair = packed struct { left: u32, right: u32 };
+            type Pair = packed struct { left: u32, right: u32 };
 
             coro fn worker(seed: u32) -> u32 {
                 var pair: Pair = .{ .left = seed, .right = seed };

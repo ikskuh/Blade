@@ -94,9 +94,7 @@ public sealed class Parser
                 return ParseGlobalStatement();
 
             case TokenKind.ConstKeyword:
-                // const Name = packed struct { ... }; (type alias, legacy)
-                // or const Name = comptime { ... }; (global const)
-                return ParseTypeAliasOrConstDeclaration();
+                return ParseGlobalStatement();
 
             case TokenKind.TypeKeyword:
                 return ParseTypeAliasDeclaration();
@@ -119,8 +117,6 @@ public sealed class Parser
                 return ParseGlobalStatement();
 
             case TokenKind.ComptimeKeyword:
-                // comptime fn ... → function declaration
-                // comptime { ... } → global statement with comptime expression
                 if (Peek(1).Kind == TokenKind.FnKeyword)
                     return ParseFunctionDeclaration(NextToken());
                 return ParseGlobalStatement();
@@ -367,30 +363,6 @@ public sealed class Parser
 
         Token semi = MatchToken(TokenKind.Semicolon);
         return new VariableDeclarationSyntax(externKeyword, storageClass, mutability, name, colon, type, equalsToken, initializer, atClause, alignClause, semi);
-    }
-
-    private MemberSyntax ParseTypeAliasOrConstDeclaration()
-    {
-        // const Name = packed struct { ... };
-        // const Name = comptime { ... };
-        Token constKw = NextToken(); // consume 'const'
-        Token name = MatchToken(TokenKind.Identifier);
-        Token equals = MatchToken(TokenKind.Equal);
-
-        if (Current.Kind == TokenKind.PackedKeyword || Current.Kind == TokenKind.StructKeyword)
-        {
-            TypeSyntax type = ParseStructType();
-            Token semi = MatchToken(TokenKind.Semicolon);
-            return new TypeAliasDeclarationSyntax(constKw, name, equals, type, semi);
-        }
-
-        // Otherwise it's a const with an expression initializer (e.g., comptime { ... })
-        ExpressionSyntax initializer = ParseExpression();
-        Token semicolon = MatchToken(TokenKind.Semicolon);
-
-        return new TypeAliasDeclarationSyntax(constKw, name, equals,
-            new NamedTypeSyntax(new Token(TokenKind.Identifier, initializer.Span, "auto")),
-            semicolon);
     }
 
     private GlobalStatementSyntax ParseGlobalStatement()
@@ -1149,13 +1121,6 @@ public sealed class Parser
 
             case TokenKind.BitcastKeyword:
                 return ParseBitcastExpression();
-
-            case TokenKind.ComptimeKeyword:
-            {
-                Token comptimeKw = NextToken();
-                BlockStatementSyntax body = ParseBlockStatement();
-                return new ComptimeExpressionSyntax(comptimeKw, body);
-            }
 
             case TokenKind.IfKeyword:
                 return ParseIfExpression();

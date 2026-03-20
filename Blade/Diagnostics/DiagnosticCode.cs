@@ -63,6 +63,10 @@ public enum DiagnosticCode
     E0238_StructDuplicateField = 238,
     E0239_StringLengthMismatch = 239,
     E0240_StringToNonConstPointer = 240,
+    E0241_ComptimeValueRequired = 241,
+    E0242_ComptimeUnsupportedConstruct = 242,
+    E0243_ComptimeForbiddenSymbolAccess = 243,
+    E0244_ComptimeFuelExhausted = 244,
 
     // Inline assembly errors
     E0301_InlineAsmUnknownInstruction = 301,

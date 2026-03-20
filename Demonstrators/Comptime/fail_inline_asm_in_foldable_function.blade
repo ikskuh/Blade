@@ -1,0 +1,13 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - E0242
+
+fn asm_value() -> u32 {
+    var out: u32 = 0;
+    asm {
+        MOV {out}, #1
+    };
+    return out;
+}
+
+reg const folded: u32 = asm_value();

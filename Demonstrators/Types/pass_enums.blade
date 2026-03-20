@@ -1,8 +1,8 @@
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// - MOV g_mode, #1
-// - MOV g_other, #0
+// - g_mode LONG 1
+// - g_other LONG 0
 // - g_raw LONG 2
 // NOTE:
 //   Exercises contextual enum literals, qualified enum members, and open-enum casts.

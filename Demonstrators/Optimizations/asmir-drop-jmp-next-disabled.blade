@@ -10,9 +10,10 @@
 //   Negative case for ASMIR drop-jmp-next: the jump to the immediately following label remains.
 
 reg var sink: u32 = 0;
+var input: u32 = 1;
 
 noinline fn add1(x: u32) -> u32 {
     return x + 1;
 }
 
-sink = add1(1);
+sink = add1(input);

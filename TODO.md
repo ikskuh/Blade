@@ -210,6 +210,9 @@ has no sign of `ADD`, `#1` or `INC` included.
     NOP
     NOP
 .end
-
-
 ```
+
+## Division by "literal zero" must yield compile error
+
+This includes eager constant folding and comptime evaluation.
+

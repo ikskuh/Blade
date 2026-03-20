@@ -85,6 +85,7 @@ public class ProgramTests
             "--dump-final-asm",
             "--dump-dir",
             "out",
+            "--comptime-fuel=19",
             "-fno-mir-opt=single-callsite-inline");
 
         Assert.That(options, Is.Not.Null);
@@ -98,6 +99,7 @@ public class ProgramTests
         Assert.That(GetProperty<bool>(options!, "DumpAsmir"), Is.True);
         Assert.That(GetProperty<bool>(options!, "DumpFinalAsm"), Is.True);
         Assert.That(GetProperty<string?>(options!, "DumpDirectory"), Is.EqualTo("out"));
+        Assert.That(GetProperty<int>(options!, "ComptimeFuel"), Is.EqualTo(19));
         System.Collections.IEnumerable directives = GetProperty<System.Collections.IEnumerable>(options!, "OptimizationDirectives");
         Assert.That(directives.Cast<object>().Count(), Is.EqualTo(1));
     }
@@ -152,6 +154,10 @@ public class ProgramTests
         (object? unknownMirOpt, _, string unknownMirOptErr) = CaptureConsole(() => ParseOptions("input.blade", "-fmir-opt=not-real"));
         Assert.That(unknownMirOpt, Is.Null);
         Assert.That(unknownMirOptErr, Does.Contain("unknown mir optimization"));
+
+        (object? invalidComptimeFuel, _, string invalidComptimeFuelErr) = CaptureConsole(() => ParseOptions("input.blade", "--comptime-fuel=0"));
+        Assert.That(invalidComptimeFuel, Is.Null);
+        Assert.That(invalidComptimeFuelErr, Does.Contain("invalid comptime fuel '0'"));
 
         (object? multipleFiles, _, string multipleFilesErr) = CaptureConsole(() => ParseOptions("a.blade", "b.blade"));
         Assert.That(multipleFiles, Is.Null);

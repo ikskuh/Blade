@@ -85,28 +85,26 @@ dotnet run --project Blade -- sample.blade --dump-all
 - Accepted top-level members:
   - `import "path" as alias;`
   - storage declarations
-  - `const Name = packed struct { ... };`
+  - `type Name = ...;`
   - function declarations
   - top-level statements
 - Actual meaning:
   - `import` is parsed, then ignored by binding/codegen
-  - top-level `reg` declarations become real global register storage
-  - bare top-level `var` declarations become runtime statements inside synthetic entrypoint `$top`
-  - top-level `const Name = packed struct { ... };` is the real type-alias path
-  - top-level `const Name = expr;` is not a real value declaration today
+  - top-level storage-qualified declarations such as `reg/lut/hub var` and `reg/lut/hub const` become real global storage
+  - bare top-level `var` and `const` declarations become runtime statements inside synthetic entrypoint `$top`
+  - type aliases use `type Name = ...;`
 
 ```blade
 import "pins.blade" as pins;          // parses; binder ignores it
 
 reg var g: u32 = 1;                   // real global storage
 var x: u32 = g;                       // top-level runtime local inside `$top`
+const y: u32 = x + 1;                 // same declaration form as function-local const
 
-const PinCfg = packed struct {        // real type alias
+type PinCfg = packed struct {
     mode: nib,
     enabled: bool,
 };
-
-const Broken = comptime { };          // parses, but does not become a usable const value
 ```
 
 ### Function Declarations
@@ -183,7 +181,6 @@ fn parsed_but_not_fully_emitted() -> value: u32, ok: bool @C {
 - Actual type information lost by binder:
   - `uint(5)` vs `uint(12)` vs `uint(31)` all collapse to plain `uint`
   - `int(5)` vs `int(12)` vs `int(31)` all collapse to plain `int`
-  - non-constant `align(...)` expressions still fold to `null`
   - aggregate lowering is still incomplete for general member/index/deref codegen
 
 ```blade
@@ -192,7 +189,7 @@ var b: [16]u8 = undefined;            // constant array length is preserved
 var p: *hub const volatile align(4) u32 = undefined;
 var many: [*]reg u8 = undefined;
 
-const Pair = packed struct {
+type Pair = packed struct {
     lo: u16,
     hi: u16,
 };
@@ -275,7 +272,6 @@ rep for (i in 0..8) {                 // binds
   - intrinsic calls: `@name(args...)`
   - array literals: `[a, b, c]`, `[value...]`, `[head, tail...]`, `[]`
   - struct literals: `.{ .field = expr, ... }`
-  - `comptime { ... }`
   - `if (cond) thenExpr else elseExpr`
   - range expressions: `start..end`
 - Not present in the parser:
@@ -328,8 +324,7 @@ if (x == 0) 1 else 2                  // real expression form
   - allocatable global register
   - fixed register alias
   - external alias
-- `@(...)` and `align(...)` are parsed and constant-folded if possible.
-- If `@(...)` or `align(...)` is not a simple constant integer, the value just becomes `null`; no dedicated diagnostic is emitted.
+- `@(...)` and `align(...)` are parsed and require comptime integer values where the layout metadata is semantically required.
 
 ```blade
 reg var data: u32 = 1;                // real allocatable global register
@@ -727,15 +722,13 @@ DAT
 ### Features That Are Parsed Or Marked But Still Stubby/Broken
 
 - `import` is ignored after parse.
-- `const Name = expr;` is not a real constant declaration path.
 - `lut` / `hub` storage are rejected.
-- `comptime { ... }` does not execute at compile time.
-- `comptime fn` is only a tag.
+- compile-time folding is eager for comptime-evaluable expressions, including `comptime fn` calls and strictly pure ordinary function calls.
+- pointer-involving calls, global-storage reads, top-level-local reads, asm, and other unsupported constructs are not foldable.
 - return item `@C` / `@Z` annotations are ignored.
 - `rep`, `rep for`, and `noirq` lower to placeholder opcodes/comments, not working PASM2.
 - `yield` / `yieldto` lower to TODO comments, not working coroutine machinery.
 - general call lowering does not move arguments/results.
 - recursive tier does not yet emit `CALLB` / `RETB`.
 - general member/index/deref/range/struct-literal ops are not fully instruction-selected.
-- non-constant `@(...)` / `align(...)` silently drop to `null`.
 - coroutine reachability through `yieldto` is not modeled by dead-function analysis.

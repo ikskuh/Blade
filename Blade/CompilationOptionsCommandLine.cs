@@ -21,6 +21,9 @@ public static class CompilationOptionsCommandLine
     {
         Requires.NotNull(arg);
 
+        if (arg.StartsWith("--comptime-fuel=", StringComparison.Ordinal))
+            return true;
+
         if (arg.StartsWith("--module=", StringComparison.Ordinal))
             return true;
 
@@ -41,10 +44,24 @@ public static class CompilationOptionsCommandLine
         string normalizedBaseDirectory = Path.GetFullPath(baseDirectory);
         List<OptimizationDirective> optimizationDirectives = [];
         Dictionary<string, string> namedModuleRoots = new(StringComparer.Ordinal);
+        int parsedComptimeFuel = 250;
 
         foreach (string arg in args)
         {
             Requires.NotNull(arg);
+
+            if (TryParseComptimeFuel(arg, out int? comptimeFuelOverride, out errorMessage))
+            {
+                if (comptimeFuelOverride is not null)
+                    parsedComptimeFuel = comptimeFuelOverride.Value;
+                continue;
+            }
+
+            if (errorMessage is not null)
+            {
+                options = new CompilationOptions();
+                return false;
+            }
 
             if (TryParseOptimizationDirective(arg, out OptimizationDirective directive, out errorMessage))
             {
@@ -79,8 +96,28 @@ public static class CompilationOptionsCommandLine
         {
             OptimizationDirectives = optimizationDirectives,
             NamedModuleRoots = namedModuleRoots,
+            ComptimeFuel = parsedComptimeFuel,
         };
         errorMessage = null;
+        return true;
+    }
+
+    private static bool TryParseComptimeFuel(string arg, out int? fuel, out string? errorMessage)
+    {
+        fuel = null;
+        errorMessage = null;
+
+        if (!arg.StartsWith("--comptime-fuel=", StringComparison.Ordinal))
+            return false;
+
+        string payload = arg["--comptime-fuel=".Length..].Trim();
+        if (!int.TryParse(payload, out int parsedFuel) || parsedFuel <= 0)
+        {
+            errorMessage = $"error: invalid comptime fuel '{payload}'. Expected a positive integer.";
+            return false;
+        }
+
+        fuel = parsedFuel;
         return true;
     }
 

@@ -323,6 +323,38 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
             "String literal cannot be assigned to a non-const pointer.");
     }
 
+    public void ReportComptimeValueRequired(TextSpan span)
+    {
+        Report(
+            DiagnosticCode.E0241_ComptimeValueRequired,
+            span,
+            "Expression must be compile-time evaluable in this context.");
+    }
+
+    public void ReportComptimeUnsupportedConstruct(TextSpan span, string detail)
+    {
+        Report(
+            DiagnosticCode.E0242_ComptimeUnsupportedConstruct,
+            span,
+            $"Construct is not supported during comptime evaluation: {detail}");
+    }
+
+    public void ReportComptimeForbiddenSymbolAccess(TextSpan span, string detail)
+    {
+        Report(
+            DiagnosticCode.E0243_ComptimeForbiddenSymbolAccess,
+            span,
+            $"Comptime evaluation cannot access this symbol: {detail}");
+    }
+
+    public void ReportComptimeFuelExhausted(TextSpan span)
+    {
+        Report(
+            DiagnosticCode.E0244_ComptimeFuelExhausted,
+            span,
+            "Comptime evaluation ran out of fuel.");
+    }
+
     // Inline assembly diagnostics
 
     public void ReportInlineAsmUnknownInstruction(TextSpan span, string mnemonic)

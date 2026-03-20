@@ -28,6 +28,7 @@ CompilationResult compilation = CompilerDriver.Compile(
         EnableSingleCallsiteInlining = options.EnableSingleCallsiteInlining,
         OptimizationDirectives = options.OptimizationDirectives,
         NamedModuleRoots = options.NamedModuleRoots,
+        ComptimeFuel = options.ComptimeFuel,
     });
 sw.Stop();
 
@@ -106,6 +107,7 @@ internal sealed class CommandLineOptions
     public bool EnableSingleCallsiteInlining { get; init; }
     public IReadOnlyList<OptimizationDirective> OptimizationDirectives { get; init; } = [];
     public IReadOnlyDictionary<string, string> NamedModuleRoots { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
+    public int ComptimeFuel { get; init; }
 
     public static CommandLineOptions? Parse(string[] args)
     {
@@ -242,6 +244,7 @@ internal sealed class CommandLineOptions
             EnableSingleCallsiteInlining = compilerOptions.EnableSingleCallsiteInlining,
             OptimizationDirectives = compilerOptions.OptimizationDirectives,
             NamedModuleRoots = compilerOptions.NamedModuleRoots,
+            ComptimeFuel = compilerOptions.ComptimeFuel,
         };
     }
 

@@ -8,9 +8,10 @@
 //   Negative case for MIR const-prop: constant arithmetic should remain unfused.
 
 reg var sink: u32 = 0;
+var input: u32 = 40;
 
-fn demo() -> u32 {
-    return 40 + 2;
+fn demo(x: u32) -> u32 {
+    return x + 2;
 }
 
-sink = demo();
+sink = demo(input);

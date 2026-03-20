@@ -1,5 +1,5 @@
 //
-const Pair = packed struct { left: u32, right: u32 };
+type Pair = packed struct { left: u32, right: u32 };
 
 coro fn worker(seed: u32) -> u32 {
     var pair: Pair = .{ .left = seed, .right = seed };

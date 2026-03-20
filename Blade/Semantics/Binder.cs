@@ -19,24 +19,33 @@ public sealed class Binder
     private readonly HashSet<string> _typeAliasResolutionStack = new(StringComparer.Ordinal);
     private readonly Dictionary<string, FunctionSymbol> _functions = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ImportedModule> _importedModules = new(StringComparer.Ordinal);
+    private readonly Dictionary<FunctionSymbol, BoundBlockStatement> _boundFunctionBodies = new();
+    private readonly Dictionary<FunctionSymbol, ComptimeSupportResult> _comptimeSupportCache = new();
     private readonly HashSet<string> _moduleBindingStack;
     private readonly Scope _globalScope;
     private readonly Scope _topLevelScope;
     private Scope _currentScope;
     private FunctionSymbol? _currentFunction;
     private readonly Stack<LoopContext> _loopStack = new();
+    private readonly int _comptimeFuel;
     private int _anonymousStructIndex;
 
-    private Binder(DiagnosticBag diagnostics, HashSet<string> moduleBindingStack)
+    private Binder(DiagnosticBag diagnostics, HashSet<string> moduleBindingStack, int comptimeFuel)
     {
         _diagnostics = diagnostics;
         _moduleBindingStack = Requires.NotNull(moduleBindingStack);
+        _comptimeFuel = Requires.Positive(comptimeFuel);
         _globalScope = new Scope(parent: null);
         _topLevelScope = new Scope(_globalScope);
         _currentScope = _globalScope;
     }
 
-    public static BoundProgram Bind(CompilationUnitSyntax unit, DiagnosticBag diagnostics, string rootFilePath, IReadOnlyDictionary<string, string>? namedModuleRoots)
+    public static BoundProgram Bind(
+        CompilationUnitSyntax unit,
+        DiagnosticBag diagnostics,
+        string rootFilePath,
+        IReadOnlyDictionary<string, string>? namedModuleRoots,
+        int comptimeFuel = 250)
     {
         Requires.NotNull(unit);
         Requires.NotNull(diagnostics);
@@ -46,7 +55,7 @@ public sealed class Binder
         {
             Path.GetFullPath(rootFilePath),
         };
-        Binder binder = new(diagnostics, moduleBindingStack);
+        Binder binder = new(diagnostics, moduleBindingStack, comptimeFuel);
         return binder.BindCompilationUnit(unit, Path.GetFullPath(rootFilePath), namedModuleRoots ?? new Dictionary<string, string>(StringComparer.Ordinal));
     }
 
@@ -63,6 +72,20 @@ public sealed class Binder
         List<BoundFunctionMember> boundFunctions = new();
         List<BoundStatement> boundTopLevelStatements = new();
 
+        foreach (MemberSyntax member in unit.Members)
+        {
+            switch (member)
+            {
+                case FunctionDeclarationSyntax function:
+                    boundFunctions.Add(BindFunction(function));
+                    break;
+
+                case AsmFunctionDeclarationSyntax asmFunction:
+                    boundFunctions.Add(BindAsmFunction(asmFunction));
+                    break;
+            }
+        }
+
         _currentScope = _topLevelScope;
         foreach (MemberSyntax member in unit.Members)
         {
@@ -78,14 +101,6 @@ public sealed class Binder
                     _currentScope = _globalScope;
                     boundGlobals.Add(BindGlobalVariable(variable));
                     _currentScope = _topLevelScope;
-                    break;
-
-                case FunctionDeclarationSyntax function:
-                    boundFunctions.Add(BindFunction(function));
-                    break;
-
-                case AsmFunctionDeclarationSyntax asmFunction:
-                    boundFunctions.Add(BindAsmFunction(asmFunction));
                     break;
 
                 case GlobalStatementSyntax globalStatement:
@@ -165,7 +180,7 @@ public sealed class Binder
         BoundProgram program;
         try
         {
-            Binder nestedBinder = new(_diagnostics, _moduleBindingStack);
+            Binder nestedBinder = new(_diagnostics, _moduleBindingStack, _comptimeFuel);
             program = nestedBinder.BindCompilationUnit(syntax, resolvedPath, namedModuleRoots);
         }
         finally
@@ -317,9 +332,15 @@ public sealed class Binder
             return new BoundGlobalVariableMember(errorSymbol, initializer: null, variable.Span);
         }
 
+        ResolveLayoutMetadata(variable, variableSymbol);
+
         BoundExpression? initializer = null;
         if (variable.Initializer is not null)
+        {
             initializer = BindExpression(variable.Initializer, variableSymbol.Type);
+            if (RequiresComptimeInitializer(variableSymbol))
+                initializer = RequireComptimeExpression(initializer, variable.Initializer.Span);
+        }
 
         return new BoundGlobalVariableMember(variableSymbol, initializer, variable.Span);
     }
@@ -348,6 +369,7 @@ public sealed class Binder
 
         _currentFunction = previousFunction;
         _currentScope = previousScope;
+        _boundFunctionBodies[function] = body;
 
         return new BoundFunctionMember(function, body, functionSyntax.Span);
     }
@@ -432,6 +454,7 @@ public sealed class Binder
 
         _currentFunction = previousFunction;
         _currentScope = previousScope;
+        _boundFunctionBodies[function] = body;
 
         return new BoundFunctionMember(function, body, asmSyntax.Span);
     }
@@ -1047,10 +1070,12 @@ public sealed class Binder
     private BoundExpression BindExpression(ExpressionSyntax expression, TypeSymbol? expectedType = null)
     {
         BoundExpression bound = BindExpressionCore(expression, expectedType);
-        if (expectedType is null)
-            return bound;
+        if (expectedType is not null)
+            bound = BindConversion(bound, expectedType, expression.Span, reportMismatch: true);
 
-        return BindConversion(bound, expectedType, expression.Span, reportMismatch: true);
+        return TryFoldExpression(bound, reportDiagnostics: false, out BoundExpression folded)
+            ? folded
+            : bound;
     }
 
     private BoundExpression BindExpressionCore(ExpressionSyntax expression, TypeSymbol? expectedType)
@@ -1107,9 +1132,6 @@ public sealed class Binder
 
             case BitcastExpressionSyntax bitcastExpression:
                 return BindBitcastExpression(bitcastExpression);
-
-            case ComptimeExpressionSyntax comptime:
-                return BindComptimeExpression(comptime);
 
             case IfExpressionSyntax ifExpression:
                 return BindIfExpression(ifExpression);
@@ -1508,7 +1530,326 @@ public sealed class Binder
             _ => BuiltinTypes.Unknown,
         };
 
-        return new BoundCallExpression(function, arguments, callExpression.Span, returnType);
+        BoundCallExpression call = new(function, arguments, callExpression.Span, returnType);
+        if (function.Kind == FunctionKind.Comptime)
+        {
+            if (TryFoldExpression(call, reportDiagnostics: true, out BoundExpression folded))
+                return folded;
+
+            return new BoundErrorExpression(callExpression.Span);
+        }
+
+        return call;
+    }
+
+    private BoundExpression RequireComptimeExpression(BoundExpression expression, TextSpan span)
+    {
+        if (expression is BoundErrorExpression)
+            return expression;
+
+        if (TryEvaluateFoldedValue(expression, out object? value, out ComptimeFailure foldFailure))
+            return new BoundLiteralExpression(value, expression.Span, expression.Type);
+
+        if (ContainsErrorExpression(expression))
+            return expression;
+
+        if (foldFailure.Kind == ComptimeFailureKind.NotEvaluable && RequiresSuccessfulComptimeEvaluation(expression))
+        {
+            ReportComptimeFailure(foldFailure);
+            return new BoundErrorExpression(span);
+        }
+
+        if (TryValidateComptimeExpression(expression, out _))
+            return expression;
+
+        ReportComptimeFailure(foldFailure);
+        return new BoundErrorExpression(span);
+    }
+
+    private bool TryFoldExpression(BoundExpression expression, bool reportDiagnostics, out BoundExpression folded)
+    {
+        if (TryEvaluateFoldedValue(expression, out object? value, out ComptimeFailure failure))
+        {
+            folded = new BoundLiteralExpression(value, expression.Span, expression.Type);
+            return true;
+        }
+
+        if (reportDiagnostics)
+            ReportComptimeFailure(failure);
+
+        folded = expression;
+        return false;
+    }
+
+    private bool TryEvaluateFoldedValue(BoundExpression expression, out object? value, out ComptimeFailure failure)
+    {
+        ComptimeEvaluator evaluator = new(
+            _comptimeFuel,
+            ResolveFunctionBodyForComptime,
+            GetComptimeSupportResult);
+        return evaluator.TryEvaluateExpression(expression, out value, out failure);
+    }
+
+    private static bool TryValidateComptimeExpression(BoundExpression expression, out ComptimeFailure failure)
+    {
+        switch (expression)
+        {
+            case BoundLiteralExpression:
+            case BoundEnumLiteralExpression:
+                failure = ComptimeFailure.None;
+                return true;
+
+            case BoundUnaryExpression unary:
+                if (unary.Operator.Kind is BoundUnaryOperatorKind.AddressOf or BoundUnaryOperatorKind.PostIncrement or BoundUnaryOperatorKind.PostDecrement)
+                {
+                    failure = new ComptimeFailure(ComptimeFailureKind.UnsupportedConstruct, unary.Span, $"operator '{unary.Operator.Kind}' is not supported in a comptime-required context.");
+                    return false;
+                }
+
+                return TryValidateComptimeExpression(unary.Operand, out failure);
+
+            case BoundBinaryExpression binary:
+                return TryValidateComptimeExpression(binary.Left, out failure)
+                    && TryValidateComptimeExpression(binary.Right, out failure);
+
+            case BoundArrayLiteralExpression arrayLiteral:
+                foreach (BoundExpression element in arrayLiteral.Elements)
+                {
+                    if (!TryValidateComptimeExpression(element, out failure))
+                        return false;
+                }
+
+                failure = ComptimeFailure.None;
+                return true;
+
+            case BoundStructLiteralExpression structLiteral:
+                foreach (BoundStructFieldInitializer field in structLiteral.Fields)
+                {
+                    if (!TryValidateComptimeExpression(field.Value, out failure))
+                        return false;
+                }
+
+                failure = ComptimeFailure.None;
+                return true;
+
+            case BoundConversionExpression conversion:
+                return TryValidateComptimeExpression(conversion.Expression, out failure);
+
+            case BoundCastExpression cast:
+                return TryValidateComptimeExpression(cast.Expression, out failure);
+
+            case BoundBitcastExpression bitcast:
+                return TryValidateComptimeExpression(bitcast.Expression, out failure);
+
+            case BoundIfExpression ifExpression:
+                return TryValidateComptimeExpression(ifExpression.Condition, out failure)
+                    && TryValidateComptimeExpression(ifExpression.ThenExpression, out failure)
+                    && TryValidateComptimeExpression(ifExpression.ElseExpression, out failure);
+
+            case BoundCallExpression call:
+                failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, call.Span, $"call to '{call.Function.Name}' must be folded before it can appear in a comptime-required context.");
+                return false;
+
+            case BoundModuleCallExpression moduleCall:
+                failure = new ComptimeFailure(ComptimeFailureKind.UnsupportedConstruct, moduleCall.Span, "module calls are not supported in comptime-required contexts.");
+                return false;
+
+            case BoundIntrinsicCallExpression intrinsic:
+                failure = new ComptimeFailure(ComptimeFailureKind.UnsupportedConstruct, intrinsic.Span, "intrinsic calls are not supported in comptime-required contexts.");
+                return false;
+
+            case BoundMemberAccessExpression member:
+                failure = new ComptimeFailure(ComptimeFailureKind.UnsupportedConstruct, member.Span, "member access is not supported in comptime-required contexts.");
+                return false;
+
+            case BoundIndexExpression index:
+                failure = new ComptimeFailure(ComptimeFailureKind.UnsupportedConstruct, index.Span, "indexing is not supported in comptime-required contexts.");
+                return false;
+
+            case BoundPointerDerefExpression deref:
+                failure = new ComptimeFailure(ComptimeFailureKind.UnsupportedConstruct, deref.Span, "pointer dereference is not supported in comptime-required contexts.");
+                return false;
+
+            case BoundRangeExpression range:
+                return TryValidateComptimeExpression(range.Start, out failure)
+                    && TryValidateComptimeExpression(range.End, out failure);
+
+            case BoundSymbolExpression symbol:
+                failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, symbol.Span, $"symbol '{symbol.Symbol.Name}' is not compile-time evaluable in this context.");
+                return false;
+
+            default:
+                failure = new ComptimeFailure(ComptimeFailureKind.UnsupportedConstruct, expression.Span, $"expression '{expression.Kind}' is not supported in a comptime-required context.");
+                return false;
+        }
+    }
+
+    private static bool ContainsErrorExpression(BoundExpression expression)
+    {
+        switch (expression)
+        {
+            case BoundErrorExpression:
+                return true;
+
+            case BoundUnaryExpression unary:
+                return ContainsErrorExpression(unary.Operand);
+
+            case BoundBinaryExpression binary:
+                return ContainsErrorExpression(binary.Left) || ContainsErrorExpression(binary.Right);
+
+            case BoundCallExpression call:
+                foreach (BoundExpression argument in call.Arguments)
+                {
+                    if (ContainsErrorExpression(argument))
+                        return true;
+                }
+
+                return false;
+
+            case BoundIntrinsicCallExpression intrinsic:
+                foreach (BoundExpression argument in intrinsic.Arguments)
+                {
+                    if (ContainsErrorExpression(argument))
+                        return true;
+                }
+
+                return false;
+
+            case BoundArrayLiteralExpression arrayLiteral:
+                foreach (BoundExpression element in arrayLiteral.Elements)
+                {
+                    if (ContainsErrorExpression(element))
+                        return true;
+                }
+
+                return false;
+
+            case BoundStructLiteralExpression structLiteral:
+                foreach (BoundStructFieldInitializer field in structLiteral.Fields)
+                {
+                    if (ContainsErrorExpression(field.Value))
+                        return true;
+                }
+
+                return false;
+
+            case BoundConversionExpression conversion:
+                return ContainsErrorExpression(conversion.Expression);
+
+            case BoundCastExpression cast:
+                return ContainsErrorExpression(cast.Expression);
+
+            case BoundBitcastExpression bitcast:
+                return ContainsErrorExpression(bitcast.Expression);
+
+            case BoundIfExpression ifExpression:
+                return ContainsErrorExpression(ifExpression.Condition)
+                    || ContainsErrorExpression(ifExpression.ThenExpression)
+                    || ContainsErrorExpression(ifExpression.ElseExpression);
+
+            case BoundRangeExpression range:
+                return ContainsErrorExpression(range.Start) || ContainsErrorExpression(range.End);
+
+            default:
+                return false;
+        }
+    }
+
+    private static bool RequiresSuccessfulComptimeEvaluation(BoundExpression expression)
+    {
+        return expression switch
+        {
+            BoundLiteralExpression literal => literal.Value is not string,
+            BoundEnumLiteralExpression => true,
+            BoundUnaryExpression => true,
+            BoundBinaryExpression => true,
+            BoundCallExpression => true,
+            BoundIfExpression => true,
+            BoundConversionExpression conversion when conversion.Type is not ArrayTypeSymbol and not StructTypeSymbol and not UnionTypeSymbol => true,
+            BoundCastExpression cast when cast.Type is not ArrayTypeSymbol and not StructTypeSymbol and not UnionTypeSymbol => true,
+            BoundBitcastExpression => true,
+            BoundSymbolExpression => true,
+            _ => false,
+        };
+    }
+
+    private BoundBlockStatement? ResolveFunctionBodyForComptime(FunctionSymbol function)
+    {
+        if (_boundFunctionBodies.TryGetValue(function, out BoundBlockStatement? localBody))
+            return localBody;
+
+        foreach (ImportedModule module in _importedModules.Values)
+        {
+            if (TryResolveImportedFunctionBody(module, function, out BoundBlockStatement? importedBody))
+                return importedBody;
+        }
+
+        return null;
+    }
+
+    private static bool TryResolveImportedFunctionBody(ImportedModule module, FunctionSymbol function, out BoundBlockStatement? body)
+    {
+        foreach (BoundFunctionMember member in module.Program.Functions)
+        {
+            if (ReferenceEquals(member.Symbol, function))
+            {
+                body = member.Body;
+                return true;
+            }
+        }
+
+        foreach (ImportedModule nestedModule in module.ImportedModules.Values)
+        {
+            if (TryResolveImportedFunctionBody(nestedModule, function, out body))
+                return true;
+        }
+
+        body = null;
+        return false;
+    }
+
+    private ComptimeSupportResult GetComptimeSupportResult(FunctionSymbol function)
+    {
+        if (_comptimeSupportCache.TryGetValue(function, out ComptimeSupportResult cached))
+            return cached;
+
+        BoundBlockStatement? body = ResolveFunctionBodyForComptime(function);
+        if (body is null)
+        {
+            ComptimeSupportResult missing = new(false, new ComptimeFailure(ComptimeFailureKind.NotEvaluable, new TextSpan(0, 0), $"function body for '{function.Name}' is unavailable during comptime evaluation."));
+            _comptimeSupportCache[function] = missing;
+            return missing;
+        }
+
+        ComptimeFunctionSupportAnalyzer analyzer = new();
+        ComptimeSupportResult analyzed = analyzer.Analyze(function, body);
+        _comptimeSupportCache[function] = analyzed;
+        return analyzed;
+    }
+
+    private void ReportComptimeFailure(ComptimeFailure failure)
+    {
+        if (failure.Kind == ComptimeFailureKind.None)
+            return;
+
+        switch (failure.Kind)
+        {
+            case ComptimeFailureKind.NotEvaluable:
+                _diagnostics.ReportComptimeValueRequired(failure.Span);
+                break;
+
+            case ComptimeFailureKind.UnsupportedConstruct:
+                _diagnostics.ReportComptimeUnsupportedConstruct(failure.Span, failure.Detail);
+                break;
+
+            case ComptimeFailureKind.ForbiddenSymbolAccess:
+                _diagnostics.ReportComptimeForbiddenSymbolAccess(failure.Span, failure.Detail);
+                break;
+
+            case ComptimeFailureKind.FuelExhausted:
+                _diagnostics.ReportComptimeFuelExhausted(failure.Span);
+                break;
+        }
     }
 
     private BoundExpression BindIntrinsicCallExpression(IntrinsicCallExpressionSyntax intrinsic)
@@ -1669,12 +2010,6 @@ public sealed class Binder
             ? new ArrayTypeSymbol(resolvedElementType)
             : new ArrayTypeSymbol(resolvedElementType, producedLength);
         return new BoundArrayLiteralExpression(boundElements, lastElementIsSpread, arrayLiteral.Span, resultType);
-    }
-
-    private BoundExpression BindComptimeExpression(ComptimeExpressionSyntax comptime)
-    {
-        _ = BindBlockStatement(comptime.Body, createScope: true, isTopLevel: false);
-        return new BoundErrorExpression(comptime.Span);
     }
 
     private BoundExpression BindIfExpression(IfExpressionSyntax ifExpression)
@@ -2031,9 +2366,6 @@ public sealed class Binder
                 _diagnostics.ReportInvalidLocalStorageClass(storageClassKeyword.Span, storageClassKeyword.Text);
         }
 
-        int? fixedAddress = TryEvaluateConstantInt(declaration.AtClause?.Address);
-        int? alignment = TryEvaluateConstantInt(declaration.AlignClause?.Alignment);
-
         return new VariableSymbol(
             declaration.Name.Text,
             variableType,
@@ -2041,8 +2373,8 @@ public sealed class Binder
             storageClass,
             scopeKind,
             declaration.ExternKeyword is not null,
-            fixedAddress,
-            alignment);
+            fixedAddress: null,
+            alignment: null);
     }
 
     private static VariableStorageClass MapStorageClass(Token? storageClassKeyword)
@@ -2054,6 +2386,27 @@ public sealed class Binder
             TokenKind.HubKeyword => VariableStorageClass.Hub,
             _ => VariableStorageClass.Automatic,
         };
+    }
+
+    private void ResolveLayoutMetadata(VariableDeclarationSyntax declaration, VariableSymbol variableSymbol)
+    {
+        int? fixedAddress = declaration.AtClause is null
+            ? null
+            : BindRequiredConstantInt(declaration.AtClause.Address, declaration.AtClause.Address.Span);
+        int? alignment = declaration.AlignClause is null
+            ? null
+            : BindRequiredConstantInt(declaration.AlignClause.Alignment, declaration.AlignClause.Alignment.Span);
+        variableSymbol.SetLayoutMetadata(fixedAddress, alignment);
+    }
+
+    private int? BindRequiredConstantInt(ExpressionSyntax expression, TextSpan span)
+    {
+        BoundExpression bound = BindExpression(expression);
+        bound = RequireComptimeExpression(bound, span);
+        int? value = TryEvaluateConstantInt(bound);
+        if (value is null && bound is not BoundErrorExpression)
+            _diagnostics.ReportTypeMismatch(span, "comptime integer", bound.Type.Name);
+        return value;
     }
 
     private int? TryEvaluateConstantInt(ExpressionSyntax? expression)
@@ -2133,6 +2486,9 @@ public sealed class Binder
             _ => unchecked((int)Convert.ToInt64(value, System.Globalization.CultureInfo.InvariantCulture)),
         };
     }
+
+    private static bool RequiresComptimeInitializer(VariableSymbol symbol)
+        => symbol.IsGlobalStorage && symbol.StorageClass != VariableStorageClass.Automatic;
 
     private TypeSymbol BindType(TypeSyntax syntax, string? aliasName = null)
     {
@@ -2271,6 +2627,7 @@ public sealed class Binder
             if (member.Value is not null)
             {
                 BoundExpression boundValue = BindExpression(member.Value);
+                boundValue = RequireComptimeExpression(boundValue, member.Value.Span);
                 int? constantValue = TryEvaluateConstantInt(boundValue);
                 if (constantValue is null)
                 {

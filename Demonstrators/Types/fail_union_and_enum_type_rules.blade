@@ -21,8 +21,8 @@ type Right = enum (u8) {
     A = 0,
 };
 
-reg var header: Header = undefined;
-reg var missing: u32 = header.missing;
+var header: Header = undefined;
+var missing: u32 = header.missing;
 
 reg var left: Left = .A;
 reg var right: Right = left;

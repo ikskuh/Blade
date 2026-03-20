@@ -39,7 +39,7 @@ public class BinderTests
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
         string dump = BoundTreeWriter.Write(program);
-        Assert.That(dump, Does.Contain("Conversion<u32>"));
+        Assert.That(dump, Does.Contain("Literal<u32> 1"));
     }
 
     [Test]
@@ -54,8 +54,7 @@ public class BinderTests
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
         string dump = BoundTreeWriter.Write(program);
-        Assert.That(dump, Does.Contain("Call<u32> add"));
-        Assert.That(dump, Does.Contain("Conversion<u32>"));
+        Assert.That(dump, Does.Contain("Literal<u32> 3"));
     }
 
     [Test]
@@ -220,14 +219,17 @@ public class BinderTests
     public void ExplicitPointerCast_BindsCastExpression()
     {
         (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            reg var value: u32 = 1;
-            reg var source: *reg u32 = &value;
-            reg var sink: *hub u32 = source as *hub u32;
+            fn demo() void {
+                var value: u32 = 1;
+                var source: *reg u32 = &value;
+                var sink: *hub u32 = source as *hub u32;
+            }
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
 
-        BoundGlobalVariableMember declaration = program.GlobalVariables.Single(global => global.Symbol.Name == "sink");
+        BoundFunctionMember function = program.Functions.Single();
+        BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)function.Body.Statements[2];
         Assert.That(declaration.Initializer, Is.TypeOf<BoundCastExpression>());
         Assert.That(declaration.Initializer!.Type.Name, Is.EqualTo("*hub u32"));
     }
@@ -248,13 +250,16 @@ public class BinderTests
     public void Bitcast_BindsBitcastExpression()
     {
         (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            reg var raw: u32 = 1;
-            reg var ptr: *reg u32 = bitcast(*reg u32, raw);
+            fn demo() void {
+                var raw: u32 = 1;
+                var ptr: *reg u32 = bitcast(*reg u32, raw);
+            }
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
 
-        BoundGlobalVariableMember declaration = program.GlobalVariables.Single(global => global.Symbol.Name == "ptr");
+        BoundFunctionMember function = program.Functions.Single();
+        BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)function.Body.Statements[1];
         Assert.That(declaration.Initializer, Is.TypeOf<BoundBitcastExpression>());
         Assert.That(declaration.Initializer!.Type.Name, Is.EqualTo("*reg u32"));
     }
@@ -367,16 +372,19 @@ public class BinderTests
                 return x + y;
             }
 
-            var result: u32 = pair(y=20, x=10);
+            fn demo(input: u32) -> u32 {
+                return pair(y=20, x=input);
+            }
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
 
-        BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)program.TopLevelStatements.Single();
-        BoundCallExpression call = (BoundCallExpression)declaration.Initializer!;
+        BoundFunctionMember function = program.Functions.Single(member => member.Symbol.Name == "demo");
+        BoundReturnStatement returnStatement = (BoundReturnStatement)function.Body.Statements.Single();
+        BoundCallExpression call = (BoundCallExpression)returnStatement.Values.Single();
 
-        Assert.That(((BoundLiteralExpression)((BoundConversionExpression)call.Arguments[0]).Expression).Value, Is.EqualTo(10L));
-        Assert.That(((BoundLiteralExpression)((BoundConversionExpression)call.Arguments[1]).Expression).Value, Is.EqualTo(20L));
+        Assert.That(call.Arguments[0], Is.TypeOf<BoundSymbolExpression>());
+        Assert.That(((BoundLiteralExpression)call.Arguments[1]).Value, Is.EqualTo((uint)20));
     }
 
     [Test]
@@ -387,16 +395,19 @@ public class BinderTests
                 return x + y;
             }
 
-            var result: u32 = pair(10, y=20);
+            fn demo(input: u32) -> u32 {
+                return pair(input, y=20);
+            }
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
 
-        BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)program.TopLevelStatements.Single();
-        BoundCallExpression call = (BoundCallExpression)declaration.Initializer!;
+        BoundFunctionMember function = program.Functions.Single(member => member.Symbol.Name == "demo");
+        BoundReturnStatement returnStatement = (BoundReturnStatement)function.Body.Statements.Single();
+        BoundCallExpression call = (BoundCallExpression)returnStatement.Values.Single();
 
-        Assert.That(((BoundLiteralExpression)((BoundConversionExpression)call.Arguments[0]).Expression).Value, Is.EqualTo(10L));
-        Assert.That(((BoundLiteralExpression)((BoundConversionExpression)call.Arguments[1]).Expression).Value, Is.EqualTo(20L));
+        Assert.That(call.Arguments[0], Is.TypeOf<BoundSymbolExpression>());
+        Assert.That(((BoundLiteralExpression)call.Arguments[1]).Value, Is.EqualTo((uint)20));
     }
 
     [Test]
@@ -466,8 +477,8 @@ public class BinderTests
     public void DuplicateTypeAlias_ReportsDiagnostic()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
-            const A = packed struct { x: u32, };
-            const A = packed struct { y: u32, };
+            type A = packed struct { x: u32, };
+            type A = packed struct { y: u32, };
             """);
 
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0201_SymbolAlreadyDeclared), Is.True);
@@ -507,7 +518,7 @@ public class BinderTests
     public void BoundTreeWriter_CoversAdvancedStatementsAndExpressions()
     {
         (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            const Pair = packed struct { left: u32, right: u32 };
+            type Pair = packed struct { left: u32, right: u32 };
 
             coro fn worker(seed: u32) -> u32 {
                 var pair: Pair = .{ .left = seed, .right = seed };
@@ -844,8 +855,10 @@ public class BinderTests
     public void PointerQualifiers_AllowAddingConstAndVolatile()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
-            reg var source: *reg u32 = undefined;
-            reg var sink: *reg const volatile u32 = source;
+            fn demo() void {
+                var source: *reg u32 = undefined;
+                var sink: *reg const volatile u32 = source;
+            }
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
@@ -866,8 +879,10 @@ public class BinderTests
     public void PointerAlignment_AllowsStrongerSourceAlignment()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
-            reg var source: *reg align(8) u32 = undefined;
-            reg var sink: *reg align(4) u32 = source;
+            fn demo() void {
+                var source: *reg align(8) u32 = undefined;
+                var sink: *reg align(4) u32 = source;
+            }
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
@@ -909,7 +924,7 @@ public class BinderTests
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
         string dump = BoundTreeWriter.Write(program);
-        Assert.That(dump, Does.Contain("EnumLiteral<Mode> .Busy = 1"));
+        Assert.That(dump, Does.Contain("Literal<Mode> 1"));
     }
 
     [Test]
@@ -926,7 +941,7 @@ public class BinderTests
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
         string dump = BoundTreeWriter.Write(program);
-        Assert.That(dump, Does.Contain("EnumLiteral<Mode> .Busy = 1"));
+        Assert.That(dump, Does.Contain("Literal<Mode> 1"));
     }
 
     [Test]
@@ -1015,7 +1030,7 @@ public class BinderTests
             reg var bad: u8 = closed as u8;
             """);
 
-        Assert.That(program.GlobalVariables.Single(global => global.Symbol.Name == "raw").Initializer, Is.TypeOf<BoundCastExpression>());
+        Assert.That(program.GlobalVariables.Single(global => global.Symbol.Name == "raw").Initializer, Is.TypeOf<BoundLiteralExpression>());
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0224_InvalidExplicitCast), Is.True);
     }
 
@@ -1027,12 +1042,16 @@ public class BinderTests
                 Idle = 0,
             };
 
-            reg var closed: ClosedState = .Idle;
-            reg var raw: u8 = bitcast(u8, closed);
+            fn demo() void {
+                var closed: ClosedState = .Idle;
+                var raw: u8 = bitcast(u8, closed);
+            }
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
-        Assert.That(program.GlobalVariables.Single(global => global.Symbol.Name == "raw").Initializer, Is.TypeOf<BoundBitcastExpression>());
+        BoundFunctionMember function = program.Functions.Single();
+        BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)function.Body.Statements[1];
+        Assert.That(declaration.Initializer, Is.TypeOf<BoundBitcastExpression>());
     }
 
     [Test]
@@ -1169,8 +1188,8 @@ public class BinderTests
                 hi: u32,
             };
 
-            reg var header: Header = undefined;
-            reg var value: u32 = header.lo;
+            var header: Header = undefined;
+            var value: u32 = header.lo;
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
@@ -1207,8 +1226,8 @@ public class BinderTests
                 hi: u32,
             };
 
-            reg var first: First = undefined;
-            reg var second: Second = first;
+            var first: First = undefined;
+            var second: Second = first;
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");

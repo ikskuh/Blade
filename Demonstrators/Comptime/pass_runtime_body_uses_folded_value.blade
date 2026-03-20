@@ -1,0 +1,16 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - VarDecl seed: u32
+// - Literal<u32> 10
+// NOTE:
+//   Eager folding should also happen inside ordinary runtime code when the inputs are compile-time values.
+
+fn mul2(value: u32) -> u32 {
+    return value * 2;
+}
+
+fn run(input: u32) -> u32 {
+    const seed: u32 = mul2(5);
+    return input + seed;
+}

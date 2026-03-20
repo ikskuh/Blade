@@ -305,7 +305,7 @@ public class ParserTests
     [Test]
     public void PackedStructTypeAlias_ParsesCorrectly()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("const Header = packed struct { lo: u8, hi: u8 };");
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("type Header = packed struct { lo: u8, hi: u8 };");
         AssertNoDiagnostics(diag);
 
         TypeAliasDeclarationSyntax alias = (TypeAliasDeclarationSyntax)unit.Members[0];
@@ -315,14 +315,29 @@ public class ParserTests
     }
 
     [Test]
-    public void ComptimeConstDeclaration_ParsesAsTypeAliasPlaceholder()
+    public void TopLevelTypedConst_ParsesAsGlobalStatementVariableDeclaration()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("const BuildInfo = comptime { 1; };");
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("const BuildInfo: u32 = 1;");
         AssertNoDiagnostics(diag);
 
-        TypeAliasDeclarationSyntax alias = (TypeAliasDeclarationSyntax)unit.Members[0];
-        Assert.That(alias.Type, Is.TypeOf<NamedTypeSyntax>());
-        Assert.That(((NamedTypeSyntax)alias.Type).Name.Text, Is.EqualTo("auto"));
+        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
+        Assert.That(global.Statement, Is.TypeOf<VariableDeclarationStatementSyntax>());
+    }
+
+    [Test]
+    public void TopLevelUntypedConst_IsRejected()
+    {
+        (CompilationUnitSyntax _, DiagnosticBag diag) = Parse("const BuildInfo = 1;");
+
+        Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0102_ExpectedExpression || d.Code == DiagnosticCode.E0101_UnexpectedToken), Is.True);
+    }
+
+    [Test]
+    public void AliasThroughConst_IsRejected()
+    {
+        (CompilationUnitSyntax _, DiagnosticBag diag) = Parse("const Header = packed struct { lo: u8, hi: u8 };");
+
+        Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0102_ExpectedExpression || d.Code == DiagnosticCode.E0101_UnexpectedToken), Is.True);
     }
 
     [Test]
@@ -613,14 +628,11 @@ public class ParserTests
     }
 
     [Test]
-    public void ComptimeExpression_ParsesCorrectly()
+    public void ComptimeBlockExpression_IsRejected()
     {
         (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("comptime { 1; };");
-        AssertNoDiagnostics(diag);
-
-        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
-        ExpressionStatementSyntax statement = (ExpressionStatementSyntax)global.Statement;
-        Assert.That(statement.Expression, Is.TypeOf<ComptimeExpressionSyntax>());
+        Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0102_ExpectedExpression), Is.True);
+        Assert.That(unit.Members[0], Is.TypeOf<GlobalStatementSyntax>());
     }
 
     [Test]

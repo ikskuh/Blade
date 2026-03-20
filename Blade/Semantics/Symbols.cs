@@ -58,14 +58,20 @@ public sealed class VariableSymbol : Symbol
     public VariableStorageClass StorageClass { get; }
     public VariableScopeKind ScopeKind { get; }
     public bool IsExtern { get; }
-    public int? FixedAddress { get; }
-    public int? Alignment { get; }
+    public int? FixedAddress { get; private set; }
+    public int? Alignment { get; private set; }
 
     public bool IsAutomatic => ScopeKind is VariableScopeKind.Local or VariableScopeKind.TopLevelAutomatic;
     public bool IsGlobalStorage => ScopeKind == VariableScopeKind.GlobalStorage;
     public bool UsesGlobalRegisterStorage => IsGlobalStorage && StorageClass == VariableStorageClass.Reg;
     public bool UsesGlobalLutStorage => IsGlobalStorage && StorageClass == VariableStorageClass.Lut;
     public bool UsesGlobalHubStorage => IsGlobalStorage && StorageClass == VariableStorageClass.Hub;
+
+    public void SetLayoutMetadata(int? fixedAddress, int? alignment)
+    {
+        FixedAddress = fixedAddress;
+        Alignment = alignment;
+    }
 }
 
 public sealed class ParameterSymbol : Symbol

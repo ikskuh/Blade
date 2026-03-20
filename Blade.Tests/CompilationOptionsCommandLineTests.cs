@@ -12,6 +12,7 @@ public sealed class CompilationOptionsCommandLineTests
         Assert.That(CompilationOptionsCommandLine.IsCompilationOption("-fmir-opt=const-prop"), Is.True);
         Assert.That(CompilationOptionsCommandLine.IsCompilationOption("-fno-lir-opt=dce"), Is.True);
         Assert.That(CompilationOptionsCommandLine.IsCompilationOption("-fasmir-opt=*"), Is.True);
+        Assert.That(CompilationOptionsCommandLine.IsCompilationOption("--comptime-fuel=123"), Is.True);
         Assert.That(CompilationOptionsCommandLine.IsCompilationOption("--module=extmod=mods/ext.blade"), Is.True);
         Assert.That(CompilationOptionsCommandLine.IsCompilationOption("--dump-bound"), Is.False);
         Assert.That(CompilationOptionsCommandLine.IsCompilationOption("input.blade"), Is.False);
@@ -47,6 +48,38 @@ public sealed class CompilationOptionsCommandLineTests
     }
 
     [Test]
+    public void TryParse_UsesDefaultComptimeFuelWhenNoOverrideIsPresent()
+    {
+        using TempDirectory tempDirectory = new();
+
+        bool succeeded = CompilationOptionsCommandLine.TryParse(
+            [],
+            tempDirectory.Path,
+            out CompilationOptions options,
+            out string? errorMessage);
+
+        Assert.That(succeeded, Is.True);
+        Assert.That(errorMessage, Is.Null);
+        Assert.That(options.ComptimeFuel, Is.EqualTo(250));
+    }
+
+    [Test]
+    public void TryParse_ParsesComptimeFuelOverride()
+    {
+        using TempDirectory tempDirectory = new();
+
+        bool succeeded = CompilationOptionsCommandLine.TryParse(
+            ["--comptime-fuel=17"],
+            tempDirectory.Path,
+            out CompilationOptions options,
+            out string? errorMessage);
+
+        Assert.That(succeeded, Is.True);
+        Assert.That(errorMessage, Is.Null);
+        Assert.That(options.ComptimeFuel, Is.EqualTo(17));
+    }
+
+    [Test]
     public void Parse_InvalidArgument_ThrowsSharedValidationError()
     {
         using TempDirectory tempDirectory = new();
@@ -72,5 +105,23 @@ public sealed class CompilationOptionsCommandLineTests
         Assert.That(errorMessage, Is.EqualTo("error: unsupported compiler option '--bogus-compile-option'."));
         Assert.That(options.OptimizationDirectives, Is.Empty);
         Assert.That(options.NamedModuleRoots.Count, Is.EqualTo(0));
+    }
+
+    [TestCase("--comptime-fuel=0", "0")]
+    [TestCase("--comptime-fuel=-1", "-1")]
+    [TestCase("--comptime-fuel=abc", "abc")]
+    public void TryParse_RejectsInvalidComptimeFuel(string arg, string payload)
+    {
+        using TempDirectory tempDirectory = new();
+
+        bool succeeded = CompilationOptionsCommandLine.TryParse(
+            [arg],
+            tempDirectory.Path,
+            out CompilationOptions options,
+            out string? errorMessage);
+
+        Assert.That(succeeded, Is.False);
+        Assert.That(errorMessage, Is.EqualTo($"error: invalid comptime fuel '{payload}'. Expected a positive integer."));
+        Assert.That(options.ComptimeFuel, Is.EqualTo(250));
     }
 }
