@@ -65,6 +65,25 @@ public class BinderTests
     }
 
     [Test]
+    public void AssertFalse_ReportsAssertionFailedDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("assert false;");
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0255_AssertionFailed), Is.True);
+    }
+
+    [Test]
+    public void AssertNonComptimeCondition_ReportsComptimeValueRequired()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            var x: u32 = 1;
+            assert x == 1;
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0241_ComptimeValueRequired), Is.True);
+    }
+
+    [Test]
     public void AssignmentToConst_ReportsDiagnostic()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""

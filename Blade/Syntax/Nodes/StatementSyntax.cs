@@ -224,6 +224,25 @@ public sealed class NoirqStatementSyntax : StatementSyntax
     }
 }
 
+public sealed class AssertStatementSyntax : StatementSyntax
+{
+    public Token AssertKeyword { get; }
+    public ExpressionSyntax Condition { get; }
+    public Token? CommaToken { get; }
+    public Token? MessageLiteral { get; }
+    public Token Semicolon { get; }
+
+    public AssertStatementSyntax(Token assertKeyword, ExpressionSyntax condition, Token? commaToken, Token? messageLiteral, Token semicolon)
+        : base(TextSpan.FromBounds(assertKeyword.Span.Start, semicolon.Span.End))
+    {
+        AssertKeyword = assertKeyword;
+        Condition = Requires.NotNull(condition);
+        CommaToken = commaToken;
+        MessageLiteral = messageLiteral;
+        Semicolon = semicolon;
+    }
+}
+
 public sealed class ReturnStatementSyntax : StatementSyntax
 {
     public Token ReturnKeyword { get; }

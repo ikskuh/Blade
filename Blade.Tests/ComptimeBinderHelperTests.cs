@@ -57,10 +57,9 @@ public sealed class ComptimeBinderHelperTests
             .Single(method => method.Name == name && method.GetParameters().Length == parameterCount);
     }
 
-    private static MethodInfo GetBinderInstanceMethod(string name, int parameterCount)
+    private static MethodInfo GetBinderInstanceMethod(string name, params Type[] parameterTypes)
     {
-        return typeof(SemanticBinder).GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
-            .Single(method => method.Name == name && method.GetParameters().Length == parameterCount);
+        return typeof(SemanticBinder).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic, null, parameterTypes, null)!;
     }
 
     private static T Invoke<T>(MethodInfo method, object? instance, params object?[] args)
@@ -280,39 +279,54 @@ public sealed class ComptimeBinderHelperTests
     [Test]
     public void PrivateConstantIntegerHelpers_CoverConversionsAndOperators()
     {
-        MethodInfo tryEvaluateConstantInt = GetBinderStaticMethod("TryEvaluateConstantInt", typeof(BoundExpression));
+        MethodInfo tryEvaluateConstantValue = GetBinderInstanceMethod("TryEvaluateConstantValue", typeof(BoundExpression), typeof(object).MakeByRefType());
+        MethodInfo tryEvaluateConstantInt = GetBinderInstanceMethod("TryEvaluateConstantInt", typeof(BoundExpression));
         MethodInfo toInt32Unchecked = GetBinderStaticMethod("ToInt32Unchecked", typeof(object));
+        SemanticBinder binder = CreateBinder(new DiagnosticBag());
 
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundLiteralExpression((ulong)7, Span, BuiltinTypes.U32)), Is.EqualTo(7));
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundLiteralExpression((short)8, Span, BuiltinTypes.I16)), Is.EqualTo(8));
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundLiteralExpression((ushort)9, Span, BuiltinTypes.U16)), Is.EqualTo(9));
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundLiteralExpression((byte)10, Span, BuiltinTypes.U8)), Is.EqualTo(10));
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundLiteralExpression((sbyte)(-11), Span, BuiltinTypes.I8)), Is.EqualTo(-11));
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundConversionExpression(new BoundLiteralExpression(12, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.U32)), Is.EqualTo(12));
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundCastExpression(new BoundLiteralExpression(255, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.U8)), Is.EqualTo(255));
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundBitcastExpression(new BoundLiteralExpression(255, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.I8)), Is.EqualTo(-1));
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundUnaryExpression(BoundUnaryOperator.Bind(TokenKind.Minus)!, new BoundLiteralExpression(5, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(-5));
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundUnaryExpression(BoundUnaryOperator.Bind(TokenKind.Tilde)!, new BoundLiteralExpression(5, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(~5));
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundUnaryExpression(BoundUnaryOperator.Bind(TokenKind.Plus)!, new BoundLiteralExpression(5, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(5));
+        object?[] boolArgs =
+        [
+            new BoundBinaryExpression(
+                new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral),
+                BoundBinaryOperator.Bind(TokenKind.EqualEqual)!,
+                new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral),
+                Span,
+                BuiltinTypes.Bool),
+            null,
+        ];
+        Assert.That((bool)tryEvaluateConstantValue.Invoke(binder, boolArgs)!, Is.True);
+        Assert.That(boolArgs[1], Is.EqualTo(true));
 
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundBinaryExpression(new BoundLiteralExpression(7, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.Plus)!, new BoundLiteralExpression(2, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(9));
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundBinaryExpression(new BoundLiteralExpression(7, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.Minus)!, new BoundLiteralExpression(2, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(5));
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundBinaryExpression(new BoundLiteralExpression(7, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.Star)!, new BoundLiteralExpression(2, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(14));
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundBinaryExpression(new BoundLiteralExpression(7, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.Slash)!, new BoundLiteralExpression(2, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(3));
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundBinaryExpression(new BoundLiteralExpression(7, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.Slash)!, new BoundLiteralExpression(0, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.Null);
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundBinaryExpression(new BoundLiteralExpression(7, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.Percent)!, new BoundLiteralExpression(2, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(1));
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundBinaryExpression(new BoundLiteralExpression(7, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.Percent)!, new BoundLiteralExpression(0, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.Null);
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundBinaryExpression(new BoundLiteralExpression(6, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.Ampersand)!, new BoundLiteralExpression(3, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(2));
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundBinaryExpression(new BoundLiteralExpression(6, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.Pipe)!, new BoundLiteralExpression(3, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(7));
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundBinaryExpression(new BoundLiteralExpression(6, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.Caret)!, new BoundLiteralExpression(3, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(5));
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundBinaryExpression(new BoundLiteralExpression(3, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.LessLess)!, new BoundLiteralExpression(2, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(12));
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundBinaryExpression(new BoundLiteralExpression(8, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.GreaterGreater)!, new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(4));
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundBinaryExpression(new BoundLiteralExpression(3, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.LessLessLess)!, new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(6));
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundBinaryExpression(new BoundLiteralExpression(8, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.GreaterGreaterGreater)!, new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(4));
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundBinaryExpression(new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.RotateLeft)!, new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(2));
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundBinaryExpression(new BoundLiteralExpression(2, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.RotateRight)!, new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(1));
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundBinaryExpression(new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.EqualEqual)!, new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.Bool)), Is.Null);
-        Assert.That(Invoke(tryEvaluateConstantInt, null, new BoundErrorExpression(Span)), Is.Null);
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundLiteralExpression((ulong)7, Span, BuiltinTypes.U32)), Is.EqualTo(7));
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundLiteralExpression((short)8, Span, BuiltinTypes.I16)), Is.EqualTo(8));
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundLiteralExpression((ushort)9, Span, BuiltinTypes.U16)), Is.EqualTo(9));
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundLiteralExpression((byte)10, Span, BuiltinTypes.U8)), Is.EqualTo(10));
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundLiteralExpression((sbyte)(-11), Span, BuiltinTypes.I8)), Is.EqualTo(-11));
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundConversionExpression(new BoundLiteralExpression(12, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.U32)), Is.EqualTo(12));
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundCastExpression(new BoundLiteralExpression(255, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.U8)), Is.EqualTo(255));
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundBitcastExpression(new BoundLiteralExpression(255, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.I8)), Is.EqualTo(-1));
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundUnaryExpression(BoundUnaryOperator.Bind(TokenKind.Minus)!, new BoundLiteralExpression(5, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(-5));
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundUnaryExpression(BoundUnaryOperator.Bind(TokenKind.Tilde)!, new BoundLiteralExpression(5, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(~5));
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundUnaryExpression(BoundUnaryOperator.Bind(TokenKind.Plus)!, new BoundLiteralExpression(5, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(5));
+
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundBinaryExpression(new BoundLiteralExpression(7, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.Plus)!, new BoundLiteralExpression(2, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(9));
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundBinaryExpression(new BoundLiteralExpression(7, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.Minus)!, new BoundLiteralExpression(2, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(5));
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundBinaryExpression(new BoundLiteralExpression(7, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.Star)!, new BoundLiteralExpression(2, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(14));
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundBinaryExpression(new BoundLiteralExpression(7, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.Slash)!, new BoundLiteralExpression(2, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(3));
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundBinaryExpression(new BoundLiteralExpression(7, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.Slash)!, new BoundLiteralExpression(0, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.Null);
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundBinaryExpression(new BoundLiteralExpression(7, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.Percent)!, new BoundLiteralExpression(2, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(1));
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundBinaryExpression(new BoundLiteralExpression(7, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.Percent)!, new BoundLiteralExpression(0, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.Null);
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundBinaryExpression(new BoundLiteralExpression(6, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.Ampersand)!, new BoundLiteralExpression(3, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(2));
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundBinaryExpression(new BoundLiteralExpression(6, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.Pipe)!, new BoundLiteralExpression(3, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(7));
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundBinaryExpression(new BoundLiteralExpression(6, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.Caret)!, new BoundLiteralExpression(3, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(5));
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundBinaryExpression(new BoundLiteralExpression(3, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.LessLess)!, new BoundLiteralExpression(2, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(12));
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundBinaryExpression(new BoundLiteralExpression(8, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.GreaterGreater)!, new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(4));
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundBinaryExpression(new BoundLiteralExpression(3, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.LessLessLess)!, new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(6));
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundBinaryExpression(new BoundLiteralExpression(8, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.GreaterGreaterGreater)!, new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(4));
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundBinaryExpression(new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.RotateLeft)!, new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(2));
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundBinaryExpression(new BoundLiteralExpression(2, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.RotateRight)!, new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(1));
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundBinaryExpression(new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.EqualEqual)!, new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.Bool)), Is.Null);
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundErrorExpression(Span)), Is.Null);
 
         Assert.That(Invoke<int>(toInt32Unchecked, null, (object?)null), Is.EqualTo(0));
         Assert.That(Invoke<int>(toInt32Unchecked, null, 1), Is.EqualTo(1));
@@ -335,8 +349,8 @@ public sealed class ComptimeBinderHelperTests
         FieldInfo importedModulesField = typeof(SemanticBinder).GetField("_importedModules", BindingFlags.Instance | BindingFlags.NonPublic)!;
         Dictionary<FunctionSymbol, BoundBlockStatement> boundBodies = (Dictionary<FunctionSymbol, BoundBlockStatement>)boundBodiesField.GetValue(binder)!;
         Dictionary<string, ImportedModule> importedModules = (Dictionary<string, ImportedModule>)importedModulesField.GetValue(binder)!;
-        MethodInfo resolveBody = GetBinderInstanceMethod("ResolveFunctionBodyForComptime", 1);
-        MethodInfo reportFailure = GetBinderInstanceMethod("ReportComptimeFailure", 1);
+        MethodInfo resolveBody = GetBinderInstanceMethod("ResolveFunctionBodyForComptime", typeof(FunctionSymbol));
+        MethodInfo reportFailure = GetBinderInstanceMethod("ReportComptimeFailure", CreateFailure("NotEvaluable").GetType());
 
         FunctionSymbol localFunction = CreateFunctionSymbol("local", FunctionKind.Default);
         BoundBlockStatement localBody = new([], Span);

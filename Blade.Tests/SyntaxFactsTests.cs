@@ -38,6 +38,7 @@ public class SyntaxFactsTests
         [TokenKind.YieldtoKeyword] = "yieldto",
         [TokenKind.RepKeyword] = "rep",
         [TokenKind.NoirqKeyword] = "noirq",
+        [TokenKind.AssertKeyword] = "assert",
         [TokenKind.InKeyword] = "in",
         [TokenKind.ImportKeyword] = "import",
         [TokenKind.AsKeyword] = "as",

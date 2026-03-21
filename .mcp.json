@@ -7,6 +7,24 @@
         "Scripts/mcp_server.py"
       ],
       "env": {}
+    },
+    "serena": {
+      "type": "stdio",
+      "command": ".venv/bin/serena",
+      "args": [
+        "start-mcp-server",
+        "--context=codex",
+        "--mode",
+        "planning",
+        "--mode",
+        "editing",
+        "--mode",
+        "interactive"
+      ],
+      "env": {
+        "PATH": "/home/felix/.dotnet/tools:/usr/local/sbin:/usr/local/bin:/usr/bin",
+        "MCP_DEBUG": "1"
+      }
     }
   }
 }

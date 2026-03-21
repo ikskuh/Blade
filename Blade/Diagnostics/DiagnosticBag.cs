@@ -420,6 +420,14 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
         Report(DiagnosticCode.E0254_InvalidMemorySpaceArgument, span, "Expected a 'builtin.MemorySpace' value.");
     }
 
+    public void ReportAssertionFailed(TextSpan span, string? message)
+    {
+        Report(
+            DiagnosticCode.E0255_AssertionFailed,
+            span,
+            message is null ? "assertion failed" : $"assertion failed: {message}");
+    }
+
     // Inline assembly diagnostics
 
     public void ReportInlineAsmUnknownInstruction(TextSpan span, string mnemonic)

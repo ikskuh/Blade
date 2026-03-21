@@ -195,6 +195,58 @@ public class ParserTests
         Assert.That(asm.Volatility, Is.EqualTo(AsmVolatility.Volatile));
     }
 
+    [Test]
+    public void AssertStatement_ParsesCorrectlyAtTopLevel()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("assert true;");
+        AssertNoDiagnostics(diag);
+
+        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
+        AssertStatementSyntax assertStatement = (AssertStatementSyntax)global.Statement;
+        Assert.That(assertStatement.AssertKeyword.Kind, Is.EqualTo(TokenKind.AssertKeyword));
+        Assert.That(assertStatement.Condition, Is.TypeOf<LiteralExpressionSyntax>());
+        Assert.That(assertStatement.CommaToken, Is.Null);
+        Assert.That(assertStatement.MessageLiteral, Is.Null);
+    }
+
+    [Test]
+    public void AssertStatement_WithMessage_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("assert false, \"must hold\";");
+        AssertNoDiagnostics(diag);
+
+        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
+        AssertStatementSyntax assertStatement = (AssertStatementSyntax)global.Statement;
+        Assert.That(assertStatement.CommaToken?.Kind, Is.EqualTo(TokenKind.Comma));
+        Assert.That(assertStatement.MessageLiteral?.Kind, Is.EqualTo(TokenKind.StringLiteral));
+        Assert.That(assertStatement.MessageLiteral?.Value, Is.EqualTo("must hold"));
+    }
+
+    [Test]
+    public void AssertStatement_ParsesInsideFunctionBody()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("""
+            fn demo() void {
+                assert true;
+            }
+            """);
+        AssertNoDiagnostics(diag);
+
+        FunctionDeclarationSyntax function = (FunctionDeclarationSyntax)unit.Members[0];
+        Assert.That(function.Body.Statements[0], Is.TypeOf<AssertStatementSyntax>());
+    }
+
+    [Test]
+    public void AssertStatement_MessageMustBeStringLiteral()
+    {
+        (_, DiagnosticBag diag) = Parse("""
+            const msg: [4]u8 = "oops";
+            assert false, msg;
+            """);
+
+        Assert.That(diag.Select(diagnostic => diagnostic.Code), Is.EqualTo([DiagnosticCode.E0101_UnexpectedToken]));
+    }
+
     // ── Types ──
 
     [Test]

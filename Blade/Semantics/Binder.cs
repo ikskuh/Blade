@@ -22,6 +22,7 @@ public sealed class Binder
     private readonly Dictionary<string, ImportedModule> _importedModules = new(StringComparer.Ordinal);
     private readonly Dictionary<FunctionSymbol, BoundBlockStatement> _boundFunctionBodies = new();
     private readonly Dictionary<FunctionSymbol, ComptimeSupportResult> _comptimeSupportCache = new();
+    private readonly Dictionary<Symbol, object?> _knownConstantValues = new();
     private readonly Dictionary<string, ImportedModuleDefinition> _moduleDefinitionCache;
     private readonly Dictionary<string, string> _namedModuleOwners;
     private readonly HashSet<string> _moduleBindingStack;
@@ -32,6 +33,7 @@ public sealed class Binder
     private readonly Stack<LoopContext> _loopStack = new();
     private readonly int _comptimeFuel;
     private int _anonymousStructIndex;
+    private int _booleanLiteralValueBindingDepth;
 
     private static readonly EnumTypeSymbol MemorySpaceType = new("MemorySpace", BuiltinTypes.U32,
         new Dictionary<string, long>(StringComparer.Ordinal) { ["reg"] = 0, ["lut"] = 1, ["hub"] = 2 },
@@ -120,7 +122,8 @@ public sealed class Binder
                     break;
 
                 case GlobalStatementSyntax globalStatement:
-                    boundTopLevelStatements.Add(BindStatement(globalStatement.Statement, isTopLevel: true));
+                    if (BindStatementNullable(globalStatement.Statement, isTopLevel: true) is BoundStatement boundStatement)
+                        boundTopLevelStatements.Add(boundStatement);
                     break;
             }
         }
@@ -453,6 +456,8 @@ public sealed class Binder
             }
         }
 
+        RememberKnownConstantValue(variableSymbol, initializer);
+
         return new BoundGlobalVariableMember(variableSymbol, initializer, variable.Span);
     }
 
@@ -615,7 +620,10 @@ public sealed class Binder
 
         List<BoundStatement> statements = new();
         foreach (StatementSyntax statement in block.Statements)
-            statements.Add(BindStatement(statement, isTopLevel));
+        {
+            if (BindStatementNullable(statement, isTopLevel) is BoundStatement boundStatement)
+                statements.Add(boundStatement);
+        }
 
         if (createScope && previousScope is not null)
             _currentScope = previousScope;
@@ -624,6 +632,9 @@ public sealed class Binder
     }
 
     private BoundStatement BindStatement(StatementSyntax statement, bool isTopLevel)
+        => BindStatementNullable(statement, isTopLevel) ?? new BoundBlockStatement([], statement.Span);
+
+    private BoundStatement? BindStatementNullable(StatementSyntax statement, bool isTopLevel)
     {
         switch (statement)
         {
@@ -742,6 +753,9 @@ public sealed class Binder
                 return new BoundNoirqStatement(body, noirq.Span);
             }
 
+            case AssertStatementSyntax assertStatement:
+                return BindAssertStatement(assertStatement);
+
             case ReturnStatementSyntax returnStatement:
                 return BindReturnStatement(returnStatement);
 
@@ -821,6 +835,51 @@ public sealed class Binder
         return new BoundErrorStatement(statement.Span);
     }
 
+    private BoundStatement? BindAssertStatement(AssertStatementSyntax assertStatement)
+    {
+        if (assertStatement.CommaToken is not null && assertStatement.MessageLiteral is null)
+            return new BoundErrorStatement(assertStatement.Span);
+
+        _booleanLiteralValueBindingDepth++;
+        BoundExpression condition;
+        try
+        {
+            condition = BindExpression(assertStatement.Condition, BuiltinTypes.Bool);
+        }
+        finally
+        {
+            _booleanLiteralValueBindingDepth--;
+        }
+
+        if (condition is BoundErrorExpression)
+            return new BoundErrorStatement(assertStatement.Span);
+
+        if (!TryEvaluateAssertCondition(condition, out object? value, out ComptimeFailure failure))
+        {
+            if (!ContainsErrorExpression(condition))
+            {
+                if (failure.Kind is ComptimeFailureKind.NotEvaluable or ComptimeFailureKind.ForbiddenSymbolAccess)
+                    _diagnostics.ReportComptimeValueRequired(assertStatement.Condition.Span);
+                else
+                    ReportComptimeFailure(failure);
+            }
+
+            return new BoundErrorStatement(assertStatement.Span);
+        }
+
+        if (value is not bool conditionValue)
+        {
+            _diagnostics.ReportTypeMismatch(assertStatement.Condition.Span, "bool", condition.Type.Name);
+            return new BoundErrorStatement(assertStatement.Span);
+        }
+
+        if (conditionValue)
+            return null;
+
+        _diagnostics.ReportAssertionFailed(assertStatement.Span, assertStatement.MessageLiteral?.Value as string);
+        return new BoundErrorStatement(assertStatement.Span);
+    }
+
 
     private Dictionary<string, Symbol> CollectInlineAsmAvailableSymbols()
     {
@@ -884,6 +943,8 @@ public sealed class Binder
         BoundExpression? initializer = null;
         if (declaration.Initializer is not null)
             initializer = BindExpression(declaration.Initializer, variableType);
+
+        RememberKnownConstantValue(variableSymbol, initializer);
 
         return new BoundVariableDeclarationStatement(variableSymbol, initializer, declaration.Span);
     }
@@ -1353,6 +1414,15 @@ public sealed class Binder
         };
 
         object? value = literal.Token.Value;
+        if (value is null && _booleanLiteralValueBindingDepth > 0)
+        {
+            value = literal.Token.Kind switch
+            {
+                TokenKind.TrueKeyword => true,
+                TokenKind.FalseKeyword => false,
+                _ => value,
+            };
+        }
 
         // For zero-terminated strings, append NUL to the stored value
         if (literal.Token.Kind == TokenKind.ZeroTerminatedStringLiteral && value is string zStr)
@@ -1793,6 +1863,24 @@ public sealed class Binder
             ResolveFunctionBodyForComptime,
             GetComptimeSupportResult);
         return evaluator.TryEvaluateExpression(expression, out value, out failure);
+    }
+
+    private bool TryEvaluateAssertCondition(BoundExpression expression, out object? value, out ComptimeFailure failure)
+    {
+        ComptimeEvaluator evaluator = new(
+            _comptimeFuel,
+            ResolveFunctionBodyForComptime,
+            GetComptimeSupportResult);
+        return evaluator.TryEvaluateExpression(expression, _knownConstantValues, out value, out failure);
+    }
+
+    private void RememberKnownConstantValue(VariableSymbol symbol, BoundExpression? initializer)
+    {
+        if (!symbol.IsConst || initializer is null || initializer is BoundErrorExpression)
+            return;
+
+        if (TryEvaluateConstantValue(initializer, out object? value))
+            _knownConstantValues[symbol] = value;
     }
 
     private static bool TryValidateComptimeExpression(BoundExpression expression, out ComptimeFailure failure)
@@ -2772,54 +2860,19 @@ public sealed class Binder
         return TryEvaluateConstantInt(bound);
     }
 
-    private static int? TryEvaluateConstantInt(BoundExpression expression)
+    private bool TryEvaluateConstantValue(BoundExpression expression, out object? value)
     {
-        return expression switch
+        return TryEvaluateFoldedValue(expression, out value, out _);
+    }
+
+    private int? TryEvaluateConstantInt(BoundExpression expression)
+    {
+        if (!TryEvaluateConstantValue(expression, out object? value))
+            return null;
+
+        return value switch
         {
-            BoundLiteralExpression literal when literal.Value is int value => value,
-            BoundLiteralExpression literal when literal.Value is uint value => unchecked((int)value),
-            BoundLiteralExpression literal when literal.Value is long value => unchecked((int)value),
-            BoundLiteralExpression literal when literal.Value is ulong value => unchecked((int)value),
-            BoundLiteralExpression literal when literal.Value is short value => value,
-            BoundLiteralExpression literal when literal.Value is ushort value => value,
-            BoundLiteralExpression literal when literal.Value is byte value => value,
-            BoundLiteralExpression literal when literal.Value is sbyte value => value,
-            BoundConversionExpression conversion => TryEvaluateConstantInt(conversion.Expression),
-            BoundCastExpression cast when TryEvaluateConstantInt(cast.Expression) is int castOperand
-                && TypeFacts.TryNormalizeValue(castOperand, cast.Type, out object? castValue)
-                => ToInt32Unchecked(castValue),
-            BoundBitcastExpression bitcast when TryEvaluateConstantInt(bitcast.Expression) is int bitcastOperand
-                && TypeFacts.TryNormalizeValue(bitcastOperand, bitcast.Type, out object? bitcastValue)
-                => ToInt32Unchecked(bitcastValue),
-            BoundUnaryExpression unary when unary.Operator.Kind == BoundUnaryOperatorKind.Negation
-                && TryEvaluateConstantInt(unary.Operand) is int operand
-                => -operand,
-            BoundUnaryExpression unary when unary.Operator.Kind == BoundUnaryOperatorKind.BitwiseNot
-                && TryEvaluateConstantInt(unary.Operand) is int bitwiseOperand
-                => ~bitwiseOperand,
-            BoundUnaryExpression unary when unary.Operator.Kind == BoundUnaryOperatorKind.UnaryPlus
-                && TryEvaluateConstantInt(unary.Operand) is int plusOperand
-                => plusOperand,
-            BoundBinaryExpression binary when TryEvaluateConstantInt(binary.Left) is int left
-                && TryEvaluateConstantInt(binary.Right) is int right
-                => binary.Operator.Kind switch
-                {
-                    BoundBinaryOperatorKind.Add => left + right,
-                    BoundBinaryOperatorKind.Subtract => left - right,
-                    BoundBinaryOperatorKind.Multiply => left * right,
-                    BoundBinaryOperatorKind.Divide => right == 0 ? null : left / right,
-                    BoundBinaryOperatorKind.Modulo => right == 0 ? null : left % right,
-                    BoundBinaryOperatorKind.BitwiseAnd => left & right,
-                    BoundBinaryOperatorKind.BitwiseOr => left | right,
-                    BoundBinaryOperatorKind.BitwiseXor => left ^ right,
-                    BoundBinaryOperatorKind.ShiftLeft => left << right,
-                    BoundBinaryOperatorKind.ShiftRight => left >> right,
-                    BoundBinaryOperatorKind.ArithmeticShiftLeft => left << right,
-                    BoundBinaryOperatorKind.ArithmeticShiftRight => left >> right,
-                    BoundBinaryOperatorKind.RotateLeft => (int)((uint)left << right | (uint)left >> (32 - (right & 31))),
-                    BoundBinaryOperatorKind.RotateRight => (int)((uint)left >> right | (uint)left << (32 - (right & 31))),
-                    _ => null,
-                },
+            int or uint or long or ulong or short or ushort or byte or sbyte => ToInt32Unchecked(value),
             _ => null,
         };
     }

@@ -77,6 +77,7 @@ public enum DiagnosticCode
     E0252_QueryUnsupportedType = 252,
     E0253_QueryAutomaticLocal = 253,
     E0254_InvalidMemorySpaceArgument = 254,
+    E0255_AssertionFailed = 255,
 
     // Inline assembly errors
     E0301_InlineAsmUnknownInstruction = 301,

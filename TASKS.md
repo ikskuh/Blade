@@ -11,6 +11,7 @@
 - Tests: `var v: u8x4 = [1,2,3,4];`, coerce from/to `[4]u8`.
 
 ---
+
 ## CS-21: "assert" statement
 
 `reference.blade` defines `assert` as a statement-like compile-time check:

@@ -442,6 +442,19 @@ internal sealed class ComptimeEvaluator
         return TryEvaluateExpression(expression, new Dictionary<Symbol, object?>(), out value, out failure);
     }
 
+    public bool TryEvaluateExpression(
+        BoundExpression expression,
+        IReadOnlyDictionary<Symbol, object?> initialFrame,
+        out object? value,
+        out ComptimeFailure failure)
+    {
+        Dictionary<Symbol, object?> frame = new(initialFrame.Count);
+        foreach ((Symbol symbol, object? symbolValue) in initialFrame)
+            frame[symbol] = symbolValue;
+
+        return TryEvaluateExpression(expression, frame, out value, out failure);
+    }
+
     private bool TryEvaluateExpression(
         BoundExpression expression,
         Dictionary<Symbol, object?> frame,
@@ -796,7 +809,7 @@ internal sealed class ComptimeEvaluator
             return false;
         }
 
-        Dictionary<Symbol, object?> calleeFrame = new();
+        Dictionary<Symbol, object?> calleeFrame = new(callerFrame);
         for (int i = 0; i < call.Function.Parameters.Count; i++)
         {
             if (!TryEvaluateExpression(call.Arguments[i], callerFrame, out object? argumentValue, out failure))

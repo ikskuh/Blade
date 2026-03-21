@@ -51,6 +51,7 @@ public enum TokenKind
     YieldtoKeyword,
     RepKeyword,
     NoirqKeyword,
+    AssertKeyword,
     InKeyword,
 
     // Other keywords

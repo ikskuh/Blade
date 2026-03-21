@@ -471,7 +471,7 @@
     "keywords": {
       "patterns": [
         {
-          "match": "\\b(?:if|else|while|for|loop|break|continue|return|yield|yieldto|rep|noirq|in|and|or)\\b",
+          "match": "\\b(?:if|else|while|for|loop|break|continue|return|yield|yieldto|rep|noirq|assert|in|and|or)\\b",
           "name": "keyword.control.blade"
         },
         {

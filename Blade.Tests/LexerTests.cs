@@ -134,6 +134,7 @@ public class LexerTests
     [TestCase("yieldto", TokenKind.YieldtoKeyword)]
     [TestCase("rep", TokenKind.RepKeyword)]
     [TestCase("noirq", TokenKind.NoirqKeyword)]
+    [TestCase("assert", TokenKind.AssertKeyword)]
     [TestCase("in", TokenKind.InKeyword)]
     [TestCase("import", TokenKind.ImportKeyword)]
     [TestCase("as", TokenKind.AsKeyword)]

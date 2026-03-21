@@ -40,13 +40,22 @@ Each stage independently testable.
 
 Every diagnostic needs: numeric code (`E`/`W`/`I` prefix), human-readable name, format string.
 
-## Development
+## Development Assistance
+
+### C#
+
+You can use the Serena MCP server if available for quick navigation and editing on the code base.
+
+### Blade Compiler
 
 You can use the Blade MCP server if available to get quicker results from the compiler, as you don't
 need to roundtrip through shell commands and shell output processing. It gives you quick filtering of
 the desired outputs.
 
 If you do so, always create a new demonstrator for that.
+
+The Blade MCP server always uses the latest compiler in `Blade/bin/Debug/net10.0/blade`, so you can
+rebuild the compiler and immediately test out your changes.
 
 ## Finding Bugs
 

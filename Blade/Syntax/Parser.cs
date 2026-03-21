@@ -414,6 +414,9 @@ public sealed class Parser
             case TokenKind.NoirqKeyword:
                 return ParseNoirqStatement();
 
+            case TokenKind.AssertKeyword:
+                return ParseAssertStatement();
+
             case TokenKind.ReturnKeyword:
                 return ParseReturnStatement();
 
@@ -577,6 +580,32 @@ public sealed class Parser
         Token noirqKw = MatchToken(TokenKind.NoirqKeyword);
         BlockStatementSyntax body = ParseBlockStatement();
         return new NoirqStatementSyntax(noirqKw, body);
+    }
+
+    private AssertStatementSyntax ParseAssertStatement()
+    {
+        Token assertKw = MatchToken(TokenKind.AssertKeyword);
+        ExpressionSyntax condition = ParseExpression();
+
+        Token? commaToken = null;
+        Token? messageLiteral = null;
+        if (Current.Kind == TokenKind.Comma)
+        {
+            commaToken = NextToken();
+            if (Current.Kind == TokenKind.StringLiteral)
+            {
+                messageLiteral = NextToken();
+            }
+            else
+            {
+                _diagnostics.ReportUnexpectedToken(Current.Span, "string literal", Current.Text);
+                if (Current.Kind is not TokenKind.Semicolon and not TokenKind.EndOfFile)
+                    NextToken();
+            }
+        }
+
+        Token semicolon = MatchToken(TokenKind.Semicolon);
+        return new AssertStatementSyntax(assertKw, condition, commaToken, messageLiteral, semicolon);
     }
 
     private ReturnStatementSyntax ParseReturnStatement()

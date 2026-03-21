@@ -45,6 +45,7 @@ public static class SyntaxFacts
         ["yieldto"] = TokenKind.YieldtoKeyword,
         ["rep"] = TokenKind.RepKeyword,
         ["noirq"] = TokenKind.NoirqKeyword,
+        ["assert"] = TokenKind.AssertKeyword,
         ["in"] = TokenKind.InKeyword,
 
         // Other keywords
@@ -127,6 +128,7 @@ public static class SyntaxFacts
         TokenKind.YieldtoKeyword => "yieldto",
         TokenKind.RepKeyword => "rep",
         TokenKind.NoirqKeyword => "noirq",
+        TokenKind.AssertKeyword => "assert",
         TokenKind.InKeyword => "in",
         TokenKind.ImportKeyword => "import",
         TokenKind.AsKeyword => "as",

@@ -1,5 +1,12 @@
 # Current known compiler bugs
 
+## Boolean Keywords Lose Literal Values During Lexing
+
+- Date: 2026-03-21
+- Symptom: `true` and `false` were tokenized as keywords without a boolean payload, so later binding produced `BoundLiteralExpression` nodes of type `bool` with a `null` value.
+- Location: `Blade/Syntax/Lexer.cs` — `ReadIdentifierOrKeyword` returned `MakeToken(kind)` for all keywords instead of assigning `true`/`false` values to the boolean keywords.
+- Impact: Compile-time evaluation of boolean literals could misbehave or report misleading follow-on diagnostics such as `expected 'bool', got 'bool'`.
+
 ## Struct Literal Lowering Is Missing
 
 - Date: 2026-03-20
