@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text.Json;
 using Blade.Source;
 
 namespace Blade.Tests;
@@ -83,8 +84,9 @@ public class ProgramTests
             "--dump-asmir-preopt",
             "--dump-asmir",
             "--dump-final-asm",
-            "--dump-dir",
-            "out",
+            "--json",
+            "--output",
+            "report.json",
             "--comptime-fuel=19",
             "-fno-mir-opt=single-callsite-inline");
 
@@ -98,7 +100,9 @@ public class ProgramTests
         Assert.That(GetProperty<bool>(options!, "DumpAsmirPreOptimization"), Is.True);
         Assert.That(GetProperty<bool>(options!, "DumpAsmir"), Is.True);
         Assert.That(GetProperty<bool>(options!, "DumpFinalAsm"), Is.True);
-        Assert.That(GetProperty<string?>(options!, "DumpDirectory"), Is.EqualTo("out"));
+        Assert.That(GetProperty<bool>(options!, "Json"), Is.True);
+        Assert.That(GetProperty<string?>(options!, "OutputPath"), Is.EqualTo("report.json"));
+        Assert.That(GetProperty<string?>(options!, "DumpDirectory"), Is.Null);
         Assert.That(GetProperty<int>(options!, "ComptimeFuel"), Is.EqualTo(19));
         System.Collections.IEnumerable directives = GetProperty<System.Collections.IEnumerable>(options!, "OptimizationDirectives");
         Assert.That(directives.Cast<object>().Count(), Is.EqualTo(1));
@@ -147,6 +151,10 @@ public class ProgramTests
         Assert.That(missingDumpDir, Is.Null);
         Assert.That(missingDumpDirErr, Does.Contain("missing value for --dump-dir"));
 
+        (object? missingOutput, _, string missingOutputErr) = CaptureConsole(() => ParseOptions("input.blade", "--output"));
+        Assert.That(missingOutput, Is.Null);
+        Assert.That(missingOutputErr, Does.Contain("missing value for --output"));
+
         (object? unknownOption, _, string unknownOptionErr) = CaptureConsole(() => ParseOptions("input.blade", "--bogus"));
         Assert.That(unknownOption, Is.Null);
         Assert.That(unknownOptionErr, Does.Contain("unknown option '--bogus'"));
@@ -162,6 +170,14 @@ public class ProgramTests
         (object? multipleFiles, _, string multipleFilesErr) = CaptureConsole(() => ParseOptions("a.blade", "b.blade"));
         Assert.That(multipleFiles, Is.Null);
         Assert.That(multipleFilesErr, Does.Contain("multiple input files"));
+
+        (object? jsonWithDumpDir, _, string jsonWithDumpDirErr) = CaptureConsole(() => ParseOptions("input.blade", "--json", "--dump-dir", "out"));
+        Assert.That(jsonWithDumpDir, Is.Null);
+        Assert.That(jsonWithDumpDirErr, Does.Contain("--json cannot be combined with --dump-dir"));
+
+        (object? outputWithDumpDir, _, string outputWithDumpDirErr) = CaptureConsole(() => ParseOptions("input.blade", "--output", "report.txt", "--dump-dir", "out"));
+        Assert.That(outputWithDumpDir, Is.Null);
+        Assert.That(outputWithDumpDirErr, Does.Contain("--output cannot be combined with --dump-dir"));
 
         (object? missingInput, _, string missingInputErr) = CaptureConsole(() => ParseOptions("--dump-bound"));
         Assert.That(missingInput, Is.Null);
@@ -281,6 +297,149 @@ public class ProgramTests
     }
 
     [Test]
+    public void EntryPoint_WritesRequestedDumpAsJsonToStdout()
+    {
+        string filePath = Path.Combine(Path.GetTempPath(), $"blade-json-stdout-{Guid.NewGuid():N}.blade");
+        File.WriteAllText(filePath, "reg var x: u32 = 1;");
+
+        try
+        {
+            (int exitCode, string stdout, string stderr) = CaptureConsole(() => InvokeEntryPoint([filePath, "--dump-bound", "--json"]));
+
+            Assert.That(exitCode, Is.EqualTo(0));
+            Assert.That(stderr, Is.Empty);
+
+            using JsonDocument document = JsonDocument.Parse(stdout);
+            JsonElement root = document.RootElement;
+            Assert.That(root.GetProperty("success").GetBoolean(), Is.True);
+            Assert.That(root.GetProperty("diagnostics").GetArrayLength(), Is.EqualTo(0));
+            Assert.That(root.GetProperty("dumps").GetProperty("bound").GetString(), Does.Contain("Program"));
+            Assert.That(root.GetProperty("dumps").GetProperty("asmir").ValueKind, Is.EqualTo(JsonValueKind.Null));
+            Assert.That(root.GetProperty("result").GetString(), Does.Contain("org 0"));
+            Assert.That(root.GetProperty("metrics").GetProperty("token_count").GetInt32(), Is.GreaterThan(0));
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
+    }
+
+    [Test]
+    public void EntryPoint_CanWriteTextReportToFile()
+    {
+        string filePath = Path.Combine(Path.GetTempPath(), $"blade-output-file-{Guid.NewGuid():N}.blade");
+        string outputPath = Path.Combine(Path.GetTempPath(), $"blade-output-file-{Guid.NewGuid():N}.txt");
+        File.WriteAllText(filePath, "reg var x: u32 = 1;");
+
+        try
+        {
+            (int exitCode, string stdout, string stderr) = CaptureConsole(() => InvokeEntryPoint([filePath, "--dump-bound", "--output", outputPath]));
+
+            Assert.That(exitCode, Is.EqualTo(0));
+            Assert.That(stdout, Is.Empty);
+            Assert.That(stderr, Is.Empty);
+
+            string report = File.ReadAllText(outputPath);
+            Assert.That(report, Does.Contain("' 00_bound.ir"));
+            Assert.That(report, Does.Contain("errors : 0"));
+        }
+        finally
+        {
+            if (File.Exists(filePath))
+                File.Delete(filePath);
+            if (File.Exists(outputPath))
+                File.Delete(outputPath);
+        }
+    }
+
+    [Test]
+    public void EntryPoint_CanWriteJsonReportToFile()
+    {
+        string filePath = Path.Combine(Path.GetTempPath(), $"blade-json-file-{Guid.NewGuid():N}.blade");
+        string outputPath = Path.Combine(Path.GetTempPath(), $"blade-json-file-{Guid.NewGuid():N}.json");
+        File.WriteAllText(filePath, "reg var x: u32 = 1;");
+
+        try
+        {
+            (int exitCode, string stdout, string stderr) = CaptureConsole(() => InvokeEntryPoint([filePath, "--dump-bound", "--json", "--output", outputPath]));
+
+            Assert.That(exitCode, Is.EqualTo(0));
+            Assert.That(stdout, Is.Empty);
+            Assert.That(stderr, Is.Empty);
+
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(outputPath));
+            JsonElement root = document.RootElement;
+            Assert.That(root.GetProperty("success").GetBoolean(), Is.True);
+            Assert.That(root.GetProperty("dumps").GetProperty("bound").GetString(), Does.Contain("Program"));
+            Assert.That(root.GetProperty("result").GetString(), Does.Contain("org 0"));
+            Assert.That(root.GetProperty("metrics").GetProperty("token_count").GetInt32(), Is.GreaterThan(0));
+        }
+        finally
+        {
+            if (File.Exists(filePath))
+                File.Delete(filePath);
+            if (File.Exists(outputPath))
+                File.Delete(outputPath);
+        }
+    }
+
+    [Test]
+    public void EntryPoint_TreatsDashOutputPathAsStdout()
+    {
+        string filePath = Path.Combine(Path.GetTempPath(), $"blade-json-dash-{Guid.NewGuid():N}.blade");
+        File.WriteAllText(filePath, "reg var x: u32 = 1;");
+
+        try
+        {
+            (int exitCode, string stdout, string stderr) = CaptureConsole(() => InvokeEntryPoint([filePath, "--dump-bound", "--json", "--output", "-"]));
+
+            Assert.That(exitCode, Is.EqualTo(0));
+            Assert.That(stderr, Is.Empty);
+
+            using JsonDocument document = JsonDocument.Parse(stdout);
+            JsonElement root = document.RootElement;
+            Assert.That(root.GetProperty("success").GetBoolean(), Is.True);
+            Assert.That(root.GetProperty("dumps").GetProperty("bound").GetString(), Does.Contain("Program"));
+        }
+        finally
+        {
+            if (File.Exists(filePath))
+                File.Delete(filePath);
+        }
+    }
+
+    [Test]
+    public void EntryPoint_WritesFailureAsJsonEnvelope()
+    {
+        string filePath = Path.Combine(Path.GetTempPath(), $"blade-json-fail-{Guid.NewGuid():N}.blade");
+        File.WriteAllText(filePath, "x = 1;");
+
+        try
+        {
+            (int exitCode, string stdout, string stderr) = CaptureConsole(() => InvokeEntryPoint([filePath, "--json"]));
+
+            Assert.That(exitCode, Is.EqualTo(1));
+            Assert.That(stderr, Is.Empty);
+
+            using JsonDocument document = JsonDocument.Parse(stdout);
+            JsonElement root = document.RootElement;
+            Assert.That(root.GetProperty("success").GetBoolean(), Is.False);
+            Assert.That(root.GetProperty("diagnostics").GetArrayLength(), Is.EqualTo(1));
+            JsonElement diagnostic = root.GetProperty("diagnostics")[0];
+            Assert.That(diagnostic.GetProperty("file").GetString(), Is.EqualTo(filePath));
+            Assert.That(diagnostic.GetProperty("line").GetInt32(), Is.EqualTo(1));
+            Assert.That(diagnostic.GetProperty("code").GetString(), Is.EqualTo("E0202"));
+            Assert.That(root.GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Null));
+            Assert.That(root.GetProperty("dumps").GetProperty("bound").ValueKind, Is.EqualTo(JsonValueKind.Null));
+        }
+        finally
+        {
+            if (File.Exists(filePath))
+                File.Delete(filePath);
+        }
+    }
+
+    [Test]
     public void CommandLineOptions_Parse_RejectsMalformedOptimizationLists()
     {
         (object? missingCsv, _, string missingCsvErr) = CaptureConsole(() => ParseOptions("input.blade", "-fmir-opt="));
@@ -353,6 +512,19 @@ public class ProgramTests
         (object? blankNameAfterTrim, _, string blankNameAfterTrimErr) = CaptureConsole(() => ParseOptions("input.blade", "--module=   =path.blade"));
         Assert.That(blankNameAfterTrim, Is.Null);
         Assert.That(blankNameAfterTrimErr, Does.Contain("invalid module specification"));
+    }
+
+    [Test]
+    public void CommandLineOptions_Parse_RejectsDuplicateModuleMappings()
+    {
+        (object? options, _, string errorText) = CaptureConsole(() =>
+            ParseOptions(
+                "input.blade",
+                "--module=extmod=./mods/ext-a.blade",
+                "--module=extmod=./mods/ext-b.blade"));
+
+        Assert.That(options, Is.Null);
+        Assert.That(errorText, Does.Contain("duplicate module specification for 'extmod'"));
     }
 
     [Test]

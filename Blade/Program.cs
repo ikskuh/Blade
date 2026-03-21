@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Blade;
 using Blade.Diagnostics;
 using Blade.IR;
@@ -32,6 +34,27 @@ CompilationResult compilation = CompilerDriver.Compile(
     });
 sw.Stop();
 
+CompilationMetrics metrics = new()
+{
+    TokenCount = compilation.TokenCount,
+    MemberCount = compilation.Syntax.Members.Count,
+    BoundFunctionCount = compilation.BoundProgram.Functions.Count,
+    MirFunctionCount = compilation.IrBuildResult?.MirModule.Functions.Count ?? 0,
+    TimeMs = sw.Elapsed.TotalMilliseconds,
+};
+
+if (options.Json)
+{
+    JsonCompilationReport jsonReport = JsonReportBuilder.Build(compilation, options, metrics);
+    if (!OutputWriter.TryWriteJson(options, jsonReport, out string? outputError))
+    {
+        Console.Error.WriteLine(outputError);
+        return 1;
+    }
+
+    return jsonReport.Success ? 0 : 1;
+}
+
 foreach (Diagnostic diag in compilation.Diagnostics)
 {
     SourceLocation loc = compilation.Source.GetLocation(diag.Span.Start);
@@ -56,35 +79,11 @@ DumpSelection dumpSelection = new()
     DumpFinalAsm = options.DumpFinalAsm,
 };
 Dictionary<string, string> dumpContent = DumpContentBuilder.Build(dumpSelection, compilation.IrBuildResult);
-if (options.DumpDirectory is not null)
+if (!OutputWriter.TryWriteText(options, dumpContent, metrics, errorCount: compilation.Diagnostics.Count, out string? textOutputError))
 {
-    Directory.CreateDirectory(options.DumpDirectory);
-    foreach ((string fileName, string content) in dumpContent)
-    {
-        string path = Path.Combine(options.DumpDirectory, fileName);
-        File.WriteAllText(path, content);
-    }
+    Console.Error.WriteLine(textOutputError);
+    return 1;
 }
-else
-{
-    bool first = true;
-    foreach ((string fileName, string content) in dumpContent)
-    {
-        if (!first)
-            Console.WriteLine();
-        first = false;
-        Console.WriteLine($"' {fileName}");
-        Console.WriteLine(content);
-    }
-}
-
-Console.WriteLine();
-Console.WriteLine($"tokens : {compilation.TokenCount}");
-Console.WriteLine($"members: {compilation.Syntax.Members.Count}");
-Console.WriteLine($"bound-fns: {compilation.BoundProgram.Functions.Count}");
-Console.WriteLine($"mir-fns: {compilation.IrBuildResult.MirModule.Functions.Count}");
-Console.WriteLine($"errors : {compilation.Diagnostics.Count}");
-Console.WriteLine($"time   : {sw.Elapsed.TotalMilliseconds:F2} ms");
 
 return 0;
 
@@ -104,6 +103,8 @@ internal sealed class CommandLineOptions
     public bool DumpAsmir { get; init; }
     public bool DumpFinalAsm { get; init; }
     public string? DumpDirectory { get; init; }
+    public bool Json { get; init; }
+    public string? OutputPath { get; init; }
     public bool EnableSingleCallsiteInlining { get; init; }
     public IReadOnlyList<OptimizationDirective> OptimizationDirectives { get; init; } = [];
     public IReadOnlyDictionary<string, string> NamedModuleRoots { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -128,6 +129,8 @@ internal sealed class CommandLineOptions
         bool dumpAsmir = false;
         bool dumpFinalAsm = false;
         bool dumpAll = false;
+        bool json = false;
+        string? outputPath = null;
         List<string> compilerArgs = [];
 
         for (int i = 0; i < args.Length; i++)
@@ -171,6 +174,10 @@ internal sealed class CommandLineOptions
                     dumpAll = true;
                     break;
 
+                case "--json":
+                    json = true;
+                    break;
+
                 case string value when CompilationOptionsCommandLine.IsCompilationOption(value):
                     compilerArgs.Add(value);
                     break;
@@ -183,6 +190,16 @@ internal sealed class CommandLineOptions
                     }
 
                     dumpDirectory = args[++i];
+                    break;
+
+                case "--output":
+                    if (i + 1 >= args.Length)
+                    {
+                        Console.Error.WriteLine("error: missing value for --output");
+                        return null;
+                    }
+
+                    outputPath = args[++i];
                     break;
 
                 default:
@@ -229,6 +246,18 @@ internal sealed class CommandLineOptions
             dumpFinalAsm = true;
         }
 
+        if (dumpDirectory is not null && json)
+        {
+            Console.Error.WriteLine("error: --json cannot be combined with --dump-dir");
+            return null;
+        }
+
+        if (dumpDirectory is not null && outputPath is not null)
+        {
+            Console.Error.WriteLine("error: --output cannot be combined with --dump-dir");
+            return null;
+        }
+
         return new CommandLineOptions
         {
             FilePath = filePath,
@@ -241,6 +270,8 @@ internal sealed class CommandLineOptions
             DumpAsmir = dumpAsmir,
             DumpFinalAsm = dumpFinalAsm,
             DumpDirectory = dumpDirectory,
+            Json = json,
+            OutputPath = outputPath,
             EnableSingleCallsiteInlining = compilerOptions.EnableSingleCallsiteInlining,
             OptimizationDirectives = compilerOptions.OptimizationDirectives,
             NamedModuleRoots = compilerOptions.NamedModuleRoots,
@@ -262,9 +293,246 @@ internal sealed class CommandLineOptions
         Console.Error.WriteLine("  --dump-final-asm");
         Console.Error.WriteLine("  --dump-all");
         Console.Error.WriteLine("  --dump-dir <path>");
+        Console.Error.WriteLine("  --json");
+        Console.Error.WriteLine("  --output <file>");
         Console.Error.WriteLine("  -fmir-opt=<csv> / -fno-mir-opt=<csv>");
         Console.Error.WriteLine("  -flir-opt=<csv> / -fno-lir-opt=<csv>");
         Console.Error.WriteLine("  -fasmir-opt=<csv> / -fno-asmir-opt=<csv>");
         Console.Error.WriteLine("  --module=<name>=<path>");
     }
+}
+
+internal sealed class CompilationMetrics
+{
+    [JsonPropertyName("token_count")]
+    public required int TokenCount { get; init; }
+
+    [JsonPropertyName("member_count")]
+    public required int MemberCount { get; init; }
+
+    [JsonPropertyName("bound_function_count")]
+    public required int BoundFunctionCount { get; init; }
+
+    [JsonPropertyName("mir_function_count")]
+    public required int MirFunctionCount { get; init; }
+
+    [JsonPropertyName("time_ms")]
+    public required double TimeMs { get; init; }
+}
+
+internal static class OutputWriter
+{
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        WriteIndented = true,
+    };
+
+    public static bool TryWriteText(
+        CommandLineOptions options,
+        IReadOnlyDictionary<string, string> dumpContent,
+        CompilationMetrics metrics,
+        int errorCount,
+        out string? error)
+    {
+        try
+        {
+            if (options.DumpDirectory is not null)
+            {
+                Directory.CreateDirectory(options.DumpDirectory);
+                foreach ((string fileName, string content) in dumpContent)
+                {
+                    string path = Path.Combine(options.DumpDirectory, fileName);
+                    File.WriteAllText(path, content);
+                }
+
+                WriteTextReport(Console.Out, dumpContent, metrics, errorCount, includeDumps: false);
+                error = null;
+                return true;
+            }
+
+            if (options.OutputPath is null || options.OutputPath == "-")
+            {
+                WriteTextReport(Console.Out, dumpContent, metrics, errorCount, includeDumps: true);
+                error = null;
+                return true;
+            }
+
+            using StreamWriter writer = new(options.OutputPath);
+            WriteTextReport(writer, dumpContent, metrics, errorCount, includeDumps: true);
+            error = null;
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            string target = options.DumpDirectory ?? options.OutputPath ?? "stdout";
+            error = $"error: failed to write output to '{target}': {ex.Message}";
+            return false;
+        }
+    }
+
+    public static bool TryWriteJson(
+        CommandLineOptions options,
+        JsonCompilationReport report,
+        out string? error)
+    {
+        try
+        {
+            if (options.OutputPath is null || options.OutputPath == "-")
+            {
+                WriteJsonReport(Console.Out, report);
+                error = null;
+                return true;
+            }
+
+            using StreamWriter writer = new(options.OutputPath);
+            WriteJsonReport(writer, report);
+            error = null;
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            string target = options.OutputPath ?? "stdout";
+            error = $"error: failed to write output to '{target}': {ex.Message}";
+            return false;
+        }
+    }
+
+    private static void WriteTextReport(
+        TextWriter writer,
+        IReadOnlyDictionary<string, string> dumpContent,
+        CompilationMetrics metrics,
+        int errorCount,
+        bool includeDumps)
+    {
+        if (includeDumps)
+        {
+            bool first = true;
+            foreach ((string fileName, string content) in dumpContent)
+            {
+                if (!first)
+                    writer.WriteLine();
+                first = false;
+                writer.WriteLine($"' {fileName}");
+                writer.WriteLine(content);
+            }
+
+            if (dumpContent.Count > 0)
+                writer.WriteLine();
+        }
+
+        writer.WriteLine($"tokens : {metrics.TokenCount}");
+        writer.WriteLine($"members: {metrics.MemberCount}");
+        writer.WriteLine($"bound-fns: {metrics.BoundFunctionCount}");
+        writer.WriteLine($"mir-fns: {metrics.MirFunctionCount}");
+        writer.WriteLine($"errors : {errorCount}");
+        writer.WriteLine($"time   : {metrics.TimeMs:F2} ms");
+    }
+
+    private static void WriteJsonReport(TextWriter writer, JsonCompilationReport report)
+    {
+        writer.WriteLine(JsonSerializer.Serialize(report, JsonOptions));
+    }
+}
+
+internal static class JsonReportBuilder
+{
+    public static JsonCompilationReport Build(
+        CompilationResult compilation,
+        CommandLineOptions options,
+        CompilationMetrics metrics)
+    {
+        bool success = compilation.Diagnostics.Count == 0 && compilation.IrBuildResult is not null;
+        Dictionary<string, string?> dumps = BuildJsonDumps(compilation, options, success);
+        List<JsonDiagnostic> diagnostics = [];
+        foreach (Diagnostic diagnostic in compilation.Diagnostics)
+        {
+            SourceLocation location = compilation.Source.GetLocation(diagnostic.Span.Start);
+            diagnostics.Add(new JsonDiagnostic
+            {
+                File = location.FilePath,
+                Line = location.Line,
+                Code = diagnostic.FormatCode(),
+                Message = diagnostic.Message,
+            });
+        }
+
+        return new JsonCompilationReport
+        {
+            Success = success,
+            Diagnostics = diagnostics,
+            Dumps = dumps,
+            Result = success ? compilation.IrBuildResult!.AssemblyText : null,
+            Metrics = metrics,
+        };
+    }
+
+    private static Dictionary<string, string?> BuildJsonDumps(
+        CompilationResult compilation,
+        CommandLineOptions options,
+        bool success)
+    {
+        Dictionary<string, string?> dumps = new()
+        {
+            ["bound"] = null,
+            ["mir-preopt"] = null,
+            ["mir"] = null,
+            ["lir-preopt"] = null,
+            ["lir"] = null,
+            ["asmir-preopt"] = null,
+            ["asmir"] = null,
+        };
+
+        if (!success)
+            return dumps;
+
+        IrBuildResult buildResult = compilation.IrBuildResult!;
+        if (options.DumpBound)
+            dumps["bound"] = Blade.Semantics.Bound.BoundTreeWriter.Write(buildResult.BoundProgram);
+        if (options.DumpMirPreOptimization)
+            dumps["mir-preopt"] = Blade.IR.Mir.MirTextWriter.Write(buildResult.PreOptimizationMirModule);
+        if (options.DumpMir)
+            dumps["mir"] = Blade.IR.Mir.MirTextWriter.Write(buildResult.MirModule);
+        if (options.DumpLirPreOptimization)
+            dumps["lir-preopt"] = Blade.IR.Lir.LirTextWriter.Write(buildResult.PreOptimizationLirModule);
+        if (options.DumpLir)
+            dumps["lir"] = Blade.IR.Lir.LirTextWriter.Write(buildResult.LirModule);
+        if (options.DumpAsmirPreOptimization)
+            dumps["asmir-preopt"] = Blade.IR.Asm.AsmTextWriter.Write(buildResult.PreOptimizationAsmModule);
+        if (options.DumpAsmir)
+            dumps["asmir"] = Blade.IR.Asm.AsmTextWriter.Write(buildResult.AsmModule);
+        return dumps;
+    }
+}
+
+internal sealed class JsonCompilationReport
+{
+    [JsonPropertyName("success")]
+    public required bool Success { get; init; }
+
+    [JsonPropertyName("diagnostics")]
+    public required IReadOnlyList<JsonDiagnostic> Diagnostics { get; init; }
+
+    [JsonPropertyName("dumps")]
+    public required IReadOnlyDictionary<string, string?> Dumps { get; init; }
+
+    [JsonPropertyName("result")]
+    public required string? Result { get; init; }
+
+    [JsonPropertyName("metrics")]
+    public required CompilationMetrics Metrics { get; init; }
+}
+
+internal sealed class JsonDiagnostic
+{
+    [JsonPropertyName("file")]
+    public required string File { get; init; }
+
+    [JsonPropertyName("line")]
+    public required int Line { get; init; }
+
+    [JsonPropertyName("code")]
+    public required string Code { get; init; }
+
+    [JsonPropertyName("message")]
+    public required string Message { get; init; }
 }

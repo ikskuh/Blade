@@ -48,6 +48,25 @@ public sealed class CompilationOptionsCommandLineTests
     }
 
     [Test]
+    public void TryParse_RejectsDuplicateModuleDefinitions()
+    {
+        using TempDirectory tempDirectory = new();
+
+        bool succeeded = CompilationOptionsCommandLine.TryParse(
+            [
+                "--module=extmod=mods/ext-a.blade",
+                "--module=extmod=mods/ext-b.blade",
+            ],
+            tempDirectory.Path,
+            out CompilationOptions options,
+            out string? errorMessage);
+
+        Assert.That(succeeded, Is.False);
+        Assert.That(errorMessage, Is.EqualTo("error: duplicate module specification for 'extmod'."));
+        Assert.That(options.NamedModuleRoots.Count, Is.EqualTo(0));
+    }
+
+    [Test]
     public void TryParse_UsesDefaultComptimeFuelWhenNoOverrideIsPresent()
     {
         using TempDirectory tempDirectory = new();

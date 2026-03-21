@@ -77,6 +77,13 @@ public static class CompilationOptionsCommandLine
 
             if (TryParseModuleSpecification(arg, normalizedBaseDirectory, out string? moduleName, out string? modulePath, out errorMessage))
             {
+                if (namedModuleRoots.ContainsKey(moduleName!))
+                {
+                    options = new CompilationOptions();
+                    errorMessage = $"error: duplicate module specification for '{moduleName}'.";
+                    return false;
+                }
+
                 namedModuleRoots[moduleName!] = modulePath!;
                 continue;
             }
