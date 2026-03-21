@@ -373,7 +373,3 @@ The following operations map incredibly nicely to the Propeller 2 architecture:
 
 topic is text
 
-## Add new mini runner tool to perform compiler execution
-
-Allows better testing for AI agents, captures stderr and stdout into separate files.
-

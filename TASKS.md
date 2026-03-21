@@ -12,22 +12,6 @@
 
 ---
 
-## CS-17: Multiple return values
-
-`reference.blade` shows `fn get_three() -> u32, bool, bit { return 100, false, 1; }`.
-The parser supports `SeparatedSyntaxList<ReturnItemSyntax>` for return specs and
-`SeparatedSyntaxList<ExpressionSyntax>` for return values.
-
-- Verify binder handles multi-value returns: match count and types of return
-  expressions against the return spec.
-- `@reg`/`@C`/`@Z` placement annotations on return items: record them on
-  `FunctionSymbol` for codegen to use when selecting WC/WZ/WCZ on `RET`.
-- Callers receiving multi-value returns: how does `var x, y, z = get_three();`
-  work? (May not be in reference.blade — defer if not needed.)
-- Tests: 0-value, 1-value, 2-value, 3-value returns with placement annotations.
-
----
-
 ## CS-18: external variables
 
 `reference.blade` models `extern` as a top-level storage declaration:

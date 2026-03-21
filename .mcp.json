@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "blade_compiler_service": {
+      "type": "stdio",
+      "command": ".venv/bin/python",
+      "args": [
+        "Scripts/mcp_server.py"
+      ],
+      "env": {}
+    }
+  }
+}

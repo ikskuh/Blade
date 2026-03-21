@@ -1,0 +1,8 @@
+{
+    "type": "stdio",
+    "command": "/home/felix/projects/nerdgruppe/blade/.venv/bin/python",
+    "args": [
+        "/home/felix/projects/nerdgruppe/blade/Scripts/mcp_server.py"
+    ],
+    "env": {}
+}

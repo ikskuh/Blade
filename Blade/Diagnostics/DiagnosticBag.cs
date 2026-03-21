@@ -387,6 +387,14 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
             "The discard '_' can only be used as an assignment target.");
     }
 
+    public void ReportExternCannotHaveInitializer(TextSpan span, string name)
+    {
+        Report(
+            DiagnosticCode.E0249_ExternCannotHaveInitializer,
+            span,
+            $"Extern variable '{name}' cannot have an initializer.");
+    }
+
     // Inline assembly diagnostics
 
     public void ReportInlineAsmUnknownInstruction(TextSpan span, string mnemonic)

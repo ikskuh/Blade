@@ -400,9 +400,16 @@ public sealed class Binder
         BoundExpression? initializer = null;
         if (variable.Initializer is not null)
         {
-            initializer = BindExpression(variable.Initializer, variableSymbol.Type);
-            if (RequiresComptimeInitializer(variableSymbol))
-                initializer = RequireComptimeExpression(initializer, variable.Initializer.Span);
+            if (variableSymbol.IsExtern)
+            {
+                _diagnostics.ReportExternCannotHaveInitializer(variable.Initializer.Span, variableSymbol.Name);
+            }
+            else
+            {
+                initializer = BindExpression(variable.Initializer, variableSymbol.Type);
+                if (RequiresComptimeInitializer(variableSymbol))
+                    initializer = RequireComptimeExpression(initializer, variable.Initializer.Span);
+            }
         }
 
         return new BoundGlobalVariableMember(variableSymbol, initializer, variable.Span);

@@ -1,0 +1,8 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0249, E0249, E0249
+// NOTE:
+//   Extern variables do not own storage, so initializers are invalid.
+
+extern reg var X: u32 = 5;
+extern lut const Y: u32 = 10;
+extern hub const Z: u32 = 20;

@@ -17,7 +17,11 @@
       "Bash(python /home/felix/projects/nerdgruppe/blade/Scripts/coverage_range.py:*)",
       "Bash(/home/felix/projects/nerdgruppe/blade/Blade/bin/Debug/net10.0/blade --dump-all /dev/stdin)",
       "Bash(echo \"EXIT: $?\")",
-      "Bash(python3 -c \":*)"
+      "Bash(python3 -c \":*)",
+      "mcp__blade_compiler_service__compile_file"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "blade_compiler_service"
+  ]
 }

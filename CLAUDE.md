@@ -40,6 +40,14 @@ Each stage independently testable.
 
 Every diagnostic needs: numeric code (`E`/`W`/`I` prefix), human-readable name, format string.
 
+## Development
+
+You can use the Blade MCP server if available to get quicker results from the compiler, as you don't
+need to roundtrip through shell commands and shell output processing. It gives you quick filtering of
+the desired outputs.
+
+If you do so, always create a new demonstrator for that.
+
 ## Finding Bugs
 
 When something unexpected happens or a compiler bug emerges, immediately log it into `Work/Bugs.md`. Otherwise the bug will be lost forever.
