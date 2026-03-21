@@ -632,8 +632,8 @@ fn func_0() -> u32 {
     return 0;
 }
 
-fn func_1(x: u32) -> u32 {
-    return 0;
+fn func_1(x: u32) {
+    
 }
 
 fn func_2(x: u32, y: u32) -> u32  {
@@ -742,6 +742,63 @@ fn expressions() {
     cls = memoryof(rv_01); // returns MemorySpace.reg
     cls = memoryof(lv_01); // returns MemorySpace.lut
     cls = memoryof(hv_01); // returns MemorySpace.hub
+}
+
+fn multi_return_demo() {
+    var x: u32  = undefined;
+    var a: bool = undefined;
+    var b: bit  = undefined;
+
+    // In general, the number of result targets must
+    // match the number of that functions return values.
+    // It is not legal to implicitly discard any return value.
+
+    // Returns no value at all:
+    cc_default();
+
+    // Returns a single value.
+    x = control_flow_ret1(); 
+
+    // Returns two values:
+    x, a = control_flow_ret2();
+
+    // Returns three values:
+    x, a, b = control_flow_ret3();
+
+    // Not consuming a return value is an error,
+    // thus we need to use a placeholder `_` if
+    // we're not interested in the return value:
+    _ = control_flow_ret1(); 
+    _, a = control_flow_ret2();
+    x, _ = control_flow_ret2();
+    _, _ = control_flow_ret2();
+    x, a, _ = control_flow_ret3();
+    x, _, b = control_flow_ret3();
+    x, _, _ = control_flow_ret3();
+    _, a, b = control_flow_ret3();
+    _, a, _ = control_flow_ret3();
+    _, _, b = control_flow_ret3();
+    _, _, _ = control_flow_ret3();
+
+    // `_` is not a valid identifier in blade, but a special
+    // syntax that can be used when an assignment target
+    // is being left out. It is not legal to use in other
+    // places right now.
+
+    // The use of `_` is very handy when a return value is
+    // not required, as this allows the dead code elimination
+    // to work nicely together with function inlining to remove
+    // the code paths that lead to this return value, thus
+    // allowing way better optimizde code.
+
+    // Right now, there is no variable declaration syntax usable
+    // when returning into multiple values, all variables must
+    // exist beforehand.
+    //
+    // TODO: Consider the following syntax as a good idea:
+    //       var x: u32, var a: bool = control_flow_ret2(); // two declarations
+    //       _,          var a: bool = control_flow_ret2(); // mixed decl and discard
+    //       var x: u32, a           = control_flow_ret2(); // mixed decl and variable
 }
 
 fn values() {

@@ -368,3 +368,12 @@ The following operations map incredibly nicely to the Propeller 2 architecture:
 - `if(a) { x |= 0x23; } else { x &= ~0x23; }` is `TESTB backing, #index WZ`, `MUXZ x, #$23`
 - `if(a) { x = -x; }` is `TESTB backing, #index WZ`, `NEGC x`
 - `if(a) { x += y; } else { x -= y; }` is `TESTB backing, #index WZ`, `SUMC x, y`
+
+## Wire sizeof/alignof/memoryof into syntax highlighter
+
+topic is text
+
+## Add new mini runner tool to perform compiler execution
+
+Allows better testing for AI agents, captures stderr and stdout into separate files.
+
