@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using Blade;
 using Blade.Semantics;
@@ -249,7 +250,7 @@ public static class MirInliner
                 MirBinaryInstruction binary => new MirBinaryInstruction(newResult!.Value, binary.ResultType!, binary.Operator, binary.Left, binary.Right, binary.Span),
                 MirOpInstruction op => new MirOpInstruction(op.Opcode, newResult, op.ResultType, op.Operands, op.HasSideEffects, op.Span),
                 MirSelectInstruction select => new MirSelectInstruction(newResult!.Value, select.ResultType!, select.Condition, select.WhenTrue, select.WhenFalse, select.Span),
-                MirCallInstruction call => new MirCallInstruction(newResult, call.ResultType, call.FunctionName, call.Arguments, call.Span),
+                MirCallInstruction call => CloneMirCallInstruction(call, newResult, valueMap),
                 MirIntrinsicCallInstruction intrinsic => new MirIntrinsicCallInstruction(newResult, intrinsic.ResultType, intrinsic.IntrinsicName, intrinsic.Arguments, intrinsic.Span),
                 MirStoreInstruction store => new MirStoreInstruction(store.Target, store.ResultType, store.Operands, store.Span),
                 MirStorePlaceInstruction storePlace => new MirStorePlaceInstruction(storePlace.Place, storePlace.Value, storePlace.Span),
@@ -297,24 +298,23 @@ public static class MirInliner
 
                 case MirReturnTerminator ret:
                 {
-                    if (call.Result is MirValueId callResult)
-                    {
-                        MirValueId returnValue;
-                        if (ret.Values.Count > 0)
-                        {
-                            returnValue = ret.Values[0];
-                        }
-                        else
-                        {
-                            TypeSymbol type = call.ResultType ?? BuiltinTypes.Unknown;
-                            returnValue = NextValue();
-                            currentInstructions.Add(new MirConstantInstruction(returnValue, type, null, ret.Span));
-                        }
+                    List<MirValueId> gotoArgs = [];
 
-                        return new MirGotoTerminator(returnTargetLabel, [returnValue], ret.Span);
+                    if (call.Result is MirValueId)
+                    {
+                        Debug.Assert(ret.Values.Count > 0, "Inlined function return must have a value when call has a result");
+                        gotoArgs.Add(ret.Values[0]);
                     }
 
-                    return new MirGotoTerminator(returnTargetLabel, [], ret.Span);
+                    // Pass extra return values for multi-return
+                    for (int i = 0; i < call.ExtraResults.Count; i++)
+                    {
+                        int retIndex = i + 1;
+                        Debug.Assert(retIndex < ret.Values.Count, "Inlined function return must have enough values for all extra results");
+                        gotoArgs.Add(ret.Values[retIndex]);
+                    }
+
+                    return new MirGotoTerminator(returnTargetLabel, gotoArgs, ret.Span);
                 }
 
                 case MirUnreachableTerminator unreachable:
@@ -335,6 +335,12 @@ public static class MirInliner
             {
                 TypeSymbol type = call.ResultType ?? BuiltinTypes.Unknown;
                 parameters.Add(new MirBlockParameter(callResult, "ret0", type));
+            }
+
+            for (int i = 0; i < call.ExtraResults.Count; i++)
+            {
+                (MirValueId value, TypeSymbol type) = call.ExtraResults[i];
+                parameters.Add(new MirBlockParameter(value, $"ret{i + 1}", type));
             }
 
             string label = $"inl_after_{inlineOrdinal}";
@@ -379,6 +385,26 @@ public static class MirInliner
             return nextOrdinal;
         }
 
+        private MirCallInstruction CloneMirCallInstruction(
+            MirCallInstruction call,
+            MirValueId? newResult,
+            IDictionary<MirValueId, MirValueId> valueMap)
+        {
+            List<(MirValueId, TypeSymbol)>? clonedExtra = null;
+            if (call.ExtraResults.Count > 0)
+            {
+                clonedExtra = new(call.ExtraResults.Count);
+                foreach ((MirValueId extraVal, TypeSymbol extraType) in call.ExtraResults)
+                {
+                    MirValueId newExtra = NextValue();
+                    valueMap[extraVal] = newExtra;
+                    clonedExtra.Add((newExtra, extraType));
+                }
+            }
+
+            return new MirCallInstruction(newResult, call.ResultType, call.FunctionName, call.Arguments, call.Span, clonedExtra);
+        }
+
         private static bool TryGetInlineOrdinal(string label, out int ordinal)
         {
             ordinal = default;
@@ -414,6 +440,11 @@ public static class MirInliner
                 {
                     if (instruction.Result is MirValueId result && result.Id > maxId)
                         maxId = result.Id;
+                    if (instruction is MirCallInstruction callInstr)
+                    {
+                        foreach ((MirValueId extraVal, _) in callInstr.ExtraResults)
+                            maxId = extraVal.Id > maxId ? extraVal.Id : maxId;
+                    }
                     foreach (MirValueId use in instruction.Uses)
                         maxId = use.Id > maxId ? use.Id : maxId;
                 }

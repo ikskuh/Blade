@@ -1,0 +1,13 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0247
+// NOTE:
+//   Target count must match function return count, even with discards.
+
+fn ret2() -> u32, bool {
+    return 10, true;
+}
+
+reg var x: u32 = 0;
+reg var a: bool = false;
+
+x, a, _ = ret2();

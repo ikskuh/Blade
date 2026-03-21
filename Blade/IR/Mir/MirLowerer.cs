@@ -186,6 +186,10 @@ public static class MirLowerer
             case BoundAssignmentStatement assignment:
                 CollectAddressTakenSymbols(assignment.Value, symbols);
                 break;
+            case BoundMultiAssignmentStatement multiAssignment:
+                foreach (BoundExpression argument in multiAssignment.Call.Arguments)
+                    CollectAddressTakenSymbols(argument, symbols);
+                break;
             case BoundExpressionStatement expressionStatement:
                 CollectAddressTakenSymbols(expressionStatement.Expression, symbols);
                 break;
@@ -448,6 +452,10 @@ public static class MirLowerer
                     LowerAssignmentStatement(assignment);
                     break;
 
+                case BoundMultiAssignmentStatement multiAssignment:
+                    LowerMultiAssignmentStatement(multiAssignment);
+                    break;
+
                 case BoundExpressionStatement expressionStatement:
                     if (expressionStatement.Expression is BoundModuleCallExpression moduleCallExpression)
                     {
@@ -628,6 +636,60 @@ public static class MirLowerer
             }
 
             LowerAssignmentTargetWrite(assignment.Target, value, assignment.Span);
+        }
+
+        private void LowerMultiAssignmentStatement(BoundMultiAssignmentStatement multiAssignment)
+        {
+            BoundCallExpression callExpression = multiAssignment.Call;
+
+            // Lower call arguments
+            List<MirValueId> arguments = [];
+            foreach (BoundExpression argument in callExpression.Arguments)
+                arguments.Add(LowerExpression(argument));
+
+            IReadOnlyList<BoundAssignmentTarget> targets = multiAssignment.Targets;
+
+            // First result goes into the primary Result slot
+            MirValueId? primaryResult = null;
+            TypeSymbol? primaryType = null;
+            if (targets.Count > 0 && targets[0] is not BoundDiscardAssignmentTarget)
+            {
+                primaryResult = NextValue();
+                primaryType = callExpression.Function.ReturnTypes[0];
+            }
+            else if (targets.Count > 0)
+            {
+                // Even for discards, we need a value ID so the call instruction has a result
+                primaryResult = NextValue();
+                primaryType = callExpression.Function.ReturnTypes[0];
+            }
+
+            // Extra results for positions 1+
+            List<(MirValueId Value, TypeSymbol Type)> extraResults = [];
+            for (int i = 1; i < targets.Count && i < callExpression.Function.ReturnTypes.Count; i++)
+            {
+                MirValueId extraValue = NextValue();
+                TypeSymbol extraType = callExpression.Function.ReturnTypes[i];
+                extraResults.Add((extraValue, extraType));
+            }
+
+            _currentBlock.Instructions.Add(new MirCallInstruction(
+                primaryResult,
+                primaryType,
+                callExpression.Function.Name,
+                arguments,
+                callExpression.Span,
+                extraResults));
+
+            // Write results to targets (skip discards)
+            if (targets.Count > 0 && targets[0] is not BoundDiscardAssignmentTarget && primaryResult is not null)
+                LowerAssignmentTargetWrite(targets[0], primaryResult.Value, multiAssignment.Span);
+
+            for (int i = 0; i < extraResults.Count; i++)
+            {
+                if (targets[i + 1] is not BoundDiscardAssignmentTarget)
+                    LowerAssignmentTargetWrite(targets[i + 1], extraResults[i].Value, multiAssignment.Span);
+            }
         }
 
         private void LowerIfStatement(BoundIfStatement ifStatement)
@@ -1403,6 +1465,10 @@ public static class MirLowerer
                     EmitStore($"deref.{derefSuffix}", pointerTarget.Type, [pointer, value], span);
                     return;
                 }
+
+                case BoundDiscardAssignmentTarget:
+                    // Discard — value computed for side effects only, no store needed.
+                    return;
 
                 case BoundErrorAssignmentTarget:
                     EmitOp("store.error", [value], hasSideEffects: true, span);

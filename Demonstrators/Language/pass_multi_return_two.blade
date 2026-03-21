@@ -1,0 +1,19 @@
+// EXPECT: pass
+// NOTE:
+//   This sample showcases a function with exactly two return values.
+
+fn divmod(a: u32, b: u32) -> u32, bool {
+    if (a >= b) {
+        return a, true;
+    }
+    else {
+        return b, false;
+    }
+}
+
+reg const in_a: u32 = 100;
+reg const in_b: u32 = 50;
+reg var result: u32 = 0;
+reg var flag: bool = false;
+
+result, flag = divmod(in_a, in_b);

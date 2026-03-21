@@ -11,6 +11,7 @@ public enum BoundNodeKind
     BlockStatement,
     VariableDeclarationStatement,
     AssignmentStatement,
+    MultiAssignmentStatement,
     ExpressionStatement,
     IfStatement,
     WhileStatement,
@@ -52,6 +53,7 @@ public enum BoundNodeKind
     BitfieldAssignmentTarget,
     IndexAssignmentTarget,
     PointerDerefAssignmentTarget,
+    DiscardAssignmentTarget,
     ErrorAssignmentTarget,
 }
 

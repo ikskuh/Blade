@@ -683,6 +683,23 @@ public sealed class Parser
     {
         ExpressionSyntax expression = ParseExpression();
 
+        // Multi-target assignment: expr, expr, ... = expr;
+        if (Current.Kind == TokenKind.Comma)
+        {
+            List<object> nodesAndSeparators = [expression];
+            while (Current.Kind == TokenKind.Comma)
+            {
+                nodesAndSeparators.Add(NextToken());
+                nodesAndSeparators.Add(ParseExpression());
+            }
+
+            SeparatedSyntaxList<ExpressionSyntax> targets = new(nodesAndSeparators);
+            Token op = MatchToken(TokenKind.Equal);
+            ExpressionSyntax value = ParseExpression();
+            Token semi = MatchToken(TokenKind.Semicolon);
+            return new MultiAssignmentStatementSyntax(targets, op, value, semi);
+        }
+
         if (SyntaxFacts.IsAssignmentOperator(Current.Kind))
         {
             Token op = NextToken();

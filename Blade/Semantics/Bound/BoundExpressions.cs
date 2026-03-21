@@ -446,6 +446,14 @@ public sealed class BoundPointerDerefAssignmentTarget : BoundAssignmentTarget
     public BoundExpression Expression { get; }
 }
 
+public sealed class BoundDiscardAssignmentTarget : BoundAssignmentTarget
+{
+    public BoundDiscardAssignmentTarget(TextSpan span, TypeSymbol type)
+        : base(BoundNodeKind.DiscardAssignmentTarget, span, type)
+    {
+    }
+}
+
 public sealed class BoundErrorAssignmentTarget : BoundAssignmentTarget
 {
     public BoundErrorAssignmentTarget(TextSpan span)

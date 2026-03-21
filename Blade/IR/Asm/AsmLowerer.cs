@@ -190,6 +190,12 @@ public static class AsmLowerer
             case "call":
                 LowerCall(nodes, op, ctx);
                 break;
+            case "call.extractC":
+                LowerCallExtractFlag(nodes, op, isC: true);
+                break;
+            case "call.extractZ":
+                LowerCallExtractFlag(nodes, op, isC: false);
+                break;
             case "intrinsic":
                 LowerIntrinsic(nodes, op);
                 break;
@@ -1203,10 +1209,27 @@ public static class AsmLowerer
                 break;
 
             default:
-                // Fallback for coro/interrupt — emit comment + generic call
-                nodes.Add(new AsmCommentNode($"call ({calleeTier}) {target}"));
-                nodes.Add(Emit("CALL", targetOp));
+                Debug.Fail($"Unexpected callee tier: {calleeTier}");
                 break;
+        }
+    }
+
+    private static void LowerCallExtractFlag(List<AsmNode> nodes, LirOpInstruction op, bool isC)
+    {
+        Debug.Assert(op.Destination is not null, "call.extract pseudo-op must have a destination register");
+        LirVirtualRegister dest = op.Destination.Value;
+
+        AsmRegisterOperand destReg = new(dest.Id);
+        // Materialize the C or Z flag into a register: set dest to 0, then conditionally set bit 0
+        if (isC)
+        {
+            nodes.Add(Emit("BITL", destReg, new AsmImmediateOperand(0)));
+            nodes.Add(Emit("BITC", destReg, new AsmImmediateOperand(0)));
+        }
+        else
+        {
+            nodes.Add(Emit("BITL", destReg, new AsmImmediateOperand(0)));
+            nodes.Add(Emit("BITZ", destReg, new AsmImmediateOperand(0)));
         }
     }
 
@@ -1332,6 +1355,9 @@ public static class AsmLowerer
 
     private static string SelectHubReadOpcode(TypeSymbol? type)
     {
+        if (type is not null && type.IsBool)
+            return "RDBYTE";
+
         if (type is not null && TypeFacts.TryGetIntegerWidth(type, out int width))
         {
             if (width <= 8)
@@ -1345,6 +1371,9 @@ public static class AsmLowerer
 
     private static string SelectHubWriteOpcode(TypeSymbol? type)
     {
+        if (type is not null && type.IsBool)
+            return "WRBYTE";
+
         if (type is not null && TypeFacts.TryGetIntegerWidth(type, out int width))
         {
             if (width <= 8)
@@ -1443,7 +1472,7 @@ public static class AsmLowerer
 
     private static void LowerReturn(List<AsmNode> nodes, LoweringContext ctx, LirReturnTerminator ret)
     {
-        // Move return value to appropriate location based on CC tier
+        // Move first return value (register-placed) to appropriate location based on CC tier
         if (ret.Values.Count > 0)
         {
             AsmOperand resultOp = LowerOperand(ret.Values[0]);
@@ -1466,6 +1495,18 @@ public static class AsmLowerer
                     nodes.Add(new AsmCommentNode($"return value: {resultOp.Format()}"));
                     break;
             }
+        }
+
+        // Set flags for additional return values (C and Z)
+        IReadOnlyList<ReturnSlot> returnSlots = ctx.Function.ReturnSlots;
+        for (int i = 1; i < ret.Values.Count && i < returnSlots.Count; i++)
+        {
+            AsmOperand flagValue = LowerOperand(ret.Values[i]);
+            ReturnPlacement placement = returnSlots[i].Placement;
+            if (placement == ReturnPlacement.FlagC)
+                nodes.Add(new AsmInstructionNode("TESTB", [flagValue, new AsmImmediateOperand(0)], flagEffect: AsmFlagEffect.WC));
+            else if (placement == ReturnPlacement.FlagZ)
+                nodes.Add(new AsmInstructionNode("TESTB", [flagValue, new AsmImmediateOperand(0)], flagEffect: AsmFlagEffect.WZ));
         }
 
         switch (ctx.Tier)

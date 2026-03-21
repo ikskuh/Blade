@@ -363,6 +363,30 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
             $"Named modules '{firstModuleName}' and '{secondModuleName}' both resolve to '{path}'.");
     }
 
+    public void ReportMultiAssignmentRequiresCall(TextSpan span)
+    {
+        Report(
+            DiagnosticCode.E0246_MultiAssignmentRequiresCall,
+            span,
+            "Multi-target assignment requires a function call on the right-hand side.");
+    }
+
+    public void ReportMultiAssignmentTargetCountMismatch(TextSpan span, string functionName, int expected, int actual)
+    {
+        Report(
+            DiagnosticCode.E0247_MultiAssignmentTargetCountMismatch,
+            span,
+            $"Function '{functionName}' returns {expected} value(s), but {actual} assignment target(s) provided.");
+    }
+
+    public void ReportDiscardInExpression(TextSpan span)
+    {
+        Report(
+            DiagnosticCode.E0248_DiscardInExpression,
+            span,
+            "The discard '_' can only be used as an assignment target.");
+    }
+
     // Inline assembly diagnostics
 
     public void ReportInlineAsmUnknownInstruction(TextSpan span, string mnemonic)

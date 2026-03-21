@@ -1,0 +1,29 @@
+// EXPECT: pass
+// NOTE:
+//   Tests multi-return with noinline functions to exercise call-site codegen.
+
+noinline fn get_pair(a: u32) -> u32, bool {
+    if (a > 10) {
+        return a, true;
+    }
+    else {
+        return 0, false;
+    }
+}
+
+noinline fn get_triple(a: u32) -> u32, bool, bool {
+    if (a > 10) {
+        return a, true, false;
+    }
+    else {
+        return 0, false, true;
+    }
+}
+
+reg const input: u32 = 42;
+reg var result: u32 = 0;
+reg var flag1: bool = false;
+reg var flag2: bool = false;
+
+result, flag1 = get_pair(input);
+result, flag1, flag2 = get_triple(input);

@@ -272,7 +272,8 @@ public static class MirOptimizer
                 function.IsEntryPoint,
                 function.Kind,
                 function.ReturnTypes,
-                merged));
+                merged,
+                function.ReturnSlots));
         }
 
         return new MirModule(module.StoragePlaces, functions);

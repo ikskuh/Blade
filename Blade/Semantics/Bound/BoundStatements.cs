@@ -52,6 +52,19 @@ public sealed class BoundAssignmentStatement : BoundStatement
     public TokenKind OperatorKind { get; }
 }
 
+public sealed class BoundMultiAssignmentStatement : BoundStatement
+{
+    public BoundMultiAssignmentStatement(IReadOnlyList<BoundAssignmentTarget> targets, BoundCallExpression call, TextSpan span)
+        : base(BoundNodeKind.MultiAssignmentStatement, span)
+    {
+        Targets = targets;
+        Call = call;
+    }
+
+    public IReadOnlyList<BoundAssignmentTarget> Targets { get; }
+    public BoundCallExpression Call { get; }
+}
+
 public sealed class BoundExpressionStatement : BoundStatement
 {
     public BoundExpressionStatement(BoundExpression expression, TextSpan span)

@@ -310,15 +310,18 @@ public sealed class MirCallInstruction : MirInstruction
         TypeSymbol? resultType,
         string functionName,
         IReadOnlyList<MirValueId> arguments,
-        TextSpan span)
+        TextSpan span,
+        IReadOnlyList<(MirValueId Value, TypeSymbol Type)>? extraResults = null)
         : base(result, resultType, span, hasSideEffects: true)
     {
         FunctionName = functionName;
         Arguments = arguments;
+        ExtraResults = extraResults ?? [];
     }
 
     public string FunctionName { get; }
     public IReadOnlyList<MirValueId> Arguments { get; }
+    public IReadOnlyList<(MirValueId Value, TypeSymbol Type)> ExtraResults { get; }
 
     public override IReadOnlyList<MirValueId> Uses => Arguments;
 
@@ -333,7 +336,30 @@ public sealed class MirCallInstruction : MirInstruction
             changed |= mapped != arg;
         }
 
-        return changed ? new MirCallInstruction(Result, ResultType, FunctionName, rewritten, Span) : this;
+        List<(MirValueId, TypeSymbol)>? rewrittenExtra = null;
+        for (int i = 0; i < ExtraResults.Count; i++)
+        {
+            (MirValueId extraVal, TypeSymbol extraType) = ExtraResults[i];
+            if (mapping.TryGetValue(extraVal, out MirValueId mappedExtra) && mappedExtra != extraVal)
+            {
+                if (rewrittenExtra is null)
+                {
+                    rewrittenExtra = new(ExtraResults.Count);
+                    for (int j = 0; j < i; j++)
+                        rewrittenExtra.Add(ExtraResults[j]);
+                }
+                rewrittenExtra.Add((mappedExtra, extraType));
+                changed = true;
+            }
+            else
+            {
+                rewrittenExtra?.Add(ExtraResults[i]);
+            }
+        }
+
+        return changed
+            ? new MirCallInstruction(Result, ResultType, FunctionName, rewritten, Span, rewrittenExtra ?? ExtraResults)
+            : this;
     }
 }
 

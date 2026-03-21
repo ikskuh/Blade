@@ -68,6 +68,24 @@ public sealed class AssignmentStatementSyntax : StatementSyntax
     }
 }
 
+public sealed class MultiAssignmentStatementSyntax : StatementSyntax
+{
+    public SeparatedSyntaxList<ExpressionSyntax> Targets { get; }
+    public Token Operator { get; }
+    public ExpressionSyntax Value { get; }
+    public Token Semicolon { get; }
+
+    public MultiAssignmentStatementSyntax(SeparatedSyntaxList<ExpressionSyntax> targets, Token @operator,
+                                           ExpressionSyntax value, Token semicolon)
+        : base(TextSpan.FromBounds(Requires.NotNull(targets)[0].Span.Start, semicolon.Span.End))
+    {
+        Targets = targets;
+        Operator = @operator;
+        Value = Requires.NotNull(value);
+        Semicolon = semicolon;
+    }
+}
+
 public sealed class IfStatementSyntax : StatementSyntax
 {
     public Token IfKeyword { get; }

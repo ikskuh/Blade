@@ -148,6 +148,18 @@ public static class MirTextWriter
                 sb.Append('(');
                 WriteValueList(sb, call.Arguments);
                 sb.Append(')');
+                if (call.ExtraResults.Count > 0)
+                {
+                    sb.Append(" extra=[");
+                    for (int i = 0; i < call.ExtraResults.Count; i++)
+                    {
+                        if (i > 0) sb.Append(", ");
+                        sb.Append(call.ExtraResults[i].Value);
+                        sb.Append(':');
+                        sb.Append(call.ExtraResults[i].Type.Name);
+                    }
+                    sb.Append(']');
+                }
                 break;
 
             case MirIntrinsicCallInstruction intrinsic:

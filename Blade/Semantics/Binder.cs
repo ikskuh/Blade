@@ -346,6 +346,23 @@ public sealed class Binder
             if (returnSlots.Count == 1 && returnSlots[0].Type.IsVoid)
                 returnSlots.Clear();
 
+            // Auto-assign flag placements for multi-return: slot 1 -> FlagC, slot 2 -> FlagZ
+            // when the slot has no explicit annotation and is bool/bit.
+            if (returnSlots.Count > 1)
+            {
+                ReturnPlacement nextFlag = ReturnPlacement.FlagC;
+                for (int i = 1; i < returnSlots.Count; i++)
+                {
+                    ReturnSlot slot = returnSlots[i];
+                    if (slot.Placement == ReturnPlacement.Register
+                        && (slot.Type.IsBool || ReferenceEquals(slot.Type, BuiltinTypes.Bit)))
+                    {
+                        returnSlots[i] = new ReturnSlot(slot.Type, nextFlag);
+                        nextFlag = nextFlag == ReturnPlacement.FlagC ? ReturnPlacement.FlagZ : nextFlag;
+                    }
+                }
+            }
+
             function.Parameters = parameters;
             function.ReturnSlots = returnSlots;
         }
@@ -577,6 +594,9 @@ public sealed class Binder
                 BoundExpression value = BindExpression(assignment.Value, target.Type);
                 return new BoundAssignmentStatement(target, value, assignment.Operator.Kind, assignment.Span);
             }
+
+            case MultiAssignmentStatementSyntax multiAssignment:
+                return BindMultiAssignmentStatement(multiAssignment);
 
             case IfStatementSyntax ifStatement:
             {
@@ -982,6 +1002,60 @@ public sealed class Binder
         return new BoundReturnStatement(values, returnStatement.Span);
     }
 
+    private BoundStatement BindMultiAssignmentStatement(MultiAssignmentStatementSyntax multiAssignment)
+    {
+        BoundExpression rhs = BindExpression(multiAssignment.Value);
+        if (rhs is not BoundCallExpression call)
+        {
+            _diagnostics.ReportMultiAssignmentRequiresCall(multiAssignment.Value.Span);
+            // Bind targets anyway to get diagnostics flowing
+            foreach (ExpressionSyntax target in multiAssignment.Targets)
+                BindAssignmentTarget(target);
+            return new BoundExpressionStatement(rhs, multiAssignment.Span);
+        }
+
+        FunctionSymbol function = call.Function;
+        IReadOnlyList<TypeSymbol> returnTypes = function.ReturnTypes;
+        int targetCount = multiAssignment.Targets.Count;
+        if (targetCount != returnTypes.Count)
+        {
+            _diagnostics.ReportMultiAssignmentTargetCountMismatch(
+                multiAssignment.Operator.Span, function.Name, returnTypes.Count, targetCount);
+        }
+
+        List<BoundAssignmentTarget> targets = new();
+        int count = Math.Min(targetCount, returnTypes.Count);
+        for (int i = 0; i < count; i++)
+        {
+            ExpressionSyntax targetSyntax = multiAssignment.Targets[i];
+            TypeSymbol expectedType = returnTypes[i];
+
+            BoundAssignmentTarget target;
+            if (targetSyntax is NameExpressionSyntax name && name.Name.Text == "_")
+            {
+                target = new BoundDiscardAssignmentTarget(targetSyntax.Span, expectedType);
+            }
+            else
+            {
+                target = BindAssignmentTarget(targetSyntax);
+            }
+
+            targets.Add(target);
+        }
+
+        // Bind remaining targets (count mismatch case)
+        for (int i = count; i < targetCount; i++)
+        {
+            ExpressionSyntax targetSyntax = multiAssignment.Targets[i];
+            if (targetSyntax is NameExpressionSyntax name && name.Name.Text == "_")
+                targets.Add(new BoundDiscardAssignmentTarget(targetSyntax.Span, BuiltinTypes.Unknown));
+            else
+                targets.Add(BindAssignmentTarget(targetSyntax));
+        }
+
+        return new BoundMultiAssignmentStatement(targets, call, multiAssignment.Span);
+    }
+
     private BoundStatement BindBreakOrContinueStatement(Token keywordToken, bool isBreak)
     {
         if (_loopStack.Count == 0)
@@ -1109,8 +1183,11 @@ public sealed class Binder
         }
     }
 
-    private BoundAssignmentTarget BindNameAssignmentTarget(NameExpressionSyntax nameExpression)
+    private BoundAssignmentTarget BindNameAssignmentTarget(NameExpressionSyntax nameExpression, TypeSymbol? expectedType = null)
     {
+        if (nameExpression.Name.Text == "_")
+            return new BoundDiscardAssignmentTarget(nameExpression.Span, expectedType ?? BuiltinTypes.Unknown);
+
         if (!_currentScope.TryLookup(nameExpression.Name.Text, out Symbol? symbol) || symbol is null)
         {
             _diagnostics.ReportUndefinedName(nameExpression.Name.Span, nameExpression.Name.Text);
@@ -1235,6 +1312,12 @@ public sealed class Binder
 
     private BoundExpression BindNameExpression(NameExpressionSyntax nameExpression)
     {
+        if (nameExpression.Name.Text == "_")
+        {
+            _diagnostics.ReportDiscardInExpression(nameExpression.Name.Span);
+            return new BoundErrorExpression(nameExpression.Span);
+        }
+
         if (!_currentScope.TryLookup(nameExpression.Name.Text, out Symbol? symbol) || symbol is null)
         {
             _diagnostics.ReportUndefinedName(nameExpression.Name.Span, nameExpression.Name.Text);

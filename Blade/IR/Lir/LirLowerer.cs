@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Diagnostics;
 using Blade;
 using Blade.IR.Mir;
 using Blade.Semantics;
@@ -44,7 +45,30 @@ public static class LirLowerer
 
             List<LirInstruction> instructions = [];
             foreach (MirInstruction instruction in mirBlock.Instructions)
+            {
                 instructions.Add(LowerInstruction(instruction, GetRegister));
+
+                // Emit extra result extraction instructions for multi-return calls
+                if (instruction is MirCallInstruction { ExtraResults.Count: > 0 } callInstr)
+                {
+                    foreach ((MirValueId extraValue, TypeSymbol extraType) in callInstr.ExtraResults)
+                    {
+                        LirVirtualRegister extraDest = GetRegister(extraValue);
+                        ReturnPlacement placement = GetExtraResultPlacement(callInstr, extraValue);
+                        string opcode = placement == ReturnPlacement.FlagC ? "call.extractC" : "call.extractZ";
+                        instructions.Add(new LirOpInstruction(
+                            opcode,
+                            extraDest,
+                            extraType,
+                            [],
+                            hasSideEffects: false,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            instruction.Span));
+                    }
+                }
+            }
 
             LirTerminator terminator = LowerTerminator(mirBlock.Terminator, GetRegister);
             blocks.Add(new LirBlock(mirBlock.Label, parameters, instructions, terminator));
@@ -316,5 +340,20 @@ public static class LirLowerer
         }
 
         return lowered;
+    }
+
+    private static ReturnPlacement GetExtraResultPlacement(MirCallInstruction call, MirValueId extraValue)
+    {
+        for (int i = 0; i < call.ExtraResults.Count; i++)
+        {
+            if (call.ExtraResults[i].Value == extraValue)
+            {
+                // Extra results at index 0 = slot 1 (FlagC), index 1 = slot 2 (FlagZ)
+                return i == 0 ? ReturnPlacement.FlagC : ReturnPlacement.FlagZ;
+            }
+        }
+
+        Debug.Fail($"Extra result value {extraValue} not found in call ExtraResults");
+        return ReturnPlacement.FlagC; // unreachable
     }
 }
