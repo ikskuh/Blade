@@ -56,6 +56,10 @@ A unit test asserts code, a Demonstrator asserts compiler compliance.
 
 Prefer writing a demonstrator file over a unit test to reach coverage.
 
+The regression harness `Blade.Regressions` is fully integrated into the test suite
+in `Blade.Tests/RegressionHarnessTests.cs` (`FullRegressionSuite_Passes`) and allows
+collecting coverage information from the regression suite as well.
+
 Code paths that are not provably reachable through the compiler frontend are dead code and shall be
 replaced with assertions.
 
@@ -84,15 +88,16 @@ Builds must be **warning-free**. New warnings are regressions.
 
 ## Justfile Commands
 
-| Command | Description |
-|---|---|
-| `just all` | Full local verification: build, test, regressions, compile-all-samples |
-| `just build` | `dotnet build` |
-| `just test` | `dotnet test` |
-| `just coverage` | Collect coverage → `coverage/coverage.cobertura.xml` |
-| `just regressions` | Run full regression harness |
-| `just compile-all-samples` | Compile all `.blade` samples, write `*.dump.txt` |
-| `just compile-sample <path>` | Run `blade --dump-all` for one sample |
+| Command                      | Description                                                                         |
+| ---------------------------- | ----------------------------------------------------------------------------------- |
+| `just all`                   | Full local verification: build, test, regressions, compile-all-samples              |
+| `just build`                 | `dotnet build`                                                                      |
+| `just test`                  | `dotnet test`                                                                       |
+| `just coverage`              | Collect coverage → `coverage/coverage.cobertura.xml`                                |
+| `just coverage-regressions`  | Collect coverage of just the regression harness → `coverage/coverage.cobertura.xml` |
+| `just regressions`           | Run full regression harness                                                         |
+| `just compile-all-samples`   | Compile all `.blade` samples, write `*.dump.txt`                                    |
+| `just compile-sample <path>` | Run `blade --dump-all` for one sample                                               |
 
 ## Generated Instruction Metadata
 

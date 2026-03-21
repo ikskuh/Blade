@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Text;
@@ -121,6 +122,7 @@ public static class AsmLowerer
         if (block.Terminator is not LirBranchTerminator branch || branch.ConditionFlag is null)
             return;
 
+        Debug.Assert(branch.Condition is LirRegisterOperand, "Flag-aware branch condition must be a register operand");
         if (branch.Condition is not LirRegisterOperand condReg)
             return;
 
@@ -661,6 +663,14 @@ public static class AsmLowerer
         if (op.ResultType is not null && TypeFacts.TryNormalizeValue(rawValue, op.ResultType, out object? converted))
             normalizedValue = converted;
         long value = GetImmediateValue(new LirImmediateOperand(normalizedValue, op.ResultType ?? BuiltinTypes.Unknown));
+
+        // Bool/bit constants: use BITH (set bit 0) or BITL (clear bit 0).
+        if (IsSingleBitType(op.ResultType) && (value == 0 || value == 1))
+        {
+            nodes.Add(Emit(value == 1 ? "BITH" : "BITL", dest, new AsmImmediateOperand(0)));
+            return;
+        }
+
         nodes.Add(Emit("MOV", dest, new AsmImmediateOperand(value)));
     }
 
@@ -1039,37 +1049,37 @@ public static class AsmLowerer
             case BoundBinaryOperatorKind.Equals:
                 nodes.Add(Emit("CMP", left, right, flagEffect: AsmFlagEffect.WZ));
                 if (!isFlagOnly)
-                    nodes.Add(Emit("WRZ", dest));
+                    nodes.Add(Emit("BITZ", dest, new AsmImmediateOperand(0)));
                 break;
 
             case BoundBinaryOperatorKind.NotEquals:
                 nodes.Add(Emit("CMP", left, right, flagEffect: AsmFlagEffect.WZ));
                 if (!isFlagOnly)
-                    nodes.Add(Emit("WRNZ", dest));
+                    nodes.Add(Emit("BITNZ", dest, new AsmImmediateOperand(0)));
                 break;
 
             case BoundBinaryOperatorKind.Less:
                 nodes.Add(Emit("CMP", left, right, flagEffect: AsmFlagEffect.WC));
                 if (!isFlagOnly)
-                    nodes.Add(Emit("WRC", dest));
+                    nodes.Add(Emit("BITC", dest, new AsmImmediateOperand(0)));
                 break;
 
             case BoundBinaryOperatorKind.LessOrEqual:
                 nodes.Add(Emit("CMP", right, left, flagEffect: AsmFlagEffect.WC));
                 if (!isFlagOnly)
-                    nodes.Add(Emit("WRNC", dest));
+                    nodes.Add(Emit("BITNC", dest, new AsmImmediateOperand(0)));
                 break;
 
             case BoundBinaryOperatorKind.Greater:
                 nodes.Add(Emit("CMP", right, left, flagEffect: AsmFlagEffect.WC));
                 if (!isFlagOnly)
-                    nodes.Add(Emit("WRC", dest));
+                    nodes.Add(Emit("BITC", dest, new AsmImmediateOperand(0)));
                 break;
 
             case BoundBinaryOperatorKind.GreaterOrEqual:
                 nodes.Add(Emit("CMP", left, right, flagEffect: AsmFlagEffect.WC));
                 if (!isFlagOnly)
-                    nodes.Add(Emit("WRNC", dest));
+                    nodes.Add(Emit("BITNC", dest, new AsmImmediateOperand(0)));
                 break;
         }
     }
@@ -1094,8 +1104,17 @@ public static class AsmLowerer
                 break;
 
             case BoundUnaryOperatorKind.LogicalNot:
-                nodes.Add(Emit("CMP", src, new AsmImmediateOperand(0), flagEffect: AsmFlagEffect.WZ));
-                nodes.Add(Emit("WRZ", dest));
+                if (IsSingleBitType(op.ResultType))
+                {
+                    nodes.Add(Emit("MOV", dest, src));
+                    nodes.Add(Emit("BITNOT", dest, new AsmImmediateOperand(0)));
+                }
+                else
+                {
+                    nodes.Add(Emit("CMP", src, new AsmImmediateOperand(0), flagEffect: AsmFlagEffect.WZ));
+                    nodes.Add(Emit("WRZ", dest));
+                }
+
                 break;
 
             case BoundUnaryOperatorKind.BitwiseNot:
@@ -1509,7 +1528,7 @@ public static class AsmLowerer
                 MirFlag.NC => "IF_NC",
                 MirFlag.Z => "IF_Z",
                 MirFlag.NZ => "IF_NZ",
-                _ => "IF_NZ",
+                _ => throw new UnreachableException(),
             };
             string falsePredicate = branch.ConditionFlag.Value switch
             {
@@ -1517,7 +1536,7 @@ public static class AsmLowerer
                 MirFlag.NC => "IF_C",
                 MirFlag.Z => "IF_NZ",
                 MirFlag.NZ => "IF_Z",
-                _ => "IF_Z",
+                _ => throw new UnreachableException(),
             };
 
             if (branch.TrueArguments.Count == 0 && branch.FalseArguments.Count == 0)
@@ -1661,6 +1680,9 @@ public static class AsmLowerer
             _ => throw new InvalidOperationException($"Unknown operand type: {operand.GetType().Name}"),
         };
     }
+
+    private static bool IsSingleBitType(TypeSymbol? type)
+        => type is not null && (type.IsBool || ReferenceEquals(type, BuiltinTypes.Bit));
 
     private static long GetImmediateValue(LirOperand operand)
     {
