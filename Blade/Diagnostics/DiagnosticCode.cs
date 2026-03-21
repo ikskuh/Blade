@@ -72,6 +72,11 @@ public enum DiagnosticCode
     E0247_MultiAssignmentTargetCountMismatch = 247,
     E0248_DiscardInExpression = 248,
     E0249_ExternCannotHaveInitializer = 249,
+    E0250_MemoryofRequiresVariable = 250,
+    E0251_QueryRequiresMemorySpace = 251,
+    E0252_QueryUnsupportedType = 252,
+    E0253_QueryAutomaticLocal = 253,
+    E0254_InvalidMemorySpaceArgument = 254,
 
     // Inline assembly errors
     E0301_InlineAsmUnknownInstruction = 301,

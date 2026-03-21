@@ -251,6 +251,30 @@ public sealed class BitcastExpressionSyntax : ExpressionSyntax
     }
 }
 
+public sealed class QueryExpressionSyntax : ExpressionSyntax
+{
+    public Token Keyword { get; }
+    public Token OpenParen { get; }
+    public TypeSyntax Subject { get; }
+    public Token? Comma { get; }
+    public ExpressionSyntax? MemorySpace { get; }
+    public Token CloseParen { get; }
+
+    public QueryExpressionSyntax(Token keyword, Token openParen, TypeSyntax subject,
+                                  Token? comma, ExpressionSyntax? memorySpace, Token closeParen)
+        : base(TextSpan.FromBounds(keyword.Span.Start, closeParen.Span.End))
+    {
+        Keyword = keyword;
+        OpenParen = openParen;
+        Subject = Requires.NotNull(subject);
+        Comma = comma;
+        MemorySpace = memorySpace;
+        CloseParen = closeParen;
+    }
+
+    public bool IsTwoArgumentForm => Comma is not null;
+}
+
 public sealed class EnumLiteralExpressionSyntax : ExpressionSyntax
 {
     public Token Dot { get; }

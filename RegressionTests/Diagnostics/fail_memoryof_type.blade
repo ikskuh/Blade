@@ -1,0 +1,10 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - E0250
+// NOTE:
+//   memoryof(Type, memoryspace) is invalid — memoryof only accepts a variable.
+
+import builtin;
+
+reg var x: u32 = 0;
+reg var cls: builtin.MemorySpace = memoryof(u32, .hub);

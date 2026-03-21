@@ -1,0 +1,13 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - E0253
+// NOTE:
+//   sizeof/alignof/memoryof on automatic locals is rejected
+//   because they have no stable memory space.
+
+fn demo() void {
+    var x: u32 = 1;
+    var s: u32 = sizeof(x);
+}
+
+demo();

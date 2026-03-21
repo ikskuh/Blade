@@ -65,6 +65,9 @@ public static class SyntaxFacts
         ["false"] = TokenKind.FalseKeyword,
         ["and"] = TokenKind.AndKeyword,
         ["or"] = TokenKind.OrKeyword,
+        ["sizeof"] = TokenKind.SizeofKeyword,
+        ["alignof"] = TokenKind.AlignofKeyword,
+        ["memoryof"] = TokenKind.MemoryofKeyword,
 
         // Type keywords
         ["bool"] = TokenKind.BoolKeyword,
@@ -142,6 +145,9 @@ public static class SyntaxFacts
         TokenKind.FalseKeyword => "false",
         TokenKind.AndKeyword => "and",
         TokenKind.OrKeyword => "or",
+        TokenKind.SizeofKeyword => "sizeof",
+        TokenKind.AlignofKeyword => "alignof",
+        TokenKind.MemoryofKeyword => "memoryof",
         TokenKind.BoolKeyword => "bool",
         TokenKind.BitKeyword => "bit",
         TokenKind.NitKeyword => "nit",

@@ -349,7 +349,7 @@
       ]
     },
     "function-calls": {
-      "match": "\\b(?!if\\b|while\\b|for\\b|loop\\b|return\\b|rep\\b|asm\\b|align\\b|import\\b|fn\\b|uint\\b|int\\b|bitcast\\b)([A-Za-z_][A-Za-z0-9_]*)\\b(?=\\s*\\()",
+      "match": "\\b(?!if\\b|while\\b|for\\b|loop\\b|return\\b|rep\\b|asm\\b|align\\b|import\\b|fn\\b|uint\\b|int\\b|bitcast\\b|sizeof\\b|alignof\\b|memoryof\\b)([A-Za-z_][A-Za-z0-9_]*)\\b(?=\\s*\\()",
       "captures": {
         "1": {
           "name": "entity.name.function.blade"
@@ -479,7 +479,7 @@
           "name": "storage.modifier.blade"
         },
         {
-          "match": "\\b(?:fn|leaf|inline|noinline|rec|coro|comptime|int1|int2|int3|asm|align|struct|union|enum|bitfield|bitcast|type|import|as)\\b",
+          "match": "\\b(?:fn|leaf|inline|noinline|rec|coro|comptime|int1|int2|int3|asm|align|struct|union|enum|bitfield|bitcast|sizeof|alignof|memoryof|type|import|as)\\b",
           "name": "keyword.other.blade"
         },
         {

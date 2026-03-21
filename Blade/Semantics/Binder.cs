@@ -33,6 +33,10 @@ public sealed class Binder
     private readonly int _comptimeFuel;
     private int _anonymousStructIndex;
 
+    private static readonly EnumTypeSymbol MemorySpaceType = new("MemorySpace", BuiltinTypes.U32,
+        new Dictionary<string, long>(StringComparer.Ordinal) { ["reg"] = 0, ["lut"] = 1, ["hub"] = 2 },
+        isOpen: false);
+
     private Binder(
         DiagnosticBag diagnostics,
         HashSet<string> moduleBindingStack,
@@ -1329,6 +1333,9 @@ public sealed class Binder
 
             case RangeExpressionSyntax range:
                 return BindRangeExpression(range);
+
+            case QueryExpressionSyntax query:
+                return BindQueryExpression(query);
         }
 
         return new BoundErrorExpression(expression.Span);
@@ -2275,6 +2282,180 @@ public sealed class Binder
         }
 
         return new BoundBitcastExpression(expression, bitcastExpression.Span, targetType);
+    }
+
+    private BoundExpression BindQueryExpression(QueryExpressionSyntax query)
+    {
+        string operatorName = SyntaxFacts.GetText(query.Keyword.Kind)!;
+
+        if (query.IsTwoArgumentForm)
+            return BindTwoArgQueryExpression(query, operatorName);
+
+        return BindOneArgQueryExpression(query, operatorName);
+    }
+
+    private BoundExpression BindTwoArgQueryExpression(QueryExpressionSyntax query, string operatorName)
+    {
+        if (query.Keyword.Kind == TokenKind.MemoryofKeyword)
+        {
+            _diagnostics.ReportMemoryofRequiresVariable(query.Span);
+            return new BoundErrorExpression(query.Span);
+        }
+
+        TypeSymbol type = BindType(query.Subject);
+        BoundExpression memorySpaceExpr = BindExpression(query.MemorySpace!, expectedType: MemorySpaceType);
+
+        VariableStorageClass? storageClass = TryResolveMemorySpace(memorySpaceExpr, query.MemorySpace!.Span);
+        if (storageClass is null)
+            return new BoundErrorExpression(query.Span);
+
+        if (query.Keyword.Kind == TokenKind.SizeofKeyword)
+        {
+            if (!TypeFacts.TryGetSizeInMemorySpace(type, storageClass.Value, out int size))
+            {
+                _diagnostics.ReportQueryUnsupportedType(query.Subject.Span, operatorName, type.Name);
+                return new BoundErrorExpression(query.Span);
+            }
+
+            return new BoundLiteralExpression((long)size, query.Span, BuiltinTypes.IntegerLiteral);
+        }
+
+        Debug.Assert(query.Keyword.Kind == TokenKind.AlignofKeyword, "Two-arg query must be sizeof or alignof.");
+
+        if (!TypeFacts.TryGetAlignmentInMemorySpace(type, storageClass.Value, out int alignment))
+        {
+            _diagnostics.ReportQueryUnsupportedType(query.Subject.Span, operatorName, type.Name);
+            return new BoundErrorExpression(query.Span);
+        }
+
+        return new BoundLiteralExpression((long)alignment, query.Span, BuiltinTypes.IntegerLiteral);
+    }
+
+    private BoundExpression BindOneArgQueryExpression(QueryExpressionSyntax query, string operatorName)
+    {
+        // The subject was parsed as TypeSyntax. For single-arg, it must be a variable.
+        // NamedTypeSyntax covers identifiers, PrimitiveTypeSyntax covers type keywords like u32.
+        if (query.Subject is not NamedTypeSyntax namedType)
+        {
+            // Subject is a primitive type keyword or complex type — not a variable name.
+            if (query.Keyword.Kind == TokenKind.MemoryofKeyword)
+            {
+                _diagnostics.ReportMemoryofRequiresVariable(query.Subject.Span);
+                return new BoundErrorExpression(query.Span);
+            }
+
+            _diagnostics.ReportQueryRequiresMemorySpace(query.Subject.Span, operatorName);
+            return new BoundErrorExpression(query.Span);
+        }
+
+        string name = namedType.Name.Text;
+
+        if (!_currentScope.TryLookup(name, out Symbol? symbol) || symbol is null)
+        {
+            _diagnostics.ReportUndefinedName(namedType.Name.Span, name);
+            return new BoundErrorExpression(query.Span);
+        }
+
+        if (symbol is VariableSymbol variable)
+        {
+            if (variable.IsAutomatic)
+            {
+                _diagnostics.ReportQueryAutomaticLocal(query.Subject.Span, operatorName, name);
+                return new BoundErrorExpression(query.Span);
+            }
+
+            return FoldVariableQuery(query, variable, operatorName);
+        }
+
+        if (symbol is ParameterSymbol)
+        {
+            _diagnostics.ReportQueryAutomaticLocal(query.Subject.Span, operatorName, name);
+            return new BoundErrorExpression(query.Span);
+        }
+
+        // Symbol is not a variable (could be a function, module, or type alias).
+        if (query.Keyword.Kind == TokenKind.MemoryofKeyword)
+        {
+            _diagnostics.ReportMemoryofRequiresVariable(query.Subject.Span);
+            return new BoundErrorExpression(query.Span);
+        }
+
+        _diagnostics.ReportQueryRequiresMemorySpace(query.Subject.Span, operatorName);
+        return new BoundErrorExpression(query.Span);
+    }
+
+    private BoundExpression FoldVariableQuery(QueryExpressionSyntax query, VariableSymbol variable, string operatorName)
+    {
+        VariableStorageClass sc = variable.StorageClass;
+
+        if (query.Keyword.Kind == TokenKind.MemoryofKeyword)
+        {
+            (string memberName, long value) = sc switch
+            {
+                VariableStorageClass.Reg => ("reg", 0L),
+                VariableStorageClass.Lut => ("lut", 1L),
+                VariableStorageClass.Hub => ("hub", 2L),
+                _ => throw new UnreachableException(),
+            };
+
+            return new BoundEnumLiteralExpression(MemorySpaceType, memberName, value, query.Span);
+        }
+
+        if (query.Keyword.Kind == TokenKind.SizeofKeyword)
+        {
+            if (!TypeFacts.TryGetSizeInMemorySpace(variable.Type, sc, out int size))
+            {
+                _diagnostics.ReportQueryUnsupportedType(query.Subject.Span, operatorName, variable.Type.Name);
+                return new BoundErrorExpression(query.Span);
+            }
+
+            return new BoundLiteralExpression((long)size, query.Span, BuiltinTypes.IntegerLiteral);
+        }
+
+        Debug.Assert(query.Keyword.Kind == TokenKind.AlignofKeyword, "Variable query must be sizeof, alignof, or memoryof.");
+
+        if (!TypeFacts.TryGetAlignmentInMemorySpace(variable.Type, sc, out int alignment))
+        {
+            _diagnostics.ReportQueryUnsupportedType(query.Subject.Span, operatorName, variable.Type.Name);
+            return new BoundErrorExpression(query.Span);
+        }
+
+        return new BoundLiteralExpression((long)alignment, query.Span, BuiltinTypes.IntegerLiteral);
+    }
+
+    private VariableStorageClass? TryResolveMemorySpace(BoundExpression expression, TextSpan span)
+    {
+        if (expression is BoundEnumLiteralExpression enumLiteral)
+        {
+            return enumLiteral.Value switch
+            {
+                0 => VariableStorageClass.Reg,
+                1 => VariableStorageClass.Lut,
+                2 => VariableStorageClass.Hub,
+                _ => ReportInvalidMemorySpace(span),
+            };
+        }
+
+        int? value = TryEvaluateConstantInt(expression);
+        if (value is not null)
+        {
+            return value switch
+            {
+                0 => VariableStorageClass.Reg,
+                1 => VariableStorageClass.Lut,
+                2 => VariableStorageClass.Hub,
+                _ => ReportInvalidMemorySpace(span),
+            };
+        }
+
+        _diagnostics.ReportInvalidMemorySpaceArgument(span);
+        return null;
+    }
+
+    private VariableStorageClass? ReportInvalidMemorySpace(TextSpan span)
+    {
+        _diagnostics.ReportInvalidMemorySpaceArgument(span);
+        return null;
     }
 
     private List<BoundExpression> BindCallArguments(

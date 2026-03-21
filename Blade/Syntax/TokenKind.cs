@@ -71,6 +71,9 @@ public enum TokenKind
     FalseKeyword,
     AndKeyword,
     OrKeyword,
+    SizeofKeyword,
+    AlignofKeyword,
+    MemoryofKeyword,
 
     // Type keywords
     BoolKeyword,

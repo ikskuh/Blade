@@ -1141,6 +1141,11 @@ public sealed class Parser
             case TokenKind.BitcastKeyword:
                 return ParseBitcastExpression();
 
+            case TokenKind.SizeofKeyword:
+            case TokenKind.AlignofKeyword:
+            case TokenKind.MemoryofKeyword:
+                return ParseQueryExpression();
+
             case TokenKind.IfKeyword:
                 return ParseIfExpression();
 
@@ -1193,6 +1198,24 @@ public sealed class Parser
         ExpressionSyntax value = ParseExpression();
         Token closeParen = MatchToken(TokenKind.CloseParen);
         return new BitcastExpressionSyntax(bitcastKw, openParen, targetType, comma, value, closeParen);
+    }
+
+    private QueryExpressionSyntax ParseQueryExpression()
+    {
+        Token keyword = NextToken();
+        Token openParen = MatchToken(TokenKind.OpenParen);
+        TypeSyntax subject = ParseType();
+
+        Token? comma = null;
+        ExpressionSyntax? memorySpace = null;
+        if (Current.Kind == TokenKind.Comma)
+        {
+            comma = NextToken();
+            memorySpace = ParseExpression();
+        }
+
+        Token closeParen = MatchToken(TokenKind.CloseParen);
+        return new QueryExpressionSyntax(keyword, openParen, subject, comma, memorySpace, closeParen);
     }
 
     private IntrinsicCallExpressionSyntax ParseIntrinsicCall()

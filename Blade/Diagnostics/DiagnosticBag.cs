@@ -395,6 +395,31 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
             $"Extern variable '{name}' cannot have an initializer.");
     }
 
+    public void ReportMemoryofRequiresVariable(TextSpan span)
+    {
+        Report(DiagnosticCode.E0250_MemoryofRequiresVariable, span, "'memoryof' requires a variable declaration, not a type.");
+    }
+
+    public void ReportQueryRequiresMemorySpace(TextSpan span, string operatorName)
+    {
+        Report(DiagnosticCode.E0251_QueryRequiresMemorySpace, span, $"'{operatorName}' of a type requires a memory space argument.");
+    }
+
+    public void ReportQueryUnsupportedType(TextSpan span, string operatorName, string typeName)
+    {
+        Report(DiagnosticCode.E0252_QueryUnsupportedType, span, $"Cannot determine size/alignment for type '{typeName}' in '{operatorName}'.");
+    }
+
+    public void ReportQueryAutomaticLocal(TextSpan span, string operatorName, string variableName)
+    {
+        Report(DiagnosticCode.E0253_QueryAutomaticLocal, span, $"'{operatorName}' cannot be applied to automatic local variable '{variableName}'.");
+    }
+
+    public void ReportInvalidMemorySpaceArgument(TextSpan span)
+    {
+        Report(DiagnosticCode.E0254_InvalidMemorySpaceArgument, span, "Expected a 'builtin.MemorySpace' value.");
+    }
+
     // Inline assembly diagnostics
 
     public void ReportInlineAsmUnknownInstruction(TextSpan span, string mnemonic)

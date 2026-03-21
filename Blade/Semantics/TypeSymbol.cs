@@ -520,6 +520,40 @@ public static class TypeFacts
         return false;
     }
 
+    public static bool TryGetSizeInMemorySpace(TypeSymbol type, VariableStorageClass storageClass, out int size)
+    {
+        if (storageClass is VariableStorageClass.Reg or VariableStorageClass.Lut)
+        {
+            if (!TryGetSizeBytes(type, out int sizeBytes))
+            {
+                size = 0;
+                return false;
+            }
+
+            size = Math.Max(1, (sizeBytes + 3) / 4);
+            return true;
+        }
+
+        return TryGetSizeBytes(type, out size);
+    }
+
+    public static bool TryGetAlignmentInMemorySpace(TypeSymbol type, VariableStorageClass storageClass, out int alignment)
+    {
+        if (storageClass is VariableStorageClass.Reg or VariableStorageClass.Lut)
+        {
+            if (!TryGetSizeBytes(type, out _))
+            {
+                alignment = 0;
+                return false;
+            }
+
+            alignment = 1;
+            return true;
+        }
+
+        return TryGetAlignmentBytes(type, out alignment);
+    }
+
     public static bool IsSignedInteger(TypeSymbol type)
     {
         return ReferenceEquals(type, BuiltinTypes.Nit)
