@@ -1,0 +1,8 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0201
+// NOTE:
+//   Importing builtin with an alias that conflicts with an existing symbol
+//   must report a duplicate declaration.
+
+import builtin;
+import builtin as builtin;

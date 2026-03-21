@@ -77,6 +77,13 @@ public static class CompilationOptionsCommandLine
 
             if (TryParseModuleSpecification(arg, normalizedBaseDirectory, out string? moduleName, out string? modulePath, out errorMessage))
             {
+                if (string.Equals(moduleName, "builtin", StringComparison.Ordinal))
+                {
+                    options = new CompilationOptions();
+                    errorMessage = "error: module name 'builtin' is reserved for the compiler-provided builtin module.";
+                    return false;
+                }
+
                 if (namedModuleRoots.ContainsKey(moduleName!))
                 {
                     options = new CompilationOptions();

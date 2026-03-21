@@ -152,6 +152,14 @@ public sealed class Binder
                 string importerDir = Path.GetDirectoryName(importerFilePath) ?? string.Empty;
                 resolvedPath = Path.GetFullPath(Path.Combine(importerDir, sourceName));
             }
+            else if (string.Equals(sourceName, "builtin", StringComparison.Ordinal))
+            {
+                ImportedModule builtinModule = CreateBuiltinModule(alias);
+                _importedModules[alias] = builtinModule;
+                if (!_globalScope.TryDeclare(new ModuleSymbol(alias, builtinModule)))
+                    _diagnostics.ReportSymbolAlreadyDeclared(import.Alias?.Span ?? import.Source.Span, alias);
+                continue;
+            }
             else
             {
                 if (!namedModuleRoots.TryGetValue(sourceName, out string? namedModulePath))
@@ -248,6 +256,35 @@ public sealed class Binder
             emptyProgram,
             new Dictionary<string, FunctionSymbol>(),
             new Dictionary<string, TypeSymbol>(),
+            new Dictionary<string, VariableSymbol>(),
+            new Dictionary<string, ImportedModule>());
+    }
+
+    private static ImportedModule CreateBuiltinModule(string alias)
+    {
+        Dictionary<string, long> members = new(StringComparer.Ordinal)
+        {
+            ["reg"] = 0,
+            ["lut"] = 1,
+            ["hub"] = 2,
+        };
+
+        EnumTypeSymbol memorySpaceType = new("MemorySpace", BuiltinTypes.U32, members, isOpen: false);
+        Dictionary<string, TypeSymbol> exportedTypes = new(StringComparer.Ordinal)
+        {
+            ["MemorySpace"] = memorySpaceType,
+        };
+
+        CompilationUnitSyntax emptySyntax = new([], new Token(TokenKind.EndOfFile, new TextSpan(0, 0), string.Empty));
+        BoundProgram emptyProgram = new([], [], [], new Dictionary<string, TypeSymbol>(), new Dictionary<string, FunctionSymbol>(), new Dictionary<string, ImportedModule>());
+        return new ImportedModule(
+            "builtin",
+            "<builtin>",
+            alias,
+            emptySyntax,
+            emptyProgram,
+            new Dictionary<string, FunctionSymbol>(),
+            exportedTypes,
             new Dictionary<string, VariableSymbol>(),
             new Dictionary<string, ImportedModule>());
     }

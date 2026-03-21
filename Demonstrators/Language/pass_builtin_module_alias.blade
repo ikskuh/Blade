@@ -1,0 +1,11 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - cls: MemorySpace
+// - Literal<MemorySpace> 1
+// NOTE:
+//   The builtin module can be imported under an alias. .lut has value 1.
+
+import builtin as b;
+
+reg var cls: b.MemorySpace = .lut;

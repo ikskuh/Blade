@@ -1134,7 +1134,7 @@ public sealed class Parser
             case TokenKind.Dot:
                 if (Peek(1).Kind == TokenKind.OpenBrace)
                     return ParseStructLiteral();
-                if (Peek(1).Kind == TokenKind.Identifier)
+                if (SyntaxFacts.IsIdentifierLike(Peek(1).Kind))
                     return ParseEnumLiteral();
                 goto default;
 
@@ -1180,7 +1180,7 @@ public sealed class Parser
     private EnumLiteralExpressionSyntax ParseEnumLiteral()
     {
         Token dot = MatchToken(TokenKind.Dot);
-        Token memberName = MatchToken(TokenKind.Identifier);
+        Token memberName = SyntaxFacts.IsIdentifierLike(Current.Kind) ? NextToken() : MatchToken(TokenKind.Identifier);
         return new EnumLiteralExpressionSyntax(dot, memberName);
     }
 

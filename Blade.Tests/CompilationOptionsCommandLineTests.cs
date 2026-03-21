@@ -126,6 +126,22 @@ public sealed class CompilationOptionsCommandLineTests
         Assert.That(options.NamedModuleRoots.Count, Is.EqualTo(0));
     }
 
+    [Test]
+    public void TryParse_RejectsBuiltinModuleName()
+    {
+        using TempDirectory tempDirectory = new();
+
+        bool succeeded = CompilationOptionsCommandLine.TryParse(
+            ["--module=builtin=mods/ext.blade"],
+            tempDirectory.Path,
+            out CompilationOptions options,
+            out string? errorMessage);
+
+        Assert.That(succeeded, Is.False);
+        Assert.That(errorMessage, Is.EqualTo("error: module name 'builtin' is reserved for the compiler-provided builtin module."));
+        Assert.That(options.NamedModuleRoots.Count, Is.EqualTo(0));
+    }
+
     [TestCase("--comptime-fuel=0", "0")]
     [TestCase("--comptime-fuel=-1", "-1")]
     [TestCase("--comptime-fuel=abc", "abc")]

@@ -1,0 +1,12 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - cls: MemorySpace
+// - Literal<MemorySpace> 2
+// NOTE:
+//   Importing the compiler-provided builtin module gives access
+//   to builtin.MemorySpace enum type. .hub has value 2.
+
+import builtin;
+
+reg var cls: builtin.MemorySpace = .hub;

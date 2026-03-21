@@ -211,6 +211,15 @@ public static class SyntaxFacts
     };
 
     /// <summary>
+    /// Returns true if the token kind is an identifier or a keyword that can serve as a
+    /// contextual name (e.g. enum member names like <c>.reg</c>, <c>.lut</c>, <c>.hub</c>).
+    /// </summary>
+    public static bool IsIdentifierLike(TokenKind kind)
+    {
+        return kind == TokenKind.Identifier || GetText(kind) is string text && Keywords.ContainsKey(text);
+    }
+
+    /// <summary>
     /// Returns the binary operator precedence for a token kind, or 0 if not a binary operator.
     /// Higher values bind tighter.
     /// </summary>
