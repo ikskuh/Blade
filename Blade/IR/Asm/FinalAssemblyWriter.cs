@@ -69,7 +69,7 @@ public static class FinalAssemblyWriter
 
             sb.Append("    ");
             sb.Append(FormatIdentifier(place.EmittedName));
-            sb.Append(" = 0x");
+            sb.Append(" = $");
             sb.Append(place.FixedAddress.Value.ToString("X", CultureInfo.InvariantCulture));
             sb.AppendLine();
         }

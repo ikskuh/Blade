@@ -1,0 +1,14 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0205
+// NOTE:
+//   Bare comptime if statements still require a bool condition.
+
+comptime fn bad_condition() -> u32 {
+    if (1) {
+        return 1;
+    }
+
+    return 0;
+}
+
+var value: u32 = bad_condition();

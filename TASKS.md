@@ -1,6 +1,6 @@
-# Difference between Implementation and Docs/reference.blade
+# Implementation tasks for the Blade compiler
 
-## CS-13: `u8x4` SIMD type
+## CS-1: `u8x4` SIMD type
 
 `reference.blade` shows `var v: u8x4 = [1,2,3,4];`.
 
@@ -10,82 +10,76 @@
 - Future: swizzle operations (deferred, not in reference.blade).
 - Tests: `var v: u8x4 = [1,2,3,4];`, coerce from/to `[4]u8`.
 
----
+## Bug Fix Backlog
 
-## CS-21: "assert" statement
+## BUG-2: Lower struct literals end-to-end
 
-`reference.blade` defines `assert` as a statement-like compile-time check:
+Regular struct literals bind successfully but still fail later with `E0401_UnsupportedLowering`.
 
-- `assert <condition>;`
-- `assert <condition>, "message";`
+- Implement MIR/asm lowering for regular struct literals so they compile through final assembly.
+- Convert the existing struct-literal demonstrator from `EXPECT: xfail` to `EXPECT: pass`.
+- Keep regression coverage focused on removing the `structlit` unsupported-lowering path.
 
-This needs explicit syntax support. The current lexer/parser do not know the
-`assert` keyword and there is no statement node for it.
+## BUG-4: Fix recursive calling convention
 
-Syntax/frontend work:
+`rec fn` codegen still does not reliably use the recursive calling convention path.
 
-- Add `assert` as a keyword token.
-- Add `AssertStatementSyntax`.
-- Parse both legal forms in statement position, so `assert` works both at
-  top-level and inside function bodies.
-- Parse the optional message as a string literal token, not as a general
-  expression. The reference explicitly says the message cannot be a variable
-  reference, so the syntax should enforce that directly.
+- Make recursive callees lower through the recursive tier instead of falling back to plain `CALL`.
+- Implement the required recursive return/spill behavior around `CALLB` and PTRB-backed stack usage.
+- Convert the recursive-function demonstrator away from its current expected failure once the path is live.
 
-Binder/semantic work:
+## BUG-5: Preserve the halt-loop sentinel through asm optimization
 
-- `assert` is compile-time only. It should not survive into MIR.
-- Bind the condition as an expression and evaluate it immediately.
-- The condition must fold to a boolean constant.
-- Reuse or generalize the current constant-evaluation helpers. `TryEvaluateConstantInt`
-  is too narrow for this task; `assert` needs boolean results, and `CS-20` query
-  operators should be usable inside assertions.
-- When the condition is `false`, emit one diagnostic code for assertion failure:
-  - without message: `assertion failed`
-  - with message: `assertion failed: <message>`
-- Non-constant conditions should report a separate diagnostic instead of silently
-  becoming runtime checks.
-- Non-boolean conditions should still use normal type checking.
+The halt loop requires `REP #1, #0` followed by `NOP`, but generic NOP elision can remove the sentinel.
 
-Recommended implementation shape:
+- Make the halt/trap sequence non-elidable by the asm optimizer.
+- Preserve the exact `REP #1, #0` + `NOP` shape in optimized output.
+- Add an optimizer regression that asserts the sentinel survives optimization.
 
-- Introduce a bound statement node for `assert` only if it helps the binder
-  pipeline; otherwise the binder can consume the syntax and emit either nothing
-  or an error immediately.
-- Prefer a reusable `TryEvaluateConstantValue(BoundExpression, out object?)`
-  helper over baking the logic into the `assert` path. That helper will also be
-  useful for future `comptime` work.
+## BUG-7: Resolve peer typing for enum literals in comparisons
 
-Tests:
+Enum comparisons should infer the enum type for contextual literals like `.Off` from the opposite operand.
 
-- `assert true;` produces no diagnostics.
-- `assert false;` produces the generic assertion-failed diagnostic.
-- `assert false, "must hold";` produces the same diagnostic code with the custom message.
-- `assert 1;` reports a type mismatch against `bool`.
-- `const msg: [4]u8 = "oops"; assert false, msg;` is rejected because the message is not a string literal.
-- `var x: u32 = 1; assert x == 1;` is rejected because the condition is not compile-time constant.
+- Teach comparison binding to resolve bare enum literals from the peer operand in `==` and `!=`.
+- Add passing coverage for both equality and inequality cases.
+- Keep the scope to enum-literal comparison typing rather than broader enum feature work.
 
----
+## BUG-8: Allow address-of indexed array elements
 
-## Non-semantic items already complete (for reference)
+`&ptr[1]` is currently rejected with `E0223` even though the indexed element should be addressable.
 
-These were handled in the syntax frontend refactor and need no further work:
+- Extend address-of binding to accept indexed array-element lvalues instead of only bare names.
+- Lower indexed-element addresses through the existing pointer/address pipeline.
+- Add focused binder and IR coverage for taking the address of an array element.
 
-- [x] `~` / `%` / `%=` / `<<<` / `>>>` / `<%<` / `>%>` / `...` tokens
-- [x] `and` / `or` / `type` / `union` / `enum` / `bitfield` / `bitcast` / `u8x4` keywords
-- [x] Character literals (`'x'`), escape sequences, `z"..."` strings
-- [x] Quaternary (`0q`) and octal (`0o`) number literals
-- [x] `asm { } -> name: type@Flag;` post-body output binding syntax
-- [x] `for(expr) -> [&]item[, index]` binding syntax
-- [x] `rep for(expr) -> binding` / `rep loop` (infinite) syntax
-- [x] `type Name = ...;` alias declarations
-- [x] `asm [volatile] fn name(...) -> ret { body }` declarations
-- [x] Union / enum / bitfield / non-packed struct type syntax nodes
-- [x] Multi-pointer `[*]` syntax
-- [x] Pointer attributes (storage, const, volatile, align) in syntax
-- [x] `expr as Type` cast syntax
-- [x] `bitcast(Type, expr)` syntax
-- [x] `.member` enum literal syntax
-- [x] `[expr, expr...]` array literal syntax
-- [x] `TypeName { .field = value }` typed struct literal syntax
-- [x] Named argument `name = expr` syntax
+## BUG-9: Remove stray store when passing `&array` to pointer parameters
+
+Passing `&greeting` into a pointer parameter currently has a reported codegen path that emits an unexpected store.
+
+- Add a demonstrator for the `length = count_string(&greeting);` shape.
+- Fix lowering so taking the address of an array for a call does not synthesize a stray `WRLONG` to the array base.
+- Validate the fix at final-asm level so the bad store is explicitly absent.
+
+## BUG-10: Preserve loop-carried count updates in the pointer-walk sample
+
+The string-walk sample reports that `count += 1` disappears from final codegen.
+
+- Add a reproducer for the pointer-walk/counting loop.
+- Fix the lowering or optimization path that drops the loop-carried increment.
+- Validate the final assembly contains the increment behavior for the live reproducer.
+
+## BUG-11: Respect the `SETQ`/`SETQ2` + PTRx silicon hazard
+
+The compiler must not emit `ALTx`/`AUG*` instructions between `SETQ`/`SETQ2` and PTRx bulk-transfer instructions.
+
+- Add a regression that exercises bulk PTRx transfer codegen.
+- Ensure legalization/scheduling preserves adjacency between `SETQ`/`SETQ2` and the corresponding `RDLONG`/`WRLONG`/`WMLONG` PTRx instruction.
+- Keep the acceptance criteria at final emitted assembly shape, not just intermediate IR.
+
+## BUG-12: Respect the `AUGS` + immediate `ALTx` silicon hazard
+
+The compiler must not let an `AUGS` intended for one instruction leak into an intervening immediate `ALTx`.
+
+- Add a regression around large-immediate codegen with an intervening `ALTx` instruction.
+- Ensure legalization does not emit an immediate `ALTx` that consumes or preserves the wrong `AUGS`.
+- Validate the final assembly ordering/operands so the hazard cannot occur.

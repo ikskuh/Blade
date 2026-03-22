@@ -4,7 +4,7 @@
 // - -fno-mir-opt=single-callsite-inline
 // - -fno-asmir-opt=conditional-move-fusion
 // SEQUENCE:
-// -   IF_Z JMP #$top_inl_after_0
+// -   IF_NZ JMP #$top_inl_after_0
 // -   MOV #_r1, #2
 // - $top_inl_after_0
 // NOTE:
@@ -12,6 +12,7 @@
 //   The optimizer has unit coverage, but current .blade lowering does not expose a stable jump-over-single-instruction trigger yet.
 
 reg var sink: u32 = 0;
+extern reg const INA: u32 @(0x1FE);
 
 // TODO: Use this pattern for less side effects:
 // asm {
@@ -28,4 +29,4 @@ fn demo(x: bool) -> u32 {
     return y;
 }
 
-sink = demo(true);
+sink = demo((INA & 1) == 0);

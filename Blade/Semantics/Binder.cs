@@ -33,7 +33,6 @@ public sealed class Binder
     private readonly Stack<LoopContext> _loopStack = new();
     private readonly int _comptimeFuel;
     private int _anonymousStructIndex;
-    private int _booleanLiteralValueBindingDepth;
 
     private static readonly EnumTypeSymbol MemorySpaceType = new("MemorySpace", BuiltinTypes.U32,
         new Dictionary<string, long>(StringComparer.Ordinal) { ["reg"] = 0, ["lut"] = 1, ["hub"] = 2 },
@@ -827,16 +826,7 @@ public sealed class Binder
         if (assertStatement.CommaToken is not null && assertStatement.MessageLiteral is null)
             return new BoundErrorStatement(assertStatement.Span);
 
-        _booleanLiteralValueBindingDepth++;
-        BoundExpression condition;
-        try
-        {
-            condition = BindExpression(assertStatement.Condition, BuiltinTypes.Bool);
-        }
-        finally
-        {
-            _booleanLiteralValueBindingDepth--;
-        }
+        BoundExpression condition = BindExpression(assertStatement.Condition, BuiltinTypes.Bool);
 
         if (condition is BoundErrorExpression)
             return new BoundErrorStatement(assertStatement.Span);
@@ -1401,7 +1391,7 @@ public sealed class Binder
         };
 
         object? value = literal.Token.Value;
-        if (value is null && _booleanLiteralValueBindingDepth > 0)
+        if (value is null)
         {
             value = literal.Token.Kind switch
             {

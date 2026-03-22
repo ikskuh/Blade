@@ -1,9 +1,12 @@
-// EXPECT: fail
-// DIAGNOSTICS:
-// - E0241
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - folded: u32
+// - Literal<u32> 2
+// NOT_CONTAINS:
+// - Call<u32> bad_assignment_rhs
 // NOTE:
-//   Forces assignment RHS evaluation to fail inside the evaluator by using a
-//   bool literal condition in a comptime if-expression.
+//   Bool literal conditions in comptime if-expressions should fold cleanly.
 
 comptime fn bad_assignment_rhs() -> u32 {
     var value: u32 = 0;

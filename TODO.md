@@ -14,10 +14,6 @@ Right now only the high-level part is implemented, but lowering the array access
 
 Validate that `rec fn` uses CALLB and stack spilling when calling other rec functions.
 
-## Assert that DIRA, OUTA, ... names are always bound to the correct special function register
-
-In FinalAssemblyWriter.WriteConBlock, skip CON alias emission when the fixed-address alias name is already a real hardware register identifier (DIRA, OUTA, INA, etc.).
-
 ## Type improvements
 
 - Distinct between `[*]T` and `*T` like in Zig. This gives better quality code without basically any drawbacks.
@@ -43,6 +39,10 @@ Inline asm output bindings currently use `VariableStorageClass.Automatic`; intro
 
 ## KNOWN SILICON BUGS
 
+From the Propeller 2 documentation:
+
+---
+
 Intervening ALTx/AUGS/AUGD instructions between SETQ/SETQ2 and RDLONG/WRLONG/WMLONG-PTRx instructions will cancel
 the special-case block-size PTRx deltas. The expected number of longs will transfer, but PTRx will only be modified according to
 normal PTRx expression behavior:
@@ -60,6 +60,10 @@ operand.
   AUGS  #$FFFFF123  'This AUGS is intended for the ADD instruction.
   ALTD  index,#base  'Look out! AUGS will affect #base, too. Use a register, instead.
   ADD  0-0,#$123  '#$123 will be augmented by the AUGS and cancel the AUGS.
+
+---
+
+These silicon bugs must be respected by the compiler, otherwise miscompilations appear.
 
 ## Return values don't properly compile at all for bit-style return values
 
@@ -243,13 +247,6 @@ if (mode_b == .Off) {
 TextDeltaSummary
 
 https://reportgenerator.io/usage
-
-
-## compiler bugs 
-
-Found it! if without else inside a comptime function body triggers the bug. The binder likely
-lowers bare if differently when constant-folding for comptime - perhaps transforming it into a
-naked BoundBlockStatement when the then-branch evaluates to true. This is a compiler bug.
 
 
 ## New rules on interrupt handlers + function pointers

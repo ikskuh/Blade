@@ -302,7 +302,7 @@ public sealed class Parser
         if (Current.Kind == TokenKind.At)
         {
             Token at = NextToken();
-            Token flag = MatchToken(TokenKind.Identifier);
+            Token flag = SyntaxFacts.IsIdentifierLike(Current.Kind) ? NextToken() : MatchToken(TokenKind.Identifier);
             flagAnnotation = new FlagAnnotationSyntax(at, flag);
         }
 

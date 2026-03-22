@@ -1070,8 +1070,12 @@ internal sealed class ComptimeEvaluator
             return false;
         }
 
-        Debug.Assert(conditionValue is bool);
-        bool conditionBool = (bool)conditionValue;
+        if (conditionValue is not bool conditionBool)
+        {
+            outcome = EvaluationOutcome.None;
+            failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, ifStatement.Condition.Span, "if-statement conditions must be bool.");
+            return false;
+        }
 
         return TryExecuteStatement(
             conditionBool ? ifStatement.ThenBody : ifStatement.ElseBody ?? EmptyBlock,
@@ -1094,8 +1098,12 @@ internal sealed class ComptimeEvaluator
                 return false;
             }
 
-            Debug.Assert(conditionValue is bool);
-            bool conditionBool = (bool)conditionValue;
+            if (conditionValue is not bool conditionBool)
+            {
+                outcome = EvaluationOutcome.None;
+                failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, whileStatement.Condition.Span, "while-statement conditions must be bool.");
+                return false;
+            }
 
             if (!conditionBool)
                 break;

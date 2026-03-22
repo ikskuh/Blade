@@ -1,15 +1,15 @@
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// - BITL
 // - BITNOT
 // - CMP
 // - IF_NZ
+// - g_t LONG 0
 // NOT_CONTAINS:
 // - WRZ
 // NOTE:
-//   Exercises bool/bit register operations. BITL for bool false constant.
-//   BITNOT for logical negation of a bool.
+//   Exercises bool/bit register operations. Bool false static initialization
+//   should stay a zeroed register-file entry, while logical negation lowers via BITNOT.
 //   CMP + predicated JMP for comparison branch without WRZ materialization.
 
 extern reg var OUTA: u32 @(0x1FC);

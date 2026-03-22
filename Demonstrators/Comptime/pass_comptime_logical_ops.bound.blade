@@ -7,7 +7,7 @@
 // - Call<u32> ct_logical
 // NOTE:
 //   Exercises logical AND/OR short-circuiting and bool equality in comptime.
-//   Uses while loop with if/else (bare if is not supported in comptime).
+//   Uses bare if statements inside the comptime loop body.
 
 comptime fn ct_logical(n: u32) -> u32 {
     var result: u32 = 0;
@@ -16,14 +16,10 @@ comptime fn ct_logical(n: u32) -> u32 {
         // LogicalAnd: true when i > 0 AND i < 3 (i=1,2)
         if ((i > 0) and (i < 3)) {
             result = result + 1;
-        } else {
-            result = result;
         }
         // LogicalOr: true when i == 0 OR i >= 4 (i=0,4)
         if ((i < 1) or (i > 3)) {
             result = result + 1;
-        } else {
-            result = result;
         }
         i = i + 1;
     }

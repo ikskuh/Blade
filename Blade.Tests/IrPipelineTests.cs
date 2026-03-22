@@ -1199,7 +1199,7 @@ public class IrPipelineTests
         Assert.That(place.Kind, Is.EqualTo(StoragePlaceKind.FixedRegisterAlias));
         Assert.That(place.FixedAddress, Is.EqualTo(0x1FC));
         Assert.That(build.AssemblyText, Does.Contain("OR OUTA, #16"));
-        Assert.That(build.AssemblyText, Does.Not.Contain("OUTA = 0x1FC"));
+        Assert.That(build.AssemblyText, Does.Not.Contain("OUTA = $1FC"));
         Assert.That(build.AssemblyText, Does.Not.Match(@"LONG\s+0\b"));
         Assert.That(build.AssemblyText, Does.Not.Contain("g_OUTA"));
     }
@@ -1222,8 +1222,34 @@ public class IrPipelineTests
         StoragePlace place = build.AsmModule.StoragePlaces.Single(p => p.EmittedName == "LED_PORT");
         Assert.That(place.FixedAddress, Is.EqualTo(0x1FC));
         Assert.That(build.AssemblyText, Does.Contain("CON"));
-        Assert.That(build.AssemblyText, Does.Contain("LED_PORT = 0x1FC"));
+        Assert.That(build.AssemblyText, Does.Contain("LED_PORT = $1FC"));
         Assert.That(build.AssemblyText, Does.Contain("OR LED_PORT, #16"));
+    }
+
+    [Test]
+    public void FoldedFixedRegisterAliases_EmitFlexspinCompatibleConConstants()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            extern reg var A0: u32 @(1);
+            extern reg var A1: u32 @((+3) as u8);
+            extern reg var A2: u32 @((~0) as u8);
+            extern reg var A3: u32 @((-1) as u8);
+            extern reg var A4: u32 @(bitcast(u8, 5 as u8));
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+        });
+
+        Assert.That(build.AssemblyText, Does.Contain("A0 = $1"));
+        Assert.That(build.AssemblyText, Does.Contain("A1 = $3"));
+        Assert.That(build.AssemblyText, Does.Contain("A2 = $FF"));
+        Assert.That(build.AssemblyText, Does.Contain("A3 = $FF"));
+        Assert.That(build.AssemblyText, Does.Contain("A4 = $5"));
+        Assert.That(build.AssemblyText, Does.Not.Contain("0x"));
     }
 
     [Test]

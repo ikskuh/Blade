@@ -485,6 +485,21 @@ public class ParserTests
     }
 
     [Test]
+    public void FunctionWithExplicitRegisterAndFlagReturnItems_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("fn get_three_specific() -> u32@reg, bool@C, bit@Z { return 100, false, 1; }");
+        AssertNoDiagnostics(diag);
+
+        FunctionDeclarationSyntax func = (FunctionDeclarationSyntax)unit.Members[0];
+        Assert.That(func.ReturnSpec, Is.Not.Null);
+        Assert.That(func.ReturnSpec!.Count, Is.EqualTo(3));
+        Assert.That(func.ReturnSpec[0].FlagAnnotation?.Flag.Text, Is.EqualTo("reg"));
+        Assert.That(func.ReturnSpec[0].FlagAnnotation?.Flag.Kind, Is.EqualTo(TokenKind.RegKeyword));
+        Assert.That(func.ReturnSpec[1].FlagAnnotation?.Flag.Text, Is.EqualTo("C"));
+        Assert.That(func.ReturnSpec[2].FlagAnnotation?.Flag.Text, Is.EqualTo("Z"));
+    }
+
+    [Test]
     public void IfElseIfStatement_ParsesNestedNonBlockBodies()
     {
         (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("if (x) y = 1; else if (z) y = 2;");

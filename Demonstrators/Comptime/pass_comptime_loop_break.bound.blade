@@ -6,8 +6,7 @@
 // NOT_CONTAINS:
 // - Call<u32> ct_loop_break
 // NOTE:
-//   Exercises loop/break/continue and if/else in comptime evaluation.
-//   All ifs use else branches because bare if isn't supported in comptime.
+//   Exercises loop/break/continue with bare if statements in comptime evaluation.
 
 comptime fn ct_loop_break(limit: u32) -> u32 {
     var sum: u32 = 0;
@@ -16,7 +15,8 @@ comptime fn ct_loop_break(limit: u32) -> u32 {
         i = i + 1;
         if (i == 3) {
             sum = sum;
-        } else {
+        }
+        if (i != 3) {
             sum = sum + i;
         }
     }

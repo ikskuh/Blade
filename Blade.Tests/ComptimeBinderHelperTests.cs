@@ -154,6 +154,17 @@ public sealed class ComptimeBinderHelperTests
         return Activator.CreateInstance(failureType, failureKind, Span, detail)!;
     }
 
+    private static object CreateUninitializedComptimeEvaluator()
+    {
+        Type evaluatorType = typeof(SemanticBinder).Assembly.GetType("Blade.Semantics.ComptimeEvaluator", throwOnError: true)!;
+        return System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(evaluatorType);
+    }
+
+    private static string GetRecordField(object instance, string propertyName)
+    {
+        return instance.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public)!.GetValue(instance)!.ToString()!;
+    }
+
     [Test]
     public void StorageLayoutMetadata_RequiresComptimeInteger()
     {
@@ -176,6 +187,84 @@ public sealed class ComptimeBinderHelperTests
         BoundVariableDeclarationStatement statement = (BoundVariableDeclarationStatement)program.TopLevelStatements.Single();
         BoundLiteralExpression initializer = (BoundLiteralExpression)statement.Initializer!;
         Assert.That(initializer.Value, Is.EqualTo((uint)3));
+    }
+
+    [Test]
+    public void ComptimeBareIfWithoutElse_FoldsBoolLiteralCondition()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            comptime fn choose() -> u32 {
+                var value: u32 = 1;
+                if (true) {
+                    value = 2;
+                }
+                return value;
+            }
+
+            var result: u32 = choose();
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        BoundVariableDeclarationStatement statement = (BoundVariableDeclarationStatement)program.TopLevelStatements.Single();
+        BoundLiteralExpression initializer = (BoundLiteralExpression)statement.Initializer!;
+        Assert.That(initializer.Value, Is.EqualTo((uint)2));
+    }
+
+    [Test]
+    public void PrivateComptimeStatementExecution_GuardsInvalidIfAndWhileConditions()
+    {
+        object evaluator = CreateUninitializedComptimeEvaluator();
+        Type evaluatorType = evaluator.GetType();
+        MethodInfo tryExecuteIf = evaluatorType.GetMethod("TryExecuteIfStatement", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        MethodInfo tryExecuteWhile = evaluatorType.GetMethod("TryExecuteWhileStatement", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        BoundBlockStatement emptyBlock = new([], Span);
+
+        object?[] ifFailureArgs =
+        [
+            new BoundIfStatement(new BoundErrorExpression(Span), emptyBlock, elseBody: null, Span),
+            new Dictionary<Symbol, object?>(),
+            null,
+            null,
+        ];
+        Assert.That((bool)tryExecuteIf.Invoke(evaluator, ifFailureArgs)!, Is.False);
+        Assert.That(GetRecordField(ifFailureArgs[2]!, "Kind"), Is.EqualTo("None"));
+        Assert.That(GetRecordField(ifFailureArgs[3]!, "Kind"), Is.EqualTo("UnsupportedConstruct"));
+
+        object?[] ifTypeArgs =
+        [
+            new BoundIfStatement(new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), emptyBlock, elseBody: null, Span),
+            new Dictionary<Symbol, object?>(),
+            null,
+            null,
+        ];
+        Assert.That((bool)tryExecuteIf.Invoke(evaluator, ifTypeArgs)!, Is.False);
+        Assert.That(GetRecordField(ifTypeArgs[2]!, "Kind"), Is.EqualTo("None"));
+        Assert.That(GetRecordField(ifTypeArgs[3]!, "Kind"), Is.EqualTo("NotEvaluable"));
+        Assert.That(GetRecordField(ifTypeArgs[3]!, "Detail"), Does.Contain("if-statement conditions must be bool."));
+
+        object?[] whileFailureArgs =
+        [
+            new BoundWhileStatement(new BoundErrorExpression(Span), emptyBlock, Span),
+            new Dictionary<Symbol, object?>(),
+            null,
+            null,
+        ];
+        Assert.That((bool)tryExecuteWhile.Invoke(evaluator, whileFailureArgs)!, Is.False);
+        Assert.That(GetRecordField(whileFailureArgs[2]!, "Kind"), Is.EqualTo("None"));
+        Assert.That(GetRecordField(whileFailureArgs[3]!, "Kind"), Is.EqualTo("UnsupportedConstruct"));
+
+        object?[] whileTypeArgs =
+        [
+            new BoundWhileStatement(new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), emptyBlock, Span),
+            new Dictionary<Symbol, object?>(),
+            null,
+            null,
+        ];
+        Assert.That((bool)tryExecuteWhile.Invoke(evaluator, whileTypeArgs)!, Is.False);
+        Assert.That(GetRecordField(whileTypeArgs[2]!, "Kind"), Is.EqualTo("None"));
+        Assert.That(GetRecordField(whileTypeArgs[3]!, "Kind"), Is.EqualTo("NotEvaluable"));
+        Assert.That(GetRecordField(whileTypeArgs[3]!, "Detail"), Does.Contain("while-statement conditions must be bool."));
     }
 
     [Test]
