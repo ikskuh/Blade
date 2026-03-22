@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using Blade;
 using Blade.IR;
@@ -1436,7 +1437,8 @@ public static class MirLowerer
                 case BoundMemberAssignmentTarget memberTarget:
                 {
                     MirValueId receiver = LowerExpression(memberTarget.Receiver);
-                    EmitStore($"member:{memberTarget.MemberName}:{memberTarget.Member.ByteOffset}", memberTarget.Type, [receiver, value], span);
+                    MirValueId updated = EmitAggregateMemberInsert(receiver, value, memberTarget.Receiver.Type, memberTarget.Member, span);
+                    WriteAggregateExpression(memberTarget.Receiver, updated, span);
                     return;
                 }
 
@@ -1473,6 +1475,45 @@ public static class MirLowerer
                     EmitOp("store.error", [value], hasSideEffects: true, span);
                     return;
             }
+        }
+
+        private void WriteAggregateExpression(BoundExpression expression, MirValueId value, TextSpan span)
+        {
+            switch (expression)
+            {
+                case BoundSymbolExpression symbolExpression:
+                    WriteSymbol(symbolExpression.Symbol, value, span);
+                    return;
+
+                case BoundMemberAccessExpression memberAccess:
+                {
+                    MirValueId receiver = LowerExpression(memberAccess.Receiver);
+                    MirValueId updated = memberAccess.Member.IsBitfield
+                        ? EmitBitfieldInsert(receiver, value, memberAccess.Receiver.Type, memberAccess.Member, span)
+                        : EmitAggregateMemberInsert(receiver, value, memberAccess.Receiver.Type, memberAccess.Member, span);
+                    WriteAggregateExpression(memberAccess.Receiver, updated, span);
+                    return;
+                }
+
+                case BoundIndexExpression indexExpression:
+                {
+                    MirValueId indexed = LowerExpression(indexExpression.Expression);
+                    MirValueId index = LowerExpression(indexExpression.Index);
+                    string indexSuffix = GetStorageClassSuffix(indexExpression.Expression);
+                    EmitStore($"index.{indexSuffix}", indexExpression.Type, [indexed, index, value], span);
+                    return;
+                }
+
+                case BoundPointerDerefExpression pointerDerefExpression:
+                {
+                    MirValueId pointer = LowerExpression(pointerDerefExpression.Expression);
+                    string derefSuffix = GetStorageClassSuffix(pointerDerefExpression.Expression);
+                    EmitStore($"deref.{derefSuffix}", pointerDerefExpression.Type, [pointer, value], span);
+                    return;
+                }
+            }
+
+            Debug.Fail($"Unsupported aggregate write expression '{expression.Kind}'.");
         }
 
         private void WriteSymbol(Symbol symbol, MirValueId value, TextSpan span)
@@ -1668,6 +1709,12 @@ public static class MirLowerer
         private MirValueId EmitBitfieldInsert(MirValueId receiver, MirValueId value, TypeSymbol aggregateType, AggregateMemberSymbol member, TextSpan span)
         {
             string opcode = $"bitfield.insert.{member.BitOffset}.{member.BitWidth}";
+            return EmitOp(opcode, aggregateType, [receiver, value], hasSideEffects: false, span);
+        }
+
+        private MirValueId EmitAggregateMemberInsert(MirValueId receiver, MirValueId value, TypeSymbol aggregateType, AggregateMemberSymbol member, TextSpan span)
+        {
+            string opcode = $"insert.member.{member.Name}.{member.ByteOffset}";
             return EmitOp(opcode, aggregateType, [receiver, value], hasSideEffects: false, span);
         }
 

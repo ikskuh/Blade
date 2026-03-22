@@ -1704,7 +1704,105 @@ public class IrPipelineTests
         string mir = MirTextWriter.Write(mirModule);
 
         Assert.That(mir, Does.Contain("load.member.value.4"));
-        Assert.That(mir, Does.Contain("store member:value:4"));
+        Assert.That(mir, Does.Contain("insert.member.value.4"));
+    }
+
+    [Test]
+    public void NestedStructMemberAssignment_LowersRecursiveAggregateWriteback()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            type Inner = struct {
+                value: u32,
+            };
+
+            type Outer = struct {
+                inner: Inner,
+            };
+
+            noinline fn demo() void {
+                var outer: Outer = .{ .inner = .{ .value = 1 } };
+                outer.inner.value = 2;
+            }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        MirModule mirModule = MirLowerer.Lower(program);
+        string mir = MirTextWriter.Write(mirModule);
+
+        Assert.That(mir, Does.Contain("insert.member.value.0"));
+        Assert.That(mir, Does.Contain("insert.member.inner.0"));
+    }
+
+    [Test]
+    public void IndexedStructMemberAssignment_LowersIndexedAggregateWriteback()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            type Pair = struct {
+                value: u32,
+            };
+
+            hub var items: [1]Pair = undefined;
+            items[0].value = 1;
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        MirModule mirModule = MirLowerer.Lower(program);
+        string mir = MirTextWriter.Write(mirModule);
+
+        Assert.That(mir, Does.Contain("insert.member.value.0"));
+        Assert.That(mir, Does.Contain("store index.hub"));
+    }
+
+    [Test]
+    public void PointerStructMemberAssignment_LowersPointerAggregateWriteback()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            type Pair = struct {
+                value: u32,
+            };
+
+            hub var pair: Pair = undefined;
+            var ptr: *hub Pair = &pair;
+            ptr.*.value = 1;
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        MirModule mirModule = MirLowerer.Lower(program);
+        string mir = MirTextWriter.Write(mirModule);
+
+        Assert.That(mir, Does.Contain("insert.member.value.0"));
+        Assert.That(mir, Does.Contain("store deref.hub"));
+    }
+
+    [Test]
+    public void InvalidAggregateWriteExpression_TriggersDebugAssertion()
+    {
+        TextSpan span = new(0, 0);
+        StructTypeSymbol pairType = CreateStructType(
+            "Pair",
+            sizeBytes: 4,
+            alignmentBytes: 4,
+            new AggregateMemberSymbol("value", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false));
+        BoundAssignmentStatement statement = new(
+            new BoundMemberAssignmentTarget(
+                new BoundLiteralExpression(0, span, pairType),
+                pairType.Members["value"],
+                span),
+            new BoundLiteralExpression(1, span, BuiltinTypes.U32),
+            TokenKind.Equal,
+            span);
+        BoundProgram program = new(
+            [statement],
+            [],
+            [],
+            new Dictionary<string, TypeSymbol>(),
+            new Dictionary<string, FunctionSymbol>(),
+            new Dictionary<string, ImportedModule>());
+
+        Assert.That(() => MirLowerer.Lower(program), Throws.Exception);
     }
 
     [Test]
@@ -1836,6 +1934,256 @@ public class IrPipelineTests
         Assert.That(asmir, Does.Contain("SHR"));
     }
 
+    [Test]
+    public void AsmLowerer_SingleWordStructOps_EmitAggregateInstructions()
+    {
+        TextSpan span = new(0, 0);
+        LirVirtualRegister loRegister = new(0);
+        LirVirtualRegister hiRegister = new(1);
+        LirVirtualRegister midRegister = new(2);
+        LirVirtualRegister destinationRegister = new(3);
+        StructTypeSymbol packedType = CreateStructType(
+            "Packed",
+            sizeBytes: 4,
+            alignmentBytes: 2,
+            new AggregateMemberSymbol("lo", BuiltinTypes.U8, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false),
+            new AggregateMemberSymbol("hi", BuiltinTypes.U8, byteOffset: 1, bitOffset: 0, bitWidth: 0, isBitfield: false),
+            new AggregateMemberSymbol("mid", BuiltinTypes.U16, byteOffset: 2, bitOffset: 0, bitWidth: 0, isBitfield: false));
+        StructTypeSymbol pairType = CreateStructType(
+            "Pair",
+            sizeBytes: 4,
+            alignmentBytes: 4,
+            new AggregateMemberSymbol("value", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false));
+        LirFunction function = new(
+            "demo",
+            isEntryPoint: true,
+            FunctionKind.Default,
+            [],
+            [
+                new LirBlock(
+                    "bb0",
+                    [],
+                    [
+                        new LirOpInstruction(
+                            "structlit.lo.hi.mid",
+                            destinationRegister,
+                            packedType,
+                            [new LirRegisterOperand(loRegister), new LirRegisterOperand(hiRegister), new LirRegisterOperand(midRegister)],
+                            hasSideEffects: false,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                        new LirOpInstruction(
+                            "load.member.hi.1",
+                            destinationRegister,
+                            BuiltinTypes.U8,
+                            [new LirRegisterOperand(destinationRegister)],
+                            hasSideEffects: false,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                        new LirOpInstruction(
+                            "insert.member.mid.2",
+                            destinationRegister,
+                            packedType,
+                            [new LirRegisterOperand(destinationRegister), new LirRegisterOperand(midRegister)],
+                            hasSideEffects: false,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                        new LirOpInstruction(
+                            "load.member.mid.2",
+                            destinationRegister,
+                            BuiltinTypes.U16,
+                            [new LirRegisterOperand(destinationRegister)],
+                            hasSideEffects: false,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                        new LirOpInstruction(
+                            "load.member.value.0",
+                            destinationRegister,
+                            BuiltinTypes.U32,
+                            [new LirRegisterOperand(destinationRegister)],
+                            hasSideEffects: false,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                        new LirOpInstruction(
+                            "insert.member.value.0",
+                            destinationRegister,
+                            pairType,
+                            [new LirRegisterOperand(destinationRegister), new LirRegisterOperand(loRegister)],
+                            hasSideEffects: false,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                    ],
+                    new LirReturnTerminator([], span)),
+            ]);
+
+        AsmModule asmModule = AsmLowerer.Lower(new LirModule([function]));
+        string asmir = AsmTextWriter.Write(asmModule);
+
+        Assert.That(asmir, Does.Contain("SETBYTE"));
+        Assert.That(asmir, Does.Contain("SETWORD"));
+        Assert.That(asmir, Does.Contain("GETBYTE"));
+        Assert.That(asmir, Does.Contain("ZEROX"));
+        Assert.That(asmir, Does.Contain("MOV %r3, %r3"));
+    }
+
+    [Test]
+    public void AsmLowerer_InvalidAggregateOpcodes_EmitComments()
+    {
+        TextSpan span = new(0, 0);
+        LirVirtualRegister sourceRegister = new(0);
+        LirVirtualRegister destinationRegister = new(1);
+        StructTypeSymbol pairType = CreateStructType(
+            "Pair",
+            sizeBytes: 4,
+            alignmentBytes: 4,
+            new AggregateMemberSymbol("value", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false));
+        StructTypeSymbol wideType = CreateStructType(
+            "Wide",
+            sizeBytes: 8,
+            alignmentBytes: 4,
+            new AggregateMemberSymbol("left", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false),
+            new AggregateMemberSymbol("right", BuiltinTypes.U32, byteOffset: 4, bitOffset: 0, bitWidth: 0, isBitfield: false));
+        LirFunction function = new(
+            "demo",
+            isEntryPoint: true,
+            FunctionKind.Default,
+            [],
+            [
+                new LirBlock(
+                    "bb0",
+                    [],
+                    [
+                        new LirOpInstruction(
+                            "load.member.bad",
+                            destinationRegister,
+                            BuiltinTypes.U32,
+                            [new LirRegisterOperand(sourceRegister)],
+                            hasSideEffects: false,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                        new LirOpInstruction(
+                            "load.member.value.4",
+                            destinationRegister,
+                            BuiltinTypes.U32,
+                            [new LirRegisterOperand(sourceRegister)],
+                            hasSideEffects: false,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                        new LirOpInstruction(
+                            "load.member.value.1",
+                            destinationRegister,
+                            BuiltinTypes.U16,
+                            [new LirRegisterOperand(sourceRegister)],
+                            hasSideEffects: false,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                        new LirOpInstruction(
+                            "insert.member.bad",
+                            destinationRegister,
+                            pairType,
+                            [new LirRegisterOperand(sourceRegister), new LirRegisterOperand(sourceRegister)],
+                            hasSideEffects: false,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                        new LirOpInstruction(
+                            "insert.member.value.4",
+                            destinationRegister,
+                            pairType,
+                            [new LirRegisterOperand(sourceRegister), new LirRegisterOperand(sourceRegister)],
+                            hasSideEffects: false,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                        new LirOpInstruction(
+                            "insert.member.value.0",
+                            destinationRegister,
+                            BuiltinTypes.U32,
+                            [new LirRegisterOperand(sourceRegister), new LirRegisterOperand(sourceRegister)],
+                            hasSideEffects: false,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                        new LirOpInstruction(
+                            "structlit.value",
+                            destinationRegister,
+                            BuiltinTypes.U32,
+                            [new LirRegisterOperand(sourceRegister)],
+                            hasSideEffects: false,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                        new LirOpInstruction(
+                            "structlit.left.right",
+                            destinationRegister,
+                            wideType,
+                            [new LirRegisterOperand(sourceRegister), new LirRegisterOperand(sourceRegister)],
+                            hasSideEffects: false,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                        new LirOpInstruction(
+                            "structlit.value.extra",
+                            destinationRegister,
+                            pairType,
+                            [new LirRegisterOperand(sourceRegister)],
+                            hasSideEffects: false,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                        new LirOpInstruction(
+                            "structlit.missing",
+                            destinationRegister,
+                            pairType,
+                            [new LirRegisterOperand(sourceRegister)],
+                            hasSideEffects: false,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                    ],
+                    new LirReturnTerminator([], span)),
+            ]);
+
+        AsmModule asmModule = AsmLowerer.Lower(new LirModule([function]));
+        string asmir = AsmTextWriter.Write(asmModule);
+
+        Assert.That(asmir, Does.Contain("invalid load.member.bad"));
+        Assert.That(asmir, Does.Contain("unhandled: load.member.value.4"));
+        Assert.That(asmir, Does.Contain("unhandled: load.member.value.1"));
+        Assert.That(asmir, Does.Contain("invalid insert.member.bad"));
+        Assert.That(asmir, Does.Contain("unhandled: insert.member.value.4"));
+        Assert.That(asmir, Does.Contain("unhandled: insert.member.value.0"));
+        Assert.That(asmir, Does.Contain("unhandled: structlit.value"));
+        Assert.That(asmir, Does.Contain("unhandled: structlit.left.right"));
+        Assert.That(asmir, Does.Contain("invalid structlit.value.extra"));
+        Assert.That(asmir, Does.Contain("unhandled: structlit.missing"));
+    }
+
     private static IEnumerable<string> AcceptProgramsForPipeline()
     {
         string[] files =
@@ -1875,7 +2223,6 @@ public class IrPipelineTests
             "advanced_semantics.blade",
             "control_flow.blade",
             "function_declarations.blade",
-            "struct_types.blade",
         ];
 
         foreach (string file in files)
@@ -2028,6 +2375,23 @@ public class IrPipelineTests
 
         IReadOnlyList<StoragePlace> storagePlaces = compilation.IrBuildResult!.AsmModule.StoragePlaces;
         Assert.That(storagePlaces.Count(place => place.Symbol is VariableSymbol { Name: "seed" }), Is.EqualTo(1));
+    }
+
+    private static StructTypeSymbol CreateStructType(
+        string name,
+        int sizeBytes,
+        int alignmentBytes,
+        params AggregateMemberSymbol[] members)
+    {
+        Dictionary<string, TypeSymbol> fields = new(StringComparer.Ordinal);
+        Dictionary<string, AggregateMemberSymbol> memberMap = new(StringComparer.Ordinal);
+        foreach (AggregateMemberSymbol member in members)
+        {
+            fields[member.Name] = member.Type;
+            memberMap[member.Name] = member;
+        }
+
+        return new StructTypeSymbol(name, fields, memberMap, sizeBytes, alignmentBytes);
     }
 
 }

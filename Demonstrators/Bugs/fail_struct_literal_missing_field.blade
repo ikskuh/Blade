@@ -1,0 +1,15 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - E0237
+// NOTE:
+//   Struct literals must report semantic missing-field errors
+//   before the lowering pipeline runs.
+
+type Pair = struct {
+    left: u32,
+    right: u32,
+};
+
+var pair: Pair = Pair {
+    .left = 1,
+};

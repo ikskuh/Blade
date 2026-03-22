@@ -12,14 +12,6 @@
 
 ## Bug Fix Backlog
 
-## BUG-2: Lower struct literals end-to-end
-
-Regular struct literals bind successfully but still fail later with `E0401_UnsupportedLowering`.
-
-- Implement MIR/asm lowering for regular struct literals so they compile through final assembly.
-- Convert the existing struct-literal demonstrator from `EXPECT: xfail` to `EXPECT: pass`.
-- Keep regression coverage focused on removing the `structlit` unsupported-lowering path.
-
 ## BUG-4: Fix recursive calling convention
 
 `rec fn` codegen still does not reliably use the recursive calling convention path.

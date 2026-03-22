@@ -1,12 +1,26 @@
-// EXPECT: xfail
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - RDLONG
+// - WRLONG
+// - ADD
+// NOT_CONTAINS:
+// - unhandled: structlit
+// - unhandled: load.member
+// - unhandled: insert.member
 // NOTE:
-//   Struct literals are defined in Docs/reference.blade, but final lowering
-//   currently reports E0401_UnsupportedLowering for opcode 'structlit'.
+//   Single-word struct literals and member updates lower end-to-end.
+//   The hub-backed struct update should emit a read-modify-write sequence.
 
 type Pair = struct {
     value: u32,
 };
 
-reg var pair: Pair = Pair {
+hub var pair: Pair = Pair {
     .value = 1,
 };
+
+reg var sink: u32 = 0;
+
+sink = pair.value;
+pair.value = sink + 1;

@@ -203,7 +203,11 @@ public static class AsmLowerer
                 LowerConvert(nodes, op);
                 break;
             default:
-                if (op.Opcode.StartsWith("binary.", StringComparison.Ordinal))
+                if (op.Opcode.StartsWith("structlit.", StringComparison.Ordinal))
+                {
+                    LowerStructLiteral(nodes, op, ctx);
+                }
+                else if (op.Opcode.StartsWith("binary.", StringComparison.Ordinal))
                 {
                     LowerBinary(nodes, op, ctx);
                 }
@@ -218,6 +222,10 @@ public static class AsmLowerer
                 else if (op.Opcode.StartsWith("bitfield.insert.", StringComparison.Ordinal))
                 {
                     LowerBitfieldInsert(nodes, op, ctx);
+                }
+                else if (op.Opcode.StartsWith("load.member.", StringComparison.Ordinal))
+                {
+                    LowerLoadMember(nodes, op, ctx);
                 }
                 else if (op.Opcode.StartsWith("load.deref.", StringComparison.Ordinal))
                 {
@@ -242,6 +250,10 @@ public static class AsmLowerer
                 else if (op.Opcode.StartsWith("store.index.", StringComparison.Ordinal))
                 {
                     LowerStoreIndex(nodes, op, ctx);
+                }
+                else if (op.Opcode.StartsWith("insert.member.", StringComparison.Ordinal))
+                {
+                    LowerInsertMember(nodes, op, ctx);
                 }
                 else if (op.Opcode.StartsWith("store.", StringComparison.Ordinal))
                 {
@@ -780,6 +792,27 @@ public static class AsmLowerer
         }
     }
 
+    private static void LowerLoadMember(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
+    {
+        if (!TryParseAggregateMemberOpcode(op.Opcode, "load.member.", out string memberName, out int byteOffset))
+        {
+            ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
+            nodes.Add(new AsmCommentNode($"invalid {op.Opcode}"));
+            return;
+        }
+
+        if (!TryGetAggregateValueShape(memberName, byteOffset, op.ResultType, out AggregateAccessShape shape))
+        {
+            ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
+            nodes.Add(new AsmCommentNode($"unhandled: {op.Opcode}"));
+            return;
+        }
+
+        AsmRegisterOperand dest = DestReg(op);
+        AsmRegisterOperand receiver = OpReg(op.Operands[0]);
+        EmitAggregateExtract(nodes, dest, receiver, shape, op.ResultType);
+    }
+
     private static void LowerLoadIndex(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
         AsmRegisterOperand dest = DestReg(op);
@@ -859,6 +892,28 @@ public static class AsmLowerer
         }
     }
 
+    private static void LowerInsertMember(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
+    {
+        if (!TryParseAggregateMemberOpcode(op.Opcode, "insert.member.", out string memberName, out int byteOffset))
+        {
+            ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
+            nodes.Add(new AsmCommentNode($"invalid {op.Opcode}"));
+            return;
+        }
+
+        if (!TryGetAggregateMemberShape(op.ResultType, memberName, byteOffset, out AggregateAccessShape shape))
+        {
+            ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
+            nodes.Add(new AsmCommentNode($"unhandled: {op.Opcode}"));
+            return;
+        }
+
+        AsmRegisterOperand dest = DestReg(op);
+        AsmRegisterOperand receiver = OpReg(op.Operands[0]);
+        AsmRegisterOperand value = OpReg(op.Operands[1]);
+        EmitAggregateInsert(nodes, dest, receiver, value, shape);
+    }
+
     private static int GetHubElementSize(TypeSymbol? type)
     {
         if (type is not null && TypeFacts.TryGetIntegerWidth(type, out int width))
@@ -889,6 +944,49 @@ public static class AsmLowerer
         nodes.Add(TypeFacts.IsSignedInteger(op.ResultType)
             ? Emit("SIGNX", dest, new AsmImmediateOperand(width - 1))
             : Emit("ZEROX", dest, new AsmImmediateOperand(width - 1)));
+    }
+
+    private static void LowerStructLiteral(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
+    {
+        if (op.ResultType is not StructTypeSymbol structType)
+        {
+            ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
+            nodes.Add(new AsmCommentNode($"unhandled: {op.Opcode}"));
+            return;
+        }
+
+        if (!TryGetSingleWordAggregateSize(structType, out _))
+        {
+            ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
+            nodes.Add(new AsmCommentNode($"unhandled: {op.Opcode}"));
+            return;
+        }
+
+        string[] parts = op.Opcode.Split('.');
+        if (parts.Length < 2 || parts.Length != op.Operands.Count + 1)
+        {
+            ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
+            nodes.Add(new AsmCommentNode($"invalid {op.Opcode}"));
+            return;
+        }
+
+        AsmRegisterOperand dest = DestReg(op);
+        nodes.Add(Emit("MOV", dest, new AsmImmediateOperand(0)));
+
+        for (int i = 0; i < op.Operands.Count; i++)
+        {
+            string memberName = parts[i + 1];
+            if (!structType.Members.TryGetValue(memberName, out AggregateMemberSymbol? member)
+                || !TryGetAggregateMemberShape(structType, member.Name, member.ByteOffset, out AggregateAccessShape shape))
+            {
+                ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
+                nodes.Add(new AsmCommentNode($"unhandled: {op.Opcode}"));
+                return;
+            }
+
+            AsmRegisterOperand value = OpReg(op.Operands[i]);
+            EmitAggregateInsert(nodes, dest, dest, value, shape);
+        }
     }
 
     private static void LowerBitfieldExtract(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
@@ -993,6 +1091,142 @@ public static class AsmLowerer
         ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
         nodes.Add(new AsmCommentNode($"unhandled aligned fallback for {op.Opcode}"));
     }
+
+    private static bool TryParseAggregateMemberOpcode(string opcode, string prefix, out string memberName, out int byteOffset)
+    {
+        memberName = string.Empty;
+        byteOffset = 0;
+
+        Debug.Assert(opcode.StartsWith(prefix, StringComparison.Ordinal), $"Opcode '{opcode}' must start with '{prefix}'.");
+
+        string remainder = opcode[prefix.Length..];
+        int separator = remainder.LastIndexOf('.');
+        if (separator <= 0 || separator >= remainder.Length - 1)
+            return false;
+
+        memberName = remainder[..separator];
+        return int.TryParse(remainder[(separator + 1)..], NumberStyles.None, CultureInfo.InvariantCulture, out byteOffset);
+    }
+
+    private static bool TryGetAggregateValueShape(
+        string memberName,
+        int byteOffset,
+        TypeSymbol? memberType,
+        out AggregateAccessShape shape)
+    {
+        shape = default;
+
+        if (memberType is null
+            || !TypeFacts.TryGetSizeBytes(memberType, out int sizeBytes)
+            || sizeBytes <= 0
+            || byteOffset < 0
+            || byteOffset + sizeBytes > 4)
+        {
+            return false;
+        }
+
+        AggregateAccessKind kind = sizeBytes switch
+        {
+            1 => AggregateAccessKind.Byte,
+            2 when byteOffset % 2 == 0 => AggregateAccessKind.Word,
+            4 when byteOffset == 0 => AggregateAccessKind.Long,
+            _ => AggregateAccessKind.Invalid,
+        };
+
+        if (kind == AggregateAccessKind.Invalid)
+            return false;
+
+        shape = new AggregateAccessShape(kind, byteOffset);
+        return true;
+    }
+
+    private static bool TryGetAggregateMemberShape(
+        TypeSymbol? aggregateType,
+        string memberName,
+        int byteOffset,
+        out AggregateAccessShape shape)
+    {
+        shape = default;
+
+        if (aggregateType is not StructTypeSymbol structType
+            || !TryGetSingleWordAggregateSize(structType, out _)
+            || !structType.Members.TryGetValue(memberName, out AggregateMemberSymbol? member)
+            || member.ByteOffset != byteOffset)
+        {
+            return false;
+        }
+
+        return TryGetAggregateValueShape(member.Name, member.ByteOffset, member.Type, out shape);
+    }
+
+    private static void EmitAggregateExtract(
+        List<AsmNode> nodes,
+        AsmRegisterOperand dest,
+        AsmRegisterOperand receiver,
+        AggregateAccessShape shape,
+        TypeSymbol? resultType)
+    {
+        if (shape.Kind == AggregateAccessKind.Long)
+        {
+            nodes.Add(Emit("MOV", dest, receiver));
+            return;
+        }
+
+        if (shape.Kind == AggregateAccessKind.Byte)
+            nodes.Add(new AsmInstructionNode("GETBYTE", [dest, receiver, new AsmImmediateOperand(shape.ByteOffset)]));
+        else
+        {
+            Debug.Assert(shape.Kind == AggregateAccessKind.Word, $"Unexpected aggregate access kind '{shape.Kind}'.");
+            nodes.Add(new AsmInstructionNode("GETWORD", [dest, receiver, new AsmImmediateOperand(shape.ByteOffset / 2)]));
+        }
+
+        if (resultType is not null && TypeFacts.TryGetIntegerWidth(resultType, out int width) && width < 32)
+        {
+            nodes.Add(TypeFacts.IsSignedInteger(resultType)
+                ? Emit("SIGNX", dest, new AsmImmediateOperand(width - 1))
+                : Emit("ZEROX", dest, new AsmImmediateOperand(width - 1)));
+        }
+    }
+
+    private static void EmitAggregateInsert(
+        List<AsmNode> nodes,
+        AsmRegisterOperand dest,
+        AsmRegisterOperand receiver,
+        AsmRegisterOperand value,
+        AggregateAccessShape shape)
+    {
+        nodes.Add(Emit("MOV", dest, receiver));
+
+        if (shape.Kind == AggregateAccessKind.Long)
+        {
+            nodes.Add(Emit("MOV", dest, value));
+            return;
+        }
+
+        if (shape.Kind == AggregateAccessKind.Byte)
+            nodes.Add(new AsmInstructionNode("SETBYTE", [dest, value, new AsmImmediateOperand(shape.ByteOffset)]));
+        else
+        {
+            Debug.Assert(shape.Kind == AggregateAccessKind.Word, $"Unexpected aggregate access kind '{shape.Kind}'.");
+            nodes.Add(new AsmInstructionNode("SETWORD", [dest, value, new AsmImmediateOperand(shape.ByteOffset / 2)]));
+        }
+    }
+
+    private static bool TryGetSingleWordAggregateSize(TypeSymbol type, out int sizeBytes)
+    {
+        Debug.Assert(TypeFacts.TryGetSizeBytes(type, out sizeBytes), $"Type '{type.Name}' must have a known size.");
+        return sizeBytes > 0 && sizeBytes <= 4;
+    }
+
+    private enum AggregateAccessKind
+    {
+        Invalid,
+        Byte,
+        Word,
+        Long,
+    }
+
+    private readonly record struct AggregateAccessShape(AggregateAccessKind Kind, int ByteOffset);
 
     private static void LowerBinary(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
