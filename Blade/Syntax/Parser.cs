@@ -548,7 +548,7 @@ public sealed class Parser
         {
             Token loopKw = NextToken();
             BlockStatementSyntax body = ParseBlockStatement();
-            return new RepLoopStatementSyntax(repKw, loopKw, null, null, null, body);
+            return new RepLoopStatementSyntax(repKw, loopKw, body);
         }
 
         // rep for (expr) [-> binding] { body }

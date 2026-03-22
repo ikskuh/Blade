@@ -168,20 +168,13 @@ public sealed class RepLoopStatementSyntax : StatementSyntax
 {
     public Token RepKeyword { get; }
     public Token LoopKeyword { get; }
-    public Token? OpenParen { get; }
-    public ExpressionSyntax? Count { get; }
-    public Token? CloseParen { get; }
     public BlockStatementSyntax Body { get; }
 
-    public RepLoopStatementSyntax(Token repKeyword, Token loopKeyword, Token? openParen,
-                                  ExpressionSyntax? count, Token? closeParen, BlockStatementSyntax body)
+    public RepLoopStatementSyntax(Token repKeyword, Token loopKeyword, BlockStatementSyntax body)
         : base(TextSpan.FromBounds(repKeyword.Span.Start, Requires.NotNull(body).Span.End))
     {
         RepKeyword = repKeyword;
         LoopKeyword = loopKeyword;
-        OpenParen = openParen;
-        Count = count;
-        CloseParen = closeParen;
         Body = Requires.NotNull(body);
     }
 }

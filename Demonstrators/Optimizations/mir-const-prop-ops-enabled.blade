@@ -18,8 +18,6 @@ noinline fn demo() {
     var seven: u32 = 7;
     var eight: u32 = 8;
     var signed_one: i32 = 1;
-    var truthy: bool = true;
-    var falsy: bool = false;
 
     var add: u32 = one + two;
     var sub: u32 = two - one;
@@ -39,7 +37,6 @@ noinline fn demo() {
     var neg: i32 = -signed_one;
     var bitnot: u32 = ~zero;
     var plus: u32 = +two;
-    var not_falsy: bool = !falsy;
 
     var eq: bool = one == one;
     var ne: bool = one != two;
@@ -47,8 +44,10 @@ noinline fn demo() {
     var le: bool = one <= two;
     var gt: bool = two > one;
     var ge: bool = two >= one;
-    var land: bool = truthy and falsy;
-    var lor: bool = truthy or falsy;
+    var always_false: bool = two < one;
+    var land: bool = lt and always_false;
+    var lor: bool = lt or always_false;
+    var not_falsy: bool = !always_false;
 
     sink_u = add + sub + mul + div + mod + band + bor + bxor + shl + shr + ashl + ashr + rotl + rotr + plus + (neg as u32) + bitnot;
     sink_b = eq or ne or lt or le or gt or ge or land or lor or not_falsy;
