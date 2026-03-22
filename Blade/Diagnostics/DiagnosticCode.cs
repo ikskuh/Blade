@@ -12,6 +12,8 @@ public enum DiagnosticCode
     E0004_UnterminatedBlockComment = 4,
     E0005_InvalidCharacterLiteral = 5,
     E0006_InvalidEscapeSequence = 6,
+    E0007_InvalidUtf8 = 7,
+    E0008_InvalidControlCharacter = 8,
 
     // Parser errors
     E0101_UnexpectedToken = 101,
@@ -78,6 +80,7 @@ public enum DiagnosticCode
     E0253_QueryAutomaticLocal = 253,
     E0254_InvalidMemorySpaceArgument = 254,
     E0255_AssertionFailed = 255,
+    E0256_UnknownBuiltin = 256,
 
     // Inline assembly errors
     E0301_InlineAsmUnknownInstruction = 301,

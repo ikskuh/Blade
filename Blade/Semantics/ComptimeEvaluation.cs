@@ -975,10 +975,16 @@ internal sealed class ComptimeEvaluator
         out EvaluationOutcome outcome,
         out ComptimeFailure failure)
     {
-        Debug.Assert(assignment.Target is BoundSymbolAssignmentTarget);
-        BoundSymbolAssignmentTarget symbolTarget = (BoundSymbolAssignmentTarget)assignment.Target;
-        Debug.Assert(symbolTarget.Symbol is VariableSymbol { ScopeKind: VariableScopeKind.Local });
-        VariableSymbol variable = (VariableSymbol)symbolTarget.Symbol;
+        if (assignment.Target is not BoundSymbolAssignmentTarget symbolTarget
+            || symbolTarget.Symbol is not VariableSymbol { ScopeKind: VariableScopeKind.Local } variable)
+        {
+            outcome = EvaluationOutcome.None;
+            failure = new ComptimeFailure(
+                ComptimeFailureKind.UnsupportedConstruct,
+                assignment.Span,
+                "assignment target is not supported during comptime evaluation.");
+            return false;
+        }
 
         if (!TryEvaluateExpression(assignment.Value, frame, out object? assignedValue, out failure))
         {

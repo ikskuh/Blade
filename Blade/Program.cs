@@ -25,10 +25,8 @@ internal static class Program
             return 1;
         }
 
-        string text = File.ReadAllText(options.FilePath);
         Stopwatch sw = Stopwatch.StartNew();
-        CompilationResult compilation = CompilerDriver.Compile(
-            text,
+        CompilationResult compilation = CompilerDriver.CompileFile(
             options.FilePath,
             new CompilationOptions
             {

@@ -400,7 +400,7 @@ public static class RegressionRunner
 
     private static EvaluatedFixture ExecuteBladeCrashFixture(RegressionFixture fixture)
     {
-        _ = CompilerDriver.Compile(fixture.Text, fixture.AbsolutePath);
+        _ = CompilerDriver.CompileFile(fixture.AbsolutePath);
         return EvaluatedFixture.Empty(fixture.RelativePath);
     }
 
@@ -737,9 +737,31 @@ internal static class RegressionFixtureParser
 
     public static RegressionFixture Parse(string repositoryRootPath, string fixturePath)
     {
-        string text = File.ReadAllText(fixturePath);
-        string relativePath = Path.GetRelativePath(repositoryRootPath, fixturePath).Replace('\\', '/');
         RegressionFixtureKind kind = DetermineFixtureKind(fixturePath);
+        string relativePath = Path.GetRelativePath(repositoryRootPath, fixturePath).Replace('\\', '/');
+
+        if (kind == RegressionFixtureKind.BladeCrash)
+        {
+            return new RegressionFixture(
+                fixturePath,
+                relativePath,
+                kind,
+                string.Empty,
+                string.Empty,
+                new RegressionExpectation(
+                    RegressionExpectationKind.Pass,
+                    null,
+                    [],
+                    [],
+                    [],
+                    null,
+                    [],
+                    [],
+                    FlexspinExpectation.Forbidden,
+                    []));
+        }
+
+        string text = File.ReadAllText(fixturePath);
         HeaderScanResult headerScan = HeaderScanResult.Scan(text, kind);
 
         if (relativePath.StartsWith("Examples/", StringComparison.Ordinal) && headerScan.HasDirectiveHeader)
@@ -758,14 +780,6 @@ internal static class RegressionFixtureParser
                 [],
                 FlexspinExpectation.Auto,
                 []);
-
-        if (kind == RegressionFixtureKind.BladeCrash)
-        {
-            if (headerScan.HasDirectiveHeader)
-                throw new InvalidOperationException(".blade.crash fixtures do not support expectation headers.");
-
-            return new RegressionFixture(fixturePath, relativePath, kind, text, headerScan.BodyText, expectation);
-        }
 
         if (kind != RegressionFixtureKind.Blade && expectation.HasDiagnosticAssertions)
             throw new InvalidOperationException("Assembly fixtures do not support DIAGNOSTICS assertions.");

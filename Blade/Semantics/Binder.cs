@@ -207,8 +207,10 @@ public sealed class Binder
         if (_moduleDefinitionCache.TryGetValue(resolvedPath, out ImportedModuleDefinition? cachedDefinition))
             return cachedDefinition.CreateImport(sourceName, alias);
 
-        string text = File.ReadAllText(resolvedPath);
-        SourceText source = new(text, resolvedPath);
+        bool sourceIsValid = SourceFileLoader.TryLoad(resolvedPath, _diagnostics, out SourceText source);
+        if (!sourceIsValid)
+            return CreateEmptyImportedModule(sourceName, alias, resolvedPath);
+
         Parser parser = Parser.Create(source, _diagnostics);
         CompilationUnitSyntax syntax = parser.ParseCompilationUnit();
         if (_moduleBindingStack.Contains(resolvedPath))
@@ -434,9 +436,16 @@ public sealed class Binder
 
     private BoundGlobalVariableMember BindGlobalVariable(VariableDeclarationSyntax variable)
     {
-        bool found = _globalScope.TryLookup(variable.Name.Text, out Symbol? symbol);
-        Debug.Assert(found && symbol is VariableSymbol, "DeclareTopLevelVariables must register every top-level variable before binding.");
-        VariableSymbol variableSymbol = (VariableSymbol)Requires.NotNull(symbol as VariableSymbol);
+        TypeSymbol variableType = BindType(variable.Type);
+        VariableSymbol variableSymbol;
+        if (_globalScope.TryLookup(variable.Name.Text, out Symbol? symbol) && symbol is VariableSymbol declaredVariable)
+        {
+            variableSymbol = declaredVariable;
+        }
+        else
+        {
+            variableSymbol = CreateVariableSymbol(variable, variableType, VariableScopeKind.GlobalStorage);
+        }
 
         ResolveLayoutMetadata(variable, variableSymbol);
 
@@ -2104,6 +2113,12 @@ public sealed class Binder
 
     private BoundExpression BindIntrinsicCallExpression(IntrinsicCallExpressionSyntax intrinsic)
     {
+        if (!P2InstructionMetadata.IsValidInstruction(intrinsic.Name.Text))
+        {
+            _diagnostics.ReportUnknownBuiltin(intrinsic.Name.Span, intrinsic.Name.Text);
+            return new BoundErrorExpression(intrinsic.Span);
+        }
+
         List<BoundExpression> arguments = new(intrinsic.Arguments.Count);
         foreach (ExpressionSyntax argument in intrinsic.Arguments)
             arguments.Add(BindExpression(argument));

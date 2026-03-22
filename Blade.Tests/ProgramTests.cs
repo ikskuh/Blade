@@ -206,6 +206,71 @@ public class ProgramTests
     }
 
     [Test]
+    public void EntryPoint_PrintsDiagnosticForUnknownBuiltin()
+    {
+        string filePath = Path.Combine(Path.GetTempPath(), $"blade-unknown-builtin-{Guid.NewGuid():N}.blade");
+        File.WriteAllText(filePath, "@askdjsad(1);");
+
+        try
+        {
+            (int exitCode, string stdout, string stderr) = CaptureConsole(() => InvokeEntryPoint([filePath]));
+
+            Assert.That(exitCode, Is.EqualTo(1));
+            Assert.That(stdout, Does.Contain("E0256"));
+            Assert.That(stdout, Does.Contain("Unknown builtin '@askdjsad'."));
+            Assert.That(stderr, Is.Empty);
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
+    }
+
+    [Test]
+    public void EntryPoint_PrintsDiagnosticForInvalidUtf8()
+    {
+        string filePath = Path.Combine(Path.GetTempPath(), $"blade-invalid-utf8-{Guid.NewGuid():N}.blade");
+        File.WriteAllBytes(filePath, [0x80, 0x61]);
+
+        try
+        {
+            (int exitCode, string stdout, string stderr) = CaptureConsole(() => InvokeEntryPoint([filePath]));
+
+            Assert.That(exitCode, Is.EqualTo(1));
+            Assert.That(stdout, Does.Contain(filePath));
+            Assert.That(stdout, Does.Contain("E0007"));
+            Assert.That(stdout, Does.Contain("Source file is not valid UTF-8."));
+            Assert.That(stderr, Is.Empty);
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
+    }
+
+    [Test]
+    public void EntryPoint_PrintsDiagnosticForForbiddenControlCharacter()
+    {
+        string filePath = Path.Combine(Path.GetTempPath(), $"blade-invalid-control-{Guid.NewGuid():N}.blade");
+        File.WriteAllText(filePath, "reg var x:\u0001 u32 = 1;");
+
+        try
+        {
+            (int exitCode, string stdout, string stderr) = CaptureConsole(() => InvokeEntryPoint([filePath]));
+
+            Assert.That(exitCode, Is.EqualTo(1));
+            Assert.That(stdout, Does.Contain(filePath));
+            Assert.That(stdout, Does.Contain("E0008"));
+            Assert.That(stdout, Does.Contain("Control character U+0001 is not allowed in Blade source files."));
+            Assert.That(stderr, Is.Empty);
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
+    }
+
+    [Test]
     public void EntryPoint_CanWriteDumpsToDirectory()
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-valid-{Guid.NewGuid():N}.blade");

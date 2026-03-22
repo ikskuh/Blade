@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using Blade.Source;
 
 namespace Blade.Diagnostics;
@@ -48,6 +49,19 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
     public void ReportInvalidEscapeSequence(TextSpan span)
     {
         Report(DiagnosticCode.E0006_InvalidEscapeSequence, span, "Invalid escape sequence.");
+    }
+
+    public void ReportInvalidUtf8(TextSpan span)
+    {
+        Report(DiagnosticCode.E0007_InvalidUtf8, span, "Source file is not valid UTF-8.");
+    }
+
+    public void ReportInvalidControlCharacter(TextSpan span, char character)
+    {
+        Report(
+            DiagnosticCode.E0008_InvalidControlCharacter,
+            span,
+            string.Format(CultureInfo.InvariantCulture, "Control character U+{0:X4} is not allowed in Blade source files.", (int)character));
     }
 
     // Parser diagnostics
@@ -426,6 +440,11 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
             DiagnosticCode.E0255_AssertionFailed,
             span,
             message is null ? "assertion failed" : $"assertion failed: {message}");
+    }
+
+    public void ReportUnknownBuiltin(TextSpan span, string name)
+    {
+        Report(DiagnosticCode.E0256_UnknownBuiltin, span, $"Unknown builtin '@{name}'.");
     }
 
     // Inline assembly diagnostics

@@ -7,6 +7,8 @@ reportgenerator := which('reportgenerator') || which('dotnet-reportgenerator')
 
 all: build test regressions compile-all-samples
 
+accept: build test coverage
+
 build:
     dotnet build
 

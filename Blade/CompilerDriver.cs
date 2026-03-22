@@ -47,15 +47,31 @@ public sealed class CompilationResult
 
 public static class CompilerDriver
 {
+    public static CompilationResult CompileFile(string filePath, CompilationOptions? options = null)
+    {
+        DiagnosticBag diagnostics = new();
+        bool sourceIsValid = SourceFileLoader.TryLoad(filePath, diagnostics, out SourceText source);
+        if (!sourceIsValid)
+            return CreateFailedCompilationResult(source, diagnostics);
+
+        return CompileCore(source, diagnostics, options ?? new CompilationOptions());
+    }
+
     public static CompilationResult Compile(string text, string filePath, CompilationOptions? options = null)
     {
-        CompilationOptions effectiveOptions = options ?? new CompilationOptions();
         SourceText source = new(text, filePath);
         DiagnosticBag diagnostics = new();
+        if (!SourceFileLoader.Validate(source, diagnostics))
+            return CreateFailedCompilationResult(source, diagnostics);
 
+        return CompileCore(source, diagnostics, options ?? new CompilationOptions());
+    }
+
+    private static CompilationResult CompileCore(SourceText source, DiagnosticBag diagnostics, CompilationOptions effectiveOptions)
+    {
         Parser parser = Parser.Create(source, diagnostics);
         CompilationUnitSyntax unit = parser.ParseCompilationUnit();
-        BoundProgram boundProgram = Binder.Bind(unit, diagnostics, filePath, effectiveOptions.NamedModuleRoots, effectiveOptions.ComptimeFuel);
+        BoundProgram boundProgram = Binder.Bind(unit, diagnostics, source.FilePath, effectiveOptions.NamedModuleRoots, effectiveOptions.ComptimeFuel);
 
         IrBuildResult? irBuildResult = null;
         if (diagnostics.Count == 0)
@@ -70,5 +86,13 @@ public static class CompilerDriver
 
         List<Diagnostic> diagnosticList = diagnostics.ToList();
         return new CompilationResult(source, unit, boundProgram, irBuildResult, diagnosticList, parser.TokenCount);
+    }
+
+    private static CompilationResult CreateFailedCompilationResult(SourceText source, DiagnosticBag diagnostics)
+    {
+        Token eof = new(TokenKind.EndOfFile, new TextSpan(0, 0), string.Empty);
+        CompilationUnitSyntax syntax = new([], eof);
+        BoundProgram boundProgram = new([], [], [], new Dictionary<string, TypeSymbol>(), new Dictionary<string, FunctionSymbol>(), new Dictionary<string, ImportedModule>());
+        return new CompilationResult(source, syntax, boundProgram, null, diagnostics.ToList(), 0);
     }
 }
