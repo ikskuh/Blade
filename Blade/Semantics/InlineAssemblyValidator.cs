@@ -153,6 +153,13 @@ public static class InlineAssemblyValidator
             }
         }
 
+        string normalizedMnemonic = mnemonic.ToUpperInvariant();
+        if (!P2InstructionMetadata.TryGetInstructionForm(normalizedMnemonic, operands.Count, out _))
+        {
+            diagnostics.ReportInlineAsmInvalidInstructionForm(blockSpan, normalizedMnemonic, operands.Count);
+            return null;
+        }
+
         // Validate variable references in operands
         foreach (string operand in operands)
         {
@@ -176,7 +183,7 @@ public static class InlineAssemblyValidator
         return new AsmLine
         {
             Condition = condition,
-            Mnemonic = mnemonic.ToUpperInvariant(),
+            Mnemonic = normalizedMnemonic,
             Operands = new ReadOnlyCollection<string>(operands),
             FlagEffect = flagEffect,
             RawText = text,

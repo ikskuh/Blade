@@ -8,11 +8,16 @@ reportgenerator := which('reportgenerator') || which('dotnet-reportgenerator')
 all: build test regressions compile-all-samples
 
 accept-changes:
+    # Build code in debug and release mode:
     dotnet build -c debug
     dotnet build -c release
 
+    # Run unit tests in debug and release mode:
     dotnet test -c debug
     dotnet test -c release
+
+    # Run static analysis
+    # (cd Blade && ~/.dotnet/tools/roslynator analyze)
 
 build:
     dotnet build

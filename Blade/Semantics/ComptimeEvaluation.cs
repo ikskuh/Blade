@@ -73,8 +73,11 @@ internal static class ComptimeTypeFacts
 
             if (value is IConvertible convertible)
             {
-                normalized = Convert.ToInt64(convertible, CultureInfo.InvariantCulture) != 0;
-                return true;
+                if (TryConvertConvertibleToInt64(convertible, out long integerValue))
+                {
+                    normalized = integerValue != 0;
+                    return true;
+                }
             }
 
             normalized = null;
@@ -100,6 +103,27 @@ internal static class ComptimeTypeFacts
         }
 
         return TypeFacts.TryNormalizeValue(value, targetType, out normalized);
+    }
+
+    private static bool TryConvertConvertibleToInt64(IConvertible convertible, out long converted)
+    {
+        try
+        {
+            converted = Convert.ToInt64(convertible, CultureInfo.InvariantCulture);
+            return true;
+        }
+        catch (FormatException)
+        {
+        }
+        catch (InvalidCastException)
+        {
+        }
+        catch (OverflowException)
+        {
+        }
+
+        converted = 0;
+        return false;
     }
 }
 
@@ -540,14 +564,32 @@ internal sealed class ComptimeEvaluator
                 failure = ComptimeFailure.None;
                 return true;
 
-            case BoundUnaryOperatorKind.Negation when operandValue is IConvertible:
-                return NormalizeLiteral(-Convert.ToInt64(operandValue, CultureInfo.InvariantCulture), unary.Type, unary.Span, out value, out failure);
+            case BoundUnaryOperatorKind.Negation:
+                if (!TryConvertToInt64(operandValue, unary.Operand.Span, "unary operand is not a compile-time integer.", out long negatedValue, out failure))
+                {
+                    value = null;
+                    return false;
+                }
 
-            case BoundUnaryOperatorKind.BitwiseNot when operandValue is IConvertible:
-                return NormalizeLiteral(~Convert.ToInt64(operandValue, CultureInfo.InvariantCulture), unary.Type, unary.Span, out value, out failure);
+                return NormalizeLiteral(-negatedValue, unary.Type, unary.Span, out value, out failure);
 
-            case BoundUnaryOperatorKind.UnaryPlus when operandValue is IConvertible:
-                return NormalizeLiteral(Convert.ToInt64(operandValue, CultureInfo.InvariantCulture), unary.Type, unary.Span, out value, out failure);
+            case BoundUnaryOperatorKind.BitwiseNot:
+                if (!TryConvertToInt64(operandValue, unary.Operand.Span, "unary operand is not a compile-time integer.", out long bitwiseValue, out failure))
+                {
+                    value = null;
+                    return false;
+                }
+
+                return NormalizeLiteral(~bitwiseValue, unary.Type, unary.Span, out value, out failure);
+
+            case BoundUnaryOperatorKind.UnaryPlus:
+                if (!TryConvertToInt64(operandValue, unary.Operand.Span, "unary operand is not a compile-time integer.", out long positiveValue, out failure))
+                {
+                    value = null;
+                    return false;
+                }
+
+                return NormalizeLiteral(positiveValue, unary.Type, unary.Span, out value, out failure);
 
             default:
                 value = null;
@@ -666,15 +708,12 @@ internal sealed class ComptimeEvaluator
             }
         }
 
-        if (rawLeftValue is not IConvertible || rawRightValue is not IConvertible)
+        if (!TryConvertToInt64(rawLeftValue, binary.Left.Span, "binary operands are not compile-time integers.", out long left, out failure)
+            || !TryConvertToInt64(rawRightValue, binary.Right.Span, "binary operands are not compile-time integers.", out long right, out failure))
         {
             value = null;
-            failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, binary.Span, "binary operands are not compile-time scalars.");
             return false;
         }
-
-        long left = Convert.ToInt64(rawLeftValue, CultureInfo.InvariantCulture);
-        long right = Convert.ToInt64(rawRightValue, CultureInfo.InvariantCulture);
         switch (binary.Operator.Kind)
         {
             case BoundBinaryOperatorKind.Add:
@@ -1038,10 +1077,13 @@ internal sealed class ComptimeEvaluator
         out object? result,
         out ComptimeFailure failure)
     {
-        Debug.Assert(leftValue is IConvertible && rightValue is IConvertible);
+        if (!TryConvertToInt64(leftValue, span, "compound assignment operands are not compile-time integers.", out long left, out failure)
+            || !TryConvertToInt64(rightValue, span, "compound assignment operands are not compile-time integers.", out long right, out failure))
+        {
+            result = null;
+            return false;
+        }
 
-        long left = Convert.ToInt64(leftValue, CultureInfo.InvariantCulture);
-        long right = Convert.ToInt64(rightValue, CultureInfo.InvariantCulture);
         long raw = operation switch
         {
             BoundBinaryOperatorKind.Add => left + right,
@@ -1147,9 +1189,12 @@ internal sealed class ComptimeEvaluator
             return false;
         }
 
-        Debug.Assert(iterableValue is IConvertible);
+        if (!TryConvertToInt64(iterableValue, forStatement.Iterable.Span, "for loop iterable must be a compile-time integer.", out long count, out failure))
+        {
+            outcome = EvaluationOutcome.None;
+            return false;
+        }
 
-        long count = Convert.ToInt64(iterableValue, CultureInfo.InvariantCulture);
         for (long index = 0; index < count; index++)
         {
             if (forStatement.IndexVariable is not null)
@@ -1233,15 +1278,13 @@ internal sealed class ComptimeEvaluator
             return false;
         }
 
-        if (startValue is not IConvertible || endValue is not IConvertible)
+        if (!TryConvertToInt64(startValue, repForStatement.Start.Span, "rep for bounds must be compile-time integers.", out long start, out failure)
+            || !TryConvertToInt64(endValue, repForStatement.End.Span, "rep for bounds must be compile-time integers.", out long end, out failure))
         {
             outcome = EvaluationOutcome.None;
-            failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, repForStatement.Span, "rep for bounds must be compile-time integers.");
             return false;
         }
 
-        long start = Convert.ToInt64(startValue, CultureInfo.InvariantCulture);
-        long end = Convert.ToInt64(endValue, CultureInfo.InvariantCulture);
         for (long index = start; index < end; index++)
         {
             frame[repForStatement.Variable] = index;
@@ -1302,6 +1345,40 @@ internal sealed class ComptimeEvaluator
     {
         value = null;
         failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, span, detail);
+        return false;
+    }
+
+    private static bool TryConvertToInt64(object? value, TextSpan span, string detail, out long converted, out ComptimeFailure failure)
+    {
+        if (value is not IConvertible convertible || !TryConvertConvertibleToInt64(convertible, out converted))
+        {
+            converted = 0;
+            failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, span, detail);
+            return false;
+        }
+
+        failure = ComptimeFailure.None;
+        return true;
+    }
+
+    private static bool TryConvertConvertibleToInt64(IConvertible convertible, out long converted)
+    {
+        try
+        {
+            converted = Convert.ToInt64(convertible, CultureInfo.InvariantCulture);
+            return true;
+        }
+        catch (FormatException)
+        {
+        }
+        catch (InvalidCastException)
+        {
+        }
+        catch (OverflowException)
+        {
+        }
+
+        converted = 0;
         return false;
     }
 

@@ -469,6 +469,14 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
         Report(DiagnosticCode.E0304_InlineAsmInvalidFlagOutput, span, $"Invalid flag output '@{flag}' in inline assembly. Expected '@C' or '@Z'.");
     }
 
+    public void ReportInlineAsmInvalidInstructionForm(TextSpan span, string mnemonic, int operandCount)
+    {
+        Report(
+            DiagnosticCode.E0305_InlineAsmInvalidInstructionForm,
+            span,
+            $"Instruction '{mnemonic}' does not support {operandCount} operand(s) in inline assembly.");
+    }
+
     public void ReportUnsupportedLowering(TextSpan span, string lowering)
     {
         Report(
