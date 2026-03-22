@@ -547,20 +547,8 @@ public sealed class Parser
         if (Current.Kind == TokenKind.LoopKeyword)
         {
             Token loopKw = NextToken();
-
-            if (Current.Kind == TokenKind.OpenBrace)
-            {
-                // rep loop { body } — infinite rep loop
-                BlockStatementSyntax body = ParseBlockStatement();
-                return new RepLoopStatementSyntax(repKw, loopKw, null, null, null, body);
-            }
-
-            // rep loop (count) { body }
-            Token openParen = MatchToken(TokenKind.OpenParen);
-            ExpressionSyntax count = ParseExpression();
-            Token closeParen = MatchToken(TokenKind.CloseParen);
-            BlockStatementSyntax body2 = ParseBlockStatement();
-            return new RepLoopStatementSyntax(repKw, loopKw, openParen, count, closeParen, body2);
+            BlockStatementSyntax body = ParseBlockStatement();
+            return new RepLoopStatementSyntax(repKw, loopKw, null, null, null, body);
         }
 
         // rep for (expr) [-> binding] { body }

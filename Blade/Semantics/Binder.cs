@@ -700,23 +700,10 @@ public sealed class Binder
 
             case RepLoopStatementSyntax repLoop:
             {
-                BoundExpression count;
-                if (repLoop.Count is not null)
-                {
-                    count = BindExpression(repLoop.Count);
-                    if (!count.Type.IsInteger)
-                        _diagnostics.ReportTypeMismatch(repLoop.Count.Span, "integer", count.Type.Name);
-                }
-                else
-                {
-                    // Infinite rep loop — synthesize a zero-valued count placeholder
-                    count = new BoundLiteralExpression(0L, repLoop.Span, BuiltinTypes.U32);
-                }
-
                 PushLoop(LoopContext.Rep);
                 BoundBlockStatement body = BindBlockStatement(repLoop.Body, createScope: true, isTopLevel: false);
                 PopLoop();
-                return new BoundRepLoopStatement(count, body, repLoop.Span);
+                return new BoundRepLoopStatement(body, repLoop.Span);
             }
 
             case RepForStatementSyntax repFor:

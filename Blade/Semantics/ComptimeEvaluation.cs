@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using Blade.Semantics.Bound;
 using Blade.Source;
@@ -217,13 +218,7 @@ internal sealed class ComptimeFunctionSupportAnalyzer
                 return AnalyzeStatement(loopStatement.Body);
 
             case BoundRepLoopStatement repLoopStatement:
-            {
-                ComptimeSupportResult countResult = AnalyzeExpression(repLoopStatement.Count);
-                if (!countResult.IsSupported)
-                    return countResult;
-
                 return AnalyzeStatement(repLoopStatement.Body);
-            }
 
             case BoundRepForStatement repForStatement:
             {
@@ -422,6 +417,8 @@ internal sealed class ComptimeFunctionSupportAnalyzer
 
 internal sealed class ComptimeEvaluator
 {
+    private static readonly BoundBlockStatement EmptyBlock = new([], new TextSpan(0, 0));
+
     private readonly Func<FunctionSymbol, BoundBlockStatement?> _functionBodyResolver;
     private readonly Func<FunctionSymbol, ComptimeSupportResult> _supportResolver;
 
@@ -978,19 +975,10 @@ internal sealed class ComptimeEvaluator
         out EvaluationOutcome outcome,
         out ComptimeFailure failure)
     {
-        if (assignment.Target is not BoundSymbolAssignmentTarget symbolTarget)
-        {
-            outcome = EvaluationOutcome.None;
-            failure = new ComptimeFailure(ComptimeFailureKind.UnsupportedConstruct, assignment.Target.Span, "only local variable assignment is supported during comptime evaluation.");
-            return false;
-        }
-
-        if (symbolTarget.Symbol is not VariableSymbol variable || variable.ScopeKind != VariableScopeKind.Local)
-        {
-            outcome = EvaluationOutcome.None;
-            failure = new ComptimeFailure(ComptimeFailureKind.ForbiddenSymbolAccess, assignment.Target.Span, $"'{symbolTarget.Symbol.Name}' cannot be assigned during comptime evaluation.");
-            return false;
-        }
+        Debug.Assert(assignment.Target is BoundSymbolAssignmentTarget);
+        BoundSymbolAssignmentTarget symbolTarget = (BoundSymbolAssignmentTarget)assignment.Target;
+        Debug.Assert(symbolTarget.Symbol is VariableSymbol { ScopeKind: VariableScopeKind.Local });
+        VariableSymbol variable = (VariableSymbol)symbolTarget.Symbol;
 
         if (!TryEvaluateExpression(assignment.Value, frame, out object? assignedValue, out failure))
         {
@@ -1001,12 +989,7 @@ internal sealed class ComptimeEvaluator
         object? finalValue = assignedValue;
         if (assignment.OperatorKind != TokenKind.Equal)
         {
-            if (!frame.TryGetValue(symbolTarget.Symbol, out object? currentValue))
-            {
-                outcome = EvaluationOutcome.None;
-                failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, assignment.Target.Span, $"'{symbolTarget.Symbol.Name}' does not have a compile-time value.");
-                return false;
-            }
+            Debug.Assert(frame.TryGetValue(symbolTarget.Symbol, out object? currentValue));
 
             BoundBinaryOperatorKind operation = assignment.OperatorKind switch
             {
@@ -1048,12 +1031,7 @@ internal sealed class ComptimeEvaluator
         out object? result,
         out ComptimeFailure failure)
     {
-        if (leftValue is not IConvertible || rightValue is not IConvertible)
-        {
-            result = null;
-            failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, span, "compound assignment requires integer operands.");
-            return false;
-        }
+        Debug.Assert(leftValue is IConvertible && rightValue is IConvertible);
 
         long left = Convert.ToInt64(leftValue, CultureInfo.InvariantCulture);
         long right = Convert.ToInt64(rightValue, CultureInfo.InvariantCulture);
@@ -1092,15 +1070,11 @@ internal sealed class ComptimeEvaluator
             return false;
         }
 
-        if (conditionValue is not bool conditionBool)
-        {
-            outcome = EvaluationOutcome.None;
-            failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, ifStatement.Condition.Span, "if conditions must be bool.");
-            return false;
-        }
+        Debug.Assert(conditionValue is bool);
+        bool conditionBool = (bool)conditionValue;
 
         return TryExecuteStatement(
-            conditionBool ? ifStatement.ThenBody : ifStatement.ElseBody ?? EmptyBlock.Instance,
+            conditionBool ? ifStatement.ThenBody : ifStatement.ElseBody ?? EmptyBlock,
             frame,
             out outcome,
             out failure);
@@ -1120,12 +1094,8 @@ internal sealed class ComptimeEvaluator
                 return false;
             }
 
-            if (conditionValue is not bool conditionBool)
-            {
-                outcome = EvaluationOutcome.None;
-                failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, whileStatement.Condition.Span, "while conditions must be bool.");
-                return false;
-            }
+            Debug.Assert(conditionValue is bool);
+            bool conditionBool = (bool)conditionValue;
 
             if (!conditionBool)
                 break;
@@ -1162,12 +1132,7 @@ internal sealed class ComptimeEvaluator
             return false;
         }
 
-        if (iterableValue is not IConvertible)
-        {
-            outcome = EvaluationOutcome.None;
-            failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, forStatement.Iterable.Span, "for loops require a compile-time integer count.");
-            return false;
-        }
+        Debug.Assert(iterableValue is IConvertible);
 
         long count = Convert.ToInt64(iterableValue, CultureInfo.InvariantCulture);
         for (long index = 0; index < count; index++)
@@ -1223,62 +1188,21 @@ internal sealed class ComptimeEvaluator
         out EvaluationOutcome outcome,
         out ComptimeFailure failure)
     {
-        if (!TryEvaluateExpression(repLoopStatement.Count, frame, out object? countValue, out failure))
+        while (true)
         {
-            outcome = EvaluationOutcome.None;
-            return false;
-        }
+            if (!TryExecuteBlock(repLoopStatement.Body, frame, out outcome, out failure))
+                return false;
 
-        if (countValue is not IConvertible)
-        {
-            outcome = EvaluationOutcome.None;
-            failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, repLoopStatement.Count.Span, "rep loop counts must be compile-time integers.");
-            return false;
-        }
+            if (outcome.Kind == EvaluationOutcomeKind.Return)
+                return true;
+            Debug.Assert(outcome.Kind != EvaluationOutcomeKind.Break);
 
-        long count = Convert.ToInt64(countValue, CultureInfo.InvariantCulture);
-        if (count == 0)
-        {
-            while (true)
+            if (!SpendFuel(repLoopStatement.Span, out failure))
             {
-                if (!TryExecuteBlock(repLoopStatement.Body, frame, out outcome, out failure))
-                    return false;
-
-                if (outcome.Kind == EvaluationOutcomeKind.Return)
-                    return true;
-                if (outcome.Kind == EvaluationOutcomeKind.Break)
-                    break;
-
-                if (!SpendFuel(repLoopStatement.Span, out failure))
-                {
-                    outcome = EvaluationOutcome.None;
-                    return false;
-                }
+                outcome = EvaluationOutcome.None;
+                return false;
             }
         }
-        else
-        {
-            for (long iteration = 0; iteration < count; iteration++)
-            {
-                if (!TryExecuteBlock(repLoopStatement.Body, frame, out outcome, out failure))
-                    return false;
-
-                if (outcome.Kind == EvaluationOutcomeKind.Return)
-                    return true;
-                if (outcome.Kind == EvaluationOutcomeKind.Break)
-                    break;
-
-                if (iteration + 1 < count && !SpendFuel(repLoopStatement.Span, out failure))
-                {
-                    outcome = EvaluationOutcome.None;
-                    return false;
-                }
-            }
-        }
-
-        outcome = EvaluationOutcome.None;
-        failure = ComptimeFailure.None;
-        return true;
     }
 
     private bool TryExecuteRepForStatement(
@@ -1380,15 +1304,5 @@ internal sealed class ComptimeEvaluator
         public static EvaluationOutcome Break => new(EvaluationOutcomeKind.Break, null);
         public static EvaluationOutcome Continue => new(EvaluationOutcomeKind.Continue, null);
         public static EvaluationOutcome Return(object? value) => new(EvaluationOutcomeKind.Return, value);
-    }
-
-    private sealed class EmptyBlock : BoundStatement
-    {
-        public static readonly EmptyBlock Instance = new();
-
-        private EmptyBlock()
-            : base(BoundNodeKind.BlockStatement, new TextSpan(0, 0))
-        {
-        }
     }
 }

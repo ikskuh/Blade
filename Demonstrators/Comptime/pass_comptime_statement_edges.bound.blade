@@ -1,0 +1,69 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - VarDecl if_result: u32
+// - Literal<u32> 7
+// - VarDecl while_result: u32
+// - Literal<u32> 2
+// - VarDecl for_result: u32
+// - Literal<u32> 1
+// - VarDecl loop_result: u32
+// - Literal<u32> 3
+// NOT_CONTAINS:
+// - Call<u32> ct_if_false_empty_else
+// - Call<u32> ct_while_break
+// - Call<u32> ct_for_break
+// - Call<u32> ct_loop_continue_then_break
+// NOTE:
+//   Exercises comptime statement execution edges that were previously uncovered:
+//   false bare-if path and while/for/loop break/continue paths.
+
+comptime fn ct_if_false_empty_else() -> u32 {
+    var value: u32 = 7;
+    if (1 == 0) {
+        value = 99;
+    }
+    return value;
+}
+
+comptime fn ct_while_break() -> u32 {
+    var i: u32 = 0;
+    while (i < 10) {
+        if (i == 2) {
+            break;
+        } else {
+            i = i + 1;
+        }
+    }
+    return i;
+}
+
+comptime fn ct_for_break() -> u32 {
+    var sum: u32 = 0;
+    for(5) -> i {
+        if (i == 2) {
+            break;
+        } else {
+            sum = sum + i;
+        }
+    }
+    return sum;
+}
+
+comptime fn ct_loop_continue_then_break() -> u32 {
+    var i: u32 = 0;
+    loop {
+        i = i + 1;
+        if (i < 3) {
+            continue;
+        } else {
+            break;
+        }
+    }
+    return i;
+}
+
+var if_result: u32 = ct_if_false_empty_else();
+var while_result: u32 = ct_while_break();
+var for_result: u32 = ct_for_break();
+var loop_result: u32 = ct_loop_continue_then_break();

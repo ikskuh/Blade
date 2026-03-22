@@ -373,3 +373,6 @@ The following operations map incredibly nicely to the Propeller 2 architecture:
 
 topic is text
 
+## eliminate rep loop
+
+`rep loop(0)` is invalid syntax, only `rep loop  { }`, `rep for(cnt) { } ` and `rep for(cnt) -> index { }` are  legal syntax constructs

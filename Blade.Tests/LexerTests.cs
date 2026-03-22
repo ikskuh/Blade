@@ -727,14 +727,11 @@ public class LexerTests
     [Test]
     public void LexRepLoop()
     {
-        List<Token> tokens = Lex("rep loop (32) { }");
+        List<Token> tokens = Lex("rep loop { }");
         TokenKind[] expected = new[]
         {
             TokenKind.RepKeyword,
             TokenKind.LoopKeyword,
-            TokenKind.OpenParen,
-            TokenKind.IntegerLiteral,
-            TokenKind.CloseParen,
             TokenKind.OpenBrace,
             TokenKind.CloseBrace,
             TokenKind.EndOfFile,

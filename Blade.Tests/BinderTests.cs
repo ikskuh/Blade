@@ -310,7 +310,7 @@ public class BinderTests
     public void BreakInsideRepLoop_ReportsDiagnostic()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
-            rep loop (4) {
+            rep loop {
                 break;
             }
             """);

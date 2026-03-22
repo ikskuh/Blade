@@ -1376,7 +1376,7 @@ public class IrPipelineTests
 
                 while (true) { break; }
                 loop { continue; }
-                rep loop (2) { sink = sink + 1; }
+                rep for (2) { sink = sink + 1; }
                 rep for (1..2) -> i { sink = sink + i; }
                 noirq { sink = sink + 1; }
 

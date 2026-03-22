@@ -515,7 +515,7 @@ public class ParserTests
                 extern reg var ext: u32;
                 for (i) { }
                 loop { }
-                rep loop (4) { }
+                rep loop { }
                 rep for (4) { }
                 noirq { }
                 break;

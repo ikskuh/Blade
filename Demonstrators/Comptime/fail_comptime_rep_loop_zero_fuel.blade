@@ -1,0 +1,15 @@
+// EXPECT: fail
+// ARGS: --comptime-fuel=1
+// DIAGNOSTICS:
+// - E0244
+// NOTE:
+//   Exercises the infinite rep loop branch until comptime fuel is exhausted.
+
+comptime fn infinite_rep_loop() -> u32 {
+    rep loop {
+    }
+
+    return 0;
+}
+
+reg const folded: u32 = infinite_rep_loop();

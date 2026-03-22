@@ -342,6 +342,7 @@ fn control_flow_demo(count: u32, cond: bool) {
 
     rep for(count) {
         // repeats the body "count" times, backed by REP
+        // count == 0 means the loop repeats zero times, not infinite times (rep loop {}) is used for that)
     }
 
     for(count) -> index {

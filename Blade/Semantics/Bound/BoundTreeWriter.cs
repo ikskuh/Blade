@@ -108,7 +108,6 @@ public static class BoundTreeWriter
 
             case BoundRepLoopStatement repLoop:
                 AppendLine(sb, indent, "RepLoop");
-                WriteExpression(sb, indent + 1, repLoop.Count);
                 WriteStatement(sb, indent + 1, repLoop.Body);
                 break;
 

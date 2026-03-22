@@ -210,7 +210,6 @@ public static class MirLowerer
                 CollectAddressTakenSymbols(loopStatement.Body, symbols);
                 break;
             case BoundRepLoopStatement repLoop:
-                CollectAddressTakenSymbols(repLoop.Count, symbols);
                 CollectAddressTakenSymbols(repLoop.Body, symbols);
                 break;
             case BoundRepForStatement repFor:
@@ -921,7 +920,7 @@ public static class MirLowerer
 
         private void LowerRepLoopStatement(BoundRepLoopStatement repLoopStatement)
         {
-            MirValueId count = LowerExpression(repLoopStatement.Count);
+            MirValueId count = EmitConstant(0L, BuiltinTypes.U32, repLoopStatement.Span);
             EmitOp("rep.setup", [count], hasSideEffects: true, repLoopStatement.Span);
 
             Dictionary<Symbol, MirValueId> beforeEnv = SnapshotAutomaticEnvironment();

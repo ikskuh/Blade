@@ -142,14 +142,12 @@ public sealed class BoundLoopStatement : BoundStatement
 
 public sealed class BoundRepLoopStatement : BoundStatement
 {
-    public BoundRepLoopStatement(BoundExpression count, BoundBlockStatement body, TextSpan span)
+    public BoundRepLoopStatement(BoundBlockStatement body, TextSpan span)
         : base(BoundNodeKind.RepLoopStatement, span)
     {
-        Count = count;
         Body = body;
     }
 
-    public BoundExpression Count { get; }
     public BoundBlockStatement Body { get; }
 }
 
