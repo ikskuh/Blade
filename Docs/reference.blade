@@ -745,6 +745,31 @@ fn expressions() {
     cls = memoryof(hv_01); // returns MemorySpace.hub
 }
 
+fn pointer_arithmetics() {
+
+    // Blade supports typical pointer arithmetic operations.
+    // These operations *always* operate on element sizes,
+    // never on bytes or addresses.
+    // This is necessary, as these sizes are likely to disagree
+    // depending on the pointer memory space.
+
+    // Pointer arithmetic is only allowed on `[*]` pointers:
+    var p1: [*]lut u32 = undefined;
+    var p2: [*]lut u32 = undefined;
+    var cnt: u32 = undefined;
+    var delta: i32 = undefined;
+
+
+    p2 = p1 + 10; // moves the pointer 10 elements beyond the current one
+    p2 = p1 - 10; // moves the pointer 10 elements before the current one
+
+    p2 = p1 + cnt; // legal with u32
+    p2 = p1 + delta; // also legal with i32
+
+    // Pointer subtract requires compatible pointer types (same memory space, same type):
+    delta = p2 - p1; // delta receives the number of elements between p2 and p1.
+}
+
 fn multi_return_demo() {
     var x: u32  = undefined;
     var a: bool = undefined;

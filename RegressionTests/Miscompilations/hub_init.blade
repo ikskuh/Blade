@@ -1,0 +1,16 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - h_array BYTE 0
+// - h_data LONG 1
+// NOT_CONTAINS:
+// - WRLONG
+// - WRWORD
+// - WRBYTE
+// NOTE:
+//   Hub storage is already initialized by the loader, so startup code must not
+//   synthesize manual WR* stores for static hub initializers.
+
+hub var array: [1]u8 = undefined;
+
+hub var data: u32 = 1;

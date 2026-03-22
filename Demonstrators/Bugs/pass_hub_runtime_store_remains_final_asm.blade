@@ -1,0 +1,12 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - h_data LONG 1
+// - WRLONG
+// NOTE:
+//   The hub-init fix must not remove legitimate runtime writes. An explicit
+//   top-level assignment still needs a WRLONG in the emitted code.
+
+hub var data: u32 = 1;
+
+data = 2;

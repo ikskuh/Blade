@@ -99,11 +99,7 @@ compile-all-samples: build \
     (compile-sample "Examples/inline_asm_streamer.blade") \
     (compile-sample "Examples/register_aliases.blade") \
     (compile-sample "Examples/sum_loop.blade") \
-    (compile-sample "Demonstrators/Asm/volatile_routines.blade") \
-    (compile-sample "Demonstrators/Asm/optimizer_exercises.blade") \
-    (compile-sample "Demonstrators/Asm/io_regular_asm.blade") \
-    (compile-sample "Demonstrators/Asm/math_routines.blade") \
-    (compile-sample "Demonstrators/Bugs/missing-copy.blade")
+    (compile-sample "Examples/hub_string_walk.blade")
 
 
 compile-sample foo:

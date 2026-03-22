@@ -372,8 +372,11 @@ public static class MirLowerer
                 if (global.Initializer is null || !TryGetStoragePlace(global.Symbol, out StoragePlace place))
                     continue;
 
-                if (place.Kind == StoragePlaceKind.AllocatableGlobalRegister && place.HasStaticInitializer)
+                if (place.HasStaticInitializer
+                    && place.Kind is StoragePlaceKind.AllocatableGlobalRegister or StoragePlaceKind.AllocatableHubEntry)
+                {
                     continue;
+                }
 
                 if (IsUndefinedInitializer(global.Initializer))
                     continue;
@@ -1839,7 +1842,8 @@ public static class MirLowerer
         while (inner is BoundConversionExpression conversion)
             inner = conversion.Expression;
 
-        return inner.Type.IsUndefinedLiteral;
+        return inner.Type.IsUndefinedLiteral
+            || inner is BoundLiteralExpression { Value: null, Type.IsVoid: false };
     }
 
     private static bool TryEvaluateStaticValue(BoundExpression expression, out object? value)

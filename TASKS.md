@@ -12,14 +12,6 @@
 
 ## Bug Fix Backlog
 
-## BUG-9: Remove stray store when passing `&array` to pointer parameters
-
-Passing `&greeting` into a pointer parameter currently has a reported codegen path that emits an unexpected store.
-
-- Add a demonstrator for the `length = count_string(&greeting);` shape.
-- Fix lowering so taking the address of an array for a call does not synthesize a stray `WRLONG` to the array base.
-- Validate the fix at final-asm level so the bad store is explicitly absent.
-
 ## BUG-10: Preserve loop-carried count updates in the pointer-walk sample
 
 The string-walk sample reports that `count += 1` disappears from final codegen.

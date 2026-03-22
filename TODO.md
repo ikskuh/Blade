@@ -357,3 +357,5 @@ Acceptance criteria are:
 
 - Not less code coverage than before.
 - At least two new demonstrators are written, one with `fail`, one with `pass`.
+
+## implement pointer arithmetics
