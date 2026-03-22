@@ -12,14 +12,6 @@
 
 ## Bug Fix Backlog
 
-## BUG-7: Resolve peer typing for enum literals in comparisons
-
-Enum comparisons should infer the enum type for contextual literals like `.Off` from the opposite operand.
-
-- Teach comparison binding to resolve bare enum literals from the peer operand in `==` and `!=`.
-- Add passing coverage for both equality and inequality cases.
-- Keep the scope to enum-literal comparison typing rather than broader enum feature work.
-
 ## BUG-8: Allow address-of indexed array elements
 
 `&ptr[1]` is currently rejected with `E0223` even though the indexed element should be addressable.

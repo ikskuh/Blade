@@ -10,10 +10,6 @@ This plays together nicely with the register allocator running backwards.
 
 Right now only the high-level part is implemented, but lowering the array access is not.
 
-## `rec fn` seems to miscompile
-
-Validate that `rec fn` uses CALLB and stack spilling when calling other rec functions.
-
 ## Type improvements
 
 - Distinct between `[*]T` and `*T` like in Zig. This gives better quality code without basically any drawbacks.
@@ -21,21 +17,6 @@ Validate that `rec fn` uses CALLB and stack spilling when calling other rec func
 ## constant file rendering is broken
 
 uses the old rendering method which is weirdly formatted.
-
-## Optimizer removes the required NOP
-
-```
-REP #1, #0
-NOP
-```
-
-gets optimized by the NOP optimizer
-
-this means we need a way to handle the "TRAP" as a single ASMIR instruction
-
-## Add `VariableStorageClass.Flag` and wire asm output binding through it
-
-Inline asm output bindings currently use `VariableStorageClass.Automatic`; introduce a dedicated `VariableStorageClass.Flag` and propagate it through binder/IR/codegen semantics.
 
 ## KNOWN SILICON BUGS
 
@@ -365,14 +346,6 @@ The following operations map incredibly nicely to the Propeller 2 architecture:
 - `if(a) { x |= 0x23; } else { x &= ~0x23; }` is `TESTB backing, #index WZ`, `MUXZ x, #$23`
 - `if(a) { x = -x; }` is `TESTB backing, #index WZ`, `NEGC x`
 - `if(a) { x += y; } else { x -= y; }` is `TESTB backing, #index WZ`, `SUMC x, y`
-
-## Wire sizeof/alignof/memoryof into syntax highlighter
-
-topic is text
-
-## eliminate rep loop
-
-`rep loop(0)` is invalid syntax, only `rep loop  { }`, `rep for(cnt) { } ` and `rep for(cnt) -> index { }` are  legal syntax constructs
 
 ## Definition of Done
 

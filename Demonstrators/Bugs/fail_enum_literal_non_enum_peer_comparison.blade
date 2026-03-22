@@ -1,0 +1,15 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - L14, E0232
+// - L15, E0232
+// NOTE:
+//   Peer typing for bare enum literals is limited to enum-vs-enum comparisons.
+
+type Mode = enum (u8) {
+    Off = 0,
+    On = 1,
+};
+
+reg var raw: u8 = 0;
+reg var eq_bad: bool = .Off == raw;
+reg var ne_bad: bool = raw != .Off;

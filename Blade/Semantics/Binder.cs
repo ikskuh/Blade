@@ -1575,8 +1575,35 @@ public sealed class Binder
         Debug.Assert(op is not null, "Parser should only produce binary operators that the binder understands.");
         BoundBinaryOperator binaryOperator = Requires.NotNull(op);
 
-        BoundExpression left = BindExpression(binary.Left);
-        BoundExpression right = BindExpression(binary.Right);
+        BoundExpression left;
+        BoundExpression right;
+
+        if (binaryOperator.Kind is BoundBinaryOperatorKind.Equals or BoundBinaryOperatorKind.NotEquals)
+        {
+            bool leftIsBareEnumLiteral = binary.Left is EnumLiteralExpressionSyntax;
+            bool rightIsBareEnumLiteral = binary.Right is EnumLiteralExpressionSyntax;
+
+            if (leftIsBareEnumLiteral && !rightIsBareEnumLiteral)
+            {
+                right = BindExpression(binary.Right);
+                left = BindExpression(binary.Left, right.Type);
+            }
+            else if (!leftIsBareEnumLiteral && rightIsBareEnumLiteral)
+            {
+                left = BindExpression(binary.Left);
+                right = BindExpression(binary.Right, left.Type);
+            }
+            else
+            {
+                left = BindExpression(binary.Left);
+                right = BindExpression(binary.Right);
+            }
+        }
+        else
+        {
+            left = BindExpression(binary.Left);
+            right = BindExpression(binary.Right);
+        }
 
         if (binaryOperator.IsComparison)
         {
