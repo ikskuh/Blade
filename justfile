@@ -13,30 +13,36 @@ build:
 test:
     dotnet test
 
-coverage:
-    rm -rf coverage
+coverage: \
+    (_base_coverage_collect "")
+
+coverage-regressions: \
+    (_base_coverage_collect "--filter 'FullyQualifiedName=Blade.Tests.RegressionHarnessTests.FullRegressionSuite_Passes")
+
+# Base rule for coverage collection, can pass additional parameters to "dotnet test"
+_base_coverage_collect params:
+    # delete the previous coverage so we get a clean slate:
+    rm -rf coverage/current
+
+    # execute "dotnet test" with code coverage collection and only include the
+    # compiler sources, exclude all others:
     dotnet test \
         --collect:"XPlat Code Coverage;Format=cobertura;Include=[blade]*;Exclude=[Blade.Regressions]*" \
-        --results-directory coverage
-    cp coverage/*/coverage.cobertura.xml coverage/coverage.cobertura.xml
+        --results-directory coverage/current \
+        {{params}}
+    
+    # move into "latest stage":
+    mv coverage/current/*/coverage.cobertura.xml coverage/coverage.cobertura.xml
 
-    @python3 Scripts/codecov-report.py coverage/coverage.cobertura.xml
-
-coverage-regressions:
-    rm -rf coverage
-    dotnet test \
-        --collect:"XPlat Code Coverage;Format=cobertura;Include=[blade]*;Exclude=[Blade.Regressions]*" \
-        --results-directory coverage \
-        --filter "FullyQualifiedName=Blade.Tests.RegressionHarnessTests.FullRegressionSuite_Passes"
-    cp coverage/*/coverage.cobertura.xml coverage/coverage.cobertura.xml
-
+    # print a short summary of the code coverage data:
     @python3 Scripts/codecov-report.py coverage/coverage.cobertura.xml
 
 coverage-report: coverage
     {{reportgenerator}} \
         -reports:"coverage/coverage.cobertura.xml" \
         -targetdir:"coverage/results" \
-        "-reporttypes:Html;TextSummary;CsvSummary"
+        -historydir:"coverage/history" \
+        "-reporttypes:Html;TextSummary;TextDeltaSummary;CsvSummary"
 
 regressions:
     dotnet run --project Blade.Regressions --
