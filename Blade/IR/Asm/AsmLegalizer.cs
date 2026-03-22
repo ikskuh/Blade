@@ -64,11 +64,11 @@ public static class AsmLegalizer
             }
 
             AsmFunction entry = functions[entryIndex];
-            List<AsmNode> extendedNodes = new(entry.Nodes.Count + constantRegisters.Count * 2);
+            List<AsmNode> extendedNodes = new(entry.Nodes.Count + (constantRegisters.Count * 2));
             extendedNodes.AddRange(entry.Nodes);
 
             extendedNodes.Add(new AsmCommentNode("--- constant file ---"));
-            foreach ((uint value, string label) in constantRegisters.OrderBy(static pair => pair.Key).Select(static pair => (pair.Key, pair.Value)))
+            foreach ((uint value, string label) in constantRegisters.OrderBy(static pair => pair.Key))
             {
                 extendedNodes.Add(new AsmLabelNode(label));
                 extendedNodes.Add(new AsmDirectiveNode($"LONG ${value:X8}"));

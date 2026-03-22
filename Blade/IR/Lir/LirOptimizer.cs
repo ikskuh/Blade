@@ -399,16 +399,6 @@ public static class LirOptimizer
         return true;
     }
 
-    private static LirInstruction RewriteInstructionUses(
-        LirInstruction instruction,
-        IReadOnlyDictionary<LirVirtualRegister, LirVirtualRegister> mapping)
-    {
-        Dictionary<LirVirtualRegister, LirOperand> operandMapping = [];
-        foreach ((LirVirtualRegister key, LirVirtualRegister value) in mapping)
-            operandMapping[key] = new LirRegisterOperand(value);
-        return RewriteInstructionUses(instruction, operandMapping);
-    }
-
     private static LirInstruction RewriteInstructionUsesForCopyPropagation(
         LirInstruction instruction,
         IReadOnlyDictionary<LirVirtualRegister, LirVirtualRegister> mapping)

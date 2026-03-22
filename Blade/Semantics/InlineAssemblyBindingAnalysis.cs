@@ -125,7 +125,9 @@ public static class InlineAssemblyBindingAnalysis
         if (name.Length == 0
             || name.Contains('{', StringComparison.Ordinal)
             || name.Contains('}', StringComparison.Ordinal))
+        {
             return false;
+        }
 
         bindingName = name;
         return true;

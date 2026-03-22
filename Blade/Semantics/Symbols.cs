@@ -143,7 +143,7 @@ public sealed class FunctionSymbol : Symbol
     public IReadOnlyList<ParameterSymbol> Parameters { get; set; } = [];
     public IReadOnlyList<ReturnSlot> ReturnSlots { get; set; } = [];
     public IReadOnlyList<TypeSymbol> ReturnTypes => System.Array.ConvertAll(
-        System.Linq.Enumerable.ToArray(ReturnSlots),
+        ReturnSlots.ToArray(),
         static slot => slot.Type);
     public bool HasFlagReturns => ReturnSlots.Any(s => s.IsFlagPlaced);
 }

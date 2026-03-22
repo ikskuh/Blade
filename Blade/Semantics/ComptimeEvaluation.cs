@@ -1099,10 +1099,11 @@ internal sealed class ComptimeEvaluator
             return false;
         }
 
-        if (!TryExecuteStatement(conditionBool ? ifStatement.ThenBody : ifStatement.ElseBody ?? EmptyBlock.Instance, frame, out outcome, out failure))
-            return false;
-
-        return true;
+        return TryExecuteStatement(
+            conditionBool ? ifStatement.ThenBody : ifStatement.ElseBody ?? EmptyBlock.Instance,
+            frame,
+            out outcome,
+            out failure);
     }
 
     private bool TryExecuteWhileStatement(

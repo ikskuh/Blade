@@ -207,7 +207,9 @@ public sealed class Parser
         while (Current.Kind != TokenKind.EndOfFile && depth > 0)
         {
             if (Current.Kind == TokenKind.OpenBrace)
+            {
                 depth++;
+            }
             else if (Current.Kind == TokenKind.CloseBrace)
             {
                 depth--;
@@ -669,7 +671,9 @@ public sealed class Parser
         while (Current.Kind != TokenKind.EndOfFile && depth > 0)
         {
             if (Current.Kind == TokenKind.OpenBrace)
+            {
                 depth++;
+            }
             else if (Current.Kind == TokenKind.CloseBrace)
             {
                 depth--;
@@ -1292,14 +1296,6 @@ public sealed class Parser
         Token elseKw = MatchToken(TokenKind.ElseKeyword);
         ExpressionSyntax elseExpr = ParseExpression();
         return new IfExpressionSyntax(ifKw, openParen, condition, closeParen, thenExpr, elseKw, elseExpr);
-    }
-
-    private RangeExpressionSyntax ParseRangeExpression()
-    {
-        ExpressionSyntax start = ParseBinaryExpression(1); // parse at higher than range precedence
-        Token dotDot = MatchToken(TokenKind.DotDot);
-        ExpressionSyntax end = ParseBinaryExpression(1);
-        return new RangeExpressionSyntax(start, dotDot, end);
     }
 
     // ──────────────────────────────────────────

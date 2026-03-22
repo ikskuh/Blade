@@ -5,87 +5,94 @@ using System.Globalization;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Blade;
 using Blade.Diagnostics;
 using Blade.IR;
 using Blade.Source;
 
-CommandLineOptions? options = CommandLineOptions.Parse(args);
-if (options is null)
-    return 1;
+namespace Blade;
 
-if (!File.Exists(options.FilePath))
+internal static class Program
 {
-    Console.Error.WriteLine($"error: file not found: {options.FilePath}");
-    return 1;
-}
-
-string text = File.ReadAllText(options.FilePath);
-Stopwatch sw = Stopwatch.StartNew();
-CompilationResult compilation = CompilerDriver.Compile(
-    text,
-    options.FilePath,
-    new CompilationOptions
+    public static int Main(string[] args)
     {
-        EnableSingleCallsiteInlining = options.EnableSingleCallsiteInlining,
-        OptimizationDirectives = options.OptimizationDirectives,
-        NamedModuleRoots = options.NamedModuleRoots,
-        ComptimeFuel = options.ComptimeFuel,
-    });
-sw.Stop();
+        CommandLineOptions? options = CommandLineOptions.Parse(args);
+        if (options is null)
+            return 1;
 
-CompilationMetrics metrics = new()
-{
-    TokenCount = compilation.TokenCount,
-    MemberCount = compilation.Syntax.Members.Count,
-    BoundFunctionCount = compilation.BoundProgram.Functions.Count,
-    MirFunctionCount = compilation.IrBuildResult?.MirModule.Functions.Count ?? 0,
-    TimeMs = sw.Elapsed.TotalMilliseconds,
-};
+        if (!File.Exists(options.FilePath))
+        {
+            Console.Error.WriteLine($"error: file not found: {options.FilePath}");
+            return 1;
+        }
 
-if (options.Json)
-{
-    JsonCompilationReport jsonReport = JsonReportBuilder.Build(compilation, options, metrics);
-    if (!OutputWriter.TryWriteJson(options, jsonReport, out string? outputError))
-    {
-        Console.Error.WriteLine(outputError);
-        return 1;
+        string text = File.ReadAllText(options.FilePath);
+        Stopwatch sw = Stopwatch.StartNew();
+        CompilationResult compilation = CompilerDriver.Compile(
+            text,
+            options.FilePath,
+            new CompilationOptions
+            {
+                EnableSingleCallsiteInlining = options.EnableSingleCallsiteInlining,
+                OptimizationDirectives = options.OptimizationDirectives,
+                NamedModuleRoots = options.NamedModuleRoots,
+                ComptimeFuel = options.ComptimeFuel,
+            });
+        sw.Stop();
+
+        CompilationMetrics metrics = new()
+        {
+            TokenCount = compilation.TokenCount,
+            MemberCount = compilation.Syntax.Members.Count,
+            BoundFunctionCount = compilation.BoundProgram.Functions.Count,
+            MirFunctionCount = compilation.IrBuildResult?.MirModule.Functions.Count ?? 0,
+            TimeMs = sw.Elapsed.TotalMilliseconds,
+        };
+
+        if (options.Json)
+        {
+            JsonCompilationReport jsonReport = JsonReportBuilder.Build(compilation, options, metrics);
+            if (!OutputWriter.TryWriteJson(options, jsonReport, out string? outputError))
+            {
+                Console.Error.WriteLine(outputError);
+                return 1;
+            }
+
+            return jsonReport.Success ? 0 : 1;
+        }
+
+        foreach (Diagnostic diag in compilation.Diagnostics)
+        {
+            SourceLocation loc = compilation.Source.GetLocation(diag.Span.Start);
+            Console.WriteLine($"{loc}: {diag}");
+        }
+
+        if (compilation.Diagnostics.Count > 0)
+            return 1;
+
+        if (compilation.IrBuildResult is null)
+            return 1;
+
+        DumpSelection dumpSelection = new()
+        {
+            DumpBound = options.DumpBound,
+            DumpMirPreOptimization = options.DumpMirPreOptimization,
+            DumpMir = options.DumpMir,
+            DumpLirPreOptimization = options.DumpLirPreOptimization,
+            DumpLir = options.DumpLir,
+            DumpAsmirPreOptimization = options.DumpAsmirPreOptimization,
+            DumpAsmir = options.DumpAsmir,
+            DumpFinalAsm = options.DumpFinalAsm,
+        };
+        Dictionary<string, string> dumpContent = DumpContentBuilder.Build(dumpSelection, compilation.IrBuildResult);
+        if (!OutputWriter.TryWriteText(options, dumpContent, metrics, errorCount: compilation.Diagnostics.Count, out string? textOutputError))
+        {
+            Console.Error.WriteLine(textOutputError);
+            return 1;
+        }
+
+        return 0;
     }
-
-    return jsonReport.Success ? 0 : 1;
 }
-
-foreach (Diagnostic diag in compilation.Diagnostics)
-{
-    SourceLocation loc = compilation.Source.GetLocation(diag.Span.Start);
-    Console.WriteLine($"{loc}: {diag}");
-}
-
-if (compilation.Diagnostics.Count > 0)
-    return 1;
-
-if (compilation.IrBuildResult is null)
-    return 1;
-
-DumpSelection dumpSelection = new()
-{
-    DumpBound = options.DumpBound,
-    DumpMirPreOptimization = options.DumpMirPreOptimization,
-    DumpMir = options.DumpMir,
-    DumpLirPreOptimization = options.DumpLirPreOptimization,
-    DumpLir = options.DumpLir,
-    DumpAsmirPreOptimization = options.DumpAsmirPreOptimization,
-    DumpAsmir = options.DumpAsmir,
-    DumpFinalAsm = options.DumpFinalAsm,
-};
-Dictionary<string, string> dumpContent = DumpContentBuilder.Build(dumpSelection, compilation.IrBuildResult);
-if (!OutputWriter.TryWriteText(options, dumpContent, metrics, errorCount: compilation.Diagnostics.Count, out string? textOutputError))
-{
-    Console.Error.WriteLine(textOutputError);
-    return 1;
-}
-
-return 0;
 
 internal sealed class CommandLineOptions
 {

@@ -14,7 +14,7 @@ public static class MirInliner
     {
         Requires.NotNull(module);
 
-        return Inline(module, (caller, call, callee, callCounts) =>
+        return Inline(module, (_, _, callee, callCounts) =>
         {
             if (callee.Kind == FunctionKind.Inline)
                 return true;
@@ -32,7 +32,7 @@ public static class MirInliner
     {
         Requires.NotNull(module);
 
-        return Inline(module, (caller, call, callee, callCounts) =>
+        return Inline(module, (_, _, callee, _) =>
         {
             if (callee.Kind is FunctionKind.Noinline
                 or FunctionKind.Rec
@@ -275,7 +275,7 @@ public static class MirInliner
             IReadOnlyDictionary<string, string> labelMap,
             MirCallInstruction call,
             string returnTargetLabel,
-            ICollection<MirInstruction> currentInstructions)
+            ICollection<MirInstruction> _)
         {
             MirTerminator rewritten = terminator.RewriteUses(valueMap);
             switch (rewritten)

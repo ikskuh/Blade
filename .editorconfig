@@ -50,6 +50,10 @@ dotnet_diagnostic.CA1822.severity = none
 dotnet_diagnostic.CA1711.severity = none
 
 
+# "++" and "--" are inferior to "+= 1"
+dotnet_diagnostic.RCS1089.severity = silent
+
+
 [Blade/Diagnostics/DiagnosticCode.cs]
 
 # Keep the diagnostic code in the identifier so developers can grep by E/W code quickly.

@@ -25,4 +25,12 @@
     <WarningsAsErrors>CS8120;CS8509;CS8510;CS8518;CS8519</WarningsAsErrors>
   </PropertyGroup>
 
+
+  <ItemGroup>
+    <PackageReference Include="Roslynator.Analyzers" Version="4.15.0">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
 </Project>

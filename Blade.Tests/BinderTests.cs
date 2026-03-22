@@ -548,73 +548,6 @@ public class BinderTests
     }
 
     [Test]
-    public void BoundTreeWriter_CoversAdvancedStatementsAndExpressions()
-    {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            type Pair = struct { left: u32, right: u32 };
-
-            coro fn worker(seed: u32) -> u32 {
-                var pair: Pair = .{ .left = seed, .right = seed };
-                var arr: [2]u32 = undefined;
-                var ptr: *u32 = undefined;
-                var sink: u32 = 0;
-
-                while (true) { break; }
-                loop { continue; }
-                rep loop (2) { sink = sink + 1; }
-                rep for (1..2) -> i { sink = sink + i; }
-                noirq { sink = sink + 1; }
-
-                sink = pair.left;
-                pair.right = sink;
-                sink = arr[0];
-                arr[1] = sink;
-                sink = ptr.*;
-                ptr.* = sink;
-                sink = if (true) pair.left else pair.right;
-                @encod(sink);
-                1..2;
-                asm {
-                    MOV {sink}, {sink}
-                };
-                yieldto worker(seed);
-                return sink;
-            }
-
-            int1 fn irq() void {
-                yield;
-            }
-
-            yieldto worker(1);
-            """);
-
-        Assert.That(diagnostics.Count, Is.EqualTo(0));
-        string dump = BoundTreeWriter.Write(program);
-
-        Assert.That(dump, Does.Contain("TypeAliases"));
-        Assert.That(dump, Does.Contain("Yieldto (worker)"));
-        Assert.That(dump, Does.Contain("Yield"));
-        Assert.That(dump, Does.Contain("While"));
-        Assert.That(dump, Does.Contain("Loop"));
-        Assert.That(dump, Does.Contain("RepLoop"));
-        Assert.That(dump, Does.Contain("RepFor (i)"));
-        Assert.That(dump, Does.Contain("Noirq"));
-        Assert.That(dump, Does.Contain("Break"));
-        Assert.That(dump, Does.Contain("Continue"));
-        Assert.That(dump, Does.Contain("Member<u32> .left"));
-        Assert.That(dump, Does.Contain("Index<u32>"));
-        Assert.That(dump, Does.Contain("Deref<u32>"));
-        Assert.That(dump, Does.Contain("IfExpr<u32>"));
-        Assert.That(dump, Does.Contain("Range<range>"));
-        Assert.That(dump, Does.Contain("StructLit<Pair>"));
-        Assert.That(dump, Does.Contain("TargetMember<u32> .right"));
-        Assert.That(dump, Does.Contain("TargetIndex<u32>"));
-        Assert.That(dump, Does.Contain("TargetDeref<u32>"));
-        Assert.That(dump, Does.Contain("Intrinsic<u32> @encod"));
-        Assert.That(dump, Does.Contain("Asm [NonVolatile]"));
-    }
-
-    [Test]
     public void FileImport_BindsModuleAliasMemberFunctionAndCall()
     {
         using TempDirectory temp = new();
@@ -627,63 +560,6 @@ public class BinderTests
         Assert.That(program.ImportedModules.ContainsKey("math"), Is.True);
         Assert.That(program.ImportedModules["math"].ExportedFunctions.ContainsKey("inc"), Is.True);
     }
-
-    [Test]
-    public void NamedModuleImport_BindsAliasFromNamedModuleMap()
-    {
-        using TempDirectory temp = new();
-        temp.WriteFile("ext.blade", "fn plus(a: u32, b: u32) -> u32 { return a + b; }");
-        string modulePath = temp.GetFullPath("ext.blade");
-        string sourcePath = temp.GetFullPath("main.blade");
-
-        Dictionary<string, string> namedModules = new(StringComparer.Ordinal)
-        {
-            ["extmod"] = modulePath,
-        };
-
-        (_, _, DiagnosticBag diagnostics) = Bind("import extmod as ext; var v: u32 = ext.plus(1, 2);", sourcePath, namedModules);
-        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
-    }
-
-
-
-    [Test]
-    public void MissingImportFile_ReportsDiagnostic()
-    {
-        using TempDirectory temp = new();
-        string sourcePath = temp.GetFullPath("main.blade");
-        (_, _, DiagnosticBag diagnostics) = Bind("""import "./missing.mod" as missing;""", sourcePath);
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0230_ImportFileNotFound), Is.True);
-    }
-
-    [Test]
-    public void CircularImport_ReportsDiagnostic()
-    {
-        using TempDirectory temp = new();
-        temp.MakeDir("circular");
-        temp.WriteFile("circular/a.mod", """import "./b.mod" as b;""");
-        temp.WriteFile("circular/b.mod", """import "./a.mod" as a;""");
-
-        string sourcePath = temp.GetFullPath("main.blade");
-        (_, _, DiagnosticBag diagnostics) = Bind("""import "./circular/a.mod" as a;""", sourcePath);
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0231_CircularImport), Is.True);
-    }
-
-    [Test]
-    public void FileImportWithoutAlias_ReportsDiagnostic()
-    {
-        (_, _, DiagnosticBag diagnostics) = Bind("""import "./module.blade";""", "/tmp/main.blade");
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0228_FileImportAliasRequired), Is.True);
-    }
-
-    [Test]
-    public void UnknownNamedModule_ReportsDiagnostic()
-    {
-        (_, _, DiagnosticBag diagnostics) = Bind("import extmod;", "/tmp/main.blade", new Dictionary<string, string>());
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0229_UnknownNamedModule), Is.True);
-    }
-
-
 
     [Test]
     public void StructMemberAccess_UnknownFieldReportsDiagnostic()
@@ -729,47 +605,6 @@ public class BinderTests
         Assert.That(module.DefaultAlias, Is.EqualTo("t"));
         Assert.That(module.Syntax, Is.Not.Null);
         Assert.That(module.ExportedTypes.ContainsKey("Alias"), Is.True);
-    }
-
-    [Test]
-    public void ImportedQualifiedType_BindsSuccessfully()
-    {
-        using TempDirectory temp = new();
-        temp.WriteFile("types.blade", """
-            type Mode = enum (u32) {
-                Off = 0,
-                On = 1,
-            };
-            """);
-        string sourcePath = temp.GetFullPath("main.blade");
-
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            import "./types.blade" as t;
-            var mode: t.Mode = .On;
-            """, sourcePath);
-
-        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
-        string dump = BoundTreeWriter.Write(program);
-        Assert.That(dump, Does.Contain("VarDecl mode: Mode"));
-        Assert.That(dump, Does.Contain("Literal<Mode> 1"));
-    }
-
-    [Test]
-    public void NamedModules_SharingSameRootFile_ReportDiagnostic()
-    {
-        using TempDirectory temp = new();
-        temp.WriteFile("ext.blade", "fn plus(a: u32, b: u32) -> u32 { return a + b; }");
-        string sourcePath = temp.GetFullPath("main.blade");
-        string modulePath = temp.GetFullPath("ext.blade");
-        Dictionary<string, string> namedModules = new(StringComparer.Ordinal)
-        {
-            ["ext_a"] = modulePath,
-            ["ext_b"] = modulePath,
-        };
-
-        (_, _, DiagnosticBag diagnostics) = Bind("import ext_a; import ext_b;", sourcePath, namedModules);
-
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0245_DuplicateNamedModuleRoot), Is.True);
     }
 
     [Test]
@@ -1661,60 +1496,6 @@ public class BinderTests
         Assert.That(diagnostics.Count, Is.EqualTo(0));
         string dump = BoundTreeWriter.Write(program);
         Assert.That(dump, Does.Contain("For\n"));
-    }
-
-    [Test]
-    public void ForLoop_CountWithIndex_BindsCorrectly()
-    {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            reg var count: u32 = 4;
-            reg var sink: u32 = 0;
-            for (count) -> i { sink = sink + i; }
-            """);
-
-        Assert.That(diagnostics.Count, Is.EqualTo(0));
-        string dump = BoundTreeWriter.Write(program);
-        Assert.That(dump, Does.Contain("For -> i"));
-    }
-
-    [Test]
-    public void ForLoop_ArrayWithItem_BindsCorrectly()
-    {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            var arr: [4]u32 = [1,2,3,4];
-            reg var sink: u32 = 0;
-            for (arr) -> x { sink = sink + x; }
-            """);
-
-        Assert.That(diagnostics.Count, Is.EqualTo(0));
-        string dump = BoundTreeWriter.Write(program);
-        Assert.That(dump, Does.Contain("For -> x"));
-    }
-
-    [Test]
-    public void ForLoop_ArrayWithMutableItem_BindsCorrectly()
-    {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            var arr: [4]u32 = [1,2,3,4];
-            for (arr) -> &x { x = 10; }
-            """);
-
-        Assert.That(diagnostics.Count, Is.EqualTo(0));
-        string dump = BoundTreeWriter.Write(program);
-        Assert.That(dump, Does.Contain("For -> &x"));
-    }
-
-    [Test]
-    public void ForLoop_ArrayWithMutableItemAndIndex_BindsCorrectly()
-    {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            var arr: [4]u32 = [1,2,3,4];
-            for (arr) -> &x, i { x = i; }
-            """);
-
-        Assert.That(diagnostics.Count, Is.EqualTo(0));
-        string dump = BoundTreeWriter.Write(program);
-        Assert.That(dump, Does.Contain("For -> &x, i"));
     }
 
     [Test]

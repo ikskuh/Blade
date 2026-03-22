@@ -1563,8 +1563,7 @@ public static class MirLowerer
         private static IReadOnlyList<Symbol> GetOrderedAutomaticSymbols(IReadOnlyDictionary<Symbol, MirValueId> values)
         {
             List<Symbol> symbols = new(values.Count);
-            foreach (Symbol symbol in values.Keys)
-                symbols.Add(symbol);
+            symbols.AddRange(values.Keys);
             symbols.Sort((left, right) => left.Id.CompareTo(right.Id));
             return symbols;
         }

@@ -21,7 +21,7 @@ public sealed class SeparatedSyntaxList<T> : IEnumerable<T> where T : SyntaxNode
 
     public T this[int index] => (T)_nodesAndSeparators[index * 2];
 
-    public Token GetSeparator(int index) => (Token)_nodesAndSeparators[index * 2 + 1];
+    public Token GetSeparator(int index) => (Token)_nodesAndSeparators[(index * 2) + 1];
 
     public IEnumerator<T> GetEnumerator()
     {

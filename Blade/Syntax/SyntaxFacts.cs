@@ -224,7 +224,7 @@ public static class SyntaxFacts
     /// </summary>
     public static bool IsIdentifierLike(TokenKind kind)
     {
-        return kind == TokenKind.Identifier || GetText(kind) is string text && Keywords.ContainsKey(text);
+        return kind == TokenKind.Identifier || (GetText(kind) is string text && Keywords.ContainsKey(text));
     }
 
     /// <summary>

@@ -193,11 +193,15 @@ public static class RegisterAllocator
                 || instruction.Predicate is not null
                 || instruction.FlagEffect != AsmFlagEffect.None
                 || instruction.Operands.Count != 2)
+            {
                 continue;
+            }
 
             if (instruction.Operands[0] is not AsmRegisterOperand dest
                 || instruction.Operands[1] is not AsmRegisterOperand src)
+            {
                 continue;
+            }
 
             int destCanonical = Find(parent, dest.RegisterId);
             int srcCanonical = Find(parent, src.RegisterId);
@@ -548,7 +552,7 @@ public static class RegisterAllocator
         }
 
         // Emit shared register slots
-        foreach (int slot in allUsedSlots.OrderBy(s => s))
+        foreach (int slot in allUsedSlots.Order())
         {
             string label = SlotLabel(slot);
             if (!emitted.Add(label))
@@ -656,7 +660,7 @@ public static class RegisterAllocator
         string rewritten = text;
         foreach ((string originalLabel, string rewrittenLabel) in localLabels.OrderByDescending(static pair => pair.Key.Length))
         {
-            string pattern = $@"(?<![A-Za-z0-9_$]){Regex.Escape(originalLabel)}(?![A-Za-z0-9_$])";
+            string pattern = $"(?<![A-Za-z0-9_$]){Regex.Escape(originalLabel)}(?![A-Za-z0-9_$])";
             rewritten = Regex.Replace(rewritten, pattern, rewrittenLabel, RegexOptions.CultureInvariant);
         }
 

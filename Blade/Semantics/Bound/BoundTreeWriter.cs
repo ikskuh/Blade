@@ -88,10 +88,10 @@ public static class BoundTreeWriter
                 {
                     string prefix = forStatement.ItemIsMutable ? "&" : "";
                     binding = $" -> {prefix}{forStatement.ItemVariable.Name}";
-                    if (forStatement.IndexVariable is not null && !forStatement.IndexVariable.Name.StartsWith("__", StringComparison.Ordinal))
+                    if (forStatement.IndexVariable?.Name.StartsWith("__", StringComparison.Ordinal) == false)
                         binding += $", {forStatement.IndexVariable.Name}";
                 }
-                else if (forStatement.IndexVariable is not null && !forStatement.IndexVariable.Name.StartsWith("__", StringComparison.Ordinal))
+                else if (forStatement.IndexVariable?.Name.StartsWith("__", StringComparison.Ordinal) == false)
                 {
                     binding = $" -> {forStatement.IndexVariable.Name}";
                 }

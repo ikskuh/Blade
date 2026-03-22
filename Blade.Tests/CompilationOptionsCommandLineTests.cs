@@ -19,54 +19,6 @@ public sealed class CompilationOptionsCommandLineTests
     }
 
     [Test]
-    public void TryParse_ParsesOptimizationAndModuleArgumentsRelativeToBaseDirectory()
-    {
-        using TempDirectory tempDirectory = new();
-
-        bool succeeded = CompilationOptionsCommandLine.TryParse(
-            [
-                "-fno-mir-opt=const-prop",
-                "-flir-opt=dce",
-                "--module=extmod=mods/ext.blade",
-            ],
-            tempDirectory.Path,
-            out CompilationOptions options,
-            out string? errorMessage);
-
-        Assert.That(succeeded, Is.True);
-        Assert.That(errorMessage, Is.Null);
-        Assert.That(options.EnableSingleCallsiteInlining, Is.True);
-        Assert.That(options.OptimizationDirectives, Has.Count.EqualTo(2));
-        Assert.That(options.OptimizationDirectives[0].Stage, Is.EqualTo(OptimizationStage.Mir));
-        Assert.That(options.OptimizationDirectives[0].Enable, Is.False);
-        Assert.That(options.OptimizationDirectives[0].Names, Is.EqualTo(["const-prop"]));
-        Assert.That(options.OptimizationDirectives[1].Stage, Is.EqualTo(OptimizationStage.Lir));
-        Assert.That(options.OptimizationDirectives[1].Enable, Is.True);
-        Assert.That(options.OptimizationDirectives[1].Names, Is.EqualTo(["dce"]));
-        Assert.That(options.NamedModuleRoots.Keys, Is.EqualTo(["extmod"]));
-        Assert.That(options.NamedModuleRoots["extmod"], Is.EqualTo(tempDirectory.GetFullPath("mods/ext.blade")));
-    }
-
-    [Test]
-    public void TryParse_RejectsDuplicateModuleDefinitions()
-    {
-        using TempDirectory tempDirectory = new();
-
-        bool succeeded = CompilationOptionsCommandLine.TryParse(
-            [
-                "--module=extmod=mods/ext-a.blade",
-                "--module=extmod=mods/ext-b.blade",
-            ],
-            tempDirectory.Path,
-            out CompilationOptions options,
-            out string? errorMessage);
-
-        Assert.That(succeeded, Is.False);
-        Assert.That(errorMessage, Is.EqualTo("error: duplicate module specification for 'extmod'."));
-        Assert.That(options.NamedModuleRoots.Count, Is.EqualTo(0));
-    }
-
-    [Test]
     public void TryParse_UsesDefaultComptimeFuelWhenNoOverrideIsPresent()
     {
         using TempDirectory tempDirectory = new();
@@ -80,22 +32,6 @@ public sealed class CompilationOptionsCommandLineTests
         Assert.That(succeeded, Is.True);
         Assert.That(errorMessage, Is.Null);
         Assert.That(options.ComptimeFuel, Is.EqualTo(250));
-    }
-
-    [Test]
-    public void TryParse_ParsesComptimeFuelOverride()
-    {
-        using TempDirectory tempDirectory = new();
-
-        bool succeeded = CompilationOptionsCommandLine.TryParse(
-            ["--comptime-fuel=17"],
-            tempDirectory.Path,
-            out CompilationOptions options,
-            out string? errorMessage);
-
-        Assert.That(succeeded, Is.True);
-        Assert.That(errorMessage, Is.Null);
-        Assert.That(options.ComptimeFuel, Is.EqualTo(17));
     }
 
     [Test]

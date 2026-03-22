@@ -1170,11 +1170,11 @@ public sealed class Binder
         if (_loopStack.Count == 0)
         {
             _diagnostics.ReportInvalidLoopControl(keywordToken.Span, keywordToken.Text);
-            return isBreak ? new BoundBreakStatement(keywordToken.Span) : new BoundContinueStatement(keywordToken.Span);
         }
-
-        if (isBreak && _loopStack.Peek() == LoopContext.Rep)
+        else if (isBreak && _loopStack.Peek() == LoopContext.Rep)
+        {
             _diagnostics.ReportInvalidBreakInRep(keywordToken.Span);
+        }
 
         return isBreak ? new BoundBreakStatement(keywordToken.Span) : new BoundContinueStatement(keywordToken.Span);
     }
@@ -1479,21 +1479,7 @@ public sealed class Binder
             }
 
             case BoundUnaryOperatorKind.Negation:
-            {
-                BoundExpression operand = BindExpression(unary.Operand);
-                if (!operand.Type.IsInteger)
-                    _diagnostics.ReportTypeMismatch(unary.Operand.Span, "integer", operand.Type.Name);
-                return new BoundUnaryExpression(unaryOperator, operand, unary.Span, operand.Type.IsInteger ? operand.Type : BuiltinTypes.Unknown);
-            }
-
             case BoundUnaryOperatorKind.BitwiseNot:
-            {
-                BoundExpression operand = BindExpression(unary.Operand);
-                if (!operand.Type.IsInteger)
-                    _diagnostics.ReportTypeMismatch(unary.Operand.Span, "integer", operand.Type.Name);
-                return new BoundUnaryExpression(unaryOperator, operand, unary.Span, operand.Type.IsInteger ? operand.Type : BuiltinTypes.Unknown);
-            }
-
             case BoundUnaryOperatorKind.UnaryPlus:
             {
                 BoundExpression operand = BindExpression(unary.Operand);
@@ -1532,7 +1518,7 @@ public sealed class Binder
         if (symbol is ParameterSymbol parameter)
             return BindAddressOfParameter(unary, op, parameter);
 
-        Debug.Assert(false, "Address-of should only resolve to variables or parameters after lookup succeeds.");
+        Debug.Assert(symbol is VariableSymbol or ParameterSymbol, "Address-of should only resolve to variables or parameters after lookup succeeds.");
         _diagnostics.ReportInvalidAddressOfTarget(unary.Operand.Span);
         return new BoundErrorExpression(unary.Span);
     }
@@ -2290,7 +2276,9 @@ public sealed class Binder
             producedLength = expectedLength!.Value;
         }
         else if (lastElementIsSpread && expectedLength is int knownSpreadLength && knownSpreadLength > explicitCount)
+        {
             producedLength = knownSpreadLength;
+        }
 
         TypeSymbol resolvedElementType = Requires.NotNull(elementType);
         ArrayTypeSymbol resultType = expectedArrayType is not null && expectedArrayType.Length is null

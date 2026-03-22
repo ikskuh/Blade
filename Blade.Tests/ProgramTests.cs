@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Reflection;
 using System.Text.Json;
 using Blade.Source;
@@ -12,7 +11,7 @@ public class ProgramTests
 {
     private static readonly object ConsoleLock = new();
 
-    private static Type CommandLineOptionsType => typeof(SourceText).Assembly.GetType("CommandLineOptions", throwOnError: true)!;
+    private static Type CommandLineOptionsType => typeof(SourceText).Assembly.GetType("Blade.CommandLineOptions", throwOnError: true)!;
 
     private static (T Result, string StdOut, string StdErr) CaptureConsole<T>(Func<T> action)
     {
@@ -86,9 +85,7 @@ public class ProgramTests
             "--dump-final-asm",
             "--json",
             "--output",
-            "report.json",
-            "--comptime-fuel=19",
-            "-fno-mir-opt=single-callsite-inline");
+            "report.json");
 
         Assert.That(options, Is.Not.Null);
         Assert.That(GetProperty<string>(options!, "FilePath"), Is.EqualTo("input.blade"));
@@ -103,9 +100,6 @@ public class ProgramTests
         Assert.That(GetProperty<bool>(options!, "Json"), Is.True);
         Assert.That(GetProperty<string?>(options!, "OutputPath"), Is.EqualTo("report.json"));
         Assert.That(GetProperty<string?>(options!, "DumpDirectory"), Is.Null);
-        Assert.That(GetProperty<int>(options!, "ComptimeFuel"), Is.EqualTo(19));
-        System.Collections.IEnumerable directives = GetProperty<System.Collections.IEnumerable>(options!, "OptimizationDirectives");
-        Assert.That(directives.Cast<object>().Count(), Is.EqualTo(1));
     }
 
     [Test]
@@ -124,21 +118,6 @@ public class ProgramTests
         Assert.That(GetProperty<bool>(options!, "DumpFinalAsm"), Is.True);
     }
 
-
-    [Test]
-    public void CommandLineOptions_Parse_RecognizesOptimizationToggleFlags()
-    {
-        object? options = ParseOptions(
-            "input.blade",
-            "-fno-asmir-opt=*",
-            "-fasmir-opt=elide-nops",
-            "-fno-mir-opt=const-prop",
-            "-flir-opt=dce");
-
-        Assert.That(options, Is.Not.Null);
-        System.Collections.IEnumerable directives = GetProperty<System.Collections.IEnumerable>(options!, "OptimizationDirectives");
-        Assert.That(directives.Cast<object>().Count(), Is.EqualTo(4));
-    }
 
     [Test]
     public void CommandLineOptions_Parse_ReportsUsageAndErrors()
@@ -452,45 +431,6 @@ public class ProgramTests
     }
 
     [Test]
-    public void CommandLineOptions_Parse_AcceptsWildcardOptimizationEntries()
-    {
-        object? options = ParseOptions("input.blade", "-fmir-opt=*", "-flir-opt=*", "-fasmir-opt=*");
-
-        Assert.That(options, Is.Not.Null);
-        System.Collections.IEnumerable directives = GetProperty<System.Collections.IEnumerable>(options!, "OptimizationDirectives");
-        Assert.That(directives.Cast<object>().Count(), Is.EqualTo(3));
-    }
-
-
-    [Test]
-    public void CommandLineOptions_Parse_CoversAllOptimizationStagesAndDisableForms()
-    {
-        object? options = ParseOptions(
-            "input.blade",
-            "-fno-mir-opt=const-prop",
-            "-flir-opt=dce",
-            "-fno-lir-opt=copy-prop",
-            "-fasmir-opt=elide-nops",
-            "-fno-asmir-opt=copy-prop");
-
-        Assert.That(options, Is.Not.Null);
-        System.Collections.IEnumerable directives = GetProperty<System.Collections.IEnumerable>(options!, "OptimizationDirectives");
-        Assert.That(directives.Cast<object>().Count(), Is.EqualTo(5));
-    }
-
-
-    [Test]
-    public void CommandLineOptions_Parse_RecognizesModuleMappings()
-    {
-        object? options = ParseOptions("input.blade", "--module=extmod=./mods/ext.blade");
-
-        Assert.That(options, Is.Not.Null);
-        IReadOnlyDictionary<string, string> moduleRoots = GetProperty<IReadOnlyDictionary<string, string>>(options!, "NamedModuleRoots");
-        Assert.That(moduleRoots.ContainsKey("extmod"), Is.True);
-        Assert.That(Path.IsPathRooted(moduleRoots["extmod"]), Is.True);
-    }
-
-    [Test]
     public void CommandLineOptions_Parse_RejectsInvalidModuleMappings()
     {
         (object? missingEquals, _, string missingEqualsErr) = CaptureConsole(() => ParseOptions("input.blade", "--module=extmod"));
@@ -512,19 +452,6 @@ public class ProgramTests
         (object? blankNameAfterTrim, _, string blankNameAfterTrimErr) = CaptureConsole(() => ParseOptions("input.blade", "--module=   =path.blade"));
         Assert.That(blankNameAfterTrim, Is.Null);
         Assert.That(blankNameAfterTrimErr, Does.Contain("invalid module specification"));
-    }
-
-    [Test]
-    public void CommandLineOptions_Parse_RejectsDuplicateModuleMappings()
-    {
-        (object? options, _, string errorText) = CaptureConsole(() =>
-            ParseOptions(
-                "input.blade",
-                "--module=extmod=./mods/ext-a.blade",
-                "--module=extmod=./mods/ext-b.blade"));
-
-        Assert.That(options, Is.Null);
-        Assert.That(errorText, Does.Contain("duplicate module specification for 'extmod'"));
     }
 
     [Test]

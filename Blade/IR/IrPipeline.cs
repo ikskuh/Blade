@@ -39,10 +39,12 @@ public static class IrPipeline
         LirModule lirModule = LirLowerer.Lower(mirModule);
         LirModule preOptimizationLirModule = lirModule;
         if (options.EnableLirOptimizations)
+        {
             lirModule = LirOptimizer.Optimize(
                 lirModule,
                 options.MaxOptimizationIterations,
                 OptimizationCatalog.ResolveEnabled(OptimizationStage.Lir, options.OptimizationDirectives));
+        }
 
         AsmModule asmModule = AsmLowerer.Lower(lirModule, diagnostics);
         AsmModule preOptimizationAsmModule = asmModule;

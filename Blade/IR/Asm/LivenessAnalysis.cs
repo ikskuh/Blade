@@ -118,7 +118,7 @@ public static class LivenessAnalyzer
             }
         }
 
-        List<int> sortedLeaders = leaders.OrderBy(x => x).ToList();
+        List<int> sortedLeaders = leaders.Order().ToList();
         List<BasicBlock> blocks = new(sortedLeaders.Count);
 
         for (int i = 0; i < sortedLeaders.Count; i++)

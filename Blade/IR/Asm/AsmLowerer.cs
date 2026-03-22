@@ -204,32 +204,58 @@ public static class AsmLowerer
                 break;
             default:
                 if (op.Opcode.StartsWith("binary.", StringComparison.Ordinal))
+                {
                     LowerBinary(nodes, op, ctx);
+                }
                 else if (op.Opcode.StartsWith("unary.", StringComparison.Ordinal))
+                {
                     LowerUnary(nodes, op, ctx);
+                }
                 else if (op.Opcode.StartsWith("bitfield.extract.", StringComparison.Ordinal))
+                {
                     LowerBitfieldExtract(nodes, op, ctx);
+                }
                 else if (op.Opcode.StartsWith("bitfield.insert.", StringComparison.Ordinal))
+                {
                     LowerBitfieldInsert(nodes, op, ctx);
+                }
                 else if (op.Opcode.StartsWith("load.deref.", StringComparison.Ordinal))
+                {
                     LowerLoadDeref(nodes, op, ctx);
+                }
                 else if (op.Opcode.StartsWith("load.index.", StringComparison.Ordinal))
+                {
                     LowerLoadIndex(nodes, op, ctx);
+                }
                 else if (op.Opcode == "store.place")
+                {
                     LowerStorePlace(nodes, op);
+                }
                 else if (op.Opcode.StartsWith("update.place.", StringComparison.Ordinal))
+                {
                     LowerUpdatePlace(nodes, op);
+                }
                 else if (op.Opcode.StartsWith("store.deref.", StringComparison.Ordinal))
+                {
                     LowerStoreDeref(nodes, op, ctx);
+                }
                 else if (op.Opcode.StartsWith("store.index.", StringComparison.Ordinal))
+                {
                     LowerStoreIndex(nodes, op, ctx);
+                }
                 else if (op.Opcode.StartsWith("store.", StringComparison.Ordinal))
+                {
                     LowerStore(nodes, op, ctx);
+                }
                 else if (op.Opcode.StartsWith("pseudo.", StringComparison.Ordinal))
+                {
                     LowerPseudo(nodes, op, ctx);
+                }
                 else if (op.Opcode.StartsWith("yieldto:", StringComparison.Ordinal)
                          || op.Opcode == "yield")
+                {
                     LowerYield(nodes, op, ctx);
+                }
                 else
                 {
                     ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
@@ -313,8 +339,7 @@ public static class AsmLowerer
             return false;
 
         nodes.Add(new AsmCommentNode("inline asm typed begin"));
-        foreach (AsmNode node in lowered)
-            nodes.Add(node);
+        nodes.AddRange(lowered);
         nodes.Add(new AsmCommentNode("inline asm typed end"));
         return true;
     }
@@ -461,7 +486,9 @@ public static class AsmLowerer
                 || name.Contains('{', StringComparison.Ordinal)
                 || name.Contains('}', StringComparison.Ordinal)
                 || !bindings.TryGetValue(name, out AsmOperand? bound))
+            {
                 return false;
+            }
 
             operand = bound;
             return true;
@@ -469,7 +496,9 @@ public static class AsmLowerer
 
         if (trimmed.Contains('{', StringComparison.Ordinal)
             || trimmed.Contains('}', StringComparison.Ordinal))
+        {
             return false;
+        }
 
         if (trimmed.StartsWith('#'))
         {
@@ -1221,14 +1250,13 @@ public static class AsmLowerer
 
         AsmRegisterOperand destReg = new(dest.Id);
         // Materialize the C or Z flag into a register: set dest to 0, then conditionally set bit 0
+        nodes.Add(Emit("BITL", destReg, new AsmImmediateOperand(0)));
         if (isC)
         {
-            nodes.Add(Emit("BITL", destReg, new AsmImmediateOperand(0)));
             nodes.Add(Emit("BITC", destReg, new AsmImmediateOperand(0)));
         }
         else
         {
-            nodes.Add(Emit("BITL", destReg, new AsmImmediateOperand(0)));
             nodes.Add(Emit("BITZ", destReg, new AsmImmediateOperand(0)));
         }
     }
@@ -1355,7 +1383,7 @@ public static class AsmLowerer
 
     private static string SelectHubReadOpcode(TypeSymbol? type)
     {
-        if (type is not null && type.IsBool)
+        if (type?.IsBool == true)
             return "RDBYTE";
 
         if (type is not null && TypeFacts.TryGetIntegerWidth(type, out int width))
@@ -1371,7 +1399,7 @@ public static class AsmLowerer
 
     private static string SelectHubWriteOpcode(TypeSymbol? type)
     {
-        if (type is not null && type.IsBool)
+        if (type?.IsBool == true)
             return "WRBYTE";
 
         if (type is not null && TypeFacts.TryGetIntegerWidth(type, out int width))
@@ -1725,13 +1753,6 @@ public static class AsmLowerer
     private static bool IsSingleBitType(TypeSymbol? type)
         => type is not null && (type.IsBool || ReferenceEquals(type, BuiltinTypes.Bit));
 
-    private static long GetImmediateValue(LirOperand operand)
-    {
-        if (operand is LirImmediateOperand imm)
-            return GetImmediateValue(imm);
-        throw new InvalidOperationException($"Expected immediate operand, got {operand.GetType().Name}");
-    }
-
     private static long GetImmediateValue(LirImmediateOperand imm)
     {
         return imm.Value switch
@@ -1761,13 +1782,6 @@ public static class AsmLowerer
         return parts.Length == 2
             && int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out bitOffset)
             && int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out bitWidth);
-    }
-
-    private static AsmInstructionNode Emit(
-        string opcode,
-        params AsmOperand[] operands)
-    {
-        return new AsmInstructionNode(opcode, operands);
     }
 
     private static AsmInstructionNode Emit(

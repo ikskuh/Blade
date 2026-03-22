@@ -44,9 +44,7 @@ public static class MirOptimizer
         // After all optimization iterations, propagate flag annotations to branches.
         // This must run after inlining so that inlined flag-producing instructions
         // (e.g., inline asm with @C output, comparisons) can be matched to branches.
-        current = RunFlagPropagation(current);
-
-        return current;
+        return RunFlagPropagation(current);
     }
 
     /// <summary>

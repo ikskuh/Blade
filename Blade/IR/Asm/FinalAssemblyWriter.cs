@@ -54,7 +54,9 @@ public static class FinalAssemblyWriter
                     or StoragePlaceKind.FixedLutAlias
                     or StoragePlaceKind.FixedHubAlias)
                 || !place.FixedAddress.HasValue)
+            {
                 continue;
+            }
 
             if (P2InstructionMetadata.IsSpecialRegisterName(place.EmittedName))
                 continue;
