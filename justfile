@@ -49,7 +49,20 @@ regressions:
 
 # Runs the fuzzer suite
 fuzz:
-    false
+    rm -rf fuzzing/{findings,build}
+    mkdir -p fuzzing/{corpus,findings,build}
+
+    # Sync corpus:
+    find Demonstrators -type f -name "*.blade" -exec cp '{}' fuzzing/corpus ';'
+    find Examples      -type f -name "*.blade" -exec cp '{}' fuzzing/corpus ';'
+
+    DOTNET_ROLL_FORWARD=Major python3 \
+        Scripts/fuzz.py \
+        --project   Blade.FuzzTest/Blade.FuzzTest.csproj \
+        --corpus    fuzzing/corpus  \
+        --findings  fuzzing/findings  \
+        --build     fuzzing/build  \
+        --command   ~/.dotnet/tools/sharpfuzz
 
 compile-all-samples: build \
     (compile-sample "Examples/blinky.blade") \

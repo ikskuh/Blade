@@ -7,3 +7,5 @@ bin/
 coverage/
 
 __pycache__/
+
+fuzzing/

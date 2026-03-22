@@ -989,7 +989,8 @@ internal sealed class ComptimeEvaluator
         object? finalValue = assignedValue;
         if (assignment.OperatorKind != TokenKind.Equal)
         {
-            Debug.Assert(frame.TryGetValue(symbolTarget.Symbol, out object? currentValue));
+            var ok = frame.TryGetValue(symbolTarget.Symbol, out object? currentValue);
+            Debug.Assert(ok);
 
             BoundBinaryOperatorKind operation = assignment.OperatorKind switch
             {

@@ -222,12 +222,10 @@ public static class AsmLowerer
 
     private static void EmitRecursiveFunctionEntryLoads(List<AsmNode> nodes, LirBlock block, LoweringContext ctx)
     {
-        Debug.Assert(
-            ctx.RecursiveCallingConvention.TryGetValue(ctx.Function.Name, out RecursiveCallingConventionInfo? recursiveInfo),
-            "Recursive functions must have calling-convention metadata.");
-        Debug.Assert(
-            recursiveInfo.ParameterPlaces.Count == block.Parameters.Count,
-            "Recursive entry ABI must match the function parameter list.");
+        var ok = ctx.RecursiveCallingConvention.TryGetValue(ctx.Function.Name, out RecursiveCallingConventionInfo? recursiveInfo);
+        Debug.Assert(ok, "Recursive functions must have calling-convention metadata.");
+        Debug.Assert(recursiveInfo != null);
+        Debug.Assert(recursiveInfo.ParameterPlaces.Count == block.Parameters.Count, "Recursive entry ABI must match the function parameter list.");
 
         for (int i = 0; i < block.Parameters.Count; i++)
         {
@@ -955,14 +953,14 @@ public static class AsmLowerer
                 nodes.Add(Emit("RDLUT", dest, index));
                 break;
             case VariableStorageClass.Hub:
-            {
-                int elemSize = GetHubElementSize(op.ResultType);
-                if (elemSize > 1)
-                    nodes.Add(Emit("SHL", index, new AsmImmediateOperand(ShiftForSize(elemSize))));
-                nodes.Add(Emit("ADD", index, baseOp));
-                nodes.Add(Emit(SelectHubReadOpcode(op.ResultType), dest, index));
-                break;
-            }
+                {
+                    int elemSize = GetHubElementSize(op.ResultType);
+                    if (elemSize > 1)
+                        nodes.Add(Emit("SHL", index, new AsmImmediateOperand(ShiftForSize(elemSize))));
+                    nodes.Add(Emit("ADD", index, baseOp));
+                    nodes.Add(Emit(SelectHubReadOpcode(op.ResultType), dest, index));
+                    break;
+                }
             default:
                 ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
                 nodes.Add(new AsmCommentNode($"unhandled: {op.Opcode}"));
@@ -1005,14 +1003,14 @@ public static class AsmLowerer
                 nodes.Add(new AsmInstructionNode("WRLUT", [value, index]));
                 break;
             case VariableStorageClass.Hub:
-            {
-                int elemSize = GetHubElementSize(op.ResultType);
-                if (elemSize > 1)
-                    nodes.Add(Emit("SHL", index, new AsmImmediateOperand(ShiftForSize(elemSize))));
-                nodes.Add(Emit("ADD", index, baseOp));
-                nodes.Add(new AsmInstructionNode(SelectHubWriteOpcode(op.ResultType), [value, index]));
-                break;
-            }
+                {
+                    int elemSize = GetHubElementSize(op.ResultType);
+                    if (elemSize > 1)
+                        nodes.Add(Emit("SHL", index, new AsmImmediateOperand(ShiftForSize(elemSize))));
+                    nodes.Add(Emit("ADD", index, baseOp));
+                    nodes.Add(new AsmInstructionNode(SelectHubWriteOpcode(op.ResultType), [value, index]));
+                    break;
+                }
             default:
                 ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
                 nodes.Add(new AsmCommentNode($"unhandled: {op.Opcode}"));
@@ -1342,7 +1340,8 @@ public static class AsmLowerer
 
     private static bool TryGetSingleWordAggregateSize(TypeSymbol type, out int sizeBytes)
     {
-        Debug.Assert(TypeFacts.TryGetSizeBytes(type, out sizeBytes), $"Type '{type.Name}' must have a known size.");
+        var ok = TypeFacts.TryGetSizeBytes(type, out sizeBytes);
+        Debug.Assert(ok, $"Type '{type.Name}' must have a known size.");
         return sizeBytes > 0 && sizeBytes <= 4;
     }
 
@@ -1591,8 +1590,9 @@ public static class AsmLowerer
                 break;
 
             case CallingConventionTier.Recursive:
-                Debug.Assert(
-                    ctx.RecursiveCallingConvention.TryGetValue(target, out RecursiveCallingConventionInfo? recursiveInfo),
+                var ok = ctx.RecursiveCallingConvention.TryGetValue(target, out RecursiveCallingConventionInfo? recursiveInfo);
+                Debug.Assert(ok
+                    ,
                     "Recursive callees must have calling-convention metadata.");
                 Debug.Assert(
                     recursiveInfo.ParameterPlaces.Count == args.Count,
@@ -1893,8 +1893,9 @@ public static class AsmLowerer
                     break;
 
                 case CallingConventionTier.Recursive:
-                    Debug.Assert(
-                        ctx.RecursiveCallingConvention.TryGetValue(ctx.Function.Name, out RecursiveCallingConventionInfo? recursiveInfo),
+                    var ok = ctx.RecursiveCallingConvention.TryGetValue(ctx.Function.Name, out RecursiveCallingConventionInfo? recursiveInfo);
+                    Debug.Assert(ok
+                        ,
                         "Recursive functions must have calling-convention metadata.");
                     Debug.Assert(
                         recursiveInfo.RegisterReturnPlace is not null,
