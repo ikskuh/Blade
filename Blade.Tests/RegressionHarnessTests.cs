@@ -86,4 +86,31 @@ public sealed class RegressionHarnessTests
 
         Assert.That(result.FixtureResults, Is.Not.Empty);
     }
+
+    [Test]
+    public void BladeCrashFixture_PassesWhenCompilationProducesDiagnosticsButDoesNotThrow()
+    {
+        using TempDirectory temp = new();
+        temp.MakeDir("Examples");
+        temp.MakeDir("Demonstrators");
+        temp.MakeDir("Blade.Tests");
+        temp.WriteFile("justfile", "fuzz:\n    false\n");
+        temp.WriteFile("RegressionTests/syntax_failure.blade.crash", "fn main(");
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(fixtureResult.RelativePath, Is.EqualTo("RegressionTests/syntax_failure.blade.crash"));
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Pass));
+            Assert.That(fixtureResult.Summary, Is.EqualTo("passed"));
+            Assert.That(fixtureResult.Details, Is.Empty);
+        });
+    }
 }

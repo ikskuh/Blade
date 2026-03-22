@@ -70,3 +70,15 @@
 - Symptom: Parser accepts repeated `@(addr)`, `align(n)`, or `= initializer` clauses in one variable declaration and silently overwrites prior clause values.
 - Location: `Blade/Syntax/Parser.cs` — `ParseVariableDeclaration` loop updates single `atClause` / `alignClause` / `initializer` slots with no duplicate diagnostics.
 - Impact: User mistakes are masked and declarations can be interpreted differently than intended.
+
+## Fuzz Crash Fixtures Still Trigger Compiler Exceptions
+
+- Date: 2026-03-22
+- Symptom: the new `.blade.crash` regression-fixture path exposes several existing compiler crashes in `RegressionTests/Fuzzing/issue-00001.blade.crash` through `issue-00005.blade.crash`.
+- Observed failures:
+  `issue-00001`: `Debug.Fail` in assignment target handling (`assignment.Target is BoundSymbolAssignmentTarget`).
+  `issue-00002`: `The input string '\u0000' was not in a correct format.`
+  `issue-00003`: `Debug.Fail` in top-level variable registration (`DeclareTopLevelVariables must register every top-level variable before binding.`).
+  `issue-00004`: same top-level variable registration assertion as `issue-00003`.
+  `issue-00005`: `Instruction '_AITX' operand 1 does not support immediate syntax.`
+- Impact: regression harness now correctly reports these as failures, which means the compiler still crashes on some fuzz-discovered inputs instead of degrading to diagnostics.

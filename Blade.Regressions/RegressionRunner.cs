@@ -73,6 +73,7 @@ public enum RegressionFixtureOutcome
 public enum RegressionFixtureKind
 {
     Blade,
+    BladeCrash,
     Spin2,
     Pasm2,
 }
@@ -236,8 +237,11 @@ public static class RegressionRunner
     {
         List<string> paths = [];
         AddFixturePaths(paths, Path.Combine(repositoryRootPath, "Examples"), "*.blade");
+        AddFixturePaths(paths, Path.Combine(repositoryRootPath, "Examples"), "*.blade.crash");
         AddFixturePaths(paths, Path.Combine(repositoryRootPath, "Demonstrators"), "*.blade");
+        AddFixturePaths(paths, Path.Combine(repositoryRootPath, "Demonstrators"), "*.blade.crash");
         AddFixturePaths(paths, Path.Combine(repositoryRootPath, "RegressionTests"), "*.blade");
+        AddFixturePaths(paths, Path.Combine(repositoryRootPath, "RegressionTests"), "*.blade.crash");
         AddFixturePaths(paths, Path.Combine(repositoryRootPath, "RegressionTests"), "*.spin2");
         AddFixturePaths(paths, Path.Combine(repositoryRootPath, "RegressionTests"), "*.pasm2");
 
@@ -270,6 +274,12 @@ public static class RegressionRunner
         try
         {
             RegressionFixture fixture = RegressionFixtureParser.Parse(repositoryRootPath, fixturePath);
+            if (fixture.Kind == RegressionFixtureKind.BladeCrash)
+            {
+                _ = ExecuteBladeCrashFixture(fixture);
+                return new RegressionFixtureResult(relativePath, RegressionFixtureOutcome.Pass, "passed", [], null);
+            }
+
             EvaluatedFixture evaluatedFixture = ExecuteFixture(fixture);
             List<string> issues = [];
 
@@ -336,6 +346,7 @@ public static class RegressionRunner
         return fixture.Kind switch
         {
             RegressionFixtureKind.Blade => ExecuteBladeFixture(fixture),
+            RegressionFixtureKind.BladeCrash => ExecuteBladeCrashFixture(fixture),
             RegressionFixtureKind.Pasm2 => EvaluatedFixture.ForAssembly(fixture.BodyText),
             RegressionFixtureKind.Spin2 => EvaluatedFixture.ForAssembly(fixture.BodyText),
             _ => throw new InvalidOperationException($"Unknown fixture kind '{fixture.Kind}'."),
@@ -385,6 +396,12 @@ public static class RegressionRunner
             stageOutputs,
             compilation.IrBuildResult?.AssemblyText,
             fixture.BodyText);
+    }
+
+    private static EvaluatedFixture ExecuteBladeCrashFixture(RegressionFixture fixture)
+    {
+        _ = CompilerDriver.Compile(fixture.Text, fixture.AbsolutePath);
+        return EvaluatedFixture.Empty(fixture.RelativePath);
     }
 
     private static CompilationOptions BuildCompilationOptions(IReadOnlyList<string> compilerArgs, string fixturePath)
@@ -742,6 +759,14 @@ internal static class RegressionFixtureParser
                 FlexspinExpectation.Auto,
                 []);
 
+        if (kind == RegressionFixtureKind.BladeCrash)
+        {
+            if (headerScan.HasDirectiveHeader)
+                throw new InvalidOperationException(".blade.crash fixtures do not support expectation headers.");
+
+            return new RegressionFixture(fixturePath, relativePath, kind, text, headerScan.BodyText, expectation);
+        }
+
         if (kind != RegressionFixtureKind.Blade && expectation.HasDiagnosticAssertions)
             throw new InvalidOperationException("Assembly fixtures do not support DIAGNOSTICS assertions.");
 
@@ -773,6 +798,9 @@ internal static class RegressionFixtureParser
 
     private static RegressionFixtureKind DetermineFixtureKind(string fixturePath)
     {
+        if (fixturePath.EndsWith(".blade.crash", StringComparison.Ordinal))
+            return RegressionFixtureKind.BladeCrash;
+
         string extension = Path.GetExtension(fixturePath);
         return extension switch
         {
