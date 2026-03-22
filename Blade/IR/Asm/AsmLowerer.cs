@@ -27,6 +27,8 @@ public static class AsmLowerer
 
         // Run call graph analysis to determine CC tiers and dead functions
         CallGraphResult cgResult = CallGraphAnalyzer.Analyze(module);
+        (IReadOnlyList<StoragePlace> storagePlaces, Dictionary<string, RecursiveCallingConventionInfo> recursiveCallingConvention) =
+            BuildRecursiveCallingConvention(module, cgResult);
 
         // Build a map of function name → block label → block parameter registers
         // so φ-moves can emit actual MOV instructions to the right target registers.
@@ -47,11 +49,18 @@ public static class AsmLowerer
                 continue;
 
             CallingConventionTier tier = cgResult.Tiers.GetValueOrDefault(function.Name, CallingConventionTier.General);
-            LoweringContext ctx = new(function, functionOrdinal: functions.Count, tier, cgResult.Tiers, blockParamMap[function.Name], diagnostics);
+            LoweringContext ctx = new(
+                function,
+                functionOrdinal: functions.Count,
+                tier,
+                cgResult.Tiers,
+                blockParamMap[function.Name],
+                recursiveCallingConvention,
+                diagnostics);
             functions.Add(LowerFunction(ctx));
         }
 
-        return new AsmModule(module.StoragePlaces, functions);
+        return new AsmModule(storagePlaces, functions);
     }
 
     private sealed class LoweringContext
@@ -61,6 +70,7 @@ public static class AsmLowerer
         public CallingConventionTier Tier { get; }
         public Dictionary<string, CallingConventionTier> CalleeTiers { get; }
         public Dictionary<string, IReadOnlyList<LirBlockParameter>> BlockParams { get; }
+        public Dictionary<string, RecursiveCallingConventionInfo> RecursiveCallingConvention { get; }
         public DiagnosticBag? Diagnostics { get; }
         public HashSet<string> ReportedUnsupportedLowerings { get; } = new(StringComparer.Ordinal);
         public int NextInlineAsmBlockOrdinal { get; set; }
@@ -78,6 +88,7 @@ public static class AsmLowerer
             CallingConventionTier tier,
             Dictionary<string, CallingConventionTier> calleeTiers,
             Dictionary<string, IReadOnlyList<LirBlockParameter>> blockParams,
+            Dictionary<string, RecursiveCallingConventionInfo> recursiveCallingConvention,
             DiagnosticBag? diagnostics)
         {
             Function = function;
@@ -85,8 +96,23 @@ public static class AsmLowerer
             Tier = tier;
             CalleeTiers = calleeTiers;
             BlockParams = blockParams;
+            RecursiveCallingConvention = recursiveCallingConvention;
             Diagnostics = diagnostics;
         }
+    }
+
+    private sealed class RecursiveCallingConventionInfo
+    {
+        public RecursiveCallingConventionInfo(
+            IReadOnlyList<StoragePlace> parameterPlaces,
+            StoragePlace? registerReturnPlace)
+        {
+            ParameterPlaces = parameterPlaces;
+            RegisterReturnPlace = registerReturnPlace;
+        }
+
+        public IReadOnlyList<StoragePlace> ParameterPlaces { get; }
+        public StoragePlace? RegisterReturnPlace { get; }
     }
 
     private static AsmFunction LowerFunction(LoweringContext ctx)
@@ -99,6 +125,12 @@ public static class AsmLowerer
             string blockLabel = $"{ctx.Function.Name}_{block.Label}";
             nodes.Add(new AsmLabelNode(blockLabel));
 
+            if (ctx.Tier == CallingConventionTier.Recursive
+                && ReferenceEquals(block, ctx.Function.Blocks[0]))
+            {
+                EmitRecursiveFunctionEntryLoads(nodes, block, ctx);
+            }
+
             ComputeFlagOnlyRegisters(ctx, block);
 
             foreach (LirInstruction instruction in block.Instructions)
@@ -108,6 +140,102 @@ public static class AsmLowerer
         }
 
         return new AsmFunction(ctx.Function.Name, ctx.Function.IsEntryPoint, ctx.Tier, nodes);
+    }
+
+    private static (
+        IReadOnlyList<StoragePlace> StoragePlaces,
+        Dictionary<string, RecursiveCallingConventionInfo> RecursiveCallingConvention)
+        BuildRecursiveCallingConvention(LirModule module, CallGraphResult cgResult)
+    {
+        List<StoragePlace> storagePlaces = new(module.StoragePlaces.Count);
+        storagePlaces.AddRange(module.StoragePlaces);
+
+        Dictionary<string, RecursiveCallingConventionInfo> recursiveCallingConvention = new(StringComparer.Ordinal);
+        foreach (LirFunction function in module.Functions)
+        {
+            if (cgResult.DeadFunctions.Contains(function.Name))
+                continue;
+
+            if (cgResult.Tiers.GetValueOrDefault(function.Name, CallingConventionTier.General) != CallingConventionTier.Recursive)
+                continue;
+
+            Debug.Assert(function.Blocks.Count > 0, "Recursive functions must have an entry block.");
+            IReadOnlyList<LirBlockParameter> entryParameters = function.Blocks[0].Parameters;
+            List<StoragePlace> parameterPlaces = new(entryParameters.Count);
+            for (int i = 0; i < entryParameters.Count; i++)
+            {
+                VariableSymbol parameterSymbol = new(
+                    $"rec_{function.Name}_arg{i}",
+                    entryParameters[i].Type,
+                    isConst: false,
+                    VariableStorageClass.Reg,
+                    VariableScopeKind.GlobalStorage,
+                    isExtern: false,
+                    fixedAddress: null,
+                    alignment: null);
+                StoragePlace parameterPlace = new(
+                    parameterSymbol,
+                    StoragePlaceKind.AllocatableGlobalRegister,
+                    fixedAddress: null,
+                    staticInitializer: null);
+                parameterPlaces.Add(parameterPlace);
+                storagePlaces.Add(parameterPlace);
+            }
+
+            ReturnSlot? registerReturnSlot = function.ReturnSlots
+                .Where(static slot => slot.Placement == ReturnPlacement.Register)
+                .Cast<ReturnSlot?>()
+                .FirstOrDefault();
+
+            StoragePlace? registerReturnPlace = null;
+            if (registerReturnSlot is { } slot)
+            {
+                if (parameterPlaces.Count > 0)
+                {
+                    registerReturnPlace = parameterPlaces[0];
+                }
+                else
+                {
+                    VariableSymbol returnSymbol = new(
+                        $"rec_{function.Name}_ret0",
+                        slot.Type,
+                        isConst: false,
+                        VariableStorageClass.Reg,
+                        VariableScopeKind.GlobalStorage,
+                        isExtern: false,
+                        fixedAddress: null,
+                        alignment: null);
+                    registerReturnPlace = new StoragePlace(
+                        returnSymbol,
+                        StoragePlaceKind.AllocatableGlobalRegister,
+                        fixedAddress: null,
+                        staticInitializer: null);
+                    storagePlaces.Add(registerReturnPlace);
+                }
+            }
+
+            recursiveCallingConvention[function.Name] = new RecursiveCallingConventionInfo(parameterPlaces, registerReturnPlace);
+        }
+
+        return (storagePlaces, recursiveCallingConvention);
+    }
+
+    private static void EmitRecursiveFunctionEntryLoads(List<AsmNode> nodes, LirBlock block, LoweringContext ctx)
+    {
+        Debug.Assert(
+            ctx.RecursiveCallingConvention.TryGetValue(ctx.Function.Name, out RecursiveCallingConventionInfo? recursiveInfo),
+            "Recursive functions must have calling-convention metadata.");
+        Debug.Assert(
+            recursiveInfo.ParameterPlaces.Count == block.Parameters.Count,
+            "Recursive entry ABI must match the function parameter list.");
+
+        for (int i = 0; i < block.Parameters.Count; i++)
+        {
+            nodes.Add(Emit(
+                "MOV",
+                new AsmRegisterOperand(block.Parameters[i].Register.Id),
+                new AsmPlaceOperand(recursiveInfo.ParameterPlaces[i])));
+        }
     }
 
     /// <summary>
@@ -1463,12 +1591,25 @@ public static class AsmLowerer
                 break;
 
             case CallingConventionTier.Recursive:
-                // CALLB: push locals to hub stack via PTRB, then CALLB
+                Debug.Assert(
+                    ctx.RecursiveCallingConvention.TryGetValue(target, out RecursiveCallingConventionInfo? recursiveInfo),
+                    "Recursive callees must have calling-convention metadata.");
+                Debug.Assert(
+                    recursiveInfo.ParameterPlaces.Count == args.Count,
+                    "Recursive call arguments must match the callee parameter ABI.");
+
                 for (int i = 0; i < args.Count; i++)
-                    nodes.Add(new AsmCommentNode($"arg{i} = {args[i].Format()}"));
-                nodes.Add(Emit("CALL", targetOp));
+                    nodes.Add(Emit("MOV", new AsmPlaceOperand(recursiveInfo.ParameterPlaces[i]), args[i]));
+
+                nodes.Add(Emit("CALLB", targetOp));
+
                 if (destReg is not null)
-                    nodes.Add(new AsmCommentNode($"result -> {destReg.Format()}"));
+                {
+                    Debug.Assert(
+                        recursiveInfo.RegisterReturnPlace is not null,
+                        "Recursive register-return calls must have a return storage place.");
+                    nodes.Add(Emit("MOV", destReg, new AsmPlaceOperand(recursiveInfo.RegisterReturnPlace)));
+                }
                 break;
 
             default:
@@ -1751,8 +1892,18 @@ public static class AsmLowerer
                     nodes.Add(new AsmInstructionNode("MOV", [new AsmSymbolOperand("PB"), resultOp]));
                     break;
 
+                case CallingConventionTier.Recursive:
+                    Debug.Assert(
+                        ctx.RecursiveCallingConvention.TryGetValue(ctx.Function.Name, out RecursiveCallingConventionInfo? recursiveInfo),
+                        "Recursive functions must have calling-convention metadata.");
+                    Debug.Assert(
+                        recursiveInfo.RegisterReturnPlace is not null,
+                        "Recursive register-return functions must have a return storage place.");
+                    nodes.Add(new AsmInstructionNode("MOV", [new AsmPlaceOperand(recursiveInfo.RegisterReturnPlace), resultOp]));
+                    break;
+
                 default:
-                    // General/Recursive: result stays in its register (caller knows which)
+                    // General: result stays in its register (caller knows which)
                     nodes.Add(new AsmImplicitUseNode([resultOp]));
                     nodes.Add(new AsmCommentNode($"return value: {resultOp.Format()}"));
                     break;
@@ -1779,7 +1930,7 @@ public static class AsmLowerer
                 break;
 
             case CallingConventionTier.Recursive:
-                nodes.Add(Emit("RET"));
+                nodes.Add(Emit("RETB"));
                 break;
 
             case CallingConventionTier.Interrupt:

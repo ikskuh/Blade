@@ -28,3 +28,10 @@
 - Location: `Blade/Syntax/Parser.cs:303` — `MatchToken(TokenKind.Identifier)` rejects keyword tokens in flag annotation position.
 - Reference: `Docs/reference.blade:54` defines `fn get_three_specific() -> u32@reg, bool@C, bit@Z` as valid syntax.
 - Fix: Accept keyword tokens (at minimum `reg`) in the flag annotation position of `ParseReturnItem`.
+
+## Function Names That Match PASM Keywords Emit Invalid Labels
+
+- Date: 2026-03-22
+- Symptom: A valid Blade function such as `rec fn step() -> u32` lowers to a bare `step` label in final PASM, which FlexSpin tokenizes as the `STEP` instruction instead of an identifier.
+- Impact: Final assembly validation fails even though the source program is otherwise valid.
+- Notes: This surfaced while adding recursive calling-convention coverage for BUG-4. The demonstrator was renamed, but the label-escaping issue remains open.

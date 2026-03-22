@@ -141,6 +141,38 @@ public static class AsmOptimizer
 
     private static (AsmFunction Function, bool Changed) RemoveDeadPureRegisterInstructions(AsmFunction function)
     {
+        if (!UsesNonLinearControlFlow(function))
+            return RemoveDeadPureRegisterInstructionsStraightLine(function);
+
+        FunctionLiveness liveness = LivenessAnalyzer.Analyze(function);
+        List<AsmNode> kept = [];
+        bool changed = false;
+
+        for (int i = function.Nodes.Count - 1; i >= 0; i--)
+        {
+            AsmNode node = function.Nodes[i];
+            if (node is AsmInstructionNode instruction)
+            {
+                IReadOnlySet<int> liveAfterInstruction = liveness.LiveRegistersAfterInstruction.TryGetValue(i, out HashSet<int>? liveSet)
+                    ? liveSet
+                    : [];
+
+                if (IsDeadInstruction(instruction, liveAfterInstruction))
+                {
+                    changed = true;
+                    continue;
+                }
+            }
+
+            kept.Add(node);
+        }
+
+        kept.Reverse();
+        return (new AsmFunction(function.Name, function.IsEntryPoint, function.CcTier, kept), changed);
+    }
+
+    private static (AsmFunction Function, bool Changed) RemoveDeadPureRegisterInstructionsStraightLine(AsmFunction function)
+    {
         HashSet<int> live = [];
         List<AsmNode> kept = [];
         bool changed = false;
@@ -184,6 +216,37 @@ public static class AsmOptimizer
 
         kept.Reverse();
         return (new AsmFunction(function.Name, function.IsEntryPoint, function.CcTier, kept), changed);
+    }
+
+    private static bool UsesNonLinearControlFlow(AsmFunction function)
+    {
+        for (int i = 0; i < function.Nodes.Count; i++)
+        {
+            if (function.Nodes[i] is not AsmInstructionNode instruction)
+                continue;
+
+            if (!P2InstructionMetadata.TryGetInstructionForm(instruction.Opcode, instruction.Operands.Count, out P2InstructionFormInfo form)
+                || !form.IsBranch
+                || form.IsReturn)
+            {
+                continue;
+            }
+
+            bool isLinearJump =
+                instruction.Opcode == "JMP"
+                && instruction.Predicate is null
+                && instruction.Operands.Count == 1
+                && instruction.Operands[0] is AsmSymbolOperand target
+                && TryGetNextLabel(function.Nodes, i + 1, out string? nextLabel)
+                && nextLabel == target.Name;
+
+            if (!isLinearJump)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsDeadInstruction(AsmInstructionNode instruction, IReadOnlySet<int> live)

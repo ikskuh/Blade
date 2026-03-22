@@ -1,0 +1,20 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - MOV g_rec_countdown_arg0, g_start
+// - CALLB #countdown
+// - RETB
+// NOT_CONTAINS:
+// - g_rec_countdown_ret0
+// NOTE:
+//   Covers recursive ABI lowering for a void-returning rec fn so the
+//   explicit argument path is exercised without allocating a return slot.
+
+rec fn countdown(bound: u32) {
+    if (bound > 0) {
+        countdown(bound - 1);
+    }
+}
+
+reg var start: u32 = 3;
+countdown(start);

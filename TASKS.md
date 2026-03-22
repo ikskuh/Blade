@@ -12,14 +12,6 @@
 
 ## Bug Fix Backlog
 
-## BUG-4: Fix recursive calling convention
-
-`rec fn` codegen still does not reliably use the recursive calling convention path.
-
-- Make recursive callees lower through the recursive tier instead of falling back to plain `CALL`.
-- Implement the required recursive return/spill behavior around `CALLB` and PTRB-backed stack usage.
-- Convert the recursive-function demonstrator away from its current expected failure once the path is live.
-
 ## BUG-5: Preserve the halt-loop sentinel through asm optimization
 
 The halt loop requires `REP #1, #0` followed by `NOP`, but generic NOP elision can remove the sentinel.

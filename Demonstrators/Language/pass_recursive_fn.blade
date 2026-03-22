@@ -1,12 +1,23 @@
-// EXPECT: xfail
+// EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// - CALLA
-// - RETA
+// - MOV g_rec_factorial_arg0, g_n
+// - CALLB #factorial
+// - PUSHB
+// - POPB
+// - RETB
+// SEQUENCE:
+// - factorial_bb2
+// - MOV _r2, #1
+// - JMP #factorial_bb1
+// NOT_CONTAINS:
+// - g_rec_factorial_ret0
+// - WRLONG
+// - RDLONG
 // NOTE:
 //   Exercises recursive function (rec fn) calling convention with
-//   hub-based stack via PTRB. Currently xfail because rec fn emits
-//   CALL/RET instead of CALLA/RETA.
+//   hub-based stack via PTRB, including shared argument/return storage
+//   and stack-backed preservation of the live caller value across the self-call.
 
 extern reg var OUTA: u32 @(0x1FC);
 

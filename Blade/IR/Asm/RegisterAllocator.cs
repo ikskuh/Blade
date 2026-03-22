@@ -31,6 +31,8 @@ public static class RegisterAllocator
         if (module.Functions.Count == 0)
             return module;
 
+        module = InsertRecursiveCallSpills(module);
+
         // Step 1: Run liveness analysis per function
         Dictionary<string, FunctionLiveness> livenessMap = [];
         foreach (AsmFunction function in module.Functions)
@@ -54,6 +56,46 @@ public static class RegisterAllocator
 
         // Step 4: Rewrite operands and emit register file
         return RewriteModule(module, globalSlotMap);
+    }
+
+    private static AsmModule InsertRecursiveCallSpills(AsmModule module)
+    {
+        Dictionary<string, FunctionLiveness> livenessMap = [];
+        foreach (AsmFunction function in module.Functions)
+            livenessMap[function.Name] = LivenessAnalyzer.Analyze(function);
+
+        List<AsmFunction> functions = new(module.Functions.Count);
+        foreach (AsmFunction function in module.Functions)
+        {
+            FunctionLiveness liveness = livenessMap[function.Name];
+            List<AsmNode> rewrittenNodes = new(function.Nodes.Count);
+
+            for (int i = 0; i < function.Nodes.Count; i++)
+            {
+                if (function.Nodes[i] is not AsmInstructionNode instruction
+                    || instruction.Opcode != "CALLB")
+                {
+                    rewrittenNodes.Add(function.Nodes[i]);
+                    continue;
+                }
+
+                List<int> liveRegisters = [];
+                if (liveness.LiveRegistersByCallInstruction.TryGetValue(i, out HashSet<int>? liveSet))
+                    liveRegisters.AddRange(liveSet.Order());
+
+                foreach (int registerId in liveRegisters)
+                    rewrittenNodes.Add(new AsmInstructionNode("PUSHB", [new AsmRegisterOperand(registerId)]));
+
+                rewrittenNodes.Add(instruction);
+
+                for (int liveIndex = liveRegisters.Count - 1; liveIndex >= 0; liveIndex--)
+                    rewrittenNodes.Add(new AsmInstructionNode("POPB", [new AsmRegisterOperand(liveRegisters[liveIndex])]));
+            }
+
+            functions.Add(new AsmFunction(function.Name, function.IsEntryPoint, function.CcTier, rewrittenNodes));
+        }
+
+        return new AsmModule(module.StoragePlaces, functions);
     }
 
     // ── Intra-function coloring ─────────────────────────────────────

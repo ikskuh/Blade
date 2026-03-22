@@ -44,12 +44,16 @@ public sealed class FunctionLiveness
         string functionName,
         IReadOnlyList<BasicBlock> blocks,
         IReadOnlyDictionary<int, HashSet<int>> interferenceGraph,
-        HashSet<int> liveAcrossCallRegisters)
+        HashSet<int> liveAcrossCallRegisters,
+        IReadOnlyDictionary<int, HashSet<int>> liveRegistersByCallInstruction,
+        IReadOnlyDictionary<int, HashSet<int>> liveRegistersAfterInstruction)
     {
         FunctionName = functionName;
         Blocks = blocks;
         InterferenceGraph = interferenceGraph;
         LiveAcrossCallRegisters = liveAcrossCallRegisters;
+        LiveRegistersByCallInstruction = liveRegistersByCallInstruction;
+        LiveRegistersAfterInstruction = liveRegistersAfterInstruction;
     }
 
     public string FunctionName { get; }
@@ -66,6 +70,16 @@ public sealed class FunctionLiveness
     /// These registers must not share slots with the called function's registers.
     /// </summary>
     public HashSet<int> LiveAcrossCallRegisters { get; }
+
+    /// <summary>
+    /// Per-call-site live set captured immediately before the call instruction executes.
+    /// </summary>
+    public IReadOnlyDictionary<int, HashSet<int>> LiveRegistersByCallInstruction { get; }
+
+    /// <summary>
+    /// Per-instruction live-out set after each instruction executes.
+    /// </summary>
+    public IReadOnlyDictionary<int, HashSet<int>> LiveRegistersAfterInstruction { get; }
 }
 
 /// <summary>
@@ -92,10 +106,10 @@ public static class LivenessAnalyzer
         ComputeLiveness(blocks);
 
         // Step 4: Build interference graph from instruction-level liveness
-        (Dictionary<int, HashSet<int>> interference, HashSet<int> liveAcrossCall) =
+        (Dictionary<int, HashSet<int>> interference, HashSet<int> liveAcrossCall, Dictionary<int, HashSet<int>> liveByCall, Dictionary<int, HashSet<int>> liveAfterInstruction) =
             BuildInterferenceGraph(nodes, blocks);
 
-        return new FunctionLiveness(function.Name, blocks, interference, liveAcrossCall);
+        return new FunctionLiveness(function.Name, blocks, interference, liveAcrossCall, liveByCall, liveAfterInstruction);
     }
 
     private static List<BasicBlock> BuildBasicBlocks(IReadOnlyList<AsmNode> nodes)
@@ -320,11 +334,17 @@ public static class LivenessAnalyzer
     /// Builds the interference graph by walking instructions within each block,
     /// maintaining a precise live set. Also identifies registers live across calls.
     /// </summary>
-    private static (Dictionary<int, HashSet<int>> Interference, HashSet<int> LiveAcrossCall)
+    private static (
+        Dictionary<int, HashSet<int>> Interference,
+        HashSet<int> LiveAcrossCall,
+        Dictionary<int, HashSet<int>> LiveByCallInstruction,
+        Dictionary<int, HashSet<int>> LiveAfterInstruction)
         BuildInterferenceGraph(IReadOnlyList<AsmNode> nodes, List<BasicBlock> blocks)
     {
         Dictionary<int, HashSet<int>> interference = [];
         HashSet<int> liveAcrossCall = [];
+        Dictionary<int, HashSet<int>> liveByCallInstruction = [];
+        Dictionary<int, HashSet<int>> liveAfterInstruction = [];
 
         foreach (BasicBlock block in blocks)
         {
@@ -340,9 +360,12 @@ public static class LivenessAnalyzer
                         if (P2InstructionMetadata.HasNoRegisterEffect(instruction.Opcode, instruction.Operands.Count))
                             continue;
 
+                        liveAfterInstruction[i] = [.. live];
+
                         // If this is a call, all currently-live registers are live across it
                         if (P2InstructionMetadata.IsCall(instruction.Opcode, instruction.Operands.Count))
                         {
+                            liveByCallInstruction[i] = [.. live];
                             foreach (int reg in live)
                                 liveAcrossCall.Add(reg);
                         }
@@ -411,7 +434,7 @@ public static class LivenessAnalyzer
             }
         }
 
-        return (interference, liveAcrossCall);
+        return (interference, liveAcrossCall, liveByCallInstruction, liveAfterInstruction);
     }
 
     private static void ExtractInstructionDefsUses(
