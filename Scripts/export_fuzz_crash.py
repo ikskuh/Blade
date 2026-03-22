@@ -1,9 +1,7 @@
 # /usr/bin/env python
 
-
 from argparse import ArgumentParser
 from pathlib import Path
-
 
 def main():
 

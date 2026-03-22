@@ -15,7 +15,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--corpus", type=Path)
     parser.add_argument("--findings", type=Path)
     parser.add_argument("--build", type=Path)
-    parser.add_argument("--x", default=None)
+    parser.add_argument("--dict", type=Path, required=False, default=None)
     parser.add_argument("--t", type=int, default=10000)
     parser.add_argument("--command", default="sharpfuzz")
     return parser.parse_args()
@@ -99,8 +99,8 @@ def main() -> int:
         "-m",
         "none",
     ]
-    if args.x is not None:
-        afl_command.extend(["-x", args.x])
+    if args.dict is not None:
+        afl_command.extend(["-x", args.dict])
 
     afl_command.extend(["dotnet", str(project)])
     return run_command(afl_command, env=environment)

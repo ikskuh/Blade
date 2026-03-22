@@ -1223,7 +1223,8 @@ public static class AsmLowerer
         memberName = string.Empty;
         byteOffset = 0;
 
-        Debug.Assert(opcode.StartsWith(prefix, StringComparison.Ordinal), $"Opcode '{opcode}' must start with '{prefix}'.");
+        bool hasExpectedPrefix = opcode.StartsWith(prefix, StringComparison.Ordinal);
+        Debug.Assert(hasExpectedPrefix, $"Opcode '{opcode}' must start with '{prefix}'.");
 
         string remainder = opcode[prefix.Length..];
         int separator = remainder.LastIndexOf('.');

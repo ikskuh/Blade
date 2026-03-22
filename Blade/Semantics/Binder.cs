@@ -3085,7 +3085,8 @@ public sealed class Binder
 
     private TypeSymbol BindNamedType(NamedTypeSyntax namedType)
     {
-        Debug.Assert(!BuiltinTypes.TryGet(namedType.Name.Text, out _), "Builtin type keywords should bind as PrimitiveTypeSyntax, not NamedTypeSyntax.");
+        bool isBuiltinTypeName = BuiltinTypes.TryGet(namedType.Name.Text, out _);
+        Debug.Assert(!isBuiltinTypeName, "Builtin type keywords should bind as PrimitiveTypeSyntax, not NamedTypeSyntax.");
         return ResolveTypeAlias(namedType.Name.Text, namedType.Name.Span);
     }
 

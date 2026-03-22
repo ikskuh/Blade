@@ -1,6 +1,6 @@
 # Task completion checklist
 
-When finishing work in this repository, prefer this checklist:
+When finishing work in this repository, use this checklist:
 
 1. Keep the build warning-free.
 2. Run the smallest relevant verification first, then the broader one if the change warrants it.
@@ -11,9 +11,10 @@ When finishing work in this repository, prefer this checklist:
 7. If a compiler bug or unexpected behavior was found during the task, log it in `Work/Bugs.md`.
 8. If truly unreachable code was discovered, log it in `Work/Unreachable.md`.
 9. Use `just test` as the normal validation baseline; use `just regressions` or `just all` for broader compiler-impacting work.
+10. A task is not complete until `just accept-changes` completes successfully.
 
 Recommended command choices by scope:
-- Small local code change: `just test`
-- Compiler pipeline or semantic/codegen change: `just test` and `just regressions`
-- Broad or risky change: `just all`
-- Coverage-focused work: `just coverage`
+- Small local code change: `just test`, then `just accept-changes`
+- Compiler pipeline or semantic/codegen change: `just test`, `just regressions`, then `just accept-changes`
+- Broad or risky change: `just all`, then `just accept-changes`
+- Coverage-focused work: `just coverage`, then `just accept-changes`

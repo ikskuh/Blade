@@ -7,7 +7,12 @@ reportgenerator := which('reportgenerator') || which('dotnet-reportgenerator')
 
 all: build test regressions compile-all-samples
 
-accept: build test coverage
+accept-changes:
+    dotnet build -c debug
+    dotnet build -c release
+
+    dotnet test -c debug
+    dotnet test -c release
 
 build:
     dotnet build
@@ -58,10 +63,15 @@ fuzz:
     find Demonstrators -type f -name "*.blade" -exec cp '{}' fuzzing/corpus ';'
     find Examples      -type f -name "*.blade" -exec cp '{}' fuzzing/corpus ';'
 
+    # Compute dictionary based off the demonstrator files
+    python Scripts/export_fuzz_dict.py --from Demonstrators/ --dict fuzzing/blade.dict
+
+
     DOTNET_ROLL_FORWARD=Major python3 \
         Scripts/fuzz.py \
         --project   Blade.FuzzTest/Blade.FuzzTest.csproj \
         --corpus    fuzzing/corpus  \
+        --dict      fuzzing/blade.dict \
         --findings  fuzzing/findings  \
         --build     fuzzing/build  \
         --command   ~/.dotnet/tools/sharpfuzz

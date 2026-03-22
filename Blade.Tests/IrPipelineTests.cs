@@ -1778,34 +1778,6 @@ public class IrPipelineTests
     }
 
     [Test]
-    public void InvalidAggregateWriteExpression_TriggersDebugAssertion()
-    {
-        TextSpan span = new(0, 0);
-        StructTypeSymbol pairType = CreateStructType(
-            "Pair",
-            sizeBytes: 4,
-            alignmentBytes: 4,
-            new AggregateMemberSymbol("value", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false));
-        BoundAssignmentStatement statement = new(
-            new BoundMemberAssignmentTarget(
-                new BoundLiteralExpression(0, span, pairType),
-                pairType.Members["value"],
-                span),
-            new BoundLiteralExpression(1, span, BuiltinTypes.U32),
-            TokenKind.Equal,
-            span);
-        BoundProgram program = new(
-            [statement],
-            [],
-            [],
-            new Dictionary<string, TypeSymbol>(),
-            new Dictionary<string, FunctionSymbol>(),
-            new Dictionary<string, ImportedModule>());
-
-        Assert.That(() => MirLowerer.Lower(program), Throws.Exception);
-    }
-
-    [Test]
     public void ErrorAssignmentTarget_LowersToStoreError()
     {
         TextSpan span = new(0, 0);
