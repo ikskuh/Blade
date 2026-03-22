@@ -6,8 +6,12 @@
 // - MOV #_r1, #_r1
 // - OR #_r1, #0
 // - ADD #_r1, #0
+// SEQUENCE:
+// - REP #1, #0
+// - NOP
 // NOTE:
-//   Negative case for elide-nops: with optimization disabled, no-op instructions remain.
+//   Negative case for elide-nops: with optimization disabled, the inline no-ops remain
+//   and the halt sentinel still retains its exact REP+NOP shape.
 
 reg var sink: u32 = 0;
 var x: u32 = 1;

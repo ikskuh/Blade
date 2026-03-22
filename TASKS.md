@@ -12,14 +12,6 @@
 
 ## Bug Fix Backlog
 
-## BUG-5: Preserve the halt-loop sentinel through asm optimization
-
-The halt loop requires `REP #1, #0` followed by `NOP`, but generic NOP elision can remove the sentinel.
-
-- Make the halt/trap sequence non-elidable by the asm optimizer.
-- Preserve the exact `REP #1, #0` + `NOP` shape in optimized output.
-- Add an optimizer regression that asserts the sentinel survives optimization.
-
 ## BUG-7: Resolve peer typing for enum literals in comparisons
 
 Enum comparisons should infer the enum type for contextual literals like `.Off` from the opposite operand.

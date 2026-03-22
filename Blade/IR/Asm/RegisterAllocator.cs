@@ -544,7 +544,11 @@ public static class RegisterAllocator
                         foreach (AsmOperand operand in instruction.Operands)
                             operands.Add(RewriteOperand(operand, regToSlot));
                         rewrittenNodes.Add(new AsmInstructionNode(
-                            instruction.Opcode, operands, instruction.Predicate, instruction.FlagEffect));
+                            instruction.Opcode,
+                            operands,
+                            instruction.Predicate,
+                            instruction.FlagEffect,
+                            instruction.IsNonElidable));
                         break;
                     }
 

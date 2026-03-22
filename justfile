@@ -47,6 +47,10 @@ coverage-report: coverage
 regressions:
     dotnet run --project Blade.Regressions --
 
+# Runs the fuzzer suite
+fuzz:
+    false
+
 compile-all-samples: build \
     (compile-sample "Examples/blinky.blade") \
     (compile-sample "Examples/clamp.blade") \

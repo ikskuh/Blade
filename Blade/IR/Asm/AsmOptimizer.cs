@@ -71,6 +71,7 @@ public static class AsmOptimizer
             previousLabel = null;
 
             if (node is AsmInstructionNode instruction
+                && !instruction.IsNonElidable
                 && IsPlainMov(instruction)
                 && OperandsEquivalent(instruction.Operands[0], instruction.Operands[1]))
             {
@@ -251,6 +252,9 @@ public static class AsmOptimizer
 
     private static bool IsDeadInstruction(AsmInstructionNode instruction, IReadOnlySet<int> live)
     {
+        if (instruction.IsNonElidable)
+            return false;
+
         if (TryGetTrackedCopy(instruction, out AsmRegisterOperand copyDestination, out _))
             return !live.Contains(copyDestination.RegisterId);
 
@@ -272,6 +276,7 @@ public static class AsmOptimizer
         {
             AsmNode node = function.Nodes[i];
             if (node is AsmInstructionNode instruction
+                && !instruction.IsNonElidable
                 && instruction.Opcode == "JMP"
                 && instruction.Predicate is null
                 && instruction.Operands.Count == 1
@@ -307,11 +312,17 @@ public static class AsmOptimizer
                 && i > 0
                 && nodes.Count > 0
                 && nodes[^1] is AsmInstructionNode previous
+                && !previous.IsNonElidable
                 && previous.Predicate is null
                 && !IsControlFlowInstruction(previous)
                 && !EndsWithTargetedLabel(nodes, targetedLabels))
             {
-                nodes[^1] = new AsmInstructionNode(previous.Opcode, previous.Operands, "_RET_", previous.FlagEffect);
+                nodes[^1] = new AsmInstructionNode(
+                    previous.Opcode,
+                    previous.Operands,
+                    "_RET_",
+                    previous.FlagEffect,
+                    previous.IsNonElidable);
                 changed = true;
                 continue;
             }
@@ -337,12 +348,18 @@ public static class AsmOptimizer
                 && jump.Operands.Count == 1
                 && jump.Operands[0] is AsmSymbolOperand target
                 && function.Nodes[i + 1] is AsmInstructionNode body
+                && !body.IsNonElidable
                 && body.Predicate is null
                 && function.Nodes[i + 2] is AsmLabelNode label
                 && label.Name == target.Name
                 && !targetedLabels.Contains(label.Name))
             {
-                nodes.Add(new AsmInstructionNode(body.Opcode, body.Operands, InvertPredicate(jump.Predicate), body.FlagEffect));
+                nodes.Add(new AsmInstructionNode(
+                    body.Opcode,
+                    body.Operands,
+                    InvertPredicate(jump.Predicate),
+                    body.FlagEffect,
+                    body.IsNonElidable));
                 nodes.Add(label);
                 changed = true;
                 i += 3;
@@ -465,7 +482,12 @@ public static class AsmOptimizer
         }
 
         return changed
-            ? new AsmInstructionNode(instruction.Opcode, operands, instruction.Predicate, instruction.FlagEffect)
+            ? new AsmInstructionNode(
+                instruction.Opcode,
+                operands,
+                instruction.Predicate,
+                instruction.FlagEffect,
+                instruction.IsNonElidable)
             : instruction;
     }
 
@@ -626,8 +648,13 @@ public static class AsmOptimizer
     private static bool TryFuseMuxPair(AsmInstructionNode first, AsmInstructionNode second, out AsmInstructionNode? fused)
     {
         fused = null;
-        if (first.FlagEffect != AsmFlagEffect.None || second.FlagEffect != AsmFlagEffect.None)
+        if (first.IsNonElidable
+            || second.IsNonElidable
+            || first.FlagEffect != AsmFlagEffect.None
+            || second.FlagEffect != AsmFlagEffect.None)
+        {
             return false;
+        }
 
         if (first.Operands.Count != 2 || second.Operands.Count != 2)
             return false;
@@ -652,6 +679,9 @@ public static class AsmOptimizer
 
     private static bool IsSemanticNop(AsmInstructionNode instruction)
     {
+        if (instruction.IsNonElidable)
+            return false;
+
         if (instruction.Predicate is not null || instruction.FlagEffect != AsmFlagEffect.None)
             return false;
 

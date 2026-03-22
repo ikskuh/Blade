@@ -85,18 +85,21 @@ public sealed class AsmInstructionNode : AsmNode
         string opcode,
         IReadOnlyList<AsmOperand> operands,
         string? predicate = null,
-        AsmFlagEffect flagEffect = AsmFlagEffect.None)
+        AsmFlagEffect flagEffect = AsmFlagEffect.None,
+        bool isNonElidable = false)
     {
         Opcode = opcode;
         Operands = operands;
         Predicate = predicate;
         FlagEffect = flagEffect;
+        IsNonElidable = isNonElidable;
     }
 
     public string Opcode { get; }
     public IReadOnlyList<AsmOperand> Operands { get; }
     public string? Predicate { get; }
     public AsmFlagEffect FlagEffect { get; }
+    public bool IsNonElidable { get; }
 }
 
 /// <summary>

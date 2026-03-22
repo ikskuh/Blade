@@ -191,7 +191,11 @@ public static class AsmLegalizer
         if (modified)
         {
             nodes.Add(new AsmInstructionNode(
-                instruction.Opcode, newOperands, instruction.Predicate, instruction.FlagEffect));
+                instruction.Opcode,
+                newOperands,
+                instruction.Predicate,
+                instruction.FlagEffect,
+                instruction.IsNonElidable));
         }
         else
         {

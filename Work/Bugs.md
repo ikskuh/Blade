@@ -35,3 +35,38 @@
 - Symptom: A valid Blade function such as `rec fn step() -> u32` lowers to a bare `step` label in final PASM, which FlexSpin tokenizes as the `STEP` instruction instead of an identifier.
 - Impact: Final assembly validation fails even though the source program is otherwise valid.
 - Notes: This surfaced while adding recursive calling-convention coverage for BUG-4. The demonstrator was renamed, but the label-escaping issue remains open.
+
+## Comptime Bool Normalization Can Throw in `TryNormalizeValue`
+
+- Date: 2026-03-22
+- Symptom: `ComptimeTypeFacts.TryNormalizeValue` converts arbitrary `IConvertible` values to `Int64` without guarding conversion exceptions when target type is `bool`.
+- Location: `Blade/Semantics/ComptimeEvaluation.cs`.
+- Impact: Overflow/format conversion issues can escape as runtime exceptions instead of cleanly returning `false` and producing diagnostics.
+
+## Diagnostic formatter hardcodes `E` prefix for all severities
+
+- Date: 2026-03-22
+- Symptom: `Diagnostic.FormatCode()` always returns `E####`, regardless of whether a diagnostic is an error, warning, or info.
+- Location: `Blade/Diagnostics/Diagnostic.cs` (`FormatCode`).
+- Impact: warning/info diagnostics will be mislabeled as errors in CLI and JSON consumers if non-error diagnostics are added.
+
+## Release fallback can silently force extra call result into FlagC
+
+- Date: 2026-03-22
+- Symptom: `LirLowerer.GetExtraResultPlacement` returns `ReturnPlacement.FlagC` after `Debug.Fail` when an extra result lookup fails.
+- Location: `Blade/IR/Lir/LirLowerer.cs`.
+- Impact: in release builds this can silently produce incorrect ABI lowering for extra return values.
+
+## Unicode Escape Can Crash Lexer Instead of Reporting Diagnostic
+
+- Date: 2026-03-22
+- Symptom: A string containing `\u{...}` with an out-of-range Unicode scalar value (e.g. `\u{110000}`) can throw during lexing.
+- Location: `Blade/Syntax/Lexer.cs` — `ReadEscapeSequence` returns unchecked codepoints; `ReadString` forwards them to `char.ConvertFromUtf32`.
+- Impact: Compiler can terminate with an exception rather than emit `E0006_InvalidEscapeSequence`.
+
+## Duplicate Variable Clauses Are Silently Accepted With Last-One-Wins Semantics
+
+- Date: 2026-03-22
+- Symptom: Parser accepts repeated `@(addr)`, `align(n)`, or `= initializer` clauses in one variable declaration and silently overwrites prior clause values.
+- Location: `Blade/Syntax/Parser.cs` — `ParseVariableDeclaration` loop updates single `atClause` / `alignClause` / `initializer` slots with no duplicate diagnostics.
+- Impact: User mistakes are masked and declarations can be interpreted differently than intended.

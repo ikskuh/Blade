@@ -111,6 +111,45 @@ public class OptimizerTests
     }
 
     [Test]
+    public void AsmOptimizer_PreservesNonElidableHaltSentinel()
+    {
+        AsmModule module = new([
+            new AsmFunction("f", isEntryPoint: true, CallingConventionTier.EntryPoint,
+            [
+                new AsmCommentNode("halt: endless loop"),
+                new AsmInstructionNode(
+                    "REP",
+                    [new AsmImmediateOperand(1), new AsmImmediateOperand(0)],
+                    isNonElidable: true),
+                new AsmInstructionNode("NOP", [], isNonElidable: true),
+            ]),
+        ]);
+
+        AsmFunction function = AsmOptimizer.Optimize(module, OptimizationCatalog.AsmirDefaultOrder).Functions[0];
+        AsmInstructionNode[] instructions = function.Nodes.OfType<AsmInstructionNode>().ToArray();
+
+        Assert.That(instructions, Has.Length.EqualTo(2));
+        Assert.That(instructions[0].Opcode, Is.EqualTo("REP"));
+        Assert.That(instructions[0].IsNonElidable, Is.True);
+        Assert.That(instructions[1].Opcode, Is.EqualTo("NOP"));
+        Assert.That(instructions[1].IsNonElidable, Is.True);
+    }
+
+    [Test]
+    public void AsmOptimizer_ElidesPlainNopWhenNotMarkedNonElidable()
+    {
+        AsmModule module = new([
+            new AsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
+            [
+                new AsmInstructionNode("NOP", []),
+            ]),
+        ]);
+
+        AsmFunction function = AsmOptimizer.Optimize(module, OptimizationCatalog.AsmirDefaultOrder).Functions[0];
+        Assert.That(function.Nodes.OfType<AsmInstructionNode>(), Is.Empty);
+    }
+
+    [Test]
     public void AsmOptimizer_ElidesStraightLineMovChainWhenDeadAtFunctionEnd()
     {
         AsmRegisterOperand r1 = new(1);

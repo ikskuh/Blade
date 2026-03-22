@@ -9,8 +9,12 @@
 // - MOV #_r1, #_r1
 // - OR #_r1, #0
 // - ADD #_r1, #0
+// SEQUENCE:
+// - REP #1, #0
+// - NOP
 // NOTE:
-//   Positive case for elide-nops: semantic no-ops inside asm must be removed.
+//   Positive case for elide-nops: semantic no-ops inside asm must be removed
+//   without stripping the entry-point halt sentinel.
 
 reg var sink: u32 = 0;
 var x: u32 = 1;

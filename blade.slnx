@@ -3,4 +3,6 @@
     <Project Path="Blade/blade.csproj" />
   </Folder>
   <Project Path="Blade.Tests/Blade.Tests.csproj" />
+  <Project Path="Blade.Regressions/Blade.Regressions.csproj" />
+  <Project Path="Blade.FuzzTest/Blade.FuzzTest.csproj" />
 </Solution>

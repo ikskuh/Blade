@@ -1960,8 +1960,9 @@ public static class AsmLowerer
     {
         nodes.Add(new AsmCommentNode("halt: endless loop"));
         nodes.Add(new AsmInstructionNode("REP",
-            [new AsmImmediateOperand(1), new AsmImmediateOperand(0)]));
-        nodes.Add(Emit("NOP"));
+            [new AsmImmediateOperand(1), new AsmImmediateOperand(0)],
+            isNonElidable: true));
+        nodes.Add(new AsmInstructionNode("NOP", [], isNonElidable: true));
     }
 
     private static void LowerBranch(List<AsmNode> nodes, LoweringContext ctx, LirBranchTerminator branch)
