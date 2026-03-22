@@ -1596,7 +1596,7 @@ public static class AsmLowerer
                     ,
                     "Recursive callees must have calling-convention metadata.");
                 Debug.Assert(
-                    recursiveInfo.ParameterPlaces.Count == args.Count,
+                    recursiveInfo!.ParameterPlaces.Count == args.Count,
                     "Recursive call arguments must match the callee parameter ABI.");
 
                 for (int i = 0; i < args.Count; i++)
@@ -1899,7 +1899,7 @@ public static class AsmLowerer
                         ,
                         "Recursive functions must have calling-convention metadata.");
                     Debug.Assert(
-                        recursiveInfo.RegisterReturnPlace is not null,
+                        recursiveInfo!.RegisterReturnPlace is not null,
                         "Recursive register-return functions must have a return storage place.");
                     nodes.Add(new AsmInstructionNode("MOV", [new AsmPlaceOperand(recursiveInfo.RegisterReturnPlace), resultOp]));
                     break;
