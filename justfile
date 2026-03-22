@@ -76,6 +76,12 @@ fuzz:
         --build     fuzzing/build  \
         --command   ~/.dotnet/tools/sharpfuzz
 
+export-fuzz-findings:
+    python Scripts/export_fuzz_crash.py \
+        --from fuzzing/findings/default/crashes/ \
+        --to RegressionTests/Fuzzing/ \
+        --count 5
+
 compile-all-samples: build \
     (compile-sample "Examples/blinky.blade") \
     (compile-sample "Examples/clamp.blade") \

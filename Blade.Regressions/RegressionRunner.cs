@@ -270,10 +270,11 @@ public static class RegressionRunner
     private static RegressionFixtureResult EvaluateFixture(string repositoryRootPath, string fixturePath, ArtifactWriter artifactWriter, FlexspinProbeResult flexspinProbe)
     {
         string relativePath = Path.GetRelativePath(repositoryRootPath, fixturePath).Replace('\\', '/');
+        RegressionFixture? fixture = null;
 
         try
         {
-            RegressionFixture fixture = RegressionFixtureParser.Parse(repositoryRootPath, fixturePath);
+            fixture = RegressionFixtureParser.Parse(repositoryRootPath, fixturePath);
             if (fixture.Kind == RegressionFixtureKind.BladeCrash)
             {
                 _ = ExecuteBladeCrashFixture(fixture);
@@ -313,12 +314,10 @@ public static class RegressionRunner
         }
         catch (Exception ex)
         {
-            List<string> details =
-            [
-                $"Unhandled regression runner error: {ex.Message}",
-            ];
+            bool includeExceptionStackTrace = IsBladeCrashFixturePath(fixturePath);
+            List<string> details = BuildUnhandledFixtureDetails(ex, includeExceptionStackTrace);
             EvaluatedFixture failedFixture = EvaluatedFixture.Empty(relativePath);
-            RegressionFixture syntheticFixture = new(
+            RegressionFixture syntheticFixture = fixture ?? new(
                 fixturePath,
                 relativePath,
                 RegressionFixtureKind.Blade,
@@ -402,6 +401,33 @@ public static class RegressionRunner
     {
         _ = CompilerDriver.CompileFile(fixture.AbsolutePath);
         return EvaluatedFixture.Empty(fixture.RelativePath);
+    }
+
+    private static bool IsBladeCrashFixturePath(string fixturePath)
+    {
+        return fixturePath.EndsWith(".blade.crash", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static List<string> BuildUnhandledFixtureDetails(Exception ex, bool includeExceptionStackTrace)
+    {
+        List<string> details =
+        [
+            $"Unhandled regression runner error: {ex.Message}",
+        ];
+
+        if (!includeExceptionStackTrace)
+            return details;
+
+        details.Add("Exception stack trace:");
+        details.AddRange(SplitLines(ex.ToString()));
+        return details;
+    }
+
+    private static IEnumerable<string> SplitLines(string text)
+    {
+        using StringReader reader = new(text);
+        while (reader.ReadLine() is string line)
+            yield return line;
     }
 
     private static CompilationOptions BuildCompilationOptions(IReadOnlyList<string> compilerArgs, string fixturePath)

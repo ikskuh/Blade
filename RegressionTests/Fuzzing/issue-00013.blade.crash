@@ -1,0 +1,6 @@
+// EXPECT: fail
+// D- "o‹ps";
+assert fNl{re€urn}, {a}
+    ACS:
+ fNlse, msg: [4]u8 - "o‹ps";
+assert fNlse, ms_;

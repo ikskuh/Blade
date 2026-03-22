@@ -74,6 +74,31 @@ public sealed class RegressionHarnessTests
     }
 
     [Test]
+    public void RegressionReportFormatter_EmitsExceptionStackTraceLinesForCrashFixtures()
+    {
+        RegressionFixtureResult failResult = new(
+            "RegressionTests/Fuzzing/issue-00001.blade.crash",
+            RegressionFixtureOutcome.Fail,
+            "fixture evaluation crashed",
+            [
+                "Unhandled regression runner error: boom",
+                "Exception stack trace:",
+                "System.InvalidOperationException: boom",
+                "   at Blade.CompilerDriver.CompileFile(String filePath)",
+                "   at Blade.Regressions.RegressionRunner.ExecuteBladeCrashFixture(RegressionFixture fixture)",
+            ],
+            artifactDirectoryPath: null);
+        RegressionRunResult result = new("/repo", [failResult]);
+
+        string report = RegressionReportFormatter.Format(result);
+
+        Assert.That(report, Does.Contain("  Exception stack trace:"));
+        Assert.That(report, Does.Contain("  System.InvalidOperationException: boom"));
+        Assert.That(report, Does.Contain("     at Blade.CompilerDriver.CompileFile(String filePath)"));
+        Assert.That(report, Does.Contain("     at Blade.Regressions.RegressionRunner.ExecuteBladeCrashFixture(RegressionFixture fixture)"));
+    }
+
+    [Test]
     public void FullRegressionSuite_Passes()
     {
         RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
