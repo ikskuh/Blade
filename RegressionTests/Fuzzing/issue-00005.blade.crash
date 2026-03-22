@@ -1,0 +1,12 @@
+// ET: pass
+// STAGE: final-asm
+// SEQUENCE:
+// - AUGS #1
+// - MOV _r0, #488
+// - WAITX _r0
+// NOTE:
+//   Intrinsic lowering must n MOV _r0, #488
+// - WAestination operand for WAITX.
+//   The intrinsic currently materializes the large literal in a te on that mp register, then waits on that register.
+
+@_aitx(1000);
