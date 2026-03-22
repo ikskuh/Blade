@@ -927,7 +927,7 @@ public static class AsmLowerer
             return;
         }
 
-        if (!TryGetAggregateValueShape(memberName, byteOffset, op.ResultType, out AggregateAccessShape shape))
+        if (!TryGetAggregateValueShape(byteOffset, op.ResultType, out AggregateAccessShape shape))
         {
             ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
             nodes.Add(new AsmCommentNode($"unhandled: {op.Opcode}"));
@@ -1236,7 +1236,6 @@ public static class AsmLowerer
     }
 
     private static bool TryGetAggregateValueShape(
-        string memberName,
         int byteOffset,
         TypeSymbol? memberType,
         out AggregateAccessShape shape)
@@ -1283,7 +1282,7 @@ public static class AsmLowerer
             return false;
         }
 
-        return TryGetAggregateValueShape(member.Name, member.ByteOffset, member.Type, out shape);
+        return TryGetAggregateValueShape(member.ByteOffset, member.Type, out shape);
     }
 
     private static void EmitAggregateExtract(
@@ -1300,7 +1299,9 @@ public static class AsmLowerer
         }
 
         if (shape.Kind == AggregateAccessKind.Byte)
+        {
             nodes.Add(new AsmInstructionNode("GETBYTE", [dest, receiver, new AsmImmediateOperand(shape.ByteOffset)]));
+        }
         else
         {
             Debug.Assert(shape.Kind == AggregateAccessKind.Word, $"Unexpected aggregate access kind '{shape.Kind}'.");
@@ -1331,7 +1332,9 @@ public static class AsmLowerer
         }
 
         if (shape.Kind == AggregateAccessKind.Byte)
+        {
             nodes.Add(new AsmInstructionNode("SETBYTE", [dest, value, new AsmImmediateOperand(shape.ByteOffset)]));
+        }
         else
         {
             Debug.Assert(shape.Kind == AggregateAccessKind.Word, $"Unexpected aggregate access kind '{shape.Kind}'.");

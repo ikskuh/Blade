@@ -11,17 +11,16 @@ namespace Blade.Syntax;
 public sealed class Lexer
 {
     private readonly SourceText _source;
-    private readonly DiagnosticBag _diagnostics;
     private int _position;
     private int _start;
 
     public Lexer(SourceText source, DiagnosticBag diagnostics)
     {
-        _source = source;
-        _diagnostics = diagnostics;
+        _source = Requires.NotNull(source);
+        Diagnostics = Requires.NotNull(diagnostics);
     }
 
-    public DiagnosticBag Diagnostics => _diagnostics;
+    public DiagnosticBag Diagnostics { get; }
 
     private char Current => Peek(0);
 
@@ -156,7 +155,7 @@ public sealed class Lexer
         if (depth > 0)
         {
             TextSpan span = TextSpan.FromBounds(commentStart, _position);
-            _diagnostics.ReportUnterminatedBlockComment(span);
+            Diagnostics.ReportUnterminatedBlockComment(span);
         }
     }
 
@@ -237,7 +236,7 @@ public sealed class Lexer
         if (TryParseIntegerLiteralText(text, prefixLength, radix, out long value))
             return MakeToken(TokenKind.IntegerLiteral, value);
 
-        _diagnostics.ReportInvalidNumberLiteral(span, text);
+        Diagnostics.ReportInvalidNumberLiteral(span, text);
         return MakeToken(TokenKind.IntegerLiteral, 0L);
     }
 
@@ -293,7 +292,7 @@ public sealed class Lexer
         if (_position >= _source.Length || Current != '"')
         {
             TextSpan span = new(_start, _position - _start);
-            _diagnostics.ReportUnterminatedString(span);
+            Diagnostics.ReportUnterminatedString(span);
             TokenKind errorKind = zeroTerminated ? TokenKind.ZeroTerminatedStringLiteral : TokenKind.StringLiteral;
             return MakeToken(errorKind, "");
         }
@@ -323,7 +322,7 @@ public sealed class Lexer
         else if (Current == '\'' || Current == '\0')
         {
             TextSpan span = new(_start, _position - _start);
-            _diagnostics.ReportUnterminatedString(span);
+            Diagnostics.ReportUnterminatedString(span);
             return MakeToken(TokenKind.CharLiteral, 0L);
         }
         else
@@ -342,7 +341,7 @@ public sealed class Lexer
                 Advance();
 
             TextSpan span = new(_start, _position - _start);
-            _diagnostics.ReportInvalidCharacterLiteral(span);
+            Diagnostics.ReportInvalidCharacterLiteral(span);
             return MakeToken(TokenKind.CharLiteral, value);
         }
 
@@ -376,58 +375,58 @@ public sealed class Lexer
             case '"': return '"';
 
             case 'x':
-            {
-                // \xHH — exactly 2 hex digits
-                if (IsHexDigit(Current) && IsHexDigit(Peek(1)))
                 {
-                    string hex = new string(new[] { Current, Peek(1) });
-                    Advance(2);
+                    // \xHH — exactly 2 hex digits
+                    if (IsHexDigit(Current) && IsHexDigit(Peek(1)))
+                    {
+                        string hex = new string(new[] { Current, Peek(1) });
+                        Advance(2);
+                        return Convert.ToInt64(hex, 16);
+                    }
+
+                    TextSpan span = TextSpan.FromBounds(escapeStart, _position);
+                    Diagnostics.ReportInvalidEscapeSequence(span);
+                    return -1;
+                }
+
+            case 'u':
+                {
+                    // \u{XXXXXX} — 1-6 hex digits in braces
+                    if (Current != '{')
+                    {
+                        TextSpan span = TextSpan.FromBounds(escapeStart, _position);
+                        Diagnostics.ReportInvalidEscapeSequence(span);
+                        return -1;
+                    }
+
+                    Advance(); // skip {
+                    int digitStart = _position;
+
+                    while (_position < _source.Length && IsHexDigit(Current))
+                        Advance();
+
+                    int digitCount = _position - digitStart;
+
+                    if (digitCount == 0 || digitCount > 6 || Current != '}')
+                    {
+                        TextSpan span = TextSpan.FromBounds(escapeStart, _position);
+                        Diagnostics.ReportInvalidEscapeSequence(span);
+                        if (Current == '}')
+                            Advance();
+                        return -1;
+                    }
+
+                    string hex = _source.ToString(new TextSpan(digitStart, digitCount));
+                    Advance(); // skip }
                     return Convert.ToInt64(hex, 16);
                 }
 
-                TextSpan span = TextSpan.FromBounds(escapeStart, _position);
-                _diagnostics.ReportInvalidEscapeSequence(span);
-                return -1;
-            }
-
-            case 'u':
-            {
-                // \u{XXXXXX} — 1-6 hex digits in braces
-                if (Current != '{')
-                {
-                    TextSpan span = TextSpan.FromBounds(escapeStart, _position);
-                    _diagnostics.ReportInvalidEscapeSequence(span);
-                    return -1;
-                }
-
-                Advance(); // skip {
-                int digitStart = _position;
-
-                while (_position < _source.Length && IsHexDigit(Current))
-                    Advance();
-
-                int digitCount = _position - digitStart;
-
-                if (digitCount == 0 || digitCount > 6 || Current != '}')
-                {
-                    TextSpan span = TextSpan.FromBounds(escapeStart, _position);
-                    _diagnostics.ReportInvalidEscapeSequence(span);
-                    if (Current == '}')
-                        Advance();
-                    return -1;
-                }
-
-                string hex = _source.ToString(new TextSpan(digitStart, digitCount));
-                Advance(); // skip }
-                return Convert.ToInt64(hex, 16);
-            }
-
             default:
-            {
-                TextSpan span = TextSpan.FromBounds(escapeStart, _position);
-                _diagnostics.ReportInvalidEscapeSequence(span);
-                return -1;
-            }
+                {
+                    TextSpan span = TextSpan.FromBounds(escapeStart, _position);
+                    Diagnostics.ReportInvalidEscapeSequence(span);
+                    return -1;
+                }
         }
     }
 
@@ -532,7 +531,7 @@ public sealed class Lexer
             default:
                 Advance();
                 TextSpan span = new(_start, 1);
-                _diagnostics.ReportUnexpectedCharacter(span, c);
+                Diagnostics.ReportUnexpectedCharacter(span, c);
                 return MakeToken(TokenKind.Bad);
         }
     }

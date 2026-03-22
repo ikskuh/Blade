@@ -23,6 +23,10 @@
       CS8519: The given expression never matches the provided pattern.
     -->
     <WarningsAsErrors>CS8120;CS8509;CS8510;CS8518;CS8519</WarningsAsErrors>
+
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <WarningLevel>4</WarningLevel>
   </PropertyGroup>
 
 

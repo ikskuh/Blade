@@ -9,20 +9,19 @@ namespace Blade.Source;
 public sealed class SourceText
 {
     private readonly string _text;
-    private readonly string _filePath;
     private int[]? _lineStarts;
 
     public SourceText(string text, string filePath = "<input>")
     {
         _text = text;
-        _filePath = filePath;
+        this.FilePath = filePath;
     }
 
     public int Length => _text.Length;
 
     public char this[int index] => _text[index];
 
-    public string FilePath => _filePath;
+    public string FilePath {get;}
 
     public string ToString(TextSpan span) => _text.Substring(span.Start, span.Length);
 
@@ -39,7 +38,7 @@ public sealed class SourceText
         }
 
         int column = position - lineStarts[line] + 1;
-        return new SourceLocation(_filePath, line + 1, column);
+        return new SourceLocation(this.FilePath, line + 1, column);
     }
 
     private int[] GetLineStarts()

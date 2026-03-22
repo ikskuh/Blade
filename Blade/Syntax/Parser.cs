@@ -14,17 +14,16 @@ public sealed class Parser
 {
     private readonly SourceText _source;
     private readonly IReadOnlyList<Token> _tokens;
-    private readonly DiagnosticBag _diagnostics;
     private int _position;
 
     public Parser(SourceText source, IReadOnlyList<Token> tokens, DiagnosticBag diagnostics)
     {
         _source = source;
         _tokens = tokens;
-        _diagnostics = diagnostics;
+        Diagnostics = diagnostics;
     }
 
-    public DiagnosticBag Diagnostics => _diagnostics;
+    public DiagnosticBag Diagnostics {get;}
     public int TokenCount => _tokens.Count;
 
     private Token Current => Peek(0);
@@ -50,7 +49,7 @@ public sealed class Parser
             return NextToken();
 
         string expected = SyntaxFacts.GetText(kind) ?? kind.ToString();
-        _diagnostics.ReportUnexpectedToken(Current.Span, $"'{expected}'", Current.Text);
+        Diagnostics.ReportUnexpectedToken(Current.Span, $"'{expected}'", Current.Text);
         return new Token(kind, new TextSpan(Current.Span.Start, 0), "");
     }
 
@@ -588,7 +587,7 @@ public sealed class Parser
             }
             else
             {
-                _diagnostics.ReportUnexpectedToken(Current.Span, "string literal", Current.Text);
+                Diagnostics.ReportUnexpectedToken(Current.Span, "string literal", Current.Text);
                 if (Current.Kind is not TokenKind.Semicolon and not TokenKind.EndOfFile)
                     NextToken();
             }
@@ -793,7 +792,7 @@ public sealed class Parser
             }
 
             default:
-                _diagnostics.ReportExpectedTypeName(Current.Span);
+                Diagnostics.ReportExpectedTypeName(Current.Span);
                 return new NamedTypeSyntax(new Token(TokenKind.Identifier, new TextSpan(Current.Span.Start, 0), ""));
         }
     }
@@ -1171,7 +1170,7 @@ public sealed class Parser
                 return ParseIfExpression();
 
             default:
-                _diagnostics.ReportExpectedExpression(Current.Span);
+                Diagnostics.ReportExpectedExpression(Current.Span);
                 return new LiteralExpressionSyntax(
                     new Token(TokenKind.IntegerLiteral, new TextSpan(Current.Span.Start, 0), "", 0L));
         }
