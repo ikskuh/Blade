@@ -1,0 +1,30 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - h_values LONG 0[4]
+// - SHL
+// - ADD
+// - WRLONG
+// - RDLONG
+// NOTE:
+//   Taking the address of a hub array element must lower through the existing
+//   pointer pipeline, including scaled index addressing before dereference.
+
+hub var values: [4]u32 = undefined;
+hub var sink: u32 = 0;
+reg var index: u32 = 2;
+
+noinline fn store_one(ptr: *hub u32, value: u32) {
+    ptr.* = value;
+}
+
+noinline fn load_one(ptr: *hub u32) -> u32 {
+    return ptr.*;
+}
+
+noinline fn run(slot: u32) -> u32 {
+    store_one(&values[slot], 99);
+    return load_one(&values[slot]);
+}
+
+sink = run(index);

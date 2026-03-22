@@ -1,0 +1,22 @@
+// EXPECT: pass
+// STAGE: mir
+// CONTAINS:
+// - load @g_values
+// - binary.Add
+// NOTE:
+//   Taking the address of an indexed [*] pointer element should reuse the
+//   pointer value directly and add the index without the old E0223 rejection.
+
+reg var values: [4]u32 = undefined;
+reg var sink: u32 = 0;
+
+noinline fn capture(many: [*]reg u32) -> u32 {
+    var ptr: *reg u32 = &many[1];
+    var bits: u32 = 0;
+    asm volatile {
+        MOV {bits}, {ptr}
+    };
+    return bits;
+}
+
+sink = capture(&values);

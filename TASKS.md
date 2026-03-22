@@ -12,14 +12,6 @@
 
 ## Bug Fix Backlog
 
-## BUG-8: Allow address-of indexed array elements
-
-`&ptr[1]` is currently rejected with `E0223` even though the indexed element should be addressable.
-
-- Extend address-of binding to accept indexed array-element lvalues instead of only bare names.
-- Lower indexed-element addresses through the existing pointer/address pipeline.
-- Add focused binder and IR coverage for taking the address of an array element.
-
 ## BUG-9: Remove stray store when passing `&array` to pointer parameters
 
 Passing `&greeting` into a pointer parameter currently has a reported codegen path that emits an unexpected store.

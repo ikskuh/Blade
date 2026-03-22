@@ -236,9 +236,8 @@ public static class MirLowerer
     {
         switch (expression)
         {
-            case BoundUnaryExpression unary when unary.Operator.Kind == BoundUnaryOperatorKind.AddressOf
-                && unary.Operand is BoundSymbolExpression symbolExpression:
-                symbols[symbolExpression.Symbol.Id] = symbolExpression.Symbol;
+            case BoundUnaryExpression unary when unary.Operator.Kind == BoundUnaryOperatorKind.AddressOf:
+                CollectAddressTakenTarget(unary.Operand, symbols);
                 break;
             case BoundUnaryExpression unary:
                 CollectAddressTakenSymbols(unary.Operand, symbols);
@@ -295,6 +294,25 @@ public static class MirLowerer
             case BoundBitcastExpression bitcast:
                 CollectAddressTakenSymbols(bitcast.Expression, symbols);
                 break;
+        }
+    }
+
+    private static void CollectAddressTakenTarget(BoundExpression expression, IDictionary<int, Symbol> symbols)
+    {
+        switch (expression)
+        {
+            case BoundSymbolExpression symbolExpression:
+                symbols[symbolExpression.Symbol.Id] = symbolExpression.Symbol;
+                return;
+
+            case BoundIndexExpression indexExpression when indexExpression.Expression.Type is ArrayTypeSymbol:
+                CollectAddressTakenTarget(indexExpression.Expression, symbols);
+                CollectAddressTakenSymbols(indexExpression.Index, symbols);
+                return;
+
+            default:
+                CollectAddressTakenSymbols(expression, symbols);
+                return;
         }
     }
 
@@ -1217,6 +1235,12 @@ public static class MirLowerer
                 return addressResult;
             }
 
+            if (unaryExpression.Operator.Kind == BoundUnaryOperatorKind.AddressOf
+                && unaryExpression.Operand is BoundIndexExpression indexExpression)
+            {
+                return LowerIndexedAddress(indexExpression, unaryExpression.Type, unaryExpression.Span);
+            }
+
             MirValueId operand = LowerExpression(unaryExpression.Operand);
             if (unaryExpression.Operator.Kind is BoundUnaryOperatorKind.PostIncrement or BoundUnaryOperatorKind.PostDecrement)
             {
@@ -1250,6 +1274,40 @@ public static class MirLowerer
                 operand,
                 unaryExpression.Span));
             return result;
+        }
+
+        private MirValueId LowerIndexedAddress(BoundIndexExpression indexExpression, TypeSymbol pointerType, TextSpan span)
+        {
+            MirValueId baseAddress = LowerExpression(indexExpression.Expression);
+            MirValueId offset = LowerExpression(indexExpression.Index);
+
+            if (GetStorageClassSuffix(indexExpression.Expression) == "hub")
+            {
+                int elementSize = GetHubIndexedElementSize(indexExpression.Type);
+                if (elementSize > 1)
+                {
+                    MirValueId shiftAmount = EmitConstant((long)ShiftForHubElementSize(elementSize), BuiltinTypes.U32, span);
+                    MirValueId shiftedOffset = NextValue();
+                    _currentBlock.Instructions.Add(new MirBinaryInstruction(
+                        shiftedOffset,
+                        BuiltinTypes.U32,
+                        BoundBinaryOperatorKind.ShiftLeft,
+                        offset,
+                        shiftAmount,
+                        span));
+                    offset = shiftedOffset;
+                }
+            }
+
+            MirValueId address = NextValue();
+            _currentBlock.Instructions.Add(new MirBinaryInstruction(
+                address,
+                pointerType,
+                BoundBinaryOperatorKind.Add,
+                baseAddress,
+                offset,
+                span));
+            return address;
         }
 
         private MirValueId LowerCallExpression(BoundCallExpression callExpression)
@@ -1698,6 +1756,25 @@ public static class MirLowerer
         private void EmitStore(string target, TypeSymbol? elementType, IReadOnlyList<MirValueId> operands, TextSpan span)
         {
             _currentBlock.Instructions.Add(new MirStoreInstruction(target, elementType, operands, span));
+        }
+
+        private static int GetHubIndexedElementSize(TypeSymbol type)
+        {
+            if (TypeFacts.TryGetIntegerWidth(type, out int width))
+            {
+                if (width <= 8)
+                    return 1;
+                if (width <= 16)
+                    return 2;
+            }
+
+            return 4;
+        }
+
+        private static int ShiftForHubElementSize(int size)
+        {
+            Debug.Assert(size is 2 or 4, $"Unexpected hub element size '{size}' for indexed address-of lowering.");
+            return size == 2 ? 1 : 2;
         }
 
         private MirValueId EmitBitfieldExtract(MirValueId receiver, AggregateMemberSymbol member, TextSpan span)

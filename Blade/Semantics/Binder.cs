@@ -1486,6 +1486,9 @@ public sealed class Binder
 
     private BoundExpression BindAddressOfExpression(UnaryExpressionSyntax unary, BoundUnaryOperator op)
     {
+        if (unary.Operand is IndexExpressionSyntax indexExpression)
+            return BindAddressOfIndexedElement(unary, op, indexExpression);
+
         if (unary.Operand is not NameExpressionSyntax nameExpression)
         {
             _diagnostics.ReportInvalidAddressOfTarget(unary.Operand.Span);
@@ -1507,6 +1510,24 @@ public sealed class Binder
         Debug.Assert(symbol is VariableSymbol or ParameterSymbol, "Address-of should only resolve to variables or parameters after lookup succeeds.");
         _diagnostics.ReportInvalidAddressOfTarget(unary.Operand.Span);
         return new BoundErrorExpression(unary.Span);
+    }
+
+    private BoundExpression BindAddressOfIndexedElement(UnaryExpressionSyntax unary, BoundUnaryOperator op, IndexExpressionSyntax indexExpression)
+    {
+        BoundExpression bound = BindIndexExpression(indexExpression);
+        Debug.Assert(bound is BoundIndexExpression, "Indexed address-of should bind through the normal index-expression path.");
+        BoundIndexExpression index = Requires.NotNull(bound as BoundIndexExpression);
+
+        if (_currentFunction?.Kind == FunctionKind.Rec && TryGetRecursiveAddressOfName(index.Expression, out string? recursiveName))
+        {
+            _diagnostics.ReportAddressOfRecursiveLocal(unary.Operand.Span, Requires.NotNull(recursiveName));
+            return new BoundErrorExpression(unary.Span);
+        }
+
+        if (!TryGetIndexedAddressType(index.Expression, index.Type, out PointerTypeSymbol? pointerType))
+            return new BoundErrorExpression(unary.Span);
+
+        return new BoundUnaryExpression(op, index, unary.Span, Requires.NotNull(pointerType));
     }
 
     private BoundExpression BindAddressOfVariable(UnaryExpressionSyntax unary, BoundUnaryOperator op, VariableSymbol variable)
@@ -1540,6 +1561,58 @@ public sealed class Binder
             : new PointerTypeSymbol(parameter.Type, isConst: false, storageClass: VariableStorageClass.Reg);
         BoundSymbolExpression operand = new(parameter, unary.Operand.Span, parameter.Type);
         return new BoundUnaryExpression(op, operand, unary.Span, pointerType);
+    }
+
+    private static bool TryGetRecursiveAddressOfName(BoundExpression expression, out string? name)
+    {
+        switch (expression)
+        {
+            case BoundSymbolExpression { Symbol: VariableSymbol { ScopeKind: VariableScopeKind.Local, Type: ArrayTypeSymbol } variable }:
+                name = variable.Name;
+                return true;
+
+            case BoundSymbolExpression { Symbol: ParameterSymbol { Type: ArrayTypeSymbol } parameter }:
+                name = parameter.Name;
+                return true;
+
+            default:
+                name = null;
+                return false;
+        }
+    }
+
+    private static bool TryGetIndexedAddressType(BoundExpression expression, TypeSymbol elementType, out PointerTypeSymbol? pointerType)
+    {
+        if (expression.Type is MultiPointerTypeSymbol manyPointer)
+        {
+            pointerType = new PointerTypeSymbol(
+                elementType,
+                manyPointer.IsConst,
+                manyPointer.IsVolatile,
+                manyPointer.Alignment,
+                manyPointer.StorageClass);
+            return true;
+        }
+
+        switch (expression)
+        {
+            case BoundSymbolExpression { Symbol: VariableSymbol variable } when variable.Type is ArrayTypeSymbol:
+            {
+                VariableStorageClass storageClass = variable.IsAutomatic
+                    ? VariableStorageClass.Reg
+                    : variable.StorageClass;
+                pointerType = new PointerTypeSymbol(elementType, variable.IsConst, storageClass: storageClass);
+                return true;
+            }
+
+            case BoundSymbolExpression { Symbol: ParameterSymbol parameter } when parameter.Type is ArrayTypeSymbol:
+                pointerType = new PointerTypeSymbol(elementType, isConst: false, storageClass: VariableStorageClass.Reg);
+                return true;
+
+            default:
+                pointerType = null;
+                return false;
+        }
     }
 
     private BoundExpression BindPostfixUnaryExpression(PostfixUnaryExpressionSyntax postfixUnary)

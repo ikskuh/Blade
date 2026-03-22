@@ -1,0 +1,13 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - Unary<*reg u32> AddressOf
+// - Index<u32>
+// NOTE:
+//   Recursive indexed address-of only rejects local/parameter arrays. A [*]
+//   pointer base is still allowed because the address comes from the pointer
+//   value, not the recursive frame.
+
+rec fn demo(many: [*]reg u32) void {
+    var ptr: *reg u32 = &many[1];
+}

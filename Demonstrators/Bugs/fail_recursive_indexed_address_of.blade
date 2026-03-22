@@ -1,0 +1,10 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - L9, E0226
+// NOTE:
+//   Indexed array elements remain subject to the recursive-local address-of
+//   restriction when the base array is a recursive function parameter.
+
+rec fn demo(values: [4]u32) void {
+    var ptr: *reg u32 = &values[1];
+}

@@ -1,0 +1,10 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - L9, E0205
+// NOTE:
+//   Single pointers remain non-indexable, so their "indexed element" cannot
+//   be addressed either.
+
+fn demo(value: *hub u32) void {
+    var ptr: *hub u32 = &value[0];
+}
