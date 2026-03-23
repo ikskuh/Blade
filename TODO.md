@@ -10,10 +10,6 @@ This plays together nicely with the register allocator running backwards.
 
 Right now only the high-level part is implemented, but lowering the array access is not.
 
-## Type improvements
-
-- Distinct between `[*]T` and `*T` like in Zig. This gives better quality code without basically any drawbacks.
-
 ## constant file rendering is broken
 
 uses the old rendering method which is weirdly formatted.
@@ -45,38 +41,6 @@ operand.
 ---
 
 These silicon bugs must be respected by the compiler, otherwise miscompilations appear.
-
-## Return values don't properly compile at all for bit-style return values
-
-```blade
-// EXPECT: pass
-// STAGE: final-asm
-// CONTAINS:
-// - ADD
-// NOTE:
-//   asm fn with flag return annotation (-> bool@C).
-
-asm fn add_with_carry(a: u32, b: u32) -> bool@C {
-    ADD {a}, {b} WC
-}
-
-reg var flag: bool = false;
-flag = add_with_carry(0xFFFF_FFFF, 1);
-```
-
-will yield
-
-```pasm
-AUGS #8388607
-MOV _r1, #511
-MOV _r2, #1
-' inline asm flag-output @C begin
-
-ADD _r1, _r2 WC
-
-' inline asm flag-output @C end
-MOV g_flag, #0
-```
 
 ## Implement "negtive SEQ" and "negative CONTAINS" items
 
@@ -114,33 +78,9 @@ This can even be optimized into a more general form:
 This allows us to check potential loop unrolling, the exact number of things generated
 and so on.
 
-## Bug: Address of array element
-
-`ptr = &ptr[1];` yields `E0223: Address-of requires an addressable variable or parameter.`
-
 ## Pointer arithmetic
 
 Implement `ptr = ptr + 1` for `[*]T`
-
-## Spurious WRLONG on pointer ref?
-
-```blade
-hub var greeting: [16]u8 = undefined;
-length = count_string(&greeting);
-```
-
-compiles to
-
-```spin2
-l_top_bb0
-    MOV _r1, #0
-    WRLONG _r1, h_greeting
-    MOV PA, h_greeting
-    CALLPA PA, #count_string
-    MOV g_length, PA
-    ' halt: endless loop
-    REP #1, #0
-```
 
 ## Missing optimizations
 
@@ -175,29 +115,6 @@ Right now, booleans are lowered to integers, then upgraded to flags
 when needed for branching. This can be inverted to lower them to flags
 first, then upgrade to integers when out of flags.
 
-## `count` value gets swallowed and won't be incremented
-
-```blade
-hub var greeting: [16]u8 = undefined;
-
-fn count_string(ptr: [*]hub const u8) -> u32 {
-    var count: u32 = 0;
-
-    while(ptr[0] != 0) {
-        count += 1;
-        ptr = bitcast([*]hub const u8, bitcast(u32, ptr) + 1);
-    }
-
-    return count;
-}
-
-reg var length: u32 = 0;
-
-length = count_string(&greeting);
-```
-
-has no sign of `ADD`, `#1` or `INC` included.
-
 ## Implement REP through magic "relative labels"
 
 ```pasm
@@ -211,24 +128,6 @@ has no sign of `ADD`, `#1` or `INC` included.
 ## Division by "literal zero" must yield compile error
 
 This includes eager constant folding and comptime evaluation.
-
-## Missing peer type resolution for enum literals in comparison operators
-
-```blade
-type Mode = enum(u8) { On, Off };
-
-var mode_b: Mode = .Off;
-if (mode_b == .Off) {
-  // must work
-}
-```
-
-## just coverage-report with delta information is super helpful for agents
-
-TextDeltaSummary
-
-https://reportgenerator.io/usage
-
 
 ## New rules on interrupt handlers + function pointers
 
