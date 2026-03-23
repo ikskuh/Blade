@@ -3,8 +3,7 @@
 // CONTAINS:
 // - VarDecl folded: u32
 // - Literal<u32> 3
-// NOT_CONTAINS:
-// - Call<u32> add
+// ! Call<u32> add
 // NOTE:
 //   Pure ordinary functions should fold eagerly when all inputs are compile-time values.
 

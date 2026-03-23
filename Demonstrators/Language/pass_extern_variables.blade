@@ -5,8 +5,7 @@
 // - MOV g_sink, FOO
 // - MOV OUTA, g_sink
 // - MOV g_sink, INA
-// NOT_CONTAINS:
-// - FOO LONG
+// ! FOO LONG
 // NOTE:
 //   Exercises extern declarations across all storage classes.
 //   Extern variables must not allocate storage (no LONG directives).

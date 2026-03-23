@@ -5,8 +5,7 @@
 // - -fmir-opt=const-prop
 // CONTAINS:
 // - const 42
-// NOT_CONTAINS:
-// - binary.Add
+// ! binary.Add
 // NOTE:
 //   Positive case for MIR const-prop: the folded constant should replace the add.
 

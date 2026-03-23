@@ -130,14 +130,45 @@ public sealed class RegressionFixture
     public RegressionExpectation Expectation { get; }
 }
 
+public enum SnippetKind
+{
+    Positive,
+    Negative,
+    Count,
+}
+
+public sealed class SnippetItem
+{
+    private SnippetItem(SnippetKind kind, string text, int count)
+    {
+        Kind = kind;
+        Text = text;
+        Count = count;
+    }
+
+    public SnippetKind Kind { get; }
+    public string Text { get; }
+    public int Count { get; }
+
+    public static SnippetItem Positive(string text) => new(SnippetKind.Positive, text, 0);
+    public static SnippetItem Negative(string text) => new(SnippetKind.Negative, text, 0);
+
+    public static SnippetItem ExactCount(string text, int count)
+    {
+        if (count == 0)
+            return Negative(text);
+
+        return new SnippetItem(SnippetKind.Count, text, count);
+    }
+}
+
 public sealed class RegressionExpectation
 {
     public RegressionExpectation(
         RegressionExpectationKind expectationKind,
         RegressionStage? stage,
-        IReadOnlyList<string> containsSnippets,
-        IReadOnlyList<string> notContainsSnippets,
-        IReadOnlyList<string> sequenceSnippets,
+        IReadOnlyList<SnippetItem> containsSnippets,
+        IReadOnlyList<SnippetItem> sequenceSnippets,
         string? exactText,
         IReadOnlyList<string> looseDiagnosticCodes,
         IReadOnlyList<ExpectedDiagnostic> exactDiagnostics,
@@ -147,7 +178,6 @@ public sealed class RegressionExpectation
         ExpectationKind = expectationKind;
         Stage = stage;
         ContainsSnippets = containsSnippets;
-        NotContainsSnippets = notContainsSnippets;
         SequenceSnippets = sequenceSnippets;
         ExactText = exactText;
         LooseDiagnosticCodes = looseDiagnosticCodes;
@@ -158,15 +188,14 @@ public sealed class RegressionExpectation
 
     public RegressionExpectationKind ExpectationKind { get; }
     public RegressionStage? Stage { get; }
-    public IReadOnlyList<string> ContainsSnippets { get; }
-    public IReadOnlyList<string> NotContainsSnippets { get; }
-    public IReadOnlyList<string> SequenceSnippets { get; }
+    public IReadOnlyList<SnippetItem> ContainsSnippets { get; }
+    public IReadOnlyList<SnippetItem> SequenceSnippets { get; }
     public string? ExactText { get; }
     public IReadOnlyList<string> LooseDiagnosticCodes { get; }
     public IReadOnlyList<ExpectedDiagnostic> ExactDiagnostics { get; }
     public FlexspinExpectation FlexspinExpectation { get; }
     public IReadOnlyList<string> CompilerArgs { get; }
-    public bool HasCodeAssertions => ContainsSnippets.Count > 0 || NotContainsSnippets.Count > 0 || SequenceSnippets.Count > 0 || ExactText is not null;
+    public bool HasCodeAssertions => ContainsSnippets.Count > 0 || SequenceSnippets.Count > 0 || ExactText is not null;
     public bool HasDiagnosticAssertions => LooseDiagnosticCodes.Count > 0 || ExactDiagnostics.Count > 0;
 }
 
@@ -326,7 +355,6 @@ public static class RegressionRunner
                 new RegressionExpectation(
                     RegressionExpectationKind.Fail,
                     null,
-                    [],
                     [],
                     [],
                     null,
@@ -529,43 +557,49 @@ public static class RegressionRunner
         return issues;
     }
 
+    private static bool WildcardsEnabled(RegressionStage? stage)
+    {
+        return stage is null
+            or RegressionStage.AsmirPreOptimization
+            or RegressionStage.Asmir
+            or RegressionStage.FinalAsm;
+    }
+
     private static List<string> EvaluateNormalizedAssertions(
         RegressionExpectation expectation,
         string normalizedActual,
         RegressionStage? stage)
     {
         List<string> issues = [];
+        bool wildcards = WildcardsEnabled(stage);
 
-        foreach (string snippet in expectation.ContainsSnippets)
+        Dictionary<int, string> containsBindings = new();
+        foreach (SnippetItem item in expectation.ContainsSnippets)
         {
-            string normalizedSnippet = NormalizeExpectedCode(snippet, stage);
-            if (!normalizedActual.Contains(normalizedSnippet, StringComparison.Ordinal))
-                issues.Add($"missing snippet: {snippet}");
-        }
+            string normalizedSnippet = NormalizeExpectedCode(item.Text, stage);
 
-        foreach (string snippet in expectation.NotContainsSnippets)
-        {
-            string normalizedSnippet = NormalizeExpectedCode(snippet, stage);
-            if (normalizedActual.Contains(normalizedSnippet, StringComparison.Ordinal))
-                issues.Add($"unexpected snippet present: {snippet}");
+            switch (item.Kind)
+            {
+                case SnippetKind.Positive:
+                    if (!SnippetMatcher.Contains(normalizedActual, normalizedSnippet, containsBindings, wildcards))
+                        issues.Add($"missing snippet: {item.Text}");
+                    break;
+
+                case SnippetKind.Negative:
+                    if (SnippetMatcher.Contains(normalizedActual, normalizedSnippet, containsBindings, wildcards))
+                        issues.Add($"unexpected snippet present: {item.Text}");
+                    break;
+
+                case SnippetKind.Count:
+                    int actualCount = SnippetMatcher.CountOccurrences(normalizedActual, normalizedSnippet, containsBindings, wildcards);
+                    if (actualCount != item.Count)
+                        issues.Add($"expected {item.Count} occurrence(s) of snippet, found {actualCount}: {item.Text}");
+                    break;
+            }
         }
 
         if (expectation.SequenceSnippets.Count > 0)
-        {
-            int index = 0;
-            foreach (string snippet in expectation.SequenceSnippets)
-            {
-                string normalizedSnippet = NormalizeExpectedCode(snippet, stage);
-                int foundIndex = normalizedActual.IndexOf(normalizedSnippet, index, StringComparison.Ordinal);
-                if (foundIndex < 0)
-                {
-                    issues.Add($"missing ordered snippet: {snippet}");
-                    break;
-                }
-
-                index = foundIndex + normalizedSnippet.Length;
-            }
-        }
+            EvaluateSequenceAssertions(expectation.SequenceSnippets, normalizedActual, stage, wildcards, issues);
 
         if (expectation.ExactText is not null)
         {
@@ -575,6 +609,99 @@ public static class RegressionRunner
         }
 
         return issues;
+    }
+
+    private static void EvaluateSequenceAssertions(
+        IReadOnlyList<SnippetItem> sequenceSnippets,
+        string normalizedActual,
+        RegressionStage? stage,
+        bool wildcardsEnabled,
+        List<string> issues)
+    {
+        Dictionary<int, string> sequenceBindings = new();
+        int index = 0;
+        int previousPositiveEnd = 0;
+        List<SnippetItem> pendingNegatives = [];
+
+        foreach (SnippetItem item in sequenceSnippets)
+        {
+            string normalizedSnippet = NormalizeExpectedCode(item.Text, stage);
+
+            switch (item.Kind)
+            {
+                case SnippetKind.Negative:
+                    pendingNegatives.Add(item);
+                    break;
+
+                case SnippetKind.Positive:
+                {
+                    int foundIndex = SnippetMatcher.IndexOf(normalizedActual, normalizedSnippet, index, sequenceBindings, wildcardsEnabled, out int matchLength);
+                    if (foundIndex < 0)
+                    {
+                        issues.Add($"missing ordered snippet: {item.Text}");
+                        return;
+                    }
+
+                    CheckPendingNegatives(normalizedActual, previousPositiveEnd, foundIndex, pendingNegatives, stage, sequenceBindings, wildcardsEnabled, issues);
+                    pendingNegatives.Clear();
+                    previousPositiveEnd = foundIndex + matchLength;
+                    index = previousPositiveEnd;
+                    break;
+                }
+
+                case SnippetKind.Count:
+                {
+                    int countIndex = index;
+                    for (int i = 0; i < item.Count; i++)
+                    {
+                        int foundIndex = SnippetMatcher.IndexOf(normalizedActual, normalizedSnippet, countIndex, sequenceBindings, wildcardsEnabled, out int matchLength);
+                        if (foundIndex < 0)
+                        {
+                            issues.Add($"expected {item.Count} consecutive occurrence(s) of ordered snippet, found {i}: {item.Text}");
+                            return;
+                        }
+
+                        if (i == 0)
+                        {
+                            CheckPendingNegatives(normalizedActual, previousPositiveEnd, foundIndex, pendingNegatives, stage, sequenceBindings, wildcardsEnabled, issues);
+                            pendingNegatives.Clear();
+                        }
+
+                        countIndex = foundIndex + matchLength;
+                    }
+
+                    previousPositiveEnd = countIndex;
+                    index = countIndex;
+                    break;
+                }
+            }
+        }
+
+        // Check trailing negatives against rest of the text.
+        if (pendingNegatives.Count > 0)
+            CheckPendingNegatives(normalizedActual, previousPositiveEnd, normalizedActual.Length, pendingNegatives, stage, sequenceBindings, wildcardsEnabled, issues);
+    }
+
+    private static void CheckPendingNegatives(
+        string normalizedActual,
+        int gapStart,
+        int gapEnd,
+        List<SnippetItem> pendingNegatives,
+        RegressionStage? stage,
+        Dictionary<int, string> bindings,
+        bool wildcardsEnabled,
+        List<string> issues)
+    {
+        if (gapStart >= gapEnd)
+            return;
+
+        string gap = normalizedActual[gapStart..gapEnd];
+        foreach (SnippetItem negative in pendingNegatives)
+        {
+            string normalizedNeg = NormalizeExpectedCode(negative.Text, stage);
+            if (SnippetMatcher.Contains(gap, normalizedNeg, bindings, wildcardsEnabled))
+                issues.Add($"unexpected snippet in sequence gap: {negative.Text}");
+        }
     }
 
     private static string NormalizeExpectedCode(string text, RegressionStage? stage)
@@ -754,7 +881,7 @@ internal sealed class EvaluatedFixture
 internal static class RegressionFixtureParser
 {
     private static readonly Regex DirectiveRegex = new(
-        @"^(?<name>EXPECT|NOTE|DIAGNOSTICS|STAGE|CONTAINS|NOT_CONTAINS|SEQUENCE|EXACT|FLEXSPIN|ARGS):(?<value>.*)$",
+        @"^(?<name>EXPECT|NOTE|DIAGNOSTICS|STAGE|CONTAINS|SEQUENCE|EXACT|FLEXSPIN|ARGS):(?<value>.*)$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex ExactDiagnosticRegex = new(
@@ -779,7 +906,6 @@ internal static class RegressionFixtureParser
                     null,
                     [],
                     [],
-                    [],
                     null,
                     [],
                     [],
@@ -798,7 +924,6 @@ internal static class RegressionFixtureParser
             : new RegressionExpectation(
                 RegressionExpectationKind.Pass,
                 null,
-                [],
                 [],
                 [],
                 null,
@@ -855,9 +980,8 @@ internal static class RegressionFixtureParser
     {
         RegressionExpectationKind expectationKind = RegressionExpectationKind.Pass;
         RegressionStage? stage = null;
-        List<string> containsSnippets = [];
-        List<string> notContainsSnippets = [];
-        List<string> sequenceSnippets = [];
+        List<SnippetItem> containsSnippets = [];
+        List<SnippetItem> sequenceSnippets = [];
         List<string> looseDiagnosticCodes = [];
         List<ExpectedDiagnostic> exactDiagnostics = [];
         FlexspinExpectation flexspinExpectation = FlexspinExpectation.Auto;
@@ -892,7 +1016,6 @@ internal static class RegressionFixtureParser
                     "NOTE" => HeaderBlock.Note,
                     "DIAGNOSTICS" when directiveValue.Length == 0 => HeaderBlock.ExactDiagnostics,
                     "CONTAINS" => HeaderBlock.Contains,
-                    "NOT_CONTAINS" => HeaderBlock.NotContains,
                     "SEQUENCE" => HeaderBlock.Sequence,
                     "EXACT" => HeaderBlock.Exact,
                     "ARGS" => HeaderBlock.Args,
@@ -937,9 +1060,6 @@ internal static class RegressionFixtureParser
                     case "CONTAINS":
                         break;
 
-                    case "NOT_CONTAINS":
-                        break;
-
                     case "SEQUENCE":
                         break;
 
@@ -976,15 +1096,11 @@ internal static class RegressionFixtureParser
                     break;
 
                 case HeaderBlock.Contains:
-                    containsSnippets.Add(ParseBulletItem(trimmed, "CONTAINS"));
-                    break;
-
-                case HeaderBlock.NotContains:
-                    notContainsSnippets.Add(ParseBulletItem(trimmed, "NOT_CONTAINS"));
+                    containsSnippets.Add(ParseSnippetItem(trimmed, "CONTAINS"));
                     break;
 
                 case HeaderBlock.Sequence:
-                    sequenceSnippets.Add(ParseBulletItem(trimmed, "SEQUENCE"));
+                    sequenceSnippets.Add(ParseSnippetItem(trimmed, "SEQUENCE"));
                     break;
 
                 case HeaderBlock.Exact:
@@ -1014,7 +1130,6 @@ internal static class RegressionFixtureParser
             expectationKind,
             stage,
             containsSnippets,
-            notContainsSnippets,
             sequenceSnippets,
             exact,
             looseDiagnosticCodes,
@@ -1040,11 +1155,35 @@ internal static class RegressionFixtureParser
         return parts;
     }
 
+    private static readonly Regex CountPrefixRegex = new(
+        @"^(?<count>\d+)x\s+(?<text>.+)$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     private static string ParseBulletItem(string trimmed, string directiveName)
     {
         if (!trimmed.StartsWith('-'))
             throw new InvalidOperationException($"{directiveName} block entries must begin with '-'.");
         return trimmed[1..].TrimStart();
+    }
+
+    private static SnippetItem ParseSnippetItem(string trimmed, string directiveName)
+    {
+        if (trimmed.StartsWith('-'))
+            return SnippetItem.Positive(trimmed[1..].TrimStart());
+
+        if (trimmed.StartsWith('!'))
+            return SnippetItem.Negative(trimmed[1..].TrimStart());
+
+        Match countMatch = CountPrefixRegex.Match(trimmed);
+        if (countMatch.Success)
+        {
+            int count = int.Parse(countMatch.Groups["count"].Value, CultureInfo.InvariantCulture);
+            string text = countMatch.Groups["text"].Value;
+            return SnippetItem.ExactCount(text, count);
+        }
+
+        throw new InvalidOperationException(
+            $"{directiveName} block entries must begin with '-', '!', or a count prefix (e.g. '3x').");
     }
 
     private static ExpectedDiagnostic ParseExactDiagnostic(string itemText)
@@ -1069,7 +1208,6 @@ internal static class RegressionFixtureParser
         Note,
         ExactDiagnostics,
         Contains,
-        NotContains,
         Sequence,
         Exact,
         Args,
@@ -1230,6 +1368,128 @@ internal static class CodeNormalizer
         }
 
         return builder.ToString();
+    }
+}
+
+internal static class SnippetMatcher
+{
+    private static readonly Regex WildcardTokenRegex = new(
+        @"\?(\d+)?",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    public static bool ContainsWildcard(string snippet)
+    {
+        return snippet.Contains('?', StringComparison.Ordinal);
+    }
+
+    public static bool Contains(string haystack, string normalizedSnippet, Dictionary<int, string>? bindings, bool wildcardsEnabled)
+    {
+        if (!wildcardsEnabled || !ContainsWildcard(normalizedSnippet))
+            return haystack.Contains(normalizedSnippet, StringComparison.Ordinal);
+
+        Regex regex = BuildWildcardRegex(normalizedSnippet, bindings);
+        Match match = regex.Match(haystack);
+        if (!match.Success)
+            return false;
+
+        if (bindings is not null)
+            RecordBindings(match, bindings);
+
+        return true;
+    }
+
+    public static int IndexOf(string haystack, string normalizedSnippet, int startIndex, Dictionary<int, string>? bindings, bool wildcardsEnabled, out int matchLength)
+    {
+        if (!wildcardsEnabled || !ContainsWildcard(normalizedSnippet))
+        {
+            matchLength = normalizedSnippet.Length;
+            return haystack.IndexOf(normalizedSnippet, startIndex, StringComparison.Ordinal);
+        }
+
+        Regex regex = BuildWildcardRegex(normalizedSnippet, bindings);
+        Match match = regex.Match(haystack, startIndex);
+        if (!match.Success)
+        {
+            matchLength = 0;
+            return -1;
+        }
+
+        if (bindings is not null)
+            RecordBindings(match, bindings);
+
+        matchLength = match.Length;
+        return match.Index;
+    }
+
+    public static int CountOccurrences(string haystack, string normalizedSnippet, Dictionary<int, string>? bindings, bool wildcardsEnabled)
+    {
+        if (!wildcardsEnabled || !ContainsWildcard(normalizedSnippet))
+        {
+            int count = 0;
+            int index = 0;
+            while (true)
+            {
+                int found = haystack.IndexOf(normalizedSnippet, index, StringComparison.Ordinal);
+                if (found < 0)
+                    break;
+
+                count++;
+                index = found + normalizedSnippet.Length;
+            }
+
+            return count;
+        }
+
+        Regex regex = BuildWildcardRegex(normalizedSnippet, bindings);
+        MatchCollection matches = regex.Matches(haystack);
+        if (bindings is not null && matches.Count > 0)
+            RecordBindings(matches[0], bindings);
+
+        return matches.Count;
+    }
+
+    private static Regex BuildWildcardRegex(string normalizedSnippet, Dictionary<int, string>? bindings)
+    {
+        StringBuilder pattern = new();
+        int lastEnd = 0;
+
+        foreach (Match wildcardMatch in WildcardTokenRegex.Matches(normalizedSnippet))
+        {
+            if (wildcardMatch.Index > lastEnd)
+                pattern.Append(Regex.Escape(normalizedSnippet[lastEnd..wildcardMatch.Index]));
+
+            if (wildcardMatch.Groups[1].Success)
+            {
+                int number = int.Parse(wildcardMatch.Groups[1].Value, CultureInfo.InvariantCulture);
+                if (bindings is not null && bindings.TryGetValue(number, out string? boundValue))
+                    pattern.Append(Regex.Escape(boundValue));
+                else
+                    pattern.Append(CultureInfo.InvariantCulture, $"(?<w{number}>\\w+)");
+            }
+            else
+            {
+                pattern.Append(@"\w+");
+            }
+
+            lastEnd = wildcardMatch.Index + wildcardMatch.Length;
+        }
+
+        if (lastEnd < normalizedSnippet.Length)
+            pattern.Append(Regex.Escape(normalizedSnippet[lastEnd..]));
+
+        return new Regex(pattern.ToString(), RegexOptions.CultureInvariant);
+    }
+
+    private static void RecordBindings(Match match, Dictionary<int, string> bindings)
+    {
+        foreach (Group group in match.Groups)
+        {
+            if (group.Success && group.Name.StartsWith('w'))
+            {
+                int number = int.Parse(group.Name[1..], CultureInfo.InvariantCulture);
+                bindings.TryAdd(number, group.Value);
+            }
+        }
     }
 }
 

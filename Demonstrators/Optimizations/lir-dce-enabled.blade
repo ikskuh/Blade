@@ -4,8 +4,8 @@
 // - -fno-mir-opt=*
 // - -fno-lir-opt=*
 // - -flir-opt=dce
-// NOT_CONTAINS:
-// - binary.Add
+// CONTAINS:
+// ! binary.Add
 // NOTE:
 //   Positive case for LIR dce: the dead addition should be removed.
 

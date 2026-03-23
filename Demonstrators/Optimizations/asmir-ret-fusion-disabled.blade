@@ -6,8 +6,7 @@
 // - -fno-asmir-opt=*
 // CONTAINS:
 // - RET
-// NOT_CONTAINS:
-// - _RET_ MOV #PA, #_r1
+// ! _RET_ MOV #PA, #_r1
 // NOTE:
 //   Negative case for ASMIR ret-fusion: the leaf return stays as a standalone RET.
 

@@ -4,8 +4,7 @@
 // - -fasmir-opt=conditional-move-fusion
 // CONTAINS:
 // - IF_Z MOV #_r1, #2
-// NOT_CONTAINS:
-// - IF_Z JMP #$top_inl_after_0
+// ! IF_Z JMP #$top_inl_after_0
 // NOTE:
 //   Intended positive case for ASMIR conditional-move-fusion.
 //   The optimizer has unit coverage, but current .blade lowering does not expose a stable jump-over-single-instruction trigger yet.

@@ -3,10 +3,9 @@
 // CONTAINS:
 // - g_array BYTE 0
 // - g_data LONG 1
-// NOT_CONTAINS:
-// - WRLONG
-// - WRWORD
-// - WRBYTE
+// ! WRLONG
+// ! WRWORD
+// ! WRBYTE
 // NOTE:
 //   Hub storage is already initialized by the loader, so startup code must not
 //   synthesize manual WR* stores for static hub initializers.

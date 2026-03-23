@@ -4,10 +4,9 @@
 // - RDLONG
 // - WRLONG
 // - ADD
-// NOT_CONTAINS:
-// - unhandled: structlit
-// - unhandled: load.member
-// - unhandled: insert.member
+// ! unhandled: structlit
+// ! unhandled: load.member
+// ! unhandled: insert.member
 // NOTE:
 //   Single-word struct literals and member updates lower end-to-end.
 //   The hub-backed struct update should emit a read-modify-write sequence.

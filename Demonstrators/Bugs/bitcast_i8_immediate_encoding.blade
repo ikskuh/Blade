@@ -2,8 +2,7 @@
 // STAGE: final-asm
 // CONTAINS:
 // - MOV g_reinterpreted_signed, #511
-// NOT_CONTAINS:
-// - MOV g_reinterpreted_signed, #-1
+// ! MOV g_reinterpreted_signed, #-1
 
 reg var reinterpreted_signed: i8 = 0;
 reinterpreted_signed = bitcast(i8, 255 as u8);

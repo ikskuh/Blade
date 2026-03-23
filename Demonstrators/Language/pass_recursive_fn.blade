@@ -6,14 +6,13 @@
 // - PUSHB
 // - POPB
 // - RETB
+// ! g_rec_factorial_ret0
+// ! WRLONG
+// ! RDLONG
 // SEQUENCE:
 // - factorial_bb2
 // - MOV _r2, #1
 // - JMP #factorial_bb1
-// NOT_CONTAINS:
-// - g_rec_factorial_ret0
-// - WRLONG
-// - RDLONG
 // NOTE:
 //   Exercises recursive function (rec fn) calling convention with
 //   hub-based stack via PTRB, including shared argument/return storage

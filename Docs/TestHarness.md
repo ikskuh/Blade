@@ -113,29 +113,29 @@ The strict form supports these entry shapes:
 
 Every listed snippet must appear after comment and whitespace normalization.
 
+Items use a prefix to indicate the assertion kind:
+
+- `- snippet` (dash) — the snippet must appear at least once (positive)
+- `! snippet` (bang) — the snippet must never appear (negative)
+- `Nx snippet` (count) — the snippet must appear exactly N times; `0x` is an alias for `!`
+
 ```blade
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
 // - OR DIRA, #16
 // - ANDN OUTA, #16
-```
-
-
-### `NOT_CONTAINS`
-
-Like `CONTAINS`, but asserts a snippet is absent from normalized output.
-
-```blade
-// EXPECT: pass
-// STAGE: asmir
-// NOT_CONTAINS:
-// - NOP
+// ! NOP
+// 2x WAITX
 ```
 
 ### `SEQUENCE`
 
-The listed snippets must appear in order after normalization.
+The listed snippets must appear in order after normalization. The same item prefixes as `CONTAINS` apply:
+
+- `- snippet` — find this snippet at or after the current position
+- `! snippet` — this snippet must not appear between the previous and next positive match
+- `Nx snippet` — this snippet must appear exactly N consecutive times at the current position
 
 ```blade
 // EXPECT: pass
@@ -143,10 +143,31 @@ The listed snippets must appear in order after normalization.
 // SEQUENCE:
 // - SETQ _r3
 // - XINIT _r4, #0
+// ! MOV
 // - WAITX _r3
-// - NOP
-// - NOP
+// 2x NOP
 ```
+
+### Wildcards
+
+Wildcards are only active for assembly stages (`asmir-preopt`, `asmir`, `final-asm`) and raw assembly fixtures (`.pasm2`, `.spin2`). In IR stages (`bound`, `mir`, `lir` variants), `?` is treated as a literal because it is part of the ternary operator syntax.
+
+Use `?` in any snippet to match a single token (identifier, register name, etc.):
+
+```blade
+// CONTAINS:
+// - MOV ?, #0
+```
+
+Use `?N` (e.g. `?1`, `?2`) for numbered wildcards that bind on first use and must match the same value everywhere within the same block:
+
+```blade
+// SEQUENCE:
+// - MOV ?1, #0
+// - ADD ?, ?1
+```
+
+This matches `MOV PA, #0` followed by `ADD <anything>, PA` — `?1` captured `PA` on the first occurrence and requires the same value on the second.
 
 ### `EXACT`
 

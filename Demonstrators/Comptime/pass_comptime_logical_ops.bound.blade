@@ -3,8 +3,7 @@
 // CONTAINS:
 // - VarDecl result: u32
 // - Literal<u32> 4
-// NOT_CONTAINS:
-// - Call<u32> ct_logical
+// ! Call<u32> ct_logical
 // NOTE:
 //   Exercises logical AND/OR short-circuiting and bool equality in comptime.
 //   Uses bare if statements inside the comptime loop body.

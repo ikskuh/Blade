@@ -3,8 +3,7 @@
 // CONTAINS:
 // - VarDecl result: u32
 // - Literal<u32> 3
-// NOT_CONTAINS:
-// - Call<u32> ct_rep_loop_return
+// ! Call<u32> ct_rep_loop_return
 // NOTE:
 //   Exercises rep loop inside comptime evaluation. Since break is forbidden
 //   in rep loops, termination uses return from inside the loop body.

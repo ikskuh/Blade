@@ -3,8 +3,8 @@
 // SEQUENCE:
 // - AUGS #2
 // - GETNIB g_nibble, #86, #3
-// NOT_CONTAINS:
-// - AUGD
+// CONTAINS:
+// ! AUGD
 // NOTE:
 //   GETNIB may AUG-extend the S operand, but the #N operand is immediate-only and must not trigger AUGD/AUGS.
 

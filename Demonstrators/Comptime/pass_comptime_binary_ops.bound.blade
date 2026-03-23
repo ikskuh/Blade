@@ -11,12 +11,11 @@
 // - Literal<u32> 2
 // - VarDecl mod_result: u32
 // - Literal<u32> 1
-// NOT_CONTAINS:
-// - Call<u32> ct_add
-// - Call<u32> ct_sub
-// - Call<u32> ct_mul
-// - Call<u32> ct_div
-// - Call<u32> ct_mod
+// ! Call<u32> ct_add
+// ! Call<u32> ct_sub
+// ! Call<u32> ct_mul
+// ! Call<u32> ct_div
+// ! Call<u32> ct_mod
 // NOTE:
 //   Exercises all arithmetic binary operators in comptime evaluation.
 

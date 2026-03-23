@@ -6,8 +6,7 @@
 // - -flir-opt=cfg-simplify
 // CONTAINS:
 // - branch %r0 ? bb2() : bb1(
-// NOT_CONTAINS:
-// - branch %r0 ? bb2() : bb3()
+// ! branch %r0 ? bb2() : bb3()
 // NOTE:
 //   Positive case for LIR cfg-simplify: the trivial false-edge block should be threaded away.
 

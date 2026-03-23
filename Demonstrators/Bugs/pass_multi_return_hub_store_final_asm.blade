@@ -16,10 +16,10 @@
 // - WRLONG _r3, #g_result
 // - WRBYTE _r2, #g_flag1
 // - WRBYTE _r1, #g_flag2
-// NOT_CONTAINS:
-// - MOV g_result,
-// - MOV g_flag1,
-// - MOV g_flag2,
+// CONTAINS:
+// ! MOV g_result,
+// ! MOV g_flag1,
+// ! MOV g_flag2,
 // NOTE:
 //   A noinline multi-return call that stores into hub globals must materialize
 //   the flag-backed extra results and emit direct hub stores in final assembly.

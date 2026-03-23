@@ -3,8 +3,8 @@
 // ARGS:
 // - -fno-mir-opt=*
 // - -fmir-opt=dce
-// NOT_CONTAINS:
-// - binary.Add
+// CONTAINS:
+// ! binary.Add
 // NOTE:
 //   Positive case for MIR dce: the dead addition should be removed.
 

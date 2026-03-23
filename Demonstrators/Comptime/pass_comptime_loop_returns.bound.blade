@@ -7,10 +7,9 @@
 // - Literal<u32> 10
 // - VarDecl loop_return_result: u32
 // - Literal<u32> 42
-// NOT_CONTAINS:
-// - Call<u32> ct_while_return
-// - Call<u32> ct_for_return
-// - Call<u32> ct_loop_return
+// ! Call<u32> ct_while_return
+// ! Call<u32> ct_for_return
+// ! Call<u32> ct_loop_return
 // NOTE:
 //   Exercises early return from while, for, and loop bodies during comptime
 //   evaluation.

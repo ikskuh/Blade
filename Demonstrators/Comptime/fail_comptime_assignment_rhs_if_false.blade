@@ -3,8 +3,7 @@
 // CONTAINS:
 // - folded: u32
 // - Literal<u32> 2
-// NOT_CONTAINS:
-// - Call<u32> bad_assignment_rhs
+// ! Call<u32> bad_assignment_rhs
 // NOTE:
 //   Bool literal conditions in comptime if-expressions should fold cleanly.
 

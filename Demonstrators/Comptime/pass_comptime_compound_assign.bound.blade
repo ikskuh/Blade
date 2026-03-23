@@ -3,8 +3,7 @@
 // CONTAINS:
 // - VarDecl result: u32
 // - Literal<u32> 9
-// NOT_CONTAINS:
-// - Call<u32> ct_compound
+// ! Call<u32> ct_compound
 // NOTE:
 //   Exercises compound assignment operators (+=, -=, %=, &=, |=, ^=, <<=, >>=)
 //   in comptime evaluation.

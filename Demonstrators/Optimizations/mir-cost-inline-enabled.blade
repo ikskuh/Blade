@@ -3,9 +3,9 @@
 // ARGS:
 // - -fno-mir-opt=*
 // - -fmir-opt=cost-inline
-// NOT_CONTAINS:
-// - call add1(
-// - call demo(
+// CONTAINS:
+// ! call add1(
+// ! call demo(
 // NOTE:
 //   Positive case for MIR cost-inline: the tiny helper and its caller should inline away.
 

@@ -7,10 +7,9 @@
 // - Literal<u32> 4
 // - VarDecl in_loop: u32
 // - Literal<u32> 7
-// NOT_CONTAINS:
-// - Call<u32> ct_bare_if_true
-// - Call<u32> ct_bare_if_false
-// - Call<u32> ct_bare_if_loop
+// ! Call<u32> ct_bare_if_true
+// ! Call<u32> ct_bare_if_false
+// ! Call<u32> ct_bare_if_loop
 // NOTE:
 //   Bare if statements without else branches should fold during comptime evaluation.
 

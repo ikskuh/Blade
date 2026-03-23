@@ -3,8 +3,7 @@
 // CONTAINS:
 // - VarDecl answer: u32
 // - Literal<u32> 9
-// NOT_CONTAINS:
-// - Call<u32> accumulate
+// ! Call<u32> accumulate
 // NOTE:
 //   `comptime fn` bodies may use locals, branches, and loops and still fold to a literal.
 

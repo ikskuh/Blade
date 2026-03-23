@@ -5,8 +5,8 @@
 // - -fno-lir-opt=*
 // - -fno-asmir-opt=*
 // - -fasmir-opt=drop-jmp-next
-// NOT_CONTAINS:
-// - JMP #add1_bb1
+// CONTAINS:
+// ! JMP #add1_bb1
 // NOTE:
 //   Positive case for ASMIR drop-jmp-next: the redundant jump should be removed.
 

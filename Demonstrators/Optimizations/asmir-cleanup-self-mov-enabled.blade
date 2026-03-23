@@ -3,8 +3,8 @@
 // ARGS:
 // - -fno-asmir-opt=*
 // - -fasmir-opt=cleanup-self-mov
-// NOT_CONTAINS:
-// - MOV #_r1, #_r1
+// CONTAINS:
+// ! MOV #_r1, #_r1
 // NOTE:
 //   Positive case for ASMIR cleanup-self-mov: the redundant self-move should be removed.
 

@@ -42,42 +42,6 @@ operand.
 
 These silicon bugs must be respected by the compiler, otherwise miscompilations appear.
 
-## Implement "negtive SEQ" and "negative CONTAINS" items
-
-Replace "CONTAINS_NOT:" with "CONTAINS:" and use an explicit marker for that:
-
-```blade
-// CONTAINS:
-// - FOO
-// ! BAR
-```
-
-where `! BAR` means that `BAR` must not be contained.
-
-The same for sequence:
-
-
-```blade
-// CONTAINS:
-// - ADD
-// ! MOV
-// - ADD
-```
-
-This means the sequence must be ADD, no MOV, then ADD again, which allows
-us testing better for compiler optimizations.
-
-This can even be optimized into a more general form:
-
-```blade
-// - A dash means at least once for CONTAINS and once for SEQUENCE
-// ! A bang menas never for CONTAINS and "not between this and the next positive item"
-// 1x A decimal + "x" means "exactly that many times" for SEQUENCE AND CONTAINS, while "0x" is an alias for "!"
-```
-
-This allows us to check potential loop unrolling, the exact number of things generated
-and so on.
-
 ## Pointer arithmetic
 
 Implement `ptr = ptr + 1` for `[*]T`

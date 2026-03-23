@@ -4,8 +4,7 @@
 // - MOV g_rec_countdown_arg0, g_start
 // - CALLB #f_countdown
 // - RETB
-// NOT_CONTAINS:
-// - g_rec_countdown_ret0
+// ! g_rec_countdown_ret0
 // NOTE:
 //   Covers recursive ABI lowering for a void-returning rec fn so the
 //   explicit argument path is exercised without allocating a return slot.

@@ -11,12 +11,11 @@
 // - Literal<u32> 80
 // - VarDecl shr_result: u32
 // - Literal<u32> 5
-// NOT_CONTAINS:
-// - Call<u32> ct_and
-// - Call<u32> ct_or
-// - Call<u32> ct_xor
-// - Call<u32> ct_shl
-// - Call<u32> ct_shr
+// ! Call<u32> ct_and
+// ! Call<u32> ct_or
+// ! Call<u32> ct_xor
+// ! Call<u32> ct_shl
+// ! Call<u32> ct_shr
 // NOTE:
 //   Exercises all bitwise binary operators in comptime evaluation.
 

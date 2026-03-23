@@ -5,9 +5,8 @@
 // - Literal<u32> 6
 // - VarDecl continue_result: u32
 // - Literal<u32> 13
-// NOT_CONTAINS:
-// - Call<u32> ct_loop_break
-// - Call<u32> ct_loop_continue
+// ! Call<u32> ct_loop_break
+// ! Call<u32> ct_loop_continue
 // NOTE:
 //   Exercises loop/break and loop/continue in comptime evaluation.
 //   These hit BoundLoopStatement, BoundBreakStatement, and BoundContinueStatement

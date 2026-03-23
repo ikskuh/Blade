@@ -1,10 +1,10 @@
 // EXPECT: pass
 // STAGE: bound
-// NOT_CONTAINS:
-// - Call<u32> ct_rotl
-// - Call<u32> ct_rotr
-// - Call<u32> ct_ashl
-// - Call<u32> ct_ashr
+// CONTAINS:
+// ! Call<u32> ct_rotl
+// ! Call<u32> ct_rotr
+// ! Call<u32> ct_ashl
+// ! Call<u32> ct_ashr
 // NOTE:
 //   Exercises rotate and arithmetic shift operators in comptime evaluation.
 
