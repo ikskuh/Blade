@@ -1,7 +1,6 @@
-// EXPECT: xfail
+// EXPECT: pass
 // NOTE:
-//   Exercises noirq block lowering to REP #1.
-//   Currently xfail because noirq codegen is not fully implemented.
+//   Exercises noirq block lowering to REP with @label body-length calculation.
 
 extern reg var OUTA: u32 @(0x1FC);
 

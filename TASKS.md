@@ -28,6 +28,56 @@ The compiler must not let an `AUGS` intended for one instruction leak into an in
 - Ensure legalization does not emit an immediate `ALTx` that consumes or preserves the wrong `AUGS`.
 - Validate the final assembly ordering/operands so the hazard cannot occur.
 
+## Backend Lowering Backlog
+
+### LOW-1: Implement coroutine and yield lowering (`yield`, `yieldto`)
+
+`AsmLowerer.LowerYield` (line 1833) unconditionally emits E0401 and a `TODO: CALLD` comment placeholder. No real instructions are generated.
+
+- Implement `CALLD`-based context-switch sequence for `yieldto <target>(args)`.
+- Implement `yield` for interrupt handlers (`int1 fn`).
+- Handle coroutine frame setup in `coro fn` declarations.
+- Unblock xfail fixtures: `pass_coroutines.blade`, `pass_interrupt_handler.blade`.
+
+### LOW-3: Implement reg-storage indexed access (`load.index.reg`, `store.index.reg`)
+
+`LowerLoadIndex` and `LowerStoreIndex` handle `Hub` and `Lut` storage classes but fall through to E0401 for `Reg`. Register-file arrays with runtime indices need `ALTS`/`ALTD`-based indirection on the P2.
+
+- Implement `ALTD` + source instruction for `load.index.reg`.
+- Implement `ALTS` + destination instruction for `store.index.reg`.
+- Decide whether constant-index cases can be lowered to direct register access without `ALTx`.
+- Unblock xfail fixtures: `pass_array_literals.bound.blade`, `pass_array_literals_bool.bound.blade`, `pass_array_literals_mir.blade`, `pass_for_array_iteration.blade`.
+
+### LOW-4: Implement reg-storage pointer deref (`load.deref.reg`, `store.deref.reg`)
+
+`LowerLoadDeref` and `LowerStoreDeref` handle `Hub` and `Lut` but fall through to E0401 for `Reg`. Pointer-to-register-file indirection needs `ALTS`/`ALTD`.
+
+- Implement `ALTD`/`ALTS` sequences for register-file pointer derefs.
+- Unblock xfail fixture: `pass_pointers_mir.blade`.
+
+### LOW-5: Implement union member access lowering
+
+Union members bind through the same aggregate-field path as structs, but `TryGetAggregateValueShape` / `TryGetAggregateMemberShape` return false for union layout because all members share offset 0 with potentially different widths.
+
+- Extend aggregate member lowering to handle overlapping union member layout.
+- Ensure `load.member` and `insert.member` work when multiple members share the same byte offset.
+- Unblock xfail fixture: `pass_unions.bound.blade`.
+
+### LOW-6: Implement non-aligned bitfield insert
+
+`LowerAlignedBitfieldFallback` (line 1216) emits E0401 for bit widths/offsets that don't align to nibble (4), byte (8), or word (16) boundaries. P2 has `SETNIB`/`SETBYTE`/`SETWORD` for aligned cases only.
+
+- Implement a shift+mask sequence for arbitrary bitfield inserts: `MOVBYTS`/`BITL`/`SHL`/`AND`/`OR` or equivalent.
+- Cover the fallback path with a demonstrator that uses a non-aligned bitfield.
+
+### LOW-7: Implement C#-style declaration attributes (`[Used]`, `[LinkName]`)
+
+Design note in `CallGraphAnalyzer.cs` (line 9). Not a lowering gap, but a planned language feature.
+
+- `[Used]`: marks a function/variable as reachable, preventing dead-code elimination even without direct callers.
+- `[LinkName("_start")]`: sets the emitted assembly label name for linker/external interop.
+- Parse attributes in the syntax layer, store in bound tree, propagate through MIR/LIR to call-graph analysis and codegen.
+
 ## Code Review Backlog
 
 ## REVIEW-C5: Guard non-IO output path failures in compiler output writers

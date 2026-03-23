@@ -73,6 +73,13 @@ public static class AsmLowerer
         public DiagnosticBag? Diagnostics { get; }
         public HashSet<string> ReportedUnsupportedLowerings { get; } = new(StringComparer.Ordinal);
         public int NextInlineAsmBlockOrdinal { get; set; }
+        public int NextRepLabelOrdinal { get; set; }
+
+        /// <summary>
+        /// Stack of REP end-label names for correlating setup/begin pseudo-ops with
+        /// their corresponding iter/end pseudo-ops. Supports nesting.
+        /// </summary>
+        public Stack<string> RepEndLabelStack { get; } = new();
 
         /// <summary>
         /// Registers whose values are only consumed as hardware flags (by a flag-aware branch),
@@ -384,7 +391,10 @@ public static class AsmLowerer
                 {
                     LowerStore(nodes, op, ctx);
                 }
-                else if (op.Opcode.StartsWith("pseudo.", StringComparison.Ordinal))
+                else if (op.Opcode.StartsWith("pseudo.", StringComparison.Ordinal)
+                         || op.Opcode is "noirq.begin" or "noirq.end"
+                         or "rep.setup" or "rep.iter"
+                         or "repfor.setup" or "repfor.iter")
                 {
                     LowerPseudo(nodes, op, ctx);
                 }
@@ -1787,47 +1797,67 @@ public static class AsmLowerer
 
     private static void LowerPseudo(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
-        string pseudoOp = op.Opcode["pseudo.".Length..];
-        ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
+        string pseudoOp = op.Opcode.StartsWith("pseudo.", StringComparison.Ordinal)
+            ? op.Opcode["pseudo.".Length..]
+            : op.Opcode;
 
         switch (pseudoOp)
         {
             case "rep.setup":
                 if (op.Operands.Count >= 1)
                 {
+                    string endLabel = PushRepEndLabel(ctx);
                     AsmOperand iters = LowerOperand(op.Operands[0]);
-                    nodes.Add(new AsmCommentNode("REP setup: body length TBD"));
-                    nodes.Add(new AsmInstructionNode("REP", [new AsmImmediateOperand(0), iters]));
+                    nodes.Add(new AsmInstructionNode("REP", [new AsmLabelRefOperand(endLabel), iters]));
                 }
                 break;
 
             case "rep.iter":
+                nodes.Add(new AsmLabelNode(PopRepEndLabel(ctx)));
                 break;
 
             case "repfor.setup":
                 if (op.Operands.Count >= 2)
                 {
+                    string endLabel = PushRepEndLabel(ctx);
                     AsmOperand end = LowerOperand(op.Operands[1]);
-                    nodes.Add(new AsmCommentNode("REP-FOR setup: body length TBD"));
-                    nodes.Add(new AsmInstructionNode("REP", [new AsmImmediateOperand(0), end]));
+                    nodes.Add(new AsmInstructionNode("REP", [new AsmLabelRefOperand(endLabel), end]));
                 }
                 break;
 
             case "repfor.iter":
+                nodes.Add(new AsmLabelNode(PopRepEndLabel(ctx)));
                 break;
 
             case "noirq.begin":
-                nodes.Add(new AsmCommentNode("noirq: body length TBD"));
-                nodes.Add(new AsmInstructionNode("REP", [new AsmImmediateOperand(0), new AsmImmediateOperand(1)]));
+            {
+                string endLabel = PushRepEndLabel(ctx);
+                nodes.Add(new AsmInstructionNode("REP", [new AsmLabelRefOperand(endLabel), new AsmImmediateOperand(1)]));
                 break;
+            }
 
             case "noirq.end":
+                nodes.Add(new AsmLabelNode(PopRepEndLabel(ctx)));
                 break;
 
             default:
-                nodes.Add(new AsmCommentNode($"pseudo.{pseudoOp}"));
+                Assert.Unreachable($"Unexpected pseudo-op: {pseudoOp}");
                 break;
         }
+    }
+
+    private static string PushRepEndLabel(LoweringContext ctx)
+    {
+        int ordinal = ctx.NextRepLabelOrdinal++;
+        string label = $"_rep_end_{ctx.FunctionOrdinal}_{ordinal}";
+        ctx.RepEndLabelStack.Push(label);
+        return label;
+    }
+
+    private static string PopRepEndLabel(LoweringContext ctx)
+    {
+        Assert.Invariant(ctx.RepEndLabelStack.Count > 0);
+        return ctx.RepEndLabelStack.Pop();
     }
 
     private static void LowerYield(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)

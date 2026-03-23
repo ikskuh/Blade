@@ -260,3 +260,8 @@ most likely issue is that both LIR and ASMIR cannot represent immediates, thus w
 probable solution is to:
 
 - Add immediate value forwarding to ASMIR optimizations
+
+## symbol attributes
+
+`[Used]` and `[LinkName("_start")]`
+

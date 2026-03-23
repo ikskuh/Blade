@@ -2187,6 +2187,7 @@ public class IrPipelineTests
     {
         string[] files =
         [
+            "control_flow.blade",
             "empty.blade",
             "expressions.blade",
             "intrinsics.blade",
@@ -2220,7 +2221,6 @@ public class IrPipelineTests
         string[] files =
         [
             "advanced_semantics.blade",
-            "control_flow.blade",
             "function_declarations.blade",
         ];
 

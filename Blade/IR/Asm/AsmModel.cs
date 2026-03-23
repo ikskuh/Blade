@@ -168,6 +168,22 @@ public sealed class AsmSymbolOperand : AsmOperand
     public override string Format() => $"#{Name}";
 }
 
+/// <summary>
+/// Label-relative reference operand (@label) used by FlexSpin's REP instruction
+/// to automatically calculate the instruction count to a target label.
+/// </summary>
+public sealed class AsmLabelRefOperand : AsmOperand
+{
+    public AsmLabelRefOperand(string name)
+    {
+        Name = name;
+    }
+
+    public string Name { get; }
+
+    public override string Format() => $"@{Name}";
+}
+
 public sealed class AsmPlaceOperand : AsmOperand
 {
     public AsmPlaceOperand(StoragePlace place)
