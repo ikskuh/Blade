@@ -7,7 +7,7 @@ reportgenerator := which('reportgenerator') || which('dotnet-reportgenerator')
 
 all: build test regressions compile-all-samples
 
-accept-changes analyze:
+accept-changes:
     # Build code in debug and release mode:
     dotnet build -c debug
     dotnet build -c release

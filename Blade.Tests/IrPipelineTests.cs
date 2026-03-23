@@ -1065,7 +1065,7 @@ public class IrPipelineTests
 
         Assert.That(build.AssemblyText, Does.Contain("' before"));
         Assert.That(build.AssemblyText, Does.Contain("' after"));
-        Assert.That(build.AssemblyText, Does.Match(@"MOV\s+_r\d+,\s+_r\d+"));
+        Assert.That(build.AssemblyText, Does.Not.Match(@"MOV\s+(_r\d+),\s+\1\b"), build.AssemblyText);
     }
 
     [Test]
@@ -1560,7 +1560,7 @@ public class IrPipelineTests
         });
 
         Assert.That(build.AssemblyText, Does.Contain("unhandled aligned fallback for bitfield.insert.1.4"));
-        Assert.That(build.AssemblyText, Does.Match(@"MOV _r\d+,\s+_r\d+"));
+        Assert.That(build.AssemblyText, Does.Not.Match(@"MOV\s+(_r\d+),\s+\1\b"), build.AssemblyText);
     }
 
     [Test]

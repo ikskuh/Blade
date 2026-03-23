@@ -39,4 +39,4 @@ This disables all ASMIR optimizations, then re-enables only `elide-nops`.
 - `conditional-move-fusion`: Fuses conditional jump-over-single-instruction into predicated instruction.
 - `muxc-fusion`: Fuses `IF_C/IF_NC` `OR/ANDN` pairs into `MUXC`/`MUXNC`.
 - `elide-nops`: Removes semantic no-ops (`NOP`, `MOV x,x`, and selected immediate no-op ALU forms).
-- `cleanup-self-mov`: Cleans redundant adjacent duplicate labels and self-moves.
+- `cleanup-self-mov`: Cleans redundant adjacent duplicate labels and self-moves, including self-moves introduced by register coalescing.
