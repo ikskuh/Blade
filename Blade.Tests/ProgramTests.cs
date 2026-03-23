@@ -12,6 +12,7 @@ public class ProgramTests
     private static readonly object ConsoleLock = new();
 
     private static Type CommandLineOptionsType => typeof(SourceText).Assembly.GetType("Blade.CommandLineOptions", throwOnError: true)!;
+    private static Type CommandLineParserType => typeof(SourceText).Assembly.GetType("Blade.CommandLineParser", throwOnError: true)!;
 
     private static (T Result, string StdOut, string StdErr) CaptureConsole<T>(Func<T> action)
     {
@@ -39,7 +40,7 @@ public class ProgramTests
 
     private static object? ParseOptions(params string[] args)
     {
-        MethodInfo parse = CommandLineOptionsType.GetMethod("Parse", BindingFlags.Public | BindingFlags.Static)!;
+        MethodInfo parse = CommandLineParserType.GetMethod("Parse", BindingFlags.Public | BindingFlags.Static)!;
         return parse.Invoke(null, [args]);
     }
 
@@ -125,6 +126,7 @@ public class ProgramTests
         (object? noArgs, _, string noArgsErr) = CaptureConsole(() => ParseOptions());
         Assert.That(noArgs, Is.Null);
         Assert.That(noArgsErr, Does.Contain("Usage: blade"));
+        Assert.That(noArgsErr, Does.Contain("--comptime-fuel=<positive-integer>"));
 
         (object? missingDumpDir, _, string missingDumpDirErr) = CaptureConsole(() => ParseOptions("input.blade", "--dump-dir"));
         Assert.That(missingDumpDir, Is.Null);
@@ -397,6 +399,32 @@ public class ProgramTests
     }
 
     [Test]
+    public void EntryPoint_ReportsTextOutputWriteFailure()
+    {
+        string filePath = Path.Combine(Path.GetTempPath(), $"blade-output-fail-{Guid.NewGuid():N}.blade");
+        string outputDirectory = Path.Combine(Path.GetTempPath(), $"blade-output-dir-{Guid.NewGuid():N}");
+        File.WriteAllText(filePath, "reg var x: u32 = 1;");
+        Directory.CreateDirectory(outputDirectory);
+
+        try
+        {
+            (int exitCode, string stdout, string stderr) = CaptureConsole(() => InvokeEntryPoint([filePath, "--dump-bound", "--output", outputDirectory]));
+
+            Assert.That(exitCode, Is.EqualTo(1));
+            Assert.That(stdout, Is.Empty);
+            Assert.That(stderr, Does.Contain("failed to write output"));
+            Assert.That(stderr, Does.Contain(outputDirectory));
+        }
+        finally
+        {
+            if (File.Exists(filePath))
+                File.Delete(filePath);
+            if (Directory.Exists(outputDirectory))
+                Directory.Delete(outputDirectory, recursive: true);
+        }
+    }
+
+    [Test]
     public void EntryPoint_CanWriteJsonReportToFile()
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-json-file-{Guid.NewGuid():N}.blade");
@@ -424,6 +452,32 @@ public class ProgramTests
                 File.Delete(filePath);
             if (File.Exists(outputPath))
                 File.Delete(outputPath);
+        }
+    }
+
+    [Test]
+    public void EntryPoint_ReportsJsonOutputWriteFailure()
+    {
+        string filePath = Path.Combine(Path.GetTempPath(), $"blade-json-output-fail-{Guid.NewGuid():N}.blade");
+        string outputDirectory = Path.Combine(Path.GetTempPath(), $"blade-json-output-dir-{Guid.NewGuid():N}");
+        File.WriteAllText(filePath, "reg var x: u32 = 1;");
+        Directory.CreateDirectory(outputDirectory);
+
+        try
+        {
+            (int exitCode, string stdout, string stderr) = CaptureConsole(() => InvokeEntryPoint([filePath, "--dump-bound", "--json", "--output", outputDirectory]));
+
+            Assert.That(exitCode, Is.EqualTo(1));
+            Assert.That(stdout, Is.Empty);
+            Assert.That(stderr, Does.Contain("failed to write output"));
+            Assert.That(stderr, Does.Contain(outputDirectory));
+        }
+        finally
+        {
+            if (File.Exists(filePath))
+                File.Delete(filePath);
+            if (Directory.Exists(outputDirectory))
+                Directory.Delete(outputDirectory, recursive: true);
         }
     }
 

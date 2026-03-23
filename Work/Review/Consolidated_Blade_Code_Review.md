@@ -2,14 +2,6 @@
 
 ## Correctness findings
 
-### C2. CLI usage text omits `--comptime-fuel`
-- **Severity:** Medium
-- **Location:** `Blade/Program.cs`
-- **Summary:** The option parser accepts `--comptime-fuel=...`, but `PrintUsage()` does not document it.
-- **Impact:** Real functionality is present but discoverability is broken.
-- **Recommendation:** Document `--comptime-fuel=<positive-int>` in CLI usage text.
-- **Source(s):** Run1
-
 ### C5. Output write errors are only partially guarded
 - **Severity:** Medium
 - **Location:** `Blade/Program.cs` (`OutputWriter`)
@@ -51,22 +43,6 @@
 - **Recommendation:** Make `HasErrors` severity-aware.
 - **Source(s):** Run3
 
-### C12. Release-build fallback can silently choose the wrong return-slot placement
-- **Severity:** High
-- **Location:** `Blade/IR/Lir/LirLowerer.cs`
-- **Summary:** `GetExtraResultPlacement` uses `Debug.Fail(...)` and then returns `ReturnPlacement.FlagC`.
-- **Impact:** Release builds may silently miscompile invalid IR states.
-- **Recommendation:** Replace the fallback with an invariant-enforcing failure (`throw`, hard assert, or unrepresentable state design).
-- **Source(s):** Run3
-
-### C13. Unexpected callee tier only triggers `Debug.Fail` and then continues
-- **Severity:** High
-- **Location:** `Blade/IR/Asm/AsmLowerer.cs`
-- **Summary:** An unexpected `CallingConventionTier` hits `Debug.Fail` and then `break`s without a fatal compiler path.
-- **Impact:** Release builds may emit incomplete or incorrect assembly rather than failing deterministically.
-- **Recommendation:** Convert the branch into an explicit diagnostic or exception path.
-- **Source(s):** Run3
-
 ### C16. Flag annotation parsing is inconsistent between return specs and asm output bindings
 - **Severity:** Medium
 - **Location:** parser logic around return-item flags vs asm output binding flags
@@ -86,14 +62,6 @@
 ---
 
 ## Unnecessary complexity / maintainability findings
-
-### X1. `Program.cs` mixes too many concerns
-- **Severity:** Low to Medium
-- **Location:** `Blade/Program.cs`
-- **Summary:** CLI parsing, orchestration, reporting, serialization, and output plumbing are bundled together.
-- **Impact:** Small changes in output or command-line behavior risk touching core compile flow.
-- **Recommendation:** Split CLI parsing, orchestration, and report/output shaping into separate units.
-- **Source(s):** Run1, Run3
 
 ### X2. `AsmLowerer` is very large and contains placeholder or TODO lowering paths
 - **Severity:** Medium
@@ -133,14 +101,6 @@
 - **Summary:** There are many near-identical reporting methods.
 - **Impact:** Boilerplate drift risk and extra maintenance cost.
 - **Recommendation:** Centralize descriptors/templates and keep typed wrappers only where they add real value.
-- **Source(s):** Run3
-
-### X7. Multiple “impossible default” branches rely on debug-only checks
-- **Severity:** Medium
-- **Location:** e.g. `Blade/IR/Asm/AsmLowerer.cs`, `Blade/Semantics/Binder.cs`, `Blade/Semantics/ComptimeEvaluation.cs`
-- **Summary:** Some default branches rely on `Debug.Fail`, comments, or fallback behavior instead of deterministic failures.
-- **Impact:** Invalid states can be masked in release builds.
-- **Recommendation:** Replace debug-only fallbacks with explicit invariants and deterministic compiler failures.
 - **Source(s):** Run3
 
 ### X8. `hasEscapeErrors` in `ReadString` is dead state
