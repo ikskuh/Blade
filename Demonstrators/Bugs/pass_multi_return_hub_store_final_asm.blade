@@ -1,0 +1,53 @@
+// EXPECT: pass
+// STAGE: final-asm
+// SEQUENCE:
+// - MOV PA, g_input
+// - CALLPA PA, #f_get_pair
+// - BITL _r1, #0
+// - BITC _r1, #0
+// - WRLONG _r2, #g_result
+// - WRBYTE _r1, #g_flag1
+// - MOV PA, g_input
+// - CALLPA PA, #f_get_triple
+// - BITL _r2, #0
+// - BITC _r2, #0
+// - BITL _r1, #0
+// - BITZ _r1, #0
+// - WRLONG _r3, #g_result
+// - WRBYTE _r2, #g_flag1
+// - WRBYTE _r1, #g_flag2
+// NOT_CONTAINS:
+// - MOV g_result,
+// - MOV g_flag1,
+// - MOV g_flag2,
+// NOTE:
+//   A noinline multi-return call that stores into hub globals must materialize
+//   the flag-backed extra results and emit direct hub stores in final assembly.
+//   Hub storage is already loader-initialized, so the runtime path should only
+//   perform the call-result writes that are actually needed.
+
+noinline fn get_pair(a: u32) -> u32, bool {
+    if (a > 10) {
+        return a, true;
+    }
+    else {
+        return 0, false;
+    }
+}
+
+noinline fn get_triple(a: u32) -> u32, bool, bit {
+    if (a > 10) {
+        return a, true, 0;
+    }
+    else {
+        return 0, false, 1;
+    }
+}
+
+reg const input: u32 = 42;
+hub var result: u32 = 0;
+hub var flag1: bool = false;
+hub var flag2: bit = 0;
+
+result, flag1 = get_pair(input);
+result, flag1, flag2 = get_triple(input);

@@ -50,10 +50,11 @@ public static class LirLowerer
                 // Emit extra result extraction instructions for multi-return calls
                 if (instruction is MirCallInstruction { ExtraResults.Count: > 0 } callInstr)
                 {
-                    foreach ((MirValueId extraValue, TypeSymbol extraType) in callInstr.ExtraResults)
+                    for (int i = 0; i < callInstr.ExtraResults.Count; i++)
                     {
+                        (MirValueId extraValue, TypeSymbol extraType) = callInstr.ExtraResults[i];
                         LirVirtualRegister extraDest = GetRegister(extraValue);
-                        ReturnPlacement placement = GetExtraResultPlacement(callInstr, extraValue);
+                        ReturnPlacement placement = GetExtraResultPlacement(callInstr, i);
                         string opcode = placement == ReturnPlacement.FlagC ? "call.extractC" : "call.extractZ";
                         instructions.Add(new LirOpInstruction(
                             opcode,
@@ -341,17 +342,19 @@ public static class LirLowerer
         return lowered;
     }
 
-    private static ReturnPlacement GetExtraResultPlacement(MirCallInstruction call, MirValueId extraValue)
+    private static ReturnPlacement GetExtraResultPlacement(MirCallInstruction call, int extraResultIndex)
     {
-        for (int i = 0; i < call.ExtraResults.Count; i++)
+        switch (extraResultIndex)
         {
-            if (call.ExtraResults[i].Value == extraValue)
-            {
-                // Extra results at index 0 = slot 1 (FlagC), index 1 = slot 2 (FlagZ)
-                return i == 0 ? ReturnPlacement.FlagC : ReturnPlacement.FlagZ;
-            }
-        }
+            case 0:
+                return ReturnPlacement.FlagC;
 
-        return Assert.UnreachableValue<ReturnPlacement>($"Extra result value {extraValue} not found in call ExtraResults");
+            case 1:
+                return ReturnPlacement.FlagZ;
+
+            default:
+                return Assert.UnreachableValue<ReturnPlacement>(
+                    $"Call '{call.FunctionName}' exposes extra result index {extraResultIndex}, but only C and Z flag result slots are available.");
+        }
     }
 }

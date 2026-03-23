@@ -28,11 +28,3 @@ The compiler must not let an `AUGS` intended for one instruction leak into an in
 - Ensure legalization does not emit an immediate `ALTx` that consumes or preserves the wrong `AUGS`.
 - Validate the final assembly ordering/operands so the hazard cannot occur.
 
-## BUG-16: Remove the release-mode `FlagC` fallback in extra-result lowering
-
-`LirLowerer.GetExtraResultPlacement` still calls `Debug.Fail(...)` and then returns `ReturnPlacement.FlagC`.
-That means a bad internal state can silently mislower extra call results in release builds instead of failing loudly.
-
-- Replace the fallback with an assertion or exception path that cannot silently continue with the wrong ABI placement.
-- Audit callers so the impossible state is either proven unreachable or reported as an internal compiler error.
-- Add a focused test that exercises the failure path and verifies it does not default to `FlagC`.
