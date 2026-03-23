@@ -340,7 +340,11 @@ public sealed class Parser
                     Token openParen = MatchToken(TokenKind.OpenParen);
                     ExpressionSyntax address = ParseExpression();
                     Token closeParen = MatchToken(TokenKind.CloseParen);
-                    atClause = new AddressClauseSyntax(at, openParen, address, closeParen);
+                    AddressClauseSyntax parsedAtClause = new(at, openParen, address, closeParen);
+                    if (atClause is null)
+                        atClause = parsedAtClause;
+                    else
+                        Diagnostics.ReportDuplicateVariableClause(parsedAtClause.Span, "@(...)");
                     break;
                 }
                 case TokenKind.AlignKeyword:
@@ -349,13 +353,29 @@ public sealed class Parser
                     Token openParen = MatchToken(TokenKind.OpenParen);
                     ExpressionSyntax alignment = ParseExpression();
                     Token closeParen = MatchToken(TokenKind.CloseParen);
-                    alignClause = new AlignClauseSyntax(alignKw, openParen, alignment, closeParen);
+                    AlignClauseSyntax parsedAlignClause = new(alignKw, openParen, alignment, closeParen);
+                    if (alignClause is null)
+                        alignClause = parsedAlignClause;
+                    else
+                        Diagnostics.ReportDuplicateVariableClause(parsedAlignClause.Span, "align(...)");
                     break;
                 }
                 case TokenKind.Equal:
-                    equalsToken = NextToken();
-                    initializer = ParseExpression();
+                {
+                    Token parsedEqualsToken = NextToken();
+                    ExpressionSyntax parsedInitializer = ParseExpression();
+                    if (initializer is null)
+                    {
+                        equalsToken = parsedEqualsToken;
+                        initializer = parsedInitializer;
+                    }
+                    else
+                    {
+                        TextSpan span = TextSpan.FromBounds(parsedEqualsToken.Span.Start, parsedInitializer.Span.End);
+                        Diagnostics.ReportDuplicateVariableClause(span, "= ...");
+                    }
                     break;
+                }
                 default:
                     parsing = false;
                     break;

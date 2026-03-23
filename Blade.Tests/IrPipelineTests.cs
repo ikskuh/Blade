@@ -674,7 +674,7 @@ public class IrPipelineTests
         string assembly = FinalAssemblyWriter.Write(module);
 
         Assert.That(assembly, Does.Contain("""
-              l_top
+              f_l_top
               l_top_bb0
                 ' inline asm raw fallback begin
 
@@ -689,6 +689,33 @@ public class IrPipelineTests
         Assert.That(assembly, Does.Contain("g_dead_code_visible_10 LONG  0"));
         Assert.That(assembly, Does.Contain("_r4                    LONG  0"));
         Assert.That(assembly, Does.Not.Contain("            MOV _r4, #target_label"));
+    }
+
+    [Test]
+    public void FinalAssemblyWriter_PrefixesFunctionSymbolsDeterministically()
+    {
+        AsmModule module = new([],
+        [
+            new AsmFunction("step", isEntryPoint: false, CallingConventionTier.General,
+            [
+                new AsmLabelNode("step_bb0"),
+                new AsmInstructionNode("RET", []),
+            ]),
+            new AsmFunction("caller", isEntryPoint: true, CallingConventionTier.EntryPoint,
+            [
+                new AsmLabelNode("caller_bb0"),
+                new AsmInstructionNode("CALLB", [new AsmSymbolOperand("step")]),
+                new AsmInstructionNode("MOV", [new AsmPhysicalRegisterOperand(0, "_r0"), new AsmSymbolOperand("step")]),
+            ]),
+        ]);
+
+        string assembly = FinalAssemblyWriter.Write(module);
+
+        Assert.That(assembly, Does.Contain("  f_step"));
+        Assert.That(assembly, Does.Contain("    CALLB #f_step"));
+        Assert.That(assembly, Does.Contain("    MOV _r0, f_step"));
+        Assert.That(assembly, Does.Contain("  f_caller"));
+        Assert.That(assembly, Does.Not.Contain("  step\n"));
     }
 
     [Test]

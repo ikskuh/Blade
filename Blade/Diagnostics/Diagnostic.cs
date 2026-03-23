@@ -21,8 +21,21 @@ public sealed class Diagnostic
     public string FormatCode()
     {
         int numericCode = (int)Code;
-        return $"E{numericCode:D4}";
+        return $"{GetSeverityPrefix(Code)}{numericCode:D4}";
     }
 
     public override string ToString() => $"{FormatCode()}: {Message}";
+
+    private static char GetSeverityPrefix(DiagnosticCode code)
+    {
+        string? codeName = System.Enum.GetName(code);
+        if (!string.IsNullOrEmpty(codeName))
+        {
+            char prefix = codeName[0];
+            if (prefix is 'E' or 'W' or 'I')
+                return prefix;
+        }
+
+        return 'E';
+    }
 }

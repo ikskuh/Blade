@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
 using Blade;
 using Blade.IR;
@@ -1574,7 +1573,7 @@ public static class MirLowerer
                 }
             }
 
-            Debug.Fail($"Unsupported aggregate write expression '{expression.Kind}'.");
+            Assert.Unreachable($"Unsupported aggregate write expression '{expression.Kind}'.");
         }
 
         private void WriteSymbol(Symbol symbol, MirValueId value, TextSpan span)
@@ -1776,7 +1775,7 @@ public static class MirLowerer
 
         private static int ShiftForHubElementSize(int size)
         {
-            Debug.Assert(size is 2 or 4, $"Unexpected hub element size '{size}' for indexed address-of lowering.");
+            Assert.Invariant(size is 2 or 4, $"Unexpected hub element size '{size}' for indexed address-of lowering.");
             return size == 2 ? 1 : 2;
         }
 

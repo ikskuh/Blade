@@ -101,6 +101,11 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
         Report(DiagnosticCode.E0107_ExpectedSemicolon, span, "Expected ';'.");
     }
 
+    public void ReportDuplicateVariableClause(TextSpan span, string clauseName)
+    {
+        Report(DiagnosticCode.E0108_DuplicateVariableClause, span, $"Duplicate variable clause '{clauseName}'.");
+    }
+
     // Semantic diagnostics
 
     public void ReportSymbolAlreadyDeclared(TextSpan span, string name)

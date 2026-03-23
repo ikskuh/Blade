@@ -62,15 +62,7 @@ public sealed class StoragePlace
     private static string BuildAllocatableName(Symbol symbol)
     {
         string sanitizedName = Sanitize(symbol.Name);
-        string prefix = symbol is VariableSymbol variable
-            ? variable.StorageClass switch
-            {
-                VariableStorageClass.Lut => "l",
-                VariableStorageClass.Hub => "h",
-                _ => "g",
-            }
-            : "g";
-
+        const string prefix = "g";
         return symbol is VariableSymbol { IsGlobalStorage: true }
             ? $"{prefix}_{sanitizedName}"
             : $"{prefix}_{sanitizedName}_{symbol.Id}";

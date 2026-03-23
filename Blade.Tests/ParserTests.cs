@@ -348,6 +348,52 @@ public class ParserTests
     }
 
     [Test]
+    public void DuplicateAddressClause_ReportsDiagnosticAndKeepsFirstClause()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var table: u32 @(1) @(2);");
+
+        VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
+        Assert.That(diag.Select(diagnostic => diagnostic.Code), Is.EqualTo([DiagnosticCode.E0108_DuplicateVariableClause]));
+        Assert.That(((LiteralExpressionSyntax)decl.AtClause!.Address).Token.Value, Is.EqualTo(1L));
+    }
+
+    [Test]
+    public void DuplicateAlignClause_ReportsDiagnosticAndKeepsFirstClause()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var table: u32 align(4) align(8);");
+
+        VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
+        Assert.That(diag.Select(diagnostic => diagnostic.Code), Is.EqualTo([DiagnosticCode.E0108_DuplicateVariableClause]));
+        Assert.That(((LiteralExpressionSyntax)decl.AlignClause!.Alignment).Token.Value, Is.EqualTo(4L));
+    }
+
+    [Test]
+    public void DuplicateInitializer_ReportsDiagnosticAndKeepsFirstClause()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var table: u32 = 1 = 2;");
+
+        VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
+        Assert.That(diag.Select(diagnostic => diagnostic.Code), Is.EqualTo([DiagnosticCode.E0108_DuplicateVariableClause]));
+        Assert.That(((LiteralExpressionSyntax)decl.Initializer!).Token.Value, Is.EqualTo(1L));
+    }
+
+    [Test]
+    public void MixedDuplicateVariableClauses_ReportEachDuplicateAndKeepFirstOccurrences()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var table: u32 @(1) align(4) = 7 @(2) align(8) = 9;");
+
+        VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
+        Assert.That(diag.Select(diagnostic => diagnostic.Code), Is.EqualTo([
+            DiagnosticCode.E0108_DuplicateVariableClause,
+            DiagnosticCode.E0108_DuplicateVariableClause,
+            DiagnosticCode.E0108_DuplicateVariableClause,
+        ]));
+        Assert.That(((LiteralExpressionSyntax)decl.AtClause!.Address).Token.Value, Is.EqualTo(1L));
+        Assert.That(((LiteralExpressionSyntax)decl.AlignClause!.Alignment).Token.Value, Is.EqualTo(4L));
+        Assert.That(((LiteralExpressionSyntax)decl.Initializer!).Token.Value, Is.EqualTo(7L));
+    }
+
+    [Test]
     public void MissingVariableMutability_ReportsDiagnostic()
     {
         (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg table: u32;");

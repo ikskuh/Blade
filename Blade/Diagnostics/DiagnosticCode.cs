@@ -23,6 +23,7 @@ public enum DiagnosticCode
     E0105_ExpectedIdentifier = 105,
     E0106_InvalidAssignmentTarget = 106,
     E0107_ExpectedSemicolon = 107,
+    E0108_DuplicateVariableClause = 108,
 
     // Semantic errors
     E0201_SymbolAlreadyDeclared = 201,
@@ -91,4 +92,8 @@ public enum DiagnosticCode
 
     // Backend lowering errors
     E0401_UnsupportedLowering = 401,
+
+    // Reserved for future diagnostics that need explicit warning/info formatting coverage.
+    W9001_TestWarning = 9001,
+    I9002_TestInfo = 9002,
 }

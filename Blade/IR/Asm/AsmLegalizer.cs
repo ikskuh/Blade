@@ -38,7 +38,7 @@ public static class AsmLegalizer
         foreach ((uint value, int count) in immediateUseCounts.OrderBy(static pair => pair.Key))
         {
             if (count >= 2)
-                constantRegisters[value] = $"constant_{value}";
+                constantRegisters[value] = $"c_{value}";
         }
 
         // Second pass: legalize each function

@@ -64,9 +64,10 @@ public class DiagnosticBagTests
         bag.ReportInlineAsmEmptyInstruction(Span);
         bag.ReportInlineAsmInvalidFlagOutput(Span, "Q");
         bag.ReportUnsupportedLowering(Span, "store.index");
+        bag.ReportDuplicateVariableClause(Span, "@(...)");
 
-        Assert.That(bag.Count, Is.EqualTo(50));
+        Assert.That(bag.Count, Is.EqualTo(51));
         Assert.That(bag.HasErrors, Is.True);
-        Assert.That(bag.Last().Code, Is.EqualTo(DiagnosticCode.E0401_UnsupportedLowering));
+        Assert.That(bag.Last().Code, Is.EqualTo(DiagnosticCode.E0108_DuplicateVariableClause));
     }
 }

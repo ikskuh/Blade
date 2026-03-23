@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
 using Blade;
 using Blade.Semantics;
@@ -302,7 +301,7 @@ public static class MirInliner
 
                     if (call.Result is MirValueId)
                     {
-                        Debug.Assert(ret.Values.Count > 0, "Inlined function return must have a value when call has a result");
+                        Assert.Invariant(ret.Values.Count > 0, "Inlined function return must have a value when call has a result");
                         gotoArgs.Add(ret.Values[0]);
                     }
 
@@ -310,7 +309,7 @@ public static class MirInliner
                     for (int i = 0; i < call.ExtraResults.Count; i++)
                     {
                         int retIndex = i + 1;
-                        Debug.Assert(retIndex < ret.Values.Count, "Inlined function return must have enough values for all extra results");
+                        Assert.Invariant(retIndex < ret.Values.Count, "Inlined function return must have enough values for all extra results");
                         gotoArgs.Add(ret.Values[retIndex]);
                     }
 

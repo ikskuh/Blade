@@ -12,14 +12,6 @@
 
 ## Bug Fix Backlog
 
-## BUG-10: Preserve loop-carried count updates in the pointer-walk sample
-
-The string-walk sample reports that `count += 1` disappears from final codegen.
-
-- Add a reproducer for the pointer-walk/counting loop.
-- Fix the lowering or optimization path that drops the loop-carried increment.
-- Validate the final assembly contains the increment behavior for the live reproducer.
-
 ## BUG-11: Respect the `SETQ`/`SETQ2` + PTRx silicon hazard
 
 The compiler must not emit `ALTx`/`AUG*` instructions between `SETQ`/`SETQ2` and PTRx bulk-transfer instructions.
@@ -35,3 +27,12 @@ The compiler must not let an `AUGS` intended for one instruction leak into an in
 - Add a regression around large-immediate codegen with an intervening `ALTx` instruction.
 - Ensure legalization does not emit an immediate `ALTx` that consumes or preserves the wrong `AUGS`.
 - Validate the final assembly ordering/operands so the hazard cannot occur.
+
+## BUG-16: Remove the release-mode `FlagC` fallback in extra-result lowering
+
+`LirLowerer.GetExtraResultPlacement` still calls `Debug.Fail(...)` and then returns `ReturnPlacement.FlagC`.
+That means a bad internal state can silently mislower extra call results in release builds instead of failing loudly.
+
+- Replace the fallback with an assertion or exception path that cannot silently continue with the wrong ABI placement.
+- Audit callers so the impossible state is either proven unreachable or reported as an internal compiler error.
+- Add a focused test that exercises the failure path and verifies it does not default to `FlagC`.

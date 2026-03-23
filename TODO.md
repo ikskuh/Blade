@@ -359,3 +359,41 @@ Acceptance criteria are:
 - At least two new demonstrators are written, one with `fail`, one with `pass`.
 
 ## implement pointer arithmetics
+
+see reference.blade
+
+## refactor optimization system into a highly modular approach
+
+Factor out each optimization into an `IMirOptimization`, `ILirOptimization`, `IAsmOptimization`.
+
+These optimizations can then be registered through an attribute:
+
+```csharp
+
+[AsmOptimizer("eliminate-self-move")]
+public sealed class SelfMovOptimizer : IAsmOptimization
+{
+  // Implements the interface functions
+}
+
+```
+
+and at startup, the compiler scans its own assembly for `typeof(AsmOptimizerAttribute)` parts (same for mir and lir respectively)
+and registers the optimizations into a "known optimization pool".
+
+This allows us to easily add new types into the optimization pool and makes the code way more modular.
+
+## immediate values are still going through a register often
+
+```pasm
+    MOV _r4, #0
+    CMP _r5, _r4 WZ
+```
+
+is generated, which could also just be `CMP _r5, #0 WZ`
+
+most likely issue is that both LIR and ASMIR cannot represent immediates, thus we cannot inline these in an early stage yet.
+
+probable solution is to:
+
+- Add immediate value forwarding to ASMIR optimizations

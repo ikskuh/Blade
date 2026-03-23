@@ -173,6 +173,15 @@ public class LexerTests
         Assert.That(tokens[0].Text, Is.EqualTo(text));
     }
 
+    [TestCase("true", true)]
+    [TestCase("false", false)]
+    public void BooleanKeywords_PreserveLiteralValue(string text, bool expectedValue)
+    {
+        List<Token> tokens = Lex(text);
+
+        Assert.That(tokens[0].Value, Is.EqualTo(expectedValue));
+    }
+
     [Test]
     public void Packed_LexesAsIdentifier()
     {
@@ -476,6 +485,28 @@ public class LexerTests
 
         Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.StringLiteral));
         Assert.That(tokens[0].Value, Is.EqualTo("\u0080"));
+    }
+
+    [TestCase("\"\\u{110000}\"")]
+    [TestCase("\"\\u{D800}\"")]
+    public void StringLiteral_InvalidUnicodeScalarEscape_ReportsInvalidEscape(string text)
+    {
+        List<Token> tokens = LexWithDiagnostics(text, out DiagnosticBag diagnostics);
+
+        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.StringLiteral));
+        Assert.That(tokens[0].Value, Is.EqualTo(string.Empty));
+        Assert.That(diagnostics.Select(d => d.Code), Is.EqualTo([DiagnosticCode.E0006_InvalidEscapeSequence]));
+    }
+
+    [TestCase("'\\u{110000}'")]
+    [TestCase("'\\u{D800}'")]
+    public void CharLiteral_InvalidUnicodeScalarEscape_ReportsInvalidEscapeAndInvalidCharacterLiteral(string text)
+    {
+        List<Token> tokens = LexWithDiagnostics(text, out DiagnosticBag diagnostics);
+
+        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.CharLiteral));
+        Assert.That(tokens[0].Value, Is.EqualTo(0L));
+        Assert.That(diagnostics.Select(d => d.Code), Is.EqualTo([DiagnosticCode.E0006_InvalidEscapeSequence]));
     }
 
     [Test]

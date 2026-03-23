@@ -251,7 +251,12 @@ public sealed class Lexer
         TokenKind? keywordKind = SyntaxFacts.GetKeywordKind(text);
         TokenKind kind = keywordKind ?? TokenKind.Identifier;
 
-        return MakeToken(kind);
+        return kind switch
+        {
+            TokenKind.TrueKeyword => MakeToken(kind, true),
+            TokenKind.FalseKeyword => MakeToken(kind, false),
+            _ => MakeToken(kind),
+        };
     }
 
     private Token ReadString(bool zeroTerminated)
@@ -418,7 +423,15 @@ public sealed class Lexer
 
                     string hex = _source.ToString(new TextSpan(digitStart, digitCount));
                     Advance(); // skip }
-                    return Convert.ToInt64(hex, 16);
+                    long codepoint = Convert.ToInt64(hex, 16);
+                    if (!IsValidUnicodeScalar(codepoint))
+                    {
+                        TextSpan span = TextSpan.FromBounds(escapeStart, _position);
+                        Diagnostics.ReportInvalidEscapeSequence(span);
+                        return -1;
+                    }
+
+                    return codepoint;
                 }
 
             default:
@@ -429,6 +442,11 @@ public sealed class Lexer
                 }
         }
     }
+
+    private static bool IsValidUnicodeScalar(long codepoint)
+        => codepoint >= 0
+            && codepoint <= 0x10FFFF
+            && (codepoint < 0xD800 || codepoint > 0xDFFF);
 
     private Token ReadOperatorOrPunctuation()
     {

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using Blade;
@@ -472,7 +471,7 @@ public sealed class Binder
     private BoundFunctionMember BindFunction(FunctionDeclarationSyntax functionSyntax)
     {
         bool found = _functions.TryGetValue(functionSyntax.Name.Text, out FunctionSymbol? function);
-        Debug.Assert(found && function is not null, "CollectTopLevelFunctions must register every function before binding.");
+        Assert.Invariant(found && function is not null, "CollectTopLevelFunctions must register every function before binding.");
 
         Scope previousScope = _currentScope;
         FunctionSymbol? previousFunction = _currentFunction;
@@ -483,7 +482,7 @@ public sealed class Binder
         foreach (ParameterSymbol parameter in function.Parameters)
         {
             bool declared = _currentScope.TryDeclare(parameter);
-            Debug.Assert(declared, "ResolveFunctionSignatures must deduplicate parameters before binding.");
+            Assert.Invariant(declared, "ResolveFunctionSignatures must deduplicate parameters before binding.");
         }
 
         BoundBlockStatement body = BindBlockStatement(functionSyntax.Body, createScope: false, isTopLevel: false);
@@ -501,7 +500,7 @@ public sealed class Binder
     private BoundFunctionMember BindAsmFunction(AsmFunctionDeclarationSyntax asmSyntax)
     {
         bool found = _functions.TryGetValue(asmSyntax.Name.Text, out FunctionSymbol? function);
-        Debug.Assert(found && function is not null, "CollectTopLevelFunctions must register every asm function before binding.");
+        Assert.Invariant(found && function is not null, "CollectTopLevelFunctions must register every asm function before binding.");
 
         Scope previousScope = _currentScope;
         FunctionSymbol? previousFunction = _currentFunction;
@@ -512,7 +511,7 @@ public sealed class Binder
         foreach (ParameterSymbol parameter in function.Parameters)
         {
             bool declared = _currentScope.TryDeclare(parameter);
-            Debug.Assert(declared, "ResolveFunctionSignatures must deduplicate parameters before binding.");
+            Assert.Invariant(declared, "ResolveFunctionSignatures must deduplicate parameters before binding.");
         }
 
         // For asm fn, the "return" keyword is a valid binding name referencing the return value.
@@ -1438,7 +1437,7 @@ public sealed class Binder
         if (symbol is FunctionSymbol function)
             return new BoundSymbolExpression(symbol, nameExpression.Span, new FunctionTypeSymbol(function));
 
-        Debug.Assert(symbol is ModuleSymbol, "Name expressions should only resolve to variables, parameters, functions, or modules.");
+        Assert.Invariant(symbol is ModuleSymbol, "Name expressions should only resolve to variables, parameters, functions, or modules.");
         ModuleSymbol module = (ModuleSymbol)Requires.NotNull(symbol as ModuleSymbol);
         return new BoundSymbolExpression(module, nameExpression.Span, new ModuleTypeSymbol(module));
     }
@@ -1453,7 +1452,7 @@ public sealed class Binder
         }
 
         BoundUnaryOperator? op = BoundUnaryOperator.Bind(unary.Operator.Kind);
-        Debug.Assert(op is not null, "Parser should only produce unary operators that the binder understands.");
+        Assert.Invariant(op is not null, "Parser should only produce unary operators that the binder understands.");
         BoundUnaryOperator unaryOperator = Requires.NotNull(op);
 
         switch (unaryOperator.Kind)
@@ -1478,7 +1477,7 @@ public sealed class Binder
                 return BindAddressOfExpression(unary, unaryOperator);
         }
 
-        Debug.Assert(
+        Assert.Invariant(
             unaryOperator.Kind is BoundUnaryOperatorKind.PostIncrement or BoundUnaryOperatorKind.PostDecrement,
             "BindUnaryExpression should only see prefix unary operators.");
         return new BoundErrorExpression(unary.Span);
@@ -1507,7 +1506,7 @@ public sealed class Binder
         if (symbol is ParameterSymbol parameter)
             return BindAddressOfParameter(unary, op, parameter);
 
-        Debug.Assert(symbol is VariableSymbol or ParameterSymbol, "Address-of should only resolve to variables or parameters after lookup succeeds.");
+        Assert.Invariant(symbol is VariableSymbol or ParameterSymbol, "Address-of should only resolve to variables or parameters after lookup succeeds.");
         _diagnostics.ReportInvalidAddressOfTarget(unary.Operand.Span);
         return new BoundErrorExpression(unary.Span);
     }
@@ -1515,7 +1514,7 @@ public sealed class Binder
     private BoundExpression BindAddressOfIndexedElement(UnaryExpressionSyntax unary, BoundUnaryOperator op, IndexExpressionSyntax indexExpression)
     {
         BoundExpression bound = BindIndexExpression(indexExpression);
-        Debug.Assert(bound is BoundIndexExpression, "Indexed address-of should bind through the normal index-expression path.");
+        Assert.Invariant(bound is BoundIndexExpression, "Indexed address-of should bind through the normal index-expression path.");
         BoundIndexExpression index = Requires.NotNull(bound as BoundIndexExpression);
 
         if (_currentFunction?.Kind == FunctionKind.Rec && TryGetRecursiveAddressOfName(index.Expression, out string? recursiveName))
@@ -1645,7 +1644,7 @@ public sealed class Binder
     private BoundExpression BindBinaryExpression(BinaryExpressionSyntax binary)
     {
         BoundBinaryOperator? op = BoundBinaryOperator.Bind(binary.Operator.Kind);
-        Debug.Assert(op is not null, "Parser should only produce binary operators that the binder understands.");
+        Assert.Invariant(op is not null, "Parser should only produce binary operators that the binder understands.");
         BoundBinaryOperator binaryOperator = Requires.NotNull(op);
 
         BoundExpression left;
@@ -2179,7 +2178,7 @@ public sealed class Binder
             return cached;
 
         BoundBlockStatement? body = ResolveFunctionBodyForComptime(function);
-        Debug.Assert(body is not null, "Comptime support analysis should only run after body resolution succeeds.");
+        Assert.Invariant(body is not null, "Comptime support analysis should only run after body resolution succeeds.");
 
         ComptimeFunctionSupportAnalyzer analyzer = new();
         ComptimeSupportResult analyzed = analyzer.Analyze(function, Requires.NotNull(body));
@@ -2189,7 +2188,7 @@ public sealed class Binder
 
     private void ReportComptimeFailure(ComptimeFailure failure)
     {
-        Debug.Assert(failure.Kind != ComptimeFailureKind.None, "ReportComptimeFailure should only be called with an actual failure.");
+        Assert.Invariant(failure.Kind != ComptimeFailureKind.None, "ReportComptimeFailure should only be called with an actual failure.");
 
         switch (failure.Kind)
         {
@@ -2441,7 +2440,7 @@ public sealed class Binder
 
         bool gotSourceWidth = TypeFacts.TryGetScalarWidth(expression.Type, out int sourceWidth);
         bool gotTargetWidth = TypeFacts.TryGetScalarWidth(targetType, out int targetWidth);
-        Debug.Assert(gotSourceWidth && gotTargetWidth, "Scalar cast types must always report a scalar width.");
+        Assert.Invariant(gotSourceWidth && gotTargetWidth, "Scalar cast types must always report a scalar width.");
 
         if (sourceWidth != targetWidth)
         {
@@ -2488,7 +2487,7 @@ public sealed class Binder
             return new BoundLiteralExpression((long)size, query.Span, BuiltinTypes.IntegerLiteral);
         }
 
-        Debug.Assert(query.Keyword.Kind == TokenKind.AlignofKeyword, "Two-arg query must be sizeof or alignof.");
+        Assert.Invariant(query.Keyword.Kind == TokenKind.AlignofKeyword, "Two-arg query must be sizeof or alignof.");
 
         if (!TypeFacts.TryGetAlignmentInMemorySpace(type, storageClass.Value, out int alignment))
         {
@@ -2563,7 +2562,7 @@ public sealed class Binder
                 VariableStorageClass.Reg => ("reg", 0L),
                 VariableStorageClass.Lut => ("lut", 1L),
                 VariableStorageClass.Hub => ("hub", 2L),
-                _ => throw new UnreachableException(),
+                _ => Assert.UnreachableValue<(string, long)>(),
             };
 
             return new BoundEnumLiteralExpression(MemorySpaceType, memberName, value, query.Span);
@@ -2580,7 +2579,7 @@ public sealed class Binder
             return new BoundLiteralExpression((long)size, query.Span, BuiltinTypes.IntegerLiteral);
         }
 
-        Debug.Assert(query.Keyword.Kind == TokenKind.AlignofKeyword, "Variable query must be sizeof, alignof, or memoryof.");
+        Assert.Invariant(query.Keyword.Kind == TokenKind.AlignofKeyword, "Variable query must be sizeof, alignof, or memoryof.");
 
         if (!TypeFacts.TryGetAlignmentInMemorySpace(variable.Type, sc, out int alignment))
         {
@@ -3186,7 +3185,7 @@ public sealed class Binder
     private TypeSymbol BindNamedType(NamedTypeSyntax namedType)
     {
         bool isBuiltinTypeName = BuiltinTypes.TryGet(namedType.Name.Text, out _);
-        Debug.Assert(!isBuiltinTypeName, "Builtin type keywords should bind as PrimitiveTypeSyntax, not NamedTypeSyntax.");
+        Assert.Invariant(!isBuiltinTypeName, "Builtin type keywords should bind as PrimitiveTypeSyntax, not NamedTypeSyntax.");
         return ResolveTypeAlias(namedType.Name.Text, namedType.Name.Span);
     }
 

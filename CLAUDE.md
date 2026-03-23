@@ -25,10 +25,21 @@ Each stage independently testable.
 - Prefer clarity over brevity. No `var` where the type isn't obvious from the RHS.
 - Result types / error returns for expected failures. Exceptions only for bugs.
 - Every runtime error path handled, never swallowed.
-- `Debug.Assert` for invariants guaranteed by earlier stages — never write unreachable fallback code.
+- Unreachable switch cases `throw new UnreachableException()` instead of returning wrong values
+- `Assert.Invariant(cond)` for invariants guaranteed by earlier stages — never write unreachable fallback code.
+- `Assert.Unreachable()` for statements that should never be reachable.
+- `Assert.UnreachableValue<T>()` for expressions that should never be reachable. `<T>` is the expected result. Useful for unreachable branches in switches.
 - Argument validation via `Blade/Requires.cs` (`Requires.NotNull`, `.NonNegative`, `.Positive`, `.InRange`).
 - `Blade/.editorconfig` is the analyzer rule source of truth.
 - In-source suppressions (`#pragma`, attributes) only for single occurrences with a clear explanation.
+
+## Definition Of Done
+
+Before reporting a task as completed:
+
+- `just accept-changes` must return without any findings.
+- Your changes must have 100% code coverage.
+- All language-related changes must have a positive and negative demonstrator file inside `Demonstrators/`.
 
 ## Syntax & Grammar Changes
 
@@ -105,16 +116,17 @@ Builds must be **warning-free**. New warnings are regressions.
 
 ## Justfile Commands
 
-| Command                      | Description                                                                         |
-| ---------------------------- | ----------------------------------------------------------------------------------- |
-| `just all`                   | Full local verification: build, test, regressions, compile-all-samples              |
-| `just build`                 | `dotnet build`                                                                      |
-| `just test`                  | `dotnet test`                                                                       |
-| `just coverage`              | Collect coverage → `coverage/coverage.cobertura.xml`                                |
-| `just coverage-regressions`  | Collect coverage of just the regression harness → `coverage/coverage.cobertura.xml` |
-| `just regressions`           | Run full regression harness                                                         |
-| `just compile-all-samples`   | Compile all `.blade` samples, write `*.dump.txt`                                    |
-| `just compile-sample <path>` | Run `blade --dump-all` for one sample                                               |
+| Command                      | Description                                                                                          |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `just all`                   | Full local verification: build, test, regressions, compile-all-samples                               |
+| `just accept-changes`        | Quality gate for new code. Must exit successfully without any findings to consider a task completed. |
+| `just build`                 | `dotnet build`                                                                                       |
+| `just test`                  | `dotnet test`                                                                                        |
+| `just coverage`              | Collect coverage → `coverage/coverage.cobertura.xml`                                                 |
+| `just coverage-regressions`  | Collect coverage of just the regression harness → `coverage/coverage.cobertura.xml`                  |
+| `just regressions`           | Run full regression harness                                                                          |
+| `just compile-all-samples`   | Compile all `.blade` samples, write `*.dump.txt`                                                     |
+| `just compile-sample <path>` | Run `blade --dump-all` for one sample                                                                |
 
 ## Generated Instruction Metadata
 

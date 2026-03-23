@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
 using Blade.Semantics.Bound;
 using Blade.Source;
@@ -1035,7 +1034,7 @@ internal sealed class ComptimeEvaluator
         if (assignment.OperatorKind != TokenKind.Equal)
         {
             var ok = frame.TryGetValue(symbolTarget.Symbol, out object? currentValue);
-            Debug.Assert(ok);
+            Assert.Invariant(ok);
 
             BoundBinaryOperatorKind operation = assignment.OperatorKind switch
             {
@@ -1255,7 +1254,7 @@ internal sealed class ComptimeEvaluator
 
             if (outcome.Kind == EvaluationOutcomeKind.Return)
                 return true;
-            Debug.Assert(outcome.Kind != EvaluationOutcomeKind.Break);
+            Assert.Invariant(outcome.Kind != EvaluationOutcomeKind.Break);
 
             if (!SpendFuel(repLoopStatement.Span, out failure))
             {

@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Diagnostics;
 using Blade;
 using Blade.IR.Mir;
 using Blade.Semantics;
@@ -353,7 +352,6 @@ public static class LirLowerer
             }
         }
 
-        Debug.Fail($"Extra result value {extraValue} not found in call ExtraResults");
-        return ReturnPlacement.FlagC; // unreachable
+        return Assert.UnreachableValue<ReturnPlacement>($"Extra result value {extraValue} not found in call ExtraResults");
     }
 }

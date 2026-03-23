@@ -11,6 +11,8 @@ namespace Blade.IR.Asm;
 
 public static class FinalAssemblyWriter
 {
+    private static readonly IReadOnlySet<string> EmptyFunctionNames = new HashSet<string>(StringComparer.Ordinal);
+
     private static bool IsDataDirective(string text)
     {
         ReadOnlySpan<char> t = text.AsSpan().TrimStart();
@@ -23,8 +25,12 @@ public static class FinalAssemblyWriter
     {
         Requires.NotNull(module);
 
+        HashSet<string> functionNames = module.Functions
+            .Select(static function => function.Name)
+            .ToHashSet(StringComparer.Ordinal);
+
         StringBuilder sb = new();
-        WriteConBlock(sb, module);
+        WriteConBlock(sb, module, functionNames);
         sb.AppendLine("DAT");
         sb.AppendLine("    org 0");
         sb.AppendLine("    ' --- Blade compiler output ---");
@@ -38,14 +44,14 @@ public static class FinalAssemblyWriter
             sb.Append(function.CcTier);
             sb.AppendLine(")");
             sb.Append("  ");
-            sb.AppendLine(FormatIdentifier(function.Name));
-            WriteFunctionNodes(sb, function.Nodes);
+            sb.AppendLine(FormatFunctionIdentifier(function.Name));
+            WriteFunctionNodes(sb, function.Nodes, functionNames);
         }
 
         return sb.ToString();
     }
 
-    private static void WriteConBlock(StringBuilder sb, AsmModule module)
+    private static void WriteConBlock(StringBuilder sb, AsmModule module, IReadOnlySet<string> functionNames)
     {
         bool wroteHeader = false;
         foreach (StoragePlace place in module.StoragePlaces)
@@ -68,7 +74,7 @@ public static class FinalAssemblyWriter
             }
 
             sb.Append("    ");
-            sb.Append(FormatIdentifier(place.EmittedName));
+            sb.Append(FormatIdentifier(place.EmittedName, functionNames));
             sb.Append(" = $");
             sb.Append(place.FixedAddress.Value.ToString("X", CultureInfo.InvariantCulture));
             sb.AppendLine();
@@ -78,32 +84,36 @@ public static class FinalAssemblyWriter
             sb.AppendLine();
     }
 
-    private static void WriteFunctionNodes(StringBuilder sb, IReadOnlyList<AsmNode> nodes)
+    private static void WriteFunctionNodes(StringBuilder sb, IReadOnlyList<AsmNode> nodes, IReadOnlySet<string> functionNames)
     {
         int index = 0;
         while (index < nodes.Count)
         {
-            if (TryWriteRegisterFile(sb, nodes, ref index))
+            if (TryWriteRegisterFile(sb, nodes, ref index, functionNames))
                 continue;
 
-            if (TryWriteLutFile(sb, nodes, ref index))
+            if (TryWriteLutFile(sb, nodes, ref index, functionNames))
                 continue;
 
-            if (TryWriteHubFile(sb, nodes, ref index))
+            if (TryWriteHubFile(sb, nodes, ref index, functionNames))
                 continue;
 
-            if (TryWriteConstantFile(sb, nodes, ref index))
+            if (TryWriteConstantFile(sb, nodes, ref index, functionNames))
                 continue;
 
             if (TryWriteRawInlineAsmBlock(sb, nodes, ref index))
                 continue;
 
-            WriteNode(sb, nodes[index]);
+            WriteNode(sb, nodes[index], functionNames);
             index++;
         }
     }
 
-    private static bool TryWriteRegisterFile(StringBuilder sb, IReadOnlyList<AsmNode> nodes, ref int index)
+    private static bool TryWriteRegisterFile(
+        StringBuilder sb,
+        IReadOnlyList<AsmNode> nodes,
+        ref int index,
+        IReadOnlySet<string> functionNames)
     {
         if (nodes[index] is not AsmCommentNode { Text: "--- register file ---" })
             return false;
@@ -133,7 +143,7 @@ public static class FinalAssemblyWriter
 
         foreach ((string label, string directive, string value) in rows)
         {
-            sb.Append(FormatIdentifier(label).PadRight(maxLabelWidth));
+            sb.Append(FormatIdentifier(label, functionNames).PadRight(maxLabelWidth));
             sb.Append(' ');
             sb.Append(directive.PadRight(maxDirectiveWidth));
             sb.Append(' ');
@@ -151,7 +161,8 @@ public static class FinalAssemblyWriter
         IReadOnlyList<AsmNode> nodes,
         ref int index,
         string sectionMarker,
-        string sectionHeader)
+        string sectionHeader,
+        IReadOnlySet<string> functionNames)
     {
         if (nodes[index] is not AsmCommentNode comment || comment.Text != sectionMarker)
             return false;
@@ -177,7 +188,7 @@ public static class FinalAssemblyWriter
 
             foreach ((string label, string directive, string value) in rows)
             {
-                sb.Append(FormatIdentifier(label).PadRight(maxLabelWidth));
+                sb.Append(FormatIdentifier(label, functionNames).PadRight(maxLabelWidth));
                 sb.Append(' ');
                 sb.Append(directive.PadRight(maxDirectiveWidth));
                 sb.Append(' ');
@@ -190,7 +201,11 @@ public static class FinalAssemblyWriter
         return true;
     }
 
-    private static bool TryWriteLutFile(StringBuilder sb, IReadOnlyList<AsmNode> nodes, ref int index)
+    private static bool TryWriteLutFile(
+        StringBuilder sb,
+        IReadOnlyList<AsmNode> nodes,
+        ref int index,
+        IReadOnlySet<string> functionNames)
     {
         if (nodes[index] is not AsmCommentNode comment || comment.Text != "--- lut file ---")
             return false;
@@ -200,10 +215,14 @@ public static class FinalAssemblyWriter
         sb.AppendLine("    fit $200");
         sb.AppendLine("    org $200");
 
-        return TryWriteDataFileSection(sb, nodes, ref index, "--- lut file ---", "' --- lut file ---");
+        return TryWriteDataFileSection(sb, nodes, ref index, "--- lut file ---", "' --- lut file ---", functionNames);
     }
 
-    private static bool TryWriteHubFile(StringBuilder sb, IReadOnlyList<AsmNode> nodes, ref int index)
+    private static bool TryWriteHubFile(
+        StringBuilder sb,
+        IReadOnlyList<AsmNode> nodes,
+        ref int index,
+        IReadOnlySet<string> functionNames)
     {
         if (nodes[index] is not AsmCommentNode comment || comment.Text != "--- hub file ---")
             return false;
@@ -212,10 +231,14 @@ public static class FinalAssemblyWriter
         sb.AppendLine();
         sb.AppendLine("    orgh");
 
-        return TryWriteDataFileSection(sb, nodes, ref index, "--- hub file ---", "' --- hub file ---");
+        return TryWriteDataFileSection(sb, nodes, ref index, "--- hub file ---", "' --- hub file ---", functionNames);
     }
 
-    private static bool TryWriteConstantFile(StringBuilder sb, IReadOnlyList<AsmNode> nodes, ref int index)
+    private static bool TryWriteConstantFile(
+        StringBuilder sb,
+        IReadOnlyList<AsmNode> nodes,
+        ref int index,
+        IReadOnlySet<string> functionNames)
     {
         if (nodes[index] is not AsmCommentNode { Text: "--- constant file ---" })
             return false;
@@ -244,7 +267,7 @@ public static class FinalAssemblyWriter
 
         foreach ((string label, string directive, string value) in rows)
         {
-            sb.Append(FormatIdentifier(label).PadRight(maxLabelWidth));
+            sb.Append(FormatIdentifier(label, functionNames).PadRight(maxLabelWidth));
             sb.Append(' ');
             sb.Append(directive.PadRight(maxDirectiveWidth));
             sb.Append(' ');
@@ -277,7 +300,7 @@ public static class FinalAssemblyWriter
             return false;
         }
 
-        WriteNode(sb, beginComment);
+        WriteNode(sb, beginComment, EmptyFunctionNames);
 
         int commonIndent = GetCommonInlineTextIndent(nodes, index + 1, endIndex);
         for (int i = index + 1; i < endIndex; i++)
@@ -286,7 +309,7 @@ public static class FinalAssemblyWriter
             WriteInlineText(sb, inlineText.Text, commonIndent);
         }
 
-        WriteNode(sb, endComment);
+        WriteNode(sb, endComment, EmptyFunctionNames);
         index = endIndex + 1;
         return true;
     }
@@ -346,7 +369,7 @@ public static class FinalAssemblyWriter
         return IsDataDirective(directiveName);
     }
 
-    private static void WriteNode(StringBuilder sb, AsmNode node)
+    private static void WriteNode(StringBuilder sb, AsmNode node, IReadOnlySet<string> functionNames)
     {
         switch (node)
         {
@@ -362,7 +385,7 @@ public static class FinalAssemblyWriter
 
             case AsmLabelNode label:
                 sb.Append("  ");
-                sb.AppendLine(FormatIdentifier(label.Name));
+                sb.AppendLine(FormatIdentifier(label.Name, functionNames));
                 break;
 
             case AsmCommentNode comment:
@@ -393,7 +416,7 @@ public static class FinalAssemblyWriter
                     {
                         if (i > 0)
                             sb.Append(", ");
-                        sb.Append(FormatOperand(instruction, i));
+                        sb.Append(FormatOperand(instruction, i, functionNames));
                     }
                 }
 
@@ -408,7 +431,10 @@ public static class FinalAssemblyWriter
         }
     }
 
-    private static string FormatOperand(AsmInstructionNode instruction, int operandIndex)
+    private static string FormatOperand(
+        AsmInstructionNode instruction,
+        int operandIndex,
+        IReadOnlySet<string> functionNames)
     {
         AsmOperand operand = instruction.Operands[operandIndex];
 
@@ -417,15 +443,15 @@ public static class FinalAssemblyWriter
             AsmPhysicalRegisterOperand phys => phys.Name,
             AsmRegisterOperand virt => virt.Format(),
             AsmImmediateOperand imm => imm.Format(),
-            AsmPlaceOperand place => FormatPlaceOperand(place),
-            AsmSymbolOperand sym => FormatSymbolOperand(sym, instruction, operandIndex),
+            AsmPlaceOperand place => FormatPlaceOperand(place, functionNames),
+            AsmSymbolOperand sym => FormatSymbolOperand(sym, instruction, operandIndex, functionNames),
             _ => operand.Format(),
         };
     }
 
-    private static string FormatPlaceOperand(AsmPlaceOperand place)
+    private static string FormatPlaceOperand(AsmPlaceOperand place, IReadOnlySet<string> functionNames)
     {
-        string name = FormatIdentifier(place.Place.EmittedName);
+        string name = FormatIdentifier(place.Place.EmittedName, functionNames);
 
         // LUT places live at org $200+ in the unified address space, but
         // RDLUT/WRLUT expect a 9-bit LUT-relative index (0–511).  Emit
@@ -449,7 +475,8 @@ public static class FinalAssemblyWriter
     private static string FormatSymbolOperand(
         AsmSymbolOperand sym,
         AsmInstructionNode instruction,
-        int operandIndex)
+        int operandIndex,
+        IReadOnlySet<string> functionNames)
     {
         // Special register names: always plain
         if (P2InstructionMetadata.IsSpecialRegisterName(sym.Name))
@@ -461,11 +488,11 @@ public static class FinalAssemblyWriter
 
         if (P2InstructionMetadata.UsesImmediateSymbolSyntax(instruction.Opcode, instruction.Operands.Count, operandIndex))
         {
-            return $"#{FormatIdentifier(sym.Name)}";
+            return $"#{FormatIdentifier(sym.Name, functionNames)}";
         }
 
         // Default: register reference (no # prefix)
-        return FormatIdentifier(sym.Name);
+        return FormatIdentifier(sym.Name, functionNames);
     }
 
     private static string FormatFlagEffect(AsmFlagEffect effect)
@@ -479,11 +506,23 @@ public static class FinalAssemblyWriter
         };
     }
 
-    private static string FormatIdentifier(string name)
+    private static string FormatIdentifier(string name, IReadOnlySet<string> functionNames)
     {
         if (P2InstructionMetadata.IsSpecialRegisterName(name))
             return name;
 
+        return functionNames.Contains(name)
+            ? FormatFunctionIdentifier(name)
+            : SanitizeIdentifier(name);
+    }
+
+    private static string FormatFunctionIdentifier(string name)
+    {
+        return $"f_{SanitizeIdentifier(name)}";
+    }
+
+    private static string SanitizeIdentifier(string name)
+    {
         StringBuilder builder = new();
         if (name.Length == 0)
             return "l_";
