@@ -15,46 +15,17 @@ public readonly record struct OptimizationDirective(OptimizationStage Stage, boo
 
 public static class OptimizationCatalog
 {
-    public static readonly IReadOnlyList<string> MirDefaultOrder =
-    [
-        "single-callsite-inline",
-        "cost-inline",
-        "const-prop",
-        "copy-prop",
-        "cfg-simplify",
-        "dce",
-    ];
+    public static IReadOnlyList<string> MirDefaultOrder => OptimizationRegistry.GetDefaultOrder(OptimizationStage.Mir);
 
-    public static readonly IReadOnlyList<string> LirDefaultOrder =
-    [
-        "copy-prop",
-        "cfg-simplify",
-        "dce",
-    ];
+    public static IReadOnlyList<string> LirDefaultOrder => OptimizationRegistry.GetDefaultOrder(OptimizationStage.Lir);
 
-    public static readonly IReadOnlyList<string> AsmirDefaultOrder =
-    [
-        "copy-prop",
-        "dce-reg",
-        "drop-jmp-next",
-        "ret-fusion",
-        "conditional-move-fusion",
-        "muxc-fusion",
-        "elide-nops",
-        "cleanup-self-mov",
-    ];
+    public static IReadOnlyList<string> AsmirDefaultOrder => OptimizationRegistry.GetDefaultOrder(OptimizationStage.Asmir);
 
     public static bool IsKnown(OptimizationStage stage, string name)
-        => GetDefaultOrder(stage).Contains(name, StringComparer.Ordinal);
+        => OptimizationRegistry.IsKnown(stage, name);
 
     public static IReadOnlyList<string> GetDefaultOrder(OptimizationStage stage)
-        => stage switch
-        {
-            OptimizationStage.Mir => MirDefaultOrder,
-            OptimizationStage.Lir => LirDefaultOrder,
-            OptimizationStage.Asmir => AsmirDefaultOrder,
-            _ => throw new ArgumentOutOfRangeException(nameof(stage), stage, null),
-        };
+        => OptimizationRegistry.GetDefaultOrder(stage);
 
     public static IReadOnlyList<string> ResolveEnabled(
         OptimizationStage stage,

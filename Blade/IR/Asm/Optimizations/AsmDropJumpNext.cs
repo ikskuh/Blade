@@ -1,0 +1,37 @@
+using System.Collections.Generic;
+using static Blade.IR.Asm.AsmOptimizationHelpers;
+
+namespace Blade.IR.Asm.Optimizations;
+
+[AsmOptimization("drop-jmp-next", Priority = 700)]
+public sealed class AsmDropJumpNext : PerFunctionAsmOptimization
+{
+    protected override AsmFunction? RunOnFunction(AsmFunction input)
+    {
+        List<AsmNode> nodes = [];
+        bool changed = false;
+
+        for (int i = 0; i < input.Nodes.Count; i++)
+        {
+            AsmNode node = input.Nodes[i];
+            if (node is AsmInstructionNode instruction
+                && !instruction.IsNonElidable
+                && instruction.Opcode == "JMP"
+                && instruction.Predicate is null
+                && instruction.Operands.Count == 1
+                && instruction.Operands[0] is AsmSymbolOperand target
+                && TryGetNextLabel(input.Nodes, i + 1, out string? nextLabel)
+                && nextLabel == target.Name)
+            {
+                changed = true;
+                continue;
+            }
+
+            nodes.Add(node);
+        }
+
+        return changed
+            ? new AsmFunction(input.Name, input.IsEntryPoint, input.CcTier, nodes)
+            : null;
+    }
+}

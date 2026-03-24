@@ -79,16 +79,6 @@ Right now, booleans are lowered to integers, then upgraded to flags
 when needed for branching. This can be inverted to lower them to flags
 first, then upgrade to integers when out of flags.
 
-## Implement REP through magic "relative labels"
-
-```pasm
-
-  REP @.end, count
-    NOP
-    NOP
-.end
-```
-
 ## Division by "literal zero" must yield compile error
 
 This includes eager constant folding and comptime evaluation.
@@ -224,27 +214,6 @@ Acceptance criteria are:
 ## implement pointer arithmetics
 
 see reference.blade
-
-## refactor optimization system into a highly modular approach
-
-Factor out each optimization into an `IMirOptimization`, `ILirOptimization`, `IAsmOptimization`.
-
-These optimizations can then be registered through an attribute:
-
-```csharp
-
-[AsmOptimizer("eliminate-self-move")]
-public sealed class SelfMovOptimizer : IAsmOptimization
-{
-  // Implements the interface functions
-}
-
-```
-
-and at startup, the compiler scans its own assembly for `typeof(AsmOptimizerAttribute)` parts (same for mir and lir respectively)
-and registers the optimizations into a "known optimization pool".
-
-This allows us to easily add new types into the optimization pool and makes the code way more modular.
 
 ## immediate values are still going through a register often
 
