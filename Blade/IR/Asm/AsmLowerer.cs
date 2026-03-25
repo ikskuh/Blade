@@ -26,8 +26,12 @@ public static class AsmLowerer
 
         // Run call graph analysis to determine CC tiers and dead functions
         CallGraphResult cgResult = CallGraphAnalyzer.Analyze(module);
-        (IReadOnlyList<StoragePlace> storagePlaces, Dictionary<string, RecursiveCallingConventionInfo> recursiveCallingConvention) =
-            BuildRecursiveCallingConvention(module, cgResult);
+        (
+            IReadOnlyList<StoragePlace> storagePlaces,
+            Dictionary<string, RecursiveCallingConventionInfo> recursiveCallingConvention,
+            Dictionary<string, CoroutineCallingConventionInfo> coroutineCallingConvention,
+            StoragePlace? topLevelYieldStatePlace) =
+            BuildCallingConventionStorage(module, cgResult);
 
         // Build a map of function name → block label → block parameter registers
         // so φ-moves can emit actual MOV instructions to the right target registers.
@@ -55,6 +59,8 @@ public static class AsmLowerer
                 cgResult.Tiers,
                 blockParamMap[function.Name],
                 recursiveCallingConvention,
+                coroutineCallingConvention,
+                topLevelYieldStatePlace,
                 diagnostics);
             functions.Add(LowerFunction(ctx));
         }
@@ -70,6 +76,8 @@ public static class AsmLowerer
         public Dictionary<string, CallingConventionTier> CalleeTiers { get; }
         public Dictionary<string, IReadOnlyList<LirBlockParameter>> BlockParams { get; }
         public Dictionary<string, RecursiveCallingConventionInfo> RecursiveCallingConvention { get; }
+        public Dictionary<string, CoroutineCallingConventionInfo> CoroutineCallingConvention { get; }
+        public StoragePlace? TopLevelYieldStatePlace { get; }
         public DiagnosticBag? Diagnostics { get; }
         public HashSet<string> ReportedUnsupportedLowerings { get; } = new(StringComparer.Ordinal);
         public int NextInlineAsmBlockOrdinal { get; set; }
@@ -95,6 +103,8 @@ public static class AsmLowerer
             Dictionary<string, CallingConventionTier> calleeTiers,
             Dictionary<string, IReadOnlyList<LirBlockParameter>> blockParams,
             Dictionary<string, RecursiveCallingConventionInfo> recursiveCallingConvention,
+            Dictionary<string, CoroutineCallingConventionInfo> coroutineCallingConvention,
+            StoragePlace? topLevelYieldStatePlace,
             DiagnosticBag? diagnostics)
         {
             Function = function;
@@ -103,6 +113,8 @@ public static class AsmLowerer
             CalleeTiers = calleeTiers;
             BlockParams = blockParams;
             RecursiveCallingConvention = recursiveCallingConvention;
+            CoroutineCallingConvention = coroutineCallingConvention;
+            TopLevelYieldStatePlace = topLevelYieldStatePlace;
             Diagnostics = diagnostics;
         }
     }
@@ -121,6 +133,20 @@ public static class AsmLowerer
         public StoragePlace? RegisterReturnPlace { get; }
     }
 
+    private sealed class CoroutineCallingConventionInfo
+    {
+        public CoroutineCallingConventionInfo(
+            StoragePlace statePlace,
+            IReadOnlyList<StoragePlace> parameterPlaces)
+        {
+            StatePlace = statePlace;
+            ParameterPlaces = parameterPlaces;
+        }
+
+        public StoragePlace StatePlace { get; }
+        public IReadOnlyList<StoragePlace> ParameterPlaces { get; }
+    }
+
     private static AsmFunction LowerFunction(LoweringContext ctx)
     {
         List<AsmNode> nodes = [];
@@ -136,6 +162,11 @@ public static class AsmLowerer
             {
                 EmitRecursiveFunctionEntryLoads(nodes, block, ctx);
             }
+            else if (ctx.Tier == CallingConventionTier.Coroutine
+                     && ReferenceEquals(block, ctx.Function.Blocks[0]))
+            {
+                EmitCoroutineFunctionEntryLoads(nodes, block, ctx);
+            }
 
             ComputeFlagOnlyRegisters(ctx, block);
 
@@ -150,80 +181,169 @@ public static class AsmLowerer
 
     private static (
         IReadOnlyList<StoragePlace> StoragePlaces,
-        Dictionary<string, RecursiveCallingConventionInfo> RecursiveCallingConvention)
-        BuildRecursiveCallingConvention(LirModule module, CallGraphResult cgResult)
+        Dictionary<string, RecursiveCallingConventionInfo> RecursiveCallingConvention,
+        Dictionary<string, CoroutineCallingConventionInfo> CoroutineCallingConvention,
+        StoragePlace? TopLevelYieldStatePlace)
+        BuildCallingConventionStorage(LirModule module, CallGraphResult cgResult)
     {
         List<StoragePlace> storagePlaces = new(module.StoragePlaces.Count);
         storagePlaces.AddRange(module.StoragePlaces);
 
         Dictionary<string, RecursiveCallingConventionInfo> recursiveCallingConvention = new(StringComparer.Ordinal);
+        Dictionary<string, CoroutineCallingConventionInfo> coroutineCallingConvention = new(StringComparer.Ordinal);
         foreach (LirFunction function in module.Functions)
         {
             if (cgResult.DeadFunctions.Contains(function.Name))
                 continue;
 
-            if (cgResult.Tiers.GetValueOrDefault(function.Name, CallingConventionTier.General) != CallingConventionTier.Recursive)
-                continue;
-
-            Assert.Invariant(function.Blocks.Count > 0, "Recursive functions must have an entry block.");
-            IReadOnlyList<LirBlockParameter> entryParameters = function.Blocks[0].Parameters;
-            List<StoragePlace> parameterPlaces = new(entryParameters.Count);
-            for (int i = 0; i < entryParameters.Count; i++)
+            CallingConventionTier functionTier = cgResult.Tiers.GetValueOrDefault(function.Name, CallingConventionTier.General);
+            if (functionTier == CallingConventionTier.Recursive)
             {
-                VariableSymbol parameterSymbol = new(
-                    $"rec_{function.Name}_arg{i}",
-                    entryParameters[i].Type,
-                    isConst: false,
-                    VariableStorageClass.Reg,
-                    VariableScopeKind.GlobalStorage,
-                    isExtern: false,
-                    fixedAddress: null,
-                    alignment: null);
-                StoragePlace parameterPlace = new(
-                    parameterSymbol,
-                    StoragePlaceKind.AllocatableGlobalRegister,
-                    fixedAddress: null,
-                    staticInitializer: null);
-                parameterPlaces.Add(parameterPlace);
-                storagePlaces.Add(parameterPlace);
-            }
-
-            ReturnSlot? registerReturnSlot = function.ReturnSlots
-                .Where(static slot => slot.Placement == ReturnPlacement.Register)
-                .Cast<ReturnSlot?>()
-                .FirstOrDefault();
-
-            StoragePlace? registerReturnPlace = null;
-            if (registerReturnSlot is { } slot)
-            {
-                if (parameterPlaces.Count > 0)
+                Assert.Invariant(function.Blocks.Count > 0, "Recursive functions must have an entry block.");
+                IReadOnlyList<LirBlockParameter> entryParameters = function.Blocks[0].Parameters;
+                List<StoragePlace> parameterPlaces = new(entryParameters.Count);
+                for (int i = 0; i < entryParameters.Count; i++)
                 {
-                    registerReturnPlace = parameterPlaces[0];
-                }
-                else
-                {
-                    VariableSymbol returnSymbol = new(
-                        $"rec_{function.Name}_ret0",
-                        slot.Type,
+                    VariableSymbol parameterSymbol = new(
+                        $"rec_{function.Name}_arg{i}",
+                        entryParameters[i].Type,
                         isConst: false,
                         VariableStorageClass.Reg,
                         VariableScopeKind.GlobalStorage,
                         isExtern: false,
                         fixedAddress: null,
                         alignment: null);
-                    registerReturnPlace = new StoragePlace(
-                        returnSymbol,
+                    StoragePlace parameterPlace = new(
+                        parameterSymbol,
                         StoragePlaceKind.AllocatableGlobalRegister,
                         fixedAddress: null,
                         staticInitializer: null);
-                    storagePlaces.Add(registerReturnPlace);
+                    parameterPlaces.Add(parameterPlace);
+                    storagePlaces.Add(parameterPlace);
                 }
-            }
 
-            recursiveCallingConvention[function.Name] = new RecursiveCallingConventionInfo(parameterPlaces, registerReturnPlace);
+                ReturnSlot? registerReturnSlot = function.ReturnSlots
+                    .Where(static slot => slot.Placement == ReturnPlacement.Register)
+                    .Cast<ReturnSlot?>()
+                    .FirstOrDefault();
+
+                StoragePlace? registerReturnPlace = null;
+                if (registerReturnSlot is { } slot)
+                {
+                    if (parameterPlaces.Count > 0)
+                    {
+                        registerReturnPlace = parameterPlaces[0];
+                    }
+                    else
+                    {
+                        VariableSymbol returnSymbol = new(
+                            $"rec_{function.Name}_ret0",
+                            slot.Type,
+                            isConst: false,
+                            VariableStorageClass.Reg,
+                            VariableScopeKind.GlobalStorage,
+                            isExtern: false,
+                            fixedAddress: null,
+                            alignment: null);
+                        registerReturnPlace = new StoragePlace(
+                            returnSymbol,
+                            StoragePlaceKind.AllocatableGlobalRegister,
+                            fixedAddress: null,
+                            staticInitializer: null);
+                        storagePlaces.Add(registerReturnPlace);
+                    }
+                }
+
+                recursiveCallingConvention[function.Name] = new RecursiveCallingConventionInfo(parameterPlaces, registerReturnPlace);
+            }
+            else if (functionTier == CallingConventionTier.Coroutine)
+            {
+                Assert.Invariant(function.Blocks.Count > 0, "Coroutine functions must have an entry block.");
+                IReadOnlyList<LirBlockParameter> entryParameters = function.Blocks[0].Parameters;
+                List<StoragePlace> parameterPlaces = new(entryParameters.Count);
+                for (int i = 0; i < entryParameters.Count; i++)
+                {
+                    VariableSymbol parameterSymbol = new(
+                        $"coro_{function.Name}_arg{i}",
+                        entryParameters[i].Type,
+                        isConst: false,
+                        VariableStorageClass.Reg,
+                        VariableScopeKind.GlobalStorage,
+                        isExtern: false,
+                        fixedAddress: null,
+                        alignment: null);
+                    StoragePlace parameterPlace = new(
+                        parameterSymbol,
+                        StoragePlaceKind.AllocatableGlobalRegister,
+                        fixedAddress: null,
+                        staticInitializer: null);
+                    parameterPlaces.Add(parameterPlace);
+                    storagePlaces.Add(parameterPlace);
+                }
+
+                VariableSymbol stateSymbol = new(
+                    $"coro_{function.Name}_state",
+                    BuiltinTypes.U32,
+                    isConst: false,
+                    VariableStorageClass.Reg,
+                    VariableScopeKind.GlobalStorage,
+                    isExtern: false,
+                    fixedAddress: null,
+                    alignment: null);
+                string entryLabel = $"{function.Name}_{function.Blocks[0].Label}";
+                StoragePlace statePlace = new(
+                    stateSymbol,
+                    StoragePlaceKind.AllocatableGlobalRegister,
+                    fixedAddress: null,
+                    staticInitializer: entryLabel);
+                storagePlaces.Add(statePlace);
+
+                coroutineCallingConvention[function.Name] = new CoroutineCallingConventionInfo(statePlace, parameterPlaces);
+            }
         }
 
-        return (storagePlaces, recursiveCallingConvention);
+        StoragePlace? topLevelYieldStatePlace = null;
+        if (HasTopLevelYieldto(module))
+        {
+            VariableSymbol topYieldStateSymbol = new(
+                "top_yield_state",
+                BuiltinTypes.U32,
+                isConst: false,
+                VariableStorageClass.Reg,
+                VariableScopeKind.GlobalStorage,
+                isExtern: false,
+                fixedAddress: null,
+                alignment: null);
+            topLevelYieldStatePlace = new StoragePlace(
+                topYieldStateSymbol,
+                StoragePlaceKind.AllocatableGlobalRegister,
+                fixedAddress: null,
+                staticInitializer: null);
+            storagePlaces.Add(topLevelYieldStatePlace);
+        }
+
+        return (storagePlaces, recursiveCallingConvention, coroutineCallingConvention, topLevelYieldStatePlace);
+    }
+
+    private static bool HasTopLevelYieldto(LirModule module)
+    {
+        foreach (LirFunction function in module.Functions)
+        {
+            if (!function.IsEntryPoint)
+                continue;
+
+            foreach (LirBlock block in function.Blocks)
+            {
+                foreach (LirInstruction instruction in block.Instructions)
+                {
+                    if (instruction is LirOpInstruction op
+                        && op.Opcode.StartsWith("yieldto:", StringComparison.Ordinal))
+                        return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private static void EmitRecursiveFunctionEntryLoads(List<AsmNode> nodes, LirBlock block, LoweringContext ctx)
@@ -239,6 +359,22 @@ public static class AsmLowerer
                 "MOV",
                 new AsmRegisterOperand(block.Parameters[i].Register.Id),
                 new AsmPlaceOperand(recursiveInfo.ParameterPlaces[i])));
+        }
+    }
+
+    private static void EmitCoroutineFunctionEntryLoads(List<AsmNode> nodes, LirBlock block, LoweringContext ctx)
+    {
+        var ok = ctx.CoroutineCallingConvention.TryGetValue(ctx.Function.Name, out CoroutineCallingConventionInfo? coroutineInfo);
+        Assert.Invariant(ok, "Coroutine functions must have calling-convention metadata.");
+        Assert.Invariant(coroutineInfo != null);
+        Assert.Invariant(coroutineInfo.ParameterPlaces.Count == block.Parameters.Count, "Coroutine entry ABI must match the function parameter list.");
+
+        for (int i = 0; i < block.Parameters.Count; i++)
+        {
+            nodes.Add(Emit(
+                "MOV",
+                new AsmRegisterOperand(block.Parameters[i].Register.Id),
+                new AsmPlaceOperand(coroutineInfo.ParameterPlaces[i])));
         }
     }
 
@@ -1868,15 +2004,46 @@ public static class AsmLowerer
 
     private static void LowerYield(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
-        ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
         if (op.Opcode.StartsWith("yieldto:", StringComparison.Ordinal))
         {
             string target = op.Opcode["yieldto:".Length..];
-            nodes.Add(new AsmCommentNode($"TODO: CALLD (yieldto {target})"));
+            var hasTargetInfo = ctx.CoroutineCallingConvention.TryGetValue(target, out CoroutineCallingConventionInfo? targetInfo);
+            if (!hasTargetInfo || targetInfo is null)
+            {
+                ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
+                return;
+            }
+
+            Assert.Invariant(targetInfo.ParameterPlaces.Count == op.Operands.Count, "Coroutine yieldto argument count must match target parameter ABI.");
+            for (int i = 0; i < op.Operands.Count; i++)
+                nodes.Add(Emit("MOV", new AsmPlaceOperand(targetInfo.ParameterPlaces[i]), OpReg(op.Operands[i])));
+
+            AsmOperand yieldStateDestination = ctx.Tier == CallingConventionTier.Coroutine
+                && ctx.CoroutineCallingConvention.TryGetValue(ctx.Function.Name, out CoroutineCallingConventionInfo? sourceInfo)
+                && sourceInfo is not null
+                ? new AsmPlaceOperand(sourceInfo.StatePlace)
+                : ctx.TopLevelYieldStatePlace is not null
+                    ? new AsmPlaceOperand(ctx.TopLevelYieldStatePlace)
+                    : Assert.UnreachableValue<AsmOperand>();
+
+            nodes.Add(Emit("CALLD", yieldStateDestination, new AsmPlaceOperand(targetInfo.StatePlace)));
         }
         else
         {
-            nodes.Add(new AsmCommentNode("TODO: CALLD (yield)"));
+            if (ctx.Tier != CallingConventionTier.Interrupt)
+            {
+                ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
+                return;
+            }
+
+            string resumeOpcode = ctx.Function.Kind switch
+            {
+                FunctionKind.Int1 => "RESI1",
+                FunctionKind.Int2 => "RESI2",
+                FunctionKind.Int3 => "RESI3",
+                _ => Assert.UnreachableValue<string>(),
+            };
+            nodes.Add(Emit(resumeOpcode));
         }
     }
 
