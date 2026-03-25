@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Blade.IR;
 using Blade.IR.Mir;
 using Blade.Semantics;
 using Blade.Semantics.Bound;
@@ -73,7 +74,7 @@ public class MirOptimizerTests
 
         MirBlock block = new("bb0", [], instructions, new MirReturnTerminator([], span));
         MirFunction function = new("test", isEntryPoint: true, FunctionKind.Default, [], [block]);
-        MirModule optimized = MirOptimizer.Optimize(new MirModule([function]), maxIterations: 1, enabledOptimizations: ["const-prop"]);
+        MirModule optimized = MirOptimizer.Optimize(new MirModule([function]), maxIterations: 1, enabledOptimizations: [OptimizationRegistry.GetMirOptimization("const-prop")!]);
 
         IReadOnlyList<MirInstruction> rewritten = optimized.Functions[0].Blocks[0].Instructions;
         Dictionary<int, object?> constants = rewritten

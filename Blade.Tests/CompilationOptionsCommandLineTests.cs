@@ -58,7 +58,7 @@ public sealed class CompilationOptionsCommandLineTests
 
         Assert.That(succeeded, Is.False);
         Assert.That(errorMessage, Is.EqualTo("error: unsupported compiler option '--bogus-compile-option'."));
-        Assert.That(options.OptimizationDirectives, Is.Empty);
+        Assert.That(options.EnabledMirOptimizations, Is.EqualTo(OptimizationRegistry.AllMirOptimizations));
         Assert.That(options.NamedModuleRoots.Count, Is.EqualTo(0));
     }
 

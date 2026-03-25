@@ -22,7 +22,9 @@
       "mcp__serena__activate_project",
       "mcp__serena__find_symbol",
       "mcp__serena__search_for_pattern",
-      "mcp__serena__get_symbols_overview"
+      "mcp__serena__get_symbols_overview",
+      "mcp__serena__find_file",
+      "mcp__serena__think_about_collected_information"
     ]
   },
   "enabledMcpjsonServers": [

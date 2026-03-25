@@ -23,7 +23,9 @@ internal sealed class CommandLineOptions
     public bool Json { get; init; }
     public string? OutputPath { get; init; }
     public bool EnableSingleCallsiteInlining { get; init; }
-    public IReadOnlyList<OptimizationDirective> OptimizationDirectives { get; init; } = [];
+    public IReadOnlyList<IMirOptimization> EnabledMirOptimizations { get; init; } = OptimizationRegistry.AllMirOptimizations;
+    public IReadOnlyList<ILirOptimization> EnabledLirOptimizations { get; init; } = OptimizationRegistry.AllLirOptimizations;
+    public IReadOnlyList<IAsmOptimization> EnabledAsmirOptimizations { get; init; } = OptimizationRegistry.AllAsmOptimizations;
     public IReadOnlyDictionary<string, string> NamedModuleRoots { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
     public int ComptimeFuel { get; init; }
 }

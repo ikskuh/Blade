@@ -168,7 +168,9 @@ internal static class CommandLineParser
             Json = json,
             OutputPath = outputPath,
             EnableSingleCallsiteInlining = compilerOptions.EnableSingleCallsiteInlining,
-            OptimizationDirectives = compilerOptions.OptimizationDirectives,
+            EnabledMirOptimizations = compilerOptions.EnabledMirOptimizations,
+            EnabledLirOptimizations = compilerOptions.EnabledLirOptimizations,
+            EnabledAsmirOptimizations = compilerOptions.EnabledAsmirOptimizations,
             NamedModuleRoots = compilerOptions.NamedModuleRoots,
             ComptimeFuel = compilerOptions.ComptimeFuel,
         };

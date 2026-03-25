@@ -1,10 +1,9 @@
-using System;
-using System.Collections.Generic;
 using System.Linq;
 using Blade.Diagnostics;
 using Blade.IR.Asm;
 using Blade.IR.Lir;
 using Blade.IR.Mir;
+using Blade.IR.Mir.Optimizations;
 using Blade.Semantics.Bound;
 
 namespace Blade.IR;
@@ -17,11 +16,8 @@ public static class IrPipeline
 
         MirModule mirModule = MirLowerer.Lower(boundProgram);
 
-        IReadOnlyList<string> enabledMirOptimizations = OptimizationCatalog.ResolveEnabled(
-            OptimizationStage.Mir,
-            options.OptimizationDirectives);
         bool enableSingleCallsiteInlining = options.EnableSingleCallsiteInlining
-            && enabledMirOptimizations.Contains("single-callsite-inline", StringComparer.Ordinal);
+            && options.EnabledMirOptimizations.Any(static o => o is MirSingleCallsiteInline);
 
         mirModule = MirInliner.InlineMandatoryAndSingleCallsite(
             mirModule,
@@ -33,7 +29,7 @@ public static class IrPipeline
             mirModule = MirOptimizer.Optimize(
                 mirModule,
                 options.MaxOptimizationIterations,
-                enabledMirOptimizations);
+                options.EnabledMirOptimizations);
         }
 
         LirModule lirModule = LirLowerer.Lower(mirModule);
@@ -43,7 +39,7 @@ public static class IrPipeline
             lirModule = LirOptimizer.Optimize(
                 lirModule,
                 options.MaxOptimizationIterations,
-                OptimizationCatalog.ResolveEnabled(OptimizationStage.Lir, options.OptimizationDirectives));
+                options.EnabledLirOptimizations);
         }
 
         AsmModule asmModule = AsmLowerer.Lower(lirModule, diagnostics);
@@ -60,7 +56,7 @@ public static class IrPipeline
             assemblyText: string.Empty);
         EmitResult emitResult = CodegenPipeline.Emit(preEmit, new EmitOptions
         {
-            EnabledAsmirOptimizations = OptimizationCatalog.ResolveEnabled(OptimizationStage.Asmir, options.OptimizationDirectives),
+            EnabledAsmirOptimizations = options.EnabledAsmirOptimizations,
         });
         return new IrBuildResult(
             boundProgram,

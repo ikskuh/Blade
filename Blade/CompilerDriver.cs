@@ -14,7 +14,9 @@ namespace Blade;
 public sealed class CompilationOptions
 {
     public bool EnableSingleCallsiteInlining { get; init; } = true;
-    public IReadOnlyList<OptimizationDirective> OptimizationDirectives { get; init; } = [];
+    public IReadOnlyList<IMirOptimization> EnabledMirOptimizations { get; init; } = OptimizationRegistry.AllMirOptimizations;
+    public IReadOnlyList<ILirOptimization> EnabledLirOptimizations { get; init; } = OptimizationRegistry.AllLirOptimizations;
+    public IReadOnlyList<IAsmOptimization> EnabledAsmirOptimizations { get; init; } = OptimizationRegistry.AllAsmOptimizations;
     public IReadOnlyDictionary<string, string> NamedModuleRoots { get; init; } = new Dictionary<string, string>();
     public int ComptimeFuel { get; init; } = 250;
 }
@@ -79,7 +81,9 @@ public static class CompilerDriver
             IrPipelineOptions pipelineOptions = new()
             {
                 EnableSingleCallsiteInlining = effectiveOptions.EnableSingleCallsiteInlining,
-                OptimizationDirectives = effectiveOptions.OptimizationDirectives,
+                EnabledMirOptimizations = effectiveOptions.EnabledMirOptimizations,
+                EnabledLirOptimizations = effectiveOptions.EnabledLirOptimizations,
+                EnabledAsmirOptimizations = effectiveOptions.EnabledAsmirOptimizations,
             };
             irBuildResult = IrPipeline.Build(boundProgram, pipelineOptions, diagnostics);
         }

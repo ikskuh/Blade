@@ -8,7 +8,7 @@ public static class MirOptimizer
     public static MirModule Optimize(
         MirModule module,
         int maxIterations,
-        IReadOnlyList<string> enabledOptimizations)
+        IReadOnlyList<IMirOptimization> enabledOptimizations)
     {
         Requires.NotNull(module);
         Requires.NotNull(enabledOptimizations);
@@ -18,12 +18,11 @@ public static class MirOptimizer
         for (int i = 0; i < iterations; i++)
         {
             bool changed = false;
-            foreach (string name in enabledOptimizations)
+            foreach (IMirOptimization optimization in enabledOptimizations)
             {
-                if (OptimizationRegistry.IsMirRunAfterIterations(name))
+                if (OptimizationRegistry.IsMirRunAfterIterations(optimization))
                     continue;
 
-                IMirOptimization optimization = OptimizationRegistry.GetMirOptimization(name);
                 MirModule? result = optimization.Run(current);
                 if (result is not null)
                 {
@@ -37,12 +36,11 @@ public static class MirOptimizer
         }
 
         // Run post-iteration passes (e.g., flag-propagation).
-        foreach (string name in enabledOptimizations)
+        foreach (IMirOptimization optimization in enabledOptimizations)
         {
-            if (!OptimizationRegistry.IsMirRunAfterIterations(name))
+            if (!OptimizationRegistry.IsMirRunAfterIterations(optimization))
                 continue;
 
-            IMirOptimization optimization = OptimizationRegistry.GetMirOptimization(name);
             MirModule? result = optimization.Run(current);
             if (result is not null)
                 current = result;

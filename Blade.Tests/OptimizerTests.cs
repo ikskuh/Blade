@@ -34,7 +34,13 @@ public class OptimizerTests
             ]),
         ]);
 
-        MirModule optimized = MirOptimizer.Optimize(module, maxIterations: 4, enabledOptimizations: ["const-prop", "copy-prop", "cfg-simplify", "dce"]);
+        MirModule optimized = MirOptimizer.Optimize(module, maxIterations: 4, enabledOptimizations:
+        [
+            OptimizationRegistry.GetMirOptimization("const-prop")!,
+            OptimizationRegistry.GetMirOptimization("copy-prop")!,
+            OptimizationRegistry.GetMirOptimization("cfg-simplify")!,
+            OptimizationRegistry.GetMirOptimization("dce")!,
+        ]);
         MirFunction function = optimized.Functions[0];
 
         Assert.That(function.Blocks, Has.Count.EqualTo(1));
@@ -78,7 +84,7 @@ public class OptimizerTests
             ]),
         ]);
 
-        LirModule optimized = LirOptimizer.Optimize(module, maxIterations: 4, enabledOptimizations: OptimizationCatalog.LirDefaultOrder);
+        LirModule optimized = LirOptimizer.Optimize(module, maxIterations: 4, enabledOptimizations: OptimizationRegistry.AllLirOptimizations);
         LirFunction function = optimized.Functions[0];
 
         Assert.That(function.Blocks, Has.Count.EqualTo(1));
@@ -104,7 +110,7 @@ public class OptimizerTests
             ]),
         ]);
 
-        AsmModule optimized = AsmOptimizer.Optimize(module, OptimizationCatalog.AsmirDefaultOrder);
+        AsmModule optimized = AsmOptimizer.Optimize(module, OptimizationRegistry.AllAsmOptimizations);
         AsmFunction function = optimized.Functions[0];
 
         Assert.That(function.Nodes.OfType<AsmInstructionNode>().Any(i => i.Opcode == "JMP"), Is.False);
@@ -125,7 +131,7 @@ public class OptimizerTests
             ]),
         ]);
 
-        AsmFunction function = AsmOptimizer.Optimize(module, OptimizationCatalog.AsmirDefaultOrder).Functions[0];
+        AsmFunction function = AsmOptimizer.Optimize(module, OptimizationRegistry.AllAsmOptimizations).Functions[0];
         AsmInstructionNode[] instructions = function.Nodes.OfType<AsmInstructionNode>().ToArray();
 
         Assert.That(instructions, Has.Length.EqualTo(2));
@@ -145,7 +151,7 @@ public class OptimizerTests
             ]),
         ]);
 
-        AsmFunction function = AsmOptimizer.Optimize(module, OptimizationCatalog.AsmirDefaultOrder).Functions[0];
+        AsmFunction function = AsmOptimizer.Optimize(module, OptimizationRegistry.AllAsmOptimizations).Functions[0];
         Assert.That(function.Nodes.OfType<AsmInstructionNode>(), Is.Empty);
     }
 
@@ -167,7 +173,7 @@ public class OptimizerTests
             ]),
         ]);
 
-        AsmFunction function = AsmOptimizer.Optimize(module, OptimizationCatalog.AsmirDefaultOrder).Functions[0];
+        AsmFunction function = AsmOptimizer.Optimize(module, OptimizationRegistry.AllAsmOptimizations).Functions[0];
         AsmInstructionNode[] instructions = function.Nodes.OfType<AsmInstructionNode>().ToArray();
 
         Assert.That(instructions, Has.Length.EqualTo(1));
@@ -194,7 +200,7 @@ public class OptimizerTests
             ]),
         ]);
 
-        AsmFunction function = AsmOptimizer.Optimize(module, OptimizationCatalog.AsmirDefaultOrder).Functions[0];
+        AsmFunction function = AsmOptimizer.Optimize(module, OptimizationRegistry.AllAsmOptimizations).Functions[0];
         AsmInstructionNode[] instructions = function.Nodes.OfType<AsmInstructionNode>().ToArray();
 
         Assert.That(instructions, Has.Length.EqualTo(2));
@@ -218,7 +224,7 @@ public class OptimizerTests
             ]),
         ]);
 
-        AsmFunction function = AsmOptimizer.Optimize(module, OptimizationCatalog.AsmirDefaultOrder).Functions[0];
+        AsmFunction function = AsmOptimizer.Optimize(module, OptimizationRegistry.AllAsmOptimizations).Functions[0];
         Assert.That(function.Nodes.OfType<AsmInstructionNode>(), Is.Empty);
     }
 
@@ -235,7 +241,7 @@ public class OptimizerTests
             ]),
         ]);
 
-        AsmFunction function = AsmOptimizer.Optimize(module, OptimizationCatalog.AsmirDefaultOrder).Functions[0];
+        AsmFunction function = AsmOptimizer.Optimize(module, OptimizationRegistry.AllAsmOptimizations).Functions[0];
         Assert.That(function.Nodes.OfType<AsmInstructionNode>().ToArray(), Has.Length.EqualTo(1));
     }
 
@@ -254,7 +260,7 @@ public class OptimizerTests
             ]),
         ]);
 
-        AsmFunction function = AsmOptimizer.Optimize(module, OptimizationCatalog.AsmirDefaultOrder).Functions[0];
+        AsmFunction function = AsmOptimizer.Optimize(module, OptimizationRegistry.AllAsmOptimizations).Functions[0];
         Assert.That(function.Nodes.OfType<AsmInstructionNode>().Any(i => i.Opcode == "ADD"), Is.True);
     }
 
@@ -283,7 +289,7 @@ public class OptimizerTests
             ]),
         ]);
 
-        LirFunction function = LirOptimizer.Optimize(module, maxIterations: 4, enabledOptimizations: OptimizationCatalog.LirDefaultOrder).Functions[0];
+        LirFunction function = LirOptimizer.Optimize(module, maxIterations: 4, enabledOptimizations: OptimizationRegistry.AllLirOptimizations).Functions[0];
         LirInlineAsmInstruction inlineAsm = function.Blocks[0].Instructions.OfType<LirInlineAsmInstruction>().Single();
 
         Assert.That(inlineAsm.Bindings[0].Operand, Is.TypeOf<LirRegisterOperand>());
@@ -315,7 +321,7 @@ public class OptimizerTests
             ]),
         ]);
 
-        LirFunction function = LirOptimizer.Optimize(module, maxIterations: 4, enabledOptimizations: OptimizationCatalog.LirDefaultOrder).Functions[0];
+        LirFunction function = LirOptimizer.Optimize(module, maxIterations: 4, enabledOptimizations: OptimizationRegistry.AllLirOptimizations).Functions[0];
         Assert.That(function.Blocks[0].Instructions.OfType<LirOpInstruction>().Any(op => op.Opcode == "const"), Is.True);
     }
 
@@ -348,7 +354,7 @@ public class OptimizerTests
             ]),
         ]);
 
-        LirFunction function = LirOptimizer.Optimize(module, maxIterations: 4, enabledOptimizations: OptimizationCatalog.LirDefaultOrder).Functions[0];
+        LirFunction function = LirOptimizer.Optimize(module, maxIterations: 4, enabledOptimizations: OptimizationRegistry.AllLirOptimizations).Functions[0];
         LirReturnTerminator ret = (LirReturnTerminator)function.Blocks[0].Terminator;
 
         Assert.That(ret.Values[0], Is.TypeOf<LirRegisterOperand>());

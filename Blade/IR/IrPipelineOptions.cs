@@ -9,5 +9,7 @@ public sealed class IrPipelineOptions
     public bool EnableMirOptimizations { get; init; } = true;
     public bool EnableLirOptimizations { get; init; } = true;
     public int MaxOptimizationIterations { get; init; } = 4;
-    public IReadOnlyList<OptimizationDirective> OptimizationDirectives { get; init; } = [];
+    public IReadOnlyList<IMirOptimization> EnabledMirOptimizations { get; init; } = OptimizationRegistry.AllMirOptimizations;
+    public IReadOnlyList<ILirOptimization> EnabledLirOptimizations { get; init; } = OptimizationRegistry.AllLirOptimizations;
+    public IReadOnlyList<IAsmOptimization> EnabledAsmirOptimizations { get; init; } = OptimizationRegistry.AllAsmOptimizations;
 }

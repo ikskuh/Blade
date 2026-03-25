@@ -25,7 +25,9 @@ internal static class Program
             new CompilationOptions
             {
                 EnableSingleCallsiteInlining = options.EnableSingleCallsiteInlining,
-                OptimizationDirectives = options.OptimizationDirectives,
+                EnabledMirOptimizations = options.EnabledMirOptimizations,
+                EnabledLirOptimizations = options.EnabledLirOptimizations,
+                EnabledAsmirOptimizations = options.EnabledAsmirOptimizations,
                 NamedModuleRoots = options.NamedModuleRoots,
                 ComptimeFuel = options.ComptimeFuel,
             });

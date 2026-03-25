@@ -6,27 +6,35 @@ namespace Blade.Tests;
 public class OptimizationSelectionTests
 {
     [Test]
-    public void ResolveEnabled_AppliesDirectivesInOrder()
+    public void TryParse_DisableAllThenEnableOne_ResolvesToSingleOptimization()
     {
-        OptimizationDirective[] directives =
-        [
-            new(OptimizationStage.Asmir, Enable: false, ["*"]),
-            new(OptimizationStage.Asmir, Enable: true, ["elide-nops"]),
-        ];
+        using TempDirectory tempDirectory = new();
 
-        IReadOnlyList<string> enabled = OptimizationCatalog.ResolveEnabled(OptimizationStage.Asmir, directives);
-        Assert.That(enabled, Is.EqualTo(new[] { "elide-nops" }));
+        bool succeeded = CompilationOptionsCommandLine.TryParse(
+            ["-fno-asmir-opt=*", "-fasmir-opt=elide-nops"],
+            tempDirectory.Path,
+            out CompilationOptions options,
+            out string? errorMessage);
+
+        Assert.That(succeeded, Is.True);
+        Assert.That(errorMessage, Is.Null);
+        Assert.That(options.EnabledAsmirOptimizations, Has.Count.EqualTo(1));
+        Assert.That(options.EnabledAsmirOptimizations[0], Is.TypeOf(OptimizationRegistry.GetAsmOptimization("elide-nops")!.GetType()));
     }
 
     [Test]
-    public void ResolveEnabled_LeavesOtherStagesUntouched()
+    public void TryParse_MirDirectiveDoesNotAffectLirOptimizations()
     {
-        OptimizationDirective[] directives =
-        [
-            new(OptimizationStage.Mir, Enable: false, ["const-prop"]),
-        ];
+        using TempDirectory tempDirectory = new();
 
-        IReadOnlyList<string> enabled = OptimizationCatalog.ResolveEnabled(OptimizationStage.Lir, directives);
-        Assert.That(enabled, Is.EqualTo(OptimizationCatalog.LirDefaultOrder));
+        bool succeeded = CompilationOptionsCommandLine.TryParse(
+            ["-fno-mir-opt=const-prop"],
+            tempDirectory.Path,
+            out CompilationOptions options,
+            out string? errorMessage);
+
+        Assert.That(succeeded, Is.True);
+        Assert.That(errorMessage, Is.Null);
+        Assert.That(options.EnabledLirOptimizations, Is.EqualTo(OptimizationRegistry.AllLirOptimizations));
     }
 }

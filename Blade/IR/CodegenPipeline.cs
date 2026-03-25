@@ -26,7 +26,7 @@ public static class CodegenPipeline
             // optimizations again so these artifacts do not survive into final PASM.
             if (options.EnableAsmOptimization)
             {
-                IReadOnlyList<string> postRegAllocOptimizations =
+                IReadOnlyList<IAsmOptimization> postRegAllocOptimizations =
                     OptimizationRegistry.GetAsmOptimizationsForState(
                         AsmOptimizationState.PostRegAlloc,
                         options.EnabledAsmirOptimizations);

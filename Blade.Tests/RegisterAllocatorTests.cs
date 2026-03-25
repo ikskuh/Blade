@@ -55,7 +55,7 @@ public class RegisterAllocatorTests
 
         EmitResult emit = CodegenPipeline.Emit(CreateBuildResult(asmModule), new EmitOptions
         {
-            EnabledAsmirOptimizations = ["cleanup-self-mov"],
+            EnabledAsmirOptimizations = [OptimizationRegistry.GetAsmOptimization("cleanup-self-mov")!],
         });
 
         Assert.That(emit.AssemblyText, Does.Not.Match(@"MOV\s+(_r\d+),\s+\1\b"), emit.AssemblyText);

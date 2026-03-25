@@ -1,11 +1,10 @@
-using System;
 using System.Collections.Generic;
 
 namespace Blade.IR.Asm;
 
 public static class AsmOptimizer
 {
-    public static AsmModule Optimize(AsmModule module, IReadOnlyList<string> enabledOptimizations)
+    public static AsmModule Optimize(AsmModule module, IReadOnlyList<IAsmOptimization> enabledOptimizations)
     {
         Requires.NotNull(module);
         Requires.NotNull(enabledOptimizations);
@@ -15,9 +14,8 @@ public static class AsmOptimizer
         do
         {
             changed = false;
-            foreach (string name in enabledOptimizations)
+            foreach (IAsmOptimization optimization in enabledOptimizations)
             {
-                IAsmOptimization optimization = OptimizationRegistry.GetAsmOptimization(name);
                 AsmModule? result = optimization.Run(current);
                 if (result is not null)
                 {
