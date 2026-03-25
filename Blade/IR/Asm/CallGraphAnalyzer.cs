@@ -160,6 +160,13 @@ public static class CallGraphAnalyzer
                 {
                     callees.Add(sym.Symbol);
                 }
+                else if (instruction is LirOpInstruction yieldtoOp
+                         && yieldtoOp.Opcode.StartsWith("yieldto:", System.StringComparison.Ordinal))
+                {
+                    string target = yieldtoOp.Opcode["yieldto:".Length..];
+                    if (!string.IsNullOrEmpty(target))
+                        callees.Add(target);
+                }
             }
         }
         return callees;

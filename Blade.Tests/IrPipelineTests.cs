@@ -1458,8 +1458,6 @@ public class IrPipelineTests
 
         Assert.That(compilation.IrBuildResult, Is.Not.Null);
         Assert.That(compilation.Diagnostics.Any(d => d.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.True);
-        Assert.That(compilation.Diagnostics.Any(d => d.Message.Contains("'yieldto'", StringComparison.Ordinal)), Is.True);
-        Assert.That(compilation.Diagnostics.Any(d => d.Message.Contains("'yield'", StringComparison.Ordinal)), Is.True);
     }
 
     [Test]
@@ -2221,7 +2219,6 @@ public class IrPipelineTests
         string[] files =
         [
             "advanced_semantics.blade",
-            "function_declarations.blade",
         ];
 
         foreach (string file in files)
