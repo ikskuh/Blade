@@ -3,7 +3,7 @@ set unstable
 # TODO: Use {{dotnet}} variable
 dotnet := require("dotnet")
 
-reportgenerator := which('reportgenerator') || which('dotnet-reportgenerator')
+reportgenerator := which('reportgenerator')
 
 all: build test regressions compile-all-samples
 
