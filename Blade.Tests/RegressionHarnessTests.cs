@@ -1,4 +1,5 @@
 using System;
+using System.Text.Json;
 using System.Linq;
 using Blade.Regressions;
 
@@ -163,5 +164,147 @@ public sealed class RegressionHarnessTests
             Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Pass));
             Assert.That(fixtureResult.Summary, Is.EqualTo("passed"));
         });
+    }
+
+    [Test]
+    public void FullRegressionSuite_WithIrGuard_MovesObservedTypesToCovered()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("RegressionTests/ir-regression-guard.json", """
+        {
+            "bound": {
+                "covered": [],
+                "uncovered": ["BoundProgram"]
+            },
+            "mir": {
+                "covered": [],
+                "uncovered": []
+            },
+            "lir": {
+                "covered": [],
+                "uncovered": []
+            },
+            "asmir": {
+                "covered": [],
+                "uncovered": []
+            }
+        }
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        Assert.That(result.Succeeded, Is.True);
+        Assert.That(result.IrCoverageReport, Is.Not.Null);
+        Assert.That(ReadGuardArray(temp, "bound", "covered"), Does.Contain("BoundProgram"));
+        Assert.That(ReadGuardArray(temp, "bound", "uncovered"), Does.Not.Contain("BoundProgram"));
+    }
+
+    [Test]
+    public void FullRegressionSuite_WithIrGuard_ReportsCoverageRegressions()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("RegressionTests/ir-regression-guard.json", """
+        {
+            "bound": {
+                "covered": [],
+                "uncovered": []
+            },
+            "mir": {
+                "covered": ["MirInlineAsmInstruction"],
+                "uncovered": []
+            },
+            "lir": {
+                "covered": [],
+                "uncovered": []
+            },
+            "asmir": {
+                "covered": [],
+                "uncovered": []
+            }
+        }
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        Assert.That(result.Succeeded, Is.False);
+        Assert.That(result.IrCoverageReport, Is.Not.Null);
+        Assert.That(
+            result.IrCoverageReport!.RegressionMessages,
+            Does.Contain("regression detected: MirInlineAsmInstruction is not covered by the regression suite anymore"));
+        Assert.That(
+            RegressionReportFormatter.Format(result),
+            Does.Contain("IR coverage regressions:" + Environment.NewLine + "  regression detected: MirInlineAsmInstruction is not covered by the regression suite anymore"));
+        Assert.That(ReadGuardArray(temp, "mir", "covered"), Does.Contain("MirInlineAsmInstruction"));
+    }
+
+    [Test]
+    public void FullRegressionSuite_WithIrGuard_PrintsCurrentUncoveredTypes()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("RegressionTests/ir-regression-guard.json", """
+        {
+            "bound": {
+                "covered": [],
+                "uncovered": []
+            },
+            "mir": {
+                "covered": [],
+                "uncovered": []
+            },
+            "lir": {
+                "covered": [],
+                "uncovered": []
+            },
+            "asmir": {
+                "covered": [],
+                "uncovered": []
+            }
+        }
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        Assert.That(result.Succeeded, Is.True);
+        Assert.That(result.IrCoverageReport, Is.Not.Null);
+        string report = RegressionReportFormatter.Format(result);
+        Assert.That(report, Does.Contain("uncovered Bound Nodes:"));
+        Assert.That(report, Does.Contain("uncovered MIR Nodes:"));
+        Assert.That(report, Does.Contain("uncovered LIR Nodes:"));
+        Assert.That(report, Does.Contain("uncovered ASMIR Nodes:"));
+    }
+
+    private static void WriteMinimalRegressionRepository(TempDirectory temp)
+    {
+        temp.MakeDir("Examples");
+        temp.MakeDir("Demonstrators");
+        temp.MakeDir("Blade.Tests");
+        temp.WriteFile("justfile", "fuzz:\n    false\n");
+        temp.WriteFile("Examples/smoke.blade", "fn inc(x: u32) -> u32 { return x + 1; }");
+    }
+
+    private static string[] ReadGuardArray(TempDirectory temp, string groupName, string arrayName)
+    {
+        using JsonDocument document = JsonDocument.Parse(temp.ReadFile("RegressionTests/ir-regression-guard.json", System.Text.Encoding.UTF8));
+        return document.RootElement
+            .GetProperty(groupName)
+            .GetProperty(arrayName)
+            .EnumerateArray()
+            .Select(static element => element.GetString()!)
+            .ToArray();
     }
 }

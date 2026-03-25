@@ -22,20 +22,27 @@ public sealed class RegressionRunOptions
 
 public sealed class RegressionRunResult
 {
-    public RegressionRunResult(string repositoryRootPath, IReadOnlyList<RegressionFixtureResult> fixtureResults)
+    public RegressionRunResult(
+        string repositoryRootPath,
+        IReadOnlyList<RegressionFixtureResult> fixtureResults,
+        RegressionIrCoverageReport? irCoverageReport = null)
     {
         RepositoryRootPath = repositoryRootPath;
         FixtureResults = fixtureResults;
+        IrCoverageReport = irCoverageReport;
     }
 
     public string RepositoryRootPath { get; }
     public IReadOnlyList<RegressionFixtureResult> FixtureResults { get; }
+    public RegressionIrCoverageReport? IrCoverageReport { get; }
     public int PassCount => FixtureResults.Count(result => result.Outcome == RegressionFixtureOutcome.Pass);
     public int FailCount => FixtureResults.Count(result => result.Outcome == RegressionFixtureOutcome.Fail);
     public int XFailCount => FixtureResults.Count(result => result.Outcome == RegressionFixtureOutcome.XFail);
     public int UnexpectedPassCount => FixtureResults.Count(result => result.Outcome == RegressionFixtureOutcome.UnexpectedPass);
     public int SkipCount => FixtureResults.Count(result => result.Outcome == RegressionFixtureOutcome.Skipped);
-    public bool Succeeded => FailCount == 0 && UnexpectedPassCount == 0;
+    public bool Succeeded => FailCount == 0
+        && UnexpectedPassCount == 0
+        && !(IrCoverageReport?.HasRegressions ?? false);
 }
 
 public sealed class RegressionFixtureResult
@@ -247,19 +254,22 @@ public static class RegressionRunner
     {
         RegressionRunOptions effectiveOptions = options ?? new RegressionRunOptions();
         string repositoryRootPath = RepositoryLayout.FindRepositoryRoot(effectiveOptions.RepositoryRootPath);
+        bool isFullRun = effectiveOptions.Filters.Count == 0;
 
         FlexspinProbeResult flexspinProbe = FlexspinRunner.ProbeAvailability();
         List<string> fixturePaths = DiscoverFixturePaths(repositoryRootPath, effectiveOptions.Filters);
         List<RegressionFixtureResult> fixtureResults = [];
         ArtifactWriter artifactWriter = new(repositoryRootPath, effectiveOptions.WriteFailureArtifacts);
+        RegressionIrCoverageSession? irCoverageSession = RegressionIrCoverageSession.TryCreate(repositoryRootPath, isFullRun);
 
         foreach (string fixturePath in fixturePaths)
         {
-            RegressionFixtureResult result = EvaluateFixture(repositoryRootPath, fixturePath, artifactWriter, flexspinProbe);
+            RegressionFixtureResult result = EvaluateFixture(repositoryRootPath, fixturePath, artifactWriter, flexspinProbe, irCoverageSession);
             fixtureResults.Add(result);
         }
 
-        return new RegressionRunResult(repositoryRootPath, fixtureResults);
+        RegressionIrCoverageReport? irCoverageReport = irCoverageSession?.Complete();
+        return new RegressionRunResult(repositoryRootPath, fixtureResults, irCoverageReport);
     }
 
     private static List<string> DiscoverFixturePaths(string repositoryRootPath, IReadOnlyList<string> filters)
@@ -296,7 +306,12 @@ public static class RegressionRunner
         paths.AddRange(discovered);
     }
 
-    private static RegressionFixtureResult EvaluateFixture(string repositoryRootPath, string fixturePath, ArtifactWriter artifactWriter, FlexspinProbeResult flexspinProbe)
+    private static RegressionFixtureResult EvaluateFixture(
+        string repositoryRootPath,
+        string fixturePath,
+        ArtifactWriter artifactWriter,
+        FlexspinProbeResult flexspinProbe,
+        RegressionIrCoverageSession? irCoverageSession)
     {
         string relativePath = Path.GetRelativePath(repositoryRootPath, fixturePath).Replace('\\', '/');
         RegressionFixture? fixture = null;
@@ -310,7 +325,7 @@ public static class RegressionRunner
                 return new RegressionFixtureResult(relativePath, RegressionFixtureOutcome.Pass, "passed", [], null);
             }
 
-            EvaluatedFixture evaluatedFixture = ExecuteFixture(fixture);
+            EvaluatedFixture evaluatedFixture = ExecuteFixture(fixture, irCoverageSession);
             List<string> issues = [];
 
             issues.AddRange(EvaluateDiagnostics(fixture.Expectation, evaluatedFixture.Diagnostics));
@@ -368,11 +383,11 @@ public static class RegressionRunner
         }
     }
 
-    private static EvaluatedFixture ExecuteFixture(RegressionFixture fixture)
+    private static EvaluatedFixture ExecuteFixture(RegressionFixture fixture, RegressionIrCoverageSession? irCoverageSession)
     {
         return fixture.Kind switch
         {
-            RegressionFixtureKind.Blade => ExecuteBladeFixture(fixture),
+            RegressionFixtureKind.Blade => ExecuteBladeFixture(fixture, irCoverageSession),
             RegressionFixtureKind.BladeCrash => ExecuteBladeCrashFixture(fixture),
             RegressionFixtureKind.Pasm2 => EvaluatedFixture.ForAssembly(fixture.BodyText),
             RegressionFixtureKind.Spin2 => EvaluatedFixture.ForAssembly(fixture.BodyText),
@@ -380,7 +395,7 @@ public static class RegressionRunner
         };
     }
 
-    private static EvaluatedFixture ExecuteBladeFixture(RegressionFixture fixture)
+    private static EvaluatedFixture ExecuteBladeFixture(RegressionFixture fixture, RegressionIrCoverageSession? irCoverageSession)
     {
         CompilationOptions options = BuildCompilationOptions(fixture.Expectation.CompilerArgs, fixture.AbsolutePath);
         CompilationResult compilation = CompilerDriver.Compile(fixture.Text, fixture.AbsolutePath, options);
@@ -395,6 +410,7 @@ public static class RegressionRunner
         Dictionary<RegressionStage, string> stageOutputs = [];
         if (compilation.IrBuildResult is not null)
         {
+            irCoverageSession?.Record(compilation.IrBuildResult);
             Dictionary<string, string> dumps = DumpContentBuilder.Build(
                 new DumpSelection
                 {
@@ -1778,6 +1794,12 @@ public static class RegressionReportFormatter
             builder.AppendLine();
         }
 
+        if (result.IrCoverageReport is not null)
+        {
+            AppendIrCoverage(builder, result.IrCoverageReport);
+            builder.AppendLine();
+        }
+
         builder.AppendLine(BuildCompactSummary(result));
         return builder.ToString();
     }
@@ -1836,6 +1858,34 @@ public static class RegressionReportFormatter
 
         parts.Add(FormattableString.Invariant($"{result.FixtureResults.Count} total"));
         return string.Join(", ", parts);
+    }
+
+    private static void AppendIrCoverage(StringBuilder builder, RegressionIrCoverageReport report)
+    {
+        foreach (RegressionIrCoverageGroupResult group in report.Groups)
+        {
+            builder.AppendLine(FormatCoverageSummary(group));
+        }
+
+        if (report.RegressionMessages.Count == 0)
+            return;
+
+        builder.AppendLine();
+        builder.AppendLine("IR coverage regressions:");
+        foreach (string message in report.RegressionMessages)
+        {
+            builder.Append("  ");
+            builder.AppendLine(message);
+        }
+    }
+
+    private static string FormatCoverageSummary(RegressionIrCoverageGroupResult group)
+    {
+        if (group.UncoveredTypeNames.Count == 0)
+            return FormattableString.Invariant($"0 uncovered {group.DisplayName}");
+
+        return FormattableString.Invariant(
+            $"{group.UncoveredTypeNames.Count} uncovered {group.DisplayName}: {string.Join(", ", group.UncoveredTypeNames)}");
     }
 }
 
