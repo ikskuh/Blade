@@ -1,0 +1,9 @@
+// EXPECT: xfail
+// STAGE: bound
+// NOTE:
+//   The arithmetic would overflow when computed with 32 bits
+//   which is a foot gun. Internal arithmetics of blade must use
+//   64 bit arithmetics.
+
+reg const CLOCKS: u32 = 250 * 20_000_000 / 1000;
+assert CLOCKS == 5_000_000;

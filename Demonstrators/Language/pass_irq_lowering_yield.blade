@@ -1,0 +1,35 @@
+// EXPECT: xfail
+// STAGE: final-asm
+// SEQUENCE:
+// - RESI1
+// - MOV IJMP1, #f_handle_irq1
+// - RETI1
+//
+// SEQUENCE:
+// - RESI2
+// - MOV IJMP1, #f_handle_irq2
+// - RETI2
+//
+// SEQUENCE:
+// - RESI3
+// - MOV IJMP1, #f_handle_irq3
+// - RETI3
+//
+// NOTE:
+//   The compiler must insert a restoration of the regular interrupt
+//   handler after a regular "return" from the handle_irq*() functions,
+//   as otherwise the function will launch from the last `yield` instead
+//   of the start next time the interrupt happens.
+
+
+int1 fn handle_irq1() {
+    yield;
+}
+
+int2 fn handle_irq2() {
+    yield;
+}
+
+int3 fn handle_irq3() {
+    yield;
+}

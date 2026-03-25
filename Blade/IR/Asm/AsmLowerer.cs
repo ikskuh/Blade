@@ -336,9 +336,10 @@ public static class AsmLowerer
             {
                 foreach (LirInstruction instruction in block.Instructions)
                 {
-                    if (instruction is LirOpInstruction op
-                        && op.Opcode.StartsWith("yieldto:", StringComparison.Ordinal))
+                    if (instruction is LirOpInstruction op && op.Opcode.StartsWith("yieldto:", StringComparison.Ordinal))
+                    {
                         return true;
+                    }
                 }
             }
         }
@@ -1972,11 +1973,11 @@ public static class AsmLowerer
                 break;
 
             case "noirq.begin":
-            {
-                string endLabel = PushRepEndLabel(ctx);
-                nodes.Add(new AsmInstructionNode("REP", [new AsmLabelRefOperand(endLabel), new AsmImmediateOperand(1)]));
-                break;
-            }
+                {
+                    string endLabel = PushRepEndLabel(ctx);
+                    nodes.Add(new AsmInstructionNode("REP", [new AsmLabelRefOperand(endLabel), new AsmImmediateOperand(1)]));
+                    break;
+                }
 
             case "noirq.end":
                 nodes.Add(new AsmLabelNode(PopRepEndLabel(ctx)));

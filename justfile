@@ -99,7 +99,8 @@ compile-all-samples: build \
     (compile-sample "Examples/inline_asm_streamer.blade") \
     (compile-sample "Examples/register_aliases.blade") \
     (compile-sample "Examples/sum_loop.blade") \
-    (compile-sample "Examples/hub_string_walk.blade")
+    (compile-sample "Examples/hub_string_walk.blade") \
+    (compile-sample "Examples/coroutines.blade")
 
 
 compile-sample foo:

@@ -12,7 +12,7 @@
 
 ## Bug Fix Backlog
 
-## BUG-11: Respect the `SETQ`/`SETQ2` + PTRx silicon hazard
+## BUG-1: Respect the `SETQ`/`SETQ2` + PTRx silicon hazard
 
 The compiler must not emit `ALTx`/`AUG*` instructions between `SETQ`/`SETQ2` and PTRx bulk-transfer instructions.
 
@@ -20,7 +20,7 @@ The compiler must not emit `ALTx`/`AUG*` instructions between `SETQ`/`SETQ2` and
 - Ensure legalization/scheduling preserves adjacency between `SETQ`/`SETQ2` and the corresponding `RDLONG`/`WRLONG`/`WMLONG` PTRx instruction.
 - Keep the acceptance criteria at final emitted assembly shape, not just intermediate IR.
 
-## BUG-12: Respect the `AUGS` + immediate `ALTx` silicon hazard
+## BUG-2: Respect the `AUGS` + immediate `ALTx` silicon hazard
 
 The compiler must not let an `AUGS` intended for one instruction leak into an intervening immediate `ALTx`.
 
@@ -28,16 +28,17 @@ The compiler must not let an `AUGS` intended for one instruction leak into an in
 - Ensure legalization does not emit an immediate `ALTx` that consumes or preserves the wrong `AUGS`.
 - Validate the final assembly ordering/operands so the hazard cannot occur.
 
+### BUG-3: Fix code generation for `irq* fn()` in combination with `yield`
+
+Right now, the compiler lowers `yield` to the correct `RESI1`, but it does not yet restore the original IRQ handler when the IRQ leaves through a `RETI1`.
+
+Acceptance Criteria:
+
+- `Demonstrators/Language/pass_irq_lowering_basic.blade` passes
+- `Demonstrators/Language/pass_irq_lowering_yield.blade` passes
+- A `MOV IJMP*, #<current_function_label>` is present for `irq* fn()` IFF `yield` is present.
+
 ## Backend Lowering Backlog
-
-### LOW-1: Implement coroutine and yield lowering (`yield`, `yieldto`)
-
-`AsmLowerer.LowerYield` (line 1833) unconditionally emits E0401 and a `TODO: CALLD` comment placeholder. No real instructions are generated.
-
-- Implement `CALLD`-based context-switch sequence for `yieldto <target>(args)`.
-- Implement `yield` for interrupt handlers (`int1 fn`).
-- Handle coroutine frame setup in `coro fn` declarations.
-- Unblock xfail fixtures: `pass_coroutines.blade`, `pass_interrupt_handler.blade`.
 
 ### LOW-3: Implement reg-storage indexed access (`load.index.reg`, `store.index.reg`)
 
@@ -54,14 +55,6 @@ The compiler must not let an `AUGS` intended for one instruction leak into an in
 
 - Implement `ALTD`/`ALTS` sequences for register-file pointer derefs.
 - Unblock xfail fixture: `pass_pointers_mir.blade`.
-
-### LOW-5: Implement union member access lowering
-
-Union members bind through the same aggregate-field path as structs, but `TryGetAggregateValueShape` / `TryGetAggregateMemberShape` return false for union layout because all members share offset 0 with potentially different widths.
-
-- Extend aggregate member lowering to handle overlapping union member layout.
-- Ensure `load.member` and `insert.member` work when multiple members share the same byte offset.
-- Unblock xfail fixture: `pass_unions.bound.blade`.
 
 ### LOW-6: Implement non-aligned bitfield insert
 

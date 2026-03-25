@@ -234,3 +234,72 @@ probable solution is to:
 
 `[Used]` and `[LinkName("_start")]`
 
+## Don't use string based opcodes in MIR/LIR/ASMIR
+
+That's just bollocks.
+
+## Assert.NotNull
+
+            AsmOperand yieldStateDestination = ctx.Tier == CallingConventionTier.Coroutine
+                && ctx.CoroutineCallingConvention.TryGetValue(ctx.Function.Name, out CoroutineCallingConventionInfo? sourceInfo)
+                && sourceInfo is not null
+                ? new AsmPlaceOperand(sourceInfo.StatePlace)
+                : ctx.TopLevelYieldStatePlace is not null
+                    ? new AsmPlaceOperand(ctx.TopLevelYieldStatePlace)
+                    : Assert.UnreachableValue<AsmOperand>();
+
+## introduce new dump "asmir-prealloc"
+
+New dump to analyze the code after ASMIR optimizations but before
+the register allocator folded variables.
+
+## Missed optimization
+
+```blade
+reg var shared: u32 = 0;
+shared = shared + 1;
+```
+
+compiles to
+
+```pasm
+MOV _r4, g_shared
+ADD _r4, #1
+MOV g_shared, _r4
+```
+
+while `shared += 1` compiles to `ADD _r4, #1`.
+
+`Demonstrators/Optimizations/asmir-global_reg-operator-no-copy.blade`
+
+
+
+
+
+## Is there a way for true comptime known globals?
+
+```blade
+reg const F_CPU: u32 = 20_000_000;
+reg const DELAY_MS: u32 = 250;
+reg const CLOCKS: u32 = 1000 * F_CPU / DELAY_MS;
+```
+
+yields
+
+```plaintext
+Examples/coroutines.blade:6:32: E0243: Comptime evaluation cannot access this symbol: 'F_CPU' cannot be accessed during comptime evaluation.
+```
+
+right now.
+
+These two must pass:
+
+- `Demonstrators/Comptime/pass_eager_constant_forwarding.blade`
+- `Demonstrators/Comptime/pass_eager_const_folding.blade`
+
+## compile time arithmetic must run in 64 bits for sanity
+
+```blade
+reg const CLOCKS: u32 = 250 * 20_000_000 / 1000;
+assert CLOCKS == 5_000_000;
+```

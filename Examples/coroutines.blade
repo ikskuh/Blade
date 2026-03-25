@@ -1,0 +1,29 @@
+
+reg const pin: u32 = 10;
+
+reg const clock_delay: u32 = 5_000_000;
+
+
+fn sleep() {
+    @WAITX(clock_delay - 2);
+}
+
+coro fn blink_on() {
+    loop {
+        @DRVH(pin);
+        sleep();
+        yieldto blink_off();
+    }
+}
+
+coro fn blink_off() {
+    loop {
+        @DRVH(pin);
+        sleep();
+        yieldto blink_on();
+    }
+}
+
+
+// Launch coroutine loop:
+yieldto blink_on();
