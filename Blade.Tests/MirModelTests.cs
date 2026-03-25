@@ -46,13 +46,6 @@ public class MirModelTests
         Assert.That(unary.RewriteUses(new Dictionary<MirValueId, MirValueId>()), Is.SameAs(unary));
         Assert.That(((MirUnaryInstruction)unary.RewriteUses(mapping)).Operand, Is.EqualTo(mapping[v1]));
 
-        MirSelectInstruction select = new(v0, BuiltinTypes.U32, v1, v2, v3, Span);
-        Assert.That(select.RewriteUses(new Dictionary<MirValueId, MirValueId>()), Is.SameAs(select));
-        MirSelectInstruction rewrittenSelect = (MirSelectInstruction)select.RewriteUses(mapping);
-        Assert.That(rewrittenSelect.Condition, Is.EqualTo(mapping[v1]));
-        Assert.That(rewrittenSelect.WhenTrue, Is.EqualTo(mapping[v2]));
-        Assert.That(rewrittenSelect.WhenFalse, Is.EqualTo(mapping[v3]));
-
         MirCallInstruction call = new(v0, BuiltinTypes.U32, "callee", [v1, v2], Span);
         Assert.That(call.RewriteUses(new Dictionary<MirValueId, MirValueId>()), Is.SameAs(call));
         Assert.That(((MirCallInstruction)call.RewriteUses(mapping)).Arguments, Is.EqualTo(new[] { mapping[v1], mapping[v2] }));

@@ -123,15 +123,6 @@ public static class MirTextWriter
                 sb.Append(binary.Right);
                 break;
 
-            case MirSelectInstruction select:
-                sb.Append("select ");
-                sb.Append(select.Condition);
-                sb.Append(" ? ");
-                sb.Append(select.WhenTrue);
-                sb.Append(" : ");
-                sb.Append(select.WhenFalse);
-                break;
-
             case MirConvertInstruction convert:
                 sb.Append("convert ");
                 sb.Append(convert.Operand);
@@ -359,14 +350,6 @@ public static class MirTextWriter
                 sb.Append("noirq.end");
                 break;
 
-            case MirErrorStatementInstruction:
-                sb.Append("error.statement");
-                break;
-
-            case MirErrorStoreInstruction errorStore:
-                sb.Append("store.error ");
-                sb.Append(errorStore.Value);
-                break;
         }
 
         if (instruction.HasSideEffects)

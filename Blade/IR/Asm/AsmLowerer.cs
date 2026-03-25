@@ -452,9 +452,6 @@ public static class AsmLowerer
             case LirLoadPlaceOperation:
                 LowerLoadPlace(nodes, op);
                 break;
-            case LirSelectOperation:
-                LowerSelect(nodes, op);
-                break;
             case LirCallOperation:
                 LowerCall(nodes, op, ctx);
                 break;
@@ -531,11 +528,6 @@ public static class AsmLowerer
                 LowerYieldTo(nodes, op, yieldTo, ctx);
                 break;
             case LirRangeOperation:
-                ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
-                nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
-                break;
-            case LirErrorStatementOperation:
-            case LirErrorStoreOperation:
                 ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
                 nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
                 break;
@@ -1639,18 +1631,6 @@ public static class AsmLowerer
                 nodes.Add(Emit("SUB", src, new AsmImmediateOperand(1)));
                 break;
         }
-    }
-
-    private static void LowerSelect(List<AsmNode> nodes, LirOpInstruction op)
-    {
-        AsmRegisterOperand dest = DestReg(op);
-        AsmRegisterOperand cond = OpReg(op.Operands[0]);
-        AsmRegisterOperand whenTrue = OpReg(op.Operands[1]);
-        AsmRegisterOperand whenFalse = OpReg(op.Operands[2]);
-
-        nodes.Add(Emit("CMP", cond, new AsmImmediateOperand(0), flagEffect: P2FlagEffect.WZ));
-        nodes.Add(Emit("MOV", dest, whenFalse));
-        nodes.Add(Emit("MOV", dest, whenTrue, predicate: "IF_NZ"));
     }
 
     private static void LowerCall(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)

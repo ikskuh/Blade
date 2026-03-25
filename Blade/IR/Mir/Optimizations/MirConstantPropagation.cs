@@ -39,13 +39,6 @@ public sealed class MirConstantPropagation : IMirOptimization
                     {
                         rewritten = new MirConstantInstruction(binary.Result!.Value, binary.ResultType!, binaryResult, binary.Span);
                     }
-                    else if (instruction is MirSelectInstruction select
-                        && TryGetConstant(constants, select.Condition, out object? selectCondition)
-                        && TryGetBool(selectCondition, out bool selectValue))
-                    {
-                        MirValueId source = selectValue ? select.WhenTrue : select.WhenFalse;
-                        rewritten = new MirCopyInstruction(select.Result!.Value, select.ResultType!, source, select.Span);
-                    }
                     else if (instruction is MirConvertInstruction convert
                         && convert.Result is MirValueId convertResult
                         && TryGetConstant(constants, convert.Operand, out object? convertValue)

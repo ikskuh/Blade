@@ -52,12 +52,24 @@ _base_coverage_collect params:
     # print a short summary of the code coverage data:
     @python3 Scripts/codecov-report.py coverage/coverage.cobertura.xml
 
-coverage-report: coverage
+# Creates a code coverage report from the test suite and the regression runner.
+coverage-report-full: coverage
     {{reportgenerator}} \
         -reports:"coverage/coverage.cobertura.xml" \
         -targetdir:"coverage/results" \
         -historydir:"coverage/history" \
         "-reporttypes:Html;TextSummary;TextDeltaSummary;CsvSummary"
+    echo "$PWD/coverage/results/index.html"
+
+# Creates a coverage report that is only driven by the regression runner and not by the test suite.
+coverage-report-regression: coverage-regressions
+    {{reportgenerator}} \
+        -reports:"coverage/coverage.cobertura.xml" \
+        -targetdir:"coverage/regression-results" \
+        -historydir:"coverage/regression-history" \
+        "-reporttypes:Html;TextSummary;TextDeltaSummary;CsvSummary"
+    echo "$PWD/coverage/regression-results/index.html"
+
 
 regressions:
     dotnet run --project Blade.Regressions --

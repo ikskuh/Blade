@@ -540,8 +540,8 @@ public static class MirLowerer
                     LowerInlineAsmStatement(asmStatement);
                     break;
 
-                case BoundErrorStatement errorStatement:
-                    _currentBlock.Instructions.Add(new MirErrorStatementInstruction(errorStatement.Span));
+                case BoundErrorStatement:
+                    Assert.Unreachable("MIR lowering must not run on bound statements that already contain binder errors.");
                     break;
             }
         }
@@ -1187,8 +1187,8 @@ public static class MirLowerer
                     return result;
                 }
 
-                case BoundErrorExpression errorExpression:
-                    return EmitConstant(null, BuiltinTypes.Unknown, errorExpression.Span);
+                case BoundErrorExpression:
+                    return Assert.UnreachableValue<MirValueId>("MIR lowering must not run on bound expressions that already contain binder errors.");
             }
 
             return EmitConstant(null, BuiltinTypes.Unknown, expression.Span);
@@ -1542,7 +1542,7 @@ public static class MirLowerer
                     return;
 
                 case BoundErrorAssignmentTarget:
-                    _currentBlock.Instructions.Add(new MirErrorStoreInstruction(value, span));
+                    Assert.Unreachable("MIR lowering must not run on bound assignment targets that already contain binder errors.");
                     return;
             }
         }

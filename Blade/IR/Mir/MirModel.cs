@@ -500,39 +500,6 @@ public sealed class MirInsertMemberInstruction : MirInstruction
     }
 }
 
-public sealed class MirSelectInstruction : MirInstruction
-{
-    public MirSelectInstruction(
-        MirValueId result,
-        TypeSymbol type,
-        MirValueId condition,
-        MirValueId whenTrue,
-        MirValueId whenFalse,
-        TextSpan span)
-        : base(result, type, span, hasSideEffects: false)
-    {
-        Condition = condition;
-        WhenTrue = whenTrue;
-        WhenFalse = whenFalse;
-    }
-
-    public MirValueId Condition { get; }
-    public MirValueId WhenTrue { get; }
-    public MirValueId WhenFalse { get; }
-
-    public override IReadOnlyList<MirValueId> Uses => [Condition, WhenTrue, WhenFalse];
-
-    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
-    {
-        MirValueId condition = mapping.TryGetValue(Condition, out MirValueId mappedCond) ? mappedCond : Condition;
-        MirValueId whenTrue = mapping.TryGetValue(WhenTrue, out MirValueId mappedTrue) ? mappedTrue : WhenTrue;
-        MirValueId whenFalse = mapping.TryGetValue(WhenFalse, out MirValueId mappedFalse) ? mappedFalse : WhenFalse;
-        if (condition == Condition && whenTrue == WhenTrue && whenFalse == WhenFalse)
-            return this;
-        return new MirSelectInstruction(Result!.Value, ResultType!, condition, whenTrue, whenFalse, Span);
-    }
-}
-
 public sealed class MirCallInstruction : MirInstruction
 {
     public MirCallInstruction(
@@ -959,37 +926,6 @@ public sealed class MirNoIrqEndInstruction : MirInstruction
     public override IReadOnlyList<MirValueId> Uses => [];
 
     public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping) => this;
-}
-
-public sealed class MirErrorStatementInstruction : MirInstruction
-{
-    public MirErrorStatementInstruction(TextSpan span)
-        : base(result: null, resultType: null, span, hasSideEffects: true)
-    {
-    }
-
-    public override IReadOnlyList<MirValueId> Uses => [];
-
-    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping) => this;
-}
-
-public sealed class MirErrorStoreInstruction : MirInstruction
-{
-    public MirErrorStoreInstruction(MirValueId value, TextSpan span)
-        : base(result: null, resultType: null, span, hasSideEffects: true)
-    {
-        Value = value;
-    }
-
-    public MirValueId Value { get; }
-
-    public override IReadOnlyList<MirValueId> Uses => [Value];
-
-    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
-    {
-        MirValueId value = mapping.TryGetValue(Value, out MirValueId mapped) ? mapped : Value;
-        return value == Value ? this : new MirErrorStoreInstruction(value, Span);
-    }
 }
 
 public abstract class MirTerminator

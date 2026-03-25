@@ -335,11 +335,6 @@ public sealed class LirInsertMemberOperation : LirOperation
     public override string DisplayName => $"insert.member.{Member.Name}.{Member.ByteOffset}";
 }
 
-public sealed class LirSelectOperation : LirOperation
-{
-    public override string DisplayName => "select";
-}
-
 public sealed class LirCallOperation : LirOperation
 {
     public override string DisplayName => "call";
@@ -448,16 +443,6 @@ public sealed class LirNoIrqBeginOperation : LirOperation
 public sealed class LirNoIrqEndOperation : LirOperation
 {
     public override string DisplayName => "noirq.end";
-}
-
-public sealed class LirErrorStatementOperation : LirOperation
-{
-    public override string DisplayName => "error.statement";
-}
-
-public sealed class LirErrorStoreOperation : LirOperation
-{
-    public override string DisplayName => "store.error";
 }
 
 public sealed class LirOpInstruction : LirInstruction

@@ -1,0 +1,18 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - E0401
+// STAGE: lir-preopt
+// ARGS:
+// - -fno-mir-opt=dce
+// - -fno-lir-opt=dce
+// CONTAINS:
+// - range
+// NOTE:
+//   Range expressions are frontend-reachable and lower into LIR, but ASM lowering
+//   still reports them as unsupported.
+
+fn demo() {
+    1..2;
+}
+
+demo();

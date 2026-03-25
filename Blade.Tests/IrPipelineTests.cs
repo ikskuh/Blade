@@ -1803,29 +1803,6 @@ public class IrPipelineTests
     }
 
     [Test]
-    public void ErrorAssignmentTarget_LowersToStoreError()
-    {
-        TextSpan span = new(0, 0);
-        BoundAssignmentStatement statement = new(
-            new BoundErrorAssignmentTarget(span),
-            new BoundLiteralExpression(1, span, BuiltinTypes.U32),
-            TokenKind.PlusEqual,
-            span);
-        BoundProgram program = new(
-            [statement],
-            [],
-            [],
-            new Dictionary<string, TypeSymbol>(),
-            new Dictionary<string, FunctionSymbol>(),
-            new Dictionary<string, ImportedModule>());
-
-        MirModule mirModule = MirLowerer.Lower(program);
-        string mir = MirTextWriter.Write(mirModule);
-
-        Assert.That(mir, Does.Contain("store.error"));
-    }
-
-    [Test]
     public void AsmLowerer_InvalidBitfieldOpcodes_EmitComments()
     {
         TextSpan span = new(0, 0);

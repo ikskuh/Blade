@@ -256,7 +256,6 @@ public static class MirInliner
                 MirBitfieldExtractInstruction bitfieldExtract => new MirBitfieldExtractInstruction(newResult!.Value, bitfieldExtract.ResultType!, bitfieldExtract.Receiver, bitfieldExtract.Member, bitfieldExtract.Span),
                 MirBitfieldInsertInstruction bitfieldInsert => new MirBitfieldInsertInstruction(newResult!.Value, bitfieldInsert.ResultType!, bitfieldInsert.Receiver, bitfieldInsert.Value, bitfieldInsert.Member, bitfieldInsert.Span),
                 MirInsertMemberInstruction insertMember => new MirInsertMemberInstruction(newResult!.Value, insertMember.ResultType!, insertMember.Receiver, insertMember.Value, insertMember.Member, insertMember.Span),
-                MirSelectInstruction select => new MirSelectInstruction(newResult!.Value, select.ResultType!, select.Condition, select.WhenTrue, select.WhenFalse, select.Span),
                 MirCallInstruction call => CloneMirCallInstruction(call, newResult, valueMap),
                 MirIntrinsicCallInstruction intrinsic => new MirIntrinsicCallInstruction(newResult, intrinsic.ResultType, intrinsic.IntrinsicName, intrinsic.Arguments, intrinsic.Span),
                 MirStoreIndexInstruction storeIndex => new MirStoreIndexInstruction(storeIndex.ResultType, storeIndex.Indexed, storeIndex.Index, storeIndex.Value, storeIndex.StorageClass, storeIndex.Span),
@@ -280,8 +279,6 @@ public static class MirInliner
                 MirRepForIterInstruction repForIter => new MirRepForIterInstruction(repForIter.Start, repForIter.End, repForIter.Span),
                 MirNoIrqBeginInstruction begin => new MirNoIrqBeginInstruction(begin.Span),
                 MirNoIrqEndInstruction end => new MirNoIrqEndInstruction(end.Span),
-                MirErrorStatementInstruction errorStatement => new MirErrorStatementInstruction(errorStatement.Span),
-                MirErrorStoreInstruction errorStore => new MirErrorStoreInstruction(errorStore.Value, errorStore.Span),
                 _ => rewritten,
             };
         }

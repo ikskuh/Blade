@@ -299,3 +299,7 @@ These two must pass:
 reg const CLOCKS: u32 = 250 * 20_000_000 / 1000;
 assert CLOCKS == 5_000_000;
 ```
+
+## remove top-level expressions
+
+these are useless as always removed by DCE except for calls and assignments.

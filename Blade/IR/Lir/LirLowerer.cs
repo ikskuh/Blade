@@ -257,21 +257,6 @@ public static class LirLowerer
                 writesZ: false,
                 insertMember.Span),
 
-            MirSelectInstruction select => new LirOpInstruction(
-                new LirSelectOperation(),
-                destination,
-                select.ResultType,
-                [
-                    new LirRegisterOperand(getRegister(select.Condition)),
-                    new LirRegisterOperand(getRegister(select.WhenTrue)),
-                    new LirRegisterOperand(getRegister(select.WhenFalse)),
-                ],
-                hasSideEffects: false,
-                predicate: null,
-                writesC: false,
-                writesZ: false,
-                select.Span),
-
             MirCallInstruction call => new LirOpInstruction(
                 new LirCallOperation(),
                 destination,
@@ -437,28 +422,6 @@ public static class LirLowerer
                 writesC: false,
                 writesZ: false,
                 end.Span),
-
-            MirErrorStatementInstruction errorStatement => new LirOpInstruction(
-                new LirErrorStatementOperation(),
-                destination: null,
-                resultType: null,
-                [],
-                errorStatement.HasSideEffects,
-                predicate: null,
-                writesC: false,
-                writesZ: false,
-                errorStatement.Span),
-
-            MirErrorStoreInstruction errorStore => new LirOpInstruction(
-                new LirErrorStoreOperation(),
-                destination: null,
-                resultType: null,
-                [new LirRegisterOperand(getRegister(errorStore.Value))],
-                errorStore.HasSideEffects,
-                predicate: null,
-                writesC: false,
-                writesZ: false,
-                errorStore.Span),
 
             _ => Assert.UnreachableValue<LirInstruction>(),
         };
