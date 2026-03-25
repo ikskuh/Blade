@@ -73,7 +73,7 @@ public static class RegisterAllocator
             for (int i = 0; i < function.Nodes.Count; i++)
             {
                 if (function.Nodes[i] is not AsmInstructionNode instruction
-                    || instruction.Opcode != "CALLB")
+                    || instruction.Mnemonic != P2Mnemonic.CALLB)
                 {
                     rewrittenNodes.Add(function.Nodes[i]);
                     continue;
@@ -231,9 +231,9 @@ public static class RegisterAllocator
             if (node is not AsmInstructionNode instruction)
                 continue;
 
-            if (instruction.Opcode != "MOV"
-                || instruction.Predicate is not null
-                || instruction.FlagEffect != AsmFlagEffect.None
+            if (instruction.Mnemonic != P2Mnemonic.MOV
+                || instruction.Condition is not null
+                || instruction.FlagEffect != P2FlagEffect.None
                 || instruction.Operands.Count != 2)
             {
                 continue;
@@ -292,7 +292,7 @@ public static class RegisterAllocator
             HashSet<string> callees = [];
             foreach (AsmNode node in function.Nodes)
             {
-                if (node is AsmInstructionNode instruction && P2InstructionMetadata.IsCall(instruction.Opcode, instruction.Operands.Count))
+                if (node is AsmInstructionNode instruction && P2InstructionMetadata.IsCall(instruction.Mnemonic, instruction.Operands.Count))
                 {
                     foreach (AsmOperand operand in instruction.Operands)
                     {
@@ -544,9 +544,9 @@ public static class RegisterAllocator
                         foreach (AsmOperand operand in instruction.Operands)
                             operands.Add(RewriteOperand(operand, regToSlot));
                         rewrittenNodes.Add(new AsmInstructionNode(
-                            instruction.Opcode,
+                            instruction.Mnemonic,
                             operands,
-                            instruction.Predicate,
+                            instruction.Condition,
                             instruction.FlagEffect,
                             instruction.IsNonElidable));
                         break;

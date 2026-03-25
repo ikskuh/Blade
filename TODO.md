@@ -234,10 +234,6 @@ probable solution is to:
 
 `[Used]` and `[LinkName("_start")]`
 
-## Don't use string based opcodes in MIR/LIR/ASMIR
-
-That's just bollocks.
-
 ## Assert.NotNull
 
             AsmOperand yieldStateDestination = ctx.Tier == CallingConventionTier.Coroutine

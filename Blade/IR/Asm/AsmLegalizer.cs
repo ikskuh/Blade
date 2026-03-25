@@ -91,7 +91,7 @@ public static class AsmLegalizer
             if (operand is AsmImmediateOperand imm)
             {
                 P2InstructionOperandInfo operandInfo = P2InstructionMetadata.GetOperandInfo(
-                    instruction.Opcode,
+                    instruction.Mnemonic,
                     instruction.Operands.Count,
                     operandIndex);
                 if (!CanUseSharedConstant(operandInfo))
@@ -131,13 +131,13 @@ public static class AsmLegalizer
     {
         bool modified = false;
         List<AsmOperand> newOperands = new(instruction.Operands.Count);
-        List<(string Opcode, long Value)> prefixes = [];
+        List<(P2Mnemonic Opcode, long Value)> prefixes = [];
 
         for (int i = 0; i < instruction.Operands.Count; i++)
         {
             AsmOperand operand = instruction.Operands[i];
             P2InstructionOperandInfo operandInfo = P2InstructionMetadata.GetOperandInfo(
-                instruction.Opcode,
+                instruction.Mnemonic,
                 instruction.Operands.Count,
                 i);
 
@@ -183,7 +183,7 @@ public static class AsmLegalizer
         }
 
         // Emit AUG prefixes immediately before the instruction in operand order.
-        foreach ((string opcode, long value) in prefixes)
+        foreach ((P2Mnemonic opcode, long value) in prefixes)
         {
             nodes.Add(new AsmInstructionNode(opcode, [new AsmImmediateOperand(value)]));
         }
@@ -191,9 +191,9 @@ public static class AsmLegalizer
         if (modified)
         {
             nodes.Add(new AsmInstructionNode(
-                instruction.Opcode,
+                instruction.Mnemonic,
                 newOperands,
-                instruction.Predicate,
+                instruction.Condition,
                 instruction.FlagEffect,
                 instruction.IsNonElidable));
         }
@@ -232,12 +232,12 @@ public static class AsmLegalizer
         return (1u << bitWidth) - 1u;
     }
 
-    private static string GetAugOpcode(P2AugPrefixKind augPrefix)
+    private static P2Mnemonic GetAugOpcode(P2AugPrefixKind augPrefix)
     {
         return augPrefix switch
         {
-            P2AugPrefixKind.AUGD => "AUGD",
-            P2AugPrefixKind.AUGS => "AUGS",
+            P2AugPrefixKind.AUGD => P2Mnemonic.AUGD,
+            P2AugPrefixKind.AUGS => P2Mnemonic.AUGS,
             _ => throw new InvalidOperationException($"Unsupported AUG prefix kind '{augPrefix}'."),
         };
     }

@@ -39,7 +39,9 @@ public static class InlineAssemblyBindingAnalysis
 
         foreach (InlineAssemblyValidator.AsmLine line in parsedLines)
         {
-            string mnemonic = line.Mnemonic.ToUpperInvariant();
+            if (line.Mnemonic is not P2Mnemonic mnemonic)
+                continue;
+
             if (!TryGetOperandAccesses(mnemonic, line.Operands.Count, out InlineAsmBindingAccess[]? operandAccesses))
             {
                 foreach (string bindingName in bindingNames)
@@ -134,7 +136,7 @@ public static class InlineAssemblyBindingAnalysis
     }
 
     private static bool TryGetOperandAccesses(
-        string mnemonic,
+        P2Mnemonic mnemonic,
         int operandCount,
         out InlineAsmBindingAccess[]? operandAccesses)
     {

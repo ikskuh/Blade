@@ -155,17 +155,15 @@ public static class CallGraphAnalyzer
         {
             foreach (LirInstruction instruction in block.Instructions)
             {
-                if (instruction is LirOpInstruction op && op.Opcode == "call"
+                if (instruction is LirOpInstruction { Operation: LirCallOperation } op
                     && op.Operands.Count > 0 && op.Operands[0] is LirSymbolOperand sym)
                 {
                     callees.Add(sym.Symbol);
                 }
-                else if (instruction is LirOpInstruction yieldtoOp
-                         && yieldtoOp.Opcode.StartsWith("yieldto:", System.StringComparison.Ordinal))
+                else if (instruction is LirOpInstruction { Operation: LirYieldToOperation yieldTo })
                 {
-                    string target = yieldtoOp.Opcode["yieldto:".Length..];
-                    if (!string.IsNullOrEmpty(target))
-                        callees.Add(target);
+                    if (!string.IsNullOrEmpty(yieldTo.TargetFunctionName))
+                        callees.Add(yieldTo.TargetFunctionName);
                 }
             }
         }

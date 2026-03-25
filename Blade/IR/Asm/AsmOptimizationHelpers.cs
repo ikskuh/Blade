@@ -1,14 +1,15 @@
 using System.Collections.Generic;
 using System.Linq;
+using Blade;
 
 namespace Blade.IR.Asm;
 
 internal static class AsmOptimizationHelpers
 {
     internal static bool IsPlainMov(AsmInstructionNode instruction)
-        => instruction.Opcode == "MOV"
-            && instruction.Predicate is null
-            && instruction.FlagEffect == AsmFlagEffect.None
+        => instruction.Mnemonic == P2Mnemonic.MOV
+            && instruction.Condition is null
+            && instruction.FlagEffect == P2FlagEffect.None
             && instruction.Operands.Count == 2;
 
     internal static bool TryGetTrackedCopy(
@@ -52,7 +53,7 @@ internal static class AsmOptimizationHelpers
         foreach (AsmNode node in nodes)
         {
             if (node is AsmInstructionNode instruction
-                && instruction.Opcode == "JMP"
+                && instruction.Mnemonic == P2Mnemonic.JMP
                 && instruction.Operands.Count == 1
                 && instruction.Operands[0] is AsmSymbolOperand symbol)
             {
@@ -70,7 +71,7 @@ internal static class AsmOptimizationHelpers
             if (instruction.Operands[operandIndex] is not AsmSymbolOperand)
                 continue;
 
-            if (P2InstructionMetadata.UsesImmediateSymbolSyntax(instruction.Opcode, instruction.Operands.Count, operandIndex))
+            if (P2InstructionMetadata.UsesImmediateSymbolSyntax(instruction.Mnemonic, instruction.Operands.Count, operandIndex))
                 return true;
         }
 
@@ -79,20 +80,20 @@ internal static class AsmOptimizationHelpers
 
     internal static bool IsBarrier(AsmInstructionNode instruction)
     {
-        if (instruction.Predicate is not null || instruction.FlagEffect != AsmFlagEffect.None)
+        if (instruction.Condition is not null || instruction.FlagEffect != P2FlagEffect.None)
             return true;
 
-        return P2InstructionMetadata.IsControlFlow(instruction.Opcode, instruction.Operands.Count)
+        return P2InstructionMetadata.IsControlFlow(instruction.Mnemonic, instruction.Operands.Count)
             || HasImmediateSymbolOperand(instruction);
     }
 
     internal static bool IsPureRegisterLocalInstruction(AsmInstructionNode instruction)
     {
-        if (instruction.Predicate is not null
-            || instruction.FlagEffect != AsmFlagEffect.None
+        if (instruction.Condition is not null
+            || instruction.FlagEffect != P2FlagEffect.None
             || instruction.Operands.Count == 0
             || instruction.Operands[0] is not AsmRegisterOperand
-            || !P2InstructionMetadata.IsPureRegisterLocal(instruction.Opcode, instruction.Operands.Count))
+            || !P2InstructionMetadata.IsPureRegisterLocal(instruction.Mnemonic, instruction.Operands.Count))
         {
             return false;
         }
@@ -180,9 +181,9 @@ internal static class AsmOptimizationHelpers
 
         return changed
             ? new AsmInstructionNode(
-                instruction.Opcode,
+                instruction.Mnemonic,
                 operands,
-                instruction.Predicate,
+                instruction.Condition,
                 instruction.FlagEffect,
                 instruction.IsNonElidable)
             : instruction;
@@ -228,7 +229,7 @@ internal static class AsmOptimizationHelpers
     }
 
     internal static bool IsControlFlowInstruction(AsmInstructionNode instruction)
-        => P2InstructionMetadata.IsControlFlow(instruction.Opcode, instruction.Operands.Count);
+        => P2InstructionMetadata.IsControlFlow(instruction.Mnemonic, instruction.Operands.Count);
 
     internal static bool EndsWithTargetedLabel(IReadOnlyList<AsmNode> nodes, IReadOnlySet<string> targets)
         => nodes.Count > 0 && nodes[^1] is AsmLabelNode label && targets.Contains(label.Name);
@@ -257,7 +258,7 @@ internal static class AsmOptimizationHelpers
             if (function.Nodes[i] is not AsmInstructionNode instruction)
                 continue;
 
-            if (!P2InstructionMetadata.TryGetInstructionForm(instruction.Opcode, instruction.Operands.Count, out P2InstructionFormInfo form)
+            if (!P2InstructionMetadata.TryGetInstructionForm(instruction.Mnemonic, instruction.Operands.Count, out P2InstructionFormInfo form)
                 || !form.IsBranch
                 || form.IsReturn)
             {
@@ -265,8 +266,8 @@ internal static class AsmOptimizationHelpers
             }
 
             bool isLinearJump =
-                instruction.Opcode == "JMP"
-                && instruction.Predicate is null
+                instruction.Mnemonic == P2Mnemonic.JMP
+                && instruction.Condition is null
                 && instruction.Operands.Count == 1
                 && instruction.Operands[0] is AsmSymbolOperand target
                 && TryGetNextLabel(function.Nodes, i + 1, out string? nextLabel)
@@ -281,13 +282,13 @@ internal static class AsmOptimizationHelpers
         return false;
     }
 
-    internal static string InvertPredicate(string predicate)
+    internal static P2ConditionCode InvertPredicate(P2ConditionCode predicate)
         => predicate switch
         {
-            "IF_Z" => "IF_NZ",
-            "IF_NZ" => "IF_Z",
-            "IF_C" => "IF_NC",
-            "IF_NC" => "IF_C",
+            P2ConditionCode.IF_Z => P2ConditionCode.IF_NZ,
+            P2ConditionCode.IF_NZ => P2ConditionCode.IF_Z,
+            P2ConditionCode.IF_C => P2ConditionCode.IF_NC,
+            P2ConditionCode.IF_NC => P2ConditionCode.IF_C,
             _ => predicate,
         };
 
@@ -296,8 +297,8 @@ internal static class AsmOptimizationHelpers
         fused = null;
         if (first.IsNonElidable
             || second.IsNonElidable
-            || first.FlagEffect != AsmFlagEffect.None
-            || second.FlagEffect != AsmFlagEffect.None)
+            || first.FlagEffect != P2FlagEffect.None
+            || second.FlagEffect != P2FlagEffect.None)
         {
             return false;
         }
@@ -311,14 +312,26 @@ internal static class AsmOptimizationHelpers
             return false;
         }
 
-        if (first.Predicate == "IF_C" && second.Predicate == "IF_NC" && first.Opcode == "OR" && second.Opcode == "ANDN")
-            fused = new AsmInstructionNode("MUXC", [first.Operands[0], first.Operands[1]]);
-        else if (first.Predicate == "IF_NC" && second.Predicate == "IF_C" && first.Opcode == "ANDN" && second.Opcode == "OR")
-            fused = new AsmInstructionNode("MUXC", [first.Operands[0], first.Operands[1]]);
-        else if (first.Predicate == "IF_NC" && second.Predicate == "IF_C" && first.Opcode == "OR" && second.Opcode == "ANDN")
-            fused = new AsmInstructionNode("MUXNC", [first.Operands[0], first.Operands[1]]);
-        else if (first.Predicate == "IF_C" && second.Predicate == "IF_NC" && first.Opcode == "ANDN" && second.Opcode == "OR")
-            fused = new AsmInstructionNode("MUXNC", [first.Operands[0], first.Operands[1]]);
+        if (first.Condition == P2ConditionCode.IF_C && second.Condition == P2ConditionCode.IF_NC
+            && first.Mnemonic == P2Mnemonic.OR && second.Mnemonic == P2Mnemonic.ANDN)
+        {
+            fused = new AsmInstructionNode(P2Mnemonic.MUXC, [first.Operands[0], first.Operands[1]]);
+        }
+        else if (first.Condition == P2ConditionCode.IF_NC && second.Condition == P2ConditionCode.IF_C
+                 && first.Mnemonic == P2Mnemonic.ANDN && second.Mnemonic == P2Mnemonic.OR)
+        {
+            fused = new AsmInstructionNode(P2Mnemonic.MUXC, [first.Operands[0], first.Operands[1]]);
+        }
+        else if (first.Condition == P2ConditionCode.IF_NC && second.Condition == P2ConditionCode.IF_C
+                 && first.Mnemonic == P2Mnemonic.OR && second.Mnemonic == P2Mnemonic.ANDN)
+        {
+            fused = new AsmInstructionNode(P2Mnemonic.MUXNC, [first.Operands[0], first.Operands[1]]);
+        }
+        else if (first.Condition == P2ConditionCode.IF_C && second.Condition == P2ConditionCode.IF_NC
+                 && first.Mnemonic == P2Mnemonic.ANDN && second.Mnemonic == P2Mnemonic.OR)
+        {
+            fused = new AsmInstructionNode(P2Mnemonic.MUXNC, [first.Operands[0], first.Operands[1]]);
+        }
 
         return fused is not null;
     }
@@ -328,10 +341,10 @@ internal static class AsmOptimizationHelpers
         if (instruction.IsNonElidable)
             return false;
 
-        if (instruction.Predicate is not null || instruction.FlagEffect != AsmFlagEffect.None)
+        if (instruction.Condition is not null || instruction.FlagEffect != P2FlagEffect.None)
             return false;
 
-        if (instruction.Opcode == "NOP")
+        if (instruction.Mnemonic == P2Mnemonic.NOP)
             return true;
 
         if (instruction.Operands.Count != 2)
@@ -340,23 +353,23 @@ internal static class AsmOptimizationHelpers
         AsmOperand left = instruction.Operands[0];
         AsmOperand right = instruction.Operands[1];
 
-        if (instruction.Opcode == "MOV" && OperandsEquivalent(left, right))
+        if (instruction.Mnemonic == P2Mnemonic.MOV && OperandsEquivalent(left, right))
             return true;
 
         if (right is not AsmImmediateOperand immediate)
             return false;
 
-        return instruction.Opcode switch
+        return instruction.Mnemonic switch
         {
-            "OR" when immediate.Value == 0 => true,
-            "XOR" when immediate.Value == 0 => true,
-            "ADD" when immediate.Value == 0 => true,
-            "SUB" when immediate.Value == 0 => true,
-            "SHL" when immediate.Value == 0 => true,
-            "SHR" when immediate.Value == 0 => true,
-            "SAR" when immediate.Value == 0 => true,
-            "ROL" when immediate.Value == 0 => true,
-            "ROR" when immediate.Value == 0 => true,
+            P2Mnemonic.OR when immediate.Value == 0 => true,
+            P2Mnemonic.XOR when immediate.Value == 0 => true,
+            P2Mnemonic.ADD when immediate.Value == 0 => true,
+            P2Mnemonic.SUB when immediate.Value == 0 => true,
+            P2Mnemonic.SHL when immediate.Value == 0 => true,
+            P2Mnemonic.SHR when immediate.Value == 0 => true,
+            P2Mnemonic.SAR when immediate.Value == 0 => true,
+            P2Mnemonic.ROL when immediate.Value == 0 => true,
+            P2Mnemonic.ROR when immediate.Value == 0 => true,
             _ => false,
         };
     }

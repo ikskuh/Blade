@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Blade.IR;
 using Blade.IR.Mir;
 using Blade.Semantics;
+using Blade.Semantics.Bound;
 using Blade.Source;
 
 namespace Blade.IR.Lir;
@@ -137,7 +138,6 @@ public sealed class LirPlaceOperand : LirOperand
 public abstract class LirInstruction
 {
     protected LirInstruction(
-        string opcode,
         LirVirtualRegister? destination,
         TypeSymbol? resultType,
         IReadOnlyList<LirOperand> operands,
@@ -147,7 +147,6 @@ public abstract class LirInstruction
         bool writesZ,
         TextSpan span)
     {
-        Opcode = opcode;
         Destination = destination;
         ResultType = resultType;
         Operands = operands;
@@ -158,7 +157,6 @@ public abstract class LirInstruction
         Span = span;
     }
 
-    public string Opcode { get; }
     public LirVirtualRegister? Destination { get; }
     public TypeSymbol? ResultType { get; }
     public IReadOnlyList<LirOperand> Operands { get; }
@@ -167,12 +165,305 @@ public abstract class LirInstruction
     public bool WritesC { get; }
     public bool WritesZ { get; }
     public TextSpan Span { get; }
+
+    public abstract string DisplayName { get; }
+    public string Opcode => DisplayName;
+}
+
+public abstract class LirOperation
+{
+    public abstract string DisplayName { get; }
+
+    protected static string StorageClassSuffix(VariableStorageClass storageClass)
+    {
+        return storageClass switch
+        {
+            VariableStorageClass.Lut => "lut",
+            VariableStorageClass.Hub => "hub",
+            _ => "reg",
+        };
+    }
+}
+
+public sealed class LirConstOperation : LirOperation
+{
+    public override string DisplayName => "const";
+}
+
+public sealed class LirMovOperation : LirOperation
+{
+    public override string DisplayName => "mov";
+}
+
+public sealed class LirLoadSymbolOperation : LirOperation
+{
+    public override string DisplayName => "load.sym";
+}
+
+public sealed class LirLoadPlaceOperation : LirOperation
+{
+    public override string DisplayName => "load.place";
+}
+
+public sealed class LirUnaryOperation : LirOperation
+{
+    public LirUnaryOperation(BoundUnaryOperatorKind operatorKind)
+    {
+        OperatorKind = operatorKind;
+    }
+
+    public BoundUnaryOperatorKind OperatorKind { get; }
+
+    public override string DisplayName => $"unary.{OperatorKind}";
+}
+
+public sealed class LirBinaryOperation : LirOperation
+{
+    public LirBinaryOperation(BoundBinaryOperatorKind operatorKind)
+    {
+        OperatorKind = operatorKind;
+    }
+
+    public BoundBinaryOperatorKind OperatorKind { get; }
+
+    public override string DisplayName => $"binary.{OperatorKind}";
+}
+
+public sealed class LirConvertOperation : LirOperation
+{
+    public override string DisplayName => "convert";
+}
+
+public sealed class LirRangeOperation : LirOperation
+{
+    public override string DisplayName => "range";
+}
+
+public sealed class LirStructLiteralOperation : LirOperation
+{
+    public LirStructLiteralOperation(IReadOnlyList<AggregateMemberSymbol> members)
+    {
+        Members = members;
+    }
+
+    public IReadOnlyList<AggregateMemberSymbol> Members { get; }
+
+    public override string DisplayName
+    {
+        get
+        {
+            if (Members.Count == 0)
+                return "structlit";
+
+            List<string> parts = new(1 + Members.Count) { "structlit" };
+            foreach (AggregateMemberSymbol member in Members)
+                parts.Add(member.Name);
+            return string.Join(".", parts);
+        }
+    }
+}
+
+public sealed class LirLoadMemberOperation : LirOperation
+{
+    public LirLoadMemberOperation(AggregateMemberSymbol member)
+    {
+        Member = member;
+    }
+
+    public AggregateMemberSymbol Member { get; }
+
+    public override string DisplayName => $"load.member.{Member.Name}.{Member.ByteOffset}";
+}
+
+public sealed class LirLoadIndexOperation : LirOperation
+{
+    public LirLoadIndexOperation(VariableStorageClass storageClass)
+    {
+        StorageClass = storageClass;
+    }
+
+    public VariableStorageClass StorageClass { get; }
+
+    public override string DisplayName => $"load.index.{StorageClassSuffix(StorageClass)}";
+}
+
+public sealed class LirLoadDerefOperation : LirOperation
+{
+    public LirLoadDerefOperation(VariableStorageClass storageClass)
+    {
+        StorageClass = storageClass;
+    }
+
+    public VariableStorageClass StorageClass { get; }
+
+    public override string DisplayName => $"load.deref.{StorageClassSuffix(StorageClass)}";
+}
+
+public sealed class LirBitfieldExtractOperation : LirOperation
+{
+    public LirBitfieldExtractOperation(AggregateMemberSymbol member)
+    {
+        Member = member;
+    }
+
+    public AggregateMemberSymbol Member { get; }
+
+    public override string DisplayName => $"bitfield.extract.{Member.BitOffset}.{Member.BitWidth}";
+}
+
+public sealed class LirBitfieldInsertOperation : LirOperation
+{
+    public LirBitfieldInsertOperation(AggregateMemberSymbol member)
+    {
+        Member = member;
+    }
+
+    public AggregateMemberSymbol Member { get; }
+
+    public override string DisplayName => $"bitfield.insert.{Member.BitOffset}.{Member.BitWidth}";
+}
+
+public sealed class LirInsertMemberOperation : LirOperation
+{
+    public LirInsertMemberOperation(AggregateMemberSymbol member)
+    {
+        Member = member;
+    }
+
+    public AggregateMemberSymbol Member { get; }
+
+    public override string DisplayName => $"insert.member.{Member.Name}.{Member.ByteOffset}";
+}
+
+public sealed class LirSelectOperation : LirOperation
+{
+    public override string DisplayName => "select";
+}
+
+public sealed class LirCallOperation : LirOperation
+{
+    public override string DisplayName => "call";
+}
+
+public sealed class LirCallExtractFlagOperation : LirOperation
+{
+    public LirCallExtractFlagOperation(MirFlag flag)
+    {
+        Flag = flag;
+    }
+
+    public MirFlag Flag { get; }
+
+    public override string DisplayName => Flag == MirFlag.C ? "call.extractC" : "call.extractZ";
+}
+
+public sealed class LirIntrinsicOperation : LirOperation
+{
+    public override string DisplayName => "intrinsic";
+}
+
+public sealed class LirStoreIndexOperation : LirOperation
+{
+    public LirStoreIndexOperation(VariableStorageClass storageClass)
+    {
+        StorageClass = storageClass;
+    }
+
+    public VariableStorageClass StorageClass { get; }
+
+    public override string DisplayName => $"store.index.{StorageClassSuffix(StorageClass)}";
+}
+
+public sealed class LirStoreDerefOperation : LirOperation
+{
+    public LirStoreDerefOperation(VariableStorageClass storageClass)
+    {
+        StorageClass = storageClass;
+    }
+
+    public VariableStorageClass StorageClass { get; }
+
+    public override string DisplayName => $"store.deref.{StorageClassSuffix(StorageClass)}";
+}
+
+public sealed class LirStorePlaceOperation : LirOperation
+{
+    public override string DisplayName => "store.place";
+}
+
+public sealed class LirUpdatePlaceOperation : LirOperation
+{
+    public LirUpdatePlaceOperation(BoundBinaryOperatorKind operatorKind)
+    {
+        OperatorKind = operatorKind;
+    }
+
+    public BoundBinaryOperatorKind OperatorKind { get; }
+
+    public override string DisplayName => $"update.place.{OperatorKind}";
+}
+
+public sealed class LirYieldOperation : LirOperation
+{
+    public override string DisplayName => "yield";
+}
+
+public sealed class LirYieldToOperation : LirOperation
+{
+    public LirYieldToOperation(string targetFunctionName)
+    {
+        TargetFunctionName = targetFunctionName;
+    }
+
+    public string TargetFunctionName { get; }
+
+    public override string DisplayName => $"yieldto:{TargetFunctionName}";
+}
+
+public sealed class LirRepSetupOperation : LirOperation
+{
+    public override string DisplayName => "rep.setup";
+}
+
+public sealed class LirRepIterOperation : LirOperation
+{
+    public override string DisplayName => "rep.iter";
+}
+
+public sealed class LirRepForSetupOperation : LirOperation
+{
+    public override string DisplayName => "repfor.setup";
+}
+
+public sealed class LirRepForIterOperation : LirOperation
+{
+    public override string DisplayName => "repfor.iter";
+}
+
+public sealed class LirNoIrqBeginOperation : LirOperation
+{
+    public override string DisplayName => "noirq.begin";
+}
+
+public sealed class LirNoIrqEndOperation : LirOperation
+{
+    public override string DisplayName => "noirq.end";
+}
+
+public sealed class LirErrorStatementOperation : LirOperation
+{
+    public override string DisplayName => "error.statement";
+}
+
+public sealed class LirErrorStoreOperation : LirOperation
+{
+    public override string DisplayName => "store.error";
 }
 
 public sealed class LirOpInstruction : LirInstruction
 {
     public LirOpInstruction(
-        string opcode,
+        LirOperation operation,
         LirVirtualRegister? destination,
         TypeSymbol? resultType,
         IReadOnlyList<LirOperand> operands,
@@ -181,9 +472,14 @@ public sealed class LirOpInstruction : LirInstruction
         bool writesC,
         bool writesZ,
         TextSpan span)
-        : base(opcode, destination, resultType, operands, hasSideEffects, predicate, writesC, writesZ, span)
+        : base(destination, resultType, operands, hasSideEffects, predicate, writesC, writesZ, span)
     {
+        Operation = operation;
     }
+
+    public LirOperation Operation { get; }
+
+    public override string DisplayName => Operation.DisplayName;
 }
 
 public sealed class LirInlineAsmBinding
@@ -210,7 +506,6 @@ public sealed class LirInlineAsmInstruction : LirInstruction
         IReadOnlyList<LirInlineAsmBinding> bindings,
         TextSpan span)
         : base(
-            opcode: "inlineasm",
             destination: null,
             resultType: null,
             operands: [],
@@ -232,6 +527,8 @@ public sealed class LirInlineAsmInstruction : LirInstruction
     public string? FlagOutput { get; }
     public IReadOnlyList<InlineAssemblyValidator.AsmLine> ParsedLines { get; }
     public IReadOnlyList<LirInlineAsmBinding> Bindings { get; }
+
+    public override string DisplayName => "inlineasm";
 }
 
 public abstract class LirTerminator

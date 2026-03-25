@@ -20,10 +20,10 @@ public static class InlineAssemblyValidator
     /// </summary>
     public sealed class AsmLine
     {
-        public string? Condition { get; init; }
-        public string Mnemonic { get; init; } = "";
+        public P2ConditionCode? Condition { get; init; }
+        public P2Mnemonic? Mnemonic { get; init; }
         public IReadOnlyList<string> Operands { get; init; } = Array.Empty<string>();
-        public string? FlagEffect { get; init; }
+        public P2FlagEffect? FlagEffect { get; init; }
         public string RawText { get; init; } = "";
         public bool IsLabel { get; init; }
         public string? LabelName { get; init; }
@@ -93,8 +93,8 @@ public static class InlineAssemblyValidator
         // Operands may contain {varname}, #immediate, register names
 
         string remaining = text;
-        string? condition = null;
-        string? flagEffect = null;
+        P2ConditionCode? condition = null;
+        P2FlagEffect? flagEffect = null;
 
         if (TryParseLabelDefinition(text, out string? labelName))
         {
@@ -108,9 +108,9 @@ public static class InlineAssemblyValidator
 
         // Check for condition prefix at the start
         string firstWord = GetFirstWord(remaining);
-        if (P2InstructionMetadata.IsValidConditionPrefix(firstWord))
+        if (P2InstructionMetadata.TryParseConditionCode(firstWord, out P2ConditionCode parsedCondition))
         {
-            condition = firstWord.ToUpperInvariant();
+            condition = parsedCondition;
             remaining = remaining[firstWord.Length..].TrimStart();
         }
 
@@ -122,7 +122,7 @@ public static class InlineAssemblyValidator
             return null;
         }
 
-        if (!P2InstructionMetadata.IsValidInstruction(mnemonic))
+        if (!P2InstructionMetadata.TryParseMnemonic(mnemonic, out P2Mnemonic parsedMnemonic))
         {
             diagnostics.ReportInlineAsmUnknownInstruction(blockSpan, mnemonic);
             return null;
@@ -133,9 +133,9 @@ public static class InlineAssemblyValidator
         // Check for flag effects at the end
         // Need to look at the last word(s)
         string lastWord = GetLastWord(remaining);
-        if (!string.IsNullOrEmpty(lastWord) && P2InstructionMetadata.IsValidFlagEffect(lastWord))
+        if (!string.IsNullOrEmpty(lastWord) && P2InstructionMetadata.TryParseFlagEffect(lastWord, out P2FlagEffect parsedFlagEffect))
         {
-            flagEffect = lastWord.ToUpperInvariant();
+            flagEffect = parsedFlagEffect;
             remaining = remaining[..remaining.LastIndexOf(lastWord, StringComparison.OrdinalIgnoreCase)].TrimEnd();
         }
 
@@ -153,10 +153,9 @@ public static class InlineAssemblyValidator
             }
         }
 
-        string normalizedMnemonic = mnemonic.ToUpperInvariant();
-        if (!P2InstructionMetadata.TryGetInstructionForm(normalizedMnemonic, operands.Count, out _))
+        if (!P2InstructionMetadata.TryGetInstructionForm(parsedMnemonic, operands.Count, out _))
         {
-            diagnostics.ReportInlineAsmInvalidInstructionForm(blockSpan, normalizedMnemonic, operands.Count);
+            diagnostics.ReportInlineAsmInvalidInstructionForm(blockSpan, P2InstructionMetadata.GetMnemonicText(parsedMnemonic), operands.Count);
             return null;
         }
 
@@ -183,7 +182,7 @@ public static class InlineAssemblyValidator
         return new AsmLine
         {
             Condition = condition,
-            Mnemonic = normalizedMnemonic,
+            Mnemonic = parsedMnemonic,
             Operands = new ReadOnlyCollection<string>(operands),
             FlagEffect = flagEffect,
             RawText = text,

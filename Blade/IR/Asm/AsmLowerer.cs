@@ -336,7 +336,7 @@ public static class AsmLowerer
             {
                 foreach (LirInstruction instruction in block.Instructions)
                 {
-                    if (instruction is LirOpInstruction op && op.Opcode.StartsWith("yieldto:", StringComparison.Ordinal))
+                    if (instruction is LirOpInstruction { Operation: LirYieldToOperation })
                     {
                         return true;
                     }
@@ -434,117 +434,110 @@ public static class AsmLowerer
 
         if (instruction is not LirOpInstruction op)
         {
-            ReportUnsupportedOpcode(ctx, instruction.Span, instruction.Opcode);
-            nodes.Add(new AsmCommentNode($"unknown instruction: {instruction.Opcode}"));
+            Assert.Unreachable($"Unexpected LIR instruction type '{instruction.GetType().Name}'.");
             return;
         }
 
-        switch (op.Opcode)
+        switch (op.Operation)
         {
-            case "const":
+            case LirConstOperation:
                 LowerConst(nodes, op);
                 break;
-            case "mov":
+            case LirMovOperation:
                 LowerMov(nodes, op);
                 break;
-            case "load.sym":
+            case LirLoadSymbolOperation:
                 LowerLoadSym(nodes, op);
                 break;
-            case "load.place":
+            case LirLoadPlaceOperation:
                 LowerLoadPlace(nodes, op);
                 break;
-            case "select":
+            case LirSelectOperation:
                 LowerSelect(nodes, op);
                 break;
-            case "call":
+            case LirCallOperation:
                 LowerCall(nodes, op, ctx);
                 break;
-            case "call.extractC":
-                LowerCallExtractFlag(nodes, op, isC: true);
+            case LirCallExtractFlagOperation extractFlag:
+                LowerCallExtractFlag(nodes, op, extractFlag.Flag == MirFlag.C);
                 break;
-            case "call.extractZ":
-                LowerCallExtractFlag(nodes, op, isC: false);
-                break;
-            case "intrinsic":
+            case LirIntrinsicOperation:
                 LowerIntrinsic(nodes, op);
                 break;
-            case "convert":
+            case LirConvertOperation:
                 LowerConvert(nodes, op);
                 break;
-            default:
-                if (op.Opcode.StartsWith("structlit.", StringComparison.Ordinal))
-                {
-                    LowerStructLiteral(nodes, op, ctx);
-                }
-                else if (op.Opcode.StartsWith("binary.", StringComparison.Ordinal))
-                {
-                    LowerBinary(nodes, op, ctx);
-                }
-                else if (op.Opcode.StartsWith("unary.", StringComparison.Ordinal))
-                {
-                    LowerUnary(nodes, op, ctx);
-                }
-                else if (op.Opcode.StartsWith("bitfield.extract.", StringComparison.Ordinal))
-                {
-                    LowerBitfieldExtract(nodes, op, ctx);
-                }
-                else if (op.Opcode.StartsWith("bitfield.insert.", StringComparison.Ordinal))
-                {
-                    LowerBitfieldInsert(nodes, op, ctx);
-                }
-                else if (op.Opcode.StartsWith("load.member.", StringComparison.Ordinal))
-                {
-                    LowerLoadMember(nodes, op, ctx);
-                }
-                else if (op.Opcode.StartsWith("load.deref.", StringComparison.Ordinal))
-                {
-                    LowerLoadDeref(nodes, op, ctx);
-                }
-                else if (op.Opcode.StartsWith("load.index.", StringComparison.Ordinal))
-                {
-                    LowerLoadIndex(nodes, op, ctx);
-                }
-                else if (op.Opcode == "store.place")
-                {
-                    LowerStorePlace(nodes, op);
-                }
-                else if (op.Opcode.StartsWith("update.place.", StringComparison.Ordinal))
-                {
-                    LowerUpdatePlace(nodes, op);
-                }
-                else if (op.Opcode.StartsWith("store.deref.", StringComparison.Ordinal))
-                {
-                    LowerStoreDeref(nodes, op, ctx);
-                }
-                else if (op.Opcode.StartsWith("store.index.", StringComparison.Ordinal))
-                {
-                    LowerStoreIndex(nodes, op, ctx);
-                }
-                else if (op.Opcode.StartsWith("insert.member.", StringComparison.Ordinal))
-                {
-                    LowerInsertMember(nodes, op, ctx);
-                }
-                else if (op.Opcode.StartsWith("store.", StringComparison.Ordinal))
-                {
-                    LowerStore(nodes, op, ctx);
-                }
-                else if (op.Opcode.StartsWith("pseudo.", StringComparison.Ordinal)
-                         || op.Opcode is "noirq.begin" or "noirq.end"
-                         or "rep.setup" or "rep.iter"
-                         or "repfor.setup" or "repfor.iter")
-                {
-                    LowerPseudo(nodes, op, ctx);
-                }
-                else if (op.Opcode.StartsWith("yieldto:", StringComparison.Ordinal)
-                         || op.Opcode == "yield")
-                {
-                    LowerYield(nodes, op, ctx);
-                }
-                else
-                {
-                    ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
-                    nodes.Add(new AsmCommentNode($"unhandled: {op.Opcode}"));
-                }
+            case LirStructLiteralOperation structLiteral:
+                LowerStructLiteral(nodes, op, structLiteral, ctx);
+                break;
+            case LirBinaryOperation binary:
+                LowerBinary(nodes, op, binary, ctx);
+                break;
+            case LirUnaryOperation unary:
+                LowerUnary(nodes, op, unary);
+                break;
+            case LirBitfieldExtractOperation bitfieldExtract:
+                LowerBitfieldExtract(nodes, op, bitfieldExtract);
+                break;
+            case LirBitfieldInsertOperation bitfieldInsert:
+                LowerBitfieldInsert(nodes, op, bitfieldInsert, ctx);
+                break;
+            case LirLoadMemberOperation loadMember:
+                LowerLoadMember(nodes, op, loadMember, ctx);
+                break;
+            case LirLoadDerefOperation loadDeref:
+                LowerLoadDeref(nodes, op, loadDeref, ctx);
+                break;
+            case LirLoadIndexOperation loadIndex:
+                LowerLoadIndex(nodes, op, loadIndex, ctx);
+                break;
+            case LirStorePlaceOperation:
+                LowerStorePlace(nodes, op);
+                break;
+            case LirUpdatePlaceOperation updatePlace:
+                LowerUpdatePlace(nodes, op, updatePlace);
+                break;
+            case LirStoreDerefOperation storeDeref:
+                LowerStoreDeref(nodes, op, storeDeref, ctx);
+                break;
+            case LirStoreIndexOperation storeIndex:
+                LowerStoreIndex(nodes, op, storeIndex, ctx);
+                break;
+            case LirInsertMemberOperation insertMember:
+                LowerInsertMember(nodes, op, insertMember, ctx);
+                break;
+            case LirRepSetupOperation:
+                LowerRepSetup(nodes, op, ctx);
+                break;
+            case LirRepIterOperation:
+                LowerRepIter(nodes, ctx);
+                break;
+            case LirRepForSetupOperation:
+                LowerRepForSetup(nodes, op, ctx);
+                break;
+            case LirRepForIterOperation:
+                LowerRepForIter(nodes, ctx);
+                break;
+            case LirNoIrqBeginOperation:
+                LowerNoIrqBegin(nodes, ctx);
+                break;
+            case LirNoIrqEndOperation:
+                LowerNoIrqEnd(nodes, ctx);
+                break;
+            case LirYieldOperation:
+                LowerYield(nodes, op, ctx);
+                break;
+            case LirYieldToOperation yieldTo:
+                LowerYieldTo(nodes, op, yieldTo, ctx);
+                break;
+            case LirRangeOperation:
+                ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+                nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
+                break;
+            case LirErrorStatementOperation:
+            case LirErrorStoreOperation:
+                ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+                nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
                 break;
         }
     }
@@ -713,7 +706,7 @@ public static class AsmLowerer
         out AsmInstructionNode? instruction)
     {
         instruction = null;
-        if (!TryMapFlagEffect(line.FlagEffect, out AsmFlagEffect flagEffect))
+        if (line.Mnemonic is not P2Mnemonic mnemonic)
             return false;
 
         List<AsmOperand> operands = new(line.Operands.Count);
@@ -724,28 +717,7 @@ public static class AsmLowerer
             operands.Add(operand!);
         }
 
-        instruction = new AsmInstructionNode(line.Mnemonic, operands, line.Condition, flagEffect);
-        return true;
-    }
-
-    private static bool TryMapFlagEffect(string? flagText, out AsmFlagEffect effect)
-    {
-        effect = AsmFlagEffect.None;
-        if (string.IsNullOrWhiteSpace(flagText))
-            return true;
-
-        return flagText.ToUpperInvariant() switch
-        {
-            "WC" => SetFlagEffect(AsmFlagEffect.WC, out effect),
-            "WZ" => SetFlagEffect(AsmFlagEffect.WZ, out effect),
-            "WCZ" => SetFlagEffect(AsmFlagEffect.WCZ, out effect),
-            _ => false,
-        };
-    }
-
-    private static bool SetFlagEffect(AsmFlagEffect value, out AsmFlagEffect effect)
-    {
-        effect = value;
+        instruction = new AsmInstructionNode(mnemonic, operands, line.Condition, line.FlagEffect ?? P2FlagEffect.None);
         return true;
     }
 
@@ -1032,22 +1004,15 @@ public static class AsmLowerer
         }
     }
 
-    private static VariableStorageClass ParseStorageClassSuffix(string opcode, string prefix)
-    {
-        string suffix = opcode[prefix.Length..];
-        return suffix switch
-        {
-            "lut" => VariableStorageClass.Lut,
-            "hub" => VariableStorageClass.Hub,
-            _ => VariableStorageClass.Reg,
-        };
-    }
-
-    private static void LowerLoadDeref(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
+    private static void LowerLoadDeref(
+        List<AsmNode> nodes,
+        LirOpInstruction op,
+        LirLoadDerefOperation operation,
+        LoweringContext ctx)
     {
         AsmRegisterOperand dest = DestReg(op);
         AsmRegisterOperand pointer = OpReg(op.Operands[0]);
-        VariableStorageClass storageClass = ParseStorageClassSuffix(op.Opcode, "load.deref.");
+        VariableStorageClass storageClass = operation.StorageClass;
 
         switch (storageClass)
         {
@@ -1058,25 +1023,23 @@ public static class AsmLowerer
                 nodes.Add(Emit(SelectHubReadOpcode(op.ResultType), dest, pointer));
                 break;
             default:
-                ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
-                nodes.Add(new AsmCommentNode($"unhandled: {op.Opcode}"));
+                ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+                nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
                 break;
         }
     }
 
-    private static void LowerLoadMember(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
+    private static void LowerLoadMember(
+        List<AsmNode> nodes,
+        LirOpInstruction op,
+        LirLoadMemberOperation operation,
+        LoweringContext ctx)
     {
-        if (!TryParseAggregateMemberOpcode(op.Opcode, "load.member.", out string memberName, out int byteOffset))
+        AggregateMemberSymbol member = operation.Member;
+        if (!TryGetAggregateValueShape(member.ByteOffset, op.ResultType, out AggregateAccessShape shape))
         {
-            ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
-            nodes.Add(new AsmCommentNode($"invalid {op.Opcode}"));
-            return;
-        }
-
-        if (!TryGetAggregateValueShape(byteOffset, op.ResultType, out AggregateAccessShape shape))
-        {
-            ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
-            nodes.Add(new AsmCommentNode($"unhandled: {op.Opcode}"));
+            ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+            nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
             return;
         }
 
@@ -1085,12 +1048,16 @@ public static class AsmLowerer
         EmitAggregateExtract(nodes, dest, receiver, shape, op.ResultType);
     }
 
-    private static void LowerLoadIndex(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
+    private static void LowerLoadIndex(
+        List<AsmNode> nodes,
+        LirOpInstruction op,
+        LirLoadIndexOperation operation,
+        LoweringContext ctx)
     {
         AsmRegisterOperand dest = DestReg(op);
         AsmOperand baseOp = LowerOperand(op.Operands[0]);
         AsmRegisterOperand index = OpReg(op.Operands[1]);
-        VariableStorageClass storageClass = ParseStorageClassSuffix(op.Opcode, "load.index.");
+        VariableStorageClass storageClass = operation.StorageClass;
 
         switch (storageClass)
         {
@@ -1108,17 +1075,21 @@ public static class AsmLowerer
                     break;
                 }
             default:
-                ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
-                nodes.Add(new AsmCommentNode($"unhandled: {op.Opcode}"));
+                ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+                nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
                 break;
         }
     }
 
-    private static void LowerStoreDeref(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
+    private static void LowerStoreDeref(
+        List<AsmNode> nodes,
+        LirOpInstruction op,
+        LirStoreDerefOperation operation,
+        LoweringContext ctx)
     {
         AsmRegisterOperand pointer = OpReg(op.Operands[0]);
         AsmOperand value = LowerOperand(op.Operands[^1]);
-        VariableStorageClass storageClass = ParseStorageClassSuffix(op.Opcode, "store.deref.");
+        VariableStorageClass storageClass = operation.StorageClass;
 
         switch (storageClass)
         {
@@ -1129,18 +1100,22 @@ public static class AsmLowerer
                 nodes.Add(new AsmInstructionNode(SelectHubWriteOpcode(op.ResultType), [value, pointer]));
                 break;
             default:
-                ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
-                nodes.Add(new AsmCommentNode($"unhandled: {op.Opcode}"));
+                ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+                nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
                 break;
         }
     }
 
-    private static void LowerStoreIndex(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
+    private static void LowerStoreIndex(
+        List<AsmNode> nodes,
+        LirOpInstruction op,
+        LirStoreIndexOperation operation,
+        LoweringContext ctx)
     {
         AsmOperand baseOp = LowerOperand(op.Operands[0]);
         AsmRegisterOperand index = OpReg(op.Operands[1]);
         AsmOperand value = LowerOperand(op.Operands[^1]);
-        VariableStorageClass storageClass = ParseStorageClassSuffix(op.Opcode, "store.index.");
+        VariableStorageClass storageClass = operation.StorageClass;
 
         switch (storageClass)
         {
@@ -1158,25 +1133,23 @@ public static class AsmLowerer
                     break;
                 }
             default:
-                ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
-                nodes.Add(new AsmCommentNode($"unhandled: {op.Opcode}"));
+                ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+                nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
                 break;
         }
     }
 
-    private static void LowerInsertMember(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
+    private static void LowerInsertMember(
+        List<AsmNode> nodes,
+        LirOpInstruction op,
+        LirInsertMemberOperation operation,
+        LoweringContext ctx)
     {
-        if (!TryParseAggregateMemberOpcode(op.Opcode, "insert.member.", out string memberName, out int byteOffset))
+        AggregateMemberSymbol member = operation.Member;
+        if (!TryGetAggregateMemberShape(op.ResultType, member.Name, member.ByteOffset, out AggregateAccessShape shape))
         {
-            ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
-            nodes.Add(new AsmCommentNode($"invalid {op.Opcode}"));
-            return;
-        }
-
-        if (!TryGetAggregateMemberShape(op.ResultType, memberName, byteOffset, out AggregateAccessShape shape))
-        {
-            ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
-            nodes.Add(new AsmCommentNode($"unhandled: {op.Opcode}"));
+            ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+            nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
             return;
         }
 
@@ -1218,27 +1191,30 @@ public static class AsmLowerer
             : Emit("ZEROX", dest, new AsmImmediateOperand(width - 1)));
     }
 
-    private static void LowerStructLiteral(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
+    private static void LowerStructLiteral(
+        List<AsmNode> nodes,
+        LirOpInstruction op,
+        LirStructLiteralOperation operation,
+        LoweringContext ctx)
     {
         if (op.ResultType is not StructTypeSymbol structType)
         {
-            ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
-            nodes.Add(new AsmCommentNode($"unhandled: {op.Opcode}"));
+            ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+            nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
             return;
         }
 
         if (!TryGetSingleWordAggregateSize(structType, out _))
         {
-            ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
-            nodes.Add(new AsmCommentNode($"unhandled: {op.Opcode}"));
+            ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+            nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
             return;
         }
 
-        string[] parts = op.Opcode.Split('.');
-        if (parts.Length < 2 || parts.Length != op.Operands.Count + 1)
+        if (operation.Members.Count != op.Operands.Count)
         {
-            ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
-            nodes.Add(new AsmCommentNode($"invalid {op.Opcode}"));
+            ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+            nodes.Add(new AsmCommentNode($"invalid {op.DisplayName}"));
             return;
         }
 
@@ -1247,12 +1223,12 @@ public static class AsmLowerer
 
         for (int i = 0; i < op.Operands.Count; i++)
         {
-            string memberName = parts[i + 1];
-            if (!structType.Members.TryGetValue(memberName, out AggregateMemberSymbol? member)
-                || !TryGetAggregateMemberShape(structType, member.Name, member.ByteOffset, out AggregateAccessShape shape))
+            AggregateMemberSymbol member = operation.Members[i];
+            if (!structType.Members.TryGetValue(member.Name, out AggregateMemberSymbol? resolvedMember)
+                || !TryGetAggregateMemberShape(structType, resolvedMember.Name, resolvedMember.ByteOffset, out AggregateAccessShape shape))
             {
-                ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
-                nodes.Add(new AsmCommentNode($"unhandled: {op.Opcode}"));
+                ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+                nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
                 return;
             }
 
@@ -1261,21 +1237,20 @@ public static class AsmLowerer
         }
     }
 
-    private static void LowerBitfieldExtract(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
+    private static void LowerBitfieldExtract(
+        List<AsmNode> nodes,
+        LirOpInstruction op,
+        LirBitfieldExtractOperation operation)
     {
-        if (!TryParseBitfieldOpcode(op.Opcode, "bitfield.extract.", out int bitOffset, out int bitWidth))
-        {
-            ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
-            nodes.Add(new AsmCommentNode($"invalid {op.Opcode}"));
-            return;
-        }
+        int bitOffset = operation.Member.BitOffset;
+        int bitWidth = operation.Member.BitWidth;
 
         AsmRegisterOperand dest = DestReg(op);
         AsmRegisterOperand src = OpReg(op.Operands[0]);
 
         if (bitWidth == 1)
         {
-            nodes.Add(Emit("TESTB", src, new AsmImmediateOperand(bitOffset), flagEffect: AsmFlagEffect.WC));
+            nodes.Add(Emit("TESTB", src, new AsmImmediateOperand(bitOffset), flagEffect: P2FlagEffect.WC));
             nodes.Add(Emit("WRC", dest));
             return;
         }
@@ -1314,14 +1289,14 @@ public static class AsmLowerer
         }
     }
 
-    private static void LowerBitfieldInsert(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
+    private static void LowerBitfieldInsert(
+        List<AsmNode> nodes,
+        LirOpInstruction op,
+        LirBitfieldInsertOperation operation,
+        LoweringContext ctx)
     {
-        if (!TryParseBitfieldOpcode(op.Opcode, "bitfield.insert.", out int bitOffset, out int bitWidth))
-        {
-            ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
-            nodes.Add(new AsmCommentNode($"invalid {op.Opcode}"));
-            return;
-        }
+        int bitOffset = operation.Member.BitOffset;
+        int bitWidth = operation.Member.BitWidth;
 
         AsmRegisterOperand dest = DestReg(op);
         AsmRegisterOperand source = OpReg(op.Operands[0]);
@@ -1337,7 +1312,7 @@ public static class AsmLowerer
 
         if (bitWidth == 1)
         {
-            nodes.Add(Emit("TESTB", value, new AsmImmediateOperand(0), flagEffect: AsmFlagEffect.WC));
+            nodes.Add(Emit("TESTB", value, new AsmImmediateOperand(0), flagEffect: P2FlagEffect.WC));
             nodes.Add(Emit("BITC", dest, new AsmImmediateOperand(bitOffset)));
             return;
         }
@@ -1360,25 +1335,8 @@ public static class AsmLowerer
             return;
         }
 
-        ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
-        nodes.Add(new AsmCommentNode($"unhandled aligned fallback for {op.Opcode}"));
-    }
-
-    private static bool TryParseAggregateMemberOpcode(string opcode, string prefix, out string memberName, out int byteOffset)
-    {
-        memberName = string.Empty;
-        byteOffset = 0;
-
-        bool hasExpectedPrefix = opcode.StartsWith(prefix, StringComparison.Ordinal);
-        Assert.Invariant(hasExpectedPrefix, $"Opcode '{opcode}' must start with '{prefix}'.");
-
-        string remainder = opcode[prefix.Length..];
-        int separator = remainder.LastIndexOf('.');
-        if (separator <= 0 || separator >= remainder.Length - 1)
-            return false;
-
-        memberName = remainder[..separator];
-        return int.TryParse(remainder[(separator + 1)..], NumberStyles.None, CultureInfo.InvariantCulture, out byteOffset);
+        ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+        nodes.Add(new AsmCommentNode($"unhandled aligned fallback for {op.DisplayName}"));
     }
 
     private static bool TryGetAggregateValueShape(
@@ -1511,20 +1469,17 @@ public static class AsmLowerer
 
     private readonly record struct AggregateAccessShape(AggregateAccessKind Kind, int ByteOffset);
 
-    private static void LowerBinary(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
+    private static void LowerBinary(
+        List<AsmNode> nodes,
+        LirOpInstruction op,
+        LirBinaryOperation operation,
+        LoweringContext ctx)
     {
-        string operatorName = op.Opcode["binary.".Length..];
         AsmRegisterOperand dest = DestReg(op);
         AsmRegisterOperand left = OpReg(op.Operands[0]);
         AsmRegisterOperand right = OpReg(op.Operands[1]);
         bool isFlagOnly = op.Destination is { } d && ctx.FlagOnlyRegisters.Contains(d.Id);
-
-        if (!Enum.TryParse<BoundBinaryOperatorKind>(operatorName, out BoundBinaryOperatorKind kind))
-        {
-            ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
-            nodes.Add(new AsmCommentNode($"unknown binary op: {operatorName}"));
-            return;
-        }
+        BoundBinaryOperatorKind kind = operation.OperatorKind;
 
         switch (kind)
         {
@@ -1599,55 +1554,51 @@ public static class AsmLowerer
                 break;
 
             case BoundBinaryOperatorKind.Equals:
-                nodes.Add(Emit("CMP", left, right, flagEffect: AsmFlagEffect.WZ));
+                nodes.Add(Emit("CMP", left, right, flagEffect: P2FlagEffect.WZ));
                 if (!isFlagOnly)
                     nodes.Add(Emit("BITZ", dest, new AsmImmediateOperand(0)));
                 break;
 
             case BoundBinaryOperatorKind.NotEquals:
-                nodes.Add(Emit("CMP", left, right, flagEffect: AsmFlagEffect.WZ));
+                nodes.Add(Emit("CMP", left, right, flagEffect: P2FlagEffect.WZ));
                 if (!isFlagOnly)
                     nodes.Add(Emit("BITNZ", dest, new AsmImmediateOperand(0)));
                 break;
 
             case BoundBinaryOperatorKind.Less:
-                nodes.Add(Emit("CMP", left, right, flagEffect: AsmFlagEffect.WC));
+                nodes.Add(Emit("CMP", left, right, flagEffect: P2FlagEffect.WC));
                 if (!isFlagOnly)
                     nodes.Add(Emit("BITC", dest, new AsmImmediateOperand(0)));
                 break;
 
             case BoundBinaryOperatorKind.LessOrEqual:
-                nodes.Add(Emit("CMP", right, left, flagEffect: AsmFlagEffect.WC));
+                nodes.Add(Emit("CMP", right, left, flagEffect: P2FlagEffect.WC));
                 if (!isFlagOnly)
                     nodes.Add(Emit("BITNC", dest, new AsmImmediateOperand(0)));
                 break;
 
             case BoundBinaryOperatorKind.Greater:
-                nodes.Add(Emit("CMP", right, left, flagEffect: AsmFlagEffect.WC));
+                nodes.Add(Emit("CMP", right, left, flagEffect: P2FlagEffect.WC));
                 if (!isFlagOnly)
                     nodes.Add(Emit("BITC", dest, new AsmImmediateOperand(0)));
                 break;
 
             case BoundBinaryOperatorKind.GreaterOrEqual:
-                nodes.Add(Emit("CMP", left, right, flagEffect: AsmFlagEffect.WC));
+                nodes.Add(Emit("CMP", left, right, flagEffect: P2FlagEffect.WC));
                 if (!isFlagOnly)
                     nodes.Add(Emit("BITNC", dest, new AsmImmediateOperand(0)));
                 break;
         }
     }
 
-    private static void LowerUnary(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
+    private static void LowerUnary(
+        List<AsmNode> nodes,
+        LirOpInstruction op,
+        LirUnaryOperation operation)
     {
-        string operatorName = op.Opcode["unary.".Length..];
         AsmRegisterOperand dest = DestReg(op);
         AsmRegisterOperand src = OpReg(op.Operands[0]);
-
-        if (!Enum.TryParse<BoundUnaryOperatorKind>(operatorName, out BoundUnaryOperatorKind kind))
-        {
-            ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
-            nodes.Add(new AsmCommentNode($"unknown unary op: {operatorName}"));
-            return;
-        }
+        BoundUnaryOperatorKind kind = operation.OperatorKind;
 
         switch (kind)
         {
@@ -1663,7 +1614,7 @@ public static class AsmLowerer
                 }
                 else
                 {
-                    nodes.Add(Emit("CMP", src, new AsmImmediateOperand(0), flagEffect: AsmFlagEffect.WZ));
+                    nodes.Add(Emit("CMP", src, new AsmImmediateOperand(0), flagEffect: P2FlagEffect.WZ));
                     nodes.Add(Emit("WRZ", dest));
                 }
 
@@ -1697,7 +1648,7 @@ public static class AsmLowerer
         AsmRegisterOperand whenTrue = OpReg(op.Operands[1]);
         AsmRegisterOperand whenFalse = OpReg(op.Operands[2]);
 
-        nodes.Add(Emit("CMP", cond, new AsmImmediateOperand(0), flagEffect: AsmFlagEffect.WZ));
+        nodes.Add(Emit("CMP", cond, new AsmImmediateOperand(0), flagEffect: P2FlagEffect.WZ));
         nodes.Add(Emit("MOV", dest, whenFalse));
         nodes.Add(Emit("MOV", dest, whenTrue, predicate: "IF_NZ"));
     }
@@ -1792,26 +1743,28 @@ public static class AsmLowerer
         if (name.StartsWith('@'))
             name = name[1..];
 
-        string opcode = name.ToUpperInvariant();
+        string opcodeText = name.ToUpperInvariant();
+        bool parsed = P2InstructionMetadata.TryParseMnemonic(opcodeText, out P2Mnemonic mnemonic);
+        Assert.Invariant(parsed, $"Intrinsic '{opcodeText}' must resolve to a valid P2 mnemonic.");
         List<AsmOperand> operands = [];
         for (int i = 1; i < op.Operands.Count; i++)
             operands.Add(LowerOperand(op.Operands[i]));
 
         if (op.Destination is { } dest
-            && ShouldEmitIntrinsicDestination(opcode, operands.Count))
+            && ShouldEmitIntrinsicDestination(mnemonic, operands.Count))
         {
             operands.Insert(0, new AsmRegisterOperand(dest.Id));
         }
 
-        nodes.Add(new AsmInstructionNode(opcode, operands));
+        nodes.Add(new AsmInstructionNode(mnemonic, operands));
     }
 
-    private static bool ShouldEmitIntrinsicDestination(string opcode, int explicitOperandCount)
+    private static bool ShouldEmitIntrinsicDestination(P2Mnemonic mnemonic, int explicitOperandCount)
     {
-        if (P2InstructionMetadata.TryGetInstructionForm(opcode, explicitOperandCount + 1, out P2InstructionFormInfo formWithDestination))
+        if (P2InstructionMetadata.TryGetInstructionForm(mnemonic, explicitOperandCount + 1, out P2InstructionFormInfo formWithDestination))
             return FormWritesOperand(formWithDestination);
 
-        return !P2InstructionMetadata.TryGetInstructionForm(opcode, explicitOperandCount, out _);
+        return !P2InstructionMetadata.TryGetInstructionForm(mnemonic, explicitOperandCount, out _);
     }
 
     private static bool FormWritesOperand(P2InstructionFormInfo form)
@@ -1824,25 +1777,6 @@ public static class AsmLowerer
     private static bool OperandWrites(P2InstructionOperandInfo operand)
     {
         return operand.Access is P2OperandAccess.Write or P2OperandAccess.ReadWrite;
-    }
-
-    private static void LowerStore(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
-    {
-        string target = op.Opcode["store.".Length..];
-
-        if (op.Operands.Count == 1)
-        {
-            AsmOperand valueOp = LowerOperand(op.Operands[0]);
-            nodes.Add(new AsmInstructionNode("MOV", [new AsmSymbolOperand(target), valueOp]));
-        }
-        else if (op.Operands.Count >= 2)
-        {
-            ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
-            AsmOperand targetOp = LowerOperand(op.Operands[0]);
-            AsmOperand valueOp = LowerOperand(op.Operands[^1]);
-            nodes.Add(new AsmCommentNode($"store.{target}"));
-            nodes.Add(new AsmInstructionNode("MOV", [targetOp, valueOp]));
-        }
     }
 
     private static void LowerStorePlace(List<AsmNode> nodes, LirOpInstruction op)
@@ -1866,14 +1800,15 @@ public static class AsmLowerer
         }
     }
 
-    private static void LowerUpdatePlace(List<AsmNode> nodes, LirOpInstruction op)
+    private static void LowerUpdatePlace(
+        List<AsmNode> nodes,
+        LirOpInstruction op,
+        LirUpdatePlaceOperation operation)
     {
-        string operatorName = op.Opcode["update.place.".Length..];
         AsmPlaceOperand place = (AsmPlaceOperand)LowerOperand(op.Operands[0]);
         AsmOperand value = LowerOperand(op.Operands[1]);
 
-        string opcode = Enum.TryParse<BoundBinaryOperatorKind>(operatorName, out BoundBinaryOperatorKind kind)
-            ? kind switch
+        string opcode = operation.OperatorKind switch
             {
                 BoundBinaryOperatorKind.Add => "ADD",
                 BoundBinaryOperatorKind.Subtract => "SUB",
@@ -1885,20 +1820,18 @@ public static class AsmLowerer
                 BoundBinaryOperatorKind.ArithmeticShiftLeft => "SHL",
                 BoundBinaryOperatorKind.ArithmeticShiftRight => "SAR",
                 _ => string.Empty,
-            }
-            : string.Empty;
+            };
 
         if (string.IsNullOrEmpty(opcode))
         {
-            if (Enum.TryParse<BoundBinaryOperatorKind>(operatorName, out kind)
-                && kind == BoundBinaryOperatorKind.Modulo)
+            if (operation.OperatorKind == BoundBinaryOperatorKind.Modulo)
             {
                 nodes.Add(new AsmInstructionNode("QDIV", [place, value]));
                 nodes.Add(new AsmInstructionNode("GETQY", [place]));
                 return;
             }
 
-            nodes.Add(new AsmCommentNode($"unhandled update place: {operatorName}"));
+            nodes.Add(new AsmCommentNode($"unhandled update place: {operation.OperatorKind}"));
             nodes.Add(new AsmInstructionNode("MOV", [place, value]));
             return;
         }
@@ -1938,55 +1871,45 @@ public static class AsmLowerer
         return "WRLONG";
     }
 
-    private static void LowerPseudo(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
+    private static void LowerRepSetup(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
-        string pseudoOp = op.Opcode.StartsWith("pseudo.", StringComparison.Ordinal)
-            ? op.Opcode["pseudo.".Length..]
-            : op.Opcode;
+        if (op.Operands.Count < 1)
+            return;
 
-        switch (pseudoOp)
-        {
-            case "rep.setup":
-                if (op.Operands.Count >= 1)
-                {
-                    string endLabel = PushRepEndLabel(ctx);
-                    AsmOperand iters = LowerOperand(op.Operands[0]);
-                    nodes.Add(new AsmInstructionNode("REP", [new AsmLabelRefOperand(endLabel), iters]));
-                }
-                break;
+        string endLabel = PushRepEndLabel(ctx);
+        AsmOperand iterations = LowerOperand(op.Operands[0]);
+        nodes.Add(new AsmInstructionNode("REP", [new AsmLabelRefOperand(endLabel), iterations]));
+    }
 
-            case "rep.iter":
-                nodes.Add(new AsmLabelNode(PopRepEndLabel(ctx)));
-                break;
+    private static void LowerRepIter(List<AsmNode> nodes, LoweringContext ctx)
+    {
+        nodes.Add(new AsmLabelNode(PopRepEndLabel(ctx)));
+    }
 
-            case "repfor.setup":
-                if (op.Operands.Count >= 2)
-                {
-                    string endLabel = PushRepEndLabel(ctx);
-                    AsmOperand end = LowerOperand(op.Operands[1]);
-                    nodes.Add(new AsmInstructionNode("REP", [new AsmLabelRefOperand(endLabel), end]));
-                }
-                break;
+    private static void LowerRepForSetup(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
+    {
+        if (op.Operands.Count < 2)
+            return;
 
-            case "repfor.iter":
-                nodes.Add(new AsmLabelNode(PopRepEndLabel(ctx)));
-                break;
+        string endLabel = PushRepEndLabel(ctx);
+        AsmOperand end = LowerOperand(op.Operands[1]);
+        nodes.Add(new AsmInstructionNode("REP", [new AsmLabelRefOperand(endLabel), end]));
+    }
 
-            case "noirq.begin":
-                {
-                    string endLabel = PushRepEndLabel(ctx);
-                    nodes.Add(new AsmInstructionNode("REP", [new AsmLabelRefOperand(endLabel), new AsmImmediateOperand(1)]));
-                    break;
-                }
+    private static void LowerRepForIter(List<AsmNode> nodes, LoweringContext ctx)
+    {
+        nodes.Add(new AsmLabelNode(PopRepEndLabel(ctx)));
+    }
 
-            case "noirq.end":
-                nodes.Add(new AsmLabelNode(PopRepEndLabel(ctx)));
-                break;
+    private static void LowerNoIrqBegin(List<AsmNode> nodes, LoweringContext ctx)
+    {
+        string endLabel = PushRepEndLabel(ctx);
+        nodes.Add(new AsmInstructionNode("REP", [new AsmLabelRefOperand(endLabel), new AsmImmediateOperand(1)]));
+    }
 
-            default:
-                Assert.Unreachable($"Unexpected pseudo-op: {pseudoOp}");
-                break;
-        }
+    private static void LowerNoIrqEnd(List<AsmNode> nodes, LoweringContext ctx)
+    {
+        nodes.Add(new AsmLabelNode(PopRepEndLabel(ctx)));
     }
 
     private static string PushRepEndLabel(LoweringContext ctx)
@@ -2005,47 +1928,48 @@ public static class AsmLowerer
 
     private static void LowerYield(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
-        if (op.Opcode.StartsWith("yieldto:", StringComparison.Ordinal))
+        if (ctx.Tier != CallingConventionTier.Interrupt)
         {
-            string target = op.Opcode["yieldto:".Length..];
-            var hasTargetInfo = ctx.CoroutineCallingConvention.TryGetValue(target, out CoroutineCallingConventionInfo? targetInfo);
-            if (!hasTargetInfo || targetInfo is null)
-            {
-                ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
-                return;
-            }
-
-            Assert.Invariant(targetInfo.ParameterPlaces.Count == op.Operands.Count, "Coroutine yieldto argument count must match target parameter ABI.");
-            for (int i = 0; i < op.Operands.Count; i++)
-                nodes.Add(Emit("MOV", new AsmPlaceOperand(targetInfo.ParameterPlaces[i]), OpReg(op.Operands[i])));
-
-            AsmOperand yieldStateDestination = ctx.Tier == CallingConventionTier.Coroutine
-                && ctx.CoroutineCallingConvention.TryGetValue(ctx.Function.Name, out CoroutineCallingConventionInfo? sourceInfo)
-                && sourceInfo is not null
-                ? new AsmPlaceOperand(sourceInfo.StatePlace)
-                : ctx.TopLevelYieldStatePlace is not null
-                    ? new AsmPlaceOperand(ctx.TopLevelYieldStatePlace)
-                    : Assert.UnreachableValue<AsmOperand>();
-
-            nodes.Add(Emit("CALLD", yieldStateDestination, new AsmPlaceOperand(targetInfo.StatePlace)));
+            ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+            return;
         }
-        else
+
+        string resumeOpcode = ctx.Function.Kind switch
         {
-            if (ctx.Tier != CallingConventionTier.Interrupt)
-            {
-                ReportUnsupportedOpcode(ctx, op.Span, op.Opcode);
-                return;
-            }
+            FunctionKind.Int1 => "RESI1",
+            FunctionKind.Int2 => "RESI2",
+            FunctionKind.Int3 => "RESI3",
+            _ => Assert.UnreachableValue<string>(),
+        };
+        nodes.Add(Emit(resumeOpcode));
+    }
 
-            string resumeOpcode = ctx.Function.Kind switch
-            {
-                FunctionKind.Int1 => "RESI1",
-                FunctionKind.Int2 => "RESI2",
-                FunctionKind.Int3 => "RESI3",
-                _ => Assert.UnreachableValue<string>(),
-            };
-            nodes.Add(Emit(resumeOpcode));
+    private static void LowerYieldTo(
+        List<AsmNode> nodes,
+        LirOpInstruction op,
+        LirYieldToOperation operation,
+        LoweringContext ctx)
+    {
+        var hasTargetInfo = ctx.CoroutineCallingConvention.TryGetValue(operation.TargetFunctionName, out CoroutineCallingConventionInfo? targetInfo);
+        if (!hasTargetInfo || targetInfo is null)
+        {
+            ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+            return;
         }
+
+        Assert.Invariant(targetInfo.ParameterPlaces.Count == op.Operands.Count, "Coroutine yieldto argument count must match target parameter ABI.");
+        for (int i = 0; i < op.Operands.Count; i++)
+            nodes.Add(Emit("MOV", new AsmPlaceOperand(targetInfo.ParameterPlaces[i]), OpReg(op.Operands[i])));
+
+        AsmOperand yieldStateDestination = ctx.Tier == CallingConventionTier.Coroutine
+            && ctx.CoroutineCallingConvention.TryGetValue(ctx.Function.Name, out CoroutineCallingConventionInfo? sourceInfo)
+            && sourceInfo is not null
+            ? new AsmPlaceOperand(sourceInfo.StatePlace)
+            : ctx.TopLevelYieldStatePlace is not null
+                ? new AsmPlaceOperand(ctx.TopLevelYieldStatePlace)
+                : Assert.UnreachableValue<AsmOperand>();
+
+        nodes.Add(Emit("CALLD", yieldStateDestination, new AsmPlaceOperand(targetInfo.StatePlace)));
     }
 
     private static void LowerTerminator(List<AsmNode> nodes, LoweringContext ctx, LirTerminator terminator)
@@ -2115,9 +2039,9 @@ public static class AsmLowerer
             AsmOperand flagValue = LowerOperand(ret.Values[i]);
             ReturnPlacement placement = returnSlots[i].Placement;
             if (placement == ReturnPlacement.FlagC)
-                nodes.Add(new AsmInstructionNode("TESTB", [flagValue, new AsmImmediateOperand(0)], flagEffect: AsmFlagEffect.WC));
+                nodes.Add(new AsmInstructionNode("TESTB", [flagValue, new AsmImmediateOperand(0)], flagEffect: P2FlagEffect.WC));
             else if (placement == ReturnPlacement.FlagZ)
-                nodes.Add(new AsmInstructionNode("TESTB", [flagValue, new AsmImmediateOperand(0)], flagEffect: AsmFlagEffect.WZ));
+                nodes.Add(new AsmInstructionNode("TESTB", [flagValue, new AsmImmediateOperand(0)], flagEffect: P2FlagEffect.WZ));
         }
 
         switch (ctx.Tier)
@@ -2218,7 +2142,7 @@ public static class AsmLowerer
         }
         else
         {
-            nodes.Add(Emit("CMP", cond, new AsmImmediateOperand(0), flagEffect: AsmFlagEffect.WZ));
+            nodes.Add(Emit("CMP", cond, new AsmImmediateOperand(0), flagEffect: P2FlagEffect.WZ));
 
             // False path (Z=1, condition was zero)
             EmitPhiMovesConditioned(nodes, branch.FalseArguments, ctx, branch.FalseLabel, "IF_Z");
@@ -2311,7 +2235,7 @@ public static class AsmLowerer
     private static AsmRegisterOperand DestReg(LirOpInstruction op)
     {
         if (op.Destination is not { } dest)
-            throw new InvalidOperationException($"Instruction '{op.Opcode}' expected a destination register");
+            throw new InvalidOperationException($"Instruction '{op.DisplayName}' expected a destination register");
         return new AsmRegisterOperand(dest.Id);
     }
 
@@ -2355,25 +2279,12 @@ public static class AsmLowerer
         };
     }
 
-    private static bool TryParseBitfieldOpcode(string opcode, string prefix, out int bitOffset, out int bitWidth)
-    {
-        bitOffset = 0;
-        bitWidth = 0;
-        if (!opcode.StartsWith(prefix, StringComparison.Ordinal))
-            return false;
-
-        string[] parts = opcode[prefix.Length..].Split('.', StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length == 2
-            && int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out bitOffset)
-            && int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out bitWidth);
-    }
-
     private static AsmInstructionNode Emit(
         string opcode,
         AsmOperand op1,
         AsmOperand op2,
         string? predicate = null,
-        AsmFlagEffect flagEffect = AsmFlagEffect.None)
+        P2FlagEffect flagEffect = P2FlagEffect.None)
     {
         return new AsmInstructionNode(opcode, [op1, op2], predicate, flagEffect);
     }
@@ -2382,14 +2293,14 @@ public static class AsmLowerer
         string opcode,
         AsmOperand op1,
         string? predicate = null,
-        AsmFlagEffect flagEffect = AsmFlagEffect.None)
+        P2FlagEffect flagEffect = P2FlagEffect.None)
     {
         return new AsmInstructionNode(opcode, [op1], predicate, flagEffect);
     }
 
     private static AsmInstructionNode Emit(
         string opcode,
-        AsmFlagEffect flagEffect = AsmFlagEffect.None)
+        P2FlagEffect flagEffect = P2FlagEffect.None)
     {
         return new AsmInstructionNode(opcode, [], null, flagEffect);
     }

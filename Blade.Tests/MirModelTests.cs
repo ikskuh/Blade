@@ -65,9 +65,9 @@ public class MirModelTests
         Assert.That(updatePlace.RewriteUses(new Dictionary<MirValueId, MirValueId>()), Is.SameAs(updatePlace));
         Assert.That(((MirUpdatePlaceInstruction)updatePlace.RewriteUses(mapping)).Value, Is.EqualTo(mapping[v1]));
 
-        MirPseudoInstruction pseudo = new("pin", [v1, v2], hasSideEffects: true, Span);
-        Assert.That(pseudo.RewriteUses(new Dictionary<MirValueId, MirValueId>()), Is.SameAs(pseudo));
-        Assert.That(((MirPseudoInstruction)pseudo.RewriteUses(mapping)).Operands, Is.EqualTo(new[] { mapping[v1], mapping[v2] }));
+        MirYieldToInstruction yieldTo = new("pin", [v1, v2], Span);
+        Assert.That(yieldTo.RewriteUses(new Dictionary<MirValueId, MirValueId>()), Is.SameAs(yieldTo));
+        Assert.That(((MirYieldToInstruction)yieldTo.RewriteUses(mapping)).Arguments, Is.EqualTo(new[] { mapping[v1], mapping[v2] }));
     }
 
     [Test]

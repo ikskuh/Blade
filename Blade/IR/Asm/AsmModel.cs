@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Blade;
 using Blade.IR;
 
 namespace Blade.IR.Asm;
@@ -82,36 +83,59 @@ public sealed class AsmImplicitUseNode : AsmNode
 public sealed class AsmInstructionNode : AsmNode
 {
     public AsmInstructionNode(
-        string opcode,
+        P2Mnemonic mnemonic,
         IReadOnlyList<AsmOperand> operands,
-        string? predicate = null,
-        AsmFlagEffect flagEffect = AsmFlagEffect.None,
+        P2ConditionCode? condition = null,
+        P2FlagEffect flagEffect = P2FlagEffect.None,
         bool isNonElidable = false)
     {
-        Opcode = opcode;
+        Mnemonic = mnemonic;
         Operands = operands;
-        Predicate = predicate;
+        Condition = condition;
         FlagEffect = flagEffect;
         IsNonElidable = isNonElidable;
     }
 
-    public string Opcode { get; }
-    public IReadOnlyList<AsmOperand> Operands { get; }
-    public string? Predicate { get; }
-    public AsmFlagEffect FlagEffect { get; }
-    public bool IsNonElidable { get; }
-}
+    public AsmInstructionNode(
+        string opcode,
+        IReadOnlyList<AsmOperand> operands,
+        string? predicate = null,
+        P2FlagEffect flagEffect = P2FlagEffect.None,
+        bool isNonElidable = false)
+        : this(
+            ParseMnemonic(opcode),
+            operands,
+            ParseCondition(predicate),
+            flagEffect,
+            isNonElidable)
+    {
+    }
 
-/// <summary>
-/// Flag effect suffix for P2 instructions.
-/// </summary>
-[Flags]
-public enum AsmFlagEffect
-{
-    None = 0,
-    WC = 1,
-    WZ = 2,
-    WCZ = WC | WZ,
+    public P2Mnemonic Mnemonic { get; }
+    public IReadOnlyList<AsmOperand> Operands { get; }
+    public P2ConditionCode? Condition { get; }
+    public P2FlagEffect FlagEffect { get; }
+    public bool IsNonElidable { get; }
+
+    public string Opcode => P2InstructionMetadata.GetMnemonicText(Mnemonic);
+    public string? Predicate => Condition is P2ConditionCode condition
+        ? P2InstructionMetadata.GetConditionPrefixText(condition)
+        : null;
+
+    private static P2Mnemonic ParseMnemonic(string opcode)
+    {
+        Assert.Invariant(P2InstructionMetadata.TryParseMnemonic(opcode, out P2Mnemonic mnemonic));
+        return mnemonic;
+    }
+
+    private static P2ConditionCode? ParseCondition(string? predicate)
+    {
+        if (string.IsNullOrWhiteSpace(predicate))
+            return null;
+
+        Assert.Invariant(P2InstructionMetadata.TryParseConditionCode(predicate, out P2ConditionCode condition));
+        return condition;
+    }
 }
 
 /// <summary>

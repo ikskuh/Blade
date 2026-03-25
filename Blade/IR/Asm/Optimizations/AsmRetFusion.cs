@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Blade;
 using static Blade.IR.Asm.AsmOptimizationHelpers;
 
 namespace Blade.IR.Asm.Optimizations;
@@ -16,22 +17,22 @@ public sealed class AsmRetFusion : PerFunctionAsmOptimization
         {
             AsmNode node = input.Nodes[i];
             if (node is AsmInstructionNode instruction
-                && instruction.Opcode == "RET"
-                && instruction.Predicate is null
+                && instruction.Mnemonic == P2Mnemonic.RET
+                && instruction.Condition is null
                 && instruction.Operands.Count == 0
-                && instruction.FlagEffect == AsmFlagEffect.None
+                && instruction.FlagEffect == P2FlagEffect.None
                 && i > 0
                 && nodes.Count > 0
                 && nodes[^1] is AsmInstructionNode previous
                 && !previous.IsNonElidable
-                && previous.Predicate is null
+                && previous.Condition is null
                 && !IsControlFlowInstruction(previous)
                 && !EndsWithTargetedLabel(nodes, targetedLabels))
             {
                 nodes[^1] = new AsmInstructionNode(
-                    previous.Opcode,
+                    previous.Mnemonic,
                     previous.Operands,
-                    "_RET_",
+                    P2ConditionCode._RET_,
                     previous.FlagEffect,
                     previous.IsNonElidable);
                 changed = true;

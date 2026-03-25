@@ -132,14 +132,91 @@ public static class MirTextWriter
                 sb.Append(select.WhenFalse);
                 break;
 
-            case MirOpInstruction op:
-                sb.Append(op.Opcode);
-                if (op.Operands.Count > 0)
+            case MirConvertInstruction convert:
+                sb.Append("convert ");
+                sb.Append(convert.Operand);
+                break;
+
+            case MirRangeInstruction range:
+                sb.Append("range ");
+                sb.Append(range.Start);
+                sb.Append(", ");
+                sb.Append(range.End);
+                break;
+
+            case MirStructLiteralInstruction structLiteral:
+                sb.Append("structlit");
+                foreach (MirStructLiteralField field in structLiteral.Fields)
+                {
+                    sb.Append('.');
+                    sb.Append(field.Member.Name);
+                }
+                if (structLiteral.Fields.Count > 0)
                 {
                     sb.Append(' ');
-                    WriteValueList(sb, op.Operands);
+                    for (int i = 0; i < structLiteral.Fields.Count; i++)
+                    {
+                        if (i > 0)
+                            sb.Append(", ");
+                        sb.Append(structLiteral.Fields[i].Value);
+                    }
                 }
+                break;
 
+            case MirLoadMemberInstruction loadMember:
+                sb.Append("load.member.");
+                sb.Append(loadMember.Member.Name);
+                sb.Append('.');
+                sb.Append(loadMember.Member.ByteOffset);
+                sb.Append(' ');
+                sb.Append(loadMember.Receiver);
+                break;
+
+            case MirLoadIndexInstruction loadIndex:
+                sb.Append("load.index.");
+                sb.Append(FormatStorageClass(loadIndex.StorageClass));
+                sb.Append(' ');
+                sb.Append(loadIndex.Indexed);
+                sb.Append(", ");
+                sb.Append(loadIndex.Index);
+                break;
+
+            case MirLoadDerefInstruction loadDeref:
+                sb.Append("load.deref.");
+                sb.Append(FormatStorageClass(loadDeref.StorageClass));
+                sb.Append(' ');
+                sb.Append(loadDeref.Address);
+                break;
+
+            case MirBitfieldExtractInstruction extract:
+                sb.Append("bitfield.extract.");
+                sb.Append(extract.Member.BitOffset);
+                sb.Append('.');
+                sb.Append(extract.Member.BitWidth);
+                sb.Append(' ');
+                sb.Append(extract.Receiver);
+                break;
+
+            case MirBitfieldInsertInstruction insertBitfield:
+                sb.Append("bitfield.insert.");
+                sb.Append(insertBitfield.Member.BitOffset);
+                sb.Append('.');
+                sb.Append(insertBitfield.Member.BitWidth);
+                sb.Append(' ');
+                sb.Append(insertBitfield.Receiver);
+                sb.Append(", ");
+                sb.Append(insertBitfield.Value);
+                break;
+
+            case MirInsertMemberInstruction insertMember:
+                sb.Append("insert.member.");
+                sb.Append(insertMember.Member.Name);
+                sb.Append('.');
+                sb.Append(insertMember.Member.ByteOffset);
+                sb.Append(' ');
+                sb.Append(insertMember.Receiver);
+                sb.Append(", ");
+                sb.Append(insertMember.Value);
                 break;
 
             case MirCallInstruction call:
@@ -170,11 +247,25 @@ public static class MirTextWriter
                 sb.Append(')');
                 break;
 
-            case MirStoreInstruction store:
-                sb.Append("store ");
-                sb.Append(store.Target);
+            case MirStoreIndexInstruction storeIndex:
+                sb.Append("store index.");
+                sb.Append(FormatStorageClass(storeIndex.StorageClass));
                 sb.Append('(');
-                WriteValueList(sb, store.Operands);
+                sb.Append(storeIndex.Indexed);
+                sb.Append(", ");
+                sb.Append(storeIndex.Index);
+                sb.Append(", ");
+                sb.Append(storeIndex.Value);
+                sb.Append(')');
+                break;
+
+            case MirStoreDerefInstruction storeDeref:
+                sb.Append("store deref.");
+                sb.Append(FormatStorageClass(storeDeref.StorageClass));
+                sb.Append('(');
+                sb.Append(storeDeref.Address);
+                sb.Append(", ");
+                sb.Append(storeDeref.Value);
                 sb.Append(')');
                 break;
 
@@ -222,15 +313,59 @@ public static class MirTextWriter
                 }
                 break;
 
-            case MirPseudoInstruction pseudo:
-                sb.Append("pseudo ");
-                sb.Append(pseudo.Opcode);
-                if (pseudo.Operands.Count > 0)
+            case MirYieldInstruction:
+                sb.Append("yield");
+                break;
+
+            case MirYieldToInstruction yieldTo:
+                sb.Append("yieldto:");
+                sb.Append(yieldTo.TargetFunctionName);
+                if (yieldTo.Arguments.Count > 0)
                 {
                     sb.Append(' ');
-                    WriteValueList(sb, pseudo.Operands);
+                    WriteValueList(sb, yieldTo.Arguments);
                 }
+                break;
 
+            case MirRepSetupInstruction repSetup:
+                sb.Append("rep.setup ");
+                sb.Append(repSetup.Count);
+                break;
+
+            case MirRepIterInstruction repIter:
+                sb.Append("rep.iter ");
+                sb.Append(repIter.Count);
+                break;
+
+            case MirRepForSetupInstruction repForSetup:
+                sb.Append("repfor.setup ");
+                sb.Append(repForSetup.Start);
+                sb.Append(", ");
+                sb.Append(repForSetup.End);
+                break;
+
+            case MirRepForIterInstruction repForIter:
+                sb.Append("repfor.iter ");
+                sb.Append(repForIter.Start);
+                sb.Append(", ");
+                sb.Append(repForIter.End);
+                break;
+
+            case MirNoIrqBeginInstruction:
+                sb.Append("noirq.begin");
+                break;
+
+            case MirNoIrqEndInstruction:
+                sb.Append("noirq.end");
+                break;
+
+            case MirErrorStatementInstruction:
+                sb.Append("error.statement");
+                break;
+
+            case MirErrorStoreInstruction errorStore:
+                sb.Append("store.error ");
+                sb.Append(errorStore.Value);
                 break;
         }
 
@@ -314,6 +449,16 @@ public static class MirTextWriter
             InlineAsmBindingAccess.Write => "w",
             InlineAsmBindingAccess.ReadWrite => "rw",
             _ => "?",
+        };
+    }
+
+    private static string FormatStorageClass(VariableStorageClass storageClass)
+    {
+        return storageClass switch
+        {
+            VariableStorageClass.Lut => "lut",
+            VariableStorageClass.Hub => "hub",
+            _ => "reg",
         };
     }
 }

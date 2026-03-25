@@ -71,7 +71,7 @@ internal static class LirOptimizationHelpers
         source = default;
 
         if (instruction is not LirOpInstruction op
-            || op.Opcode != "mov"
+            || op.Operation is not LirMovOperation
             || op.Predicate is not null
             || op.WritesC
             || op.WritesZ
@@ -126,7 +126,7 @@ internal static class LirOptimizationHelpers
                     return instruction;
 
                 return new LirOpInstruction(
-                    op.Opcode,
+                    op.Operation,
                     op.Destination,
                     op.ResultType,
                     rewrittenOperands,

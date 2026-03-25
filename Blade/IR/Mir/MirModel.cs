@@ -233,40 +233,270 @@ public sealed class MirBinaryInstruction : MirInstruction
     }
 }
 
-public sealed class MirOpInstruction : MirInstruction
+public sealed class MirConvertInstruction : MirInstruction
 {
-    public MirOpInstruction(
-        string opcode,
-        MirValueId? result,
-        TypeSymbol? resultType,
-        IReadOnlyList<MirValueId> operands,
-        bool hasSideEffects,
-        TextSpan span)
-        : base(result, resultType, span, hasSideEffects)
+    public MirConvertInstruction(MirValueId result, TypeSymbol type, MirValueId operand, TextSpan span)
+        : base(result, type, span, hasSideEffects: false)
     {
-        Opcode = opcode;
-        Operands = operands;
+        Operand = operand;
     }
 
-    public string Opcode { get; }
-    public IReadOnlyList<MirValueId> Operands { get; }
+    public MirValueId Operand { get; }
 
-    public override IReadOnlyList<MirValueId> Uses => Operands;
+    public override IReadOnlyList<MirValueId> Uses => [Operand];
 
     public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
     {
-        List<MirValueId> rewritten = new(Operands.Count);
-        bool changed = false;
-        foreach (MirValueId operand in Operands)
+        MirValueId operand = mapping.TryGetValue(Operand, out MirValueId mapped) ? mapped : Operand;
+        return operand == Operand ? this : new MirConvertInstruction(Result!.Value, ResultType!, operand, Span);
+    }
+}
+
+public sealed class MirRangeInstruction : MirInstruction
+{
+    public MirRangeInstruction(MirValueId result, TypeSymbol type, MirValueId start, MirValueId end, TextSpan span)
+        : base(result, type, span, hasSideEffects: false)
+    {
+        Start = start;
+        End = end;
+    }
+
+    public MirValueId Start { get; }
+    public MirValueId End { get; }
+
+    public override IReadOnlyList<MirValueId> Uses => [Start, End];
+
+    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
+    {
+        MirValueId start = mapping.TryGetValue(Start, out MirValueId mappedStart) ? mappedStart : Start;
+        MirValueId end = mapping.TryGetValue(End, out MirValueId mappedEnd) ? mappedEnd : End;
+        return start == Start && end == End
+            ? this
+            : new MirRangeInstruction(Result!.Value, ResultType!, start, end, Span);
+    }
+}
+
+public sealed class MirStructLiteralField
+{
+    public MirStructLiteralField(AggregateMemberSymbol member, MirValueId value)
+    {
+        Member = member;
+        Value = value;
+    }
+
+    public AggregateMemberSymbol Member { get; }
+    public MirValueId Value { get; }
+}
+
+public sealed class MirStructLiteralInstruction : MirInstruction
+{
+    public MirStructLiteralInstruction(MirValueId result, StructTypeSymbol type, IReadOnlyList<MirStructLiteralField> fields, TextSpan span)
+        : base(result, type, span, hasSideEffects: false)
+    {
+        Fields = fields;
+    }
+
+    public IReadOnlyList<MirStructLiteralField> Fields { get; }
+
+    public override IReadOnlyList<MirValueId> Uses
+    {
+        get
         {
-            MirValueId mapped = mapping.TryGetValue(operand, out MirValueId value) ? value : operand;
-            rewritten.Add(mapped);
-            changed |= mapped != operand;
+            List<MirValueId> uses = new(Fields.Count);
+            foreach (MirStructLiteralField literalField in Fields)
+                uses.Add(literalField.Value);
+            return uses;
+        }
+    }
+
+    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
+    {
+        List<MirStructLiteralField>? rewritten = null;
+        for (int i = 0; i < Fields.Count; i++)
+        {
+            MirStructLiteralField field = Fields[i];
+            if (!mapping.TryGetValue(field.Value, out MirValueId mapped) || mapped == field.Value)
+                continue;
+
+            rewritten ??= new List<MirStructLiteralField>(Fields);
+            rewritten[i] = new MirStructLiteralField(field.Member, mapped);
         }
 
-        return changed
-            ? new MirOpInstruction(Opcode, Result, ResultType, rewritten, HasSideEffects, Span)
-            : this;
+        return rewritten is null
+            ? this
+            : new MirStructLiteralInstruction(Result!.Value, (StructTypeSymbol)ResultType!, rewritten, Span);
+    }
+}
+
+public sealed class MirLoadMemberInstruction : MirInstruction
+{
+    public MirLoadMemberInstruction(MirValueId result, TypeSymbol type, MirValueId receiver, AggregateMemberSymbol member, TextSpan span)
+        : base(result, type, span, hasSideEffects: false)
+    {
+        Receiver = receiver;
+        Member = member;
+    }
+
+    public MirValueId Receiver { get; }
+    public AggregateMemberSymbol Member { get; }
+
+    public override IReadOnlyList<MirValueId> Uses => [Receiver];
+
+    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
+    {
+        MirValueId receiver = mapping.TryGetValue(Receiver, out MirValueId mapped) ? mapped : Receiver;
+        return receiver == Receiver
+            ? this
+            : new MirLoadMemberInstruction(Result!.Value, ResultType!, receiver, Member, Span);
+    }
+}
+
+public sealed class MirLoadIndexInstruction : MirInstruction
+{
+    public MirLoadIndexInstruction(
+        MirValueId result,
+        TypeSymbol type,
+        MirValueId indexed,
+        MirValueId index,
+        VariableStorageClass storageClass,
+        bool hasSideEffects,
+        TextSpan span)
+        : base(result, type, span, hasSideEffects)
+    {
+        Indexed = indexed;
+        Index = index;
+        StorageClass = storageClass;
+    }
+
+    public MirValueId Indexed { get; }
+    public MirValueId Index { get; }
+    public VariableStorageClass StorageClass { get; }
+
+    public override IReadOnlyList<MirValueId> Uses => [Indexed, Index];
+
+    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
+    {
+        MirValueId indexed = mapping.TryGetValue(Indexed, out MirValueId mappedIndexed) ? mappedIndexed : Indexed;
+        MirValueId index = mapping.TryGetValue(Index, out MirValueId mappedIndex) ? mappedIndex : Index;
+        return indexed == Indexed && index == Index
+            ? this
+            : new MirLoadIndexInstruction(Result!.Value, ResultType!, indexed, index, StorageClass, HasSideEffects, Span);
+    }
+}
+
+public sealed class MirLoadDerefInstruction : MirInstruction
+{
+    public MirLoadDerefInstruction(
+        MirValueId result,
+        TypeSymbol type,
+        MirValueId address,
+        VariableStorageClass storageClass,
+        bool hasSideEffects,
+        TextSpan span)
+        : base(result, type, span, hasSideEffects)
+    {
+        Address = address;
+        StorageClass = storageClass;
+    }
+
+    public MirValueId Address { get; }
+    public VariableStorageClass StorageClass { get; }
+
+    public override IReadOnlyList<MirValueId> Uses => [Address];
+
+    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
+    {
+        MirValueId address = mapping.TryGetValue(Address, out MirValueId mapped) ? mapped : Address;
+        return address == Address
+            ? this
+            : new MirLoadDerefInstruction(Result!.Value, ResultType!, address, StorageClass, HasSideEffects, Span);
+    }
+}
+
+public sealed class MirBitfieldExtractInstruction : MirInstruction
+{
+    public MirBitfieldExtractInstruction(MirValueId result, TypeSymbol type, MirValueId receiver, AggregateMemberSymbol member, TextSpan span)
+        : base(result, type, span, hasSideEffects: false)
+    {
+        Receiver = receiver;
+        Member = member;
+    }
+
+    public MirValueId Receiver { get; }
+    public AggregateMemberSymbol Member { get; }
+
+    public override IReadOnlyList<MirValueId> Uses => [Receiver];
+
+    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
+    {
+        MirValueId receiver = mapping.TryGetValue(Receiver, out MirValueId mapped) ? mapped : Receiver;
+        return receiver == Receiver
+            ? this
+            : new MirBitfieldExtractInstruction(Result!.Value, ResultType!, receiver, Member, Span);
+    }
+}
+
+public sealed class MirBitfieldInsertInstruction : MirInstruction
+{
+    public MirBitfieldInsertInstruction(
+        MirValueId result,
+        TypeSymbol aggregateType,
+        MirValueId receiver,
+        MirValueId value,
+        AggregateMemberSymbol member,
+        TextSpan span)
+        : base(result, aggregateType, span, hasSideEffects: false)
+    {
+        Receiver = receiver;
+        Value = value;
+        Member = member;
+    }
+
+    public MirValueId Receiver { get; }
+    public MirValueId Value { get; }
+    public AggregateMemberSymbol Member { get; }
+
+    public override IReadOnlyList<MirValueId> Uses => [Receiver, Value];
+
+    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
+    {
+        MirValueId receiver = mapping.TryGetValue(Receiver, out MirValueId mappedReceiver) ? mappedReceiver : Receiver;
+        MirValueId value = mapping.TryGetValue(Value, out MirValueId mappedValue) ? mappedValue : Value;
+        return receiver == Receiver && value == Value
+            ? this
+            : new MirBitfieldInsertInstruction(Result!.Value, ResultType!, receiver, value, Member, Span);
+    }
+}
+
+public sealed class MirInsertMemberInstruction : MirInstruction
+{
+    public MirInsertMemberInstruction(
+        MirValueId result,
+        TypeSymbol aggregateType,
+        MirValueId receiver,
+        MirValueId value,
+        AggregateMemberSymbol member,
+        TextSpan span)
+        : base(result, aggregateType, span, hasSideEffects: false)
+    {
+        Receiver = receiver;
+        Value = value;
+        Member = member;
+    }
+
+    public MirValueId Receiver { get; }
+    public MirValueId Value { get; }
+    public AggregateMemberSymbol Member { get; }
+
+    public override IReadOnlyList<MirValueId> Uses => [Receiver, Value];
+
+    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
+    {
+        MirValueId receiver = mapping.TryGetValue(Receiver, out MirValueId mappedReceiver) ? mappedReceiver : Receiver;
+        MirValueId value = mapping.TryGetValue(Value, out MirValueId mappedValue) ? mappedValue : Value;
+        return receiver == Receiver && value == Value
+            ? this
+            : new MirInsertMemberInstruction(Result!.Value, ResultType!, receiver, value, Member, Span);
     }
 }
 
@@ -397,32 +627,69 @@ public sealed class MirIntrinsicCallInstruction : MirInstruction
     }
 }
 
-public sealed class MirStoreInstruction : MirInstruction
+public sealed class MirStoreIndexInstruction : MirInstruction
 {
-    public MirStoreInstruction(string target, TypeSymbol? elementType, IReadOnlyList<MirValueId> operands, TextSpan span)
+    public MirStoreIndexInstruction(
+        TypeSymbol? elementType,
+        MirValueId indexed,
+        MirValueId index,
+        MirValueId value,
+        VariableStorageClass storageClass,
+        TextSpan span)
         : base(result: null, resultType: elementType, span, hasSideEffects: true)
     {
-        Target = target;
-        Operands = operands;
+        Indexed = indexed;
+        Index = index;
+        Value = value;
+        StorageClass = storageClass;
     }
 
-    public string Target { get; }
-    public IReadOnlyList<MirValueId> Operands { get; }
+    public MirValueId Indexed { get; }
+    public MirValueId Index { get; }
+    public MirValueId Value { get; }
+    public VariableStorageClass StorageClass { get; }
 
-    public override IReadOnlyList<MirValueId> Uses => Operands;
+    public override IReadOnlyList<MirValueId> Uses => [Indexed, Index, Value];
 
     public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
     {
-        List<MirValueId> rewritten = new(Operands.Count);
-        bool changed = false;
-        foreach (MirValueId op in Operands)
-        {
-            MirValueId mapped = mapping.TryGetValue(op, out MirValueId value) ? value : op;
-            rewritten.Add(mapped);
-            changed |= mapped != op;
-        }
+        MirValueId indexed = mapping.TryGetValue(Indexed, out MirValueId mappedIndexed) ? mappedIndexed : Indexed;
+        MirValueId index = mapping.TryGetValue(Index, out MirValueId mappedIndex) ? mappedIndex : Index;
+        MirValueId value = mapping.TryGetValue(Value, out MirValueId mappedValue) ? mappedValue : Value;
+        return indexed == Indexed && index == Index && value == Value
+            ? this
+            : new MirStoreIndexInstruction(ResultType, indexed, index, value, StorageClass, Span);
+    }
+}
 
-        return changed ? new MirStoreInstruction(Target, ResultType, rewritten, Span) : this;
+public sealed class MirStoreDerefInstruction : MirInstruction
+{
+    public MirStoreDerefInstruction(
+        TypeSymbol? elementType,
+        MirValueId address,
+        MirValueId value,
+        VariableStorageClass storageClass,
+        TextSpan span)
+        : base(result: null, resultType: elementType, span, hasSideEffects: true)
+    {
+        Address = address;
+        Value = value;
+        StorageClass = storageClass;
+    }
+
+    public MirValueId Address { get; }
+    public MirValueId Value { get; }
+    public VariableStorageClass StorageClass { get; }
+
+    public override IReadOnlyList<MirValueId> Uses => [Address, Value];
+
+    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
+    {
+        MirValueId address = mapping.TryGetValue(Address, out MirValueId mappedAddress) ? mappedAddress : Address;
+        MirValueId value = mapping.TryGetValue(Value, out MirValueId mappedValue) ? mappedValue : Value;
+        return address == Address && value == Value
+            ? this
+            : new MirStoreDerefInstruction(ResultType, address, value, StorageClass, Span);
     }
 }
 
@@ -547,32 +814,181 @@ public sealed class MirInlineAsmInstruction : MirInstruction
     }
 }
 
-public sealed class MirPseudoInstruction : MirInstruction
+public sealed class MirYieldInstruction : MirInstruction
 {
-    public MirPseudoInstruction(string opcode, IReadOnlyList<MirValueId> operands, bool hasSideEffects, TextSpan span)
-        : base(result: null, resultType: null, span, hasSideEffects)
+    public MirYieldInstruction(TextSpan span)
+        : base(result: null, resultType: null, span, hasSideEffects: true)
     {
-        Opcode = opcode;
-        Operands = operands;
     }
 
-    public string Opcode { get; }
-    public IReadOnlyList<MirValueId> Operands { get; }
+    public override IReadOnlyList<MirValueId> Uses => [];
 
-    public override IReadOnlyList<MirValueId> Uses => Operands;
+    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping) => this;
+}
+
+public sealed class MirYieldToInstruction : MirInstruction
+{
+    public MirYieldToInstruction(string targetFunctionName, IReadOnlyList<MirValueId> arguments, TextSpan span)
+        : base(result: null, resultType: null, span, hasSideEffects: true)
+    {
+        TargetFunctionName = targetFunctionName;
+        Arguments = arguments;
+    }
+
+    public string TargetFunctionName { get; }
+    public IReadOnlyList<MirValueId> Arguments { get; }
+
+    public override IReadOnlyList<MirValueId> Uses => Arguments;
 
     public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
     {
-        List<MirValueId> rewritten = new(Operands.Count);
+        List<MirValueId> rewritten = new(Arguments.Count);
         bool changed = false;
-        foreach (MirValueId op in Operands)
+        foreach (MirValueId argument in Arguments)
         {
-            MirValueId mapped = mapping.TryGetValue(op, out MirValueId value) ? value : op;
+            MirValueId mapped = mapping.TryGetValue(argument, out MirValueId value) ? value : argument;
             rewritten.Add(mapped);
-            changed |= mapped != op;
+            changed |= mapped != argument;
         }
 
-        return changed ? new MirPseudoInstruction(Opcode, rewritten, HasSideEffects, Span) : this;
+        return changed ? new MirYieldToInstruction(TargetFunctionName, rewritten, Span) : this;
+    }
+}
+
+public sealed class MirRepSetupInstruction : MirInstruction
+{
+    public MirRepSetupInstruction(MirValueId count, TextSpan span)
+        : base(result: null, resultType: null, span, hasSideEffects: true)
+    {
+        Count = count;
+    }
+
+    public MirValueId Count { get; }
+
+    public override IReadOnlyList<MirValueId> Uses => [Count];
+
+    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
+    {
+        MirValueId count = mapping.TryGetValue(Count, out MirValueId mapped) ? mapped : Count;
+        return count == Count ? this : new MirRepSetupInstruction(count, Span);
+    }
+}
+
+public sealed class MirRepIterInstruction : MirInstruction
+{
+    public MirRepIterInstruction(MirValueId count, TextSpan span)
+        : base(result: null, resultType: null, span, hasSideEffects: true)
+    {
+        Count = count;
+    }
+
+    public MirValueId Count { get; }
+
+    public override IReadOnlyList<MirValueId> Uses => [Count];
+
+    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
+    {
+        MirValueId count = mapping.TryGetValue(Count, out MirValueId mapped) ? mapped : Count;
+        return count == Count ? this : new MirRepIterInstruction(count, Span);
+    }
+}
+
+public sealed class MirRepForSetupInstruction : MirInstruction
+{
+    public MirRepForSetupInstruction(MirValueId start, MirValueId end, TextSpan span)
+        : base(result: null, resultType: null, span, hasSideEffects: true)
+    {
+        Start = start;
+        End = end;
+    }
+
+    public MirValueId Start { get; }
+    public MirValueId End { get; }
+
+    public override IReadOnlyList<MirValueId> Uses => [Start, End];
+
+    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
+    {
+        MirValueId start = mapping.TryGetValue(Start, out MirValueId mappedStart) ? mappedStart : Start;
+        MirValueId end = mapping.TryGetValue(End, out MirValueId mappedEnd) ? mappedEnd : End;
+        return start == Start && end == End ? this : new MirRepForSetupInstruction(start, end, Span);
+    }
+}
+
+public sealed class MirRepForIterInstruction : MirInstruction
+{
+    public MirRepForIterInstruction(MirValueId start, MirValueId end, TextSpan span)
+        : base(result: null, resultType: null, span, hasSideEffects: true)
+    {
+        Start = start;
+        End = end;
+    }
+
+    public MirValueId Start { get; }
+    public MirValueId End { get; }
+
+    public override IReadOnlyList<MirValueId> Uses => [Start, End];
+
+    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
+    {
+        MirValueId start = mapping.TryGetValue(Start, out MirValueId mappedStart) ? mappedStart : Start;
+        MirValueId end = mapping.TryGetValue(End, out MirValueId mappedEnd) ? mappedEnd : End;
+        return start == Start && end == End ? this : new MirRepForIterInstruction(start, end, Span);
+    }
+}
+
+public sealed class MirNoIrqBeginInstruction : MirInstruction
+{
+    public MirNoIrqBeginInstruction(TextSpan span)
+        : base(result: null, resultType: null, span, hasSideEffects: true)
+    {
+    }
+
+    public override IReadOnlyList<MirValueId> Uses => [];
+
+    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping) => this;
+}
+
+public sealed class MirNoIrqEndInstruction : MirInstruction
+{
+    public MirNoIrqEndInstruction(TextSpan span)
+        : base(result: null, resultType: null, span, hasSideEffects: true)
+    {
+    }
+
+    public override IReadOnlyList<MirValueId> Uses => [];
+
+    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping) => this;
+}
+
+public sealed class MirErrorStatementInstruction : MirInstruction
+{
+    public MirErrorStatementInstruction(TextSpan span)
+        : base(result: null, resultType: null, span, hasSideEffects: true)
+    {
+    }
+
+    public override IReadOnlyList<MirValueId> Uses => [];
+
+    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping) => this;
+}
+
+public sealed class MirErrorStoreInstruction : MirInstruction
+{
+    public MirErrorStoreInstruction(MirValueId value, TextSpan span)
+        : base(result: null, resultType: null, span, hasSideEffects: true)
+    {
+        Value = value;
+    }
+
+    public MirValueId Value { get; }
+
+    public override IReadOnlyList<MirValueId> Uses => [Value];
+
+    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
+    {
+        MirValueId value = mapping.TryGetValue(Value, out MirValueId mapped) ? mapped : Value;
+        return value == Value ? this : new MirErrorStoreInstruction(value, Span);
     }
 }
 

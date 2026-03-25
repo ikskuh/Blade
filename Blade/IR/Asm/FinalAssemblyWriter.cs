@@ -402,13 +402,13 @@ public static class FinalAssemblyWriter
 
             case AsmInstructionNode instruction:
                 sb.Append("    ");
-                if (!string.IsNullOrWhiteSpace(instruction.Predicate))
+                if (instruction.Condition is P2ConditionCode condition)
                 {
-                    sb.Append(instruction.Predicate);
+                    sb.Append(P2InstructionMetadata.GetConditionPrefixText(condition));
                     sb.Append(' ');
                 }
 
-                sb.Append(instruction.Opcode);
+                sb.Append(P2InstructionMetadata.GetMnemonicText(instruction.Mnemonic));
                 if (instruction.Operands.Count > 0)
                 {
                     sb.Append(' ');
@@ -420,7 +420,7 @@ public static class FinalAssemblyWriter
                     }
                 }
 
-                if (instruction.FlagEffect != AsmFlagEffect.None)
+                if (instruction.FlagEffect != P2FlagEffect.None)
                 {
                     sb.Append(' ');
                     sb.Append(FormatFlagEffect(instruction.FlagEffect));
@@ -486,7 +486,7 @@ public static class FinalAssemblyWriter
         if (sym.Name == "$")
             return "#$";
 
-        if (P2InstructionMetadata.UsesImmediateSymbolSyntax(instruction.Opcode, instruction.Operands.Count, operandIndex))
+        if (P2InstructionMetadata.UsesImmediateSymbolSyntax(instruction.Mnemonic, instruction.Operands.Count, operandIndex))
         {
             return $"#{FormatIdentifier(sym.Name, functionNames)}";
         }
@@ -495,15 +495,9 @@ public static class FinalAssemblyWriter
         return FormatIdentifier(sym.Name, functionNames);
     }
 
-    private static string FormatFlagEffect(AsmFlagEffect effect)
+    private static string FormatFlagEffect(P2FlagEffect effect)
     {
-        return effect switch
-        {
-            AsmFlagEffect.WC => "WC",
-            AsmFlagEffect.WZ => "WZ",
-            AsmFlagEffect.WCZ => "WCZ",
-            _ => string.Empty,
-        };
+        return effect == P2FlagEffect.None ? string.Empty : effect.ToString();
     }
 
     private static string FormatIdentifier(string name, IReadOnlySet<string> functionNames)

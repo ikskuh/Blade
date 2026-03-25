@@ -96,7 +96,7 @@ public static class LirTextWriter
             sb.Append("] ");
         }
 
-        sb.Append(instruction.Opcode);
+        sb.Append(instruction.DisplayName);
         sb.Append(' ');
         WriteOperandList(sb, instruction.Operands);
         if (instruction.WritesC || instruction.WritesZ)

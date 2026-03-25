@@ -61,7 +61,7 @@ public class WriterAndSymbolTests
                 new MirBlock("bb0", [new MirBlockParameter(new MirValueId(0), "p", BuiltinTypes.U32)],
                 [
                     new MirLoadPlaceInstruction(new MirValueId(1), BuiltinTypes.U32, place, Span),
-                    new MirPseudoInstruction("pin", [new MirValueId(1)], hasSideEffects: true, Span),
+                    new MirRepSetupInstruction(new MirValueId(1), Span),
                 ], new MirUnreachableTerminator(Span)),
             ]),
         ]);
@@ -71,7 +71,7 @@ public class WriterAndSymbolTests
             [
                 new LirBlock("bb0", [],
                 [
-                    new LirOpInstruction("mov", new LirVirtualRegister(0), BuiltinTypes.U32,
+                    new LirOpInstruction(new LirMovOperation(), new LirVirtualRegister(0), BuiltinTypes.U32,
                         [new LirImmediateOperand("hello", BuiltinTypes.String)],
                         hasSideEffects: false, predicate: "if_c", writesC: true, writesZ: true, Span),
                 ], new LirUnreachableTerminator(Span)),
@@ -85,7 +85,7 @@ public class WriterAndSymbolTests
                 new AsmLabelNode("asm_fn_bb0"),
                 new AsmCommentNode("test"),
                 new AsmImplicitUseNode([new AsmRegisterOperand(1)]),
-                new AsmInstructionNode("ADD", [new AsmRegisterOperand(1), new AsmImmediateOperand(5)], predicate: "IF_C", flagEffect: AsmFlagEffect.WCZ),
+                new AsmInstructionNode("ADD", [new AsmRegisterOperand(1), new AsmImmediateOperand(5)], predicate: "IF_C", flagEffect: P2FlagEffect.WCZ),
                 new AsmInlineTextNode("MOV _r1, #1"),
             ]),
         ]);
@@ -95,7 +95,7 @@ public class WriterAndSymbolTests
         string asmText = AsmTextWriter.Write(asm);
 
         Assert.That(mirText, Does.Contain("load.place"));
-        Assert.That(mirText, Does.Contain("pseudo pin"));
+        Assert.That(mirText, Does.Contain("rep.setup"));
         Assert.That(mirText, Does.Contain("unreachable"));
 
         Assert.That(lirText, Does.Contain("[if_c] mov"));

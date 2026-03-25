@@ -1832,6 +1832,7 @@ public class IrPipelineTests
         LirVirtualRegister sourceRegister = new(0);
         LirVirtualRegister valueRegister = new(1);
         LirVirtualRegister destinationRegister = new(2);
+        AggregateMemberSymbol unsupportedInsert = new("bits", BuiltinTypes.U32, byteOffset: 0, bitOffset: 2, bitWidth: 5, isBitfield: true);
         LirFunction function = new(
             "demo",
             isEntryPoint: true,
@@ -1843,17 +1844,7 @@ public class IrPipelineTests
                     [],
                     [
                         new LirOpInstruction(
-                            "bitfield.extract.bad",
-                            destinationRegister,
-                            BuiltinTypes.U32,
-                            [new LirRegisterOperand(sourceRegister)],
-                            hasSideEffects: false,
-                            predicate: null,
-                            writesC: false,
-                            writesZ: false,
-                            span),
-                        new LirOpInstruction(
-                            "bitfield.insert.bad",
+                            new LirBitfieldInsertOperation(unsupportedInsert),
                             destinationRegister,
                             BuiltinTypes.U32,
                             [new LirRegisterOperand(sourceRegister), new LirRegisterOperand(valueRegister)],
@@ -1869,8 +1860,7 @@ public class IrPipelineTests
         AsmModule asmModule = AsmLowerer.Lower(new LirModule([function]));
         string asmir = AsmTextWriter.Write(asmModule);
 
-        Assert.That(asmir, Does.Contain("invalid bitfield.extract.bad"));
-        Assert.That(asmir, Does.Contain("invalid bitfield.insert.bad"));
+        Assert.That(asmir, Does.Contain("unhandled aligned fallback for bitfield.insert.2.5"));
     }
 
     [Test]
@@ -1879,6 +1869,9 @@ public class IrPipelineTests
         TextSpan span = new(0, 0);
         LirVirtualRegister sourceRegister = new(0);
         LirVirtualRegister destinationRegister = new(1);
+        AggregateMemberSymbol byteMember = new("b", BuiltinTypes.U8, byteOffset: 0, bitOffset: 8, bitWidth: 8, isBitfield: true);
+        AggregateMemberSymbol wordMember = new("w", BuiltinTypes.U16, byteOffset: 0, bitOffset: 16, bitWidth: 16, isBitfield: true);
+        AggregateMemberSymbol shiftMember = new("s", BuiltinTypes.U32, byteOffset: 0, bitOffset: 1, bitWidth: 4, isBitfield: true);
         LirFunction function = new(
             "demo",
             isEntryPoint: true,
@@ -1890,7 +1883,7 @@ public class IrPipelineTests
                     [],
                     [
                         new LirOpInstruction(
-                            "bitfield.extract.8.8",
+                            new LirBitfieldExtractOperation(byteMember),
                             destinationRegister,
                             resultType: null,
                             [new LirRegisterOperand(sourceRegister)],
@@ -1900,7 +1893,7 @@ public class IrPipelineTests
                             writesZ: false,
                             span),
                         new LirOpInstruction(
-                            "bitfield.extract.16.16",
+                            new LirBitfieldExtractOperation(wordMember),
                             destinationRegister,
                             resultType: null,
                             [new LirRegisterOperand(sourceRegister)],
@@ -1910,7 +1903,7 @@ public class IrPipelineTests
                             writesZ: false,
                             span),
                         new LirOpInstruction(
-                            "bitfield.extract.1.4",
+                            new LirBitfieldExtractOperation(shiftMember),
                             destinationRegister,
                             resultType: null,
                             [new LirRegisterOperand(sourceRegister)],
@@ -1951,6 +1944,10 @@ public class IrPipelineTests
             sizeBytes: 4,
             alignmentBytes: 4,
             new AggregateMemberSymbol("value", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false));
+        AggregateMemberSymbol loMember = packedType.Members["lo"];
+        AggregateMemberSymbol hiMember = packedType.Members["hi"];
+        AggregateMemberSymbol midMember = packedType.Members["mid"];
+        AggregateMemberSymbol valueMember = pairType.Members["value"];
         LirFunction function = new(
             "demo",
             isEntryPoint: true,
@@ -1962,7 +1959,7 @@ public class IrPipelineTests
                     [],
                     [
                         new LirOpInstruction(
-                            "structlit.lo.hi.mid",
+                            new LirStructLiteralOperation([loMember, hiMember, midMember]),
                             destinationRegister,
                             packedType,
                             [new LirRegisterOperand(loRegister), new LirRegisterOperand(hiRegister), new LirRegisterOperand(midRegister)],
@@ -1972,7 +1969,7 @@ public class IrPipelineTests
                             writesZ: false,
                             span),
                         new LirOpInstruction(
-                            "load.member.hi.1",
+                            new LirLoadMemberOperation(hiMember),
                             destinationRegister,
                             BuiltinTypes.U8,
                             [new LirRegisterOperand(destinationRegister)],
@@ -1982,7 +1979,7 @@ public class IrPipelineTests
                             writesZ: false,
                             span),
                         new LirOpInstruction(
-                            "insert.member.mid.2",
+                            new LirInsertMemberOperation(midMember),
                             destinationRegister,
                             packedType,
                             [new LirRegisterOperand(destinationRegister), new LirRegisterOperand(midRegister)],
@@ -1992,7 +1989,7 @@ public class IrPipelineTests
                             writesZ: false,
                             span),
                         new LirOpInstruction(
-                            "load.member.mid.2",
+                            new LirLoadMemberOperation(midMember),
                             destinationRegister,
                             BuiltinTypes.U16,
                             [new LirRegisterOperand(destinationRegister)],
@@ -2002,7 +1999,7 @@ public class IrPipelineTests
                             writesZ: false,
                             span),
                         new LirOpInstruction(
-                            "load.member.value.0",
+                            new LirLoadMemberOperation(valueMember),
                             destinationRegister,
                             BuiltinTypes.U32,
                             [new LirRegisterOperand(destinationRegister)],
@@ -2012,7 +2009,7 @@ public class IrPipelineTests
                             writesZ: false,
                             span),
                         new LirOpInstruction(
-                            "insert.member.value.0",
+                            new LirInsertMemberOperation(valueMember),
                             destinationRegister,
                             pairType,
                             [new LirRegisterOperand(destinationRegister), new LirRegisterOperand(loRegister)],
@@ -2052,6 +2049,14 @@ public class IrPipelineTests
             alignmentBytes: 4,
             new AggregateMemberSymbol("left", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false),
             new AggregateMemberSymbol("right", BuiltinTypes.U32, byteOffset: 4, bitOffset: 0, bitWidth: 0, isBitfield: false));
+        AggregateMemberSymbol pairValueMember = pairType.Members["value"];
+        AggregateMemberSymbol wideLeftMember = wideType.Members["left"];
+        AggregateMemberSymbol wideRightMember = wideType.Members["right"];
+        AggregateMemberSymbol offEndMember = new("value", BuiltinTypes.U32, byteOffset: 4, bitOffset: 0, bitWidth: 0, isBitfield: false);
+        AggregateMemberSymbol misalignedMember = new("value", BuiltinTypes.U16, byteOffset: 1, bitOffset: 0, bitWidth: 0, isBitfield: false);
+        AggregateMemberSymbol badInsertMember = new("bad", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false);
+        AggregateMemberSymbol extraStructMember = new("extra", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false);
+        AggregateMemberSymbol missingStructMember = new("missing", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false);
         LirFunction function = new(
             "demo",
             isEntryPoint: true,
@@ -2063,7 +2068,7 @@ public class IrPipelineTests
                     [],
                     [
                         new LirOpInstruction(
-                            "load.member.bad",
+                            new LirLoadMemberOperation(offEndMember),
                             destinationRegister,
                             BuiltinTypes.U32,
                             [new LirRegisterOperand(sourceRegister)],
@@ -2073,17 +2078,7 @@ public class IrPipelineTests
                             writesZ: false,
                             span),
                         new LirOpInstruction(
-                            "load.member.value.4",
-                            destinationRegister,
-                            BuiltinTypes.U32,
-                            [new LirRegisterOperand(sourceRegister)],
-                            hasSideEffects: false,
-                            predicate: null,
-                            writesC: false,
-                            writesZ: false,
-                            span),
-                        new LirOpInstruction(
-                            "load.member.value.1",
+                            new LirLoadMemberOperation(misalignedMember),
                             destinationRegister,
                             BuiltinTypes.U16,
                             [new LirRegisterOperand(sourceRegister)],
@@ -2093,7 +2088,7 @@ public class IrPipelineTests
                             writesZ: false,
                             span),
                         new LirOpInstruction(
-                            "insert.member.bad",
+                            new LirInsertMemberOperation(badInsertMember),
                             destinationRegister,
                             pairType,
                             [new LirRegisterOperand(sourceRegister), new LirRegisterOperand(sourceRegister)],
@@ -2103,7 +2098,7 @@ public class IrPipelineTests
                             writesZ: false,
                             span),
                         new LirOpInstruction(
-                            "insert.member.value.4",
+                            new LirInsertMemberOperation(offEndMember),
                             destinationRegister,
                             pairType,
                             [new LirRegisterOperand(sourceRegister), new LirRegisterOperand(sourceRegister)],
@@ -2113,7 +2108,7 @@ public class IrPipelineTests
                             writesZ: false,
                             span),
                         new LirOpInstruction(
-                            "insert.member.value.0",
+                            new LirInsertMemberOperation(pairValueMember),
                             destinationRegister,
                             BuiltinTypes.U32,
                             [new LirRegisterOperand(sourceRegister), new LirRegisterOperand(sourceRegister)],
@@ -2123,7 +2118,7 @@ public class IrPipelineTests
                             writesZ: false,
                             span),
                         new LirOpInstruction(
-                            "structlit.value",
+                            new LirStructLiteralOperation([pairValueMember]),
                             destinationRegister,
                             BuiltinTypes.U32,
                             [new LirRegisterOperand(sourceRegister)],
@@ -2133,7 +2128,7 @@ public class IrPipelineTests
                             writesZ: false,
                             span),
                         new LirOpInstruction(
-                            "structlit.left.right",
+                            new LirStructLiteralOperation([wideLeftMember, wideRightMember]),
                             destinationRegister,
                             wideType,
                             [new LirRegisterOperand(sourceRegister), new LirRegisterOperand(sourceRegister)],
@@ -2143,7 +2138,7 @@ public class IrPipelineTests
                             writesZ: false,
                             span),
                         new LirOpInstruction(
-                            "structlit.value.extra",
+                            new LirStructLiteralOperation([pairValueMember, extraStructMember]),
                             destinationRegister,
                             pairType,
                             [new LirRegisterOperand(sourceRegister)],
@@ -2153,7 +2148,7 @@ public class IrPipelineTests
                             writesZ: false,
                             span),
                         new LirOpInstruction(
-                            "structlit.missing",
+                            new LirStructLiteralOperation([missingStructMember]),
                             destinationRegister,
                             pairType,
                             [new LirRegisterOperand(sourceRegister)],
@@ -2169,10 +2164,9 @@ public class IrPipelineTests
         AsmModule asmModule = AsmLowerer.Lower(new LirModule([function]));
         string asmir = AsmTextWriter.Write(asmModule);
 
-        Assert.That(asmir, Does.Contain("invalid load.member.bad"));
         Assert.That(asmir, Does.Contain("unhandled: load.member.value.4"));
         Assert.That(asmir, Does.Contain("unhandled: load.member.value.1"));
-        Assert.That(asmir, Does.Contain("invalid insert.member.bad"));
+        Assert.That(asmir, Does.Contain("unhandled: insert.member.bad.0"));
         Assert.That(asmir, Does.Contain("unhandled: insert.member.value.4"));
         Assert.That(asmir, Does.Contain("unhandled: insert.member.value.0"));
         Assert.That(asmir, Does.Contain("unhandled: structlit.value"));

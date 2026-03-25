@@ -46,14 +46,12 @@ public sealed class MirConstantPropagation : IMirOptimization
                         MirValueId source = selectValue ? select.WhenTrue : select.WhenFalse;
                         rewritten = new MirCopyInstruction(select.Result!.Value, select.ResultType!, source, select.Span);
                     }
-                    else if (instruction is MirOpInstruction op
-                        && op.Opcode == "convert"
-                        && op.Result is MirValueId convertResult
-                        && op.Operands.Count == 1
-                        && TryGetConstant(constants, op.Operands[0], out object? convertValue)
-                        && TypeFacts.TryNormalizeValue(convertValue, op.ResultType!, out object? normalizedValue))
+                    else if (instruction is MirConvertInstruction convert
+                        && convert.Result is MirValueId convertResult
+                        && TryGetConstant(constants, convert.Operand, out object? convertValue)
+                        && TypeFacts.TryNormalizeValue(convertValue, convert.ResultType!, out object? normalizedValue))
                     {
-                        rewritten = new MirConstantInstruction(convertResult, op.ResultType!, normalizedValue, op.Span);
+                        rewritten = new MirConstantInstruction(convertResult, convert.ResultType!, normalizedValue, convert.Span);
                     }
 
                     if (rewritten.Result is MirValueId result)

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Blade;
 using static Blade.IR.Asm.AsmOptimizationHelpers;
 
 namespace Blade.IR.Asm.Optimizations;
@@ -16,21 +17,21 @@ public sealed class AsmConditionalMoveFusion : PerFunctionAsmOptimization
         {
             if (i + 2 < input.Nodes.Count
                 && input.Nodes[i] is AsmInstructionNode jump
-                && jump.Opcode == "JMP"
-                && jump.Predicate is not null
+                && jump.Mnemonic == P2Mnemonic.JMP
+                && jump.Condition is not null
                 && jump.Operands.Count == 1
                 && jump.Operands[0] is AsmSymbolOperand target
                 && input.Nodes[i + 1] is AsmInstructionNode body
                 && !body.IsNonElidable
-                && body.Predicate is null
+                && body.Condition is null
                 && input.Nodes[i + 2] is AsmLabelNode label
                 && label.Name == target.Name
                 && !targetedLabels.Contains(label.Name))
             {
                 nodes.Add(new AsmInstructionNode(
-                    body.Opcode,
+                    body.Mnemonic,
                     body.Operands,
-                    InvertPredicate(jump.Predicate),
+                    InvertPredicate(jump.Condition.Value),
                     body.FlagEffect,
                     body.IsNonElidable));
                 nodes.Add(label);

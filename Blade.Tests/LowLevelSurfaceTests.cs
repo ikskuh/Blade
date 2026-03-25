@@ -17,8 +17,8 @@ public class LowLevelSurfaceTests
             flagOutput: null,
             parsedLines:
             [
-                new InlineAssemblyValidator.AsmLine { Mnemonic = "ADD", Operands = ["{dst}", "{src}"] },
-                new InlineAssemblyValidator.AsmLine { Mnemonic = "MOV", Operands = ["{dst}", "#0x10"] },
+                new InlineAssemblyValidator.AsmLine { Mnemonic = P2Mnemonic.ADD, Operands = ["{dst}", "{src}"] },
+                new InlineAssemblyValidator.AsmLine { Mnemonic = P2Mnemonic.MOV, Operands = ["{dst}", "#0x10"] },
             ],
             bindingNames: ["dst", "src", "unused"]);
 
@@ -33,7 +33,7 @@ public class LowLevelSurfaceTests
         IReadOnlyDictionary<string, InlineAsmBindingAccess> volatileAccess = InlineAssemblyBindingAnalysis.ComputeBindingAccess(
             AsmVolatility.Volatile,
             flagOutput: null,
-            parsedLines: [new InlineAssemblyValidator.AsmLine { Mnemonic = "MOV", Operands = ["{x}", "{y}"] }],
+            parsedLines: [new InlineAssemblyValidator.AsmLine { Mnemonic = P2Mnemonic.MOV, Operands = ["{x}", "{y}"] }],
             bindingNames: ["x", "y"]);
 
         Assert.That(volatileAccess["x"], Is.EqualTo(InlineAsmBindingAccess.ReadWrite));
@@ -42,7 +42,7 @@ public class LowLevelSurfaceTests
         IReadOnlyDictionary<string, InlineAsmBindingAccess> unknownMnemonic = InlineAssemblyBindingAnalysis.ComputeBindingAccess(
             AsmVolatility.NonVolatile,
             flagOutput: "@C",
-            parsedLines: [new InlineAssemblyValidator.AsmLine { Mnemonic = "NOPE", Operands = ["{x}"] }],
+            parsedLines: [new InlineAssemblyValidator.AsmLine { Mnemonic = null, Operands = ["{x}"] }],
             bindingNames: ["x"]);
 
         Assert.That(unknownMnemonic["x"], Is.EqualTo(InlineAsmBindingAccess.ReadWrite));

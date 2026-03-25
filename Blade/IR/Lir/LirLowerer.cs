@@ -55,9 +55,8 @@ public static class LirLowerer
                         (MirValueId extraValue, TypeSymbol extraType) = callInstr.ExtraResults[i];
                         LirVirtualRegister extraDest = GetRegister(extraValue);
                         ReturnPlacement placement = GetExtraResultPlacement(callInstr, i);
-                        string opcode = placement == ReturnPlacement.FlagC ? "call.extractC" : "call.extractZ";
                         instructions.Add(new LirOpInstruction(
-                            opcode,
+                            new LirCallExtractFlagOperation(placement == ReturnPlacement.FlagC ? MirFlag.C : MirFlag.Z),
                             extraDest,
                             extraType,
                             [],
@@ -94,7 +93,7 @@ public static class LirLowerer
         return instruction switch
         {
             MirConstantInstruction constant => new LirOpInstruction(
-                "const",
+                new LirConstOperation(),
                 destination,
                 constant.ResultType,
                 [new LirImmediateOperand(constant.Value, constant.ResultType!)],
@@ -105,7 +104,7 @@ public static class LirLowerer
                 constant.Span),
 
             MirLoadSymbolInstruction load => new LirOpInstruction(
-                "load.sym",
+                new LirLoadSymbolOperation(),
                 destination,
                 load.ResultType,
                 [new LirSymbolOperand(load.SymbolName)],
@@ -116,7 +115,7 @@ public static class LirLowerer
                 load.Span),
 
             MirLoadPlaceInstruction loadPlace => new LirOpInstruction(
-                "load.place",
+                new LirLoadPlaceOperation(),
                 destination,
                 loadPlace.ResultType,
                 [new LirPlaceOperand(loadPlace.Place)],
@@ -127,7 +126,7 @@ public static class LirLowerer
                 loadPlace.Span),
 
             MirCopyInstruction copy => new LirOpInstruction(
-                "mov",
+                new LirMovOperation(),
                 destination,
                 copy.ResultType,
                 [new LirRegisterOperand(getRegister(copy.Source))],
@@ -138,7 +137,7 @@ public static class LirLowerer
                 copy.Span),
 
             MirUnaryInstruction unary => new LirOpInstruction(
-                $"unary.{unary.Operator}",
+                new LirUnaryOperation(unary.Operator),
                 destination,
                 unary.ResultType,
                 [new LirRegisterOperand(getRegister(unary.Operand))],
@@ -149,7 +148,7 @@ public static class LirLowerer
                 unary.Span),
 
             MirBinaryInstruction binary => new LirOpInstruction(
-                $"binary.{binary.Operator}",
+                new LirBinaryOperation(binary.Operator),
                 destination,
                 binary.ResultType,
                 [new LirRegisterOperand(getRegister(binary.Left)), new LirRegisterOperand(getRegister(binary.Right))],
@@ -159,19 +158,107 @@ public static class LirLowerer
                 writesZ: false,
                 binary.Span),
 
-            MirOpInstruction op => new LirOpInstruction(
-                op.Opcode,
+            MirConvertInstruction convert => new LirOpInstruction(
+                new LirConvertOperation(),
                 destination,
-                op.ResultType,
-                LowerOperands(op.Operands, getRegister),
-                op.HasSideEffects,
+                convert.ResultType,
+                [new LirRegisterOperand(getRegister(convert.Operand))],
+                hasSideEffects: false,
                 predicate: null,
                 writesC: false,
                 writesZ: false,
-                op.Span),
+                convert.Span),
+
+            MirRangeInstruction range => new LirOpInstruction(
+                new LirRangeOperation(),
+                destination,
+                range.ResultType,
+                [new LirRegisterOperand(getRegister(range.Start)), new LirRegisterOperand(getRegister(range.End))],
+                hasSideEffects: false,
+                predicate: null,
+                writesC: false,
+                writesZ: false,
+                range.Span),
+
+            MirStructLiteralInstruction structLiteral => new LirOpInstruction(
+                new LirStructLiteralOperation(LowerStructLiteralMembers(structLiteral.Fields)),
+                destination,
+                structLiteral.ResultType,
+                LowerStructLiteralOperands(structLiteral.Fields, getRegister),
+                hasSideEffects: false,
+                predicate: null,
+                writesC: false,
+                writesZ: false,
+                structLiteral.Span),
+
+            MirLoadMemberInstruction loadMember => new LirOpInstruction(
+                new LirLoadMemberOperation(loadMember.Member),
+                destination,
+                loadMember.ResultType,
+                [new LirRegisterOperand(getRegister(loadMember.Receiver))],
+                hasSideEffects: false,
+                predicate: null,
+                writesC: false,
+                writesZ: false,
+                loadMember.Span),
+
+            MirLoadIndexInstruction loadIndex => new LirOpInstruction(
+                new LirLoadIndexOperation(loadIndex.StorageClass),
+                destination,
+                loadIndex.ResultType,
+                [new LirRegisterOperand(getRegister(loadIndex.Indexed)), new LirRegisterOperand(getRegister(loadIndex.Index))],
+                loadIndex.HasSideEffects,
+                predicate: null,
+                writesC: false,
+                writesZ: false,
+                loadIndex.Span),
+
+            MirLoadDerefInstruction loadDeref => new LirOpInstruction(
+                new LirLoadDerefOperation(loadDeref.StorageClass),
+                destination,
+                loadDeref.ResultType,
+                [new LirRegisterOperand(getRegister(loadDeref.Address))],
+                loadDeref.HasSideEffects,
+                predicate: null,
+                writesC: false,
+                writesZ: false,
+                loadDeref.Span),
+
+            MirBitfieldExtractInstruction bitfieldExtract => new LirOpInstruction(
+                new LirBitfieldExtractOperation(bitfieldExtract.Member),
+                destination,
+                bitfieldExtract.ResultType,
+                [new LirRegisterOperand(getRegister(bitfieldExtract.Receiver))],
+                hasSideEffects: false,
+                predicate: null,
+                writesC: false,
+                writesZ: false,
+                bitfieldExtract.Span),
+
+            MirBitfieldInsertInstruction bitfieldInsert => new LirOpInstruction(
+                new LirBitfieldInsertOperation(bitfieldInsert.Member),
+                destination,
+                bitfieldInsert.ResultType,
+                [new LirRegisterOperand(getRegister(bitfieldInsert.Receiver)), new LirRegisterOperand(getRegister(bitfieldInsert.Value))],
+                hasSideEffects: false,
+                predicate: null,
+                writesC: false,
+                writesZ: false,
+                bitfieldInsert.Span),
+
+            MirInsertMemberInstruction insertMember => new LirOpInstruction(
+                new LirInsertMemberOperation(insertMember.Member),
+                destination,
+                insertMember.ResultType,
+                [new LirRegisterOperand(getRegister(insertMember.Receiver)), new LirRegisterOperand(getRegister(insertMember.Value))],
+                hasSideEffects: false,
+                predicate: null,
+                writesC: false,
+                writesZ: false,
+                insertMember.Span),
 
             MirSelectInstruction select => new LirOpInstruction(
-                "select",
+                new LirSelectOperation(),
                 destination,
                 select.ResultType,
                 [
@@ -186,7 +273,7 @@ public static class LirLowerer
                 select.Span),
 
             MirCallInstruction call => new LirOpInstruction(
-                "call",
+                new LirCallOperation(),
                 destination,
                 call.ResultType,
                 LowerCallOperands(call.FunctionName, call.Arguments, getRegister),
@@ -197,7 +284,7 @@ public static class LirLowerer
                 call.Span),
 
             MirIntrinsicCallInstruction intrinsic => new LirOpInstruction(
-                "intrinsic",
+                new LirIntrinsicOperation(),
                 destination,
                 intrinsic.ResultType,
                 LowerCallOperands($"@{intrinsic.IntrinsicName}", intrinsic.Arguments, getRegister),
@@ -207,19 +294,34 @@ public static class LirLowerer
                 writesZ: false,
                 intrinsic.Span),
 
-            MirStoreInstruction store => new LirOpInstruction(
-                $"store.{store.Target}",
+            MirStoreIndexInstruction storeIndex => new LirOpInstruction(
+                new LirStoreIndexOperation(storeIndex.StorageClass),
                 destination: null,
-                resultType: store.ResultType,
-                LowerOperands(store.Operands, getRegister),
+                resultType: storeIndex.ResultType,
+                [
+                    new LirRegisterOperand(getRegister(storeIndex.Indexed)),
+                    new LirRegisterOperand(getRegister(storeIndex.Index)),
+                    new LirRegisterOperand(getRegister(storeIndex.Value)),
+                ],
                 hasSideEffects: true,
                 predicate: null,
                 writesC: false,
                 writesZ: false,
-                store.Span),
+                storeIndex.Span),
+
+            MirStoreDerefInstruction storeDeref => new LirOpInstruction(
+                new LirStoreDerefOperation(storeDeref.StorageClass),
+                destination: null,
+                resultType: storeDeref.ResultType,
+                [new LirRegisterOperand(getRegister(storeDeref.Address)), new LirRegisterOperand(getRegister(storeDeref.Value))],
+                hasSideEffects: true,
+                predicate: null,
+                writesC: false,
+                writesZ: false,
+                storeDeref.Span),
 
             MirStorePlaceInstruction storePlace => new LirOpInstruction(
-                "store.place",
+                new LirStorePlaceOperation(),
                 destination: null,
                 resultType: null,
                 [new LirPlaceOperand(storePlace.Place), new LirRegisterOperand(getRegister(storePlace.Value))],
@@ -230,7 +332,7 @@ public static class LirLowerer
                 storePlace.Span),
 
             MirUpdatePlaceInstruction updatePlace => new LirOpInstruction(
-                $"update.place.{updatePlace.OperatorKind}",
+                new LirUpdatePlaceOperation(updatePlace.OperatorKind),
                 destination: null,
                 resultType: null,
                 [new LirPlaceOperand(updatePlace.Place), new LirRegisterOperand(getRegister(updatePlace.Value))],
@@ -248,27 +350,117 @@ public static class LirLowerer
                 LowerInlineAsmBindings(inlineAsm.Bindings, getRegister),
                 inlineAsm.Span),
 
-            MirPseudoInstruction pseudo => new LirOpInstruction(
-                $"pseudo.{pseudo.Opcode}",
+            MirYieldInstruction yield => new LirOpInstruction(
+                new LirYieldOperation(),
                 destination: null,
                 resultType: null,
-                LowerOperands(pseudo.Operands, getRegister),
-                pseudo.HasSideEffects,
-                predicate: null,
-                writesC: false,
-                writesZ: false,
-                pseudo.Span),
-
-            _ => new LirOpInstruction(
-                "unknown",
-                destination,
-                instruction.ResultType,
                 [],
-                instruction.HasSideEffects,
+                yield.HasSideEffects,
                 predicate: null,
                 writesC: false,
                 writesZ: false,
-                instruction.Span),
+                yield.Span),
+
+            MirYieldToInstruction yieldTo => new LirOpInstruction(
+                new LirYieldToOperation(yieldTo.TargetFunctionName),
+                destination: null,
+                resultType: null,
+                LowerOperands(yieldTo.Arguments, getRegister),
+                yieldTo.HasSideEffects,
+                predicate: null,
+                writesC: false,
+                writesZ: false,
+                yieldTo.Span),
+
+            MirRepSetupInstruction repSetup => new LirOpInstruction(
+                new LirRepSetupOperation(),
+                destination: null,
+                resultType: null,
+                [new LirRegisterOperand(getRegister(repSetup.Count))],
+                repSetup.HasSideEffects,
+                predicate: null,
+                writesC: false,
+                writesZ: false,
+                repSetup.Span),
+
+            MirRepIterInstruction repIter => new LirOpInstruction(
+                new LirRepIterOperation(),
+                destination: null,
+                resultType: null,
+                [new LirRegisterOperand(getRegister(repIter.Count))],
+                repIter.HasSideEffects,
+                predicate: null,
+                writesC: false,
+                writesZ: false,
+                repIter.Span),
+
+            MirRepForSetupInstruction repForSetup => new LirOpInstruction(
+                new LirRepForSetupOperation(),
+                destination: null,
+                resultType: null,
+                [new LirRegisterOperand(getRegister(repForSetup.Start)), new LirRegisterOperand(getRegister(repForSetup.End))],
+                repForSetup.HasSideEffects,
+                predicate: null,
+                writesC: false,
+                writesZ: false,
+                repForSetup.Span),
+
+            MirRepForIterInstruction repForIter => new LirOpInstruction(
+                new LirRepForIterOperation(),
+                destination: null,
+                resultType: null,
+                [new LirRegisterOperand(getRegister(repForIter.Start)), new LirRegisterOperand(getRegister(repForIter.End))],
+                repForIter.HasSideEffects,
+                predicate: null,
+                writesC: false,
+                writesZ: false,
+                repForIter.Span),
+
+            MirNoIrqBeginInstruction begin => new LirOpInstruction(
+                new LirNoIrqBeginOperation(),
+                destination: null,
+                resultType: null,
+                [],
+                begin.HasSideEffects,
+                predicate: null,
+                writesC: false,
+                writesZ: false,
+                begin.Span),
+
+            MirNoIrqEndInstruction end => new LirOpInstruction(
+                new LirNoIrqEndOperation(),
+                destination: null,
+                resultType: null,
+                [],
+                end.HasSideEffects,
+                predicate: null,
+                writesC: false,
+                writesZ: false,
+                end.Span),
+
+            MirErrorStatementInstruction errorStatement => new LirOpInstruction(
+                new LirErrorStatementOperation(),
+                destination: null,
+                resultType: null,
+                [],
+                errorStatement.HasSideEffects,
+                predicate: null,
+                writesC: false,
+                writesZ: false,
+                errorStatement.Span),
+
+            MirErrorStoreInstruction errorStore => new LirOpInstruction(
+                new LirErrorStoreOperation(),
+                destination: null,
+                resultType: null,
+                [new LirRegisterOperand(getRegister(errorStore.Value))],
+                errorStore.HasSideEffects,
+                predicate: null,
+                writesC: false,
+                writesZ: false,
+                errorStore.Span),
+
+            _ => Assert.UnreachableValue<LirInstruction>(),
         };
     }
 
@@ -340,6 +532,24 @@ public static class LirLowerer
         }
 
         return lowered;
+    }
+
+    private static IReadOnlyList<AggregateMemberSymbol> LowerStructLiteralMembers(IReadOnlyList<MirStructLiteralField> fields)
+    {
+        List<AggregateMemberSymbol> members = new(fields.Count);
+        foreach (MirStructLiteralField field in fields)
+            members.Add(field.Member);
+        return members;
+    }
+
+    private static IReadOnlyList<LirOperand> LowerStructLiteralOperands(
+        IReadOnlyList<MirStructLiteralField> fields,
+        System.Func<MirValueId, LirVirtualRegister> getRegister)
+    {
+        List<LirOperand> operands = new(fields.Count);
+        foreach (MirStructLiteralField field in fields)
+            operands.Add(new LirRegisterOperand(getRegister(field.Value)));
+        return operands;
     }
 
     private static ReturnPlacement GetExtraResultPlacement(MirCallInstruction call, int extraResultIndex)

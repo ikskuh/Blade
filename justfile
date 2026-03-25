@@ -32,7 +32,7 @@ coverage: \
     (_base_coverage_collect "")
 
 coverage-regressions: \
-    (_base_coverage_collect "--filter 'FullyQualifiedName=Blade.Tests.RegressionHarnessTests.FullRegressionSuite_Passes")
+    (_base_coverage_collect "--filter 'FullyQualifiedName=Blade.Tests.RegressionHarnessTests.FullRegressionSuite_Passes'")
 
 # Base rule for coverage collection, can pass additional parameters to "dotnet test"
 _base_coverage_collect params:
