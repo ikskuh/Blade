@@ -4,7 +4,7 @@ namespace Blade.IR.Asm;
 
 public static class AsmOptimizer
 {
-    public static AsmModule Optimize(AsmModule module, IReadOnlyList<IAsmOptimization> enabledOptimizations)
+    public static AsmModule Optimize(AsmModule module, IReadOnlyList<AsmOptimization> enabledOptimizations)
     {
         Requires.NotNull(module);
         Requires.NotNull(enabledOptimizations);
@@ -14,7 +14,7 @@ public static class AsmOptimizer
         do
         {
             changed = false;
-            foreach (IAsmOptimization optimization in enabledOptimizations)
+            foreach (AsmOptimization optimization in enabledOptimizations)
             {
                 AsmModule? result = optimization.Run(current);
                 if (result is not null)

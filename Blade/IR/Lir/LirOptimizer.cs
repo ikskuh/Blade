@@ -8,7 +8,7 @@ public static class LirOptimizer
     public static LirModule Optimize(
         LirModule module,
         int maxIterations,
-        IReadOnlyList<ILirOptimization> enabledOptimizations)
+        IReadOnlyList<LirOptimization> enabledOptimizations)
     {
         Requires.NotNull(module);
         Requires.NotNull(enabledOptimizations);
@@ -18,7 +18,7 @@ public static class LirOptimizer
         for (int i = 0; i < iterations; i++)
         {
             bool changed = false;
-            foreach (ILirOptimization optimization in enabledOptimizations)
+            foreach (LirOptimization optimization in enabledOptimizations)
             {
                 LirModule? result = optimization.Run(current);
                 if (result is not null)

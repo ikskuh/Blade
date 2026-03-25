@@ -58,6 +58,34 @@ public enum AsmOptimizationState
     PostRegAlloc = 2,
 }
 
+// ── Wrapper classes ─────────────────────────────────────────────────────────
+
+public abstract class Optimization(string name, int priority)
+{
+    public string Name { get; } = name;
+    public int Priority { get; } = priority;
+}
+
+public sealed class MirOptimization(string name, int priority, bool runAfterIterations, IMirOptimization implementation)
+    : Optimization(name, priority)
+{
+    public bool RunAfterIterations { get; } = runAfterIterations;
+    public MirModule? Run(MirModule input) => implementation.Run(input);
+}
+
+public sealed class LirOptimization(string name, int priority, ILirOptimization implementation)
+    : Optimization(name, priority)
+{
+    public LirModule? Run(LirModule input) => implementation.Run(input);
+}
+
+public sealed class AsmOptimization(string name, int priority, AsmOptimizationState state, IAsmOptimization implementation)
+    : Optimization(name, priority)
+{
+    public AsmOptimizationState State { get; } = state;
+    public AsmModule? Run(AsmModule input) => implementation.Run(input);
+}
+
 // ── Attributes ──────────────────────────────────────────────────────────────
 
 [AttributeUsage(AttributeTargets.Class, Inherited = false)]
@@ -87,132 +115,59 @@ public sealed class AsmOptimizationAttribute(string name) : Attribute
 
 public static class OptimizationRegistry
 {
-    private static readonly Lazy<Registry<IMirOptimization, MirOptimizationAttribute>> MirRegistry =
-        new(static () => Discover<IMirOptimization, MirOptimizationAttribute>(attr => attr.Name, attr => attr.Priority));
+    private static readonly Lazy<Registry<MirOptimization>> MirRegistry =
+        new(static () => Discover<IMirOptimization, MirOptimizationAttribute, MirOptimization>(
+            static attr => attr.Name, static attr => attr.Priority,
+            static (name, priority, attr, impl) => new MirOptimization(name, priority, attr.RunAfterIterations, impl)));
 
-    private static readonly Lazy<Registry<ILirOptimization, LirOptimizationAttribute>> LirRegistry =
-        new(static () => Discover<ILirOptimization, LirOptimizationAttribute>(attr => attr.Name, attr => attr.Priority));
+    private static readonly Lazy<Registry<LirOptimization>> LirRegistry =
+        new(static () => Discover<ILirOptimization, LirOptimizationAttribute, LirOptimization>(
+            static attr => attr.Name, static attr => attr.Priority,
+            static (name, priority, _, impl) => new LirOptimization(name, priority, impl)));
 
-    private static readonly Lazy<Registry<IAsmOptimization, AsmOptimizationAttribute>> AsmRegistry =
-        new(static () => Discover<IAsmOptimization, AsmOptimizationAttribute>(attr => attr.Name, attr => attr.Priority));
+    private static readonly Lazy<Registry<AsmOptimization>> AsmRegistry =
+        new(static () => Discover<IAsmOptimization, AsmOptimizationAttribute, AsmOptimization>(
+            static attr => attr.Name, static attr => attr.Priority,
+            static (name, priority, attr, impl) => new AsmOptimization(name, priority, attr.State, impl)));
 
     // ── Public API ──────────────────────────────────────────────────────
 
-    public static IMirOptimization? GetMirOptimization(string name)
+    public static MirOptimization? GetMirOptimization(string name)
         => MirRegistry.Value.InstancesByName.GetValueOrDefault(name);
 
-    public static ILirOptimization? GetLirOptimization(string name)
+    public static LirOptimization? GetLirOptimization(string name)
         => LirRegistry.Value.InstancesByName.GetValueOrDefault(name);
 
-    public static IAsmOptimization? GetAsmOptimization(string name)
+    public static AsmOptimization? GetAsmOptimization(string name)
         => AsmRegistry.Value.InstancesByName.GetValueOrDefault(name);
 
-    public static IReadOnlyList<IMirOptimization> AllMirOptimizations
+    public static IReadOnlyList<MirOptimization> AllMirOptimizations
         => MirRegistry.Value.OrderedInstances;
 
-    public static IReadOnlyList<ILirOptimization> AllLirOptimizations
+    public static IReadOnlyList<LirOptimization> AllLirOptimizations
         => LirRegistry.Value.OrderedInstances;
 
-    public static IReadOnlyList<IAsmOptimization> AllAsmOptimizations
+    public static IReadOnlyList<AsmOptimization> AllAsmOptimizations
         => AsmRegistry.Value.OrderedInstances;
 
-    public static bool IsMirRunAfterIterations(IMirOptimization optimization)
-    {
-        Requires.NotNull(optimization);
-        Registry<IMirOptimization, MirOptimizationAttribute> registry = MirRegistry.Value;
-        return registry.AttributesByInstance.TryGetValue(optimization, out MirOptimizationAttribute? attr)
-            && attr.RunAfterIterations;
-    }
-
-    public static IReadOnlyList<IAsmOptimization> GetAsmOptimizationsForState(
-        AsmOptimizationState state,
-        IReadOnlyList<IAsmOptimization> enabledOptimizations)
-    {
-        Requires.NotNull(enabledOptimizations);
-
-        Registry<IAsmOptimization, AsmOptimizationAttribute> registry = AsmRegistry.Value;
-        List<IAsmOptimization> result = [];
-        foreach (IAsmOptimization optimization in enabledOptimizations)
-        {
-            if (registry.AttributesByInstance.TryGetValue(optimization, out AsmOptimizationAttribute? attr) &&
-                (attr.State & state) != 0)
-            {
-                result.Add(optimization);
-            }
-        }
-
-        return result;
-    }
-
     // ── Discovery ───────────────────────────────────────────────────────
 
-    public static IReadOnlyList<string> AllMirNames
-        => MirRegistry.Value.OrderedNames;
-
-    public static IReadOnlyList<string> AllLirNames
-        => LirRegistry.Value.OrderedNames;
-
-    public static IReadOnlyList<string> AllAsmNames
-        => AsmRegistry.Value.OrderedNames;
-
-    public static IReadOnlyList<IMirOptimization> ResolveMirOptimizations(HashSet<string> enabledNames)
+    private sealed class Registry<TWrapper>
     {
-        Requires.NotNull(enabledNames);
-        Registry<IMirOptimization, MirOptimizationAttribute> registry = MirRegistry.Value;
-        return FilterByName(registry, enabledNames);
+        public required IReadOnlyDictionary<string, TWrapper> InstancesByName { get; init; }
+        public required IReadOnlyList<TWrapper> OrderedInstances { get; init; }
     }
 
-    public static IReadOnlyList<ILirOptimization> ResolveLirOptimizations(HashSet<string> enabledNames)
-    {
-        Requires.NotNull(enabledNames);
-        Registry<ILirOptimization, LirOptimizationAttribute> registry = LirRegistry.Value;
-        return FilterByName(registry, enabledNames);
-    }
-
-    public static IReadOnlyList<IAsmOptimization> ResolveAsmOptimizations(HashSet<string> enabledNames)
-    {
-        Requires.NotNull(enabledNames);
-        Registry<IAsmOptimization, AsmOptimizationAttribute> registry = AsmRegistry.Value;
-        return FilterByName(registry, enabledNames);
-    }
-
-    private static IReadOnlyList<TInterface> FilterByName<TInterface, TAttribute>(
-        Registry<TInterface, TAttribute> registry,
-        HashSet<string> enabledNames)
-        where TInterface : notnull
-        where TAttribute : Attribute
-    {
-        List<TInterface> result = [];
-        for (int i = 0; i < registry.OrderedInstances.Count; i++)
-        {
-            if (enabledNames.Contains(registry.OrderedNames[i]))
-                result.Add(registry.OrderedInstances[i]);
-        }
-
-        return result;
-    }
-
-    // ── Discovery ───────────────────────────────────────────────────────
-
-    private sealed class Registry<TInterface, TAttribute>
-        where TAttribute : Attribute
-    {
-        public required IReadOnlyDictionary<string, TInterface> InstancesByName { get; init; }
-        public required IReadOnlyDictionary<TInterface, TAttribute> AttributesByInstance { get; init; }
-        public required IReadOnlyList<TInterface> OrderedInstances { get; init; }
-        public required IReadOnlyList<string> OrderedNames { get; init; }
-    }
-
-    private static Registry<TInterface, TAttribute> Discover<TInterface, TAttribute>(
+    private static Registry<TWrapper> Discover<TInterface, TAttribute, TWrapper>(
         Func<TAttribute, string> getName,
-        Func<TAttribute, int> getPriority)
+        Func<TAttribute, int> getPriority,
+        Func<string, int, TAttribute, TInterface, TWrapper> createWrapper)
         where TInterface : notnull
         where TAttribute : Attribute
     {
         Assembly assembly = typeof(OptimizationRegistry).Assembly;
-        Dictionary<string, TInterface> instancesByName = new(StringComparer.Ordinal);
-        Dictionary<TInterface, TAttribute> attributesByInstance = [];
-        List<(TInterface Instance, string Name, int Priority)> ordering = [];
+        Dictionary<string, TWrapper> instancesByName = new(StringComparer.Ordinal);
+        List<(TWrapper Wrapper, string Name, int Priority)> ordering = [];
 
         foreach (Type type in assembly.GetTypes())
         {
@@ -229,15 +184,15 @@ public static class OptimizationRegistry
             string name = getName(attr);
             int priority = getPriority(attr);
             TInterface instance = (TInterface)Activator.CreateInstance(type)!;
+            TWrapper wrapper = createWrapper(name, priority, attr, instance);
 
-            if (!instancesByName.TryAdd(name, instance))
+            if (!instancesByName.TryAdd(name, wrapper))
             {
                 throw new InvalidOperationException(
                     $"Duplicate optimization name '{name}' on type {type.FullName}.");
             }
 
-            attributesByInstance.Add(instance, attr);
-            ordering.Add((instance, name, priority));
+            ordering.Add((wrapper, name, priority));
         }
 
         // Higher priority first, then alphabetical by name for same priority.
@@ -247,15 +202,10 @@ public static class OptimizationRegistry
             return cmp != 0 ? cmp : StringComparer.Ordinal.Compare(a.Name, b.Name);
         });
 
-        IReadOnlyList<TInterface> orderedInstances = ordering.Select(static entry => entry.Instance).ToArray();
-        IReadOnlyList<string> orderedNames = ordering.Select(static entry => entry.Name).ToArray();
-
-        return new Registry<TInterface, TAttribute>
+        return new Registry<TWrapper>
         {
             InstancesByName = instancesByName,
-            AttributesByInstance = attributesByInstance,
-            OrderedInstances = orderedInstances,
-            OrderedNames = orderedNames,
+            OrderedInstances = ordering.Select(static entry => entry.Wrapper).ToArray(),
         };
     }
 }

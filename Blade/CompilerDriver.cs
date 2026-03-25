@@ -14,9 +14,9 @@ namespace Blade;
 public sealed class CompilationOptions
 {
     public bool EnableSingleCallsiteInlining { get; init; } = true;
-    public IReadOnlyList<IMirOptimization> EnabledMirOptimizations { get; init; } = OptimizationRegistry.AllMirOptimizations;
-    public IReadOnlyList<ILirOptimization> EnabledLirOptimizations { get; init; } = OptimizationRegistry.AllLirOptimizations;
-    public IReadOnlyList<IAsmOptimization> EnabledAsmirOptimizations { get; init; } = OptimizationRegistry.AllAsmOptimizations;
+    public IReadOnlyList<MirOptimization> EnabledMirOptimizations { get; init; } = OptimizationRegistry.AllMirOptimizations;
+    public IReadOnlyList<LirOptimization> EnabledLirOptimizations { get; init; } = OptimizationRegistry.AllLirOptimizations;
+    public IReadOnlyList<AsmOptimization> EnabledAsmirOptimizations { get; init; } = OptimizationRegistry.AllAsmOptimizations;
     public IReadOnlyDictionary<string, string> NamedModuleRoots { get; init; } = new Dictionary<string, string>();
     public int ComptimeFuel { get; init; } = 250;
 }
@@ -81,15 +81,26 @@ public static class CompilerDriver
             IrPipelineOptions pipelineOptions = new()
             {
                 EnableSingleCallsiteInlining = effectiveOptions.EnableSingleCallsiteInlining,
-                EnabledMirOptimizations = effectiveOptions.EnabledMirOptimizations,
-                EnabledLirOptimizations = effectiveOptions.EnabledLirOptimizations,
-                EnabledAsmirOptimizations = effectiveOptions.EnabledAsmirOptimizations,
+                EnabledMirOptimizations = SortOptimizations(effectiveOptions.EnabledMirOptimizations),
+                EnabledLirOptimizations = SortOptimizations(effectiveOptions.EnabledLirOptimizations),
+                EnabledAsmirOptimizations = SortOptimizations(effectiveOptions.EnabledAsmirOptimizations),
             };
             irBuildResult = IrPipeline.Build(boundProgram, pipelineOptions, diagnostics);
         }
 
         List<Diagnostic> diagnosticList = diagnostics.ToList();
         return new CompilationResult(source, unit, boundProgram, irBuildResult, diagnosticList, parser.TokenCount);
+    }
+
+    private static IReadOnlyList<T> SortOptimizations<T>(IReadOnlyList<T> optimizations) where T : Optimization
+    {
+        List<T> sorted = new(optimizations);
+        sorted.Sort(static (a, b) =>
+        {
+            int cmp = b.Priority.CompareTo(a.Priority);
+            return cmp != 0 ? cmp : StringComparer.Ordinal.Compare(a.Name, b.Name);
+        });
+        return sorted;
     }
 
     private static CompilationResult CreateFailedCompilationResult(SourceText source, DiagnosticBag diagnostics)

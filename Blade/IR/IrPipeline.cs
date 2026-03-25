@@ -1,9 +1,9 @@
+using System;
 using System.Linq;
 using Blade.Diagnostics;
 using Blade.IR.Asm;
 using Blade.IR.Lir;
 using Blade.IR.Mir;
-using Blade.IR.Mir.Optimizations;
 using Blade.Semantics.Bound;
 
 namespace Blade.IR;
@@ -17,7 +17,7 @@ public static class IrPipeline
         MirModule mirModule = MirLowerer.Lower(boundProgram);
 
         bool enableSingleCallsiteInlining = options.EnableSingleCallsiteInlining
-            && options.EnabledMirOptimizations.Any(static o => o is MirSingleCallsiteInline);
+            && options.EnabledMirOptimizations.Any(static o => string.Equals(o.Name, "single-callsite-inline", StringComparison.Ordinal));
 
         mirModule = MirInliner.InlineMandatoryAndSingleCallsite(
             mirModule,

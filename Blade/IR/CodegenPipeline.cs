@@ -26,10 +26,13 @@ public static class CodegenPipeline
             // optimizations again so these artifacts do not survive into final PASM.
             if (options.EnableAsmOptimization)
             {
-                IReadOnlyList<IAsmOptimization> postRegAllocOptimizations =
-                    OptimizationRegistry.GetAsmOptimizationsForState(
-                        AsmOptimizationState.PostRegAlloc,
-                        options.EnabledAsmirOptimizations);
+                List<AsmOptimization> postRegAllocOptimizations = [];
+                foreach (AsmOptimization optimization in options.EnabledAsmirOptimizations)
+                {
+                    if ((optimization.State & AsmOptimizationState.PostRegAlloc) != 0)
+                        postRegAllocOptimizations.Add(optimization);
+                }
+
                 if (postRegAllocOptimizations.Count > 0)
                     asmModule = AsmOptimizer.Optimize(asmModule, postRegAllocOptimizations);
             }
