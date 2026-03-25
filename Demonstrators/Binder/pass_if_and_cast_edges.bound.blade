@@ -1,6 +1,6 @@
 // EXPECT: pass
 // NOTE:
-//   Covers anonymous struct literals, same-type casts, function-typed if-expressions,
+//   Covers context-typed struct literals, same-type casts, function-typed if-expressions,
 //   and several assignability/comparability helpers.
 
 type Mode = enum (u8) {
@@ -28,8 +28,7 @@ fn foo() -> u32 {
 fn demo(flag: bool, value: u32, mode: Mode, flags: Flags, pair: Pair, choice: Choice) -> u32 {
     var same_mode: Mode = mode as Mode;
     var same_int: u32 = value as u32;
-    var direct_pair: Pair = .{ .value = value };
-    .{ .value = value, .ok = true };
+    var direct_pair: Pair = Pair { .value = value };
 
     var chosen_bool: bool = if (flag) true else false;
     var chosen_mode: Mode = if (flag) mode else mode;

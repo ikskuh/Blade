@@ -173,23 +173,6 @@ public sealed class IntrinsicCallExpressionSyntax : ExpressionSyntax
     }
 }
 
-public sealed class StructLiteralExpressionSyntax : ExpressionSyntax
-{
-    public Token Dot { get; }
-    public Token OpenBrace { get; }
-    public SeparatedSyntaxList<FieldInitializerSyntax> Initializers { get; }
-    public Token CloseBrace { get; }
-
-    public StructLiteralExpressionSyntax(Token dot, Token openBrace, SeparatedSyntaxList<FieldInitializerSyntax> initializers, Token closeBrace)
-        : base(TextSpan.FromBounds(dot.Span.Start, closeBrace.Span.End))
-    {
-        Dot = dot;
-        OpenBrace = openBrace;
-        Initializers = initializers;
-        CloseBrace = closeBrace;
-    }
-}
-
 public sealed class IfExpressionSyntax : ExpressionSyntax
 {
     public Token IfKeyword { get; }

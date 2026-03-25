@@ -1,14 +1,8 @@
-// EXPECT: xfail
-// DIAGNOSTICS:
-// - L25, E0401
-// - L26, E0401
+// EXPECT: pass
 // STAGE: bound
 // CONTAINS:
 // - Member<u32> .lo
 // - TargetMember<u32> .hi
-// NOTE:
-//   Union members bind through the same aggregate-field path as structs,
-//   but final aggregate member lowering is not implemented yet.
 
 type Pair = struct {
     lo: u32,
@@ -22,5 +16,8 @@ type Header = union {
 };
 
 reg var header: Header = undefined;
-reg var first: u32 = header.lo;
-header.hi = first;
+
+fn touch_union_members() {
+    var first: u32 = header.lo;
+    header.hi = first;
+}

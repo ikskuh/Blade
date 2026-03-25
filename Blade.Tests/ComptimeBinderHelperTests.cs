@@ -276,7 +276,12 @@ public sealed class ComptimeBinderHelperTests
         FunctionSymbol function = CreateFunctionSymbol("callme", FunctionKind.Default, BuiltinTypes.U32);
         ImportedModule module = CreateImportedModule("mod");
         AggregateMemberSymbol member = new("value", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false);
-        StructTypeSymbol pairType = new("Pair", new Dictionary<string, TypeSymbol>(StringComparer.Ordinal) { ["value"] = BuiltinTypes.U32 });
+        StructTypeSymbol pairType = new(
+            "Pair",
+            new Dictionary<string, TypeSymbol>(StringComparer.Ordinal) { ["value"] = BuiltinTypes.U32 },
+            new Dictionary<string, AggregateMemberSymbol>(StringComparer.Ordinal) { ["value"] = member },
+            sizeBytes: 4,
+            alignmentBytes: 4);
 
         BoundExpression[] unsupportedExpressions =
         [
@@ -312,7 +317,13 @@ public sealed class ComptimeBinderHelperTests
     {
         MethodInfo method = GetBinderStaticMethod("ContainsErrorExpression", typeof(BoundExpression));
         BoundErrorExpression error = new(Span);
-        StructTypeSymbol pairType = new("Pair", new Dictionary<string, TypeSymbol>(StringComparer.Ordinal) { ["value"] = BuiltinTypes.U32 });
+        AggregateMemberSymbol member = new("value", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false);
+        StructTypeSymbol pairType = new(
+            "Pair",
+            new Dictionary<string, TypeSymbol>(StringComparer.Ordinal) { ["value"] = BuiltinTypes.U32 },
+            new Dictionary<string, AggregateMemberSymbol>(StringComparer.Ordinal) { ["value"] = member },
+            sizeBytes: 4,
+            alignmentBytes: 4);
         FunctionSymbol function = CreateFunctionSymbol("callme", FunctionKind.Default, BuiltinTypes.U32);
 
         BoundExpression[] expressionsWithErrors =

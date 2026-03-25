@@ -28,7 +28,7 @@ type Pair = struct {
 reg var seed: u32 = 1;
 reg var values: [1]u32 = [1];
 reg var ptr: *reg u32 = undefined;
-reg var pair: Pair = .{ .value = 1 };
+reg var pair: Pair = Pair { .value = 1 };
 
 fn runtime_u32() -> u32 { return 1; }
 fn runtime_bool() -> bool { return true; }

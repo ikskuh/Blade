@@ -1172,8 +1172,6 @@ public sealed class Parser
                 return ParseIntrinsicCall();
 
             case TokenKind.Dot:
-                if (Peek(1).Kind == TokenKind.OpenBrace)
-                    return ParseStructLiteral();
                 if (SyntaxFacts.IsIdentifierLike(Peek(1).Kind))
                     return ParseEnumLiteral();
                 goto default;
@@ -1266,31 +1264,6 @@ public sealed class Parser
         SeparatedSyntaxList<ExpressionSyntax> args = ParseArgumentList();
         Token closeParen = MatchToken(TokenKind.CloseParen);
         return new IntrinsicCallExpressionSyntax(at, name, openParen, args, closeParen);
-    }
-
-    private StructLiteralExpressionSyntax ParseStructLiteral()
-    {
-        Token dot = MatchToken(TokenKind.Dot);
-        Token openBrace = MatchToken(TokenKind.OpenBrace);
-
-        List<object> initializersAndSeparators = new();
-        while (Current.Kind != TokenKind.CloseBrace && Current.Kind != TokenKind.EndOfFile)
-        {
-            Token fieldDot = MatchToken(TokenKind.Dot);
-            Token fieldName = MatchToken(TokenKind.Identifier);
-            Token equals = MatchToken(TokenKind.Equal);
-            ExpressionSyntax value = ParseExpression();
-            initializersAndSeparators.Add(new FieldInitializerSyntax(fieldDot, fieldName, equals, value));
-
-            if (Current.Kind == TokenKind.Comma)
-                initializersAndSeparators.Add(NextToken());
-            else
-                break;
-        }
-
-        Token closeBrace = MatchToken(TokenKind.CloseBrace);
-        return new StructLiteralExpressionSyntax(dot, openBrace,
-            new SeparatedSyntaxList<FieldInitializerSyntax>(initializersAndSeparators), closeBrace);
     }
 
     private IfExpressionSyntax ParseIfExpression()

@@ -566,7 +566,7 @@ public class BinderTests
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
             type P = struct { x: u32 };
-            var p: P = .{ .x = 1 };
+            var p: P = P { .x = 1 };
             var y: u32 = p.missing;
             """);
 
@@ -1280,7 +1280,7 @@ public class BinderTests
             fn demo() void {
             }
 
-            reg var pair: Pair = .{ .value = 1 };
+            reg var pair: Pair = Pair { .value = 1 };
             pair.value--;
             demo++;
             """);

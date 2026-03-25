@@ -2,7 +2,7 @@
 type Pair = struct { left: u32, right: u32 };
 
 coro fn worker(seed: u32) -> u32 {
-    var pair: Pair = .{ .left = seed, .right = seed };
+    var pair: Pair = Pair { .left = seed, .right = seed };
     var arr: [2]u32 = undefined;
     var ptr: *u32 = undefined;
     var sink: u32 = 0;
