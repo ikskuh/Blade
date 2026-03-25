@@ -1,16 +1,19 @@
 // EXPECT: fail
 // DIAGNOSTICS:
-// - L25, E0216
-// - L26, E0215
-// - L30, E0201
-// - L35, E0203
-// - L36, E0203
-// - L37, E0203
-// - L38, E0205
-// - L39, E0202
+// - L28, E0216
+// - L29, E0215
+// - L33, E0236
+// - L33, E0238
+// - L33, E0237
+// - L38, E0203
+// - L39, E0203
+// - L40, E0203
+// - L41, E0205
+// - L42, E0236
+// - L42, E0237
 // NOTE:
-//   Covers local storage validation, qualified-type resolution, anonymous struct-literal
-//   binding, typed-struct rejection for non-struct aliases, and inferred duplicate fields.
+//   Covers local storage validation, qualified-type resolution, typed-struct rejection
+//   for non-struct aliases, and inferred duplicate fields.
 
 import "./support/qualified/root.mod" as root;
 
@@ -27,15 +30,15 @@ fn locals() {
 }
 
 fn duplicate_fields(seed: u32) {
-    .{ .x = seed, .x = 0 };
+    Pair { .x = seed, .x = 0 };
 }
 
-var ok_one: Alias = .{ .value = 1 };
+var ok_one: Alias = Alias { .value = 1 };
 var ok_two: Alias = undefined;
 var not_module: Local.Leaf = undefined;
 var missing_nested: root.missing.Leaf = undefined;
 var missing_leaf: root.child.Missing = undefined;
 var wrong_struct: u32 = Word { .value = 1 };
-var wrong_field: Pair = .{ .missing = 1 };
+var wrong_field: Pair = Pair { .missing = 1 };
 
 duplicate_fields(1);

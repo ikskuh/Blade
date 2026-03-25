@@ -71,21 +71,28 @@ public class TypeFactsTests
     }
 
     [Test]
-    public void StructTypeSymbol_BuildsDefaultMembers_WhenMembersAreOmitted()
+    public void StructTypeSymbol_UsesProvidedMembers()
     {
+        Dictionary<string, AggregateMemberSymbol> members = new(StringComparer.Ordinal)
+        {
+            ["lo"] = new AggregateMemberSymbol("lo", BuiltinTypes.U16, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false),
+            ["hi"] = new AggregateMemberSymbol("hi", BuiltinTypes.U16, byteOffset: 2, bitOffset: 0, bitWidth: 0, isBitfield: false),
+        };
+
         StructTypeSymbol pair = new(
             "Pair",
             new Dictionary<string, TypeSymbol>
             {
                 ["lo"] = BuiltinTypes.U16,
                 ["hi"] = BuiltinTypes.U16,
-            });
+            },
+            members,
+            sizeBytes: 4,
+            alignmentBytes: 2);
 
         Assert.That(pair.Members.Keys, Is.EquivalentTo(new[] { "lo", "hi" }));
         Assert.That(pair.Members["lo"].ByteOffset, Is.EqualTo(0));
-        Assert.That(pair.Members["hi"].BitOffset, Is.EqualTo(0));
-        Assert.That(pair.Members["hi"].BitWidth, Is.EqualTo(0));
-        Assert.That(pair.Members["hi"].IsBitfield, Is.False);
+        Assert.That(pair.Members["hi"].ByteOffset, Is.EqualTo(2));
     }
 
     [Test]
@@ -106,7 +113,12 @@ public class TypeFactsTests
     [Test]
     public void TryGetAlignmentBytes_CoversCompositeAndScalarCases()
     {
-        StructTypeSymbol structType = new("S", new Dictionary<string, TypeSymbol>(), sizeBytes: 0, alignmentBytes: 0);
+        StructTypeSymbol structType = new(
+            "S",
+            new Dictionary<string, TypeSymbol>(),
+            new Dictionary<string, AggregateMemberSymbol>(),
+            sizeBytes: 0,
+            alignmentBytes: 0);
         UnionTypeSymbol unionType = new("U", new Dictionary<string, TypeSymbol>(), new Dictionary<string, AggregateMemberSymbol>(), sizeBytes: 0, alignmentBytes: 0);
         EnumTypeSymbol enumType = new("Mode", BuiltinTypes.U16, new Dictionary<string, long>(), isOpen: false);
         BitfieldTypeSymbol bitfieldType = new("Flags", BuiltinTypes.U32, new Dictionary<string, TypeSymbol>(), new Dictionary<string, AggregateMemberSymbol>());
@@ -142,7 +154,12 @@ public class TypeFactsTests
     [Test]
     public void TryGetSizeBytes_CoversCompositeAndScalarCases()
     {
-        StructTypeSymbol structType = new("S", new Dictionary<string, TypeSymbol>(), sizeBytes: -4, alignmentBytes: 1);
+        StructTypeSymbol structType = new(
+            "S",
+            new Dictionary<string, TypeSymbol>(),
+            new Dictionary<string, AggregateMemberSymbol>(),
+            sizeBytes: -4,
+            alignmentBytes: 1);
         UnionTypeSymbol unionType = new("U", new Dictionary<string, TypeSymbol>(), new Dictionary<string, AggregateMemberSymbol>(), sizeBytes: -2, alignmentBytes: 1);
         EnumTypeSymbol enumType = new("Mode", BuiltinTypes.U8, new Dictionary<string, long>(), isOpen: false);
         BitfieldTypeSymbol bitfieldType = new("Flags", BuiltinTypes.U16, new Dictionary<string, TypeSymbol>(), new Dictionary<string, AggregateMemberSymbol>());

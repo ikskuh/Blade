@@ -1422,7 +1422,7 @@ public class IrPipelineTests
             type Pair = struct { left: u32, right: u32 };
 
             coro fn worker(seed: u32) -> u32 {
-                var pair: Pair = .{ .left = seed, .right = seed };
+                var pair: Pair = Pair { .left = seed, .right = seed };
                 var arr: [2]u32 = undefined;
                 var ptr: *u32 = undefined;
                 var sink: u32 = 0;
@@ -1685,7 +1685,7 @@ public class IrPipelineTests
             };
 
             noinline fn demo(ptr: *reg u32, many: [*]reg volatile u32) void {
-                var pair: Pair = .{ .value = 1 };
+                var pair: Pair = Pair { .value = 1 };
                 var flags: Flags = undefined;
                 pair.value += 1;
                 many[0] += 1;
@@ -1747,7 +1747,7 @@ public class IrPipelineTests
             };
 
             noinline fn demo() void {
-                var outer: Outer = .{ .inner = .{ .value = 1 } };
+                var outer: Outer = Outer { .inner = Inner { .value = 1 } };
                 outer.inner.value = 2;
             }
             """);

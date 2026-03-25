@@ -3,4 +3,4 @@ type PinConfig = struct {
     drive: nit,
     schmitt: bool,
 };
-reg var cfg: PinConfig = .{ .mode = 0x5, .drive = 0b11, .schmitt = true };
+reg var cfg: PinConfig = PinConfig { .mode = 0x5, .drive = 0b11, .schmitt = true };

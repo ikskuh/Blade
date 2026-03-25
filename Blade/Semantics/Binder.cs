@@ -1359,9 +1359,6 @@ public sealed class Binder
             case ArrayLiteralExpressionSyntax arrayLiteral:
                 return BindArrayLiteralExpression(arrayLiteral, expectedType);
 
-            case StructLiteralExpressionSyntax structLiteral:
-                return BindStructLiteralExpression(structLiteral, expectedType);
-
             case TypedStructLiteralExpressionSyntax typedStructLiteral:
                 return BindTypedStructLiteralExpression(typedStructLiteral);
 
@@ -2223,42 +2220,6 @@ public sealed class Binder
             arguments.Add(BindExpression(argument));
 
         return new BoundIntrinsicCallExpression(intrinsic.Name.Text, arguments, intrinsic.Span, BuiltinTypes.U32);
-    }
-
-    private BoundExpression BindStructLiteralExpression(StructLiteralExpressionSyntax structLiteral, TypeSymbol? expectedType)
-    {
-        if (expectedType is StructTypeSymbol structType)
-        {
-            List<BoundStructFieldInitializer> initializers = new(structLiteral.Initializers.Count);
-            foreach (FieldInitializerSyntax initializer in structLiteral.Initializers)
-            {
-                if (!structType.Fields.TryGetValue(initializer.Name.Text, out TypeSymbol? fieldType))
-                {
-                    _diagnostics.ReportUndefinedName(initializer.Name.Span, initializer.Name.Text);
-                    initializers.Add(new BoundStructFieldInitializer(initializer.Name.Text, BindExpression(initializer.Value)));
-                    continue;
-                }
-
-                BoundExpression value = BindExpression(initializer.Value, fieldType);
-                initializers.Add(new BoundStructFieldInitializer(initializer.Name.Text, value));
-            }
-
-            return new BoundStructLiteralExpression(initializers, structLiteral.Span, structType);
-        }
-
-        Dictionary<string, TypeSymbol> fields = new(StringComparer.Ordinal);
-        List<BoundStructFieldInitializer> inferredInitializers = new(structLiteral.Initializers.Count);
-        foreach (FieldInitializerSyntax initializer in structLiteral.Initializers)
-        {
-            BoundExpression value = BindExpression(initializer.Value);
-            if (!fields.TryAdd(initializer.Name.Text, value.Type))
-                _diagnostics.ReportSymbolAlreadyDeclared(initializer.Name.Span, initializer.Name.Text);
-            inferredInitializers.Add(new BoundStructFieldInitializer(initializer.Name.Text, value));
-        }
-
-        _anonymousStructIndex++;
-        StructTypeSymbol inferredType = new($"<struct#{_anonymousStructIndex}>", fields);
-        return new BoundStructLiteralExpression(inferredInitializers, structLiteral.Span, inferredType);
     }
 
     private BoundExpression BindTypedStructLiteralExpression(TypedStructLiteralExpressionSyntax syntax)

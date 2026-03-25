@@ -150,39 +150,9 @@ public sealed class MultiPointerTypeSymbol : PointerLikeTypeSymbol
     }
 }
 
-public sealed class StructTypeSymbol : TypeSymbol
+public abstract class AggregateTypeSymbol : TypeSymbol
 {
-    public StructTypeSymbol(
-        string name,
-        IReadOnlyDictionary<string, TypeSymbol> fields,
-        IReadOnlyDictionary<string, AggregateMemberSymbol>? members = null,
-        int sizeBytes = 0,
-        int alignmentBytes = 1)
-        : base(name)
-    {
-        Fields = Requires.NotNull(fields);
-        Members = members ?? BuildMembers(fields);
-        SizeBytes = sizeBytes;
-        AlignmentBytes = alignmentBytes;
-    }
-
-    public IReadOnlyDictionary<string, TypeSymbol> Fields { get; }
-    public IReadOnlyDictionary<string, AggregateMemberSymbol> Members { get; }
-    public int SizeBytes { get; }
-    public int AlignmentBytes { get; }
-
-    private static IReadOnlyDictionary<string, AggregateMemberSymbol> BuildMembers(IReadOnlyDictionary<string, TypeSymbol> fields)
-    {
-        Dictionary<string, AggregateMemberSymbol> members = new(StringComparer.Ordinal);
-        foreach ((string fieldName, TypeSymbol fieldType) in fields)
-            members[fieldName] = new AggregateMemberSymbol(fieldName, fieldType, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false);
-        return members;
-    }
-}
-
-public sealed class UnionTypeSymbol : TypeSymbol
-{
-    public UnionTypeSymbol(
+    protected AggregateTypeSymbol(
         string name,
         IReadOnlyDictionary<string, TypeSymbol> fields,
         IReadOnlyDictionary<string, AggregateMemberSymbol> members,
@@ -200,6 +170,33 @@ public sealed class UnionTypeSymbol : TypeSymbol
     public IReadOnlyDictionary<string, AggregateMemberSymbol> Members { get; }
     public int SizeBytes { get; }
     public int AlignmentBytes { get; }
+
+}
+
+public sealed class StructTypeSymbol : AggregateTypeSymbol
+{
+    public StructTypeSymbol(
+        string name,
+        IReadOnlyDictionary<string, TypeSymbol> fields,
+        IReadOnlyDictionary<string, AggregateMemberSymbol> members,
+        int sizeBytes,
+        int alignmentBytes)
+        : base(name, fields, members, sizeBytes, alignmentBytes)
+    {
+    }
+}
+
+public sealed class UnionTypeSymbol : AggregateTypeSymbol
+{
+    public UnionTypeSymbol(
+        string name,
+        IReadOnlyDictionary<string, TypeSymbol> fields,
+        IReadOnlyDictionary<string, AggregateMemberSymbol> members,
+        int sizeBytes,
+        int alignmentBytes)
+        : base(name, fields, members, sizeBytes, alignmentBytes)
+    {
+    }
 }
 
 public sealed class EnumTypeSymbol : TypeSymbol
@@ -411,15 +408,9 @@ public static class TypeFacts
 
     public static bool TryGetAlignmentBytes(TypeSymbol type, out int alignmentBytes)
     {
-        if (type is StructTypeSymbol structType)
+        if (type is AggregateTypeSymbol aggregateType)
         {
-            alignmentBytes = Math.Max(1, structType.AlignmentBytes);
-            return true;
-        }
-
-        if (type is UnionTypeSymbol unionType)
-        {
-            alignmentBytes = Math.Max(1, unionType.AlignmentBytes);
+            alignmentBytes = Math.Max(1, aggregateType.AlignmentBytes);
             return true;
         }
 
@@ -472,15 +463,9 @@ public static class TypeFacts
 
     public static bool TryGetSizeBytes(TypeSymbol type, out int sizeBytes)
     {
-        if (type is StructTypeSymbol structType)
+        if (type is AggregateTypeSymbol aggregateType)
         {
-            sizeBytes = Math.Max(0, structType.SizeBytes);
-            return true;
-        }
-
-        if (type is UnionTypeSymbol unionType)
-        {
-            sizeBytes = Math.Max(0, unionType.SizeBytes);
+            sizeBytes = Math.Max(0, aggregateType.SizeBytes);
             return true;
         }
 

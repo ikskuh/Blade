@@ -1283,10 +1283,16 @@ public static class AsmLowerer
     {
         shape = default;
 
-        if (aggregateType is not StructTypeSymbol structType
-            || !TryGetSingleWordAggregateSize(structType, out _)
-            || !structType.Members.TryGetValue(memberName, out AggregateMemberSymbol? member)
-            || member.ByteOffset != byteOffset)
+        if (aggregateType is not AggregateTypeSymbol resolvedAggregateType)
+            return false;
+
+        if (!TryGetSingleWordAggregateSize(resolvedAggregateType, out _))
+            return false;
+
+        if (!resolvedAggregateType.Members.TryGetValue(memberName, out AggregateMemberSymbol? member))
+            return false;
+
+        if (member.ByteOffset != byteOffset)
         {
             return false;
         }

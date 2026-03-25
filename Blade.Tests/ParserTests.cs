@@ -736,30 +736,6 @@ public class ParserTests
     }
 
     [Test]
-    public void StructLiteralExpression_ParsesCorrectly()
-    {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse(".{ .x = 1, .y = 2 };");
-        AssertNoDiagnostics(diag);
-
-        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
-        ExpressionStatementSyntax statement = (ExpressionStatementSyntax)global.Statement;
-        StructLiteralExpressionSyntax expression = (StructLiteralExpressionSyntax)statement.Expression;
-        Assert.That(expression.Initializers.Count, Is.EqualTo(2));
-    }
-
-    [Test]
-    public void EmptyStructLiteralExpression_ParsesCorrectly()
-    {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse(".{ };");
-        AssertNoDiagnostics(diag);
-
-        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
-        ExpressionStatementSyntax statement = (ExpressionStatementSyntax)global.Statement;
-        StructLiteralExpressionSyntax expression = (StructLiteralExpressionSyntax)statement.Expression;
-        Assert.That(expression.Initializers.Count, Is.EqualTo(0));
-    }
-
-    [Test]
     public void ComptimeBlockExpression_IsRejected()
     {
         (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("comptime { 1; };");
@@ -856,14 +832,6 @@ public class ParserTests
     public void UnterminatedAsmBlock_ReachesEndOfFileRecovery()
     {
         (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("asm { {");
-        Assert.That(unit.Members[0], Is.TypeOf<GlobalStatementSyntax>());
-        Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0101_UnexpectedToken), Is.True);
-    }
-
-    [Test]
-    public void UnterminatedStructLiteral_ReachesEndOfFileRecovery()
-    {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse(".{ .x = 1,");
         Assert.That(unit.Members[0], Is.TypeOf<GlobalStatementSyntax>());
         Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0101_UnexpectedToken), Is.True);
     }
