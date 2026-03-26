@@ -52,6 +52,7 @@ public static class AsmLowerer
                 continue;
 
             CallingConventionTier tier = cgResult.Tiers.GetValueOrDefault(function.Name, CallingConventionTier.General);
+            bool containsYield = FunctionContainsYield(function);
             LoweringContext ctx = new(
                 function,
                 functionOrdinal: functions.Count,
@@ -61,6 +62,7 @@ public static class AsmLowerer
                 recursiveCallingConvention,
                 coroutineCallingConvention,
                 topLevelYieldStatePlace,
+                containsYield,
                 diagnostics);
             functions.Add(LowerFunction(ctx));
         }
@@ -78,6 +80,7 @@ public static class AsmLowerer
         public Dictionary<string, RecursiveCallingConventionInfo> RecursiveCallingConvention { get; }
         public Dictionary<string, CoroutineCallingConventionInfo> CoroutineCallingConvention { get; }
         public StoragePlace? TopLevelYieldStatePlace { get; }
+        public bool ContainsYield { get; }
         public DiagnosticBag? Diagnostics { get; }
         public HashSet<string> ReportedUnsupportedLowerings { get; } = new(StringComparer.Ordinal);
         public int NextInlineAsmBlockOrdinal { get; set; }
@@ -105,6 +108,7 @@ public static class AsmLowerer
             Dictionary<string, RecursiveCallingConventionInfo> recursiveCallingConvention,
             Dictionary<string, CoroutineCallingConventionInfo> coroutineCallingConvention,
             StoragePlace? topLevelYieldStatePlace,
+            bool containsYield,
             DiagnosticBag? diagnostics)
         {
             Function = function;
@@ -115,6 +119,7 @@ public static class AsmLowerer
             RecursiveCallingConvention = recursiveCallingConvention;
             CoroutineCallingConvention = coroutineCallingConvention;
             TopLevelYieldStatePlace = topLevelYieldStatePlace;
+            ContainsYield = containsYield;
             Diagnostics = diagnostics;
         }
     }
@@ -323,6 +328,20 @@ public static class AsmLowerer
         }
 
         return (storagePlaces, recursiveCallingConvention, coroutineCallingConvention, topLevelYieldStatePlace);
+    }
+
+    private static bool FunctionContainsYield(LirFunction function)
+    {
+        foreach (LirBlock block in function.Blocks)
+        {
+            foreach (LirInstruction instruction in block.Instructions)
+            {
+                if (instruction is LirOpInstruction { Operation: LirYieldOperation })
+                    return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool HasTopLevelYieldto(LirModule module)
@@ -2037,6 +2056,21 @@ public static class AsmLowerer
 
             case CallingConventionTier.Interrupt:
                 FunctionKind kind = ctx.Function.Kind;
+                if (ctx.ContainsYield)
+                {
+                    string interruptJumpRegister = kind switch
+                    {
+                        FunctionKind.Int1 => "IJMP1",
+                        FunctionKind.Int2 => "IJMP2",
+                        FunctionKind.Int3 => "IJMP3",
+                        _ => Assert.UnreachableValue<string>(),
+                    };
+                    nodes.Add(Emit(
+                        "MOV",
+                        new AsmSymbolOperand(interruptJumpRegister),
+                        new AsmSymbolOperand(ctx.Function.Name, AsmSymbolAddressingMode.Immediate)));
+                }
+
                 string retInsn = kind switch
                 {
                     FunctionKind.Int1 => "RETI1",

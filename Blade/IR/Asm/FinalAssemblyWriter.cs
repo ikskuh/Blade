@@ -478,6 +478,12 @@ public static class FinalAssemblyWriter
         int operandIndex,
         IReadOnlySet<string> functionNames)
     {
+        if (sym.AddressingMode == AsmSymbolAddressingMode.Immediate)
+            return $"#{FormatIdentifier(sym.Name, functionNames)}";
+
+        if (sym.AddressingMode == AsmSymbolAddressingMode.Register)
+            return FormatIdentifier(sym.Name, functionNames);
+
         // Special register names: always plain
         if (P2InstructionMetadata.IsSpecialRegisterName(sym.Name))
             return sym.Name;

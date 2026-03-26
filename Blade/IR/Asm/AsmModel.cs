@@ -146,6 +146,13 @@ public abstract class AsmOperand
     public abstract string Format();
 }
 
+public enum AsmSymbolAddressingMode
+{
+    Auto,
+    Immediate,
+    Register,
+}
+
 /// <summary>
 /// Virtual register operand (%r0, %r1, ...).
 /// </summary>
@@ -182,14 +189,21 @@ public sealed class AsmImmediateOperand : AsmOperand
 /// </summary>
 public sealed class AsmSymbolOperand : AsmOperand
 {
-    public AsmSymbolOperand(string name)
+    public AsmSymbolOperand(string name, AsmSymbolAddressingMode addressingMode = AsmSymbolAddressingMode.Auto)
     {
         Name = name;
+        AddressingMode = addressingMode;
     }
 
     public string Name { get; }
+    public AsmSymbolAddressingMode AddressingMode { get; }
 
-    public override string Format() => $"#{Name}";
+    public override string Format() => AddressingMode switch
+    {
+        AsmSymbolAddressingMode.Immediate => $"#{Name}",
+        AsmSymbolAddressingMode.Register => Name,
+        _ => $"#{Name}",
+    };
 }
 
 /// <summary>

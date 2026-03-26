@@ -675,7 +675,9 @@ public static class RegisterAllocator
                 AsmOperand rewritten = RewriteOperand(operand, regToSlot);
                 return rewritten switch
                 {
-                    AsmSymbolOperand symbol => symbol.Name,
+                    AsmSymbolOperand symbol => symbol.AddressingMode == AsmSymbolAddressingMode.Immediate
+                        ? $"#{symbol.Name}"
+                        : symbol.Name,
                     AsmPlaceOperand place => place.Place.EmittedName,
                     _ => rewritten.Format(),
                 };
