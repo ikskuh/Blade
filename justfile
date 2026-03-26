@@ -1,32 +1,30 @@
-set unstable
-
-# TODO: Use {{dotnet}} variable
-dotnet := require("dotnet")
-
-reportgenerator := which('reportgenerator')
+dotnet          := require("dotnet")
+reportgenerator := require('reportgenerator')
+python          := require('python')
+roslynator      := require('roslynator')
 
 all: build test regressions compile-all-samples
 
 accept-changes:
     # Build code in debug and release mode:
-    dotnet build --no-restore -verbosity minimal -c debug
-    dotnet build --no-restore -verbosity minimal -c release
+    {{dotnet}} build --no-restore -verbosity minimal -c debug
+    {{dotnet}} build --no-restore -verbosity minimal -c release
 
     # Run unit tests in debug and release mode:
-    dotnet test --no-restore -verbosity minimal -c debug
-    dotnet test --no-restore -verbosity minimal -c release
+    {{dotnet}} test --no-restore -verbosity minimal -c debug
+    {{dotnet}} test --no-restore -verbosity minimal -c release
 
     # Run static analysis
-    (cd Blade && ~/.dotnet/tools/roslynator analyze)
+    (cd Blade && {{roslynator}} analyze)
 
 analyze:
-    (cd Blade && ~/.dotnet/tools/roslynator analyze)
+    (cd Blade && {{roslynator}} analyze)
 
 build:
-    dotnet build
+    {{dotnet}} build
 
 test:
-    dotnet test
+    {{dotnet}} test
 
 coverage: \
     (_base_coverage_collect "")
@@ -41,7 +39,7 @@ _base_coverage_collect params:
 
     # execute "dotnet test" with code coverage collection and only include the
     # compiler sources, exclude all others:
-    dotnet test \
+    {{dotnet}} test \
         --collect:"XPlat Code Coverage;Format=cobertura;Include=[blade]*;Exclude=[Blade.Regressions]*" \
         --results-directory coverage/current \
         {{params}}
@@ -50,7 +48,7 @@ _base_coverage_collect params:
     mv coverage/current/*/coverage.cobertura.xml coverage/coverage.cobertura.xml
 
     # print a short summary of the code coverage data:
-    @python3 Scripts/codecov-report.py coverage/coverage.cobertura.xml
+    {{python}} Scripts/codecov-report.py coverage/coverage.cobertura.xml
 
 # Creates a code coverage report from the test suite and the regression runner.
 coverage-report-full: coverage
@@ -59,7 +57,7 @@ coverage-report-full: coverage
         -targetdir:"coverage/results" \
         -historydir:"coverage/history" \
         "-reporttypes:Html;TextSummary;TextDeltaSummary;CsvSummary"
-    echo "$PWD/coverage/results/index.html"
+    @echo "$PWD/coverage/results/index.html"
 
 # Creates a coverage report that is only driven by the regression runner and not by the test suite.
 coverage-report-regression: coverage-regressions
@@ -68,11 +66,11 @@ coverage-report-regression: coverage-regressions
         -targetdir:"coverage/regression-results" \
         -historydir:"coverage/regression-history" \
         "-reporttypes:Html;TextSummary;TextDeltaSummary;CsvSummary"
-    echo "$PWD/coverage/regression-results/index.html"
+    @echo "$PWD/coverage/regression-results/index.html"
 
 
 regressions:
-    dotnet run --project Blade.Regressions --
+    {{dotnet}} run --project Blade.Regressions --
 
 # Runs the fuzzer suite
 fuzz:
@@ -84,11 +82,9 @@ fuzz:
     find Examples      -type f -name "*.blade" -exec cp '{}' fuzzing/corpus ';'
 
     # Compute dictionary based off the demonstrator files
-    python Scripts/export_fuzz_dict.py --from Demonstrators/ --dict fuzzing/blade.dict
+    {{python}} Scripts/export_fuzz_dict.py --from Demonstrators/ --dict fuzzing/blade.dict
 
-
-    DOTNET_ROLL_FORWARD=Major python3 \
-        Scripts/fuzz.py \
+    DOTNET_ROLL_FORWARD=Major {{python}} Scripts/fuzz.py \
         --project   Blade.FuzzTest/Blade.FuzzTest.csproj \
         --corpus    fuzzing/corpus  \
         --dict      fuzzing/blade.dict \
@@ -97,7 +93,7 @@ fuzz:
         --command   ~/.dotnet/tools/sharpfuzz
 
 export-fuzz-findings:
-    python Scripts/export_fuzz_crash.py \
+    {{python}} Scripts/export_fuzz_crash.py \
         --from fuzzing/findings/default/crashes/ \
         --to RegressionTests/Fuzzing/ \
         --count 5
