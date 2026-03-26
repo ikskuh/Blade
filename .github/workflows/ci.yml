@@ -27,8 +27,12 @@ jobs:
       - name: Install apt packages (cached)
         uses: awalsh128/cache-apt-pkgs-action@v1.4.3
         with:
-          packages: just build-essential
+          packages: build-essential
           version: 1.0
+
+      - uses: extractions/setup-just@v3
+        with:
+          just-version: '1.48.0'
 
       - name: Resolve flexspin HEAD
         id: flexspin-ref
