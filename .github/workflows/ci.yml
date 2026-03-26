@@ -73,8 +73,8 @@ jobs:
           dotnet --info
           just --version
           flexspin --version
-          reportgenerator -version
-          roslynator --version
+          reportgenerator --help
+          roslynator --help
 
       - name: just build
         run: just build
