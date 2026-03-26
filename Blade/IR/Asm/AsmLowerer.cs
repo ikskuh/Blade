@@ -1105,10 +1105,10 @@ public static class AsmLowerer
         switch (storageClass)
         {
             case VariableStorageClass.Lut:
-                nodes.Add(new AsmInstructionNode("WRLUT", [value, pointer]));
+                nodes.Add(new AsmInstructionNode(P2Mnemonic.WRLUT, [value, pointer]));
                 break;
             case VariableStorageClass.Hub:
-                nodes.Add(new AsmInstructionNode(SelectHubWriteOpcode(op.ResultType), [value, pointer]));
+                nodes.Add(new AsmInstructionNode(ParseMnemonic(SelectHubWriteOpcode(op.ResultType)), [value, pointer]));
                 break;
             default:
                 ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
@@ -1132,7 +1132,7 @@ public static class AsmLowerer
         {
             case VariableStorageClass.Lut:
                 nodes.Add(Emit("ADD", index, baseOp));
-                nodes.Add(new AsmInstructionNode("WRLUT", [value, index]));
+                nodes.Add(new AsmInstructionNode(P2Mnemonic.WRLUT, [value, index]));
                 break;
             case VariableStorageClass.Hub:
                 {
@@ -1140,7 +1140,7 @@ public static class AsmLowerer
                     if (elemSize > 1)
                         nodes.Add(Emit("SHL", index, new AsmImmediateOperand(ShiftForSize(elemSize))));
                     nodes.Add(Emit("ADD", index, baseOp));
-                    nodes.Add(new AsmInstructionNode(SelectHubWriteOpcode(op.ResultType), [value, index]));
+                    nodes.Add(new AsmInstructionNode(ParseMnemonic(SelectHubWriteOpcode(op.ResultType)), [value, index]));
                     break;
                 }
             default:
@@ -1268,13 +1268,13 @@ public static class AsmLowerer
 
         if (bitWidth == 4 && bitOffset % 4 == 0)
         {
-            nodes.Add(new AsmInstructionNode("GETNIB", [dest, src, new AsmImmediateOperand(bitOffset / 4)]));
+            nodes.Add(new AsmInstructionNode(P2Mnemonic.GETNIB, [dest, src, new AsmImmediateOperand(bitOffset / 4)]));
             return;
         }
 
         if (bitWidth == 8 && bitOffset % 8 == 0)
         {
-            nodes.Add(new AsmInstructionNode("GETBYTE", [dest, src, new AsmImmediateOperand(bitOffset / 8)]));
+            nodes.Add(new AsmInstructionNode(P2Mnemonic.GETBYTE, [dest, src, new AsmImmediateOperand(bitOffset / 8)]));
             if (op.ResultType is not null && TypeFacts.IsSignedInteger(op.ResultType))
                 nodes.Add(Emit("SIGNX", dest, new AsmImmediateOperand(7)));
             return;
@@ -1282,7 +1282,7 @@ public static class AsmLowerer
 
         if (bitWidth == 16 && bitOffset % 16 == 0)
         {
-            nodes.Add(new AsmInstructionNode("GETWORD", [dest, src, new AsmImmediateOperand(bitOffset / 16)]));
+            nodes.Add(new AsmInstructionNode(P2Mnemonic.GETWORD, [dest, src, new AsmImmediateOperand(bitOffset / 16)]));
             if (op.ResultType is not null && TypeFacts.IsSignedInteger(op.ResultType))
                 nodes.Add(Emit("SIGNX", dest, new AsmImmediateOperand(15)));
             return;
@@ -1330,19 +1330,19 @@ public static class AsmLowerer
 
         if (bitWidth == 4 && bitOffset % 4 == 0)
         {
-            nodes.Add(new AsmInstructionNode("SETNIB", [dest, value, new AsmImmediateOperand(bitOffset / 4)]));
+            nodes.Add(new AsmInstructionNode(P2Mnemonic.SETNIB, [dest, value, new AsmImmediateOperand(bitOffset / 4)]));
             return;
         }
 
         if (bitWidth == 8 && bitOffset % 8 == 0)
         {
-            nodes.Add(new AsmInstructionNode("SETBYTE", [dest, value, new AsmImmediateOperand(bitOffset / 8)]));
+            nodes.Add(new AsmInstructionNode(P2Mnemonic.SETBYTE, [dest, value, new AsmImmediateOperand(bitOffset / 8)]));
             return;
         }
 
         if (bitWidth == 16 && bitOffset % 16 == 0)
         {
-            nodes.Add(new AsmInstructionNode("SETWORD", [dest, value, new AsmImmediateOperand(bitOffset / 16)]));
+            nodes.Add(new AsmInstructionNode(P2Mnemonic.SETWORD, [dest, value, new AsmImmediateOperand(bitOffset / 16)]));
             return;
         }
 
@@ -1421,12 +1421,12 @@ public static class AsmLowerer
 
         if (shape.Kind == AggregateAccessKind.Byte)
         {
-            nodes.Add(new AsmInstructionNode("GETBYTE", [dest, receiver, new AsmImmediateOperand(shape.ByteOffset)]));
+            nodes.Add(new AsmInstructionNode(P2Mnemonic.GETBYTE, [dest, receiver, new AsmImmediateOperand(shape.ByteOffset)]));
         }
         else
         {
             Assert.Invariant(shape.Kind == AggregateAccessKind.Word, $"Unexpected aggregate access kind '{shape.Kind}'.");
-            nodes.Add(new AsmInstructionNode("GETWORD", [dest, receiver, new AsmImmediateOperand(shape.ByteOffset / 2)]));
+            nodes.Add(new AsmInstructionNode(P2Mnemonic.GETWORD, [dest, receiver, new AsmImmediateOperand(shape.ByteOffset / 2)]));
         }
 
         if (resultType is not null && TypeFacts.TryGetIntegerWidth(resultType, out int width) && width < 32)
@@ -1454,12 +1454,12 @@ public static class AsmLowerer
 
         if (shape.Kind == AggregateAccessKind.Byte)
         {
-            nodes.Add(new AsmInstructionNode("SETBYTE", [dest, value, new AsmImmediateOperand(shape.ByteOffset)]));
+            nodes.Add(new AsmInstructionNode(P2Mnemonic.SETBYTE, [dest, value, new AsmImmediateOperand(shape.ByteOffset)]));
         }
         else
         {
             Assert.Invariant(shape.Kind == AggregateAccessKind.Word, $"Unexpected aggregate access kind '{shape.Kind}'.");
-            nodes.Add(new AsmInstructionNode("SETWORD", [dest, value, new AsmImmediateOperand(shape.ByteOffset / 2)]));
+            nodes.Add(new AsmInstructionNode(P2Mnemonic.SETWORD, [dest, value, new AsmImmediateOperand(shape.ByteOffset / 2)]));
         }
     }
 
@@ -1788,13 +1788,13 @@ public static class AsmLowerer
         switch (place.Place.StorageClass)
         {
             case VariableStorageClass.Lut:
-                nodes.Add(new AsmInstructionNode("WRLUT", [valueOp, place]));
+                nodes.Add(new AsmInstructionNode(P2Mnemonic.WRLUT, [valueOp, place]));
                 break;
             case VariableStorageClass.Hub:
-                nodes.Add(new AsmInstructionNode(SelectHubWriteOpcode(placeType), [valueOp, place]));
+                nodes.Add(new AsmInstructionNode(ParseMnemonic(SelectHubWriteOpcode(placeType)), [valueOp, place]));
                 break;
             default:
-                nodes.Add(new AsmInstructionNode("MOV", [place, valueOp]));
+                nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [place, valueOp]));
                 break;
         }
     }
@@ -1825,17 +1825,17 @@ public static class AsmLowerer
         {
             if (operation.OperatorKind == BoundBinaryOperatorKind.Modulo)
             {
-                nodes.Add(new AsmInstructionNode("QDIV", [place, value]));
-                nodes.Add(new AsmInstructionNode("GETQY", [place]));
+                nodes.Add(new AsmInstructionNode(P2Mnemonic.QDIV, [place, value]));
+                nodes.Add(new AsmInstructionNode(P2Mnemonic.GETQY, [place]));
                 return;
             }
 
             nodes.Add(new AsmCommentNode($"unhandled update place: {operation.OperatorKind}"));
-            nodes.Add(new AsmInstructionNode("MOV", [place, value]));
+            nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [place, value]));
             return;
         }
 
-        nodes.Add(new AsmInstructionNode(opcode, [place, value]));
+        nodes.Add(new AsmInstructionNode(ParseMnemonic(opcode), [place, value]));
     }
 
     private static string SelectHubReadOpcode(TypeSymbol? type)
@@ -1877,7 +1877,7 @@ public static class AsmLowerer
 
         string endLabel = PushRepEndLabel(ctx);
         AsmOperand iterations = LowerOperand(op.Operands[0]);
-        nodes.Add(new AsmInstructionNode("REP", [new AsmLabelRefOperand(endLabel), iterations]));
+        nodes.Add(new AsmInstructionNode(P2Mnemonic.REP, [new AsmLabelRefOperand(endLabel), iterations]));
     }
 
     private static void LowerRepIter(List<AsmNode> nodes, LoweringContext ctx)
@@ -1892,7 +1892,7 @@ public static class AsmLowerer
 
         string endLabel = PushRepEndLabel(ctx);
         AsmOperand end = LowerOperand(op.Operands[1]);
-        nodes.Add(new AsmInstructionNode("REP", [new AsmLabelRefOperand(endLabel), end]));
+        nodes.Add(new AsmInstructionNode(P2Mnemonic.REP, [new AsmLabelRefOperand(endLabel), end]));
     }
 
     private static void LowerRepForIter(List<AsmNode> nodes, LoweringContext ctx)
@@ -1903,7 +1903,7 @@ public static class AsmLowerer
     private static void LowerNoIrqBegin(List<AsmNode> nodes, LoweringContext ctx)
     {
         string endLabel = PushRepEndLabel(ctx);
-        nodes.Add(new AsmInstructionNode("REP", [new AsmLabelRefOperand(endLabel), new AsmImmediateOperand(1)]));
+        nodes.Add(new AsmInstructionNode(P2Mnemonic.REP, [new AsmLabelRefOperand(endLabel), new AsmImmediateOperand(1)]));
     }
 
     private static void LowerNoIrqEnd(List<AsmNode> nodes, LoweringContext ctx)
@@ -2008,19 +2008,19 @@ public static class AsmLowerer
             {
                 case CallingConventionTier.Leaf:
                     // Result in PA
-                    nodes.Add(new AsmInstructionNode("MOV", [new AsmSymbolOperand("PA", AsmSymbolAddressingMode.Register), resultOp]));
+                    nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand("PA", AsmSymbolAddressingMode.Register), resultOp]));
                     break;
 
                 case CallingConventionTier.SecondOrder:
                     // Result in PB
-                    nodes.Add(new AsmInstructionNode("MOV", [new AsmSymbolOperand("PB", AsmSymbolAddressingMode.Register), resultOp]));
+                    nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand("PB", AsmSymbolAddressingMode.Register), resultOp]));
                     break;
 
                 case CallingConventionTier.Recursive:
                     var ok = ctx.RecursiveCallingConvention.TryGetValue(ctx.Function.Name, out RecursiveCallingConventionInfo? recursiveInfo);
                     Assert.Invariant(ok, "Recursive functions must have calling-convention metadata.");
                     Assert.Invariant(recursiveInfo!.RegisterReturnPlace is not null, "Recursive register-return functions must have a return storage place.");
-                    nodes.Add(new AsmInstructionNode("MOV", [new AsmPlaceOperand(recursiveInfo.RegisterReturnPlace), resultOp]));
+                    nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [new AsmPlaceOperand(recursiveInfo.RegisterReturnPlace), resultOp]));
                     break;
 
                 default:
@@ -2038,9 +2038,9 @@ public static class AsmLowerer
             AsmOperand flagValue = LowerOperand(ret.Values[i]);
             ReturnPlacement placement = returnSlots[i].Placement;
             if (placement == ReturnPlacement.FlagC)
-                nodes.Add(new AsmInstructionNode("TESTB", [flagValue, new AsmImmediateOperand(0)], flagEffect: P2FlagEffect.WC));
+                nodes.Add(new AsmInstructionNode(P2Mnemonic.TESTB, [flagValue, new AsmImmediateOperand(0)], flagEffect: P2FlagEffect.WC));
             else if (placement == ReturnPlacement.FlagZ)
-                nodes.Add(new AsmInstructionNode("TESTB", [flagValue, new AsmImmediateOperand(0)], flagEffect: P2FlagEffect.WZ));
+                nodes.Add(new AsmInstructionNode(P2Mnemonic.TESTB, [flagValue, new AsmImmediateOperand(0)], flagEffect: P2FlagEffect.WZ));
         }
 
         switch (ctx.Tier)
@@ -2095,10 +2095,10 @@ public static class AsmLowerer
     private static void EmitHaltLoop(List<AsmNode> nodes)
     {
         nodes.Add(new AsmCommentNode("halt: endless loop"));
-        nodes.Add(new AsmInstructionNode("REP",
+        nodes.Add(new AsmInstructionNode(P2Mnemonic.REP,
             [new AsmImmediateOperand(1), new AsmImmediateOperand(0)],
             isNonElidable: true));
-        nodes.Add(new AsmInstructionNode("NOP", [], isNonElidable: true));
+        nodes.Add(new AsmInstructionNode(P2Mnemonic.NOP, [], isNonElidable: true));
     }
 
     private static void LowerBranch(List<AsmNode> nodes, LoweringContext ctx, LirBranchTerminator branch)
@@ -2192,7 +2192,7 @@ public static class AsmLowerer
             if (targetParams is not null && i < targetParams.Count)
             {
                 AsmRegisterOperand paramReg = new(targetParams[i].Register.Id);
-                nodes.Add(new AsmInstructionNode("MOV", [paramReg, src], predicate));
+                nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [paramReg, src], ParseConditionCode(predicate)));
             }
             else
             {
@@ -2300,7 +2300,7 @@ public static class AsmLowerer
         string? predicate = null,
         P2FlagEffect flagEffect = P2FlagEffect.None)
     {
-        return new AsmInstructionNode(opcode, [op1, op2], predicate, flagEffect);
+        return new AsmInstructionNode(ParseMnemonic(opcode), [op1, op2], ParseConditionCode(predicate), flagEffect);
     }
 
     private static AsmInstructionNode Emit(
@@ -2309,13 +2309,30 @@ public static class AsmLowerer
         string? predicate = null,
         P2FlagEffect flagEffect = P2FlagEffect.None)
     {
-        return new AsmInstructionNode(opcode, [op1], predicate, flagEffect);
+        return new AsmInstructionNode(ParseMnemonic(opcode), [op1], ParseConditionCode(predicate), flagEffect);
     }
 
     private static AsmInstructionNode Emit(
         string opcode,
         P2FlagEffect flagEffect = P2FlagEffect.None)
     {
-        return new AsmInstructionNode(opcode, [], null, flagEffect);
+        return new AsmInstructionNode(ParseMnemonic(opcode), [], null, flagEffect);
+    }
+
+    private static P2Mnemonic ParseMnemonic(string opcode)
+    {
+        bool parsed = P2InstructionMetadata.TryParseMnemonic(opcode, out P2Mnemonic mnemonic);
+        Assert.Invariant(parsed, $"Unknown mnemonic '{opcode}'.");
+        return mnemonic;
+    }
+
+    private static P2ConditionCode? ParseConditionCode(string? predicate)
+    {
+        if (string.IsNullOrWhiteSpace(predicate))
+            return null;
+
+        bool parsed = P2InstructionMetadata.TryParseConditionCode(predicate, out P2ConditionCode conditionCode);
+        Assert.Invariant(parsed, $"Unknown condition code '{predicate}'.");
+        return conditionCode;
     }
 }

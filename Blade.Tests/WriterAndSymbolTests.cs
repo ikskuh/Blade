@@ -85,7 +85,7 @@ public class WriterAndSymbolTests
                 new AsmLabelNode("asm_fn_bb0"),
                 new AsmCommentNode("test"),
                 new AsmImplicitUseNode([new AsmRegisterOperand(1)]),
-                new AsmInstructionNode("ADD", [new AsmRegisterOperand(1), new AsmImmediateOperand(5)], predicate: "IF_C", flagEffect: P2FlagEffect.WCZ),
+                new AsmInstructionNode(P2Mnemonic.ADD, [new AsmRegisterOperand(1), new AsmImmediateOperand(5)], P2ConditionCode.IF_C, flagEffect: P2FlagEffect.WCZ),
                 new AsmInlineTextNode("MOV _r1, #1"),
             ]),
         ]);

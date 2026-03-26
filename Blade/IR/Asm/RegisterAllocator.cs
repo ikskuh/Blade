@@ -84,12 +84,12 @@ public static class RegisterAllocator
                     liveRegisters.AddRange(liveSet.Order());
 
                 foreach (int registerId in liveRegisters)
-                    rewrittenNodes.Add(new AsmInstructionNode("PUSHB", [new AsmRegisterOperand(registerId)]));
+                    rewrittenNodes.Add(new AsmInstructionNode(P2Mnemonic.PUSHB, [new AsmRegisterOperand(registerId)]));
 
                 rewrittenNodes.Add(instruction);
 
                 for (int liveIndex = liveRegisters.Count - 1; liveIndex >= 0; liveIndex--)
-                    rewrittenNodes.Add(new AsmInstructionNode("POPB", [new AsmRegisterOperand(liveRegisters[liveIndex])]));
+                    rewrittenNodes.Add(new AsmInstructionNode(P2Mnemonic.POPB, [new AsmRegisterOperand(liveRegisters[liveIndex])]));
             }
 
             functions.Add(new AsmFunction(function.Name, function.IsEntryPoint, function.CcTier, rewrittenNodes));

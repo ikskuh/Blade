@@ -96,21 +96,6 @@ public sealed class AsmInstructionNode : AsmNode
         IsNonElidable = isNonElidable;
     }
 
-    public AsmInstructionNode(
-        string opcode,
-        IReadOnlyList<AsmOperand> operands,
-        string? predicate = null,
-        P2FlagEffect flagEffect = P2FlagEffect.None,
-        bool isNonElidable = false)
-        : this(
-            ParseMnemonic(opcode),
-            operands,
-            ParseCondition(predicate),
-            flagEffect,
-            isNonElidable)
-    {
-    }
-
     public P2Mnemonic Mnemonic { get; }
     public IReadOnlyList<AsmOperand> Operands { get; }
     public P2ConditionCode? Condition { get; }
@@ -122,20 +107,6 @@ public sealed class AsmInstructionNode : AsmNode
         ? P2InstructionMetadata.GetConditionPrefixText(condition)
         : null;
 
-    private static P2Mnemonic ParseMnemonic(string opcode)
-    {
-        Assert.Invariant(P2InstructionMetadata.TryParseMnemonic(opcode, out P2Mnemonic mnemonic));
-        return mnemonic;
-    }
-
-    private static P2ConditionCode? ParseCondition(string? predicate)
-    {
-        if (string.IsNullOrWhiteSpace(predicate))
-            return null;
-
-        Assert.Invariant(P2InstructionMetadata.TryParseConditionCode(predicate, out P2ConditionCode condition));
-        return condition;
-    }
 }
 
 /// <summary>
@@ -188,6 +159,11 @@ public sealed class AsmImmediateOperand : AsmOperand
 /// </summary>
 public sealed class AsmSymbolOperand : AsmOperand
 {
+    public AsmSymbolOperand(P2SpecialRegister register)
+        : this(register.ToString(), AsmSymbolAddressingMode.Register)
+    {
+    }
+
     public AsmSymbolOperand(string name, AsmSymbolAddressingMode addressingMode)
     {
         Name = name;

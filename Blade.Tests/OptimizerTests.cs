@@ -111,10 +111,10 @@ public class OptimizerTests
             new AsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
             [
                 new AsmLabelNode("f_bb0"),
-                new AsmInstructionNode("JMP", [new AsmSymbolOperand("f_bb1", AsmSymbolAddressingMode.Immediate)]),
+                new AsmInstructionNode(P2Mnemonic.JMP, [new AsmSymbolOperand("f_bb1", AsmSymbolAddressingMode.Immediate)]),
                 new AsmCommentNode("between"),
                 new AsmLabelNode("f_bb1"),
-                new AsmInstructionNode("NOP", []),
+                new AsmInstructionNode(P2Mnemonic.NOP, []),
             ]),
         ]);
 
@@ -132,10 +132,10 @@ public class OptimizerTests
             [
                 new AsmCommentNode("halt: endless loop"),
                 new AsmInstructionNode(
-                    "REP",
+                    P2Mnemonic.REP,
                     [new AsmImmediateOperand(1), new AsmImmediateOperand(0)],
                     isNonElidable: true),
-                new AsmInstructionNode("NOP", [], isNonElidable: true),
+                new AsmInstructionNode(P2Mnemonic.NOP, [], isNonElidable: true),
             ]),
         ]);
 
@@ -155,7 +155,7 @@ public class OptimizerTests
         AsmModule module = new([
             new AsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
             [
-                new AsmInstructionNode("NOP", []),
+                new AsmInstructionNode(P2Mnemonic.NOP, []),
             ]),
         ]);
 
@@ -175,9 +175,9 @@ public class OptimizerTests
             new AsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
             [
                 new AsmLabelNode("f_bb0"),
-                new AsmInstructionNode("MOV", [r1, input]),
-                new AsmInstructionNode("MOV", [r2, r1]),
-                new AsmInstructionNode("MOV", [output, r2]),
+                new AsmInstructionNode(P2Mnemonic.MOV, [r1, input]),
+                new AsmInstructionNode(P2Mnemonic.MOV, [r2, r1]),
+                new AsmInstructionNode(P2Mnemonic.MOV, [output, r2]),
             ]),
         ]);
 
@@ -202,9 +202,9 @@ public class OptimizerTests
             new AsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
             [
                 new AsmLabelNode("f_bb0"),
-                new AsmInstructionNode("MOV", [r1, input]),
+                new AsmInstructionNode(P2Mnemonic.MOV, [r1, input]),
                 new AsmInlineTextNode("opaque"),
-                new AsmInstructionNode("MOV", [output, r1]),
+                new AsmInstructionNode(P2Mnemonic.MOV, [output, r1]),
             ]),
         ]);
 
@@ -227,8 +227,8 @@ public class OptimizerTests
             new AsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
             [
                 new AsmLabelNode("f_bb0"),
-                new AsmInstructionNode("MOV", [r1, r2]),
-                new AsmInstructionNode("ADD", [r1, new AsmImmediateOperand(1)]),
+                new AsmInstructionNode(P2Mnemonic.MOV, [r1, r2]),
+                new AsmInstructionNode(P2Mnemonic.ADD, [r1, new AsmImmediateOperand(1)]),
             ]),
         ]);
 
@@ -245,7 +245,7 @@ public class OptimizerTests
             new AsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
             [
                 new AsmLabelNode("f_bb0"),
-                new AsmInstructionNode("MOV", [new AsmSymbolOperand("OUTA", AsmSymbolAddressingMode.Register), r1]),
+                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand("OUTA", AsmSymbolAddressingMode.Register), r1]),
             ]),
         ]);
 
@@ -262,9 +262,9 @@ public class OptimizerTests
             new AsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
             [
                 new AsmLabelNode("f_bb0"),
-                new AsmInstructionNode("ADD", [r1, new AsmImmediateOperand(1)]),
+                new AsmInstructionNode(P2Mnemonic.ADD, [r1, new AsmImmediateOperand(1)]),
                 new AsmImplicitUseNode([r1]),
-                new AsmInstructionNode("RET", []),
+                new AsmInstructionNode(P2Mnemonic.RET, []),
             ]),
         ]);
 
