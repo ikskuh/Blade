@@ -48,8 +48,8 @@ public class RegisterAllocatorTests
         AsmModule asmModule = new([
             new AsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
             [
-                new AsmInstructionNode("MOV", [copy, source]),
-                new AsmInstructionNode("MOV", [new AsmSymbolOperand("OUTA"), copy]),
+                new AsmInstructionNode(P2Mnemonic.MOV, [copy, source]),
+                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(P2SpecialRegister.OUTA), copy]),
             ]),
         ]);
 
@@ -71,8 +71,8 @@ public class RegisterAllocatorTests
         AsmModule asmModule = new([
             new AsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
             [
-                new AsmInstructionNode("MOV", [copy, source]),
-                new AsmInstructionNode("MOV", [new AsmSymbolOperand("OUTA"), copy]),
+                new AsmInstructionNode(P2Mnemonic.MOV, [copy, source]),
+                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(P2SpecialRegister.OUTA), copy]),
             ]),
         ]);
 
