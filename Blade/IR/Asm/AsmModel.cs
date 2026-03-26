@@ -46,6 +46,19 @@ public abstract class AsmNode
 {
 }
 
+/// <summary>
+/// Marks the beginning of a volatile inline asm region.
+/// Acts as an optimization barrier: copy propagation aliases are cleared,
+/// and no cross-region instruction fusion or reordering is permitted.
+/// Individual instructions within the region are marked IsNonElidable.
+/// </summary>
+public sealed class AsmVolatileRegionBeginNode : AsmNode;
+
+/// <summary>
+/// Marks the end of a volatile inline asm region.
+/// </summary>
+public sealed class AsmVolatileRegionEndNode : AsmNode;
+
 public sealed class AsmDirectiveNode : AsmNode
 {
     public AsmDirectiveNode(string text)
@@ -280,23 +293,3 @@ public sealed class AsmCommentNode : AsmNode
     public string Text { get; }
 }
 
-/// <summary>
-/// Raw inline assembly text node. Emitted verbatim into the final PASM2 output.
-/// `{name}` placeholders are resolved during register allocation.
-/// </summary>
-public sealed class AsmInlineTextNode : AsmNode
-{
-    public AsmInlineTextNode(
-        string text,
-        IReadOnlyDictionary<string, AsmOperand>? bindings = null,
-        IReadOnlyDictionary<string, string>? localLabels = null)
-    {
-        Text = text;
-        Bindings = bindings ?? new Dictionary<string, AsmOperand>(StringComparer.Ordinal);
-        LocalLabels = localLabels ?? new Dictionary<string, string>(StringComparer.Ordinal);
-    }
-
-    public string Text { get; }
-    public IReadOnlyDictionary<string, AsmOperand> Bindings { get; }
-    public IReadOnlyDictionary<string, string> LocalLabels { get; }
-}

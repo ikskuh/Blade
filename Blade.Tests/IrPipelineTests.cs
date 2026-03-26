@@ -655,11 +655,9 @@ public class IrPipelineTests
             new AsmFunction("$top", isEntryPoint: true, CallingConventionTier.EntryPoint,
             [
                 new AsmLabelNode("$top_bb0"),
-                new AsmCommentNode("inline asm raw fallback begin"),
-                new AsmInlineTextNode("            "),
-                new AsmInlineTextNode("                    MOV _r4, #target_label"),
-                new AsmInlineTextNode("                "),
-                new AsmCommentNode("inline asm raw fallback end"),
+                new AsmCommentNode("inline asm typed begin"),
+                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand("_r4", AsmSymbolAddressingMode.Register), new AsmImmediateOperand(42)]),
+                new AsmCommentNode("inline asm typed end"),
                 new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand("_r4", AsmSymbolAddressingMode.Register), new AsmImmediateOperand(0)]),
                 new AsmCommentNode("--- register file ---"),
                 new AsmLabelNode("g_input_word_7"),
@@ -673,22 +671,13 @@ public class IrPipelineTests
 
         string assembly = FinalAssemblyWriter.Write(module);
 
-        Assert.That(assembly, Does.Contain("""
-              f_l_top
-              l_top_bb0
-                ' inline asm raw fallback begin
-
-                MOV _r4, #target_label
-
-                ' inline asm raw fallback end
-                MOV _r4, #0
-
-            ' --- register file ---
-            """));
+        Assert.That(assembly, Does.Contain("' inline asm typed begin"));
+        Assert.That(assembly, Does.Contain("MOV _r4, #42"));
+        Assert.That(assembly, Does.Contain("' inline asm typed end"));
+        Assert.That(assembly, Does.Contain("MOV _r4, #0"));
         Assert.That(assembly, Does.Contain("g_input_word_7         LONG 13"));
         Assert.That(assembly, Does.Contain("g_dead_code_visible_10 LONG  0"));
         Assert.That(assembly, Does.Contain("_r4                    LONG  0"));
-        Assert.That(assembly, Does.Not.Contain("            MOV _r4, #target_label"));
     }
 
     [Test]
@@ -862,7 +851,6 @@ public class IrPipelineTests
         });
 
         AsmFunction function = build.AsmModule.Functions.Single(f => f.Name == "f");
-        Assert.That(function.Nodes.OfType<AsmInlineTextNode>(), Is.Empty);
         Assert.That(build.AssemblyText, Does.Not.Contain("done:"));
         Assert.That(build.AssemblyText, Does.Not.Contain("IF_Z JMP #done"));
         Assert.That(build.AssemblyText, Does.Match(@"IF_Z JMP #__asm_\d+_\d+_done"));
@@ -961,7 +949,8 @@ public class IrPipelineTests
         Assert.That(MirTextWriter.Write(build.MirModule), Does.Contain("inlineasm.volatile"));
         Assert.That(LirTextWriter.Write(build.LirModule), Does.Contain("inlineasm.volatile"));
         AsmFunction function = build.AsmModule.Functions.Single(f => f.Name == "f");
-        Assert.That(function.Nodes.OfType<AsmInlineTextNode>().Any(), Is.True);
+        Assert.That(function.Nodes.OfType<AsmVolatileRegionBeginNode>().Any(), Is.True);
+        Assert.That(function.Nodes.OfType<AsmInstructionNode>().Any(n => n.IsNonElidable), Is.True);
     }
 
     [Test]
@@ -991,7 +980,6 @@ public class IrPipelineTests
 
         AsmFunction function = build.AsmModule.Functions.Single(f => f.Name == "f");
         Assert.That(function.Nodes.OfType<AsmInstructionNode>().Any(i => i.Opcode == "ADD"), Is.True);
-        Assert.That(function.Nodes.OfType<AsmInlineTextNode>().Any(), Is.False);
         Assert.That(AsmTextWriter.Write(build.AsmModule), Does.Contain("inline asm typed begin"));
     }
 
@@ -1062,7 +1050,7 @@ public class IrPipelineTests
 
         Assert.That(build.AssemblyText, Does.Contain("' keep this comment"));
         Assert.That(build.AssemblyText, Does.Not.Contain("// keep this comment"));
-        Assert.That(build.AssemblyText, Does.Match(@"MOV   \s*_r\d+,\s+_r\d+"));
+        Assert.That(build.AssemblyText, Does.Match(@"MOV\s+_r\d+,\s*_r\d+"));
     }
 
     [Test]
@@ -1096,13 +1084,13 @@ public class IrPipelineTests
     }
 
     [Test]
-    public void InlineAsm_NonVolatile_FallsBackToRawWhenOperandShapeIsUnsupported()
+    public void InlineAsm_NonVolatile_RejectsUnsupportedOperandShape()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundProgram _, DiagnosticBag diagnostics) = Bind("""
             fn f(x: u32) -> u32 {
                 var out: u32 = 0;
                 asm {
-                    MOV {out}, #target_label + 4 // keep raw fallback comment
+                    MOV {out}, #target_label + 4
                 };
                 return out;
             }
@@ -1110,19 +1098,8 @@ public class IrPipelineTests
             var sink: u32 = f(1);
             """);
 
-        Assert.That(diagnostics.Count, Is.EqualTo(0));
-        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
-        {
-            EnableSingleCallsiteInlining = false,
-            EnableMirInlining = false,
-            EnableMirOptimizations = false,
-            EnableLirOptimizations = false,
-        });
-
-        AsmFunction function = build.AsmModule.Functions.Single(f => f.Name == "f");
-        Assert.That(function.Nodes.OfType<AsmInlineTextNode>().Any(), Is.True);
-        Assert.That(build.AssemblyText, Does.Contain("#target_label + 4"));
-        Assert.That(build.AssemblyText, Does.Contain("' keep raw fallback comment"));
+        Assert.That(diagnostics.Count, Is.GreaterThan(0));
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0306_InlineAsmUndefinedLabel), Is.True);
     }
 
     [Test]
@@ -1151,7 +1128,7 @@ public class IrPipelineTests
         Assert.That(MirTextWriter.Write(build.MirModule), Does.Contain("inlineasm -> @C"));
         Assert.That(LirTextWriter.Write(build.LirModule), Does.Contain("inlineasm -> @C"));
         AsmFunction function = build.AsmModule.Functions.Single(f => f.Name == "test_bit");
-        Assert.That(function.Nodes.OfType<AsmInlineTextNode>().Any(), Is.True);
+        Assert.That(function.Nodes.OfType<AsmInstructionNode>().Any(n => n.Mnemonic == P2Mnemonic.TESTB), Is.True);
     }
 
     [Test]

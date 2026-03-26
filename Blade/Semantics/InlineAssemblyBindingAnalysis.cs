@@ -14,8 +14,6 @@ public enum InlineAsmBindingAccess
 public static class InlineAssemblyBindingAnalysis
 {
     public static IReadOnlyDictionary<string, InlineAsmBindingAccess> ComputeBindingAccess(
-        AsmVolatility volatility,
-        string? flagOutput,
         IReadOnlyList<InlineAssemblyValidator.AsmLine> parsedLines,
         IReadOnlyCollection<string> bindingNames)
     {
@@ -28,9 +26,7 @@ public static class InlineAssemblyBindingAnalysis
         if (bindingNames.Count == 0)
             return access;
 
-        if (volatility == AsmVolatility.Volatile
-            || flagOutput is not null
-            || !CanLowerTypedLosslessly(parsedLines, bindingNameSet))
+        if (!CanLowerTypedLosslessly(parsedLines, bindingNameSet))
         {
             foreach (string bindingName in bindingNames)
                 access[bindingName] = InlineAsmBindingAccess.ReadWrite;
@@ -77,11 +73,13 @@ public static class InlineAssemblyBindingAnalysis
         IReadOnlyList<InlineAssemblyValidator.AsmLine> parsedLines,
         IReadOnlySet<string> bindingNames)
     {
+        HashSet<string> definedLabels = CollectDefinedLabels(parsedLines);
+
         foreach (InlineAssemblyValidator.AsmLine line in parsedLines)
         {
             foreach (string operand in line.Operands)
             {
-                if (!IsTypedInlineAsmOperand(operand, bindingNames))
+                if (!IsTypedInlineAsmOperand(operand, bindingNames, definedLabels))
                     return false;
             }
         }
@@ -89,7 +87,7 @@ public static class InlineAssemblyBindingAnalysis
         return true;
     }
 
-    private static bool IsTypedInlineAsmOperand(string text, IReadOnlySet<string> bindingNames)
+    private static bool IsTypedInlineAsmOperand(string text, IReadOnlySet<string> bindingNames, IReadOnlySet<string> definedLabels)
     {
         string trimmed = text.Trim();
         if (trimmed.Length == 0)
@@ -107,13 +105,34 @@ public static class InlineAssemblyBindingAnalysis
             if (immediateText == "$")
                 return true;
 
-            return TryParseImmediate(immediateText, out _) || IsPlainSymbol(immediateText);
+            return TryParseImmediate(immediateText, out _) || IsKnownSymbol(immediateText, definedLabels);
         }
 
         if (trimmed.EndsWith(':'))
             return IsPlainSymbol(trimmed[..^1].Trim());
 
-        return trimmed == "$" || IsPlainSymbol(trimmed);
+        return trimmed == "$" || IsKnownSymbol(trimmed, definedLabels);
+    }
+
+    private static bool IsKnownSymbol(string text, IReadOnlySet<string> definedLabels)
+    {
+        if (!IsPlainSymbol(text))
+            return false;
+
+        return definedLabels.Contains(text)
+            || Enum.TryParse<P2SpecialRegister>(text, ignoreCase: true, out _);
+    }
+
+    private static HashSet<string> CollectDefinedLabels(IReadOnlyList<InlineAssemblyValidator.AsmLine> parsedLines)
+    {
+        HashSet<string> labels = new(StringComparer.OrdinalIgnoreCase);
+        foreach (InlineAssemblyValidator.AsmLine line in parsedLines)
+        {
+            if (line.IsLabel && !string.IsNullOrWhiteSpace(line.LabelName))
+                labels.Add(line.LabelName);
+        }
+
+        return labels;
     }
 
     private static bool TryGetBindingName(string text, out string? bindingName)

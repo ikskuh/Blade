@@ -123,13 +123,6 @@ public static class RegisterAllocator
                             allRegs.Add(reg.RegisterId);
                     }
                     break;
-                case AsmInlineTextNode inlineText:
-                    foreach (AsmOperand operand in inlineText.Bindings.Values)
-                    {
-                        if (operand is AsmRegisterOperand reg)
-                            allRegs.Add(reg.RegisterId);
-                    }
-                    break;
                 case AsmImplicitUseNode implicitUse:
                     foreach (AsmOperand operand in implicitUse.Operands)
                     {
@@ -552,11 +545,6 @@ public static class RegisterAllocator
                         break;
                     }
 
-                    case AsmInlineTextNode inlineText:
-                        rewrittenNodes.Add(new AsmInlineTextNode(
-                            RewriteInlineAsmText(inlineText.Text, inlineText.Bindings, inlineText.LocalLabels, regToSlot)));
-                        break;
-
                     case AsmImplicitUseNode implicitUse:
                     {
                         List<AsmOperand> operands = new(implicitUse.Operands.Count);
@@ -651,68 +639,6 @@ public static class RegisterAllocator
         if (operand is AsmRegisterOperand reg && regToSlot.TryGetValue(reg.RegisterId, out int slot))
             return new AsmSymbolOperand(SlotLabel(slot), AsmSymbolAddressingMode.Register);
         return operand;
-    }
-
-    private static string RewriteInlineAsmText(
-        string text,
-        IReadOnlyDictionary<string, AsmOperand> bindings,
-        IReadOnlyDictionary<string, string> localLabels,
-        IReadOnlyDictionary<int, int> regToSlot)
-    {
-        int commentIndex = text.AsSpan().IndexOf('\'');
-        string codeText = commentIndex >= 0 ? text[..commentIndex] : text;
-        string commentText = commentIndex >= 0 ? text[commentIndex..] : string.Empty;
-
-        string rewritten = Regex.Replace(
-            codeText,
-            @"\{([A-Za-z0-9_$.]+)\}",
-            match =>
-            {
-                string name = match.Groups[1].Value;
-                if (!bindings.TryGetValue(name, out AsmOperand? operand))
-                    return name;
-
-                AsmOperand rewritten = RewriteOperand(operand, regToSlot);
-                return rewritten switch
-                {
-                    AsmSymbolOperand symbol => symbol.AddressingMode == AsmSymbolAddressingMode.Immediate
-                        ? $"#{symbol.Name}"
-                        : symbol.Name,
-                    AsmPlaceOperand place => place.Place.EmittedName,
-                    _ => rewritten.Format(),
-                };
-            });
-
-        rewritten = RewriteInlineAsmLocalLabels(rewritten, localLabels);
-        return rewritten + commentText;
-    }
-
-    private static string RewriteInlineAsmLocalLabels(
-        string text,
-        IReadOnlyDictionary<string, string> localLabels)
-    {
-        if (localLabels.Count == 0 || string.IsNullOrEmpty(text))
-            return text;
-
-        Match labelDefinition = Regex.Match(
-            text,
-            @"^(?<leading>\s*)(?<label>[A-Za-z0-9_$]+)\s*:\s*$",
-            RegexOptions.CultureInvariant);
-        if (labelDefinition.Success)
-        {
-            string originalLabel = labelDefinition.Groups["label"].Value;
-            if (localLabels.TryGetValue(originalLabel, out string? rewrittenLabel))
-                return labelDefinition.Groups["leading"].Value + rewrittenLabel;
-        }
-
-        string rewritten = text;
-        foreach ((string originalLabel, string rewrittenLabel) in localLabels.OrderByDescending(static pair => pair.Key.Length))
-        {
-            string pattern = $"(?<![A-Za-z0-9_$]){Regex.Escape(originalLabel)}(?![A-Za-z0-9_$])";
-            rewritten = Regex.Replace(rewritten, pattern, rewrittenLabel, RegexOptions.CultureInvariant);
-        }
-
-        return rewritten;
     }
 
     private static string SlotLabel(int slot) => $"_r{slot}";

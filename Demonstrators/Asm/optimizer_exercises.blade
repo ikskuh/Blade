@@ -1,15 +1,11 @@
 // EXPECT: pass
 // STAGE: final-asm
 // FLEXSPIN: forbidden
-// CONTAINS:
-// - MOV _r4, #target_label
-// - XOR _r4, g_dead_code_visible
 // NOTE:
 //   Small routines intended to exercise inline-asm optimization behavior.
 
 reg var input_word: u32 = 13;
 reg var copy_folded: u32 = 0;
-reg var fallback_kept: u32 = 0;
 reg var dead_code_visible: u32 = 0;
 
 fn copy_chain(x: u32) -> u32 {
@@ -34,14 +30,5 @@ fn dead_local_math(x: u32) -> u32 {
     return x;
 }
 
-fn unsupported_operand_falls_back(x: u32) -> u32 {
-    var out: u32 = 0;
-    asm {
-        MOV {out}, #target_label
-    };
-    return out ^ x;
-}
-
 copy_folded = copy_chain(input_word);
 dead_code_visible = dead_local_math(copy_folded);
-fallback_kept = unsupported_operand_falls_back(dead_code_visible);

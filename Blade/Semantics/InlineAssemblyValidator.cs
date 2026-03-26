@@ -78,6 +78,8 @@ public static class InlineAssemblyValidator
                 result.IsValid = false;
         }
 
+        ValidateLabelReferences(result, blockSpan, availableVariables, diagnostics);
+
         return result;
     }
 
@@ -245,6 +247,95 @@ public static class InlineAssemblyValidator
         while (i >= 0 && !char.IsWhiteSpace(trimmed[i]) && trimmed[i] != ',')
             i--;
         return trimmed[(i + 1)..];
+    }
+
+    /// <summary>
+    /// Validates that all symbol references in instruction operands resolve to
+    /// labels defined within the same asm block, variable bindings, or P2 special registers.
+    /// </summary>
+    private static void ValidateLabelReferences(
+        ValidationResult result,
+        TextSpan blockSpan,
+        HashSet<string> availableVariables,
+        DiagnosticBag diagnostics)
+    {
+        // Collect all labels defined in this asm block.
+        HashSet<string> definedLabels = new(StringComparer.OrdinalIgnoreCase);
+        foreach (AsmLine line in result.Lines)
+        {
+            if (line.IsLabel && !string.IsNullOrWhiteSpace(line.LabelName))
+                definedLabels.Add(line.LabelName);
+        }
+
+        // Check each instruction operand for undefined symbol references.
+        foreach (AsmLine line in result.Lines)
+        {
+            if (line.IsLabel || line.Mnemonic is null)
+                continue;
+
+            foreach (string operand in line.Operands)
+            {
+                string? undefinedSymbol = GetUndefinedSymbolReference(operand, definedLabels, availableVariables);
+                if (undefinedSymbol is not null)
+                {
+                    diagnostics.ReportInlineAsmUndefinedLabel(blockSpan, undefinedSymbol);
+                    result.IsValid = false;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Returns the name of an undefined symbol if the operand references one, or null if the operand is valid.
+    /// </summary>
+    private static string? GetUndefinedSymbolReference(
+        string operand,
+        IReadOnlySet<string> definedLabels,
+        IReadOnlySet<string> availableVariables)
+    {
+        string trimmed = operand.Trim();
+        if (trimmed.Length == 0)
+            return null;
+
+        // {variable} references are already validated elsewhere.
+        if (trimmed.StartsWith('{'))
+            return null;
+
+        // Strip leading # for immediate operands.
+        bool isImmediate = trimmed.StartsWith('#');
+        string symbol = isImmediate ? trimmed[1..].Trim() : trimmed;
+
+        if (symbol.Length == 0)
+            return null;
+
+        // $ (current address) is always valid.
+        if (symbol == "$")
+            return null;
+
+        // Numeric literals are always valid.
+        if (char.IsAsciiDigit(symbol[0]) || (symbol.Length > 1 && symbol[0] is '+' or '-' && char.IsAsciiDigit(symbol[1])))
+            return null;
+
+        // Not a plain symbol — contains special characters (e.g., "#label + 4").
+        // Without raw fallback, complex expressions are not supported.
+        if (!IsPlainInlineAsmSymbol(symbol.AsSpan()))
+            return symbol;
+
+        // Check against known valid symbol sources:
+        // 1. Labels defined in this asm block
+        if (definedLabels.Contains(symbol))
+            return null;
+
+        // 2. Variable bindings (should not appear as bare symbols, but be defensive)
+        if (availableVariables.Contains(symbol))
+            return null;
+
+        // 3. P2 special registers (PA, PB, PTRA, OUTA, INA, etc.)
+        if (Enum.TryParse<P2SpecialRegister>(symbol, ignoreCase: true, out _))
+            return null;
+
+        // Unknown symbol — report it.
+        return symbol;
     }
 
     /// <summary>

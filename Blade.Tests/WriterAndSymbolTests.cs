@@ -86,7 +86,7 @@ public class WriterAndSymbolTests
                 new AsmCommentNode("test"),
                 new AsmImplicitUseNode([new AsmRegisterOperand(1)]),
                 new AsmInstructionNode(P2Mnemonic.ADD, [new AsmRegisterOperand(1), new AsmImmediateOperand(5)], P2ConditionCode.IF_C, flagEffect: P2FlagEffect.WCZ),
-                new AsmInlineTextNode("MOV _r1, #1"),
+                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmRegisterOperand(1), new AsmImmediateOperand(1)]),
             ]),
         ]);
 
@@ -107,6 +107,6 @@ public class WriterAndSymbolTests
         Assert.That(asmText, Does.Contain("' test"));
         Assert.That(asmText, Does.Contain(".use %r1"));
         Assert.That(asmText, Does.Contain("IF_C ADD %r1, #5 WCZ"));
-        Assert.That(asmText, Does.Contain("MOV _r1, #1"));
+        Assert.That(asmText, Does.Contain("MOV %r1, #1"));
     }
 }
