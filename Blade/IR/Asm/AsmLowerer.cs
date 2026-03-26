@@ -1008,7 +1008,10 @@ public static class AsmLowerer
                 nodes.Add(Emit(isArrayBase ? P2Mnemonic.MOV : P2Mnemonic.RDLUT, dest, place));
                 break;
             case VariableStorageClass.Hub:
-                nodes.Add(Emit(isArrayBase ? P2Mnemonic.MOV : SelectHubReadOpcode(op.ResultType), dest, place));
+                nodes.Add(Emit(
+                    isArrayBase ? P2Mnemonic.MOV : SelectHubReadOpcode(RequireTypedResult(op, "load.place")),
+                    dest,
+                    place));
                 break;
             default:
                 nodes.Add(Emit(P2Mnemonic.MOV, dest, place));
@@ -1032,7 +1035,7 @@ public static class AsmLowerer
                 nodes.Add(Emit(P2Mnemonic.RDLUT, dest, pointer));
                 break;
             case VariableStorageClass.Hub:
-                nodes.Add(Emit(SelectHubReadOpcode(op.ResultType), dest, pointer));
+                nodes.Add(Emit(SelectHubReadOpcode(RequireTypedResult(op, "load.deref")), dest, pointer));
                 break;
             default:
                 ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
@@ -1083,7 +1086,7 @@ public static class AsmLowerer
                     if (elemSize > 1)
                         nodes.Add(Emit(P2Mnemonic.SHL, index, new AsmImmediateOperand(ShiftForSize(elemSize))));
                     nodes.Add(Emit(P2Mnemonic.ADD, index, baseOp));
-                    nodes.Add(Emit(SelectHubReadOpcode(op.ResultType), dest, index));
+                    nodes.Add(Emit(SelectHubReadOpcode(RequireTypedResult(op, "load.index")), dest, index));
                     break;
                 }
             default:
@@ -1109,7 +1112,7 @@ public static class AsmLowerer
                 nodes.Add(new AsmInstructionNode(P2Mnemonic.WRLUT, [value, pointer]));
                 break;
             case VariableStorageClass.Hub:
-                nodes.Add(new AsmInstructionNode(SelectHubWriteOpcode(op.ResultType), [value, pointer]));
+                nodes.Add(new AsmInstructionNode(SelectHubWriteOpcode(RequireTypedResult(op, "store.deref")), [value, pointer]));
                 break;
             default:
                 ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
@@ -1141,7 +1144,7 @@ public static class AsmLowerer
                     if (elemSize > 1)
                         nodes.Add(Emit(P2Mnemonic.SHL, index, new AsmImmediateOperand(ShiftForSize(elemSize))));
                     nodes.Add(Emit(P2Mnemonic.ADD, index, baseOp));
-                    nodes.Add(new AsmInstructionNode(SelectHubWriteOpcode(op.ResultType), [value, index]));
+                    nodes.Add(new AsmInstructionNode(SelectHubWriteOpcode(RequireTypedResult(op, "store.index")), [value, index]));
                     break;
                 }
             default:
@@ -1799,6 +1802,7 @@ public static class AsmLowerer
                 nodes.Add(new AsmInstructionNode(P2Mnemonic.WRLUT, [valueOp, place]));
                 break;
             case VariableStorageClass.Hub:
+                Assert.Invariant(placeType is not null, "Hub place stores require a concrete place type.");
                 nodes.Add(new AsmInstructionNode(SelectHubWriteOpcode(placeType), [valueOp, place]));
                 break;
             case VariableStorageClass.Automatic:
@@ -1851,38 +1855,62 @@ public static class AsmLowerer
         nodes.Add(new AsmInstructionNode(opcode.Value, [place, value]));
     }
 
-    private static P2Mnemonic SelectHubReadOpcode(TypeSymbol? type)
+    private static P2Mnemonic SelectHubReadOpcode(TypeSymbol type)
     {
-        if (type?.IsBool == true)
+        if (type.IsBool)
             return P2Mnemonic.RDBYTE;
 
-        if (type is not null && TypeFacts.TryGetIntegerWidth(type, out int width))
+        if (TypeFacts.TryGetIntegerWidth(type, out int width))
         {
             Assert.Invariant(width <= 32, $"Hub read width must be <= 32 bits, got {width}.");
             if (width <= 8)
                 return P2Mnemonic.RDBYTE;
             if (width <= 16)
                 return P2Mnemonic.RDWORD;
+
+            return P2Mnemonic.RDLONG;
         }
+
+        Assert.Invariant(TypeFacts.TryGetSizeBytes(type, out int sizeBytes), $"Hub read type must have a concrete in-memory size, got '{type}'.");
+        Assert.Invariant(sizeBytes <= 4, $"Hub read size must be <= 4 bytes, got {sizeBytes} for '{type}'.");
+        if (sizeBytes <= 1)
+            return P2Mnemonic.RDBYTE;
+        if (sizeBytes <= 2)
+            return P2Mnemonic.RDWORD;
 
         return P2Mnemonic.RDLONG;
     }
 
-    private static P2Mnemonic SelectHubWriteOpcode(TypeSymbol? type)
+    private static P2Mnemonic SelectHubWriteOpcode(TypeSymbol type)
     {
-        if (type?.IsBool == true)
+        if (type.IsBool)
             return P2Mnemonic.WRBYTE;
 
-        if (type is not null && TypeFacts.TryGetIntegerWidth(type, out int width))
+        if (TypeFacts.TryGetIntegerWidth(type, out int width))
         {
             Assert.Invariant(width <= 32, $"Hub write width must be <= 32 bits, got {width}.");
             if (width <= 8)
                 return P2Mnemonic.WRBYTE;
             if (width <= 16)
                 return P2Mnemonic.WRWORD;
+
+            return P2Mnemonic.WRLONG;
         }
 
+        Assert.Invariant(TypeFacts.TryGetSizeBytes(type, out int sizeBytes), $"Hub write type must have a concrete in-memory size, got '{type}'.");
+        Assert.Invariant(sizeBytes <= 4, $"Hub write size must be <= 4 bytes, got {sizeBytes} for '{type}'.");
+        if (sizeBytes <= 1)
+            return P2Mnemonic.WRBYTE;
+        if (sizeBytes <= 2)
+            return P2Mnemonic.WRWORD;
+
         return P2Mnemonic.WRLONG;
+    }
+
+    private static TypeSymbol RequireTypedResult(LirOpInstruction op, string lowering)
+    {
+        Assert.Invariant(op.ResultType is not null, $"Operation '{lowering}' must have a result type in ASM lowering.");
+        return op.ResultType!;
     }
 
     private static void LowerRepSetup(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
