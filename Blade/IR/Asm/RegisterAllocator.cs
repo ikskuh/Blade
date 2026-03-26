@@ -84,12 +84,12 @@ public static class RegisterAllocator
                     liveRegisters.AddRange(liveSet.Order());
 
                 foreach (int registerId in liveRegisters)
-                    rewrittenNodes.Add(new AsmInstructionNode("PUSHB", [new AsmRegisterOperand(registerId)]));
+                    rewrittenNodes.Add(new AsmInstructionNode(P2Mnemonic.PUSHB, [new AsmRegisterOperand(registerId)]));
 
                 rewrittenNodes.Add(instruction);
 
                 for (int liveIndex = liveRegisters.Count - 1; liveIndex >= 0; liveIndex--)
-                    rewrittenNodes.Add(new AsmInstructionNode("POPB", [new AsmRegisterOperand(liveRegisters[liveIndex])]));
+                    rewrittenNodes.Add(new AsmInstructionNode(P2Mnemonic.POPB, [new AsmRegisterOperand(liveRegisters[liveIndex])]));
             }
 
             functions.Add(new AsmFunction(function.Name, function.IsEntryPoint, function.CcTier, rewrittenNodes));
@@ -649,7 +649,7 @@ public static class RegisterAllocator
     private static AsmOperand RewriteOperand(AsmOperand operand, IReadOnlyDictionary<int, int> regToSlot)
     {
         if (operand is AsmRegisterOperand reg && regToSlot.TryGetValue(reg.RegisterId, out int slot))
-            return new AsmSymbolOperand(SlotLabel(slot));
+            return new AsmSymbolOperand(SlotLabel(slot), AsmSymbolAddressingMode.Register);
         return operand;
     }
 
@@ -675,7 +675,9 @@ public static class RegisterAllocator
                 AsmOperand rewritten = RewriteOperand(operand, regToSlot);
                 return rewritten switch
                 {
-                    AsmSymbolOperand symbol => symbol.Name,
+                    AsmSymbolOperand symbol => symbol.AddressingMode == AsmSymbolAddressingMode.Immediate
+                        ? $"#{symbol.Name}"
+                        : symbol.Name,
                     AsmPlaceOperand place => place.Place.EmittedName,
                     _ => rewritten.Format(),
                 };

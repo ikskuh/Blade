@@ -89,26 +89,19 @@ public sealed class AsmInstructionNode : AsmNode
         P2FlagEffect flagEffect = P2FlagEffect.None,
         bool isNonElidable = false)
     {
+        IReadOnlyList<AsmOperand> checkedOperands = Requires.NotNull(operands);
+        bool hasForm = P2InstructionMetadata.TryGetInstructionForm(mnemonic, checkedOperands.Count, out P2InstructionFormInfo form);
+        Assert.Invariant(hasForm, $"Instruction form '{mnemonic}/{checkedOperands.Count}' must exist.");
+        for (int i = 0; i < checkedOperands.Count; i++)
+        {
+            ValidateOperandCompatibility(form, checkedOperands[i], i);
+        }
+
         Mnemonic = mnemonic;
-        Operands = operands;
+        Operands = checkedOperands;
         Condition = condition;
         FlagEffect = flagEffect;
         IsNonElidable = isNonElidable;
-    }
-
-    public AsmInstructionNode(
-        string opcode,
-        IReadOnlyList<AsmOperand> operands,
-        string? predicate = null,
-        P2FlagEffect flagEffect = P2FlagEffect.None,
-        bool isNonElidable = false)
-        : this(
-            ParseMnemonic(opcode),
-            operands,
-            ParseCondition(predicate),
-            flagEffect,
-            isNonElidable)
-    {
     }
 
     public P2Mnemonic Mnemonic { get; }
@@ -122,20 +115,38 @@ public sealed class AsmInstructionNode : AsmNode
         ? P2InstructionMetadata.GetConditionPrefixText(condition)
         : null;
 
-    private static P2Mnemonic ParseMnemonic(string opcode)
+    private static void ValidateOperandCompatibility(P2InstructionFormInfo form, AsmOperand operand, int operandIndex)
     {
-        Assert.Invariant(P2InstructionMetadata.TryParseMnemonic(opcode, out P2Mnemonic mnemonic));
-        return mnemonic;
+        P2InstructionOperandInfo operandInfo = form.GetOperandInfo(operandIndex);
+        switch (operand)
+        {
+            case AsmImmediateOperand:
+                Assert.Invariant(operandInfo.SupportsImmediateSyntax, $"Operand {operandIndex} of '{form.Mnemonic}' does not allow immediate values.");
+                break;
+            case AsmSymbolOperand symbol when symbol.AddressingMode == AsmSymbolAddressingMode.Immediate:
+                Assert.Invariant(operandInfo.SupportsImmediateSyntax, $"Operand {operandIndex} of '{form.Mnemonic}' does not allow immediate symbols.");
+                break;
+            case AsmSymbolOperand symbol when symbol.AddressingMode == AsmSymbolAddressingMode.Register:
+                Assert.Invariant(!IsImmediateOnlyOperand(operandInfo), $"Operand {operandIndex} of '{form.Mnemonic}' requires immediate syntax.");
+                break;
+            case AsmRegisterOperand:
+            case AsmPlaceOperand:
+            case AsmLabelRefOperand:
+            case AsmPhysicalRegisterOperand:
+                // TODO: Extend operand-shape validation for register/place/label-ref/physical-register
+                // forms once metadata exposes all required distinctions for these operand kinds.
+                break;
+            default:
+                Assert.Unreachable();
+                break;
+        }
     }
 
-    private static P2ConditionCode? ParseCondition(string? predicate)
-    {
-        if (string.IsNullOrWhiteSpace(predicate))
-            return null;
+    private static bool IsImmediateOnlyOperand(P2InstructionOperandInfo operandInfo)
+        => operandInfo.SupportsImmediateSyntax
+            && operandInfo.Access == P2OperandAccess.None
+            && operandInfo.Role == P2OperandRole.N;
 
-        Assert.Invariant(P2InstructionMetadata.TryParseConditionCode(predicate, out P2ConditionCode condition));
-        return condition;
-    }
 }
 
 /// <summary>
@@ -144,6 +155,12 @@ public sealed class AsmInstructionNode : AsmNode
 public abstract class AsmOperand
 {
     public abstract string Format();
+}
+
+public enum AsmSymbolAddressingMode
+{
+    Immediate,
+    Register,
 }
 
 /// <summary>
@@ -182,14 +199,26 @@ public sealed class AsmImmediateOperand : AsmOperand
 /// </summary>
 public sealed class AsmSymbolOperand : AsmOperand
 {
-    public AsmSymbolOperand(string name)
+    public AsmSymbolOperand(P2SpecialRegister register)
+        : this(register.ToString(), AsmSymbolAddressingMode.Register)
+    {
+    }
+
+    public AsmSymbolOperand(string name, AsmSymbolAddressingMode addressingMode)
     {
         Name = name;
+        AddressingMode = addressingMode;
     }
 
     public string Name { get; }
+    public AsmSymbolAddressingMode AddressingMode { get; }
 
-    public override string Format() => $"#{Name}";
+    public override string Format() => AddressingMode switch
+    {
+        AsmSymbolAddressingMode.Immediate => $"#{Name}",
+        AsmSymbolAddressingMode.Register => Name,
+        _ => Assert.UnreachableValue<string>(),
+    };
 }
 
 /// <summary>

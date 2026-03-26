@@ -9,7 +9,7 @@ public class AsmLegalizerTests
     public void Legalize_UsesAugdForLargeSetxfrqImmediate()
     {
         IReadOnlyList<AsmNode> nodes = LegalizeNodes(
-            new AsmInstructionNode("SETXFRQ", [new AsmImmediateOperand(0x456)]));
+            new AsmInstructionNode(P2Mnemonic.SETXFRQ, [new AsmImmediateOperand(0x456)]));
 
         Assert.That(nodes, Has.Count.EqualTo(2));
         AssertAugInstruction(nodes[0], "AUGD", 0x456 >> 9);
@@ -20,7 +20,7 @@ public class AsmLegalizerTests
     public void Legalize_UsesAugsForLargeAkpinImmediate()
     {
         IReadOnlyList<AsmNode> nodes = LegalizeNodes(
-            new AsmInstructionNode("AKPIN", [new AsmImmediateOperand(0x456)]));
+            new AsmInstructionNode(P2Mnemonic.AKPIN, [new AsmImmediateOperand(0x456)]));
 
         Assert.That(nodes, Has.Count.EqualTo(2));
         AssertAugInstruction(nodes[0], "AUGS", 0x456 >> 9);
@@ -31,7 +31,7 @@ public class AsmLegalizerTests
     public void Legalize_UsesOperandRoleMetadataForWrpin()
     {
         IReadOnlyList<AsmNode> nodes = LegalizeNodes(
-            new AsmInstructionNode("WRPIN", [new AsmImmediateOperand(0x456), new AsmImmediateOperand(0x789)]));
+            new AsmInstructionNode(P2Mnemonic.WRPIN, [new AsmImmediateOperand(0x456), new AsmImmediateOperand(0x789)]));
 
         Assert.That(nodes, Has.Count.EqualTo(3));
         AssertAugInstruction(nodes[0], "AUGD", 0x456 >> 9);
@@ -48,7 +48,7 @@ public class AsmLegalizerTests
     {
         AsmModule module = CreateModule(
             new AsmInstructionNode(
-                "GETNIB",
+                P2Mnemonic.GETNIB,
                 [new AsmRegisterOperand(1), new AsmImmediateOperand(0), new AsmImmediateOperand(8)]));
 
         Assert.That(

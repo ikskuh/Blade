@@ -478,22 +478,29 @@ public static class FinalAssemblyWriter
         int operandIndex,
         IReadOnlySet<string> functionNames)
     {
-        // Special register names: always plain
-        if (P2InstructionMetadata.IsSpecialRegisterName(sym.Name))
-            return sym.Name;
+        P2InstructionOperandInfo operandInfo = P2InstructionMetadata.GetOperandInfo(
+            instruction.Mnemonic,
+            instruction.Operands.Count,
+            operandIndex);
 
-        // $ (current address): always prefixed
-        if (sym.Name == "$")
-            return "#$";
-
-        if (P2InstructionMetadata.UsesImmediateSymbolSyntax(instruction.Mnemonic, instruction.Operands.Count, operandIndex))
+        if (sym.AddressingMode == AsmSymbolAddressingMode.Immediate)
         {
+            Assert.Invariant(
+                operandInfo.SupportsImmediateSyntax,
+                $"Instruction '{instruction.Opcode}' operand {operandIndex} does not accept immediate symbols.");
             return $"#{FormatIdentifier(sym.Name, functionNames)}";
         }
 
-        // Default: register reference (no # prefix)
+        Assert.Invariant(
+            !IsImmediateOnlyOperand(operandInfo),
+            $"Instruction '{instruction.Opcode}' operand {operandIndex} requires an immediate symbol.");
         return FormatIdentifier(sym.Name, functionNames);
     }
+
+    private static bool IsImmediateOnlyOperand(P2InstructionOperandInfo operandInfo)
+        => operandInfo.SupportsImmediateSyntax
+            && operandInfo.Access == P2OperandAccess.None
+            && operandInfo.Role == P2OperandRole.N;
 
     private static string FormatFlagEffect(P2FlagEffect effect)
     {

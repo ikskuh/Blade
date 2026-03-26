@@ -1,4 +1,4 @@
-// EXPECT: xfail
+// EXPECT: pass
 // STAGE: final-asm
 // SEQUENCE:
 // - RESI1
@@ -7,12 +7,12 @@
 //
 // SEQUENCE:
 // - RESI2
-// - MOV IJMP1, #f_handle_irq2
+// - MOV IJMP2, #f_handle_irq2
 // - RETI2
 //
 // SEQUENCE:
 // - RESI3
-// - MOV IJMP1, #f_handle_irq3
+// - MOV IJMP3, #f_handle_irq3
 // - RETI3
 //
 // NOTE:

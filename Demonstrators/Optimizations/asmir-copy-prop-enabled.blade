@@ -4,8 +4,8 @@
 // - -fno-asmir-opt=*
 // - -fasmir-opt=copy-prop
 // CONTAINS:
-// - MOV #_r1, #1
-// ! MOV #_r1, #_r2
+// - MOV _r1, #1
+// ! MOV _r1, _r2
 // NOTE:
 //   Positive case for ASMIR copy-prop: the sink store should use the propagated source directly.
 
