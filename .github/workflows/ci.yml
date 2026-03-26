@@ -63,11 +63,18 @@ jobs:
       - name: Add flexspin to PATH
         run: echo "$HOME/.cache/flexspin/bin" >> "$GITHUB_PATH"
 
+      - name: Install dotnet tooling
+        run: |
+          dotnet tool install --global dotnet-reportgenerator-globaltool
+          dotnet tool install --global roslynator.dotnet.cli
+
       - name: Verify toolchain
         run: |
           dotnet --info
           just --version
           flexspin --version
+          reportgenerator -version
+          roslynator --version
 
       - name: just build
         run: just build
