@@ -1,13 +1,13 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace Blade;
 
 /// <summary>
 /// Enumeration of all Propeller 2 special registers.
 /// </summary>
+[SuppressMessage("Design", "CA1008:Enums should have zero value", Justification = "Special-register enum models hardware register addresses; zero is not a valid special register.")]
 public enum P2SpecialRegister
 {
-    /// <summary>No special register.</summary>
-    None = 0,
-
     /// <summary>INT3 call address.</summary>
     IJMP3 = 0x1F0,
 

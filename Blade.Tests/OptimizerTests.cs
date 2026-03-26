@@ -245,7 +245,7 @@ public class OptimizerTests
             new AsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
             [
                 new AsmLabelNode("f_bb0"),
-                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand("OUTA", AsmSymbolAddressingMode.Register), r1]),
+                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(P2SpecialRegister.OUTA), r1]),
             ]),
         ]);
 
