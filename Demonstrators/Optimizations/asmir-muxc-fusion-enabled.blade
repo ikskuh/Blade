@@ -4,9 +4,9 @@
 // - -fno-asmir-opt=*
 // - -fasmir-opt=muxc-fusion
 // CONTAINS:
-// - MUXC #_r1, #_r2
-// ! IF_C OR #_r1, #_r2
-// ! IF_NC ANDN #_r1, #_r2
+// - MUXC _r1, _r2
+// ! IF_C OR _r1, _r2
+// ! IF_NC ANDN _r1, _r2
 // NOTE:
 //   Positive case for muxc-fusion: IF_C OR + IF_NC ANDN should fold to MUXC.
 

@@ -200,7 +200,7 @@ public sealed class AsmSymbolOperand : AsmOperand
     public override string Format() => AddressingMode switch
     {
         AsmSymbolAddressingMode.Immediate => $"#{Name}",
-        AsmSymbolAddressingMode.Register => $"#{Name}",
+        AsmSymbolAddressingMode.Register => Name,
         _ => Assert.UnreachableValue<string>(),
     };
 }

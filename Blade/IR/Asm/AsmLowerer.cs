@@ -784,7 +784,7 @@ public static class AsmLowerer
 
             if (IsPlainInlineAsmSymbol(immediateText))
             {
-                operand = new AsmSymbolOperand(RewriteInlineAsmLocalLabel(immediateText, localLabels), AsmSymbolAddressingMode.Register);
+                operand = new AsmSymbolOperand(RewriteInlineAsmLocalLabel(immediateText, localLabels), AsmSymbolAddressingMode.Immediate);
                 return true;
             }
 
