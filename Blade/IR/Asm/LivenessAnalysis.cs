@@ -245,17 +245,6 @@ public static class LivenessAnalyzer
                         }
                         break;
 
-                    case AsmInlineTextNode inlineText:
-                        // Conservative: all bindings are both defs and uses
-                        foreach (AsmOperand operand in inlineText.Bindings.Values)
-                        {
-                            if (operand is AsmRegisterOperand reg)
-                            {
-                                AddUse(block, reg.RegisterId);
-                                AddDef(block, reg.RegisterId);
-                            }
-                        }
-                        break;
                 }
             }
         }
@@ -412,24 +401,6 @@ public static class LivenessAnalyzer
                         }
                         break;
 
-                    case AsmInlineTextNode inlineText:
-                    {
-                        foreach (AsmOperand operand in inlineText.Bindings.Values)
-                        {
-                            if (operand is AsmRegisterOperand reg)
-                            {
-                                EnsureNode(interference, reg.RegisterId);
-                                // Conservative: interferes with everything live
-                                foreach (int other in live)
-                                {
-                                    if (other != reg.RegisterId)
-                                        AddEdge(interference, reg.RegisterId, other);
-                                }
-                                live.Add(reg.RegisterId);
-                            }
-                        }
-                        break;
-                    }
                 }
             }
         }

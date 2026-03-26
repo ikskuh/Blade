@@ -551,8 +551,6 @@ public static class MirLowerer
             string[] bindingNames = [.. asmStatement.ReferencedSymbols.Keys];
             IReadOnlyDictionary<string, InlineAsmBindingAccess> bindingAccess =
                 InlineAssemblyBindingAnalysis.ComputeBindingAccess(
-                    asmStatement.Volatility,
-                    asmStatement.FlagOutput,
                     asmStatement.ParsedLines,
                     bindingNames);
 

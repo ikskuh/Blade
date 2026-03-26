@@ -96,9 +96,12 @@ public static class AsmTextWriter
                 sb.AppendLine();
                 break;
 
-            case AsmInlineTextNode inlineText:
-                sb.Append("    ");
-                sb.AppendLine(inlineText.Text);
+            case AsmVolatileRegionBeginNode:
+                sb.AppendLine("    .volatile_begin");
+                break;
+
+            case AsmVolatileRegionEndNode:
+                sb.AppendLine("    .volatile_end");
                 break;
         }
     }

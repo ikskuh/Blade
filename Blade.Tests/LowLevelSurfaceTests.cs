@@ -13,8 +13,6 @@ public class LowLevelSurfaceTests
     public void InlineAssemblyBindingAnalysis_ComputesPreciseTypedAccesses()
     {
         IReadOnlyDictionary<string, InlineAsmBindingAccess> access = InlineAssemblyBindingAnalysis.ComputeBindingAccess(
-            AsmVolatility.NonVolatile,
-            flagOutput: null,
             parsedLines:
             [
                 new InlineAssemblyValidator.AsmLine { Mnemonic = P2Mnemonic.ADD, Operands = ["{dst}", "{src}"] },
@@ -30,18 +28,16 @@ public class LowLevelSurfaceTests
     [Test]
     public void InlineAssemblyBindingAnalysis_FallsBackToReadWriteWhenLoweringIsUnsafe()
     {
+        // Volatile asm now gets precise per-operand analysis (not conservative ReadWrite).
         IReadOnlyDictionary<string, InlineAsmBindingAccess> volatileAccess = InlineAssemblyBindingAnalysis.ComputeBindingAccess(
-            AsmVolatility.Volatile,
-            flagOutput: null,
             parsedLines: [new InlineAssemblyValidator.AsmLine { Mnemonic = P2Mnemonic.MOV, Operands = ["{x}", "{y}"] }],
             bindingNames: ["x", "y"]);
 
-        Assert.That(volatileAccess["x"], Is.EqualTo(InlineAsmBindingAccess.ReadWrite));
-        Assert.That(volatileAccess["y"], Is.EqualTo(InlineAsmBindingAccess.ReadWrite));
+        Assert.That(volatileAccess["x"], Is.EqualTo(InlineAsmBindingAccess.Write));
+        Assert.That(volatileAccess["y"], Is.EqualTo(InlineAsmBindingAccess.Read));
 
+        // Unknown mnemonic (null) still falls back to ReadWrite via CanLowerTypedLosslessly.
         IReadOnlyDictionary<string, InlineAsmBindingAccess> unknownMnemonic = InlineAssemblyBindingAnalysis.ComputeBindingAccess(
-            AsmVolatility.NonVolatile,
-            flagOutput: "@C",
             parsedLines: [new InlineAssemblyValidator.AsmLine { Mnemonic = null, Operands = ["{x}"] }],
             bindingNames: ["x"]);
 

@@ -561,29 +561,21 @@ public static class AsmLowerer
 
         IReadOnlyDictionary<string, string> localLabels = CreateInlineAsmLocalLabels(ctx, inlineAsm.ParsedLines);
 
-        if (inlineAsm.Volatility == AsmVolatility.Volatile)
-        {
-            LowerRawInlineAsm(nodes, inlineAsm.Body, inlineAsm.ParsedLines, bindings, localLabels, "inline asm volatile");
-            return;
-        }
+        bool isVolatile = inlineAsm.Volatility == AsmVolatility.Volatile;
 
-        if (inlineAsm.FlagOutput is not null)
-        {
-            LowerRawInlineAsm(nodes, inlineAsm.Body, inlineAsm.ParsedLines, bindings, localLabels, $"inline asm flag-output {inlineAsm.FlagOutput}");
-            return;
-        }
-
-        if (TryLowerTypedInlineAsm(nodes, inlineAsm, bindings, localLabels))
+        if (TryLowerTypedInlineAsm(nodes, inlineAsm, bindings, localLabels, isVolatile))
             return;
 
-        LowerRawInlineAsm(nodes, inlineAsm.Body, inlineAsm.ParsedLines, bindings, localLabels, "inline asm raw fallback");
+        // After label restriction (E0306), all valid inline asm should be typed-lowerable.
+        Assert.Unreachable();
     }
 
     private static bool TryLowerTypedInlineAsm(
         List<AsmNode> nodes,
         LirInlineAsmInstruction inlineAsm,
         IReadOnlyDictionary<string, AsmOperand> bindings,
-        IReadOnlyDictionary<string, string> localLabels)
+        IReadOnlyDictionary<string, string> localLabels,
+        bool isVolatile)
     {
         Queue<InlineAssemblyValidator.AsmLine> parsedLines = new(inlineAsm.ParsedLines);
         List<AsmNode> lowered = [];
@@ -618,6 +610,9 @@ public static class AsmLowerer
             if (!TryLowerParsedInlineAsmLine(line, bindings, localLabels, out AsmInstructionNode? instruction))
                 return false;
 
+            if (isVolatile)
+                instruction = WithNonElidable(instruction!);
+
             lowered.Add(instruction!);
             if (sourceLine.CommentText is not null)
                 lowered.Add(new AsmCommentNode(sourceLine.CommentText));
@@ -626,60 +621,37 @@ public static class AsmLowerer
         if (parsedLines.Count != 0)
             return false;
 
-        nodes.Add(new AsmCommentNode("inline asm typed begin"));
-        nodes.AddRange(lowered);
-        nodes.Add(new AsmCommentNode("inline asm typed end"));
+        if (isVolatile)
+        {
+            nodes.Add(new AsmVolatileRegionBeginNode());
+            nodes.Add(new AsmCommentNode("inline asm volatile begin"));
+            nodes.AddRange(lowered);
+            nodes.Add(new AsmCommentNode("inline asm volatile end"));
+            nodes.Add(new AsmVolatileRegionEndNode());
+        }
+        else
+        {
+            nodes.Add(new AsmCommentNode("inline asm typed begin"));
+            nodes.AddRange(lowered);
+            nodes.Add(new AsmCommentNode("inline asm typed end"));
+        }
+
         return true;
     }
 
-    private static void LowerRawInlineAsm(
-        List<AsmNode> nodes,
-        string body,
-        IReadOnlyList<InlineAssemblyValidator.AsmLine> parsedLines,
-        IReadOnlyDictionary<string, AsmOperand> bindings,
-        IReadOnlyDictionary<string, string> localLabels,
-        string commentLabel)
+    private static AsmInstructionNode WithNonElidable(AsmInstructionNode instruction)
     {
-        nodes.Add(new AsmCommentNode($"{commentLabel} begin"));
-        Queue<InlineAssemblyValidator.AsmLine> remainingLines = new(parsedLines);
-        foreach (InlineAsmSourceLine sourceLine in ParseInlineAsmSourceLines(body))
-        {
-            if (sourceLine.IsBlank)
-            {
-                nodes.Add(new AsmInlineTextNode(string.Empty));
-                continue;
-            }
+        if (instruction.IsNonElidable)
+            return instruction;
 
-            if (sourceLine.InstructionText is null)
-            {
-                if (sourceLine.CommentText is not null)
-                    nodes.Add(new AsmCommentNode(sourceLine.CommentText));
-                continue;
-            }
-
-            if (remainingLines.TryPeek(out InlineAssemblyValidator.AsmLine? line) && line.IsLabel)
-            {
-                remainingLines.Dequeue();
-                if (string.IsNullOrWhiteSpace(line.LabelName))
-                    continue;
-
-                nodes.Add(new AsmLabelNode(RewriteInlineAsmLocalLabel(line.LabelName, localLabels)));
-                if (sourceLine.CommentText is not null)
-                    nodes.Add(new AsmCommentNode(sourceLine.CommentText));
-                continue;
-            }
-
-            if (remainingLines.Count > 0)
-                remainingLines.Dequeue();
-
-            nodes.Add(new AsmInlineTextNode(
-                FormatRawInlineAsmText(sourceLine.InstructionText, sourceLine.CommentText),
-                bindings,
-                localLabels));
-        }
-
-        nodes.Add(new AsmCommentNode($"{commentLabel} end"));
+        return new AsmInstructionNode(
+            instruction.Mnemonic,
+            instruction.Operands,
+            instruction.Condition,
+            instruction.FlagEffect,
+            isNonElidable: true);
     }
+
 
     private static IEnumerable<string> SplitInlineAsmBody(string body)
     {
@@ -852,15 +824,6 @@ public static class AsmLowerer
     private static string NormalizeBladeComment(string commentText)
         => commentText.TrimStart();
 
-    private static string FormatRawInlineAsmText(string instructionText, string? commentText)
-    {
-        if (commentText is null)
-            return instructionText;
-
-        return instructionText.Length == 0
-            ? $"'{(commentText.Length == 0 ? string.Empty : $" {commentText}")}"
-            : $"{instructionText} '{(commentText.Length == 0 ? string.Empty : $" {commentText}")}";
-    }
 
     private static IReadOnlyDictionary<string, string> CreateInlineAsmLocalLabels(
         LoweringContext ctx,

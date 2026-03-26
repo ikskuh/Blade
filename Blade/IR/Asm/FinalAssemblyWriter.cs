@@ -11,8 +11,6 @@ namespace Blade.IR.Asm;
 
 public static class FinalAssemblyWriter
 {
-    private static readonly IReadOnlySet<string> EmptyFunctionNames = new HashSet<string>(StringComparer.Ordinal);
-
     private static bool IsDataDirective(string text)
     {
         ReadOnlySpan<char> t = text.AsSpan().TrimStart();
@@ -99,9 +97,6 @@ public static class FinalAssemblyWriter
                 continue;
 
             if (TryWriteConstantFile(sb, nodes, ref index, functionNames))
-                continue;
-
-            if (TryWriteRawInlineAsmBlock(sb, nodes, ref index))
                 continue;
 
             WriteNode(sb, nodes[index], functionNames);
@@ -279,78 +274,6 @@ public static class FinalAssemblyWriter
         return true;
     }
 
-    private static bool TryWriteRawInlineAsmBlock(StringBuilder sb, IReadOnlyList<AsmNode> nodes, ref int index)
-    {
-        if (nodes[index] is not AsmCommentNode beginComment
-            || !beginComment.Text.EndsWith(" begin", StringComparison.Ordinal)
-            || index + 1 >= nodes.Count
-            || nodes[index + 1] is not AsmInlineTextNode)
-        {
-            return false;
-        }
-
-        int endIndex = index + 1;
-        while (endIndex < nodes.Count && nodes[endIndex] is AsmInlineTextNode)
-            endIndex++;
-
-        if (endIndex >= nodes.Count
-            || nodes[endIndex] is not AsmCommentNode endComment
-            || endComment.Text != beginComment.Text[..^" begin".Length] + " end")
-        {
-            return false;
-        }
-
-        WriteNode(sb, beginComment, EmptyFunctionNames);
-
-        int commonIndent = GetCommonInlineTextIndent(nodes, index + 1, endIndex);
-        for (int i = index + 1; i < endIndex; i++)
-        {
-            AsmInlineTextNode inlineText = (AsmInlineTextNode)nodes[i];
-            WriteInlineText(sb, inlineText.Text, commonIndent);
-        }
-
-        WriteNode(sb, endComment, EmptyFunctionNames);
-        index = endIndex + 1;
-        return true;
-    }
-
-    private static int GetCommonInlineTextIndent(IReadOnlyList<AsmNode> nodes, int start, int end)
-    {
-        int? commonIndent = null;
-        for (int i = start; i < end; i++)
-        {
-            string text = ((AsmInlineTextNode)nodes[i]).Text;
-            if (string.IsNullOrWhiteSpace(text))
-                continue;
-
-            int indent = CountLeadingWhitespace(text);
-            commonIndent = commonIndent.HasValue ? Math.Min(commonIndent.Value, indent) : indent;
-        }
-
-        return commonIndent ?? 0;
-    }
-
-    private static int CountLeadingWhitespace(string text)
-    {
-        int count = 0;
-        while (count < text.Length && char.IsWhiteSpace(text[count]))
-            count++;
-        return count;
-    }
-
-    private static void WriteInlineText(StringBuilder sb, string text, int trimIndent)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            sb.AppendLine();
-            return;
-        }
-
-        int removeCount = Math.Min(trimIndent, CountLeadingWhitespace(text));
-        sb.Append("    ");
-        sb.AppendLine(text[removeCount..]);
-    }
-
     private static bool TryParseDataDirective(string text, out string directiveName, out string valueText)
     {
         directiveName = string.Empty;
@@ -394,11 +317,10 @@ public static class FinalAssemblyWriter
                 break;
 
             case AsmImplicitUseNode:
+            case AsmVolatileRegionBeginNode:
+            case AsmVolatileRegionEndNode:
                 break;
 
-            case AsmInlineTextNode inlineText:
-                WriteInlineText(sb, inlineText.Text, trimIndent: 0);
-                break;
 
             case AsmInstructionNode instruction:
                 sb.Append("    ");

@@ -482,6 +482,14 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
             $"Instruction '{mnemonic}' does not support {operandCount} operand(s) in inline assembly.");
     }
 
+    public void ReportInlineAsmUndefinedLabel(TextSpan span, string name)
+    {
+        Report(
+            DiagnosticCode.E0306_InlineAsmUndefinedLabel,
+            span,
+            $"Inline assembly references undefined label '{name}'. Only labels defined within the same asm block are accessible.");
+    }
+
     public void ReportUnsupportedLowering(TextSpan span, string lowering)
     {
         Report(

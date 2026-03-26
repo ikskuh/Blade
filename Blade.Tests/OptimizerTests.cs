@@ -203,7 +203,8 @@ public class OptimizerTests
             [
                 new AsmLabelNode("f_bb0"),
                 new AsmInstructionNode(P2Mnemonic.MOV, [r1, input]),
-                new AsmInlineTextNode("opaque"),
+                new AsmVolatileRegionBeginNode(),
+                new AsmVolatileRegionEndNode(),
                 new AsmInstructionNode(P2Mnemonic.MOV, [output, r1]),
             ]),
         ]);
