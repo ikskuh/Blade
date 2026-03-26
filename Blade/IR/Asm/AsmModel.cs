@@ -129,6 +129,14 @@ public sealed class AsmInstructionNode : AsmNode
             case AsmSymbolOperand symbol when symbol.AddressingMode == AsmSymbolAddressingMode.Register:
                 Assert.Invariant(!IsImmediateOnlyOperand(operandInfo), $"Operand {operandIndex} of '{form.Mnemonic}' requires immediate syntax.");
                 break;
+            case AsmRegisterOperand:
+            case AsmPlaceOperand:
+            case AsmLabelRefOperand:
+            case AsmPhysicalRegisterOperand:
+                break;
+            default:
+                Assert.Unreachable();
+                break;
         }
     }
 
