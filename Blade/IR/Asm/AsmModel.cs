@@ -148,7 +148,6 @@ public abstract class AsmOperand
 
 public enum AsmSymbolAddressingMode
 {
-    Auto,
     Immediate,
     Register,
 }
@@ -189,7 +188,7 @@ public sealed class AsmImmediateOperand : AsmOperand
 /// </summary>
 public sealed class AsmSymbolOperand : AsmOperand
 {
-    public AsmSymbolOperand(string name, AsmSymbolAddressingMode addressingMode = AsmSymbolAddressingMode.Auto)
+    public AsmSymbolOperand(string name, AsmSymbolAddressingMode addressingMode)
     {
         Name = name;
         AddressingMode = addressingMode;
@@ -201,8 +200,8 @@ public sealed class AsmSymbolOperand : AsmOperand
     public override string Format() => AddressingMode switch
     {
         AsmSymbolAddressingMode.Immediate => $"#{Name}",
-        AsmSymbolAddressingMode.Register => Name,
-        _ => $"#{Name}",
+        AsmSymbolAddressingMode.Register => $"#{Name}",
+        _ => Assert.UnreachableValue<string>(),
     };
 }
 

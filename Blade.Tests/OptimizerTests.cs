@@ -111,7 +111,7 @@ public class OptimizerTests
             new AsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
             [
                 new AsmLabelNode("f_bb0"),
-                new AsmInstructionNode("JMP", [new AsmSymbolOperand("f_bb1")]),
+                new AsmInstructionNode("JMP", [new AsmSymbolOperand("f_bb1", AsmSymbolAddressingMode.Immediate)]),
                 new AsmCommentNode("between"),
                 new AsmLabelNode("f_bb1"),
                 new AsmInstructionNode("NOP", []),
@@ -168,8 +168,8 @@ public class OptimizerTests
     {
         AsmRegisterOperand r1 = new(1);
         AsmRegisterOperand r2 = new(2);
-        AsmSymbolOperand input = new("input");
-        AsmSymbolOperand output = new("output");
+        AsmSymbolOperand input = new("input", AsmSymbolAddressingMode.Register);
+        AsmSymbolOperand output = new("output", AsmSymbolAddressingMode.Register);
 
         AsmModule module = new([
             new AsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
@@ -195,8 +195,8 @@ public class OptimizerTests
     public void AsmOptimizer_DoesNotElideCopyAcrossInlineAsmBarrier()
     {
         AsmRegisterOperand r1 = new(1);
-        AsmSymbolOperand input = new("input");
-        AsmSymbolOperand output = new("output");
+        AsmSymbolOperand input = new("input", AsmSymbolAddressingMode.Register);
+        AsmSymbolOperand output = new("output", AsmSymbolAddressingMode.Register);
 
         AsmModule module = new([
             new AsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
@@ -245,7 +245,7 @@ public class OptimizerTests
             new AsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
             [
                 new AsmLabelNode("f_bb0"),
-                new AsmInstructionNode("MOV", [new AsmSymbolOperand("OUTA"), r1]),
+                new AsmInstructionNode("MOV", [new AsmSymbolOperand("OUTA", AsmSymbolAddressingMode.Register), r1]),
             ]),
         ]);
 

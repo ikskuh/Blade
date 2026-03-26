@@ -649,7 +649,7 @@ public static class RegisterAllocator
     private static AsmOperand RewriteOperand(AsmOperand operand, IReadOnlyDictionary<int, int> regToSlot)
     {
         if (operand is AsmRegisterOperand reg && regToSlot.TryGetValue(reg.RegisterId, out int slot))
-            return new AsmSymbolOperand(SlotLabel(slot));
+            return new AsmSymbolOperand(SlotLabel(slot), AsmSymbolAddressingMode.Register);
         return operand;
     }
 

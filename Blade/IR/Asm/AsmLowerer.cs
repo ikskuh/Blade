@@ -772,7 +772,7 @@ public static class AsmLowerer
             string immediateText = trimmed[1..].Trim();
             if (immediateText == "$")
             {
-                operand = new AsmSymbolOperand("$");
+                operand = new AsmSymbolOperand("$", AsmSymbolAddressingMode.Immediate);
                 return true;
             }
 
@@ -784,7 +784,7 @@ public static class AsmLowerer
 
             if (IsPlainInlineAsmSymbol(immediateText))
             {
-                operand = new AsmSymbolOperand(RewriteInlineAsmLocalLabel(immediateText, localLabels));
+                operand = new AsmSymbolOperand(RewriteInlineAsmLocalLabel(immediateText, localLabels), AsmSymbolAddressingMode.Register);
                 return true;
             }
 
@@ -797,13 +797,13 @@ public static class AsmLowerer
             if (!IsPlainInlineAsmSymbol(labelReference))
                 return false;
 
-            operand = new AsmSymbolOperand(RewriteInlineAsmLocalLabel(labelReference, localLabels));
+            operand = new AsmSymbolOperand(RewriteInlineAsmLocalLabel(labelReference, localLabels), AsmSymbolAddressingMode.Register);
             return true;
         }
 
         if (trimmed == "$" || IsPlainInlineAsmSymbol(trimmed))
         {
-            operand = new AsmSymbolOperand(RewriteInlineAsmLocalLabel(trimmed, localLabels));
+            operand = new AsmSymbolOperand(RewriteInlineAsmLocalLabel(trimmed, localLabels), AsmSymbolAddressingMode.Register);
             return true;
         }
 
@@ -987,7 +987,7 @@ public static class AsmLowerer
     {
         AsmRegisterOperand dest = DestReg(op);
         string symbol = ((LirSymbolOperand)op.Operands[0]).Symbol;
-        nodes.Add(Emit("MOV", dest, new AsmSymbolOperand(symbol)));
+        nodes.Add(Emit("MOV", dest, new AsmSymbolOperand(symbol, AsmSymbolAddressingMode.Register)));
     }
 
     private static void LowerLoadPlace(List<AsmNode> nodes, LirOpInstruction op)
@@ -1663,26 +1663,26 @@ public static class AsmLowerer
             args.Add(OpReg(op.Operands[i]));
 
         AsmRegisterOperand? destReg = op.Destination is { } dest ? new AsmRegisterOperand(dest.Id) : null;
-        AsmSymbolOperand targetOp = new(target);
+        AsmSymbolOperand targetOp = new(target, AsmSymbolAddressingMode.Immediate);
 
         switch (calleeTier)
         {
             case CallingConventionTier.Leaf:
                 // CALLPA: param in PA, result in PA
                 if (args.Count > 0)
-                    nodes.Add(Emit("MOV", new AsmSymbolOperand("PA"), args[0]));
-                nodes.Add(Emit("CALLPA", new AsmSymbolOperand("PA"), targetOp));
+                    nodes.Add(Emit("MOV", new AsmSymbolOperand("PA", AsmSymbolAddressingMode.Register), args[0]));
+                nodes.Add(Emit("CALLPA", new AsmSymbolOperand("PA", AsmSymbolAddressingMode.Register), targetOp));
                 if (destReg is not null)
-                    nodes.Add(Emit("MOV", destReg, new AsmSymbolOperand("PA")));
+                    nodes.Add(Emit("MOV", destReg, new AsmSymbolOperand("PA", AsmSymbolAddressingMode.Register)));
                 break;
 
             case CallingConventionTier.SecondOrder:
                 // CALLPB: param in PB, result in PB
                 if (args.Count > 0)
-                    nodes.Add(Emit("MOV", new AsmSymbolOperand("PB"), args[0]));
-                nodes.Add(Emit("CALLPB", new AsmSymbolOperand("PB"), targetOp));
+                    nodes.Add(Emit("MOV", new AsmSymbolOperand("PB", AsmSymbolAddressingMode.Register), args[0]));
+                nodes.Add(Emit("CALLPB", new AsmSymbolOperand("PB", AsmSymbolAddressingMode.Register), targetOp));
                 if (destReg is not null)
-                    nodes.Add(Emit("MOV", destReg, new AsmSymbolOperand("PB")));
+                    nodes.Add(Emit("MOV", destReg, new AsmSymbolOperand("PB", AsmSymbolAddressingMode.Register)));
                 break;
 
             case CallingConventionTier.General:
@@ -1979,7 +1979,7 @@ public static class AsmLowerer
         {
             case LirGotoTerminator goto_:
                 EmitPhiMoves(nodes, goto_.Arguments, ctx, goto_.TargetLabel);
-                nodes.Add(Emit("JMP", new AsmSymbolOperand($"{functionName}_{goto_.TargetLabel}")));
+                nodes.Add(Emit("JMP", new AsmSymbolOperand($"{functionName}_{goto_.TargetLabel}", AsmSymbolAddressingMode.Immediate)));
                 break;
 
             case LirBranchTerminator branch:
@@ -2008,12 +2008,12 @@ public static class AsmLowerer
             {
                 case CallingConventionTier.Leaf:
                     // Result in PA
-                    nodes.Add(new AsmInstructionNode("MOV", [new AsmSymbolOperand("PA"), resultOp]));
+                    nodes.Add(new AsmInstructionNode("MOV", [new AsmSymbolOperand("PA", AsmSymbolAddressingMode.Register), resultOp]));
                     break;
 
                 case CallingConventionTier.SecondOrder:
                     // Result in PB
-                    nodes.Add(new AsmInstructionNode("MOV", [new AsmSymbolOperand("PB"), resultOp]));
+                    nodes.Add(new AsmInstructionNode("MOV", [new AsmSymbolOperand("PB", AsmSymbolAddressingMode.Register), resultOp]));
                     break;
 
                 case CallingConventionTier.Recursive:
@@ -2067,7 +2067,7 @@ public static class AsmLowerer
                     };
                     nodes.Add(Emit(
                         "MOV",
-                        new AsmSymbolOperand(interruptJumpRegister),
+                        new AsmSymbolOperand(interruptJumpRegister, AsmSymbolAddressingMode.Register),
                         new AsmSymbolOperand(ctx.Function.Name, AsmSymbolAddressingMode.Immediate)));
                 }
 
@@ -2132,15 +2132,15 @@ public static class AsmLowerer
 
             if (branch.TrueArguments.Count == 0 && branch.FalseArguments.Count == 0)
             {
-                nodes.Add(Emit("JMP", new AsmSymbolOperand(falseLabel), predicate: falsePredicate));
-                nodes.Add(Emit("JMP", new AsmSymbolOperand(trueLabel)));
+                nodes.Add(Emit("JMP", new AsmSymbolOperand(falseLabel, AsmSymbolAddressingMode.Immediate), predicate: falsePredicate));
+                nodes.Add(Emit("JMP", new AsmSymbolOperand(trueLabel, AsmSymbolAddressingMode.Immediate)));
             }
             else
             {
                 EmitPhiMovesConditioned(nodes, branch.FalseArguments, ctx, branch.FalseLabel, falsePredicate);
-                nodes.Add(Emit("JMP", new AsmSymbolOperand(falseLabel), predicate: falsePredicate));
+                nodes.Add(Emit("JMP", new AsmSymbolOperand(falseLabel, AsmSymbolAddressingMode.Immediate), predicate: falsePredicate));
                 EmitPhiMoves(nodes, branch.TrueArguments, ctx, branch.TrueLabel);
-                nodes.Add(Emit("JMP", new AsmSymbolOperand(trueLabel)));
+                nodes.Add(Emit("JMP", new AsmSymbolOperand(trueLabel, AsmSymbolAddressingMode.Immediate)));
             }
 
             return;
@@ -2151,8 +2151,8 @@ public static class AsmLowerer
 
         if (branch.TrueArguments.Count == 0 && branch.FalseArguments.Count == 0)
         {
-            nodes.Add(Emit("TJZ", cond, new AsmSymbolOperand(falseLabel)));
-            nodes.Add(Emit("JMP", new AsmSymbolOperand(trueLabel)));
+            nodes.Add(Emit("TJZ", cond, new AsmSymbolOperand(falseLabel, AsmSymbolAddressingMode.Immediate)));
+            nodes.Add(Emit("JMP", new AsmSymbolOperand(trueLabel, AsmSymbolAddressingMode.Immediate)));
         }
         else
         {
@@ -2160,11 +2160,11 @@ public static class AsmLowerer
 
             // False path (Z=1, condition was zero)
             EmitPhiMovesConditioned(nodes, branch.FalseArguments, ctx, branch.FalseLabel, "IF_Z");
-            nodes.Add(Emit("JMP", new AsmSymbolOperand(falseLabel), predicate: "IF_Z"));
+            nodes.Add(Emit("JMP", new AsmSymbolOperand(falseLabel, AsmSymbolAddressingMode.Immediate), predicate: "IF_Z"));
 
             // True path (fall-through when NZ)
             EmitPhiMoves(nodes, branch.TrueArguments, ctx, branch.TrueLabel);
-            nodes.Add(Emit("JMP", new AsmSymbolOperand(trueLabel)));
+            nodes.Add(Emit("JMP", new AsmSymbolOperand(trueLabel, AsmSymbolAddressingMode.Immediate)));
         }
     }
 
@@ -2266,7 +2266,7 @@ public static class AsmLowerer
         {
             LirRegisterOperand reg => new AsmRegisterOperand(reg.Register.Id),
             LirImmediateOperand imm => new AsmImmediateOperand(GetImmediateValue(imm)),
-            LirSymbolOperand sym => new AsmSymbolOperand(sym.Symbol),
+            LirSymbolOperand sym => new AsmSymbolOperand(sym.Symbol, AsmSymbolAddressingMode.Register),
             LirPlaceOperand place => new AsmPlaceOperand(place.Place),
             _ => throw new InvalidOperationException($"Unknown operand type: {operand.GetType().Name}"),
         };

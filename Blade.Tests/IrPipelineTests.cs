@@ -660,7 +660,7 @@ public class IrPipelineTests
                 new AsmInlineTextNode("                    MOV _r4, #target_label"),
                 new AsmInlineTextNode("                "),
                 new AsmCommentNode("inline asm raw fallback end"),
-                new AsmInstructionNode("MOV", [new AsmSymbolOperand("_r4"), new AsmImmediateOperand(0)]),
+                new AsmInstructionNode("MOV", [new AsmSymbolOperand("_r4", AsmSymbolAddressingMode.Register), new AsmImmediateOperand(0)]),
                 new AsmCommentNode("--- register file ---"),
                 new AsmLabelNode("g_input_word_7"),
                 new AsmDirectiveNode("LONG 13"),
@@ -704,8 +704,8 @@ public class IrPipelineTests
             new AsmFunction("caller", isEntryPoint: true, CallingConventionTier.EntryPoint,
             [
                 new AsmLabelNode("caller_bb0"),
-                new AsmInstructionNode("CALLB", [new AsmSymbolOperand("step")]),
-                new AsmInstructionNode("MOV", [new AsmPhysicalRegisterOperand(0, "_r0"), new AsmSymbolOperand("step")]),
+                new AsmInstructionNode("CALLB", [new AsmSymbolOperand("step", AsmSymbolAddressingMode.Immediate)]),
+                new AsmInstructionNode("MOV", [new AsmPhysicalRegisterOperand(0, "_r0"), new AsmSymbolOperand("step", AsmSymbolAddressingMode.Register)]),
             ]),
         ]);
 

@@ -155,7 +155,7 @@ public static class AsmLegalizer
                         && constantRegisters.TryGetValue(uval, out string? constLabel))
                     {
                         // Replace immediate with reference to constant register
-                        newOperands.Add(new AsmSymbolOperand(constLabel));
+                        newOperands.Add(new AsmSymbolOperand(constLabel, AsmSymbolAddressingMode.Register));
                         modified = true;
                         continue;
                     }
