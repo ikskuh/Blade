@@ -511,7 +511,7 @@ public static class AsmLowerer
                 LowerStorePlace(nodes, op);
                 break;
             case LirUpdatePlaceOperation updatePlace:
-                LowerUpdatePlace(nodes, op, updatePlace);
+                LowerUpdatePlace(nodes, op, updatePlace, ctx);
                 break;
             case LirStoreDerefOperation storeDeref:
                 LowerStoreDeref(nodes, op, storeDeref, ctx);
@@ -1600,6 +1600,10 @@ public static class AsmLowerer
                 if (!isFlagOnly)
                     nodes.Add(Emit(P2Mnemonic.BITNC, dest, new AsmImmediateOperand(0)));
                 break;
+
+            default:
+                Assert.Unreachable($"Unexpected binary operator kind: {kind}");
+                break;
         }
     }
 
@@ -1649,6 +1653,10 @@ public static class AsmLowerer
             case BoundUnaryOperatorKind.PostDecrement:
                 nodes.Add(Emit(P2Mnemonic.MOV, dest, src));
                 nodes.Add(Emit(P2Mnemonic.SUB, src, new AsmImmediateOperand(1)));
+                break;
+
+            default:
+                Assert.Unreachable($"Unexpected unary operator kind: {kind}");
                 break;
         }
     }
@@ -1793,8 +1801,12 @@ public static class AsmLowerer
             case VariableStorageClass.Hub:
                 nodes.Add(new AsmInstructionNode(SelectHubWriteOpcode(placeType), [valueOp, place]));
                 break;
-            default:
+            case VariableStorageClass.Automatic:
+            case VariableStorageClass.Reg:
                 nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [place, valueOp]));
+                break;
+            default:
+                Assert.Unreachable($"Unexpected storage class: {place.Place.StorageClass}");
                 break;
         }
     }
@@ -1802,7 +1814,8 @@ public static class AsmLowerer
     private static void LowerUpdatePlace(
         List<AsmNode> nodes,
         LirOpInstruction op,
-        LirUpdatePlaceOperation operation)
+        LirUpdatePlaceOperation operation,
+        LoweringContext ctx)
     {
         AsmPlaceOperand place = (AsmPlaceOperand)LowerOperand(op.Operands[0]);
         AsmOperand value = LowerOperand(op.Operands[1]);
@@ -1830,8 +1843,8 @@ public static class AsmLowerer
                 return;
             }
 
+            ReportUnsupportedLowering(ctx, op.Span, "update.place");
             nodes.Add(new AsmCommentNode($"unhandled update place: {operation.OperatorKind}"));
-            nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [place, value]));
             return;
         }
 
@@ -1845,6 +1858,7 @@ public static class AsmLowerer
 
         if (type is not null && TypeFacts.TryGetIntegerWidth(type, out int width))
         {
+            Assert.Invariant(width <= 32, $"Hub read width must be <= 32 bits, got {width}.");
             if (width <= 8)
                 return P2Mnemonic.RDBYTE;
             if (width <= 16)
@@ -1861,6 +1875,7 @@ public static class AsmLowerer
 
         if (type is not null && TypeFacts.TryGetIntegerWidth(type, out int width))
         {
+            Assert.Invariant(width <= 32, $"Hub write width must be <= 32 bits, got {width}.");
             if (width <= 8)
                 return P2Mnemonic.WRBYTE;
             if (width <= 16)

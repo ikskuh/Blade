@@ -133,6 +133,8 @@ public sealed class AsmInstructionNode : AsmNode
             case AsmPlaceOperand:
             case AsmLabelRefOperand:
             case AsmPhysicalRegisterOperand:
+                // TODO: Extend operand-shape validation for register/place/label-ref/physical-register
+                // forms once metadata exposes all required distinctions for these operand kinds.
                 break;
             default:
                 Assert.Unreachable();
