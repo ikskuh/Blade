@@ -57,32 +57,26 @@ public abstract class Symbol
 public sealed class ControlFlowLabelSymbol : IAsmSymbol
 {
     public ControlFlowLabelSymbol(string name)
-        : this(name, new FunctionSymbol("$label_owner", FunctionKind.Default))
+        : this(name, function: null)
     {
     }
 
-    public ControlFlowLabelSymbol(string name, FunctionSymbol function)
+    public ControlFlowLabelSymbol(string name, FunctionSymbol? function)
     {
-        Name = Requires.NotNullOrWhiteSpace(name);
-        Function = Requires.NotNull(function);
+        _name = Requires.NotNullOrWhiteSpace(name);
+        Function = function;
     }
 
-    public string Name { get; }
-    public FunctionSymbol Function { get; }
+    private string _name;
+
+    public string Name
+    {
+        get => _name;
+        set => _name = Requires.NotNullOrWhiteSpace(value);
+    }
+
+    public FunctionSymbol? Function { get; }
     public SymbolType SymbolType => SymbolType.ControlFlowLabel;
-}
-
-public sealed class SyntheticNamedSymbol : IAsmSymbol
-{
-    public SyntheticNamedSymbol(string name, SymbolType symbolType)
-    {
-        Name = Requires.NotNullOrWhiteSpace(name);
-        SyntheticSymbolType = symbolType;
-    }
-
-    public string Name { get; }
-    public SymbolType SyntheticSymbolType { get; }
-    public SymbolType SymbolType => SyntheticSymbolType;
 }
 
 public sealed class TypeAliasSymbol : Symbol

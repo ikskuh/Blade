@@ -343,24 +343,6 @@ public sealed class AsmPhysicalRegisterOperand : AsmOperand
     public override string Format() => Name;
 }
 
-public enum AsmSectionKind
-{
-    RegisterFile,
-    LutFile,
-    HubFile,
-    ConstantFile,
-}
-
-public sealed class AsmSectionMarkerNode : AsmNode
-{
-    public AsmSectionMarkerNode(AsmSectionKind kind)
-    {
-        Kind = kind;
-    }
-
-    public AsmSectionKind Kind { get; }
-}
-
 /// <summary>
 /// Comment-only pseudo-node for debugging/readability in ASMIR output.
 /// </summary>
