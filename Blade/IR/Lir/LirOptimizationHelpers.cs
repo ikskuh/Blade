@@ -67,8 +67,8 @@ internal static class LirOptimizationHelpers
         out LirVirtualRegister destination,
         out LirVirtualRegister source)
     {
-        destination = default;
-        source = default;
+        destination = null!;
+        source = null!;
 
         if (instruction is not LirOpInstruction op
             || op.Operation is not LirMovOperation
@@ -262,7 +262,7 @@ internal static class LirOptimizationHelpers
                 continue;
 
             rewritten ??= new List<LirInlineAsmBinding>(bindings);
-            rewritten[i] = new LirInlineAsmBinding(binding.Name, operand, binding.Access);
+            rewritten[i] = new LirInlineAsmBinding(binding.Name, binding.Symbol, operand, binding.Access);
         }
 
         return rewritten ?? bindings;
@@ -361,7 +361,7 @@ internal static class LirOptimizationHelpers
         IReadOnlyDictionary<LirVirtualRegister, LirVirtualRegister> aliases)
     {
         LirVirtualRegister current = value;
-        while (aliases.TryGetValue(current, out LirVirtualRegister next) && next != current)
+        while (aliases.TryGetValue(current, out LirVirtualRegister? next) && next is not null && next != current)
             current = next;
         return current;
     }

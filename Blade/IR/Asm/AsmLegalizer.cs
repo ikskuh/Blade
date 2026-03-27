@@ -74,8 +74,7 @@ public static class AsmLegalizer
                 extendedNodes.Add(new AsmDirectiveNode($"LONG ${value:X8}"));
             }
 
-            functions[entryIndex] = new AsmFunction(
-                entry.Name, entry.IsEntryPoint, entry.CcTier, extendedNodes);
+            functions[entryIndex] = new AsmFunction(entry, extendedNodes);
         }
 
         return new AsmModule(module.StoragePlaces, functions);
@@ -121,7 +120,7 @@ public static class AsmLegalizer
                 nodes.Add(node);
         }
 
-        return new AsmFunction(function.Name, function.IsEntryPoint, function.CcTier, nodes);
+        return new AsmFunction(function, nodes);
     }
 
     private static void LegalizeInstruction(

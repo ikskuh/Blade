@@ -282,6 +282,7 @@ public static class MirTextWriter
                 if (inlineAsm.FlagOutput is not null)
                 {
                     sb.Append(" -> ");
+                    sb.Append('@');
                     sb.Append(inlineAsm.FlagOutput);
                 }
                 if (inlineAsm.Bindings.Count > 0)

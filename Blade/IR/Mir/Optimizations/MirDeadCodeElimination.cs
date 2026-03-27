@@ -45,9 +45,8 @@ public sealed class MirDeadCodeElimination : IMirOptimization
             }
 
             functions.Add(new MirFunction(
-                function.Name,
+                function.Symbol,
                 function.IsEntryPoint,
-                function.Kind,
                 function.ReturnTypes,
                 blocks,
                 function.ReturnSlots));

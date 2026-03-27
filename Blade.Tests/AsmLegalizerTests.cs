@@ -66,7 +66,7 @@ public class AsmLegalizerTests
     {
         return new AsmModule(
             [
-                new AsmFunction(
+                CreateAsmFunction(
                     "test",
                     isEntryPoint: true,
                     CallingConventionTier.General,

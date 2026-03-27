@@ -16,9 +16,8 @@ public sealed class MirControlFlowSimplification : IMirOptimization
             IReadOnlyList<MirBlock> threaded = ThreadTrivialGotoBlocks(function.Blocks);
             IReadOnlyList<MirBlock> merged = MergeLinearBlocks(threaded);
             functions.Add(new MirFunction(
-                function.Name,
+                function.Symbol,
                 function.IsEntryPoint,
-                function.Kind,
                 function.ReturnTypes,
                 merged,
                 function.ReturnSlots));

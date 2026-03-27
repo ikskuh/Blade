@@ -11,6 +11,7 @@ public static class LirLowerer
     public static LirModule Lower(MirModule module)
     {
         Requires.NotNull(module);
+        VirtualLirRegister.ResetDebugIds();
 
         List<LirFunction> functions = new(module.Functions.Count);
         foreach (MirFunction mirFunction in module.Functions)
@@ -25,7 +26,7 @@ public static class LirLowerer
 
         LirVirtualRegister GetRegister(MirValueId value)
         {
-            if (registers.TryGetValue(value, out LirVirtualRegister register))
+            if (registers.TryGetValue(value, out LirVirtualRegister? register) && register is not null)
                 return register;
             LirVirtualRegister fresh = new(nextRegisterId++);
             registers[value] = fresh;
@@ -70,16 +71,10 @@ public static class LirLowerer
             }
 
             LirTerminator terminator = LowerTerminator(mirBlock.Terminator, GetRegister);
-            blocks.Add(new LirBlock(mirBlock.Label, parameters, instructions, terminator));
+            blocks.Add(new LirBlock(mirBlock.LabelSymbol, parameters, instructions, terminator));
         }
 
-        return new LirFunction(
-            mirFunction.Name,
-            mirFunction.IsEntryPoint,
-            mirFunction.Kind,
-            mirFunction.ReturnTypes,
-            blocks,
-            mirFunction.ReturnSlots);
+        return new LirFunction(mirFunction, blocks);
     }
 
     private static LirInstruction LowerInstruction(
@@ -107,7 +102,7 @@ public static class LirLowerer
                 new LirLoadSymbolOperation(),
                 destination,
                 load.ResultType,
-                [new LirSymbolOperand(load.SymbolName)],
+                [new LirSymbolOperand(load.Symbol)],
                 hasSideEffects: false,
                 predicate: null,
                 writesC: false,
@@ -258,10 +253,10 @@ public static class LirLowerer
                 insertMember.Span),
 
             MirCallInstruction call => new LirOpInstruction(
-                new LirCallOperation(),
+                new LirCallOperation(call.Function),
                 destination,
                 call.ResultType,
-                LowerCallOperands(call.FunctionName, call.Arguments, getRegister),
+                LowerOperands(call.Arguments, getRegister),
                 hasSideEffects: true,
                 predicate: null,
                 writesC: false,
@@ -269,10 +264,10 @@ public static class LirLowerer
                 call.Span),
 
             MirIntrinsicCallInstruction intrinsic => new LirOpInstruction(
-                new LirIntrinsicOperation(),
+                new LirIntrinsicOperation(intrinsic.Mnemonic),
                 destination,
                 intrinsic.ResultType,
-                LowerCallOperands($"@{intrinsic.IntrinsicName}", intrinsic.Arguments, getRegister),
+                LowerOperands(intrinsic.Arguments, getRegister),
                 hasSideEffects: true,
                 predicate: null,
                 writesC: false,
@@ -347,7 +342,7 @@ public static class LirLowerer
                 yield.Span),
 
             MirYieldToInstruction yieldTo => new LirOpInstruction(
-                new LirYieldToOperation(yieldTo.TargetFunctionName),
+                new LirYieldToOperation(yieldTo.TargetFunction),
                 destination: null,
                 resultType: null,
                 LowerOperands(yieldTo.Arguments, getRegister),
@@ -434,14 +429,14 @@ public static class LirLowerer
         return terminator switch
         {
             MirGotoTerminator mirGoto => new LirGotoTerminator(
-                mirGoto.TargetLabel,
+                mirGoto.TargetLabelSymbol,
                 LowerOperands(mirGoto.Arguments, getRegister),
                 mirGoto.Span),
 
             MirBranchTerminator branch => new LirBranchTerminator(
                 new LirRegisterOperand(getRegister(branch.Condition)),
-                branch.TrueLabel,
-                branch.FalseLabel,
+                branch.TrueLabelSymbol,
+                branch.FalseLabelSymbol,
                 LowerOperands(branch.TrueArguments, getRegister),
                 LowerOperands(branch.FalseArguments, getRegister),
                 branch.Span,
@@ -466,21 +461,6 @@ public static class LirLowerer
         return operands;
     }
 
-    private static IReadOnlyList<LirOperand> LowerCallOperands(
-        string target,
-        IReadOnlyList<MirValueId> arguments,
-        System.Func<MirValueId, LirVirtualRegister> getRegister)
-    {
-        List<LirOperand> operands = new(arguments.Count + 1)
-        {
-            new LirSymbolOperand(target)
-        };
-
-        foreach (MirValueId argument in arguments)
-            operands.Add(new LirRegisterOperand(getRegister(argument)));
-        return operands;
-    }
-
     private static IReadOnlyList<LirInlineAsmBinding> LowerInlineAsmBindings(
         IReadOnlyList<MirInlineAsmBinding> bindings,
         System.Func<MirValueId, LirVirtualRegister> getRegister)
@@ -491,7 +471,7 @@ public static class LirLowerer
             LirOperand operand = binding.Value is MirValueId value
                 ? new LirRegisterOperand(getRegister(value))
                 : new LirPlaceOperand(binding.Place!);
-            lowered.Add(new LirInlineAsmBinding(binding.Name, operand, binding.Access));
+            lowered.Add(new LirInlineAsmBinding(binding.Name, binding.Symbol, operand, binding.Access));
         }
 
         return lowered;

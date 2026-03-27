@@ -45,7 +45,7 @@ public sealed class AsmConditionalMoveFusion : PerFunctionAsmOptimization
         }
 
         return changed
-            ? new AsmFunction(input.Name, input.IsEntryPoint, input.CcTier, nodes)
+            ? new AsmFunction(input, nodes)
             : null;
     }
 }

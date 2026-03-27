@@ -76,9 +76,8 @@ public sealed class MirConstantPropagation : IMirOptimization
             }
 
             functions.Add(new MirFunction(
-                function.Name,
+                function.Symbol,
                 function.IsEntryPoint,
-                function.Kind,
                 function.ReturnTypes,
                 blocks,
                 function.ReturnSlots));

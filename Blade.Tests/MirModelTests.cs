@@ -34,7 +34,7 @@ public class MirModelTests
             [v4] = new MirValueId(40),
         };
 
-        MirLoadSymbolInstruction loadSymbol = new(v0, BuiltinTypes.U32, "global_symbol", Span);
+        MirLoadSymbolInstruction loadSymbol = new(v0, BuiltinTypes.U32, CreatePlace("global_symbol"), Span);
         Assert.That(loadSymbol.Uses, Is.Empty);
         Assert.That(loadSymbol.RewriteUses(mapping), Is.SameAs(loadSymbol));
 
@@ -94,8 +94,8 @@ public class MirModelTests
             parsedLines: [],
             bindings:
             [
-                new MirInlineAsmBinding("x", value, place: null, InlineAsmBindingAccess.ReadWrite),
-                new MirInlineAsmBinding("y", new MirValueId(5), place: null, InlineAsmBindingAccess.Write),
+                new MirInlineAsmBinding(CreateVariableSymbol("x"), value, place: null, InlineAsmBindingAccess.ReadWrite),
+                new MirInlineAsmBinding(CreateVariableSymbol("y"), new MirValueId(5), place: null, InlineAsmBindingAccess.Write),
             ],
             Span);
 

@@ -24,6 +24,7 @@ public class MirOptimizerTests
         MirValueId boolFalse = new(6);
         MirValueId stringLeft = new(7);
         MirValueId stringRight = new(8);
+        MirValueId zero = new(30);
 
         List<MirInstruction> instructions =
         [
@@ -31,7 +32,7 @@ public class MirOptimizerTests
             new MirConstantInstruction(intTwo, BuiltinTypes.U32, 2L, span),
             new MirConstantInstruction(intSeven, BuiltinTypes.U32, 7L, span),
             new MirConstantInstruction(intEight, BuiltinTypes.U32, 8L, span),
-            new MirConstantInstruction(new MirValueId(30), BuiltinTypes.U32, 0L, span),
+            new MirConstantInstruction(zero, BuiltinTypes.U32, 0L, span),
             new MirConstantInstruction(boolTrue, BuiltinTypes.Bool, true, span),
             new MirConstantInstruction(boolFalse, BuiltinTypes.Bool, false, span),
             new MirConstantInstruction(stringLeft, BuiltinTypes.String, "left", span),
@@ -45,9 +46,9 @@ public class MirOptimizerTests
             new MirBinaryInstruction(new MirValueId(21), BuiltinTypes.U32, BoundBinaryOperatorKind.Subtract, intTwo, intOne, span),
             new MirBinaryInstruction(new MirValueId(22), BuiltinTypes.U32, BoundBinaryOperatorKind.Multiply, intTwo, intTwo, span),
             new MirBinaryInstruction(new MirValueId(23), BuiltinTypes.U32, BoundBinaryOperatorKind.Divide, intEight, intTwo, span),
-            new MirBinaryInstruction(new MirValueId(24), BuiltinTypes.U32, BoundBinaryOperatorKind.Divide, intEight, new MirValueId(30), span),
+            new MirBinaryInstruction(new MirValueId(24), BuiltinTypes.U32, BoundBinaryOperatorKind.Divide, intEight, zero, span),
             new MirBinaryInstruction(new MirValueId(25), BuiltinTypes.U32, BoundBinaryOperatorKind.Modulo, intSeven, intTwo, span),
-            new MirBinaryInstruction(new MirValueId(26), BuiltinTypes.U32, BoundBinaryOperatorKind.Modulo, intSeven, new MirValueId(30), span),
+            new MirBinaryInstruction(new MirValueId(26), BuiltinTypes.U32, BoundBinaryOperatorKind.Modulo, intSeven, zero, span),
             new MirBinaryInstruction(new MirValueId(27), BuiltinTypes.U32, BoundBinaryOperatorKind.BitwiseAnd, intSeven, intTwo, span),
             new MirBinaryInstruction(new MirValueId(28), BuiltinTypes.U32, BoundBinaryOperatorKind.BitwiseOr, intOne, intTwo, span),
             new MirBinaryInstruction(new MirValueId(29), BuiltinTypes.U32, BoundBinaryOperatorKind.BitwiseXor, intSeven, intTwo, span),
@@ -73,7 +74,7 @@ public class MirOptimizerTests
         ];
 
         MirBlock block = new("bb0", [], instructions, new MirReturnTerminator([], span));
-        MirFunction function = new("test", isEntryPoint: true, FunctionKind.Default, [], [block]);
+        MirFunction function = CreateMirFunction("test", isEntryPoint: true, FunctionKind.Default, [], [block]);
         MirModule optimized = MirOptimizer.Optimize(new MirModule([function]), maxIterations: 1, enabledOptimizations: [OptimizationRegistry.GetMirOptimization("const-prop")!]);
 
         IReadOnlyList<MirInstruction> rewritten = optimized.Functions[0].Blocks[0].Instructions;

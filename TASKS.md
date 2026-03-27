@@ -10,6 +10,10 @@
 - Future: swizzle operations (deferred, not in reference.blade).
 - Tests: `var v: u8x4 = [1,2,3,4];`, coerce from/to `[4]u8`.
 
+## CS-2: eradicate invalid syntax
+
+Operators  PostIncrement and PostDecrement do not exist in Blade.
+
 ## ASM-3: Add `%N` temporary register support in inline asm
 
 Users currently must declare explicit local variables to use scratch registers in inline asm blocks. `%0`, `%1`, etc. should act as hidden locals — unnamed temporaries allocated by the compiler for the duration of the asm block. This is especially useful in `asm fn` functions where no surrounding variable scope is available.

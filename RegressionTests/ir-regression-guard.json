@@ -134,7 +134,8 @@
       "AsmVolatileRegionEndNode"
     ],
     "uncovered": [
-      "AsmImplicitUseNode"
+      "AsmImplicitUseNode",
+      "AsmSectionMarkerNode"
     ]
   }
 }

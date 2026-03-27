@@ -652,7 +652,7 @@ public class IrPipelineTests
     {
         AsmModule module = new([],
         [
-            new AsmFunction("$top", isEntryPoint: true, CallingConventionTier.EntryPoint,
+            CreateAsmFunction("$top", isEntryPoint: true, CallingConventionTier.EntryPoint,
             [
                 new AsmLabelNode("$top_bb0"),
                 new AsmCommentNode("inline asm typed begin"),
@@ -685,12 +685,12 @@ public class IrPipelineTests
     {
         AsmModule module = new([],
         [
-            new AsmFunction("step", isEntryPoint: false, CallingConventionTier.General,
+            CreateAsmFunction("step", isEntryPoint: false, CallingConventionTier.General,
             [
                 new AsmLabelNode("step_bb0"),
                 new AsmInstructionNode(P2Mnemonic.RET, []),
             ]),
-            new AsmFunction("caller", isEntryPoint: true, CallingConventionTier.EntryPoint,
+            CreateAsmFunction("caller", isEntryPoint: true, CallingConventionTier.EntryPoint,
             [
                 new AsmLabelNode("caller_bb0"),
                 new AsmInstructionNode(P2Mnemonic.CALLB, [new AsmSymbolOperand("step", AsmSymbolAddressingMode.Immediate)]),
@@ -702,7 +702,7 @@ public class IrPipelineTests
 
         Assert.That(assembly, Does.Contain("  f_step"));
         Assert.That(assembly, Does.Contain("    CALLB #f_step"));
-        Assert.That(assembly, Does.Contain("    MOV _r0, f_step"));
+        Assert.That(assembly, Does.Contain("    MOV r0, f_step"));
         Assert.That(assembly, Does.Contain("  f_caller"));
         Assert.That(assembly, Does.Not.Contain("  step\n"));
     }
@@ -1787,7 +1787,7 @@ public class IrPipelineTests
         LirVirtualRegister valueRegister = new(1);
         LirVirtualRegister destinationRegister = new(2);
         AggregateMemberSymbol unsupportedInsert = new("bits", BuiltinTypes.U32, byteOffset: 0, bitOffset: 2, bitWidth: 5, isBitfield: true);
-        LirFunction function = new(
+        LirFunction function = CreateLirFunction(
             "demo",
             isEntryPoint: true,
             FunctionKind.Default,
@@ -1826,7 +1826,7 @@ public class IrPipelineTests
         AggregateMemberSymbol byteMember = new("b", BuiltinTypes.U8, byteOffset: 0, bitOffset: 8, bitWidth: 8, isBitfield: true);
         AggregateMemberSymbol wordMember = new("w", BuiltinTypes.U16, byteOffset: 0, bitOffset: 16, bitWidth: 16, isBitfield: true);
         AggregateMemberSymbol shiftMember = new("s", BuiltinTypes.U32, byteOffset: 0, bitOffset: 1, bitWidth: 4, isBitfield: true);
-        LirFunction function = new(
+        LirFunction function = CreateLirFunction(
             "demo",
             isEntryPoint: true,
             FunctionKind.Default,
@@ -1902,7 +1902,7 @@ public class IrPipelineTests
         AggregateMemberSymbol hiMember = packedType.Members["hi"];
         AggregateMemberSymbol midMember = packedType.Members["mid"];
         AggregateMemberSymbol valueMember = pairType.Members["value"];
-        LirFunction function = new(
+        LirFunction function = CreateLirFunction(
             "demo",
             isEntryPoint: true,
             FunctionKind.Default,
@@ -2011,7 +2011,7 @@ public class IrPipelineTests
         AggregateMemberSymbol badInsertMember = new("bad", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false);
         AggregateMemberSymbol extraStructMember = new("extra", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false);
         AggregateMemberSymbol missingStructMember = new("missing", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false);
-        LirFunction function = new(
+        LirFunction function = CreateLirFunction(
             "demo",
             isEntryPoint: true,
             FunctionKind.Default,

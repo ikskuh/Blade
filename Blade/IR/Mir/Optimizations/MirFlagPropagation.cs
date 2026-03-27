@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Blade.Semantics;
 using Blade.Semantics.Bound;
 
 namespace Blade.IR.Mir.Optimizations;
@@ -30,7 +31,7 @@ public sealed class MirFlagPropagation : IMirOptimization
                 {
                     if (instruction is MirInlineAsmInstruction asm && asm.FlagOutput is not null && asm.Result is MirValueId asmResult)
                     {
-                        MirFlag flag = asm.FlagOutput == "@C" ? MirFlag.C : MirFlag.Z;
+                        MirFlag flag = asm.FlagOutput == InlineAsmFlagOutput.C ? MirFlag.C : MirFlag.Z;
                         flagMap[asmResult] = flag;
                     }
                     else if (instruction is MirBinaryInstruction binary && binary.Result is MirValueId binResult)
@@ -62,13 +63,13 @@ public sealed class MirFlagPropagation : IMirOptimization
                 {
                     MirBranchTerminator updated = new(
                         branch.Condition,
-                        branch.TrueLabel,
-                        branch.FalseLabel,
+                        branch.TrueLabelSymbol,
+                        branch.FalseLabelSymbol,
                         branch.TrueArguments,
                         branch.FalseArguments,
                         branch.Span,
                         condFlag);
-                    blocks.Add(new MirBlock(block.Label, block.Parameters, block.Instructions, updated));
+                    blocks.Add(new MirBlock(block.LabelSymbol, block.Parameters, block.Instructions, updated));
                     anyChanged = true;
                 }
                 else
@@ -78,9 +79,8 @@ public sealed class MirFlagPropagation : IMirOptimization
             }
 
             functions.Add(new MirFunction(
-                function.Name,
+                function.Symbol,
                 function.IsEntryPoint,
-                function.Kind,
                 function.ReturnTypes,
                 blocks,
                 function.ReturnSlots,

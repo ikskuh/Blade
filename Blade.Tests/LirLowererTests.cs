@@ -26,7 +26,7 @@ public sealed class LirLowererTests
                 (new MirValueId(3), BuiltinTypes.Bool),
             ]);
         MirBlock block = new("bb0", [], [call], new MirReturnTerminator([], Span));
-        MirFunction function = new("$top", isEntryPoint: true, FunctionKind.Default, [], [block]);
+        MirFunction function = CreateMirFunction("$top", isEntryPoint: true, FunctionKind.Default, [], [block]);
         MirModule module = new([function]);
 
         UnreachableException? ex = Assert.Throws<UnreachableException>(() => LirLowerer.Lower(module));

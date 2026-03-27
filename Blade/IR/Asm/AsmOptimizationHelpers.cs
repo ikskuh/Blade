@@ -41,7 +41,7 @@ internal static class AsmOptimizationHelpers
             (AsmRegisterOperand lhs, AsmRegisterOperand rhs) => lhs.RegisterId == rhs.RegisterId,
             (AsmImmediateOperand lhs, AsmImmediateOperand rhs) => lhs.Value == rhs.Value,
             (AsmSymbolOperand lhs, AsmSymbolOperand rhs) => lhs.Name == rhs.Name,
-            (AsmPlaceOperand lhs, AsmPlaceOperand rhs) => lhs.Place.Symbol.Id == rhs.Place.Symbol.Id,
+            (AsmPlaceOperand lhs, AsmPlaceOperand rhs) => ReferenceEquals(lhs.Place.Symbol, rhs.Place.Symbol),
             (AsmPhysicalRegisterOperand lhs, AsmPhysicalRegisterOperand rhs) => lhs.Address == rhs.Address,
             _ => false,
         };

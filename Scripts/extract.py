@@ -715,9 +715,8 @@ def render_generated_source(
             "",
             "public static class P2InstructionMetadata",
             "{",
-            "    private static readonly FrozenDictionary<string, FrozenDictionary<int, P2InstructionFormInfo>> FormsByMnemonic =",
-            "        new Dictionary<string, FrozenDictionary<int, P2InstructionFormInfo>>(StringComparer.OrdinalIgnoreCase)",
-            "        {",
+            "    private static readonly P2InstructionFormInfo?[][] FormsByMnemonic =",
+            "    [",
         ]
     )
 
@@ -725,33 +724,45 @@ def render_generated_source(
     for form in forms:
         grouped_forms.setdefault(form["mnemonic"], []).append(form)
 
-    for mnemonic in sorted(grouped_forms):
-        lines.append(f'            ["{mnemonic}"] = new Dictionary<int, P2InstructionFormInfo>()')
-        lines.append("            {")
-        for form in sorted(grouped_forms[mnemonic], key=lambda item: item["operand_count"]):
-            flag_expr = render_flag_effect_mask(form["allowed_flag_effects"])
-            lines.append(
-                "                "
-                f'[{form["operand_count"]}] = new P2InstructionFormInfo('
-                f'"{form["mnemonic"]}", '
-                f'{form["operand_count"]}, '
-                f'{render_operand_info(form["operand_infos"][0])}, '
-                f'{render_operand_info(form["operand_infos"][1])}, '
-                f'{render_operand_info(form["operand_infos"][2])}, '
-                f'{render_written_registers(form["written_registers"])}, '
-                f'P2HwStackEffect.{form["hw_stack_effect"]}, '
-                f"{flag_expr}, "
-                f'{render_bool(form["is_call"])}, '
-                f'{render_bool(form["is_branch"])}, '
-                f'{render_bool(form["is_return"])}, '
-                f'{render_bool(form["has_no_register_effect"])}, '
-                f'{render_bool(form["is_pure_register_local"])}),'
-            )
-        lines.append("            }.ToFrozenDictionary(),")
+    valid_mnemonics_sorted = list(valid_mnemonics)
+
+    def render_form_initializer(form: dict[str, object]) -> str:
+        flag_expr = render_flag_effect_mask(form["allowed_flag_effects"])
+        return (
+            "new P2InstructionFormInfo("
+            f'"{form["mnemonic"]}", '
+            f'{form["operand_count"]}, '
+            f'{render_operand_info(form["operand_infos"][0])}, '
+            f'{render_operand_info(form["operand_infos"][1])}, '
+            f'{render_operand_info(form["operand_infos"][2])}, '
+            f'{render_written_registers(form["written_registers"])}, '
+            f'P2HwStackEffect.{form["hw_stack_effect"]}, '
+            f"{flag_expr}, "
+            f'{render_bool(form["is_call"])}, '
+            f'{render_bool(form["is_branch"])}, '
+            f'{render_bool(form["is_return"])}, '
+            f'{render_bool(form["has_no_register_effect"])}, '
+            f'{render_bool(form["is_pure_register_local"])})'
+        )
+
+    for mnemonic in valid_mnemonics_sorted:
+        forms_for_mnemonic = {
+            int(form["operand_count"]): form
+            for form in grouped_forms.get(mnemonic, [])
+        }
+        max_operand_count = max(forms_for_mnemonic.keys(), default=-1)
+        lines.append("        [")
+        for operand_count in range(max_operand_count + 1):
+            form = forms_for_mnemonic.get(operand_count)
+            if form is None:
+                lines.append("            null,")
+            else:
+                lines.append(f"            {render_form_initializer(form)},")
+        lines.append("        ],")
 
     lines.extend(
         [
-            "        }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);",
+            "    ];",
             "",
             "    private static readonly FrozenSet<string> ValidMnemonics =",
             "        new HashSet<string>(StringComparer.OrdinalIgnoreCase)",
@@ -842,17 +853,24 @@ def render_generated_source(
             "    public static bool TryParseMnemonic(string mnemonic, out P2Mnemonic parsed)",
             "        => Enum.TryParse(mnemonic, ignoreCase: true, out parsed);",
             "",
-            "    public static bool TryGetInstructionForm(string mnemonic, int operandCount, out P2InstructionFormInfo info)",
+            "    public static bool TryGetInstructionForm(P2Mnemonic mnemonic, int operandCount, out P2InstructionFormInfo info)",
             "    {",
             "        info = default;",
-            "        if (!FormsByMnemonic.TryGetValue(mnemonic, out FrozenDictionary<int, P2InstructionFormInfo>? formsByOperandCount))",
+            "        int mnemonicIndex = (int)mnemonic;",
+            "        if ((uint)mnemonicIndex >= (uint)FormsByMnemonic.Length)",
             "            return false;",
             "",
-            "        return formsByOperandCount.TryGetValue(operandCount, out info);",
-            "    }",
+            "        P2InstructionFormInfo?[] formsByOperandCount = FormsByMnemonic[mnemonicIndex];",
+            "        if ((uint)operandCount >= (uint)formsByOperandCount.Length)",
+            "            return false;",
             "",
-            "    public static bool TryGetInstructionForm(P2Mnemonic mnemonic, int operandCount, out P2InstructionFormInfo info)",
-            "        => TryGetInstructionForm(GetMnemonicText(mnemonic), operandCount, out info);",
+            "        P2InstructionFormInfo? candidate = formsByOperandCount[operandCount];",
+            "        if (candidate is null)",
+            "            return false;",
+            "",
+            "        info = candidate.Value;",
+            "        return true;",
+            "    }",
             "",
             "    public static bool IsValidConditionPrefix(string name)",
             "        => TryParseConditionCode(name, out _);",
@@ -883,7 +901,7 @@ def render_generated_source(
             "    public static bool IsValidFlagEffect(string name)",
             "        => ValidFlagEffects.Contains(name);",
             "",
-            "    public static bool AllowsFlagEffect(string mnemonic, int operandCount, string? name)",
+            "    public static bool AllowsFlagEffect(P2Mnemonic mnemonic, int operandCount, string? name)",
             "    {",
             "        if (string.IsNullOrWhiteSpace(name))",
             "            return true;",
@@ -896,9 +914,6 @@ def render_generated_source(
             "",
             "        return (info.AllowedFlagEffects & effect) == effect;",
             "    }",
-            "",
-            "    public static bool AllowsFlagEffect(P2Mnemonic mnemonic, int operandCount, string? name)",
-            "        => AllowsFlagEffect(GetMnemonicText(mnemonic), operandCount, name);",
             "",
             "    public static bool TryParseFlagEffect(string name, out P2FlagEffect effect)",
             "    {",
@@ -919,37 +934,22 @@ def render_generated_source(
             "    public static bool IsSpecialRegisterName(string name)",
             "        => SpecialRegisterNames.Contains(name);",
             "",
-            "    public static bool IsCall(string mnemonic, int operandCount)",
-            "        => TryGetInstructionForm(mnemonic, operandCount, out P2InstructionFormInfo info) && info.IsCall;",
-            "",
             "    public static bool IsCall(P2Mnemonic mnemonic, int operandCount)",
             "        => TryGetInstructionForm(mnemonic, operandCount, out P2InstructionFormInfo info) && info.IsCall;",
-            "",
-            "    public static bool IsReturn(string mnemonic, int operandCount)",
-            "        => TryGetInstructionForm(mnemonic, operandCount, out P2InstructionFormInfo info) && info.IsReturn;",
             "",
             "    public static bool IsReturn(P2Mnemonic mnemonic, int operandCount)",
             "        => TryGetInstructionForm(mnemonic, operandCount, out P2InstructionFormInfo info) && info.IsReturn;",
             "",
-            "    public static bool IsControlFlow(string mnemonic, int operandCount)",
-            "        => TryGetInstructionForm(mnemonic, operandCount, out P2InstructionFormInfo info) && info.IsControlFlow;",
-            "",
             "    public static bool IsControlFlow(P2Mnemonic mnemonic, int operandCount)",
             "        => TryGetInstructionForm(mnemonic, operandCount, out P2InstructionFormInfo info) && info.IsControlFlow;",
-            "",
-            "    public static bool HasNoRegisterEffect(string mnemonic, int operandCount)",
-            "        => TryGetInstructionForm(mnemonic, operandCount, out P2InstructionFormInfo info) && info.HasNoRegisterEffect;",
             "",
             "    public static bool HasNoRegisterEffect(P2Mnemonic mnemonic, int operandCount)",
             "        => TryGetInstructionForm(mnemonic, operandCount, out P2InstructionFormInfo info) && info.HasNoRegisterEffect;",
             "",
-            "    public static bool IsPureRegisterLocal(string mnemonic, int operandCount)",
-            "        => TryGetInstructionForm(mnemonic, operandCount, out P2InstructionFormInfo info) && info.IsPureRegisterLocal;",
-            "",
             "    public static bool IsPureRegisterLocal(P2Mnemonic mnemonic, int operandCount)",
             "        => TryGetInstructionForm(mnemonic, operandCount, out P2InstructionFormInfo info) && info.IsPureRegisterLocal;",
             "",
-            "    public static P2InstructionOperandInfo GetOperandInfo(string mnemonic, int operandCount, int operandIndex)",
+            "    public static P2InstructionOperandInfo GetOperandInfo(P2Mnemonic mnemonic, int operandCount, int operandIndex)",
             "    {",
             "        if (!TryGetInstructionForm(mnemonic, operandCount, out P2InstructionFormInfo info))",
             "            return default;",
@@ -960,23 +960,11 @@ def render_generated_source(
             "        return info.GetOperandInfo(operandIndex);",
             "    }",
             "",
-            "    public static P2InstructionOperandInfo GetOperandInfo(P2Mnemonic mnemonic, int operandCount, int operandIndex)",
-            "        => GetOperandInfo(GetMnemonicText(mnemonic), operandCount, operandIndex);",
-            "",
-            "    public static bool UsesImmediateSyntax(string mnemonic, int operandCount, int operandIndex)",
-            "        => GetOperandInfo(mnemonic, operandCount, operandIndex).SupportsImmediateSyntax;",
-            "",
             "    public static bool UsesImmediateSyntax(P2Mnemonic mnemonic, int operandCount, int operandIndex)",
             "        => GetOperandInfo(mnemonic, operandCount, operandIndex).SupportsImmediateSyntax;",
             "",
-            "    public static bool UsesImmediateSymbolSyntax(string mnemonic, int operandCount, int operandIndex)",
-            "        => GetOperandInfo(mnemonic, operandCount, operandIndex).UsesImmediateSymbolSyntax;",
-            "",
             "    public static bool UsesImmediateSymbolSyntax(P2Mnemonic mnemonic, int operandCount, int operandIndex)",
             "        => GetOperandInfo(mnemonic, operandCount, operandIndex).UsesImmediateSymbolSyntax;",
-            "",
-            "    public static P2OperandAccess GetOperandAccess(string mnemonic, int operandCount, int operandIndex)",
-            "        => GetOperandInfo(mnemonic, operandCount, operandIndex).Access;",
             "",
             "    public static P2OperandAccess GetOperandAccess(P2Mnemonic mnemonic, int operandCount, int operandIndex)",
             "        => GetOperandInfo(mnemonic, operandCount, operandIndex).Access;",

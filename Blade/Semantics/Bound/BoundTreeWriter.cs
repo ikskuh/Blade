@@ -148,7 +148,7 @@ public static class BoundTreeWriter
                 break;
 
             case BoundAsmStatement asm:
-                AppendLine(sb, indent, $"Asm [{asm.Volatility}] ({asm.FlagOutput ?? "no-flag"})");
+                AppendLine(sb, indent, $"Asm [{asm.Volatility}] ({asm.FlagOutput?.ToString() ?? "no-flag"})");
                 break;
 
             case BoundErrorStatement:
@@ -187,7 +187,7 @@ public static class BoundTreeWriter
                 break;
 
             case BoundIntrinsicCallExpression intrinsic:
-                AppendLine(sb, indent, $"Intrinsic<{intrinsic.Type.Name}> @{intrinsic.Name}");
+                AppendLine(sb, indent, $"Intrinsic<{intrinsic.Type.Name}> @{intrinsic.Mnemonic}");
                 foreach (BoundExpression arg in intrinsic.Arguments)
                     WriteExpression(sb, indent + 1, arg);
                 break;

@@ -540,11 +540,13 @@ public sealed class Binder
             : AsmVolatility.NonVolatile;
 
         // Determine flag output from return spec placement annotations.
-        string? flagOutput = null;
+        InlineAsmFlagOutput? flagOutput = null;
         ReturnSlot? firstFlagSlot = function.ReturnSlots.Cast<ReturnSlot?>().FirstOrDefault(s => s!.Value.IsFlagPlaced);
         if (firstFlagSlot is not null)
         {
-            flagOutput = firstFlagSlot.Value.Placement == ReturnPlacement.FlagC ? "@C" : "@Z";
+            flagOutput = firstFlagSlot.Value.Placement == ReturnPlacement.FlagC
+                ? InlineAsmFlagOutput.C
+                : InlineAsmFlagOutput.Z;
         }
 
         Dictionary<string, Symbol> availableSymbols = CollectInlineAsmAvailableSymbols();
@@ -777,7 +779,7 @@ public sealed class Binder
 
             case AsmBlockStatementSyntax asm:
             {
-                string? flagOutput = null;
+                InlineAsmFlagOutput? flagOutput = null;
                 VariableSymbol? outputSymbol = null;
                 if (asm.OutputBinding is not null)
                 {
@@ -787,7 +789,12 @@ public sealed class Binder
                         _diagnostics.ReportInlineAsmInvalidFlagOutput(asm.OutputBinding.Span, flag);
                     }
 
-                    flagOutput = $"@{flag}";
+                    flagOutput = flag switch
+                    {
+                        "C" => InlineAsmFlagOutput.C,
+                        "Z" => InlineAsmFlagOutput.Z,
+                        _ => null,
+                    };
                     TypeSymbol outputType = BindType(asm.OutputBinding.Type);
                     VariableScopeKind outputScopeKind = _currentFunction is null
                         ? VariableScopeKind.TopLevelAutomatic
@@ -2219,7 +2226,9 @@ public sealed class Binder
         foreach (ExpressionSyntax argument in intrinsic.Arguments)
             arguments.Add(BindExpression(argument));
 
-        return new BoundIntrinsicCallExpression(intrinsic.Name.Text, arguments, intrinsic.Span, BuiltinTypes.U32);
+        bool parsed = P2InstructionMetadata.TryParseMnemonic(intrinsic.Name.Text, out P2Mnemonic mnemonic);
+        Assert.Invariant(parsed, $"Builtin '{intrinsic.Name.Text}' must parse after prior validation.");
+        return new BoundIntrinsicCallExpression(mnemonic, arguments, intrinsic.Span, BuiltinTypes.U32);
     }
 
     private BoundExpression BindTypedStructLiteralExpression(TypedStructLiteralExpressionSyntax syntax)

@@ -23,6 +23,7 @@ public static class AsmLowerer
     public static AsmModule Lower(LirModule module, DiagnosticBag? diagnostics = null)
     {
         Requires.NotNull(module);
+        VirtualAsmRegister.ResetDebugIds();
 
         // Run call graph analysis to determine CC tiers and dead functions
         CallGraphResult cgResult = CallGraphAnalyzer.Analyze(module);
@@ -181,7 +182,7 @@ public static class AsmLowerer
             LowerTerminator(nodes, ctx, block.Terminator);
         }
 
-        return new AsmFunction(ctx.Function.Name, ctx.Function.IsEntryPoint, ctx.Tier, nodes);
+        return new AsmFunction(ctx.Function, ctx.Tier, nodes);
     }
 
     private static (
@@ -950,7 +951,7 @@ public static class AsmLowerer
     private static void LowerLoadSym(List<AsmNode> nodes, LirOpInstruction op)
     {
         AsmRegisterOperand dest = DestReg(op);
-        string symbol = ((LirSymbolOperand)op.Operands[0]).Symbol;
+        IAsmSymbol symbol = ((LirSymbolOperand)op.Operands[0]).Symbol;
         nodes.Add(Emit(P2Mnemonic.MOV, dest, new AsmSymbolOperand(symbol, AsmSymbolAddressingMode.Register)));
     }
 
@@ -1629,16 +1630,17 @@ public static class AsmLowerer
 
     private static void LowerCall(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
-        string target = ((LirSymbolOperand)op.Operands[0]).Symbol;
-        CallingConventionTier calleeTier = ctx.CalleeTiers.GetValueOrDefault(target, CallingConventionTier.General);
+        LirCallOperation operation = (LirCallOperation)op.Operation;
+        FunctionSymbol target = operation.TargetFunction;
+        CallingConventionTier calleeTier = ctx.CalleeTiers.GetValueOrDefault(target.Name, CallingConventionTier.General);
 
         // Collect argument registers
         List<AsmRegisterOperand> args = [];
-        for (int i = 1; i < op.Operands.Count; i++)
+        for (int i = 0; i < op.Operands.Count; i++)
             args.Add(OpReg(op.Operands[i]));
 
         AsmRegisterOperand? destReg = op.Destination is { } dest ? new AsmRegisterOperand(dest.Id) : null;
-        AsmSymbolOperand targetOp = new(target, AsmSymbolAddressingMode.Immediate);
+        AsmSymbolOperand targetOp = new(new AsmTextSymbol(target.Name, SymbolType.Function), AsmSymbolAddressingMode.Immediate);
 
         switch (calleeTier)
         {
@@ -1671,7 +1673,7 @@ public static class AsmLowerer
                 break;
 
             case CallingConventionTier.Recursive:
-                var ok = ctx.RecursiveCallingConvention.TryGetValue(target, out RecursiveCallingConventionInfo? recursiveInfo);
+                var ok = ctx.RecursiveCallingConvention.TryGetValue(target.Name, out RecursiveCallingConventionInfo? recursiveInfo);
                 Assert.Invariant(ok, "Recursive callees must have calling-convention metadata.");
                 Assert.Invariant(recursiveInfo!.ParameterPlaces.Count == args.Count, "Recursive call arguments must match the callee parameter ABI.");
 
@@ -1712,15 +1714,10 @@ public static class AsmLowerer
 
     private static void LowerIntrinsic(List<AsmNode> nodes, LirOpInstruction op)
     {
-        string name = ((LirSymbolOperand)op.Operands[0]).Symbol;
-        if (name.StartsWith('@'))
-            name = name[1..];
-
-        string opcodeText = name.ToUpperInvariant();
-        bool parsed = P2InstructionMetadata.TryParseMnemonic(opcodeText, out P2Mnemonic mnemonic);
-        Assert.Invariant(parsed, $"Intrinsic '{opcodeText}' must resolve to a valid P2 mnemonic.");
+        LirIntrinsicOperation intrinsic = (LirIntrinsicOperation)op.Operation;
+        P2Mnemonic mnemonic = intrinsic.Mnemonic;
         List<AsmOperand> operands = [];
-        for (int i = 1; i < op.Operands.Count; i++)
+        for (int i = 0; i < op.Operands.Count; i++)
             operands.Add(LowerOperand(op.Operands[i]));
 
         if (op.Destination is { } dest

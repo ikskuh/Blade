@@ -155,10 +155,9 @@ public static class CallGraphAnalyzer
         {
             foreach (LirInstruction instruction in block.Instructions)
             {
-                if (instruction is LirOpInstruction { Operation: LirCallOperation } op
-                    && op.Operands.Count > 0 && op.Operands[0] is LirSymbolOperand sym)
+                if (instruction is LirOpInstruction { Operation: LirCallOperation call })
                 {
-                    callees.Add(sym.Symbol);
+                    callees.Add(call.TargetFunction.Name);
                 }
                 else if (instruction is LirOpInstruction { Operation: LirYieldToOperation yieldTo })
                 {

@@ -56,7 +56,7 @@ public class WriterAndSymbolTests
         StoragePlace place = new(CreateVariable("mem-slot", VariableStorageClass.Reg, VariableScopeKind.GlobalStorage), StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, staticInitializer: 5);
 
         MirModule mir = new([
-            new MirFunction("mir_fn", isEntryPoint: true, FunctionKind.Leaf, [BuiltinTypes.U32],
+            CreateMirFunction("mir_fn", isEntryPoint: true, FunctionKind.Leaf, [BuiltinTypes.U32],
             [
                 new MirBlock("bb0", [new MirBlockParameter(new MirValueId(0), "p", BuiltinTypes.U32)],
                 [
@@ -67,19 +67,19 @@ public class WriterAndSymbolTests
         ]);
 
         LirModule lir = new([
-            new LirFunction("lir_fn", isEntryPoint: false, FunctionKind.Default, [],
+            CreateLirFunction("lir_fn", isEntryPoint: false, FunctionKind.Default, [],
             [
                 new LirBlock("bb0", [],
                 [
                     new LirOpInstruction(new LirMovOperation(), new LirVirtualRegister(0), BuiltinTypes.U32,
                         [new LirImmediateOperand("hello", BuiltinTypes.String)],
-                        hasSideEffects: false, predicate: "if_c", writesC: true, writesZ: true, Span),
+                        hasSideEffects: false, predicateText: "if_c", writesC: true, writesZ: true, Span),
                 ], new LirUnreachableTerminator(Span)),
             ]),
         ]);
 
         AsmModule asm = new([
-            new AsmFunction("asm_fn", isEntryPoint: false, CallingConventionTier.General,
+            CreateAsmFunction("asm_fn", isEntryPoint: false, CallingConventionTier.General,
             [
                 new AsmDirectiveNode("org 0"),
                 new AsmLabelNode("asm_fn_bb0"),

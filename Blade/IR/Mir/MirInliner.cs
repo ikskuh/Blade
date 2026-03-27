@@ -242,7 +242,7 @@ public static class MirInliner
             return rewritten switch
             {
                 MirConstantInstruction constant => new MirConstantInstruction(newResult!.Value, constant.ResultType!, constant.Value, constant.Span),
-                MirLoadSymbolInstruction load => new MirLoadSymbolInstruction(newResult!.Value, load.ResultType!, load.SymbolName, load.Span),
+                MirLoadSymbolInstruction load => new MirLoadSymbolInstruction(newResult!.Value, load.ResultType!, load.Symbol, load.Span),
                 MirLoadPlaceInstruction loadPlace => new MirLoadPlaceInstruction(newResult!.Value, loadPlace.ResultType!, loadPlace.Place, loadPlace.Span),
                 MirCopyInstruction copy => new MirCopyInstruction(newResult!.Value, copy.ResultType!, copy.Source, copy.Span),
                 MirUnaryInstruction unary => new MirUnaryInstruction(newResult!.Value, unary.ResultType!, unary.Operator, unary.Operand, unary.Span),
@@ -482,7 +482,7 @@ public static class MirInliner
                     block.Terminator));
             }
 
-            return new MirFunction(_source.Name, _source.IsEntryPoint, _source.Kind, _source.ReturnTypes, blocks, _source.ReturnSlots);
+            return new MirFunction(_source.Symbol, _source.IsEntryPoint, _source.ReturnTypes, blocks, _source.ReturnSlots);
         }
     }
 

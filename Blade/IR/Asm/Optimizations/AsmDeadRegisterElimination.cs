@@ -38,7 +38,7 @@ public sealed class AsmDeadRegisterElimination : PerFunctionAsmOptimization
             return null;
 
         kept.Reverse();
-        return new AsmFunction(input.Name, input.IsEntryPoint, input.CcTier, kept);
+        return new AsmFunction(input, kept);
     }
 
     private static AsmFunction? RunStraightLine(AsmFunction input)
@@ -80,6 +80,6 @@ public sealed class AsmDeadRegisterElimination : PerFunctionAsmOptimization
             return null;
 
         kept.Reverse();
-        return new AsmFunction(input.Name, input.IsEntryPoint, input.CcTier, kept);
+        return new AsmFunction(input, kept);
     }
 }

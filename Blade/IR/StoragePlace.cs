@@ -16,7 +16,7 @@ public enum StoragePlaceKind
     ExternalHubAlias,
 }
 
-public sealed class StoragePlace
+public sealed class StoragePlace : IAsmSymbol
 {
     public StoragePlace(
         Symbol symbol,
@@ -59,13 +59,23 @@ public sealed class StoragePlace
         _ => BuildAllocatableName(Symbol),
     };
 
+    string IAsmSymbol.Name => EmittedName;
+
+    public SymbolType SymbolType => Symbol switch
+    {
+        ParameterSymbol => SymbolType.Parameter,
+        VariableSymbol { StorageClass: VariableStorageClass.Lut } => SymbolType.LutVariable,
+        VariableSymbol { StorageClass: VariableStorageClass.Hub } => SymbolType.HubVariable,
+        _ => SymbolType.RegVariable,
+    };
+
     private static string BuildAllocatableName(Symbol symbol)
     {
         string sanitizedName = Sanitize(symbol.Name);
         const string prefix = "g";
         return symbol is VariableSymbol { IsGlobalStorage: true }
             ? $"{prefix}_{sanitizedName}"
-            : $"{prefix}_{sanitizedName}_{symbol.Id}";
+            : $"{prefix}_{sanitizedName}_{symbol.DebugId}";
     }
 
     private static string Sanitize(string name)

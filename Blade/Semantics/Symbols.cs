@@ -3,22 +3,86 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using Blade;
+using Blade.Source;
+using Blade.Syntax;
 using Blade.Syntax.Nodes;
 
 namespace Blade.Semantics;
 
+public enum SymbolType
+{
+    Function,
+    Parameter,
+    AutomaticVariable,
+    RegVariable,
+    LutVariable,
+    HubVariable,
+    ControlFlowLabel,
+}
+
+public interface IAsmSymbol
+{
+    string Name { get; }
+    SymbolType SymbolType { get; }
+}
+
+internal sealed class SyntheticFunctionSignatureSyntax : IFunctionSignatureSyntax
+{
+    public SyntheticFunctionSignatureSyntax(string name)
+    {
+        Name = new Token(TokenKind.Identifier, new TextSpan(0, 0), name);
+        Parameters = new SeparatedSyntaxList<ParameterSyntax>([]);
+    }
+
+    public Token Name { get; }
+    public SeparatedSyntaxList<ParameterSyntax> Parameters { get; }
+    public Token? Arrow => null;
+    public SeparatedSyntaxList<ReturnItemSyntax>? ReturnSpec => null;
+}
+
 public abstract class Symbol
 {
-    private static int _nextId;
+    private static int _nextDebugId;
 
     protected Symbol(string name)
     {
-        Id = Interlocked.Increment(ref _nextId);
-        Name = name;
+        Name = Requires.NotNullOrWhiteSpace(name);
+        DebugId = Interlocked.Increment(ref _nextDebugId) - 1;
     }
 
-    public int Id { get; }
     public string Name { get; }
+    internal int DebugId { get; }
+}
+
+public sealed class ControlFlowLabelSymbol : IAsmSymbol
+{
+    public ControlFlowLabelSymbol(string name)
+        : this(name, new FunctionSymbol("$label_owner", FunctionKind.Default))
+    {
+    }
+
+    public ControlFlowLabelSymbol(string name, FunctionSymbol function)
+    {
+        Name = Requires.NotNullOrWhiteSpace(name);
+        Function = Requires.NotNull(function);
+    }
+
+    public string Name { get; }
+    public FunctionSymbol Function { get; }
+    public SymbolType SymbolType => SymbolType.ControlFlowLabel;
+}
+
+public sealed class SyntheticNamedSymbol : IAsmSymbol
+{
+    public SyntheticNamedSymbol(string name, SymbolType symbolType)
+    {
+        Name = Requires.NotNullOrWhiteSpace(name);
+        SyntheticSymbolType = symbolType;
+    }
+
+    public string Name { get; }
+    public SymbolType SyntheticSymbolType { get; }
+    public SymbolType SymbolType => SyntheticSymbolType;
 }
 
 public sealed class TypeAliasSymbol : Symbol
@@ -73,6 +137,7 @@ public sealed class VariableSymbol : Symbol
         FixedAddress = fixedAddress;
         Alignment = alignment;
     }
+
 }
 
 public sealed class ParameterSymbol : Symbol
@@ -135,6 +200,11 @@ public sealed class FunctionSymbol : Symbol
     {
         Syntax = Requires.NotNull(syntax);
         Kind = kind;
+    }
+
+    public FunctionSymbol(string name, FunctionKind kind)
+        : this(name, new SyntheticFunctionSignatureSyntax(name), kind)
+    {
     }
 
     public IFunctionSignatureSyntax Syntax { get; }

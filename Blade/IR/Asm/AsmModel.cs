@@ -2,8 +2,34 @@ using System;
 using System.Collections.Generic;
 using Blade;
 using Blade.IR;
+using Blade.IR.Lir;
+using Blade.Semantics;
 
 namespace Blade.IR.Asm;
+
+internal sealed class AsmSpecialRegisterSymbol : IAsmSymbol
+{
+    public AsmSpecialRegisterSymbol(P2Register register)
+    {
+        Register = register;
+    }
+
+    public P2Register Register { get; }
+    public string Name => Register.ToString();
+    public SymbolType SymbolType => SymbolType.RegVariable;
+}
+
+internal sealed class AsmTextSymbol : IAsmSymbol
+{
+    public AsmTextSymbol(string name, SymbolType symbolType = SymbolType.ControlFlowLabel)
+    {
+        Name = Requires.NotNullOrWhiteSpace(name);
+        SymbolType = symbolType;
+    }
+
+    public string Name { get; }
+    public SymbolType SymbolType { get; }
+}
 
 public sealed class AsmModule
 {
@@ -22,24 +48,27 @@ public sealed class AsmModule
     public IReadOnlyList<AsmFunction> Functions { get; }
 }
 
-public sealed class AsmFunction
+public sealed class AsmFunction : IAsmSymbol
 {
-    public AsmFunction(
-        string name,
-        bool isEntryPoint,
-        CallingConventionTier ccTier,
-        IReadOnlyList<AsmNode> nodes)
+    public AsmFunction(AsmFunction sourceFunction, IReadOnlyList<AsmNode> nodes)
+        : this(Requires.NotNull(sourceFunction).SourceFunction, sourceFunction.CcTier, nodes)
     {
-        Name = name;
-        IsEntryPoint = isEntryPoint;
+    }
+
+    public AsmFunction(LirFunction sourceFunction, CallingConventionTier ccTier, IReadOnlyList<AsmNode> nodes)
+    {
+        SourceFunction = Requires.NotNull(sourceFunction);
         CcTier = ccTier;
         Nodes = nodes;
     }
 
-    public string Name { get; }
-    public bool IsEntryPoint { get; }
+    public LirFunction SourceFunction { get; }
+    public FunctionSymbol Symbol => SourceFunction.Symbol;
+    public string Name => SourceFunction.Name;
+    public bool IsEntryPoint => SourceFunction.IsEntryPoint;
     public CallingConventionTier CcTier { get; }
     public IReadOnlyList<AsmNode> Nodes { get; }
+    public SymbolType SymbolType => SymbolType.Function;
 }
 
 public abstract class AsmNode
@@ -71,12 +100,18 @@ public sealed class AsmDirectiveNode : AsmNode
 
 public sealed class AsmLabelNode : AsmNode
 {
-    public AsmLabelNode(string name)
+    public AsmLabelNode(string label)
+        : this(new ControlFlowLabelSymbol(label))
     {
-        Name = name;
     }
 
-    public string Name { get; }
+    public AsmLabelNode(ControlFlowLabelSymbol label)
+    {
+        Label = Requires.NotNull(label);
+    }
+
+    public ControlFlowLabelSymbol Label { get; }
+    public string Name => Label.Name;
 }
 
 public sealed class AsmImplicitUseNode : AsmNode
@@ -182,13 +217,19 @@ public enum AsmSymbolAddressingMode
 public sealed class AsmRegisterOperand : AsmOperand
 {
     public AsmRegisterOperand(int registerId)
+        : this(new VirtualAsmRegister(registerId))
     {
-        RegisterId = registerId;
     }
 
-    public int RegisterId { get; }
+    public AsmRegisterOperand(VirtualAsmRegister register)
+    {
+        Register = Requires.NotNull(register);
+    }
 
-    public override string Format() => $"%r{RegisterId}";
+    public VirtualAsmRegister Register { get; }
+    public int RegisterId => Register.DebugId;
+
+    public override string Format() => Register.ToString();
 }
 
 /// <summary>
@@ -212,18 +253,29 @@ public sealed class AsmImmediateOperand : AsmOperand
 /// </summary>
 public sealed class AsmSymbolOperand : AsmOperand
 {
-    public AsmSymbolOperand(P2SpecialRegister register)
-        : this(register.ToString(), AsmSymbolAddressingMode.Register)
+    public AsmSymbolOperand(string symbolName, AsmSymbolAddressingMode addressingMode)
+        : this(new AsmTextSymbol(symbolName), addressingMode)
     {
     }
 
-    public AsmSymbolOperand(string name, AsmSymbolAddressingMode addressingMode)
+    public AsmSymbolOperand(P2SpecialRegister register)
+        : this(new AsmSpecialRegisterSymbol(new P2Register(register)), AsmSymbolAddressingMode.Register)
     {
-        Name = name;
+    }
+
+    public AsmSymbolOperand(IAsmSymbol symbol, AsmSymbolAddressingMode addressingMode)
+    {
+        Symbol = Requires.NotNull(symbol);
         AddressingMode = addressingMode;
     }
 
-    public string Name { get; }
+    public AsmSymbolOperand(ControlFlowLabelSymbol label, AsmSymbolAddressingMode addressingMode)
+        : this((IAsmSymbol)label, addressingMode)
+    {
+    }
+
+    public IAsmSymbol Symbol { get; }
+    public string Name => Symbol.Name;
     public AsmSymbolAddressingMode AddressingMode { get; }
 
     public override string Format() => AddressingMode switch
@@ -240,12 +292,18 @@ public sealed class AsmSymbolOperand : AsmOperand
 /// </summary>
 public sealed class AsmLabelRefOperand : AsmOperand
 {
-    public AsmLabelRefOperand(string name)
+    public AsmLabelRefOperand(string label)
+        : this(new ControlFlowLabelSymbol(label))
     {
-        Name = name;
     }
 
-    public string Name { get; }
+    public AsmLabelRefOperand(ControlFlowLabelSymbol label)
+    {
+        Label = Requires.NotNull(label);
+    }
+
+    public ControlFlowLabelSymbol Label { get; }
+    public string Name => Label.Name;
 
     public override string Format() => $"@{Name}";
 }
@@ -268,16 +326,39 @@ public sealed class AsmPlaceOperand : AsmOperand
 /// </summary>
 public sealed class AsmPhysicalRegisterOperand : AsmOperand
 {
-    public AsmPhysicalRegisterOperand(int address, string name)
+    public AsmPhysicalRegisterOperand(int address, string _)
+        : this(new P2Register(address))
     {
-        Address = address;
-        Name = name;
     }
 
-    public int Address { get; }
-    public string Name { get; }
+    public AsmPhysicalRegisterOperand(P2Register register)
+    {
+        Register = register;
+    }
+
+    public P2Register Register { get; }
+    public int Address => Register.Address;
+    public string Name => Register.ToString();
 
     public override string Format() => Name;
+}
+
+public enum AsmSectionKind
+{
+    RegisterFile,
+    LutFile,
+    HubFile,
+    ConstantFile,
+}
+
+public sealed class AsmSectionMarkerNode : AsmNode
+{
+    public AsmSectionMarkerNode(AsmSectionKind kind)
+    {
+        Kind = kind;
+    }
+
+    public AsmSectionKind Kind { get; }
 }
 
 /// <summary>
@@ -292,4 +373,3 @@ public sealed class AsmCommentNode : AsmNode
 
     public string Text { get; }
 }
-

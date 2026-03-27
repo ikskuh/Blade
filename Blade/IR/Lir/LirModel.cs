@@ -7,11 +7,6 @@ using Blade.Source;
 
 namespace Blade.IR.Lir;
 
-public readonly record struct LirVirtualRegister(int Id)
-{
-    public override string ToString() => $"%r{Id}";
-}
-
 public sealed class LirModule
 {
     public LirModule(IReadOnlyList<LirFunction> functions)
@@ -31,27 +26,19 @@ public sealed class LirModule
 
 public sealed class LirFunction
 {
-    public LirFunction(
-        string name,
-        bool isEntryPoint,
-        FunctionKind kind,
-        IReadOnlyList<TypeSymbol> returnTypes,
-        IReadOnlyList<LirBlock> blocks,
-        IReadOnlyList<ReturnSlot>? returnSlots = null)
+    public LirFunction(MirFunction sourceFunction, IReadOnlyList<LirBlock> blocks)
     {
-        Name = name;
-        IsEntryPoint = isEntryPoint;
-        Kind = kind;
-        ReturnTypes = returnTypes;
-        ReturnSlots = returnSlots ?? [];
+        SourceFunction = Requires.NotNull(sourceFunction);
         Blocks = blocks;
     }
 
-    public string Name { get; }
-    public bool IsEntryPoint { get; }
-    public FunctionKind Kind { get; }
-    public IReadOnlyList<TypeSymbol> ReturnTypes { get; }
-    public IReadOnlyList<ReturnSlot> ReturnSlots { get; }
+    public MirFunction SourceFunction { get; }
+    public FunctionSymbol Symbol => SourceFunction.Symbol;
+    public string Name => SourceFunction.Name;
+    public bool IsEntryPoint => SourceFunction.IsEntryPoint;
+    public FunctionKind Kind => SourceFunction.Kind;
+    public IReadOnlyList<TypeSymbol> ReturnTypes => SourceFunction.ReturnTypes;
+    public IReadOnlyList<ReturnSlot> ReturnSlots => SourceFunction.ReturnSlots;
     public IReadOnlyList<LirBlock> Blocks { get; }
 }
 
@@ -62,14 +49,24 @@ public sealed class LirBlock
         IReadOnlyList<LirBlockParameter> parameters,
         IReadOnlyList<LirInstruction> instructions,
         LirTerminator terminator)
+        : this(new ControlFlowLabelSymbol(label), parameters, instructions, terminator)
     {
-        Label = label;
+    }
+
+    public LirBlock(
+        ControlFlowLabelSymbol label,
+        IReadOnlyList<LirBlockParameter> parameters,
+        IReadOnlyList<LirInstruction> instructions,
+        LirTerminator terminator)
+    {
+        LabelSymbol = Requires.NotNull(label);
         Parameters = parameters;
         Instructions = instructions;
         Terminator = terminator;
     }
 
-    public string Label { get; }
+    public ControlFlowLabelSymbol LabelSymbol { get; }
+    public string Label => LabelSymbol.Name;
     public IReadOnlyList<LirBlockParameter> Parameters { get; }
     public IReadOnlyList<LirInstruction> Instructions { get; }
     public LirTerminator Terminator { get; }
@@ -117,12 +114,12 @@ public sealed class LirImmediateOperand : LirOperand
 
 public sealed class LirSymbolOperand : LirOperand
 {
-    public LirSymbolOperand(string symbol)
+    public LirSymbolOperand(IAsmSymbol symbol)
     {
-        Symbol = symbol;
+        Symbol = Requires.NotNull(symbol);
     }
 
-    public string Symbol { get; }
+    public IAsmSymbol Symbol { get; }
 }
 
 public sealed class LirPlaceOperand : LirOperand
@@ -142,7 +139,7 @@ public abstract class LirInstruction
         TypeSymbol? resultType,
         IReadOnlyList<LirOperand> operands,
         bool hasSideEffects,
-        string? predicate,
+        P2ConditionCode? predicate,
         bool writesC,
         bool writesZ,
         TextSpan span)
@@ -161,13 +158,13 @@ public abstract class LirInstruction
     public TypeSymbol? ResultType { get; }
     public IReadOnlyList<LirOperand> Operands { get; }
     public bool HasSideEffects { get; }
-    public string? Predicate { get; }
+    public P2ConditionCode? Predicate { get; }
     public bool WritesC { get; }
     public bool WritesZ { get; }
     public TextSpan Span { get; }
+    public string Opcode => DisplayName;
 
     public abstract string DisplayName { get; }
-    public string Opcode => DisplayName;
 }
 
 public abstract class LirOperation
@@ -337,6 +334,13 @@ public sealed class LirInsertMemberOperation : LirOperation
 
 public sealed class LirCallOperation : LirOperation
 {
+    public LirCallOperation(FunctionSymbol targetFunction)
+    {
+        TargetFunction = Requires.NotNull(targetFunction);
+    }
+
+    public FunctionSymbol TargetFunction { get; }
+
     public override string DisplayName => "call";
 }
 
@@ -354,7 +358,14 @@ public sealed class LirCallExtractFlagOperation : LirOperation
 
 public sealed class LirIntrinsicOperation : LirOperation
 {
-    public override string DisplayName => "intrinsic";
+    public LirIntrinsicOperation(P2Mnemonic mnemonic)
+    {
+        Mnemonic = mnemonic;
+    }
+
+    public P2Mnemonic Mnemonic { get; }
+
+    public override string DisplayName => $"intrinsic.{Mnemonic}";
 }
 
 public sealed class LirStoreIndexOperation : LirOperation
@@ -405,12 +416,13 @@ public sealed class LirYieldOperation : LirOperation
 
 public sealed class LirYieldToOperation : LirOperation
 {
-    public LirYieldToOperation(string targetFunctionName)
+    public LirYieldToOperation(FunctionSymbol targetFunction)
     {
-        TargetFunctionName = targetFunctionName;
+        TargetFunction = Requires.NotNull(targetFunction);
     }
 
-    public string TargetFunctionName { get; }
+    public FunctionSymbol TargetFunction { get; }
+    public string TargetFunctionName => TargetFunction.Name;
 
     public override string DisplayName => $"yieldto:{TargetFunctionName}";
 }
@@ -453,7 +465,30 @@ public sealed class LirOpInstruction : LirInstruction
         TypeSymbol? resultType,
         IReadOnlyList<LirOperand> operands,
         bool hasSideEffects,
-        string? predicate,
+        string? predicateText,
+        bool writesC,
+        bool writesZ,
+        TextSpan span)
+        : this(
+            operation,
+            destination,
+            resultType,
+            operands,
+            hasSideEffects,
+            ParsePredicate(predicateText),
+            writesC,
+            writesZ,
+            span)
+    {
+    }
+
+    public LirOpInstruction(
+        LirOperation operation,
+        LirVirtualRegister? destination,
+        TypeSymbol? resultType,
+        IReadOnlyList<LirOperand> operands,
+        bool hasSideEffects,
+        P2ConditionCode? predicate,
         bool writesC,
         bool writesZ,
         TextSpan span)
@@ -465,18 +500,35 @@ public sealed class LirOpInstruction : LirInstruction
     public LirOperation Operation { get; }
 
     public override string DisplayName => Operation.DisplayName;
+
+    private static P2ConditionCode? ParsePredicate(string? predicate)
+    {
+        if (string.IsNullOrWhiteSpace(predicate))
+            return null;
+
+        bool parsed = P2InstructionMetadata.TryParseConditionCode(predicate, out P2ConditionCode code);
+        Assert.Invariant(parsed, $"Predicate '{predicate}' must resolve to a valid P2 condition code.");
+        return code;
+    }
 }
 
 public sealed class LirInlineAsmBinding
 {
-    public LirInlineAsmBinding(string name, LirOperand operand, InlineAsmBindingAccess access)
+    public LirInlineAsmBinding(string name, Symbol symbol, LirOperand operand, InlineAsmBindingAccess access)
     {
-        Name = name;
+        Name = Requires.NotNullOrWhiteSpace(name);
+        Symbol = Requires.NotNull(symbol);
         Operand = operand;
         Access = access;
     }
 
+    public LirInlineAsmBinding(Symbol symbol, LirOperand operand, InlineAsmBindingAccess access)
+        : this(Requires.NotNull(symbol).Name, symbol, operand, access)
+    {
+    }
+
     public string Name { get; }
+    public Symbol Symbol { get; }
     public LirOperand Operand { get; }
     public InlineAsmBindingAccess Access { get; }
 }
@@ -486,7 +538,7 @@ public sealed class LirInlineAsmInstruction : LirInstruction
     public LirInlineAsmInstruction(
         AsmVolatility volatility,
         string body,
-        string? flagOutput,
+        InlineAsmFlagOutput? flagOutput,
         IReadOnlyList<InlineAssemblyValidator.AsmLine> parsedLines,
         IReadOnlyList<LirInlineAsmBinding> bindings,
         TextSpan span)
@@ -509,7 +561,7 @@ public sealed class LirInlineAsmInstruction : LirInstruction
 
     public AsmVolatility Volatility { get; }
     public string Body { get; }
-    public string? FlagOutput { get; }
+    public InlineAsmFlagOutput? FlagOutput { get; }
     public IReadOnlyList<InlineAssemblyValidator.AsmLine> ParsedLines { get; }
     public IReadOnlyList<LirInlineAsmBinding> Bindings { get; }
 
@@ -529,13 +581,19 @@ public abstract class LirTerminator
 public sealed class LirGotoTerminator : LirTerminator
 {
     public LirGotoTerminator(string targetLabel, IReadOnlyList<LirOperand> arguments, TextSpan span)
+        : this(new ControlFlowLabelSymbol(targetLabel), arguments, span)
+    {
+    }
+
+    public LirGotoTerminator(ControlFlowLabelSymbol targetLabel, IReadOnlyList<LirOperand> arguments, TextSpan span)
         : base(span)
     {
-        TargetLabel = targetLabel;
+        TargetLabelSymbol = Requires.NotNull(targetLabel);
         Arguments = arguments;
     }
 
-    public string TargetLabel { get; }
+    public ControlFlowLabelSymbol TargetLabelSymbol { get; }
+    public string TargetLabel => TargetLabelSymbol.Name;
     public IReadOnlyList<LirOperand> Arguments { get; }
 }
 
@@ -549,19 +607,33 @@ public sealed class LirBranchTerminator : LirTerminator
         IReadOnlyList<LirOperand> falseArguments,
         TextSpan span,
         MirFlag? conditionFlag = null)
+        : this(condition, new ControlFlowLabelSymbol(trueLabel), new ControlFlowLabelSymbol(falseLabel), trueArguments, falseArguments, span, conditionFlag)
+    {
+    }
+
+    public LirBranchTerminator(
+        LirOperand condition,
+        ControlFlowLabelSymbol trueLabel,
+        ControlFlowLabelSymbol falseLabel,
+        IReadOnlyList<LirOperand> trueArguments,
+        IReadOnlyList<LirOperand> falseArguments,
+        TextSpan span,
+        MirFlag? conditionFlag = null)
         : base(span)
     {
         Condition = condition;
-        TrueLabel = trueLabel;
-        FalseLabel = falseLabel;
+        TrueLabelSymbol = Requires.NotNull(trueLabel);
+        FalseLabelSymbol = Requires.NotNull(falseLabel);
         TrueArguments = trueArguments;
         FalseArguments = falseArguments;
         ConditionFlag = conditionFlag;
     }
 
     public LirOperand Condition { get; }
-    public string TrueLabel { get; }
-    public string FalseLabel { get; }
+    public ControlFlowLabelSymbol TrueLabelSymbol { get; }
+    public ControlFlowLabelSymbol FalseLabelSymbol { get; }
+    public string TrueLabel => TrueLabelSymbol.Name;
+    public string FalseLabel => FalseLabelSymbol.Name;
     public IReadOnlyList<LirOperand> TrueArguments { get; }
     public IReadOnlyList<LirOperand> FalseArguments { get; }
 

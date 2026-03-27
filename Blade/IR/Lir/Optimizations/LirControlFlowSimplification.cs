@@ -15,13 +15,7 @@ public sealed class LirControlFlowSimplification : ILirOptimization
         {
             IReadOnlyList<LirBlock> threaded = ThreadTrivialGotoBlocks(function.Blocks);
             IReadOnlyList<LirBlock> merged = MergeLinearBlocks(threaded);
-            functions.Add(new LirFunction(
-                function.Name,
-                function.IsEntryPoint,
-                function.Kind,
-                function.ReturnTypes,
-                merged,
-                function.ReturnSlots));
+            functions.Add(new LirFunction(function.SourceFunction, merged));
         }
 
         LirModule result = new(input.StoragePlaces, functions);

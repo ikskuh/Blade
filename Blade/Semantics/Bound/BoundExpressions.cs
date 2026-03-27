@@ -202,14 +202,30 @@ public sealed class BoundModuleCallExpression : BoundExpression
 public sealed class BoundIntrinsicCallExpression : BoundExpression
 {
     public BoundIntrinsicCallExpression(string name, IReadOnlyList<BoundExpression> arguments, TextSpan span, TypeSymbol type)
+        : this(ParseMnemonic(name), arguments, span, type)
+    {
+    }
+
+    public BoundIntrinsicCallExpression(P2Mnemonic mnemonic, IReadOnlyList<BoundExpression> arguments, TextSpan span, TypeSymbol type)
         : base(BoundNodeKind.IntrinsicCallExpression, span, type)
     {
-        Name = name;
+        Mnemonic = mnemonic;
         Arguments = arguments;
     }
 
-    public string Name { get; }
+    public P2Mnemonic Mnemonic { get; }
     public IReadOnlyList<BoundExpression> Arguments { get; }
+
+    private static P2Mnemonic ParseMnemonic(string name)
+    {
+        string normalized = Requires.NotNullOrWhiteSpace(name);
+        if (normalized.StartsWith('@'))
+            normalized = normalized[1..];
+
+        bool parsed = P2InstructionMetadata.TryParseMnemonic(normalized, out P2Mnemonic mnemonic);
+        Assert.Invariant(parsed, $"Intrinsic '{name}' must resolve to a valid P2 mnemonic.");
+        return mnemonic;
+    }
 }
 
 public sealed class BoundEnumLiteralExpression : BoundExpression

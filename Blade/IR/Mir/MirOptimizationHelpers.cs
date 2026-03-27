@@ -83,7 +83,7 @@ internal static class MirOptimizationHelpers
         bool changed = false;
         foreach (MirValueId value in values)
         {
-            MirValueId mapped = mapping.TryGetValue(value, out MirValueId replacement) ? replacement : value;
+            MirValueId mapped = mapping.TryGetValue(value, out MirValueId? replacement) && replacement is not null ? replacement : value;
             rewritten.Add(mapped);
             changed |= mapped != value;
         }
@@ -104,14 +104,15 @@ internal static class MirOptimizationHelpers
             MirInlineAsmBinding binding = inlineAsm.Bindings[i];
             if (binding.Access != InlineAsmBindingAccess.Read
                 || binding.Value is not MirValueId value
-                || !mapping.TryGetValue(value, out MirValueId mapped)
+                || !mapping.TryGetValue(value, out MirValueId? mapped)
+                || mapped is null
                 || mapped == value)
             {
                 continue;
             }
 
             rewritten ??= new List<MirInlineAsmBinding>(inlineAsm.Bindings);
-            rewritten[i] = new MirInlineAsmBinding(binding.Name, mapped, binding.Place, binding.Access);
+            rewritten[i] = new MirInlineAsmBinding(binding.Name, binding.Symbol, mapped, binding.Place, binding.Access);
         }
 
         return rewritten is null
@@ -143,7 +144,7 @@ internal static class MirOptimizationHelpers
     internal static MirValueId ResolveAlias(MirValueId value, IReadOnlyDictionary<MirValueId, MirValueId> aliases)
     {
         MirValueId current = value;
-        while (aliases.TryGetValue(current, out MirValueId next) && next != current)
+        while (aliases.TryGetValue(current, out MirValueId? next) && next is not null && next != current)
             current = next;
         return current;
     }

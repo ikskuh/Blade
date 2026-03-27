@@ -92,7 +92,7 @@ public static class RegisterAllocator
                     rewrittenNodes.Add(new AsmInstructionNode(P2Mnemonic.POPB, [new AsmRegisterOperand(liveRegisters[liveIndex])]));
             }
 
-            functions.Add(new AsmFunction(function.Name, function.IsEntryPoint, function.CcTier, rewrittenNodes));
+            functions.Add(new AsmFunction(function, rewrittenNodes));
         }
 
         return new AsmModule(module.StoragePlaces, functions);
@@ -560,7 +560,7 @@ public static class RegisterAllocator
                 }
             }
 
-            functions.Add(new AsmFunction(function.Name, function.IsEntryPoint, function.CcTier, rewrittenNodes));
+            functions.Add(new AsmFunction(function, rewrittenNodes));
         }
 
         // Emit register file data section in the entry point function
@@ -630,7 +630,7 @@ public static class RegisterAllocator
             }
         }
 
-        functions[targetIdx] = new AsmFunction(target.Name, target.IsEntryPoint, target.CcTier, extendedNodes);
+        functions[targetIdx] = new AsmFunction(target, extendedNodes);
         return new AsmModule(module.StoragePlaces, functions);
     }
 

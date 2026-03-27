@@ -44,13 +44,7 @@ public sealed class LirDeadCodeElimination : ILirOptimization
                 blocks.Add(new LirBlock(block.Label, block.Parameters, kept, block.Terminator));
             }
 
-            functions.Add(new LirFunction(
-                function.Name,
-                function.IsEntryPoint,
-                function.Kind,
-                function.ReturnTypes,
-                blocks,
-                function.ReturnSlots));
+            functions.Add(new LirFunction(function.SourceFunction, blocks));
         }
 
         LirModule result = new(input.StoragePlaces, functions);

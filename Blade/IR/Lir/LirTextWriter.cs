@@ -89,10 +89,10 @@ public static class LirTextWriter
             sb.Append(" = ");
         }
 
-        if (!string.IsNullOrWhiteSpace(instruction.Predicate))
+        if (instruction.Predicate is P2ConditionCode predicate)
         {
             sb.Append('[');
-            sb.Append(instruction.Predicate);
+            sb.Append(FormatPredicate(predicate));
             sb.Append("] ");
         }
 
@@ -120,6 +120,7 @@ public static class LirTextWriter
         if (instruction.FlagOutput is not null)
         {
             sb.Append(" -> ");
+            sb.Append('@');
             sb.Append(instruction.FlagOutput);
         }
 
@@ -198,7 +199,7 @@ public static class LirTextWriter
         {
             LirRegisterOperand register => register.Register.ToString(),
             LirImmediateOperand immediate => $"{FormatImmediate(immediate.Value)}:{immediate.Type.Name}",
-            LirSymbolOperand symbol => $"@{symbol.Symbol}",
+            LirSymbolOperand symbol => $"@{symbol.Symbol.Name}",
             LirPlaceOperand place => $"%place({place.Place.EmittedName})",
             _ => "<op>",
         };
@@ -214,6 +215,15 @@ public static class LirTextWriter
             IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
             _ => value.ToString() ?? "<?>",
         };
+    }
+
+    private static string FormatPredicate(P2ConditionCode predicate)
+    {
+        string text = P2InstructionMetadata.GetConditionPrefixText(predicate);
+        char[] chars = text.ToCharArray();
+        for (int i = 0; i < chars.Length; i++)
+            chars[i] = char.ToLowerInvariant(chars[i]);
+        return new string(chars);
     }
 
     private static string FormatInlineAsmAccess(InlineAsmBindingAccess access)
