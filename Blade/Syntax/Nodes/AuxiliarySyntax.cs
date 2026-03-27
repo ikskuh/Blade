@@ -133,21 +133,6 @@ public sealed class StructFieldSyntax : SyntaxNode
     }
 }
 
-public sealed class AsmFlagOutputSyntax : SyntaxNode
-{
-    public Token Arrow { get; }
-    public Token AtToken { get; }
-    public Token Flag { get; }
-
-    public AsmFlagOutputSyntax(Token arrow, Token atToken, Token flag)
-        : base(TextSpan.FromBounds(arrow.Span.Start, flag.Span.End))
-    {
-        Arrow = arrow;
-        AtToken = atToken;
-        Flag = flag;
-    }
-}
-
 public sealed class AsmOutputBindingSyntax : SyntaxNode
 {
     public Token Arrow { get; }

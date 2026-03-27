@@ -1,4 +1,3 @@
-using System;
 using System.Collections;
 using System.Collections.Generic;
 
@@ -30,10 +29,4 @@ public sealed class SeparatedSyntaxList<T> : IEnumerable<T> where T : SyntaxNode
     }
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
-}
-
-public static class SeparatedSyntaxList
-{
-    public static SeparatedSyntaxList<T> Empty<T>() where T : SyntaxNode
-        => new(Array.Empty<object>());
 }

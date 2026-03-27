@@ -91,7 +91,7 @@ public class SyntaxNodeConstructionTests
             Tok(TokenKind.FnKeyword, 13, 2, "fn"),
             Tok(TokenKind.Identifier, 16, 4, "demo"),
             Tok(TokenKind.OpenParen, 20, 1, "("),
-            SeparatedSyntaxList.Empty<ParameterSyntax>(),
+            new SeparatedSyntaxList<ParameterSyntax>([]),
             Tok(TokenKind.CloseParen, 21, 1, ")"),
             Tok(TokenKind.Arrow, 23, 2, "->"),
             new SeparatedSyntaxList<ReturnItemSyntax>([ret]),
@@ -123,7 +123,6 @@ public class SyntaxNodeConstructionTests
         AddressClauseSyntax address = new(Tok(TokenKind.At, 14, 1, "@"), Tok(TokenKind.OpenParen, 15, 1, "("), literal, Tok(TokenKind.CloseParen, 17, 1, ")"));
         StructFieldSyntax field = new(Tok(TokenKind.Identifier, 18, 1, "x"), Tok(TokenKind.Colon, 19, 1, ":"), u32);
         FlagAnnotationSyntax flag = new(Tok(TokenKind.At, 20, 1, "@"), Tok(TokenKind.Identifier, 21, 1, "C"));
-        AsmFlagOutputSyntax asmFlagOutput = new(Tok(TokenKind.Arrow, 22, 2, "->"), Tok(TokenKind.At, 24, 1, "@"), Tok(TokenKind.Identifier, 25, 1, "Z"));
         AsmOutputBindingSyntax asmBinding = new(Tok(TokenKind.Arrow, 26, 2, "->"), Tok(TokenKind.Identifier, 28, 5, "state"), Tok(TokenKind.Colon, 33, 1, ":"), u32, flag);
         EnumMemberSyntax enumOpen = new(Tok(TokenKind.DotDotDot, 34, 3, "..."), null, null, isOpenMarker: true);
         EnumMemberSyntax enumAssigned = new(Tok(TokenKind.Identifier, 38, 1, "A"), Tok(TokenKind.Equal, 39, 1, "="), literal);
@@ -132,7 +131,6 @@ public class SyntaxNodeConstructionTests
         Assert.That(align.Alignment, Is.SameAs(literal));
         Assert.That(address.Address, Is.SameAs(literal));
         Assert.That(field.Type, Is.SameAs(u32));
-        Assert.That(asmFlagOutput.Flag.Text, Is.EqualTo("Z"));
         Assert.That(asmBinding.FlagAnnotation, Is.SameAs(flag));
         Assert.That(enumOpen.IsOpenMarker, Is.True);
         Assert.That(enumAssigned.Value, Is.SameAs(literal));
