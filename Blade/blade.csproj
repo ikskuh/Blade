@@ -37,4 +37,12 @@
     </PackageReference>
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Include our own code analyzer in the build, so we can detect stale code, even if it's public -->
+    <ProjectReference
+        Include="..\Blade.Roslyn.Analyzers\Blade.Roslyn.Analyzers.csproj"
+        OutputItemType="Analyzer"
+        ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
 </Project>
