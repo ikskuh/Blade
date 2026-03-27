@@ -6,3 +6,4 @@
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
 BLD0001 | Usage | Warning | UnusedClassAnalyzer
+BLD0002 | Usage | Warning | UnusedClassAnalyzer
