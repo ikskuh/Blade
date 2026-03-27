@@ -6,6 +6,7 @@ namespace Blade.IR.Asm.Optimizations;
 [AsmOptimization("dce-reg", Priority = 800)]
 public sealed class AsmDeadRegisterElimination : PerFunctionAsmOptimization
 {
+    [PublicApi] // TODO: Remove this when the method usage analyzer is fixde
     protected override AsmFunction? RunOnFunction(AsmFunction input)
     {
         if (!UsesNonLinearControlFlow(input))
@@ -41,6 +42,7 @@ public sealed class AsmDeadRegisterElimination : PerFunctionAsmOptimization
         return new AsmFunction(input, kept);
     }
 
+    [PublicApi] // TODO: Remove this when the method usage analyzer is fixde
     private static AsmFunction? RunStraightLine(AsmFunction input)
     {
         HashSet<int> live = [];

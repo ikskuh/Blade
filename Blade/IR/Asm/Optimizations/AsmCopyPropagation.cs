@@ -6,6 +6,7 @@ namespace Blade.IR.Asm.Optimizations;
 [AsmOptimization("copy-prop", Priority = 900)]
 public sealed class AsmCopyPropagation : PerFunctionAsmOptimization
 {
+    [PublicApi] // TODO: Remove this when the method usage analyzer is fixde
     protected override AsmFunction? RunOnFunction(AsmFunction input)
     {
         Dictionary<int, AsmOperand> aliases = [];

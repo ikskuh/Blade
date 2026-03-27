@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using Blade.IR;
+using Blade.IR.Asm;
 
 namespace Blade;
 
@@ -18,6 +20,9 @@ internal static class Program
             Console.Error.WriteLine($"error: file not found: {options.FilePath}");
             return 1;
         }
+
+        // TODO: Remove this line when the Method Usage Analyzer is fixed:
+        Func<IReadOnlyList<AsmNode>, HashSet<string>> method =  AsmOptimizationHelpers.CollectJumpTargets;
 
         Stopwatch sw = Stopwatch.StartNew();
         CompilationResult compilation = CompilerDriver.CompileFile(

@@ -6,6 +6,7 @@ namespace Blade.IR.Asm.Optimizations;
 [AsmOptimization("muxc-fusion", Priority = 400)]
 public sealed class AsmMuxcFusion : PerFunctionAsmOptimization
 {
+    [PublicApi] // TODO: Remove this when the method usage analyzer is fixde
     protected override AsmFunction? RunOnFunction(AsmFunction input)
     {
         List<AsmNode> nodes = [];
