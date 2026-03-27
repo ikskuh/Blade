@@ -6,7 +6,6 @@ namespace Blade.IR.Asm.Optimizations;
 [AsmOptimization("cleanup-self-mov", Priority = 200, State = AsmOptimizationState.PreRegAlloc | AsmOptimizationState.PostRegAlloc)]
 public sealed class AsmCleanupSelfMov : PerFunctionAsmOptimization
 {
-    [PublicApi] // TODO: Remove this when the method usage analyzer is fixde
     protected override AsmFunction? RunOnFunction(AsmFunction input)
     {
         List<AsmNode> nodes = [];

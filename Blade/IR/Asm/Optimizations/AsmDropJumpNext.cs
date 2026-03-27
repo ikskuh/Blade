@@ -7,7 +7,6 @@ namespace Blade.IR.Asm.Optimizations;
 [AsmOptimization("drop-jmp-next", Priority = 700)]
 public sealed class AsmDropJumpNext : PerFunctionAsmOptimization
 {
-    [PublicApi] // TODO: Remove this when the method usage analyzer is fixde
     protected override AsmFunction? RunOnFunction(AsmFunction input)
     {
         List<AsmNode> nodes = [];

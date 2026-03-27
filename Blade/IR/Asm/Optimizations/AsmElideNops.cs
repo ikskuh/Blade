@@ -6,7 +6,6 @@ namespace Blade.IR.Asm.Optimizations;
 [AsmOptimization("elide-nops", Priority = 300)]
 public sealed class AsmElideNops : PerFunctionAsmOptimization
 {
-    [PublicApi] // TODO: Remove this when the method usage analyzer is fixde
     protected override AsmFunction? RunOnFunction(AsmFunction input)
     {
         List<AsmNode> nodes = [];

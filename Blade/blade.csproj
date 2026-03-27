@@ -43,10 +43,10 @@
         Include="..\Blade.Roslyn.Analyzers\Blade.Roslyn.Analyzers.csproj"
         OutputItemType="Analyzer"
         ReferenceOutputAssembly="false" />
-      <!-- TODO: The function usage analysis is still problematic: -->
       
   </ItemGroup>
   <PropertyGroup>
+      <!-- TODO: The function usage analysis is still problematic: -->
     <WarningsNotAsErrors>BLD0002</WarningsNotAsErrors>
   </PropertyGroup>
 

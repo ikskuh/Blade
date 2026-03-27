@@ -4,7 +4,6 @@ using Blade;
 
 namespace Blade.IR.Asm;
 
-[PublicApi]
 internal static class AsmOptimizationHelpers
 {
     internal static bool IsPlainMov(AsmInstructionNode instruction)

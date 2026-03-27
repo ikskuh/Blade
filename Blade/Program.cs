@@ -21,8 +21,6 @@ internal static class Program
             return 1;
         }
 
-        // TODO: Remove this line when the Method Usage Analyzer is fixed:
-        Func<IReadOnlyList<AsmNode>, HashSet<string>> method =  AsmOptimizationHelpers.CollectJumpTargets;
 
         Stopwatch sw = Stopwatch.StartNew();
         CompilationResult compilation = CompilerDriver.CompileFile(

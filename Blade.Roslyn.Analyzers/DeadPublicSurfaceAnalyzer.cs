@@ -214,7 +214,10 @@ public sealed class UnusedClassAnalyzer : DiagnosticAnalyzer
                 continue;
 
             // Mark the type as reached so it isn't reported as an unused class.
+            // Also mark as constructed — plugin types are instantiated via reflection at runtime,
+            // so virtual dispatch must resolve overrides (e.g. RunOnFunction) on them.
             AddReachedType(type, reachedTypes, reachedTypesList);
+            constructedTypes.Add(type);
 
             // Reach base types and interfaces (so PerFunctionAsmOptimization etc. are not flagged).
             ReachTypeHierarchy(type, compilation, reachedTypes, reachedTypesList, seenMethods, worklist,
@@ -440,6 +443,12 @@ public sealed class UnusedClassAnalyzer : DiagnosticAnalyzer
         HashSet<IMethodSymbol> virtualCallTargets,
         CancellationToken cancellationToken)
     {
+        // Ensure the method's declaring type is reached. This covers cases where a method
+        // is enqueued without its containing type being explicitly reached at the call site
+        // (e.g. methods from types imported via `using static`).
+        ReachType(method.ContainingType, compilation, reachedTypes, reachedTypesList, seenMethods, worklist,
+            constructedTypes, virtualCallTargets, cancellationToken);
+
         // Reach types in the method signature.
         ReachTypeSymbol(method.ReturnType, compilation, reachedTypes, reachedTypesList, seenMethods, worklist,
             constructedTypes, virtualCallTargets, cancellationToken);
@@ -466,12 +475,6 @@ public sealed class UnusedClassAnalyzer : DiagnosticAnalyzer
         foreach (SyntaxReference syntaxRef in syntaxReferences)
         {
             cancellationToken.ThrowIfCancellationRequested();
-
-            // Skip generated files — ConfigureGeneratedCodeAnalysis(None) does not affect
-            // RegisterCompilationAction, so we filter manually by file naming convention.
-            string filePath = syntaxRef.SyntaxTree.FilePath;
-            if (filePath.EndsWith(".g.cs") || filePath.EndsWith(".generated.cs"))
-                continue;
 
             SyntaxNode root = syntaxRef.GetSyntax(cancellationToken);
 #pragma warning disable RS1030 // Whole-compilation reachability analysis requires GetSemanticModel per tree

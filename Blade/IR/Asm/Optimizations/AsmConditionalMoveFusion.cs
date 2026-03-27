@@ -7,7 +7,6 @@ namespace Blade.IR.Asm.Optimizations;
 [AsmOptimization("conditional-move-fusion", Priority = 500)]
 public sealed class AsmConditionalMoveFusion : PerFunctionAsmOptimization
 {
-    [PublicApi] // TODO: Remove this when the method usage analyzer is fixde
     protected override AsmFunction? RunOnFunction(AsmFunction input)
     {
         HashSet<string> targetedLabels = CollectJumpTargets(input.Nodes);
