@@ -106,6 +106,6 @@ internal static class IrTestFactory
             isExtern,
             fixedAddress,
             alignment);
-        return new StoragePlace(symbol, kind, fixedAddress, staticInitializer);
+        return new StoragePlace(symbol, kind, fixedAddress, staticInitializer, emittedName: $"g_{name}");
     }
 }

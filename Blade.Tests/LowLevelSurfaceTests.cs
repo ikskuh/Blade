@@ -12,7 +12,10 @@ public class LowLevelSurfaceTests
     [Test]
     public void InlineAssemblyBindingAnalysis_ComputesPreciseTypedAccesses()
     {
-        IReadOnlyDictionary<string, InlineAsmBindingAccess> access = InlineAssemblyBindingAnalysis.ComputeBindingAccess(
+        InlineAsmBindingSlot dst = new("dst");
+        InlineAsmBindingSlot src = new("src");
+        InlineAsmBindingSlot unused = new("unused");
+        IReadOnlyDictionary<InlineAsmBindingSlot, InlineAsmBindingAccess> access = InlineAssemblyBindingAnalysis.ComputeBindingAccess(
             parsedLines:
             [
                 new InlineAsmInstructionLine(
@@ -20,8 +23,8 @@ public class LowLevelSurfaceTests
                     mnemonic: P2Mnemonic.ADD,
                     operands:
                     [
-                        new InlineAsmBindingRefOperand("dst"),
-                        new InlineAsmBindingRefOperand("src"),
+                        new InlineAsmBindingRefOperand(dst),
+                        new InlineAsmBindingRefOperand(src),
                     ],
                     flagEffect: null,
                     rawText: "add {dst}, {src}"),
@@ -30,24 +33,27 @@ public class LowLevelSurfaceTests
                     mnemonic: P2Mnemonic.MOV,
                     operands:
                     [
-                        new InlineAsmBindingRefOperand("dst"),
+                        new InlineAsmBindingRefOperand(dst),
                         new InlineAsmImmediateOperand(0x10),
                     ],
                     flagEffect: null,
                     rawText: "mov {dst}, #0x10"),
             ],
-            bindingNames: ["dst", "src", "unused"]);
+            bindings: [dst, src, unused]);
 
-        Assert.That(access["dst"], Is.EqualTo(InlineAsmBindingAccess.ReadWrite));
-        Assert.That(access["src"], Is.EqualTo(InlineAsmBindingAccess.Read));
-        Assert.That(access["unused"], Is.EqualTo(InlineAsmBindingAccess.ReadWrite));
+        Assert.That(access[dst], Is.EqualTo(InlineAsmBindingAccess.ReadWrite));
+        Assert.That(access[src], Is.EqualTo(InlineAsmBindingAccess.Read));
+        Assert.That(access[unused], Is.EqualTo(InlineAsmBindingAccess.ReadWrite));
     }
 
     [Test]
     public void InlineAssemblyBindingAnalysis_FallsBackToReadWriteWhenLoweringIsUnsafe()
     {
+        InlineAsmBindingSlot x = new("x");
+        InlineAsmBindingSlot y = new("y");
+
         // Volatile asm now gets precise per-operand analysis (not conservative ReadWrite).
-        IReadOnlyDictionary<string, InlineAsmBindingAccess> volatileAccess = InlineAssemblyBindingAnalysis.ComputeBindingAccess(
+        IReadOnlyDictionary<InlineAsmBindingSlot, InlineAsmBindingAccess> volatileAccess = InlineAssemblyBindingAnalysis.ComputeBindingAccess(
             parsedLines:
             [
                 new InlineAsmInstructionLine(
@@ -55,31 +61,31 @@ public class LowLevelSurfaceTests
                     mnemonic: P2Mnemonic.MOV,
                     operands:
                     [
-                        new InlineAsmBindingRefOperand("x"),
-                        new InlineAsmBindingRefOperand("y"),
+                        new InlineAsmBindingRefOperand(x),
+                        new InlineAsmBindingRefOperand(y),
                     ],
                     flagEffect: null,
                     rawText: "mov {x}, {y}"),
             ],
-            bindingNames: ["x", "y"]);
+            bindings: [x, y]);
 
-        Assert.That(volatileAccess["x"], Is.EqualTo(InlineAsmBindingAccess.Write));
-        Assert.That(volatileAccess["y"], Is.EqualTo(InlineAsmBindingAccess.Read));
+        Assert.That(volatileAccess[x], Is.EqualTo(InlineAsmBindingAccess.Write));
+        Assert.That(volatileAccess[y], Is.EqualTo(InlineAsmBindingAccess.Read));
 
         // Invalid instruction form still falls back to ReadWrite.
-        IReadOnlyDictionary<string, InlineAsmBindingAccess> unknownMnemonic = InlineAssemblyBindingAnalysis.ComputeBindingAccess(
+        IReadOnlyDictionary<InlineAsmBindingSlot, InlineAsmBindingAccess> unknownMnemonic = InlineAssemblyBindingAnalysis.ComputeBindingAccess(
             parsedLines:
             [
                 new InlineAsmInstructionLine(
                     condition: null,
                     mnemonic: P2Mnemonic.RET,
-                    operands: [new InlineAsmBindingRefOperand("x")],
+                    operands: [new InlineAsmBindingRefOperand(x)],
                     flagEffect: null,
                     rawText: "ret {x}"),
             ],
-            bindingNames: ["x"]);
+            bindings: [x]);
 
-        Assert.That(unknownMnemonic["x"], Is.EqualTo(InlineAsmBindingAccess.ReadWrite));
+        Assert.That(unknownMnemonic[x], Is.EqualTo(InlineAsmBindingAccess.ReadWrite));
         Assert.That(InlineAssemblyBindingAnalysis.IncludesRead(InlineAsmBindingAccess.Read), Is.True);
         Assert.That(InlineAssemblyBindingAnalysis.IncludesRead(InlineAsmBindingAccess.Write), Is.False);
         Assert.That(InlineAssemblyBindingAnalysis.IncludesWrite(InlineAsmBindingAccess.Write), Is.True);

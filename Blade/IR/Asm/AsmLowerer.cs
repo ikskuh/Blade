@@ -311,7 +311,7 @@ public static class AsmLowerer
                     isExtern: false,
                     fixedAddress: null,
                     alignment: null);
-                string entryLabel = $"{function.Name}_{function.Blocks[0].Label}";
+                ControlFlowLabelSymbol entryLabel = new($"{function.Name}_{function.Blocks[0].Ref}");
                 StoragePlace statePlace = new(
                     stateSymbol,
                     StoragePlaceKind.AllocatableGlobalRegister,
@@ -343,6 +343,7 @@ public static class AsmLowerer
             storagePlaces.Add(topLevelYieldStatePlace);
         }
 
+        BackendSymbolNaming.AssignStorageNames(storagePlaces);
         return (storagePlaces, recursiveCallingConvention, coroutineCallingConvention, topLevelYieldStatePlace);
     }
 
@@ -563,7 +564,7 @@ public static class AsmLowerer
                 LowerYieldTo(nodes, op, yieldTo, ctx);
                 break;
             case LirRangeOperation:
-                ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+                ReportUnsupportedOpcode(ctx, op);
                 nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
                 break;
         }
@@ -571,9 +572,9 @@ public static class AsmLowerer
 
     private static void LowerInlineAsm(List<AsmNode> nodes, LirInlineAsmInstruction inlineAsm, LoweringContext ctx)
     {
-        Dictionary<string, AsmOperand> bindings = new(StringComparer.Ordinal);
+        Dictionary<InlineAsmBindingSlot, AsmOperand> bindings = [];
         foreach (LirInlineAsmBinding binding in inlineAsm.Bindings)
-            bindings[binding.Name] = LowerOperand(binding.Operand);
+            bindings[binding.Slot] = LowerOperand(binding.Operand);
 
         IReadOnlyDictionary<ControlFlowLabelSymbol, ControlFlowLabelSymbol> localLabels = CreateInlineAsmLocalLabels(ctx, inlineAsm.ParsedLines);
 
@@ -589,7 +590,7 @@ public static class AsmLowerer
     private static bool TryLowerTypedInlineAsm(
         List<AsmNode> nodes,
         LirInlineAsmInstruction inlineAsm,
-        IReadOnlyDictionary<string, AsmOperand> bindings,
+        IReadOnlyDictionary<InlineAsmBindingSlot, AsmOperand> bindings,
         IReadOnlyDictionary<ControlFlowLabelSymbol, ControlFlowLabelSymbol> localLabels,
         bool isVolatile)
     {
@@ -697,7 +698,7 @@ public static class AsmLowerer
 
     private static bool TryLowerParsedInlineAsmLine(
         InlineAsmLine line,
-        IReadOnlyDictionary<string, AsmOperand> bindings,
+        IReadOnlyDictionary<InlineAsmBindingSlot, AsmOperand> bindings,
         IReadOnlyDictionary<ControlFlowLabelSymbol, ControlFlowLabelSymbol> localLabels,
         out AsmInstructionNode? instruction)
     {
@@ -723,7 +724,7 @@ public static class AsmLowerer
 
     private static bool TryLowerInlineAsmOperand(
         InlineAsmOperand operandNode,
-        IReadOnlyDictionary<string, AsmOperand> bindings,
+        IReadOnlyDictionary<InlineAsmBindingSlot, AsmOperand> bindings,
         IReadOnlyDictionary<ControlFlowLabelSymbol, ControlFlowLabelSymbol> localLabels,
         out AsmOperand? operand)
     {
@@ -731,7 +732,7 @@ public static class AsmLowerer
         switch (operandNode)
         {
             case InlineAsmBindingRefOperand binding:
-                return bindings.TryGetValue(binding.BindingName, out operand);
+                return bindings.TryGetValue(binding.Slot, out operand);
 
             case InlineAsmImmediateOperand immediate:
                 operand = new AsmImmediateOperand(immediate.Value);
@@ -759,7 +760,7 @@ public static class AsmLowerer
 
             case InlineAsmSymbolOperand symbol:
                 operand = new AsmSymbolOperand(
-                    new AsmNamedSymbol(symbol.Name, SymbolType.ControlFlowLabel),
+                    symbol.Symbol,
                     symbol.AddressingMode == InlineAsmAddressingMode.Immediate
                         ? AsmSymbolAddressingMode.Immediate
                         : AsmSymbolAddressingMode.Register);
@@ -931,7 +932,7 @@ public static class AsmLowerer
                 nodes.Add(Emit(SelectHubReadOpcode(RequireTypedResult(op, "load.deref")), dest, pointer));
                 break;
             default:
-                ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+                ReportUnsupportedOpcode(ctx, op);
                 nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
                 break;
         }
@@ -946,7 +947,7 @@ public static class AsmLowerer
         AggregateMemberSymbol member = operation.Member;
         if (!TryGetAggregateValueShape(member.ByteOffset, op.ResultType, out AggregateAccessShape shape))
         {
-            ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+            ReportUnsupportedOpcode(ctx, op);
             nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
             return;
         }
@@ -983,7 +984,7 @@ public static class AsmLowerer
                     break;
                 }
             default:
-                ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+                ReportUnsupportedOpcode(ctx, op);
                 nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
                 break;
         }
@@ -1008,7 +1009,7 @@ public static class AsmLowerer
                 nodes.Add(new AsmInstructionNode(SelectHubWriteOpcode(RequireTypedResult(op, "store.deref")), [value, pointer]));
                 break;
             default:
-                ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+                ReportUnsupportedOpcode(ctx, op);
                 nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
                 break;
         }
@@ -1041,7 +1042,7 @@ public static class AsmLowerer
                     break;
                 }
             default:
-                ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+                ReportUnsupportedOpcode(ctx, op);
                 nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
                 break;
         }
@@ -1056,7 +1057,7 @@ public static class AsmLowerer
         AggregateMemberSymbol member = operation.Member;
         if (!TryGetAggregateMemberShape(op.ResultType, member.Name, member.ByteOffset, out AggregateAccessShape shape))
         {
-            ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+            ReportUnsupportedOpcode(ctx, op);
             nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
             return;
         }
@@ -1107,21 +1108,21 @@ public static class AsmLowerer
     {
         if (op.ResultType is not StructTypeSymbol structType)
         {
-            ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+            ReportUnsupportedOpcode(ctx, op);
             nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
             return;
         }
 
         if (!TryGetSingleWordAggregateSize(structType, out _))
         {
-            ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+            ReportUnsupportedOpcode(ctx, op);
             nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
             return;
         }
 
         if (operation.Members.Count != op.Operands.Count)
         {
-            ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+            ReportUnsupportedOpcode(ctx, op);
             nodes.Add(new AsmCommentNode($"invalid {op.DisplayName}"));
             return;
         }
@@ -1135,7 +1136,7 @@ public static class AsmLowerer
             if (!structType.Members.TryGetValue(member.Name, out AggregateMemberSymbol? resolvedMember)
                 || !TryGetAggregateMemberShape(structType, resolvedMember.Name, resolvedMember.ByteOffset, out AggregateAccessShape shape))
             {
-                ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+                ReportUnsupportedOpcode(ctx, op);
                 nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
                 return;
             }
@@ -1243,7 +1244,7 @@ public static class AsmLowerer
             return;
         }
 
-        ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+        ReportUnsupportedOpcode(ctx, op);
         nodes.Add(new AsmCommentNode($"unhandled aligned fallback for {op.DisplayName}"));
     }
 
@@ -1861,7 +1862,7 @@ public static class AsmLowerer
     {
         if (ctx.Tier != CallingConventionTier.Interrupt)
         {
-            ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+            ReportUnsupportedOpcode(ctx, op);
             return;
         }
 
@@ -1884,7 +1885,7 @@ public static class AsmLowerer
         var hasTargetInfo = ctx.CoroutineCallingConvention.TryGetValue(operation.TargetFunction, out CoroutineCallingConventionInfo? targetInfo);
         if (!hasTargetInfo || targetInfo is null)
         {
-            ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
+            ReportUnsupportedOpcode(ctx, op);
             return;
         }
 
@@ -2143,9 +2144,9 @@ public static class AsmLowerer
         EmitPhiMoves(nodes, arguments, ctx, targetBlock, predicate);
     }
 
-    private static void ReportUnsupportedOpcode(LoweringContext ctx, TextSpan span, string opcode)
+    private static void ReportUnsupportedOpcode(LoweringContext ctx, LirOpInstruction instruction)
     {
-        ReportUnsupportedLowering(ctx, span, NormalizeUnsupportedLoweringName(opcode));
+        ReportUnsupportedLowering(ctx, instruction.Span, GetUnsupportedLoweringName(instruction.Operation));
     }
 
     private static void ReportUnsupportedLowering(LoweringContext ctx, TextSpan span, string lowering)
@@ -2160,17 +2161,24 @@ public static class AsmLowerer
         ctx.Diagnostics.ReportUnsupportedLowering(span, lowering);
     }
 
-    private static string NormalizeUnsupportedLoweringName(string opcode)
+    private static string GetUnsupportedLoweringName(LirOperation operation)
     {
-        if (opcode.StartsWith("load.member", StringComparison.Ordinal))
-            return "load.member";
-        if (opcode.StartsWith("store.member", StringComparison.Ordinal))
-            return "store.member";
-        if (opcode.StartsWith("structlit", StringComparison.Ordinal))
-            return "structlit";
-        if (opcode.StartsWith("yieldto:", StringComparison.Ordinal))
-            return "yieldto";
-        return opcode;
+        return operation switch
+        {
+            LirRangeOperation => "range",
+            LirLoadMemberOperation => "load.member",
+            LirLoadIndexOperation => "load.index",
+            LirLoadDerefOperation => "load.deref",
+            LirBitfieldExtractOperation => "bitfield.extract",
+            LirBitfieldInsertOperation => "bitfield.insert",
+            LirStructLiteralOperation => "structlit",
+            LirStoreIndexOperation => "store.index",
+            LirStoreDerefOperation => "store.deref",
+            LirInsertMemberOperation => "insert.member",
+            LirYieldOperation => "yield",
+            LirYieldToOperation => "yieldto",
+            _ => Assert.UnreachableValue<string>($"Unsupported lowering category must be defined for '{operation.GetType().Name}'."),
+        };
     }
 
     // --- Helpers ---

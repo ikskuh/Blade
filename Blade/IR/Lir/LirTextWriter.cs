@@ -132,7 +132,7 @@ public static class LirTextWriter
                 if (i > 0)
                     sb.Append(", ");
                 LirInlineAsmBinding binding = instruction.Bindings[i];
-                sb.Append(binding.Name);
+                sb.Append(binding.PlaceholderText);
                 sb.Append('=');
                 sb.Append(FormatOperand(binding.Operand));
                 sb.Append(':');
@@ -151,7 +151,7 @@ public static class LirTextWriter
         {
             case LirGotoTerminator gotoTerminator:
                 sb.Append("goto ");
-                sb.Append(gotoTerminator.TargetLabel);
+                sb.Append(gotoTerminator.Target);
                 sb.Append('(');
                 WriteOperandList(sb, gotoTerminator.Arguments);
                 sb.AppendLine(")");
@@ -161,11 +161,11 @@ public static class LirTextWriter
                 sb.Append("branch ");
                 sb.Append(FormatOperand(branchTerminator.Condition));
                 sb.Append(" ? ");
-                sb.Append(branchTerminator.TrueLabel);
+                sb.Append(branchTerminator.TrueTarget);
                 sb.Append('(');
                 WriteOperandList(sb, branchTerminator.TrueArguments);
                 sb.Append(") : ");
-                sb.Append(branchTerminator.FalseLabel);
+                sb.Append(branchTerminator.FalseTarget);
                 sb.Append('(');
                 WriteOperandList(sb, branchTerminator.FalseArguments);
                 sb.AppendLine(")");

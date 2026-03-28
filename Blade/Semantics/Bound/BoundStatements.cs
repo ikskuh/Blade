@@ -234,7 +234,7 @@ public sealed class BoundAsmStatement : BoundStatement
         string body,
         InlineAsmFlagOutput? flagOutput,
         IReadOnlyList<InlineAsmLine> parsedLines,
-        IReadOnlyDictionary<string, Symbol> referencedSymbols,
+        IReadOnlyDictionary<InlineAsmBindingSlot, Symbol> referencedSymbols,
         TextSpan span)
         : base(BoundNodeKind.AsmStatement, span)
     {
@@ -249,7 +249,7 @@ public sealed class BoundAsmStatement : BoundStatement
     public string Body { get; }
     public InlineAsmFlagOutput? FlagOutput { get; }
     public IReadOnlyList<InlineAsmLine> ParsedLines { get; }
-    public IReadOnlyDictionary<string, Symbol> ReferencedSymbols { get; }
+    public IReadOnlyDictionary<InlineAsmBindingSlot, Symbol> ReferencedSymbols { get; }
 }
 
 public sealed class BoundErrorStatement : BoundStatement

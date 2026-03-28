@@ -212,7 +212,7 @@ public static class MirTextWriter
 
             case MirCallInstruction call:
                 sb.Append("call ");
-                sb.Append(call.FunctionName);
+                sb.Append(call.Function.Name);
                 sb.Append('(');
                 WriteValueList(sb, call.Arguments);
                 sb.Append(')');
@@ -232,7 +232,7 @@ public static class MirTextWriter
 
             case MirIntrinsicCallInstruction intrinsic:
                 sb.Append("intrinsic @");
-                sb.Append(intrinsic.IntrinsicName);
+                sb.Append(P2InstructionMetadata.GetMnemonicText(intrinsic.Mnemonic));
                 sb.Append('(');
                 WriteValueList(sb, intrinsic.Arguments);
                 sb.Append(')');
@@ -293,7 +293,7 @@ public static class MirTextWriter
                         if (i > 0)
                             sb.Append(", ");
                         MirInlineAsmBinding binding = inlineAsm.Bindings[i];
-                        sb.Append(binding.Name);
+                        sb.Append(binding.PlaceholderText);
                         sb.Append('=');
                         if (binding.Value is MirValueId value)
                             sb.Append(value);
@@ -311,7 +311,7 @@ public static class MirTextWriter
 
             case MirYieldToInstruction yieldTo:
                 sb.Append("yieldto:");
-                sb.Append(yieldTo.TargetFunctionName);
+                sb.Append(yieldTo.TargetFunction.Name);
                 if (yieldTo.Arguments.Count > 0)
                 {
                     sb.Append(' ');
@@ -365,7 +365,7 @@ public static class MirTextWriter
         {
             case MirGotoTerminator mirGoto:
                 sb.Append("goto ");
-                sb.Append(mirGoto.TargetLabel);
+                sb.Append(mirGoto.Target);
                 sb.Append('(');
                 WriteValueList(sb, mirGoto.Arguments);
                 sb.AppendLine(")");
@@ -381,11 +381,11 @@ public static class MirTextWriter
                     sb.Append(']');
                 }
                 sb.Append(" ? ");
-                sb.Append(branch.TrueLabel);
+                sb.Append(branch.TrueTarget);
                 sb.Append('(');
                 WriteValueList(sb, branch.TrueArguments);
                 sb.Append(") : ");
-                sb.Append(branch.FalseLabel);
+                sb.Append(branch.FalseTarget);
                 sb.Append('(');
                 WriteValueList(sb, branch.FalseArguments);
                 sb.AppendLine(")");

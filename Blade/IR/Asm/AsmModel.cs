@@ -299,7 +299,6 @@ public sealed class AsmRegisterOperand : AsmOperand
     }
 
     public VirtualAsmRegister Register { get; }
-    public int RegisterId => Register.DebugId;
 
     public override string Format() => Register.ToString();
 }

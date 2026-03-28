@@ -275,9 +275,9 @@ public static class RegisterAllocator
 
     private static Dictionary<AsmFunction, HashSet<AsmFunction>> ReconstructCallGraph(AsmModule module)
     {
-        Dictionary<string, AsmFunction> functionsByName = [];
+        Dictionary<FunctionSymbol, AsmFunction> functionsBySymbol = [];
         foreach (AsmFunction function in module.Functions)
-            functionsByName[function.Name] = function;
+            functionsBySymbol[function.Symbol] = function;
 
         Dictionary<AsmFunction, HashSet<AsmFunction>> callGraph = [];
         foreach (AsmFunction function in module.Functions)
@@ -289,8 +289,8 @@ public static class RegisterAllocator
                 {
                     foreach (AsmOperand operand in instruction.Operands)
                     {
-                        if (operand is AsmSymbolOperand symbol
-                            && functionsByName.TryGetValue(symbol.Name, out AsmFunction? callee))
+                        if (operand is AsmSymbolOperand { Symbol: AsmFunctionReferenceSymbol functionReference }
+                            && functionsBySymbol.TryGetValue(functionReference.Function, out AsmFunction? callee))
                         {
                             callees.Add(callee);
                         }

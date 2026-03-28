@@ -16,18 +16,18 @@ public static class InlineAssemblyValidator
     public sealed class ValidationResult
     {
         public Collection<InlineAsmLine> Lines { get; } = new();
-        public Collection<string> ReferencedVariables { get; } = new();
+        public Collection<InlineAsmBindingSlot> ReferencedBindings { get; } = new();
         public bool IsValid { get; set; } = true;
     }
 
     public static ValidationResult Validate(
         string body,
         TextSpan blockSpan,
-        HashSet<string> availableVariables,
+        IReadOnlyDictionary<string, InlineAsmBindingSlot> availableBindings,
         DiagnosticBag diagnostics)
     {
         Requires.NotNull(body);
-        Requires.NotNull(availableVariables);
+        Requires.NotNull(availableBindings);
         Requires.NotNull(diagnostics);
 
         ValidationResult result = new();
@@ -40,7 +40,7 @@ public static class InlineAssemblyValidator
             if (trimmed is null)
                 continue;
 
-            InlineAsmLine? line = ParseAsmLine(trimmed, blockSpan, availableVariables, labels, diagnostics, result);
+            InlineAsmLine? line = ParseAsmLine(trimmed, blockSpan, availableBindings, labels, diagnostics, result);
             if (line is not null)
             {
                 result.Lines.Add(line);
@@ -74,7 +74,7 @@ public static class InlineAssemblyValidator
     private static InlineAsmLine? ParseAsmLine(
         string text,
         TextSpan blockSpan,
-        IReadOnlySet<string> availableVariables,
+        IReadOnlyDictionary<string, InlineAsmBindingSlot> availableBindings,
         IReadOnlyDictionary<string, ControlFlowLabelSymbol> labels,
         DiagnosticBag diagnostics,
         ValidationResult result)
@@ -125,7 +125,7 @@ public static class InlineAssemblyValidator
                 if (operandText.Length == 0)
                     continue;
 
-                InlineAsmOperand? operand = ParseOperand(operandText, blockSpan, availableVariables, labels, diagnostics, result);
+                InlineAsmOperand? operand = ParseOperand(operandText, blockSpan, availableBindings, labels, diagnostics, result);
                 if (operand is null)
                     return null;
 
@@ -145,7 +145,7 @@ public static class InlineAssemblyValidator
     private static InlineAsmOperand? ParseOperand(
         string operandText,
         TextSpan blockSpan,
-        IReadOnlySet<string> availableVariables,
+        IReadOnlyDictionary<string, InlineAsmBindingSlot> availableBindings,
         IReadOnlyDictionary<string, ControlFlowLabelSymbol> labels,
         DiagnosticBag diagnostics,
         ValidationResult result)
@@ -156,15 +156,15 @@ public static class InlineAssemblyValidator
 
         if (TryParseBindingReference(trimmed, out string? bindingName))
         {
-            if (!availableVariables.Contains(bindingName!))
+            if (!availableBindings.TryGetValue(bindingName!, out InlineAsmBindingSlot? bindingSlot))
             {
                 diagnostics.ReportInlineAsmUndefinedVariable(blockSpan, bindingName!);
                 result.IsValid = false;
                 return null;
             }
 
-            AddReferencedVariable(result, bindingName!);
-            return new InlineAsmBindingRefOperand(bindingName!);
+            AddReferencedBinding(result, bindingSlot);
+            return new InlineAsmBindingRefOperand(bindingSlot);
         }
 
         if (trimmed.Contains('{', StringComparison.Ordinal) || trimmed.Contains('}', StringComparison.Ordinal))
@@ -203,10 +203,10 @@ public static class InlineAssemblyValidator
         if (P2InstructionMetadata.TryParseSpecialRegister(trimmed, out P2SpecialRegister register))
             return new InlineAsmSpecialRegisterOperand(register);
 
-        if (availableVariables.Contains(trimmed))
+        if (availableBindings.TryGetValue(trimmed, out InlineAsmBindingSlot? directBinding))
         {
-            AddReferencedVariable(result, trimmed);
-            return new InlineAsmBindingRefOperand(trimmed);
+            AddReferencedBinding(result, directBinding);
+            return new InlineAsmBindingRefOperand(directBinding);
         }
 
         diagnostics.ReportInlineAsmUndefinedLabel(blockSpan, trimmed);
@@ -214,10 +214,10 @@ public static class InlineAssemblyValidator
         return null;
     }
 
-    private static void AddReferencedVariable(ValidationResult result, string bindingName)
+    private static void AddReferencedBinding(ValidationResult result, InlineAsmBindingSlot bindingSlot)
     {
-        if (!result.ReferencedVariables.Contains(bindingName))
-            result.ReferencedVariables.Add(bindingName);
+        if (!result.ReferencedBindings.Contains(bindingSlot))
+            result.ReferencedBindings.Add(bindingSlot);
     }
 
     private static string? NormalizeInstructionText(string rawLine)

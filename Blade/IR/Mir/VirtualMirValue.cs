@@ -17,7 +17,6 @@ public class VirtualMirValue
     }
 
     public int DebugId { get; }
-    public int Id => DebugId;
     public VirtualMirValue Value => this;
 
     internal static void ResetDebugIds()

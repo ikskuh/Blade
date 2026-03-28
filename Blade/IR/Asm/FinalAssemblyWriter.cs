@@ -62,7 +62,7 @@ public static class FinalAssemblyWriter
                 continue;
             }
 
-            if (P2InstructionMetadata.TryParseSpecialRegister(place.EmittedName, out _))
+            if (place.SpecialRegisterAlias is not null)
                 continue;
 
             if (!wroteHeader)
@@ -119,7 +119,7 @@ public static class FinalAssemblyWriter
             && nodes[rowIndex] is AsmLabelNode label
             && nodes[rowIndex + 1] is AsmDataNode data)
         {
-            rows.Add((label.Name, FormatDataDirective(data.Directive), FormatDataValue(data)));
+            rows.Add((label.Name, FormatDataDirective(data.Directive), FormatDataValue(data, functionNames)));
             rowIndex += 2;
         }
 
@@ -167,7 +167,7 @@ public static class FinalAssemblyWriter
             && nodes[rowIndex] is AsmLabelNode label
             && nodes[rowIndex + 1] is AsmDataNode data)
         {
-            rows.Add((label.Name, FormatDataDirective(data.Directive), FormatDataValue(data)));
+            rows.Add((label.Name, FormatDataDirective(data.Directive), FormatDataValue(data, functionNames)));
             rowIndex += 2;
         }
 
@@ -242,7 +242,7 @@ public static class FinalAssemblyWriter
             && nodes[rowIndex] is AsmLabelNode label
             && nodes[rowIndex + 1] is AsmDataNode data)
         {
-            rows.Add((label.Name, FormatDataDirective(data.Directive), FormatDataValue(data)));
+            rows.Add((label.Name, FormatDataDirective(data.Directive), FormatDataValue(data, functionNames)));
             rowIndex += 2;
         }
 
@@ -282,7 +282,7 @@ public static class FinalAssemblyWriter
         };
     }
 
-    private static string FormatDataValue(AsmDataNode data)
+    private static string FormatDataValue(AsmDataNode data, IReadOnlySet<string> functionNames)
     {
         string initializer = data.Initializer switch
         {
@@ -290,6 +290,7 @@ public static class FinalAssemblyWriter
             bool boolean => boolean ? "1" : "0",
             uint u32 when data.UseHexFormat => $"${u32:X8}",
             int i32 when data.UseHexFormat => $"${unchecked((uint)i32):X8}",
+            IAsmSymbol symbol => FormatIdentifier(symbol.Name, functionNames),
             IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
             _ => data.Initializer.ToString() ?? "0",
         };
@@ -445,38 +446,11 @@ public static class FinalAssemblyWriter
 
         return functionNames.Contains(name)
             ? FormatFunctionIdentifier(name)
-            : SanitizeIdentifier(name);
+            : BackendSymbolNaming.SanitizeIdentifier(name);
     }
 
     private static string FormatFunctionIdentifier(string name)
     {
-        return $"f_{SanitizeIdentifier(name)}";
-    }
-
-    private static string SanitizeIdentifier(string name)
-    {
-        StringBuilder builder = new();
-        if (name.Length == 0)
-            return "l_";
-
-        char first = name[0];
-        if (char.IsLetter(first) || first == '_')
-        {
-            builder.Append(first);
-        }
-        else
-        {
-            builder.Append('l');
-            builder.Append(char.IsLetterOrDigit(first) || first == '_' ? first : '_');
-        }
-
-        for (int i = 1; i < name.Length; i++)
-        {
-            char ch = name[i];
-            bool isValidLater = char.IsLetterOrDigit(ch) || ch == '_';
-            builder.Append(isValidLater ? ch : '_');
-        }
-
-        return builder.ToString();
+        return $"f_{BackendSymbolNaming.SanitizeIdentifier(name)}";
     }
 }

@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using System.Threading;
 using Blade;
 using Blade.Source;
 using Blade.Syntax;
@@ -42,16 +41,12 @@ internal sealed class SyntheticFunctionSignatureSyntax : IFunctionSignatureSynta
 
 public abstract class Symbol
 {
-    private static int _nextDebugId;
-
     protected Symbol(string name)
     {
         Name = Requires.NotNullOrWhiteSpace(name);
-        DebugId = Interlocked.Increment(ref _nextDebugId) - 1;
     }
 
     public string Name { get; }
-    internal int DebugId { get; }
 }
 
 public sealed class ControlFlowLabelSymbol : IAsmSymbol

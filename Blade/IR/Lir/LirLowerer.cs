@@ -483,7 +483,7 @@ public static class LirLowerer
             LirOperand operand = binding.Value is MirValueId value
                 ? new LirRegisterOperand(getRegister(value))
                 : new LirPlaceOperand(binding.Place!);
-            lowered.Add(new LirInlineAsmBinding(binding.Name, binding.Symbol, operand, binding.Access));
+            lowered.Add(new LirInlineAsmBinding(binding.Slot, binding.Symbol, operand, binding.Access));
         }
 
         return lowered;
@@ -519,7 +519,7 @@ public static class LirLowerer
 
             default:
                 return Assert.UnreachableValue<ReturnPlacement>(
-                    $"Call '{call.FunctionName}' exposes extra result index {extraResultIndex}, but only C and Z flag result slots are available.");
+                    $"Call '{call.Function.Name}' exposes extra result index {extraResultIndex}, but only C and Z flag result slots are available.");
         }
     }
 }

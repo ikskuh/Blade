@@ -17,7 +17,7 @@ public sealed class LirLowererTests
         MirCallInstruction call = new(
             new MirValueId(0),
             BuiltinTypes.U32,
-            "too_many_results",
+            new FunctionSymbol("too_many_results", FunctionKind.Default),
             [],
             Span,
             [

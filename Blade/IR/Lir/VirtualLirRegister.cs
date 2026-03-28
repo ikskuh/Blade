@@ -17,7 +17,6 @@ public class VirtualLirRegister
     }
 
     public int DebugId { get; }
-    public int Id => DebugId;
     public VirtualLirRegister Value => this;
 
     internal static void ResetDebugIds()

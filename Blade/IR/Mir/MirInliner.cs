@@ -257,7 +257,7 @@ public static class MirInliner
                 MirBitfieldInsertInstruction bitfieldInsert => new MirBitfieldInsertInstruction(newResult!.Value, bitfieldInsert.ResultType!, bitfieldInsert.Receiver, bitfieldInsert.Value, bitfieldInsert.Member, bitfieldInsert.Span),
                 MirInsertMemberInstruction insertMember => new MirInsertMemberInstruction(newResult!.Value, insertMember.ResultType!, insertMember.Receiver, insertMember.Value, insertMember.Member, insertMember.Span),
                 MirCallInstruction call => CloneMirCallInstruction(call, newResult, valueMap),
-                MirIntrinsicCallInstruction intrinsic => new MirIntrinsicCallInstruction(newResult, intrinsic.ResultType, intrinsic.IntrinsicName, intrinsic.Arguments, intrinsic.Span),
+                MirIntrinsicCallInstruction intrinsic => new MirIntrinsicCallInstruction(newResult, intrinsic.ResultType, intrinsic.Mnemonic, intrinsic.Arguments, intrinsic.Span),
                 MirStoreIndexInstruction storeIndex => new MirStoreIndexInstruction(storeIndex.ResultType, storeIndex.Indexed, storeIndex.Index, storeIndex.Value, storeIndex.StorageClass, storeIndex.Span),
                 MirStoreDerefInstruction storeDeref => new MirStoreDerefInstruction(storeDeref.ResultType, storeDeref.Address, storeDeref.Value, storeDeref.StorageClass, storeDeref.Span),
                 MirStorePlaceInstruction storePlace => new MirStorePlaceInstruction(storePlace.Place, storePlace.Value, storePlace.Span),
@@ -413,22 +413,22 @@ public static class MirInliner
             foreach (MirBlock block in function.Blocks)
             {
                 foreach (MirBlockParameter parameter in block.Parameters)
-                    maxId = parameter.Value.Id > maxId ? parameter.Value.Id : maxId;
+                    maxId = parameter.Value.DebugId > maxId ? parameter.Value.DebugId : maxId;
                 foreach (MirInstruction instruction in block.Instructions)
                 {
-                    if (instruction.Result is MirValueId result && result.Id > maxId)
-                        maxId = result.Id;
+                    if (instruction.Result is MirValueId result && result.DebugId > maxId)
+                        maxId = result.DebugId;
                     if (instruction is MirCallInstruction callInstr)
                     {
                         foreach ((MirValueId extraVal, _) in callInstr.ExtraResults)
-                            maxId = extraVal.Id > maxId ? extraVal.Id : maxId;
+                            maxId = extraVal.DebugId > maxId ? extraVal.DebugId : maxId;
                     }
                     foreach (MirValueId use in instruction.Uses)
-                        maxId = use.Id > maxId ? use.Id : maxId;
+                        maxId = use.DebugId > maxId ? use.DebugId : maxId;
                 }
 
                 foreach (MirValueId use in block.Terminator.Uses)
-                    maxId = use.Id > maxId ? use.Id : maxId;
+                    maxId = use.DebugId > maxId ? use.DebugId : maxId;
             }
 
             return maxId + 1;

@@ -515,17 +515,6 @@ public sealed class MirCallInstruction : MirInstruction
     public MirCallInstruction(
         MirValueId? result,
         TypeSymbol? resultType,
-        string functionName,
-        IReadOnlyList<MirValueId> arguments,
-        TextSpan span,
-        IReadOnlyList<(MirValueId Value, TypeSymbol Type)>? extraResults = null)
-        : this(result, resultType, new FunctionSymbol(functionName, FunctionKind.Default), arguments, span, extraResults)
-    {
-    }
-
-    public MirCallInstruction(
-        MirValueId? result,
-        TypeSymbol? resultType,
         FunctionSymbol function,
         IReadOnlyList<MirValueId> arguments,
         TextSpan span,
@@ -538,7 +527,6 @@ public sealed class MirCallInstruction : MirInstruction
     }
 
     public FunctionSymbol Function { get; }
-    public string FunctionName => Function.Name;
     public IReadOnlyList<MirValueId> Arguments { get; }
     public IReadOnlyList<(MirValueId Value, TypeSymbol Type)> ExtraResults { get; }
 
@@ -587,16 +575,6 @@ public sealed class MirIntrinsicCallInstruction : MirInstruction
     public MirIntrinsicCallInstruction(
         MirValueId? result,
         TypeSymbol? resultType,
-        string mnemonic,
-        IReadOnlyList<MirValueId> arguments,
-        TextSpan span)
-        : this(result, resultType, ParseMnemonic(mnemonic), arguments, span)
-    {
-    }
-
-    public MirIntrinsicCallInstruction(
-        MirValueId? result,
-        TypeSymbol? resultType,
         P2Mnemonic mnemonic,
         IReadOnlyList<MirValueId> arguments,
         TextSpan span)
@@ -607,7 +585,6 @@ public sealed class MirIntrinsicCallInstruction : MirInstruction
     }
 
     public P2Mnemonic Mnemonic { get; }
-    public string IntrinsicName => P2InstructionMetadata.GetMnemonicText(Mnemonic);
     public IReadOnlyList<MirValueId> Arguments { get; }
 
     public override IReadOnlyList<MirValueId> Uses => Arguments;
@@ -624,16 +601,6 @@ public sealed class MirIntrinsicCallInstruction : MirInstruction
         }
 
         return changed ? new MirIntrinsicCallInstruction(Result, ResultType, Mnemonic, rewritten, Span) : this;
-    }
-
-    private static P2Mnemonic ParseMnemonic(string mnemonic)
-    {
-        string normalized = Requires.NotNullOrWhiteSpace(mnemonic);
-        if (normalized.StartsWith('@'))
-            normalized = normalized[1..];
-        bool parsed = P2InstructionMetadata.TryParseMnemonic(normalized, out P2Mnemonic parsedMnemonic);
-        Assert.Invariant(parsed, $"Intrinsic '{mnemonic}' must parse to a valid P2 mnemonic.");
-        return parsedMnemonic;
     }
 }
 
@@ -749,21 +716,17 @@ public sealed class MirUpdatePlaceInstruction : MirInstruction
 
 public sealed class MirInlineAsmBinding
 {
-    public MirInlineAsmBinding(string name, Symbol symbol, MirValueId? value, StoragePlace? place, InlineAsmBindingAccess access)
+    public MirInlineAsmBinding(InlineAsmBindingSlot slot, Symbol symbol, MirValueId? value, StoragePlace? place, InlineAsmBindingAccess access)
     {
-        Name = Requires.NotNullOrWhiteSpace(name);
+        Slot = Requires.NotNull(slot);
         Symbol = Requires.NotNull(symbol);
         Value = value;
         Place = place;
         Access = access;
     }
 
-    public MirInlineAsmBinding(Symbol symbol, MirValueId? value, StoragePlace? place, InlineAsmBindingAccess access)
-        : this(Requires.NotNull(symbol).Name, symbol, value, place, access)
-    {
-    }
-
-    public string Name { get; }
+    public InlineAsmBindingSlot Slot { get; }
+    public string PlaceholderText => Slot.PlaceholderText;
     public Symbol Symbol { get; }
     public MirValueId? Value { get; }
     public StoragePlace? Place { get; }
@@ -824,7 +787,7 @@ public sealed class MirInlineAsmInstruction : MirInstruction
                 continue;
 
             rewritten ??= new List<MirInlineAsmBinding>(Bindings);
-            rewritten[i] = new MirInlineAsmBinding(binding.Name, binding.Symbol, mapped, binding.Place, binding.Access);
+            rewritten[i] = new MirInlineAsmBinding(binding.Slot, binding.Symbol, mapped, binding.Place, binding.Access);
         }
 
         return rewritten is null ? this : new MirInlineAsmInstruction(Volatility, Body, FlagOutput, ParsedLines, rewritten, Span, Result, ResultType);
@@ -845,11 +808,6 @@ public sealed class MirYieldInstruction : MirInstruction
 
 public sealed class MirYieldToInstruction : MirInstruction
 {
-    public MirYieldToInstruction(string targetFunction, IReadOnlyList<MirValueId> arguments, TextSpan span)
-        : this(new FunctionSymbol(targetFunction, FunctionKind.Default), arguments, span)
-    {
-    }
-
     public MirYieldToInstruction(FunctionSymbol targetFunction, IReadOnlyList<MirValueId> arguments, TextSpan span)
         : base(result: null, resultType: null, span, hasSideEffects: true)
     {
@@ -858,7 +816,6 @@ public sealed class MirYieldToInstruction : MirInstruction
     }
 
     public FunctionSymbol TargetFunction { get; }
-    public string TargetFunctionName => TargetFunction.Name;
     public IReadOnlyList<MirValueId> Arguments { get; }
 
     public override IReadOnlyList<MirValueId> Uses => Arguments;
@@ -998,11 +955,6 @@ public abstract class MirTerminator
 
 public sealed class MirGotoTerminator : MirTerminator
 {
-    public MirGotoTerminator(string targetLabel, IReadOnlyList<MirValueId> arguments, TextSpan span)
-        : this(new MirBlockRef(targetLabel), arguments, span)
-    {
-    }
-
     public MirGotoTerminator(MirBlockRef target, IReadOnlyList<MirValueId> arguments, TextSpan span)
         : base(span)
     {
@@ -1011,7 +963,6 @@ public sealed class MirGotoTerminator : MirTerminator
     }
 
     public MirBlockRef Target { get; }
-    public string TargetLabel => Target.ToString();
     public IReadOnlyList<MirValueId> Arguments { get; }
 
     public override IReadOnlyList<MirValueId> Uses => Arguments;
@@ -1035,18 +986,6 @@ public sealed class MirBranchTerminator : MirTerminator
 {
     public MirBranchTerminator(
         MirValueId condition,
-        string trueLabel,
-        string falseLabel,
-        IReadOnlyList<MirValueId> trueArguments,
-        IReadOnlyList<MirValueId> falseArguments,
-        TextSpan span,
-        MirFlag? conditionFlag = null)
-        : this(condition, new MirBlockRef(trueLabel), new MirBlockRef(falseLabel), trueArguments, falseArguments, span, conditionFlag)
-    {
-    }
-
-    public MirBranchTerminator(
-        MirValueId condition,
         MirBlockRef trueTarget,
         MirBlockRef falseTarget,
         IReadOnlyList<MirValueId> trueArguments,
@@ -1066,8 +1005,6 @@ public sealed class MirBranchTerminator : MirTerminator
     public MirValueId Condition { get; }
     public MirBlockRef TrueTarget { get; }
     public MirBlockRef FalseTarget { get; }
-    public string TrueLabel => TrueTarget.ToString();
-    public string FalseLabel => FalseTarget.ToString();
     public IReadOnlyList<MirValueId> TrueArguments { get; }
     public IReadOnlyList<MirValueId> FalseArguments { get; }
 

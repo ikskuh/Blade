@@ -20,7 +20,6 @@ public class VirtualAsmRegister
     }
 
     public int DebugId { get; }
-    public int Id => DebugId;
     public VirtualAsmRegister Value => this;
 
     public static VirtualAsmRegister FromLir(VirtualLirRegister register)

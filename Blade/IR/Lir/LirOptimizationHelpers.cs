@@ -262,7 +262,7 @@ internal static class LirOptimizationHelpers
                 continue;
 
             rewritten ??= new List<LirInlineAsmBinding>(bindings);
-            rewritten[i] = new LirInlineAsmBinding(binding.Name, binding.Symbol, operand, binding.Access);
+            rewritten[i] = new LirInlineAsmBinding(binding.Slot, binding.Symbol, operand, binding.Access);
         }
 
         return rewritten ?? bindings;

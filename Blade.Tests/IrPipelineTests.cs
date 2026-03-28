@@ -372,8 +372,8 @@ public class IrPipelineTests
             EnableLirOptimizations = false,
         });
 
-        Assert.That(MirTextWriter.Write(build.MirModule), Does.Match(@"load @g_x_\d+"));
-        Assert.That(build.AssemblyText, Does.Match(@"MOV _r\d+,\s+g_x_\d+"));
+        Assert.That(MirTextWriter.Write(build.MirModule), Does.Contain("load @g_x"));
+        Assert.That(build.AssemblyText, Does.Match(@"MOV _r\d+,\s+g_x\b"));
     }
 
     [Test]
@@ -400,8 +400,8 @@ public class IrPipelineTests
             EnableLirOptimizations = false,
         });
 
-        Assert.That(MirTextWriter.Write(build.MirModule), Does.Match(@"load @g_param_\d+"));
-        Assert.That(build.AssemblyText, Does.Match(@"MOV g_param_\d+,\s+_r1"));
+        Assert.That(MirTextWriter.Write(build.MirModule), Does.Contain("load @g_param"));
+        Assert.That(build.AssemblyText, Does.Match(@"MOV g_param\b,\s+_r1"));
     }
 
     [Test]
@@ -521,7 +521,7 @@ public class IrPipelineTests
 
         Assert.That(compilation.IrBuildResult, Is.Not.Null);
         Assert.That(compilation.Diagnostics.Any(d => d.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.True);
-        Assert.That(compilation.Diagnostics.Any(d => d.Message.Contains("'store.index.reg'", StringComparison.Ordinal)), Is.True);
+        Assert.That(compilation.Diagnostics.Any(d => d.Message.Contains("'store.index'", StringComparison.Ordinal)), Is.True);
     }
 
     [Test]

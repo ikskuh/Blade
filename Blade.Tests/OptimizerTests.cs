@@ -16,7 +16,7 @@ public class OptimizerTests
     private static StoragePlace CreatePlace(string name)
     {
         VariableSymbol symbol = new(name, BuiltinTypes.U32, isConst: false, VariableStorageClass.Reg, VariableScopeKind.GlobalStorage, isExtern: false, fixedAddress: null, alignment: null);
-        return new StoragePlace(symbol, StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, staticInitializer: null);
+        return new StoragePlace(symbol, StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, staticInitializer: null, emittedName: $"g_{name}");
     }
 
     [Test]
@@ -226,7 +226,7 @@ public class OptimizerTests
         Assert.That(instructions, Has.Length.EqualTo(2));
         Assert.That(instructions[0].Operands[0], Is.TypeOf<AsmRegisterOperand>());
         Assert.That(instructions[1].Operands[1], Is.TypeOf<AsmRegisterOperand>());
-        Assert.That(((AsmRegisterOperand)instructions[1].Operands[1]).RegisterId, Is.EqualTo(1));
+        Assert.That(((AsmRegisterOperand)instructions[1].Operands[1]).Register.DebugId, Is.EqualTo(1));
     }
 
     [Test]
@@ -303,7 +303,7 @@ public class OptimizerTests
                         "TEST {x}, #1",
                         flagOutput: null,
                         parsedLines: [],
-                        bindings: [new LirInlineAsmBinding(CreateVariableSymbol("x"), new LirRegisterOperand(r1), InlineAsmBindingAccess.Read)],
+                        bindings: [new LirInlineAsmBinding(new InlineAsmBindingSlot("x"), CreateVariableSymbol("x"), new LirRegisterOperand(r1), InlineAsmBindingAccess.Read)],
                         Span),
                 ], new LirReturnTerminator([], Span)),
             ]),
@@ -335,7 +335,7 @@ public class OptimizerTests
                         "MOV INA, {x}",
                         flagOutput: null,
                         parsedLines: [],
-                        bindings: [new LirInlineAsmBinding(CreateVariableSymbol("x"), new LirRegisterOperand(r0), InlineAsmBindingAccess.ReadWrite)],
+                        bindings: [new LirInlineAsmBinding(new InlineAsmBindingSlot("x"), CreateVariableSymbol("x"), new LirRegisterOperand(r0), InlineAsmBindingAccess.ReadWrite)],
                         Span),
                 ], new LirReturnTerminator([], Span)),
             ]),
@@ -365,7 +365,7 @@ public class OptimizerTests
                         "MOV {x}, #1",
                         flagOutput: null,
                         parsedLines: [],
-                        bindings: [new LirInlineAsmBinding(CreateVariableSymbol("x"), new LirRegisterOperand(r1), InlineAsmBindingAccess.Write)],
+                        bindings: [new LirInlineAsmBinding(new InlineAsmBindingSlot("x"), CreateVariableSymbol("x"), new LirRegisterOperand(r1), InlineAsmBindingAccess.Write)],
                         Span),
                     new LirOpInstruction(new LirMovOperation(), r2, BuiltinTypes.U32,
                         [new LirRegisterOperand(r1)],

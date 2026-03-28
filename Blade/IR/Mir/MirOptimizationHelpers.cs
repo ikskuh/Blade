@@ -112,7 +112,7 @@ internal static class MirOptimizationHelpers
             }
 
             rewritten ??= new List<MirInlineAsmBinding>(inlineAsm.Bindings);
-            rewritten[i] = new MirInlineAsmBinding(binding.Name, binding.Symbol, mapped, binding.Place, binding.Access);
+            rewritten[i] = new MirInlineAsmBinding(binding.Slot, binding.Symbol, mapped, binding.Place, binding.Access);
         }
 
         return rewritten is null

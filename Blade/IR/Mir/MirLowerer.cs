@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using Blade;
 using Blade.IR;
 using Blade.Semantics;
@@ -18,6 +19,7 @@ public static class MirLowerer
         VirtualMirValue.ResetDebugIds();
 
         List<StoragePlace> storagePlaces = CollectStoragePlaces(program);
+        BackendSymbolNaming.AssignStorageNames(storagePlaces);
 
         List<MirFunction> functions = new();
         functions.Add(LowerTopLevel(program, storagePlaces));
@@ -545,25 +547,25 @@ public static class MirLowerer
 
         private void LowerInlineAsmStatement(BoundAsmStatement asmStatement)
         {
-            string[] bindingNames = [.. asmStatement.ReferencedSymbols.Keys];
-            IReadOnlyDictionary<string, InlineAsmBindingAccess> bindingAccess =
+            InlineAsmBindingSlot[] bindingSlots = [.. asmStatement.ReferencedSymbols.Keys];
+            IReadOnlyDictionary<InlineAsmBindingSlot, InlineAsmBindingAccess> bindingAccess =
                 InlineAssemblyBindingAnalysis.ComputeBindingAccess(
                     asmStatement.ParsedLines,
-                    bindingNames);
+                    bindingSlots);
 
             List<MirInlineAsmBinding> bindings = new(asmStatement.ReferencedSymbols.Count);
-            foreach ((string name, Symbol symbol) in asmStatement.ReferencedSymbols)
+            foreach ((InlineAsmBindingSlot slot, Symbol symbol) in asmStatement.ReferencedSymbols)
             {
-                InlineAsmBindingAccess access = bindingAccess.GetValueOrDefault(name, InlineAsmBindingAccess.ReadWrite);
+                InlineAsmBindingAccess access = bindingAccess.GetValueOrDefault(slot, InlineAsmBindingAccess.ReadWrite);
                 if (TryGetStoragePlace(symbol, out StoragePlace? place))
                 {
-                    bindings.Add(new MirInlineAsmBinding(name, symbol, value: null, place, access));
+                    bindings.Add(new MirInlineAsmBinding(slot, symbol, value: null, place, access));
                 }
                 else
                 {
                     TypeSymbol type = GetSymbolType(symbol);
                     MirValueId value = ReadSymbol(symbol, type, asmStatement.Span);
-                    bindings.Add(new MirInlineAsmBinding(name, symbol, value, place: null, access));
+                    bindings.Add(new MirInlineAsmBinding(slot, symbol, value, place: null, access));
                 }
             }
 
@@ -1665,14 +1667,7 @@ public static class MirLowerer
 
         private static IReadOnlyList<Symbol> GetOrderedAutomaticSymbols(IReadOnlyDictionary<Symbol, MirValueId> values)
         {
-            List<Symbol> symbols = new(values.Count);
-            symbols.AddRange(values.Keys);
-            symbols.Sort(static (left, right) =>
-            {
-                int nameOrder = string.CompareOrdinal(left.Name, right.Name);
-                return nameOrder != 0 ? nameOrder : left.DebugId.CompareTo(right.DebugId);
-            });
-            return symbols;
+            return [.. values.Keys.OrderBy(static symbol => symbol.Name, StringComparer.Ordinal)];
         }
 
         private Dictionary<Symbol, MirValueId> CreateEnvironmentParameters(BlockBuilder block, IReadOnlyList<Symbol> symbols, string prefix)

@@ -414,9 +414,8 @@ public sealed class LirYieldToOperation : LirOperation
     }
 
     public FunctionSymbol TargetFunction { get; }
-    public string TargetFunctionName => TargetFunction.Name;
 
-    public override string DisplayName => $"yieldto:{TargetFunctionName}";
+    public override string DisplayName => $"yieldto:{TargetFunction.Name}";
 }
 
 public sealed class LirRepSetupOperation : LirOperation
@@ -506,20 +505,16 @@ public sealed class LirOpInstruction : LirInstruction
 
 public sealed class LirInlineAsmBinding
 {
-    public LirInlineAsmBinding(string name, Symbol symbol, LirOperand operand, InlineAsmBindingAccess access)
+    public LirInlineAsmBinding(InlineAsmBindingSlot slot, Symbol symbol, LirOperand operand, InlineAsmBindingAccess access)
     {
-        Name = Requires.NotNullOrWhiteSpace(name);
+        Slot = Requires.NotNull(slot);
         Symbol = Requires.NotNull(symbol);
         Operand = operand;
         Access = access;
     }
 
-    public LirInlineAsmBinding(Symbol symbol, LirOperand operand, InlineAsmBindingAccess access)
-        : this(Requires.NotNull(symbol).Name, symbol, operand, access)
-    {
-    }
-
-    public string Name { get; }
+    public InlineAsmBindingSlot Slot { get; }
+    public string PlaceholderText => Slot.PlaceholderText;
     public Symbol Symbol { get; }
     public LirOperand Operand { get; }
     public InlineAsmBindingAccess Access { get; }
@@ -572,11 +567,6 @@ public abstract class LirTerminator
 
 public sealed class LirGotoTerminator : LirTerminator
 {
-    public LirGotoTerminator(string targetLabel, IReadOnlyList<LirOperand> arguments, TextSpan span)
-        : this(new LirBlockRef(targetLabel), arguments, span)
-    {
-    }
-
     public LirGotoTerminator(LirBlockRef target, IReadOnlyList<LirOperand> arguments, TextSpan span)
         : base(span)
     {
@@ -585,24 +575,11 @@ public sealed class LirGotoTerminator : LirTerminator
     }
 
     public LirBlockRef Target { get; }
-    public string TargetLabel => Target.ToString();
     public IReadOnlyList<LirOperand> Arguments { get; }
 }
 
 public sealed class LirBranchTerminator : LirTerminator
 {
-    public LirBranchTerminator(
-        LirOperand condition,
-        string trueLabel,
-        string falseLabel,
-        IReadOnlyList<LirOperand> trueArguments,
-        IReadOnlyList<LirOperand> falseArguments,
-        TextSpan span,
-        MirFlag? conditionFlag = null)
-        : this(condition, new LirBlockRef(trueLabel), new LirBlockRef(falseLabel), trueArguments, falseArguments, span, conditionFlag)
-    {
-    }
-
     public LirBranchTerminator(
         LirOperand condition,
         LirBlockRef trueTarget,
@@ -624,8 +601,6 @@ public sealed class LirBranchTerminator : LirTerminator
     public LirOperand Condition { get; }
     public LirBlockRef TrueTarget { get; }
     public LirBlockRef FalseTarget { get; }
-    public string TrueLabel => TrueTarget.ToString();
-    public string FalseLabel => FalseTarget.ToString();
     public IReadOnlyList<LirOperand> TrueArguments { get; }
     public IReadOnlyList<LirOperand> FalseArguments { get; }
 

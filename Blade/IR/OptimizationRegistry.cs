@@ -150,7 +150,17 @@ public static class OptimizationRegistry
     public static IReadOnlyList<AsmOptimization> AllAsmOptimizations
         => AsmRegistry.Value.OrderedInstances;
 
+    public static MirOptimization SingleCallsiteInlineMirOptimization
+        => GetRequiredMirOptimization("single-callsite-inline");
+
     // ── Discovery ───────────────────────────────────────────────────────
+
+    private static MirOptimization GetRequiredMirOptimization(string name)
+    {
+        MirOptimization? optimization = GetMirOptimization(name);
+        Assert.Invariant(optimization is not null, $"MIR optimization '{name}' must exist.");
+        return optimization;
+    }
 
     private sealed class Registry<TWrapper>
     {

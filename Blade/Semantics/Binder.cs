@@ -550,16 +550,16 @@ public sealed class Binder
         }
 
         Dictionary<string, Symbol> availableSymbols = CollectInlineAsmAvailableSymbols();
-        HashSet<string> availableVars = new(availableSymbols.Keys, StringComparer.Ordinal);
+        Dictionary<string, InlineAsmBindingSlot> availableBindings = CreateInlineAsmBindingSlots(availableSymbols.Keys);
 
         InlineAssemblyValidator.ValidationResult validationResult =
-            InlineAssemblyValidator.Validate(asmSyntax.Body, asmSyntax.Span, availableVars, _diagnostics);
+            InlineAssemblyValidator.Validate(asmSyntax.Body, asmSyntax.Span, availableBindings, _diagnostics);
 
-        Dictionary<string, Symbol> referencedSymbols = new(StringComparer.Ordinal);
-        foreach (string name in validationResult.ReferencedVariables)
+        Dictionary<InlineAsmBindingSlot, Symbol> referencedSymbols = [];
+        foreach (InlineAsmBindingSlot binding in validationResult.ReferencedBindings)
         {
-            if (availableSymbols.TryGetValue(name, out Symbol? referenced))
-                referencedSymbols[name] = referenced;
+            if (availableSymbols.TryGetValue(binding.PlaceholderText, out Symbol? referenced))
+                referencedSymbols[binding] = referenced;
         }
 
         BoundAsmStatement asmStatement = new(volatility, asmSyntax.Body, flagOutput, validationResult.Lines, referencedSymbols, asmSyntax.Span);
@@ -814,26 +814,34 @@ public sealed class Binder
                 }
 
                 Dictionary<string, Symbol> availableSymbols = CollectInlineAsmAvailableSymbols();
-                HashSet<string> availableVars = new(availableSymbols.Keys, StringComparer.Ordinal);
+                Dictionary<string, InlineAsmBindingSlot> availableBindings = CreateInlineAsmBindingSlots(availableSymbols.Keys);
 
                 InlineAssemblyValidator.ValidationResult validationResult =
-                    InlineAssemblyValidator.Validate(asm.Body, asm.Span, availableVars, _diagnostics);
+                    InlineAssemblyValidator.Validate(asm.Body, asm.Span, availableBindings, _diagnostics);
 
-                Dictionary<string, Symbol> referencedSymbols = new(StringComparer.Ordinal);
-                foreach (string name in validationResult.ReferencedVariables)
+                Dictionary<InlineAsmBindingSlot, Symbol> referencedSymbols = [];
+                foreach (InlineAsmBindingSlot binding in validationResult.ReferencedBindings)
                 {
-                    if (availableSymbols.TryGetValue(name, out Symbol? referenced))
-                        referencedSymbols[name] = referenced;
+                    if (availableSymbols.TryGetValue(binding.PlaceholderText, out Symbol? referenced))
+                        referencedSymbols[binding] = referenced;
                 }
 
                 if (outputSymbol is not null)
-                    referencedSymbols[outputSymbol.Name] = outputSymbol;
+                    referencedSymbols[availableBindings[outputSymbol.Name]] = outputSymbol;
 
                 return new BoundAsmStatement(asm.Volatility, asm.Body, flagOutput, validationResult.Lines, referencedSymbols, asm.Span);
             }
         }
 
         return new BoundErrorStatement(statement.Span);
+    }
+
+    private static Dictionary<string, InlineAsmBindingSlot> CreateInlineAsmBindingSlots(IEnumerable<string> names)
+    {
+        Dictionary<string, InlineAsmBindingSlot> bindings = new(StringComparer.Ordinal);
+        foreach (string name in names)
+            bindings.Add(name, new InlineAsmBindingSlot(name));
+        return bindings;
     }
 
     private BoundStatement? BindAssertStatement(AssertStatementSyntax assertStatement)

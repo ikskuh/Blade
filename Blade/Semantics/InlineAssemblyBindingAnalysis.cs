@@ -12,19 +12,19 @@ public enum InlineAsmBindingAccess
 
 public static class InlineAssemblyBindingAnalysis
 {
-    public static IReadOnlyDictionary<string, InlineAsmBindingAccess> ComputeBindingAccess(
+    public static IReadOnlyDictionary<InlineAsmBindingSlot, InlineAsmBindingAccess> ComputeBindingAccess(
         IReadOnlyList<InlineAsmLine> parsedLines,
-        IReadOnlyCollection<string> bindingNames)
+        IReadOnlyCollection<InlineAsmBindingSlot> bindings)
     {
         Requires.NotNull(parsedLines);
-        Requires.NotNull(bindingNames);
+        Requires.NotNull(bindings);
 
-        HashSet<string> bindingNameSet = new(bindingNames, StringComparer.Ordinal);
-        Dictionary<string, InlineAsmBindingAccess> access = new(bindingNames.Count, StringComparer.Ordinal);
-        HashSet<string> seenBindings = new(StringComparer.Ordinal);
+        HashSet<InlineAsmBindingSlot> bindingSet = new(bindings);
+        Dictionary<InlineAsmBindingSlot, InlineAsmBindingAccess> access = new(bindings.Count);
+        HashSet<InlineAsmBindingSlot> seenBindings = [];
 
-        foreach (string bindingName in bindingNames)
-            access[bindingName] = InlineAsmBindingAccess.ReadWrite;
+        foreach (InlineAsmBindingSlot binding in bindings)
+            access[binding] = InlineAsmBindingAccess.ReadWrite;
 
         foreach (InlineAsmLine line in parsedLines)
         {
@@ -37,7 +37,7 @@ public static class InlineAssemblyBindingAnalysis
             for (int operandIndex = 0; operandIndex < instruction.Operands.Count; operandIndex++)
             {
                 if (instruction.Operands[operandIndex] is not InlineAsmBindingRefOperand binding
-                    || !bindingNameSet.Contains(binding.BindingName))
+                    || !bindingSet.Contains(binding.Slot))
                 {
                     continue;
                 }
@@ -47,9 +47,9 @@ public static class InlineAssemblyBindingAnalysis
                     instruction.Operands.Count,
                     operandIndex);
                 InlineAsmBindingAccess bindingAccess = ToBindingAccess(operandAccess);
-                access[binding.BindingName] = seenBindings.Add(binding.BindingName)
+                access[binding.Slot] = seenBindings.Add(binding.Slot)
                     ? bindingAccess
-                    : Merge(access[binding.BindingName], bindingAccess);
+                    : Merge(access[binding.Slot], bindingAccess);
             }
         }
 

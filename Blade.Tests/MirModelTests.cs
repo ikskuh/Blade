@@ -14,8 +14,10 @@ public class MirModelTests
     private static StoragePlace CreatePlace(string name)
     {
         VariableSymbol symbol = new(name, BuiltinTypes.U32, isConst: false, VariableStorageClass.Reg, VariableScopeKind.GlobalStorage, isExtern: false, fixedAddress: null, alignment: null);
-        return new StoragePlace(symbol, StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, staticInitializer: null);
+        return new StoragePlace(symbol, StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, staticInitializer: null, emittedName: $"g_{name}");
     }
+
+    private static InlineAsmBindingSlot CreateBindingSlot(string name) => new(name);
 
     [Test]
     public void RewriteUses_CoversMirInstructionVariants()
@@ -46,11 +48,11 @@ public class MirModelTests
         Assert.That(unary.RewriteUses(new Dictionary<MirValueId, MirValueId>()), Is.SameAs(unary));
         Assert.That(((MirUnaryInstruction)unary.RewriteUses(mapping)).Operand, Is.EqualTo(mapping[v1]));
 
-        MirCallInstruction call = new(v0, BuiltinTypes.U32, "callee", [v1, v2], Span);
+        MirCallInstruction call = new(v0, BuiltinTypes.U32, new FunctionSymbol("callee", FunctionKind.Default), [v1, v2], Span);
         Assert.That(call.RewriteUses(new Dictionary<MirValueId, MirValueId>()), Is.SameAs(call));
         Assert.That(((MirCallInstruction)call.RewriteUses(mapping)).Arguments, Is.EqualTo(new[] { mapping[v1], mapping[v2] }));
 
-        MirIntrinsicCallInstruction intrinsic = new(v0, BuiltinTypes.U32, "encod", [v1, v2], Span);
+        MirIntrinsicCallInstruction intrinsic = new(v0, BuiltinTypes.U32, P2Mnemonic.ENCOD, [v1, v2], Span);
         Assert.That(intrinsic.RewriteUses(new Dictionary<MirValueId, MirValueId>()), Is.SameAs(intrinsic));
         Assert.That(((MirIntrinsicCallInstruction)intrinsic.RewriteUses(mapping)).Arguments, Is.EqualTo(new[] { mapping[v1], mapping[v2] }));
 
@@ -58,7 +60,7 @@ public class MirModelTests
         Assert.That(updatePlace.RewriteUses(new Dictionary<MirValueId, MirValueId>()), Is.SameAs(updatePlace));
         Assert.That(((MirUpdatePlaceInstruction)updatePlace.RewriteUses(mapping)).Value, Is.EqualTo(mapping[v1]));
 
-        MirYieldToInstruction yieldTo = new("pin", [v1, v2], Span);
+        MirYieldToInstruction yieldTo = new(new FunctionSymbol("pin", FunctionKind.Default), [v1, v2], Span);
         Assert.That(yieldTo.RewriteUses(new Dictionary<MirValueId, MirValueId>()), Is.SameAs(yieldTo));
         Assert.That(((MirYieldToInstruction)yieldTo.RewriteUses(mapping)).Arguments, Is.EqualTo(new[] { mapping[v1], mapping[v2] }));
     }
@@ -76,7 +78,7 @@ public class MirModelTests
             [f0] = new MirValueId(13),
         };
 
-        MirBranchTerminator branch = new(condition, "bb_true", "bb_false", [t0], [f0], Span);
+        MirBranchTerminator branch = new(condition, new MirBlockRef("bb_true"), new MirBlockRef("bb_false"), [t0], [f0], Span);
         MirBranchTerminator rewrittenBranch = (MirBranchTerminator)branch.RewriteUses(mapping);
         Assert.That(rewrittenBranch.Condition, Is.EqualTo(mapping[condition]));
         Assert.That(rewrittenBranch.TrueArguments, Is.EqualTo(new[] { mapping[t0] }));
@@ -94,8 +96,8 @@ public class MirModelTests
             parsedLines: [],
             bindings:
             [
-                new MirInlineAsmBinding(CreateVariableSymbol("x"), value, place: null, InlineAsmBindingAccess.ReadWrite),
-                new MirInlineAsmBinding(CreateVariableSymbol("y"), new MirValueId(5), place: null, InlineAsmBindingAccess.Write),
+                new MirInlineAsmBinding(CreateBindingSlot("x"), CreateVariableSymbol("x"), value, null, InlineAsmBindingAccess.ReadWrite),
+                new MirInlineAsmBinding(CreateBindingSlot("y"), CreateVariableSymbol("y"), new MirValueId(5), null, InlineAsmBindingAccess.Write),
             ],
             Span);
 

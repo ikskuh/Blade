@@ -1,4 +1,5 @@
 using System;
+using Blade;
 using Blade.Semantics;
 
 namespace Blade.IR;
@@ -18,24 +19,33 @@ public enum StoragePlaceKind
 
 public sealed class StoragePlace : IAsmSymbol
 {
+    private string? _emittedName;
+
     public StoragePlace(
         Symbol symbol,
         StoragePlaceKind kind,
         int? fixedAddress,
-        object? staticInitializer)
+        object? staticInitializer,
+        string? emittedName = null)
     {
-        Symbol = symbol;
+        Symbol = Requires.NotNull(symbol);
         Kind = kind;
         FixedAddress = fixedAddress;
         StaticInitializer = staticInitializer;
+        if (!string.IsNullOrWhiteSpace(emittedName))
+            _emittedName = emittedName;
+        if (P2InstructionMetadata.TryParseSpecialRegister(Symbol.Name, out P2SpecialRegister specialRegister))
+            SpecialRegisterAlias = new P2Register(specialRegister);
     }
 
     public Symbol Symbol { get; }
     public StoragePlaceKind Kind { get; }
     public int? FixedAddress { get; }
     public object? StaticInitializer { get; }
+    public P2Register? SpecialRegisterAlias { get; }
 
     public bool HasStaticInitializer => StaticInitializer is not null;
+    internal bool HasAssignedEmittedName => _emittedName is not null;
 
     public VariableStorageClass StorageClass => Kind switch
     {
@@ -48,16 +58,7 @@ public sealed class StoragePlace : IAsmSymbol
         _ => VariableStorageClass.Reg,
     };
 
-    public string EmittedName => Kind switch
-    {
-        StoragePlaceKind.FixedRegisterAlias
-            or StoragePlaceKind.FixedLutAlias
-            or StoragePlaceKind.FixedHubAlias => Symbol.Name,
-        StoragePlaceKind.ExternalAlias
-            or StoragePlaceKind.ExternalLutAlias
-            or StoragePlaceKind.ExternalHubAlias => Symbol.Name,
-        _ => BuildAllocatableName(Symbol),
-    };
+    public string EmittedName => _emittedName ?? Assert.UnreachableValue<string>("Storage place emitted names must be assigned by backend naming.");
 
     string IAsmSymbol.Name => EmittedName;
 
@@ -69,24 +70,8 @@ public sealed class StoragePlace : IAsmSymbol
         _ => SymbolType.RegVariable,
     };
 
-    private static string BuildAllocatableName(Symbol symbol)
+    internal void AssignEmittedName(string emittedName)
     {
-        string sanitizedName = Sanitize(symbol.Name);
-        const string prefix = "g";
-        return symbol is VariableSymbol { IsGlobalStorage: true }
-            ? $"{prefix}_{sanitizedName}"
-            : $"{prefix}_{sanitizedName}_{symbol.DebugId}";
-    }
-
-    private static string Sanitize(string name)
-    {
-        char[] chars = name.ToCharArray();
-        for (int i = 0; i < chars.Length; i++)
-        {
-            if (!char.IsLetterOrDigit(chars[i]) && chars[i] != '_')
-                chars[i] = '_';
-        }
-
-        return new string(chars);
+        _emittedName = Requires.NotNullOrWhiteSpace(emittedName);
     }
 }

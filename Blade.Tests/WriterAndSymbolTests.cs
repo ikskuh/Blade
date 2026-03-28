@@ -53,7 +53,7 @@ public class WriterAndSymbolTests
     [Test]
     public void MirLirAndAsmTextWriters_FormatRepresentativeNodes()
     {
-        StoragePlace place = new(CreateVariable("mem-slot", VariableStorageClass.Reg, VariableScopeKind.GlobalStorage), StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, staticInitializer: 5);
+        StoragePlace place = new(CreateVariable("mem-slot", VariableStorageClass.Reg, VariableScopeKind.GlobalStorage), StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, staticInitializer: 5, emittedName: "g_mem_slot");
 
         MirModule mir = new([
             CreateMirFunction("mir_fn", isEntryPoint: true, FunctionKind.Leaf, [BuiltinTypes.U32],

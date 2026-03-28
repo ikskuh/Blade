@@ -55,14 +55,26 @@ public abstract class InlineAsmOperand
 {
 }
 
-public sealed class InlineAsmBindingRefOperand : InlineAsmOperand
+public sealed class InlineAsmBindingSlot
 {
-    public InlineAsmBindingRefOperand(string bindingName)
+    public InlineAsmBindingSlot(string placeholderText)
     {
-        BindingName = Requires.NotNullOrWhiteSpace(bindingName);
+        PlaceholderText = Requires.NotNullOrWhiteSpace(placeholderText);
     }
 
-    public string BindingName { get; }
+    public string PlaceholderText { get; }
+
+    public override string ToString() => PlaceholderText;
+}
+
+public sealed class InlineAsmBindingRefOperand : InlineAsmOperand
+{
+    public InlineAsmBindingRefOperand(InlineAsmBindingSlot slot)
+    {
+        Slot = Requires.NotNull(slot);
+    }
+
+    public InlineAsmBindingSlot Slot { get; }
 }
 
 public sealed class InlineAsmImmediateOperand : InlineAsmOperand
@@ -109,12 +121,12 @@ public sealed class InlineAsmSpecialRegisterOperand : InlineAsmOperand
 
 public sealed class InlineAsmSymbolOperand : InlineAsmOperand
 {
-    public InlineAsmSymbolOperand(string name, InlineAsmAddressingMode addressingMode)
+    public InlineAsmSymbolOperand(IAsmSymbol symbol, InlineAsmAddressingMode addressingMode)
     {
-        Name = Requires.NotNullOrWhiteSpace(name);
+        Symbol = Requires.NotNull(symbol);
         AddressingMode = addressingMode;
     }
 
-    public string Name { get; }
+    public IAsmSymbol Symbol { get; }
     public InlineAsmAddressingMode AddressingMode { get; }
 }

@@ -80,7 +80,7 @@ public class MirOptimizerTests
         IReadOnlyList<MirInstruction> rewritten = optimized.Functions[0].Blocks[0].Instructions;
         Dictionary<int, object?> constants = rewritten
             .OfType<MirConstantInstruction>()
-            .ToDictionary(instruction => instruction.Result!.Value.Id, instruction => instruction.Value);
+            .ToDictionary(instruction => instruction.Result!.Value.DebugId, instruction => instruction.Value);
 
         Assert.That(rewritten[13], Is.Not.TypeOf<MirConstantInstruction>());
         Assert.That(rewritten[^1], Is.Not.TypeOf<MirConstantInstruction>());
