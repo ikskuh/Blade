@@ -8,54 +8,54 @@ internal static class MirOptimizationHelpers
     internal static bool IsTrivialGotoBlock(MirBlock block)
         => block.Instructions.Count == 0 && block.Terminator is MirGotoTerminator;
 
-    internal static Dictionary<string, int> ComputePredecessorCounts(IReadOnlyList<MirBlock> blocks)
+    internal static Dictionary<MirBlockRef, int> ComputePredecessorCounts(IReadOnlyList<MirBlock> blocks)
     {
-        Dictionary<string, int> counts = [];
+        Dictionary<MirBlockRef, int> counts = [];
         foreach (MirBlock block in blocks)
         {
-            foreach (string successor in EnumerateSuccessors(block.Terminator))
+            foreach (MirBlockRef successor in EnumerateSuccessors(block.Terminator))
                 counts[successor] = counts.GetValueOrDefault(successor) + 1;
         }
 
         return counts;
     }
 
-    internal static IEnumerable<string> EnumerateSuccessors(MirTerminator terminator)
+    internal static IEnumerable<MirBlockRef> EnumerateSuccessors(MirTerminator terminator)
     {
         switch (terminator)
         {
             case MirGotoTerminator mirGoto:
-                yield return mirGoto.TargetLabel;
+                yield return mirGoto.Target;
                 break;
 
             case MirBranchTerminator branch:
-                yield return branch.TrueLabel;
-                yield return branch.FalseLabel;
+                yield return branch.TrueTarget;
+                yield return branch.FalseTarget;
                 break;
         }
     }
 
-    internal static HashSet<string> ComputeReachableBlocks(MirFunction function)
+    internal static HashSet<MirBlockRef> ComputeReachableBlocks(MirFunction function)
     {
-        HashSet<string> reachable = [];
+        HashSet<MirBlockRef> reachable = [];
         if (function.Blocks.Count == 0)
             return reachable;
 
-        Dictionary<string, MirBlock> byLabel = [];
+        Dictionary<MirBlockRef, MirBlock> byLabel = [];
         foreach (MirBlock block in function.Blocks)
-            byLabel[block.Label] = block;
+            byLabel[block.Ref] = block;
 
-        Queue<string> pending = new();
-        pending.Enqueue(function.Blocks[0].Label);
+        Queue<MirBlockRef> pending = new();
+        pending.Enqueue(function.Blocks[0].Ref);
         while (pending.Count > 0)
         {
-            string label = pending.Dequeue();
-            if (!reachable.Add(label))
+            MirBlockRef blockRef = pending.Dequeue();
+            if (!reachable.Add(blockRef))
                 continue;
-            if (!byLabel.TryGetValue(label, out MirBlock? block))
+            if (!byLabel.TryGetValue(blockRef, out MirBlock? block))
                 continue;
 
-            foreach (string successor in EnumerateSuccessors(block.Terminator))
+            foreach (MirBlockRef successor in EnumerateSuccessors(block.Terminator))
                 pending.Enqueue(successor);
         }
 
@@ -157,17 +157,17 @@ internal static class MirOptimizationHelpers
         return resolved;
     }
 
-    internal static (string Label, IReadOnlyList<MirValueId> Arguments) ResolveSuccessor(
-        string label,
+    internal static (MirBlockRef Target, IReadOnlyList<MirValueId> Arguments) ResolveSuccessor(
+        MirBlockRef target,
         IReadOnlyList<MirValueId> arguments,
-        IReadOnlyDictionary<string, MirBlock> byLabel)
+        IReadOnlyDictionary<MirBlockRef, MirBlock> byLabel)
     {
-        string currentLabel = label;
+        MirBlockRef currentTarget = target;
         IReadOnlyList<MirValueId> currentArguments = arguments;
-        HashSet<string> seen = [];
+        HashSet<MirBlockRef> seen = [];
 
-        while (byLabel.TryGetValue(currentLabel, out MirBlock? block)
-            && seen.Add(currentLabel)
+        while (byLabel.TryGetValue(currentTarget, out MirBlock? block)
+            && seen.Add(currentTarget)
             && IsTrivialGotoBlock(block)
             && block.Terminator is MirGotoTerminator next)
         {
@@ -176,9 +176,9 @@ internal static class MirOptimizationHelpers
                 break;
 
             currentArguments = RewriteValues(next.Arguments, parameterMap);
-            currentLabel = next.TargetLabel;
+            currentTarget = next.Target;
         }
 
-        return (currentLabel, currentArguments);
+        return (currentTarget, currentArguments);
     }
 }

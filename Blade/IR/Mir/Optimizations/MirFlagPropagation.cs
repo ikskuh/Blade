@@ -63,13 +63,13 @@ public sealed class MirFlagPropagation : IMirOptimization
                 {
                     MirBranchTerminator updated = new(
                         branch.Condition,
-                        branch.TrueLabelSymbol,
-                        branch.FalseLabelSymbol,
+                        branch.TrueTarget,
+                        branch.FalseTarget,
                         branch.TrueArguments,
                         branch.FalseArguments,
                         branch.Span,
                         condFlag);
-                    blocks.Add(new MirBlock(block.LabelSymbol, block.Parameters, block.Instructions, updated));
+                    blocks.Add(new MirBlock(block.Ref, block.Parameters, block.Instructions, updated));
                     anyChanged = true;
                 }
                 else

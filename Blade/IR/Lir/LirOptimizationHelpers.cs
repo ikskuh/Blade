@@ -8,54 +8,54 @@ internal static class LirOptimizationHelpers
     internal static bool IsTrivialGotoBlock(LirBlock block)
         => block.Instructions.Count == 0 && block.Terminator is LirGotoTerminator;
 
-    internal static Dictionary<string, int> ComputePredecessorCounts(IReadOnlyList<LirBlock> blocks)
+    internal static Dictionary<LirBlockRef, int> ComputePredecessorCounts(IReadOnlyList<LirBlock> blocks)
     {
-        Dictionary<string, int> counts = [];
+        Dictionary<LirBlockRef, int> counts = [];
         foreach (LirBlock block in blocks)
         {
-            foreach (string successor in EnumerateSuccessors(block.Terminator))
+            foreach (LirBlockRef successor in EnumerateSuccessors(block.Terminator))
                 counts[successor] = counts.GetValueOrDefault(successor) + 1;
         }
 
         return counts;
     }
 
-    internal static IEnumerable<string> EnumerateSuccessors(LirTerminator terminator)
+    internal static IEnumerable<LirBlockRef> EnumerateSuccessors(LirTerminator terminator)
     {
         switch (terminator)
         {
             case LirGotoTerminator gotoTerminator:
-                yield return gotoTerminator.TargetLabel;
+                yield return gotoTerminator.Target;
                 break;
 
             case LirBranchTerminator branch:
-                yield return branch.TrueLabel;
-                yield return branch.FalseLabel;
+                yield return branch.TrueTarget;
+                yield return branch.FalseTarget;
                 break;
         }
     }
 
-    internal static HashSet<string> ComputeReachableBlocks(LirFunction function)
+    internal static HashSet<LirBlockRef> ComputeReachableBlocks(LirFunction function)
     {
-        HashSet<string> reachable = [];
+        HashSet<LirBlockRef> reachable = [];
         if (function.Blocks.Count == 0)
             return reachable;
 
-        Dictionary<string, LirBlock> byLabel = [];
+        Dictionary<LirBlockRef, LirBlock> byLabel = [];
         foreach (LirBlock block in function.Blocks)
-            byLabel[block.Label] = block;
+            byLabel[block.Ref] = block;
 
-        Queue<string> pending = new();
-        pending.Enqueue(function.Blocks[0].Label);
+        Queue<LirBlockRef> pending = new();
+        pending.Enqueue(function.Blocks[0].Ref);
         while (pending.Count > 0)
         {
-            string label = pending.Dequeue();
-            if (!reachable.Add(label))
+            LirBlockRef blockRef = pending.Dequeue();
+            if (!reachable.Add(blockRef))
                 continue;
-            if (!byLabel.TryGetValue(label, out LirBlock? block))
+            if (!byLabel.TryGetValue(blockRef, out LirBlock? block))
                 continue;
 
-            foreach (string successor in EnumerateSuccessors(block.Terminator))
+            foreach (LirBlockRef successor in EnumerateSuccessors(block.Terminator))
                 pending.Enqueue(successor);
         }
 
@@ -179,7 +179,7 @@ internal static class LirOptimizationHelpers
                 IReadOnlyList<LirOperand> rewritten = RewriteOperands(gotoTerminator.Arguments, mapping);
                 return ReferenceEquals(rewritten, gotoTerminator.Arguments)
                     ? terminator
-                    : new LirGotoTerminator(gotoTerminator.TargetLabel, rewritten, gotoTerminator.Span);
+                    : new LirGotoTerminator(gotoTerminator.Target, rewritten, gotoTerminator.Span);
             }
 
             case LirBranchTerminator branch:
@@ -196,8 +196,8 @@ internal static class LirOptimizationHelpers
 
                 return new LirBranchTerminator(
                     condition,
-                    branch.TrueLabel,
-                    branch.FalseLabel,
+                    branch.TrueTarget,
+                    branch.FalseTarget,
                     rewrittenTrue,
                     rewrittenFalse,
                     branch.Span);
@@ -375,17 +375,17 @@ internal static class LirOptimizationHelpers
         return resolved;
     }
 
-    internal static (string Label, IReadOnlyList<LirOperand> Arguments) ResolveSuccessor(
-        string label,
+    internal static (LirBlockRef Target, IReadOnlyList<LirOperand> Arguments) ResolveSuccessor(
+        LirBlockRef target,
         IReadOnlyList<LirOperand> arguments,
-        IReadOnlyDictionary<string, LirBlock> byLabel)
+        IReadOnlyDictionary<LirBlockRef, LirBlock> byLabel)
     {
-        string currentLabel = label;
+        LirBlockRef currentTarget = target;
         IReadOnlyList<LirOperand> currentArguments = arguments;
-        HashSet<string> seen = [];
+        HashSet<LirBlockRef> seen = [];
 
-        while (byLabel.TryGetValue(currentLabel, out LirBlock? block)
-            && seen.Add(currentLabel)
+        while (byLabel.TryGetValue(currentTarget, out LirBlock? block)
+            && seen.Add(currentTarget)
             && IsTrivialGotoBlock(block)
             && block.Terminator is LirGotoTerminator next)
         {
@@ -394,9 +394,9 @@ internal static class LirOptimizationHelpers
                 break;
 
             currentArguments = RewriteOperands(next.Arguments, parameterMap);
-            currentLabel = next.TargetLabel;
+            currentTarget = next.Target;
         }
 
-        return (currentLabel, currentArguments);
+        return (currentTarget, currentArguments);
     }
 }

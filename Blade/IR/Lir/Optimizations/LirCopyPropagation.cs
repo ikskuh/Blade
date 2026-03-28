@@ -35,7 +35,7 @@ public sealed class LirCopyPropagation : ILirOptimization
                 }
 
                 LirTerminator terminator = RewriteTerminatorUses(block.Terminator, ResolveAliasMap(aliases));
-                blocks.Add(new LirBlock(block.Label, block.Parameters, instructions, terminator));
+                blocks.Add(new LirBlock(block.Ref, block.Parameters, instructions, terminator));
             }
 
             functions.Add(new LirFunction(function.SourceFunction, blocks));

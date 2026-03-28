@@ -99,6 +99,7 @@
       "LirConvertOperation",
       "LirInsertMemberOperation",
       "LirIntrinsicOperation",
+      "LirLoadAddressOperation",
       "LirLoadDerefOperation",
       "LirLoadIndexOperation",
       "LirLoadMemberOperation",
@@ -127,9 +128,11 @@
   "asmir": {
     "covered": [
       "AsmCommentNode",
+      "AsmDataNode",
       "AsmDirectiveNode",
       "AsmInstructionNode",
       "AsmLabelNode",
+      "AsmSectionNode",
       "AsmVolatileRegionBeginNode",
       "AsmVolatileRegionEndNode"
     ],

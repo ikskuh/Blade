@@ -21,9 +21,21 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Blade\blade.csproj" />
-    <ProjectReference Include="..\Blade.Regressions\Blade.Regressions.csproj" />
+    <Reference Include="blade">
+      <HintPath>..\Blade\bin\$(Configuration)\net10.0\blade.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Blade.Regressions">
+      <HintPath>..\Blade.Regressions\bin\$(Configuration)\net10.0\Blade.Regressions.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
   </ItemGroup>
+
+  <Target Name="BuildExecutableReferences" BeforeTargets="ResolveReferences">
+    <MSBuild Projects="..\Blade\blade.csproj;..\Blade.Regressions\Blade.Regressions.csproj"
+             Targets="Build"
+             Properties="Configuration=$(Configuration);RunAnalyzers=false;UseSharedCompilation=false" />
+  </Target>
 
   <ItemGroup>
     <None Include="Accept\**\*.blade" CopyToOutputDirectory="PreserveNewest" />

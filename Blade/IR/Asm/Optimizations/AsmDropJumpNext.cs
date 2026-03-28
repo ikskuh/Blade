@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Blade;
+using Blade.Semantics;
 using static Blade.IR.Asm.AsmOptimizationHelpers;
 
 namespace Blade.IR.Asm.Optimizations;
@@ -20,9 +21,9 @@ public sealed class AsmDropJumpNext : PerFunctionAsmOptimization
                 && instruction.Mnemonic == P2Mnemonic.JMP
                 && instruction.Condition is null
                 && instruction.Operands.Count == 1
-                && instruction.Operands[0] is AsmSymbolOperand target
-                && TryGetNextLabel(input.Nodes, i + 1, out string? nextLabel)
-                && nextLabel == target.Name)
+                && instruction.Operands[0] is AsmSymbolOperand { Symbol: ControlFlowLabelSymbol target }
+                && TryGetNextLabel(input.Nodes, i + 1, out ControlFlowLabelSymbol? nextLabel)
+                && ReferenceEquals(nextLabel, target))
             {
                 changed = true;
                 continue;

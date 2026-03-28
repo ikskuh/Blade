@@ -49,18 +49,18 @@ public enum CallingConventionTier
 public sealed class CallGraphResult
 {
     public CallGraphResult(
-        Dictionary<string, CallingConventionTier> tiers,
-        HashSet<string> deadFunctions)
+        Dictionary<FunctionSymbol, CallingConventionTier> tiers,
+        HashSet<FunctionSymbol> deadFunctions)
     {
         Tiers = tiers;
         DeadFunctions = deadFunctions;
     }
 
-    /// <summary>CC tier for each function by name.</summary>
-    public Dictionary<string, CallingConventionTier> Tiers { get; }
+    /// <summary>CC tier for each function symbol.</summary>
+    public Dictionary<FunctionSymbol, CallingConventionTier> Tiers { get; }
 
     /// <summary>Functions that are never called and not entry points — can be eliminated.</summary>
-    public HashSet<string> DeadFunctions { get; }
+    public HashSet<FunctionSymbol> DeadFunctions { get; }
 }
 
 /// <summary>
@@ -77,34 +77,34 @@ public static class CallGraphAnalyzer
         Requires.NotNull(module);
 
         // Build maps
-        Dictionary<string, LirFunction> functionMap = new(module.Functions.Count);
+        Dictionary<FunctionSymbol, LirFunction> functionMap = new(module.Functions.Count);
         foreach (LirFunction function in module.Functions)
-            functionMap[function.Name] = function;
+            functionMap[function.Symbol] = function;
 
-        // Build call graph: function name → set of called function names
-        Dictionary<string, HashSet<string>> callGraph = new(module.Functions.Count);
+        // Build call graph: function symbol -> set of called function symbols
+        Dictionary<FunctionSymbol, HashSet<FunctionSymbol>> callGraph = new(module.Functions.Count);
         foreach (LirFunction function in module.Functions)
-            callGraph[function.Name] = CollectCallees(function);
+            callGraph[function.Symbol] = CollectCallees(function);
 
         // Compute reachability from entry points and interrupt handlers
-        HashSet<string> reachable = ComputeReachable(module, callGraph);
+        HashSet<FunctionSymbol> reachable = ComputeReachable(module, callGraph);
 
         // Identify dead functions
-        HashSet<string> deadFunctions = [];
+        HashSet<FunctionSymbol> deadFunctions = [];
         foreach (LirFunction function in module.Functions)
         {
-            if (!reachable.Contains(function.Name))
-                deadFunctions.Add(function.Name);
+            if (!reachable.Contains(function.Symbol))
+                deadFunctions.Add(function.Symbol);
         }
 
         // Assign tiers (only for reachable functions, but we tier everything
         // so callers can look up any name)
-        Dictionary<string, CallingConventionTier> tiers = new(module.Functions.Count);
+        Dictionary<FunctionSymbol, CallingConventionTier> tiers = new(module.Functions.Count);
 
         foreach (LirFunction function in module.Functions)
         {
             CallingConventionTier tier = ResolveTier(function, callGraph, functionMap, tiers);
-            tiers[function.Name] = tier;
+            tiers[function.Symbol] = tier;
         }
 
         return new CallGraphResult(tiers, deadFunctions);
@@ -113,12 +113,12 @@ public static class CallGraphAnalyzer
     /// <summary>
     /// Compute the set of reachable functions from all entry points and interrupt handlers.
     /// </summary>
-    private static HashSet<string> ComputeReachable(
+    private static HashSet<FunctionSymbol> ComputeReachable(
         LirModule module,
-        Dictionary<string, HashSet<string>> callGraph)
+        Dictionary<FunctionSymbol, HashSet<FunctionSymbol>> callGraph)
     {
-        HashSet<string> reachable = [];
-        Queue<string> worklist = new();
+        HashSet<FunctionSymbol> reachable = [];
+        Queue<FunctionSymbol> worklist = new();
 
         // Seed: entry points and interrupt handlers are always reachable
         foreach (LirFunction function in module.Functions)
@@ -126,18 +126,18 @@ public static class CallGraphAnalyzer
             if (function.IsEntryPoint
                 || function.Kind is FunctionKind.Int1 or FunctionKind.Int2 or FunctionKind.Int3)
             {
-                if (reachable.Add(function.Name))
-                    worklist.Enqueue(function.Name);
+                if (reachable.Add(function.Symbol))
+                    worklist.Enqueue(function.Symbol);
             }
         }
 
         // Flood-fill transitively called functions
         while (worklist.Count > 0)
         {
-            string current = worklist.Dequeue();
-            if (callGraph.TryGetValue(current, out HashSet<string>? callees))
+            FunctionSymbol current = worklist.Dequeue();
+            if (callGraph.TryGetValue(current, out HashSet<FunctionSymbol>? callees))
             {
-                foreach (string callee in callees)
+                foreach (FunctionSymbol callee in callees)
                 {
                     if (reachable.Add(callee))
                         worklist.Enqueue(callee);
@@ -148,21 +148,20 @@ public static class CallGraphAnalyzer
         return reachable;
     }
 
-    private static HashSet<string> CollectCallees(LirFunction function)
+    private static HashSet<FunctionSymbol> CollectCallees(LirFunction function)
     {
-        HashSet<string> callees = [];
+        HashSet<FunctionSymbol> callees = [];
         foreach (LirBlock block in function.Blocks)
         {
             foreach (LirInstruction instruction in block.Instructions)
             {
                 if (instruction is LirOpInstruction { Operation: LirCallOperation call })
                 {
-                    callees.Add(call.TargetFunction.Name);
+                    callees.Add(call.TargetFunction);
                 }
                 else if (instruction is LirOpInstruction { Operation: LirYieldToOperation yieldTo })
                 {
-                    if (!string.IsNullOrEmpty(yieldTo.TargetFunctionName))
-                        callees.Add(yieldTo.TargetFunctionName);
+                    callees.Add(yieldTo.TargetFunction);
                 }
             }
         }
@@ -171,9 +170,9 @@ public static class CallGraphAnalyzer
 
     private static CallingConventionTier ResolveTier(
         LirFunction function,
-        Dictionary<string, HashSet<string>> callGraph,
-        Dictionary<string, LirFunction> functionMap,
-        Dictionary<string, CallingConventionTier> resolved)
+        Dictionary<FunctionSymbol, HashSet<FunctionSymbol>> callGraph,
+        Dictionary<FunctionSymbol, LirFunction> functionMap,
+        Dictionary<FunctionSymbol, CallingConventionTier> resolved)
     {
         if (function.IsEntryPoint)
             return CallingConventionTier.EntryPoint;
@@ -194,7 +193,7 @@ public static class CallGraphAnalyzer
         }
 
         // Auto-tier Default functions based on call graph
-        HashSet<string> callees = callGraph.GetValueOrDefault(function.Name) ?? [];
+        HashSet<FunctionSymbol> callees = callGraph.GetValueOrDefault(function.Symbol) ?? [];
 
         if (callees.Count == 0)
             return CallingConventionTier.Leaf;
@@ -207,7 +206,7 @@ public static class CallGraphAnalyzer
 
             if (functionMap.TryGetValue(callee, out LirFunction? calleeFunc))
             {
-                HashSet<string> calleeCallees = callGraph.GetValueOrDefault(callee) ?? [];
+                HashSet<FunctionSymbol> calleeCallees = callGraph.GetValueOrDefault(callee) ?? [];
                 return calleeCallees.Count == 0
                        || calleeFunc.Kind == FunctionKind.Leaf;
             }

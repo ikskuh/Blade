@@ -423,7 +423,7 @@ public static class MirLowerer
 
         private BlockBuilder CreateBlock()
         {
-            BlockBuilder block = new(new ControlFlowLabelSymbol($"bb{_nextBlockId++}", _symbol));
+            BlockBuilder block = new(new MirBlockRef($"bb{_nextBlockId++}"));
             _blocks.Add(block);
             return block;
         }
@@ -605,7 +605,7 @@ public static class MirLowerer
             }
 
             LoopContext loop = _loopStack.Peek();
-            ControlFlowLabelSymbol target = isBreak ? loop.BreakLabel : loop.ContinueLabel;
+            MirBlockRef target = isBreak ? loop.BreakLabel : loop.ContinueLabel;
             List<MirValueId> arguments = BuildEnvironmentArguments(loop.Symbols, span);
             _currentBlock.Terminator = new MirGotoTerminator(target, arguments, span);
         }
@@ -1384,8 +1384,8 @@ public static class MirLowerer
             Dictionary<Symbol, MirValueId> mergeEnv = CreateEnvironmentParameters(mergeBlock, envSymbols, "logic");
 
             bool isLogicalAnd = binaryExpression.Operator.Kind == BoundBinaryOperatorKind.LogicalAnd;
-            ControlFlowLabelSymbol trueLabel = isLogicalAnd ? rhsBlock.Label : shortCircuitBlock.Label;
-            ControlFlowLabelSymbol falseLabel = isLogicalAnd ? shortCircuitBlock.Label : rhsBlock.Label;
+            MirBlockRef trueLabel = isLogicalAnd ? rhsBlock.Label : shortCircuitBlock.Label;
+            MirBlockRef falseLabel = isLogicalAnd ? shortCircuitBlock.Label : rhsBlock.Label;
             _currentBlock.Terminator = new MirBranchTerminator(
                 left,
                 trueLabel,
@@ -1840,18 +1840,18 @@ public static class MirLowerer
 
         private sealed class BlockBuilder
         {
-            public BlockBuilder(ControlFlowLabelSymbol label)
+            public BlockBuilder(MirBlockRef label)
             {
                 Label = label;
             }
 
-            public ControlFlowLabelSymbol Label { get; }
+            public MirBlockRef Label { get; }
             public List<MirBlockParameter> Parameters { get; } = [];
             public List<MirInstruction> Instructions { get; } = [];
             public MirTerminator? Terminator { get; set; }
         }
 
-        private readonly record struct LoopContext(ControlFlowLabelSymbol BreakLabel, ControlFlowLabelSymbol ContinueLabel, IReadOnlyList<Symbol> Symbols);
+        private readonly record struct LoopContext(MirBlockRef BreakLabel, MirBlockRef ContinueLabel, IReadOnlyList<Symbol> Symbols);
     }
 
     private static bool IsUndefinedInitializer(BoundExpression expression)

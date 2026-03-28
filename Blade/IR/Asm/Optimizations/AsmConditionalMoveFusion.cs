@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Blade;
+using Blade.Semantics;
 using static Blade.IR.Asm.AsmOptimizationHelpers;
 
 namespace Blade.IR.Asm.Optimizations;
@@ -9,7 +10,7 @@ public sealed class AsmConditionalMoveFusion : PerFunctionAsmOptimization
 {
     protected override AsmFunction? RunOnFunction(AsmFunction input)
     {
-        HashSet<string> targetedLabels = CollectJumpTargets(input.Nodes);
+        HashSet<ControlFlowLabelSymbol> targetedLabels = CollectJumpTargets(input.Nodes);
         List<AsmNode> nodes = [];
         bool changed = false;
 
@@ -20,13 +21,13 @@ public sealed class AsmConditionalMoveFusion : PerFunctionAsmOptimization
                 && jump.Mnemonic == P2Mnemonic.JMP
                 && jump.Condition is not null
                 && jump.Operands.Count == 1
-                && jump.Operands[0] is AsmSymbolOperand target
+                && jump.Operands[0] is AsmSymbolOperand { Symbol: ControlFlowLabelSymbol target }
                 && input.Nodes[i + 1] is AsmInstructionNode body
                 && !body.IsNonElidable
                 && body.Condition is null
                 && input.Nodes[i + 2] is AsmLabelNode label
-                && label.Name == target.Name
-                && !targetedLabels.Contains(label.Name))
+                && ReferenceEquals(label.Label, target)
+                && !targetedLabels.Contains(label.Label))
             {
                 nodes.Add(new AsmInstructionNode(
                     body.Mnemonic,

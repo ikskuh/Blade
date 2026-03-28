@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Blade;
+using Blade.Semantics;
 
 namespace Blade.IR.Asm;
 
@@ -67,11 +68,11 @@ public static class AsmLegalizer
             List<AsmNode> extendedNodes = new(entry.Nodes.Count + (constantRegisters.Count * 2));
             extendedNodes.AddRange(entry.Nodes);
 
-            extendedNodes.Add(new AsmCommentNode("--- constant file ---"));
+            extendedNodes.Add(new AsmSectionNode(AsmStorageSection.Constant));
             foreach ((uint value, string label) in constantRegisters.OrderBy(static pair => pair.Key))
             {
                 extendedNodes.Add(new AsmLabelNode(label));
-                extendedNodes.Add(new AsmDirectiveNode($"LONG ${value:X8}"));
+                extendedNodes.Add(new AsmDataNode(AsmDataDirective.Long, value, useHexFormat: true));
             }
 
             functions[entryIndex] = new AsmFunction(entry, extendedNodes);
@@ -154,7 +155,7 @@ public static class AsmLegalizer
                         && constantRegisters.TryGetValue(uval, out string? constLabel))
                     {
                         // Replace immediate with reference to constant register
-                        newOperands.Add(new AsmSymbolOperand(constLabel, AsmSymbolAddressingMode.Register));
+                        newOperands.Add(new AsmSymbolOperand(new AsmNamedSymbol(constLabel, SymbolType.RegVariable), AsmSymbolAddressingMode.Register));
                         modified = true;
                         continue;
                     }

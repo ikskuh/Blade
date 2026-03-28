@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Text.RegularExpressions;
-using Blade;
 using Blade.Diagnostics;
 using Blade.Source;
 
@@ -10,40 +8,18 @@ namespace Blade.Semantics;
 
 /// <summary>
 /// Validates inline assembly blocks against the Propeller 2 instruction set.
-/// Parses asm body text into structured lines, validates instruction mnemonics,
-/// condition prefixes, flag effects, and variable references.
+/// Parses asm body text into structured lines and typed operands that downstream
+/// stages can consume without reparsing raw strings.
 /// </summary>
 public static class InlineAssemblyValidator
 {
-    /// <summary>
-    /// Represents a single parsed inline assembly instruction line.
-    /// </summary>
-    public sealed class AsmLine
-    {
-        public P2ConditionCode? Condition { get; init; }
-        public P2Mnemonic? Mnemonic { get; init; }
-        public IReadOnlyList<string> Operands { get; init; } = Array.Empty<string>();
-        public P2FlagEffect? FlagEffect { get; init; }
-        public string RawText { get; init; } = "";
-        public bool IsLabel { get; init; }
-        public string? LabelName { get; init; }
-    }
-
-    /// <summary>
-    /// Result of validating an inline assembly block.
-    /// </summary>
     public sealed class ValidationResult
     {
-        public Collection<AsmLine> Lines { get; } = new();
+        public Collection<InlineAsmLine> Lines { get; } = new();
         public Collection<string> ReferencedVariables { get; } = new();
         public bool IsValid { get; set; } = true;
     }
 
-    /// <summary>
-    /// Validates the body of an asm { ... } block.
-    /// Reports diagnostics for unknown instructions, bad variable references, etc.
-    /// Returns structured parse result for downstream codegen.
-    /// </summary>
     public static ValidationResult Validate(
         string body,
         TextSpan blockSpan,
@@ -56,59 +32,60 @@ public static class InlineAssemblyValidator
 
         ValidationResult result = new();
         string[] rawLines = body.Split('\n');
+        IReadOnlyDictionary<string, ControlFlowLabelSymbol> labels = CollectLabelDefinitions(rawLines);
 
         foreach (string rawLine in rawLines)
         {
-            string trimmed = rawLine.Trim();
-            if (string.IsNullOrWhiteSpace(trimmed))
+            string? trimmed = NormalizeInstructionText(rawLine);
+            if (trimmed is null)
                 continue;
 
-            // Strip trailing comments
-            int commentIdx = trimmed.IndexOf("//", StringComparison.Ordinal);
-            if (commentIdx >= 0)
-                trimmed = trimmed[..commentIdx].Trim();
-
-            if (string.IsNullOrWhiteSpace(trimmed))
-                continue;
-
-            AsmLine? line = ParseAsmLine(trimmed, blockSpan, availableVariables, diagnostics, result);
+            InlineAsmLine? line = ParseAsmLine(trimmed, blockSpan, availableVariables, labels, diagnostics, result);
             if (line is not null)
+            {
                 result.Lines.Add(line);
+            }
             else
+            {
                 result.IsValid = false;
+            }
         }
-
-        ValidateLabelReferences(result, blockSpan, availableVariables, diagnostics);
 
         return result;
     }
 
-    private static AsmLine? ParseAsmLine(
+    private static IReadOnlyDictionary<string, ControlFlowLabelSymbol> CollectLabelDefinitions(
+        IReadOnlyList<string> rawLines)
+    {
+        Dictionary<string, ControlFlowLabelSymbol> labels = new(StringComparer.OrdinalIgnoreCase);
+        foreach (string rawLine in rawLines)
+        {
+            string? trimmed = NormalizeInstructionText(rawLine);
+            if (trimmed is null || !TryParseLabelName(trimmed, out string? labelName))
+                continue;
+
+            if (!labels.TryAdd(labelName!, new ControlFlowLabelSymbol(labelName!)))
+                continue;
+        }
+
+        return labels;
+    }
+
+    private static InlineAsmLine? ParseAsmLine(
         string text,
         TextSpan blockSpan,
-        HashSet<string> availableVariables,
+        IReadOnlySet<string> availableVariables,
+        IReadOnlyDictionary<string, ControlFlowLabelSymbol> labels,
         DiagnosticBag diagnostics,
         ValidationResult result)
     {
-        // Tokenize: split on whitespace, but respect {var} references and commas
-        // Format: [CONDITION] MNEMONIC [operands...] [WC/WZ/WCZ]
-        // Operands may contain {varname}, #immediate, register names
+        if (TryParseLabelName(text, out string? labelName))
+            return new InlineAsmLabelLine(labels[labelName!], text);
 
         string remaining = text;
         P2ConditionCode? condition = null;
         P2FlagEffect? flagEffect = null;
 
-        if (TryParseLabelDefinition(text, out string? labelName))
-        {
-            return new AsmLine
-            {
-                RawText = text,
-                IsLabel = true,
-                LabelName = labelName,
-            };
-        }
-
-        // Check for condition prefix at the start
         string firstWord = GetFirstWord(remaining);
         if (P2InstructionMetadata.TryParseConditionCode(firstWord, out P2ConditionCode parsedCondition))
         {
@@ -116,24 +93,21 @@ public static class InlineAssemblyValidator
             remaining = remaining[firstWord.Length..].TrimStart();
         }
 
-        // Now extract the mnemonic
-        string mnemonic = GetFirstWord(remaining);
-        if (string.IsNullOrEmpty(mnemonic))
+        string mnemonicText = GetFirstWord(remaining);
+        if (string.IsNullOrEmpty(mnemonicText))
         {
             diagnostics.ReportInlineAsmEmptyInstruction(blockSpan);
             return null;
         }
 
-        if (!P2InstructionMetadata.TryParseMnemonic(mnemonic, out P2Mnemonic parsedMnemonic))
+        if (!P2InstructionMetadata.TryParseMnemonic(mnemonicText, out P2Mnemonic mnemonic))
         {
-            diagnostics.ReportInlineAsmUnknownInstruction(blockSpan, mnemonic);
+            diagnostics.ReportInlineAsmUnknownInstruction(blockSpan, mnemonicText);
             return null;
         }
 
-        remaining = remaining[mnemonic.Length..].TrimStart();
+        remaining = remaining[mnemonicText.Length..].TrimStart();
 
-        // Check for flag effects at the end
-        // Need to look at the last word(s)
         string lastWord = GetLastWord(remaining);
         if (!string.IsNullOrEmpty(lastWord) && P2InstructionMetadata.TryParseFlagEffect(lastWord, out P2FlagEffect parsedFlagEffect))
         {
@@ -141,57 +115,125 @@ public static class InlineAssemblyValidator
             remaining = remaining[..remaining.LastIndexOf(lastWord, StringComparison.OrdinalIgnoreCase)].TrimEnd();
         }
 
-        // Parse operands (comma-separated, may contain {varname} or # immediates)
-        List<string> operands = [];
+        List<InlineAsmOperand> operands = [];
         if (!string.IsNullOrWhiteSpace(remaining))
         {
-            // Split by commas, trim each
             string[] parts = remaining.Split(',');
             foreach (string part in parts)
             {
-                string op = part.Trim();
-                if (!string.IsNullOrEmpty(op))
-                    operands.Add(op);
+                string operandText = part.Trim();
+                if (operandText.Length == 0)
+                    continue;
+
+                InlineAsmOperand? operand = ParseOperand(operandText, blockSpan, availableVariables, labels, diagnostics, result);
+                if (operand is null)
+                    return null;
+
+                operands.Add(operand);
             }
         }
 
-        if (!P2InstructionMetadata.TryGetInstructionForm(parsedMnemonic, operands.Count, out _))
+        if (!P2InstructionMetadata.TryGetInstructionForm(mnemonic, operands.Count, out _))
         {
-            diagnostics.ReportInlineAsmInvalidInstructionForm(blockSpan, P2InstructionMetadata.GetMnemonicText(parsedMnemonic), operands.Count);
+            diagnostics.ReportInlineAsmInvalidInstructionForm(blockSpan, P2InstructionMetadata.GetMnemonicText(mnemonic), operands.Count);
             return null;
         }
 
-        // Validate variable references in operands
-        foreach (string operand in operands)
-        {
-            // Find all {varname} references
-            MatchCollection matches = Regex.Matches(operand, @"\{([A-Za-z0-9_$.]+)\}");
-            foreach (Match match in matches)
-            {
-                string varName = match.Groups[1].Value;
-                if (!availableVariables.Contains(varName))
-                {
-                    diagnostics.ReportInlineAsmUndefinedVariable(blockSpan, varName);
-                    result.IsValid = false;
-                }
-                else if (!result.ReferencedVariables.Contains(varName))
-                {
-                    result.ReferencedVariables.Add(varName);
-                }
-            }
-        }
-
-        return new AsmLine
-        {
-            Condition = condition,
-            Mnemonic = parsedMnemonic,
-            Operands = new ReadOnlyCollection<string>(operands),
-            FlagEffect = flagEffect,
-            RawText = text,
-        };
+        return new InlineAsmInstructionLine(condition, mnemonic, new ReadOnlyCollection<InlineAsmOperand>(operands), flagEffect, text);
     }
 
-    private static bool TryParseLabelDefinition(string text, out string? labelName)
+    private static InlineAsmOperand? ParseOperand(
+        string operandText,
+        TextSpan blockSpan,
+        IReadOnlySet<string> availableVariables,
+        IReadOnlyDictionary<string, ControlFlowLabelSymbol> labels,
+        DiagnosticBag diagnostics,
+        ValidationResult result)
+    {
+        string trimmed = operandText.Trim();
+        if (trimmed.Length == 0)
+            return null;
+
+        if (TryParseBindingReference(trimmed, out string? bindingName))
+        {
+            if (!availableVariables.Contains(bindingName!))
+            {
+                diagnostics.ReportInlineAsmUndefinedVariable(blockSpan, bindingName!);
+                result.IsValid = false;
+                return null;
+            }
+
+            AddReferencedVariable(result, bindingName!);
+            return new InlineAsmBindingRefOperand(bindingName!);
+        }
+
+        if (trimmed.Contains('{', StringComparison.Ordinal) || trimmed.Contains('}', StringComparison.Ordinal))
+            return null;
+
+        if (trimmed.StartsWith('#'))
+        {
+            string immediateText = trimmed[1..].Trim();
+            if (immediateText == "$")
+                return new InlineAsmCurrentAddressOperand(InlineAsmAddressingMode.Immediate);
+
+            if (TryParseImmediate(immediateText, out long immediate))
+                return new InlineAsmImmediateOperand(immediate);
+
+            if (labels.TryGetValue(immediateText, out ControlFlowLabelSymbol? label))
+                return new InlineAsmLabelOperand(label, InlineAsmAddressingMode.Immediate);
+
+            diagnostics.ReportInlineAsmUndefinedLabel(blockSpan, immediateText);
+            result.IsValid = false;
+            return null;
+        }
+
+        if (trimmed == "$")
+            return new InlineAsmCurrentAddressOperand(InlineAsmAddressingMode.Direct);
+
+        if (!IsPlainInlineAsmSymbol(trimmed.AsSpan()))
+        {
+            diagnostics.ReportInlineAsmUndefinedLabel(blockSpan, trimmed);
+            result.IsValid = false;
+            return null;
+        }
+
+        if (labels.TryGetValue(trimmed, out ControlFlowLabelSymbol? directLabel))
+            return new InlineAsmLabelOperand(directLabel, InlineAsmAddressingMode.Direct);
+
+        if (P2InstructionMetadata.TryParseSpecialRegister(trimmed, out P2SpecialRegister register))
+            return new InlineAsmSpecialRegisterOperand(register);
+
+        if (availableVariables.Contains(trimmed))
+        {
+            AddReferencedVariable(result, trimmed);
+            return new InlineAsmBindingRefOperand(trimmed);
+        }
+
+        diagnostics.ReportInlineAsmUndefinedLabel(blockSpan, trimmed);
+        result.IsValid = false;
+        return null;
+    }
+
+    private static void AddReferencedVariable(ValidationResult result, string bindingName)
+    {
+        if (!result.ReferencedVariables.Contains(bindingName))
+            result.ReferencedVariables.Add(bindingName);
+    }
+
+    private static string? NormalizeInstructionText(string rawLine)
+    {
+        string trimmed = rawLine.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+            return null;
+
+        int commentIndex = trimmed.IndexOf("//", StringComparison.Ordinal);
+        if (commentIndex >= 0)
+            trimmed = trimmed[..commentIndex].Trim();
+
+        return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
+    }
+
+    private static bool TryParseLabelName(string text, out string? labelName)
     {
         labelName = null;
         ReadOnlySpan<char> trimmed = text.AsSpan().Trim();
@@ -199,21 +241,36 @@ public static class InlineAssemblyValidator
             return false;
 
         ReadOnlySpan<char> candidate = trimmed[..^1].Trim();
-        if (candidate.IsEmpty)
-            return false;
-
-        if (!IsPlainInlineAsmSymbol(candidate))
+        if (candidate.IsEmpty || !IsPlainInlineAsmSymbol(candidate))
             return false;
 
         string candidateText = candidate.ToString();
-        if (P2InstructionMetadata.IsValidConditionPrefix(candidateText)
-            || P2InstructionMetadata.IsValidInstruction(candidateText)
-            || P2InstructionMetadata.IsValidFlagEffect(candidateText))
+        if (P2InstructionMetadata.TryParseConditionCode(candidateText, out _)
+            || P2InstructionMetadata.TryParseMnemonic(candidateText, out _)
+            || P2InstructionMetadata.TryParseFlagEffect(candidateText, out _))
         {
             return false;
         }
 
         labelName = candidateText;
+        return true;
+    }
+
+    private static bool TryParseBindingReference(string text, out string? bindingName)
+    {
+        bindingName = null;
+        if (text.Length < 2 || text[0] != '{' || text[^1] != '}')
+            return false;
+
+        string name = text[1..^1].Trim();
+        if (name.Length == 0
+            || name.Contains('{', StringComparison.Ordinal)
+            || name.Contains('}', StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        bindingName = name;
         return true;
     }
 
@@ -242,111 +299,59 @@ public static class InlineAssemblyValidator
     {
         string trimmed = text.TrimEnd();
         if (string.IsNullOrEmpty(trimmed))
-            return "";
+            return string.Empty;
+
         int i = trimmed.Length - 1;
         while (i >= 0 && !char.IsWhiteSpace(trimmed[i]) && trimmed[i] != ',')
             i--;
         return trimmed[(i + 1)..];
     }
 
-    /// <summary>
-    /// Validates that all symbol references in instruction operands resolve to
-    /// labels defined within the same asm block, variable bindings, or P2 special registers.
-    /// </summary>
-    private static void ValidateLabelReferences(
-        ValidationResult result,
-        TextSpan blockSpan,
-        HashSet<string> availableVariables,
-        DiagnosticBag diagnostics)
+    private static bool TryParseImmediate(string text, out long value)
     {
-        // Collect all labels defined in this asm block.
-        HashSet<string> definedLabels = new(StringComparer.OrdinalIgnoreCase);
-        foreach (AsmLine line in result.Lines)
+        value = 0;
+        if (text.Length == 0)
+            return false;
+
+        bool negative = false;
+        string remainder = text;
+        if (remainder[0] is '+' or '-')
         {
-            if (line.IsLabel && !string.IsNullOrWhiteSpace(line.LabelName))
-                definedLabels.Add(line.LabelName);
+            negative = remainder[0] == '-';
+            remainder = remainder[1..];
         }
 
-        // Check each instruction operand for undefined symbol references.
-        foreach (AsmLine line in result.Lines)
-        {
-            if (line.IsLabel || line.Mnemonic is null)
-                continue;
+        remainder = remainder.Replace("_", "", StringComparison.Ordinal);
+        if (remainder.Length == 0)
+            return false;
 
-            foreach (string operand in line.Operands)
+        try
+        {
+            if (remainder.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
             {
-                string? undefinedSymbol = GetUndefinedSymbolReference(operand, definedLabels, availableVariables);
-                if (undefinedSymbol is not null)
-                {
-                    diagnostics.ReportInlineAsmUndefinedLabel(blockSpan, undefinedSymbol);
-                    result.IsValid = false;
-                }
+                if (!long.TryParse(remainder[2..], System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out long hex))
+                    return false;
+
+                value = negative ? -hex : hex;
+                return true;
             }
+
+            if (remainder.StartsWith("0b", StringComparison.OrdinalIgnoreCase))
+            {
+                long binary = Convert.ToInt64(remainder[2..], 2);
+                value = negative ? -binary : binary;
+                return true;
+            }
+
+            if (!long.TryParse(remainder, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out long decimalValue))
+                return false;
+
+            value = negative ? -decimalValue : decimalValue;
+            return true;
+        }
+        catch (OverflowException)
+        {
+            return false;
         }
     }
-
-    /// <summary>
-    /// Returns the name of an undefined symbol if the operand references one, or null if the operand is valid.
-    /// </summary>
-    private static string? GetUndefinedSymbolReference(
-        string operand,
-        IReadOnlySet<string> definedLabels,
-        IReadOnlySet<string> availableVariables)
-    {
-        string trimmed = operand.Trim();
-        if (trimmed.Length == 0)
-            return null;
-
-        // {variable} references are already validated elsewhere.
-        if (trimmed.StartsWith('{'))
-            return null;
-
-        // Strip leading # for immediate operands.
-        bool isImmediate = trimmed.StartsWith('#');
-        string symbol = isImmediate ? trimmed[1..].Trim() : trimmed;
-
-        if (symbol.Length == 0)
-            return null;
-
-        // $ (current address) is always valid.
-        if (symbol == "$")
-            return null;
-
-        // Numeric literals are always valid.
-        if (char.IsAsciiDigit(symbol[0]) || (symbol.Length > 1 && symbol[0] is '+' or '-' && char.IsAsciiDigit(symbol[1])))
-            return null;
-
-        // Not a plain symbol — contains special characters (e.g., "#label + 4").
-        // Without raw fallback, complex expressions are not supported.
-        if (!IsPlainInlineAsmSymbol(symbol.AsSpan()))
-            return symbol;
-
-        // Check against known valid symbol sources:
-        // 1. Labels defined in this asm block
-        if (definedLabels.Contains(symbol))
-            return null;
-
-        // 2. Variable bindings (should not appear as bare symbols, but be defensive)
-        if (availableVariables.Contains(symbol))
-            return null;
-
-        // 3. P2 special registers (PA, PB, PTRA, OUTA, INA, etc.)
-        if (Enum.TryParse<P2SpecialRegister>(symbol, ignoreCase: true, out _))
-            return null;
-
-        // Unknown symbol — report it.
-        return symbol;
-    }
-
-    /// <summary>
-    /// Returns true if the given mnemonic is a valid P2 instruction.
-    /// </summary>
-    public static bool IsValidInstruction(string mnemonic)
-        => P2InstructionMetadata.IsValidInstruction(mnemonic);
-
-    /// <summary>
-    /// Returns true if the given name is a valid condition prefix.
-    /// </summary>
-    public static bool IsValidCondition(string name)
-        => P2InstructionMetadata.IsValidConditionPrefix(name);
 }

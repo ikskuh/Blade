@@ -678,6 +678,16 @@ def render_generated_source(
         [
             "}",
             "",
+            "public enum P2ModczOperand",
+            "{",
+        ]
+    )
+    for operand in modcz_operands:
+        lines.append(f"    {operand},")
+    lines.extend(
+        [
+            "}",
+            "",
             "public readonly record struct P2InstructionOperandInfo(",
             "    P2OperandRole Role,",
             "    int BitWidth,",
@@ -687,7 +697,7 @@ def render_generated_source(
             "    P2AugPrefixKind AugPrefix);",
             "",
             "public readonly record struct P2InstructionFormInfo(",
-            "    string Mnemonic,",
+            "    P2Mnemonic Mnemonic,",
             "    int OperandCount,",
             "    P2InstructionOperandInfo Operand0,",
             "    P2InstructionOperandInfo Operand1,",
@@ -730,7 +740,7 @@ def render_generated_source(
         flag_expr = render_flag_effect_mask(form["allowed_flag_effects"])
         return (
             "new P2InstructionFormInfo("
-            f'"{form["mnemonic"]}", '
+            f'P2Mnemonic.{form["mnemonic"]}, '
             f'{form["operand_count"]}, '
             f'{render_operand_info(form["operand_infos"][0])}, '
             f'{render_operand_info(form["operand_infos"][1])}, '
@@ -764,89 +774,6 @@ def render_generated_source(
         [
             "    ];",
             "",
-            "    private static readonly FrozenSet<string> ValidMnemonics =",
-            "        new HashSet<string>(StringComparer.OrdinalIgnoreCase)",
-            "        {",
-        ]
-    )
-    for mnemonic in valid_mnemonics:
-        lines.append(f'            "{mnemonic}",')
-    lines.extend(
-        [
-            "        }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);",
-            "",
-            "    private static readonly FrozenSet<string> ConditionPrefixes =",
-            "        new HashSet<string>(StringComparer.OrdinalIgnoreCase)",
-            "        {",
-        ]
-    )
-    for prefix in condition_prefixes:
-        lines.append(f'            "{prefix}",')
-    lines.extend(
-        [
-            "        }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);",
-            "",
-            "    private static readonly FrozenSet<string> CanonicalConditionPrefixes =",
-            "        new HashSet<string>(StringComparer.OrdinalIgnoreCase)",
-            "        {",
-        ]
-    )
-    for prefix in canonical_condition_prefixes:
-        lines.append(f'            "{prefix}",')
-    lines.extend(
-        [
-            "        }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);",
-            "",
-            "    private static readonly FrozenSet<string> ModczOperands =",
-            "        new HashSet<string>(StringComparer.OrdinalIgnoreCase)",
-            "        {",
-        ]
-    )
-    for operand in modcz_operands:
-        lines.append(f'            "{operand}",')
-    lines.extend(
-        [
-            "        }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);",
-            "",
-            "    private static readonly FrozenSet<string> CanonicalModczOperands =",
-            "        new HashSet<string>(StringComparer.OrdinalIgnoreCase)",
-            "        {",
-        ]
-    )
-    for operand in canonical_modcz_operands:
-        lines.append(f'            "{operand}",')
-    lines.extend(
-        [
-            "        }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);",
-            "",
-            "    private static readonly FrozenSet<string> ValidFlagEffects =",
-            "        new HashSet<string>(StringComparer.OrdinalIgnoreCase)",
-            "        {",
-        ]
-    )
-    for effect in all_flag_effects:
-        lines.append(f'            "{effect}",')
-    lines.extend(
-        [
-            "        }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);",
-            "",
-            "    private static readonly FrozenSet<string> SpecialRegisterNames =",
-            "        new HashSet<string>(StringComparer.OrdinalIgnoreCase)",
-            "        {",
-        ]
-    )
-    for name in SPECIAL_REGISTER_NAMES:
-        lines.append(f'            "{name}",')
-    lines.extend(
-        [
-            "        }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);",
-            "",
-            "    public static bool IsValidInstruction(string mnemonic)",
-            "        => TryParseMnemonic(mnemonic, out _);",
-            "",
-            "    public static bool IsValidInstruction(P2Mnemonic mnemonic)",
-            "        => Enum.IsDefined(typeof(P2Mnemonic), mnemonic);",
-            "",
             "    public static string GetMnemonicText(P2Mnemonic mnemonic)",
             "        => mnemonic.ToString();",
             "",
@@ -872,9 +799,6 @@ def render_generated_source(
             "        return true;",
             "    }",
             "",
-            "    public static bool IsValidConditionPrefix(string name)",
-            "        => TryParseConditionCode(name, out _);",
-            "",
             "    public static string GetConditionPrefixText(P2ConditionCode code)",
             '        => code == P2ConditionCode.INST ? "<INST>" : code.ToString();',
             "",
@@ -889,50 +813,28 @@ def render_generated_source(
             "        return Enum.TryParse(name, ignoreCase: true, out code);",
             "    }",
             "",
-            "    public static bool IsCanonicalConditionPrefix(string name)",
-            "        => CanonicalConditionPrefixes.Contains(name);",
+            "    public static string GetModczOperandText(P2ModczOperand operand)",
+            "        => operand.ToString();",
             "",
-            "    public static bool IsValidModczOperand(string name)",
-            "        => ModczOperands.Contains(name);",
+            "    public static bool TryParseModczOperand(string name, out P2ModczOperand operand)",
+            "        => Enum.TryParse(name, ignoreCase: true, out operand);",
             "",
-            "    public static bool IsCanonicalModczOperand(string name)",
-            "        => CanonicalModczOperands.Contains(name);",
-            "",
-            "    public static bool IsValidFlagEffect(string name)",
-            "        => ValidFlagEffects.Contains(name);",
-            "",
-            "    public static bool AllowsFlagEffect(P2Mnemonic mnemonic, int operandCount, string? name)",
+            "    public static bool AllowsFlagEffect(P2Mnemonic mnemonic, int operandCount, P2FlagEffect effect)",
             "    {",
-            "        if (string.IsNullOrWhiteSpace(name))",
+            "        if (effect == P2FlagEffect.None)",
             "            return true;",
             "",
             "        if (!TryGetInstructionForm(mnemonic, operandCount, out P2InstructionFormInfo info))",
-            "            return false;",
-            "",
-            "        if (!TryParseFlagEffect(name, out P2FlagEffect effect))",
             "            return false;",
             "",
             "        return (info.AllowedFlagEffects & effect) == effect;",
             "    }",
             "",
             "    public static bool TryParseFlagEffect(string name, out P2FlagEffect effect)",
-            "    {",
-            "        effect = name.ToUpperInvariant() switch",
-            "        {",
-        ]
-    )
-    for effect in FLAG_EFFECT_ORDER:
-        lines.append(f'            "{effect}" => P2FlagEffect.{effect},')
-    lines.extend(
-        [
-            "            _ => P2FlagEffect.None,",
-            "        };",
+            "        => Enum.TryParse(name, ignoreCase: true, out effect) && effect != P2FlagEffect.None;",
             "",
-            "        return effect != P2FlagEffect.None;",
-            "    }",
-            "",
-            "    public static bool IsSpecialRegisterName(string name)",
-            "        => SpecialRegisterNames.Contains(name);",
+            "    public static bool TryParseSpecialRegister(string name, out P2SpecialRegister register)",
+            "        => Enum.TryParse(name, ignoreCase: true, out register);",
             "",
             "    public static bool IsCall(P2Mnemonic mnemonic, int operandCount)",
             "        => TryGetInstructionForm(mnemonic, operandCount, out P2InstructionFormInfo info) && info.IsCall;",

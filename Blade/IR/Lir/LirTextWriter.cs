@@ -199,7 +199,6 @@ public static class LirTextWriter
         {
             LirRegisterOperand register => register.Register.ToString(),
             LirImmediateOperand immediate => $"{FormatImmediate(immediate.Value)}:{immediate.Type.Name}",
-            LirSymbolOperand symbol => $"@{symbol.Symbol.Name}",
             LirPlaceOperand place => $"%place({place.Place.EmittedName})",
             _ => "<op>",
         };

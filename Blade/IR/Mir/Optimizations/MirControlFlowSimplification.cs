@@ -32,9 +32,9 @@ public sealed class MirControlFlowSimplification : IMirOptimization
         if (blocks.Count == 0)
             return blocks;
 
-        Dictionary<string, MirBlock> byLabel = [];
+        Dictionary<MirBlockRef, MirBlock> byLabel = [];
         foreach (MirBlock block in blocks)
-            byLabel[block.Label] = block;
+            byLabel[block.Ref] = block;
 
         List<MirBlock> rewritten = new(blocks.Count);
         foreach (MirBlock block in blocks)
@@ -46,7 +46,7 @@ public sealed class MirControlFlowSimplification : IMirOptimization
                 _ => block.Terminator,
             };
 
-            rewritten.Add(new MirBlock(block.Label, block.Parameters, block.Instructions, terminator));
+            rewritten.Add(new MirBlock(block.Ref, block.Parameters, block.Instructions, terminator));
         }
 
         return rewritten;
@@ -54,14 +54,14 @@ public sealed class MirControlFlowSimplification : IMirOptimization
 
     private static MirGotoTerminator RewriteGotoThroughTrivialBlocks(
         MirGotoTerminator terminator,
-        IReadOnlyDictionary<string, MirBlock> byLabel)
+        IReadOnlyDictionary<MirBlockRef, MirBlock> byLabel)
     {
-        (string label, IReadOnlyList<MirValueId> arguments) = ResolveSuccessor(
-            terminator.TargetLabel,
+        (MirBlockRef label, IReadOnlyList<MirValueId> arguments) = ResolveSuccessor(
+            terminator.Target,
             terminator.Arguments,
             byLabel);
 
-        if (label == terminator.TargetLabel && ReferenceEquals(arguments, terminator.Arguments))
+        if (ReferenceEquals(label, terminator.Target) && ReferenceEquals(arguments, terminator.Arguments))
             return terminator;
 
         return new MirGotoTerminator(label, arguments, terminator.Span);
@@ -69,19 +69,19 @@ public sealed class MirControlFlowSimplification : IMirOptimization
 
     private static MirBranchTerminator RewriteBranchThroughTrivialBlocks(
         MirBranchTerminator terminator,
-        IReadOnlyDictionary<string, MirBlock> byLabel)
+        IReadOnlyDictionary<MirBlockRef, MirBlock> byLabel)
     {
-        (string trueLabel, IReadOnlyList<MirValueId> trueArguments) = ResolveSuccessor(
-            terminator.TrueLabel,
+        (MirBlockRef trueLabel, IReadOnlyList<MirValueId> trueArguments) = ResolveSuccessor(
+            terminator.TrueTarget,
             terminator.TrueArguments,
             byLabel);
-        (string falseLabel, IReadOnlyList<MirValueId> falseArguments) = ResolveSuccessor(
-            terminator.FalseLabel,
+        (MirBlockRef falseLabel, IReadOnlyList<MirValueId> falseArguments) = ResolveSuccessor(
+            terminator.FalseTarget,
             terminator.FalseArguments,
             byLabel);
 
-        if (trueLabel == terminator.TrueLabel
-            && falseLabel == terminator.FalseLabel
+        if (ReferenceEquals(trueLabel, terminator.TrueTarget)
+            && ReferenceEquals(falseLabel, terminator.FalseTarget)
             && ReferenceEquals(trueArguments, terminator.TrueArguments)
             && ReferenceEquals(falseArguments, terminator.FalseArguments))
         {
@@ -103,24 +103,24 @@ public sealed class MirControlFlowSimplification : IMirOptimization
         if (blocks.Count == 0)
             return blocks;
 
-        Dictionary<string, MirBlock> byLabel = [];
+        Dictionary<MirBlockRef, MirBlock> byLabel = [];
         foreach (MirBlock block in blocks)
-            byLabel[block.Label] = block;
+            byLabel[block.Ref] = block;
 
-        Dictionary<string, int> predecessorCounts = ComputePredecessorCounts(blocks);
-        HashSet<string> removed = [];
+        Dictionary<MirBlockRef, int> predecessorCounts = ComputePredecessorCounts(blocks);
+        HashSet<MirBlockRef> removed = [];
         List<MirBlock> mergedBlocks = new(blocks.Count);
-        string entryLabel = blocks[0].Label;
+        MirBlockRef entryRef = blocks[0].Ref;
 
         foreach (MirBlock original in blocks)
         {
-            if (removed.Contains(original.Label))
+            if (removed.Contains(original.Ref))
                 continue;
 
             MirBlock current = original;
             while (TryMergeSuccessor(
                 current,
-                entryLabel,
+                entryRef,
                 byLabel,
                 predecessorCounts,
                 removed,
@@ -137,21 +137,21 @@ public sealed class MirControlFlowSimplification : IMirOptimization
 
     private static bool TryMergeSuccessor(
         MirBlock block,
-        string entryLabel,
-        IReadOnlyDictionary<string, MirBlock> byLabel,
-        IReadOnlyDictionary<string, int> predecessorCounts,
-        ISet<string> removed,
+        MirBlockRef entryRef,
+        IReadOnlyDictionary<MirBlockRef, MirBlock> byLabel,
+        IReadOnlyDictionary<MirBlockRef, int> predecessorCounts,
+        ISet<MirBlockRef> removed,
         out MirBlock merged)
     {
         merged = block;
         if (block.Terminator is not MirGotoTerminator gotoTerminator)
             return false;
 
-        if (gotoTerminator.TargetLabel == entryLabel
-            || gotoTerminator.TargetLabel == block.Label
-            || removed.Contains(gotoTerminator.TargetLabel)
-            || !byLabel.TryGetValue(gotoTerminator.TargetLabel, out MirBlock? target)
-            || predecessorCounts.GetValueOrDefault(target.Label) != 1)
+        if (ReferenceEquals(gotoTerminator.Target, entryRef)
+            || ReferenceEquals(gotoTerminator.Target, block.Ref)
+            || removed.Contains(gotoTerminator.Target)
+            || !byLabel.TryGetValue(gotoTerminator.Target, out MirBlock? target)
+            || predecessorCounts.GetValueOrDefault(target.Ref) != 1)
         {
             return false;
         }
@@ -166,8 +166,8 @@ public sealed class MirControlFlowSimplification : IMirOptimization
             instructions.Add(instruction.RewriteUses(parameterMap));
 
         MirTerminator terminator = target.Terminator.RewriteUses(parameterMap);
-        removed.Add(target.Label);
-        merged = new MirBlock(block.Label, block.Parameters, instructions, terminator);
+        removed.Add(target.Ref);
+        merged = new MirBlock(block.Ref, block.Parameters, instructions, terminator);
         return true;
     }
 }

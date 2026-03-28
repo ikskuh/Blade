@@ -656,16 +656,16 @@ public class IrPipelineTests
             [
                 new AsmLabelNode("$top_bb0"),
                 new AsmCommentNode("inline asm typed begin"),
-                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand("_r4", AsmSymbolAddressingMode.Register), new AsmImmediateOperand(42)]),
+                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(new AsmNamedSymbol("_r4", SymbolType.RegVariable), AsmSymbolAddressingMode.Register), new AsmImmediateOperand(42)]),
                 new AsmCommentNode("inline asm typed end"),
-                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand("_r4", AsmSymbolAddressingMode.Register), new AsmImmediateOperand(0)]),
-                new AsmCommentNode("--- register file ---"),
+                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(new AsmNamedSymbol("_r4", SymbolType.RegVariable), AsmSymbolAddressingMode.Register), new AsmImmediateOperand(0)]),
+                new AsmSectionNode(AsmStorageSection.Register),
                 new AsmLabelNode("g_input_word_7"),
-                new AsmDirectiveNode("LONG 13"),
+                new AsmDataNode(AsmDataDirective.Long, 13),
                 new AsmLabelNode("g_dead_code_visible_10"),
-                new AsmDirectiveNode("LONG 0"),
+                new AsmDataNode(AsmDataDirective.Long, 0),
                 new AsmLabelNode("_r4"),
-                new AsmDirectiveNode("LONG 0"),
+                new AsmDataNode(AsmDataDirective.Long, 0),
             ]),
         ]);
 
@@ -693,8 +693,8 @@ public class IrPipelineTests
             CreateAsmFunction("caller", isEntryPoint: true, CallingConventionTier.EntryPoint,
             [
                 new AsmLabelNode("caller_bb0"),
-                new AsmInstructionNode(P2Mnemonic.CALLB, [new AsmSymbolOperand("step", AsmSymbolAddressingMode.Immediate)]),
-                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmPhysicalRegisterOperand(0, "_r0"), new AsmSymbolOperand("step", AsmSymbolAddressingMode.Register)]),
+                new AsmInstructionNode(P2Mnemonic.CALLB, [new AsmSymbolOperand(new AsmNamedSymbol("step", SymbolType.Function), AsmSymbolAddressingMode.Immediate)]),
+                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmPhysicalRegisterOperand(new P2Register(0)), new AsmSymbolOperand(new AsmNamedSymbol("step", SymbolType.Function), AsmSymbolAddressingMode.Register)]),
             ]),
         ]);
 

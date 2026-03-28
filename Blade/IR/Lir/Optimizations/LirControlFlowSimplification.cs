@@ -27,9 +27,9 @@ public sealed class LirControlFlowSimplification : ILirOptimization
         if (blocks.Count == 0)
             return blocks;
 
-        Dictionary<string, LirBlock> byLabel = [];
+        Dictionary<LirBlockRef, LirBlock> byLabel = [];
         foreach (LirBlock block in blocks)
-            byLabel[block.Label] = block;
+            byLabel[block.Ref] = block;
 
         List<LirBlock> rewritten = new(blocks.Count);
         foreach (LirBlock block in blocks)
@@ -41,7 +41,7 @@ public sealed class LirControlFlowSimplification : ILirOptimization
                 _ => block.Terminator,
             };
 
-            rewritten.Add(new LirBlock(block.Label, block.Parameters, block.Instructions, terminator));
+            rewritten.Add(new LirBlock(block.Ref, block.Parameters, block.Instructions, terminator));
         }
 
         return rewritten;
@@ -49,14 +49,14 @@ public sealed class LirControlFlowSimplification : ILirOptimization
 
     private static LirGotoTerminator RewriteGotoThroughTrivialBlocks(
         LirGotoTerminator terminator,
-        IReadOnlyDictionary<string, LirBlock> byLabel)
+        IReadOnlyDictionary<LirBlockRef, LirBlock> byLabel)
     {
-        (string label, IReadOnlyList<LirOperand> arguments) = ResolveSuccessor(
-            terminator.TargetLabel,
+        (LirBlockRef label, IReadOnlyList<LirOperand> arguments) = ResolveSuccessor(
+            terminator.Target,
             terminator.Arguments,
             byLabel);
 
-        if (label == terminator.TargetLabel && ReferenceEquals(arguments, terminator.Arguments))
+        if (ReferenceEquals(label, terminator.Target) && ReferenceEquals(arguments, terminator.Arguments))
             return terminator;
 
         return new LirGotoTerminator(label, arguments, terminator.Span);
@@ -64,19 +64,19 @@ public sealed class LirControlFlowSimplification : ILirOptimization
 
     private static LirBranchTerminator RewriteBranchThroughTrivialBlocks(
         LirBranchTerminator terminator,
-        IReadOnlyDictionary<string, LirBlock> byLabel)
+        IReadOnlyDictionary<LirBlockRef, LirBlock> byLabel)
     {
-        (string trueLabel, IReadOnlyList<LirOperand> trueArguments) = ResolveSuccessor(
-            terminator.TrueLabel,
+        (LirBlockRef trueLabel, IReadOnlyList<LirOperand> trueArguments) = ResolveSuccessor(
+            terminator.TrueTarget,
             terminator.TrueArguments,
             byLabel);
-        (string falseLabel, IReadOnlyList<LirOperand> falseArguments) = ResolveSuccessor(
-            terminator.FalseLabel,
+        (LirBlockRef falseLabel, IReadOnlyList<LirOperand> falseArguments) = ResolveSuccessor(
+            terminator.FalseTarget,
             terminator.FalseArguments,
             byLabel);
 
-        if (trueLabel == terminator.TrueLabel
-            && falseLabel == terminator.FalseLabel
+        if (ReferenceEquals(trueLabel, terminator.TrueTarget)
+            && ReferenceEquals(falseLabel, terminator.FalseTarget)
             && ReferenceEquals(trueArguments, terminator.TrueArguments)
             && ReferenceEquals(falseArguments, terminator.FalseArguments))
         {
@@ -97,24 +97,24 @@ public sealed class LirControlFlowSimplification : ILirOptimization
         if (blocks.Count == 0)
             return blocks;
 
-        Dictionary<string, LirBlock> byLabel = [];
+        Dictionary<LirBlockRef, LirBlock> byLabel = [];
         foreach (LirBlock block in blocks)
-            byLabel[block.Label] = block;
+            byLabel[block.Ref] = block;
 
-        Dictionary<string, int> predecessorCounts = ComputePredecessorCounts(blocks);
-        HashSet<string> removed = [];
+        Dictionary<LirBlockRef, int> predecessorCounts = ComputePredecessorCounts(blocks);
+        HashSet<LirBlockRef> removed = [];
         List<LirBlock> mergedBlocks = new(blocks.Count);
-        string entryLabel = blocks[0].Label;
+        LirBlockRef entryRef = blocks[0].Ref;
 
         foreach (LirBlock original in blocks)
         {
-            if (removed.Contains(original.Label))
+            if (removed.Contains(original.Ref))
                 continue;
 
             LirBlock current = original;
             while (TryMergeSuccessor(
                 current,
-                entryLabel,
+                entryRef,
                 byLabel,
                 predecessorCounts,
                 removed,
@@ -131,21 +131,21 @@ public sealed class LirControlFlowSimplification : ILirOptimization
 
     private static bool TryMergeSuccessor(
         LirBlock block,
-        string entryLabel,
-        IReadOnlyDictionary<string, LirBlock> byLabel,
-        IReadOnlyDictionary<string, int> predecessorCounts,
-        ISet<string> removed,
+        LirBlockRef entryRef,
+        IReadOnlyDictionary<LirBlockRef, LirBlock> byLabel,
+        IReadOnlyDictionary<LirBlockRef, int> predecessorCounts,
+        ISet<LirBlockRef> removed,
         out LirBlock merged)
     {
         merged = block;
         if (block.Terminator is not LirGotoTerminator gotoTerminator)
             return false;
 
-        if (gotoTerminator.TargetLabel == entryLabel
-            || gotoTerminator.TargetLabel == block.Label
-            || removed.Contains(gotoTerminator.TargetLabel)
-            || !byLabel.TryGetValue(gotoTerminator.TargetLabel, out LirBlock? target)
-            || predecessorCounts.GetValueOrDefault(target.Label) != 1)
+        if (ReferenceEquals(gotoTerminator.Target, entryRef)
+            || ReferenceEquals(gotoTerminator.Target, block.Ref)
+            || removed.Contains(gotoTerminator.Target)
+            || !byLabel.TryGetValue(gotoTerminator.Target, out LirBlock? target)
+            || predecessorCounts.GetValueOrDefault(target.Ref) != 1)
         {
             return false;
         }
@@ -160,8 +160,8 @@ public sealed class LirControlFlowSimplification : ILirOptimization
             instructions.Add(RewriteInstructionUses(instruction, parameterMap));
 
         LirTerminator terminator = RewriteTerminatorUses(target.Terminator, parameterMap);
-        removed.Add(target.Label);
-        merged = new LirBlock(block.Label, block.Parameters, instructions, terminator);
+        removed.Add(target.Ref);
+        merged = new LirBlock(block.Ref, block.Parameters, instructions, terminator);
         return true;
     }
 }

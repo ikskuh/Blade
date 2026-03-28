@@ -5,6 +5,14 @@ roslynator      := require('roslynator')
 
 all: build test regressions compile-all-samples
 
+install-tools:
+    dotnet tool install --global dotnet-trace
+    dotnet tool install --global roslynator.dotnet.cli
+    dotnet tool install --global dotnet-reportgenerator-globaltool
+    dotnet tool install --global sharpfuzz.commandline
+
+
+# Quality Gate for changes
 accept-changes:
     # Build code in debug and release mode:
     {{dotnet}} build --no-restore -verbosity minimal -c debug

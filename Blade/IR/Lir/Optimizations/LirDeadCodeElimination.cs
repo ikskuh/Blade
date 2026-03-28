@@ -13,11 +13,11 @@ public sealed class LirDeadCodeElimination : ILirOptimization
         List<LirFunction> functions = new(input.Functions.Count);
         foreach (LirFunction function in input.Functions)
         {
-            HashSet<string> reachable = ComputeReachableBlocks(function);
+            HashSet<LirBlockRef> reachable = ComputeReachableBlocks(function);
             List<LirBlock> blocks = [];
             foreach (LirBlock block in function.Blocks)
             {
-                if (!reachable.Contains(block.Label))
+                if (!reachable.Contains(block.Ref))
                     continue;
 
                 HashSet<LirVirtualRegister> live = [];
@@ -41,7 +41,7 @@ public sealed class LirDeadCodeElimination : ILirOptimization
                 }
 
                 kept.Reverse();
-                blocks.Add(new LirBlock(block.Label, block.Parameters, kept, block.Terminator));
+                blocks.Add(new LirBlock(block.Ref, block.Parameters, kept, block.Terminator));
             }
 
             functions.Add(new LirFunction(function.SourceFunction, blocks));

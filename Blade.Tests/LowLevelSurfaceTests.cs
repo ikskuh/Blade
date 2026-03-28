@@ -15,8 +15,26 @@ public class LowLevelSurfaceTests
         IReadOnlyDictionary<string, InlineAsmBindingAccess> access = InlineAssemblyBindingAnalysis.ComputeBindingAccess(
             parsedLines:
             [
-                new InlineAssemblyValidator.AsmLine { Mnemonic = P2Mnemonic.ADD, Operands = ["{dst}", "{src}"] },
-                new InlineAssemblyValidator.AsmLine { Mnemonic = P2Mnemonic.MOV, Operands = ["{dst}", "#0x10"] },
+                new InlineAsmInstructionLine(
+                    condition: null,
+                    mnemonic: P2Mnemonic.ADD,
+                    operands:
+                    [
+                        new InlineAsmBindingRefOperand("dst"),
+                        new InlineAsmBindingRefOperand("src"),
+                    ],
+                    flagEffect: null,
+                    rawText: "add {dst}, {src}"),
+                new InlineAsmInstructionLine(
+                    condition: null,
+                    mnemonic: P2Mnemonic.MOV,
+                    operands:
+                    [
+                        new InlineAsmBindingRefOperand("dst"),
+                        new InlineAsmImmediateOperand(0x10),
+                    ],
+                    flagEffect: null,
+                    rawText: "mov {dst}, #0x10"),
             ],
             bindingNames: ["dst", "src", "unused"]);
 
@@ -30,15 +48,35 @@ public class LowLevelSurfaceTests
     {
         // Volatile asm now gets precise per-operand analysis (not conservative ReadWrite).
         IReadOnlyDictionary<string, InlineAsmBindingAccess> volatileAccess = InlineAssemblyBindingAnalysis.ComputeBindingAccess(
-            parsedLines: [new InlineAssemblyValidator.AsmLine { Mnemonic = P2Mnemonic.MOV, Operands = ["{x}", "{y}"] }],
+            parsedLines:
+            [
+                new InlineAsmInstructionLine(
+                    condition: null,
+                    mnemonic: P2Mnemonic.MOV,
+                    operands:
+                    [
+                        new InlineAsmBindingRefOperand("x"),
+                        new InlineAsmBindingRefOperand("y"),
+                    ],
+                    flagEffect: null,
+                    rawText: "mov {x}, {y}"),
+            ],
             bindingNames: ["x", "y"]);
 
         Assert.That(volatileAccess["x"], Is.EqualTo(InlineAsmBindingAccess.Write));
         Assert.That(volatileAccess["y"], Is.EqualTo(InlineAsmBindingAccess.Read));
 
-        // Unknown mnemonic (null) still falls back to ReadWrite via CanLowerTypedLosslessly.
+        // Invalid instruction form still falls back to ReadWrite.
         IReadOnlyDictionary<string, InlineAsmBindingAccess> unknownMnemonic = InlineAssemblyBindingAnalysis.ComputeBindingAccess(
-            parsedLines: [new InlineAssemblyValidator.AsmLine { Mnemonic = null, Operands = ["{x}"] }],
+            parsedLines:
+            [
+                new InlineAsmInstructionLine(
+                    condition: null,
+                    mnemonic: P2Mnemonic.RET,
+                    operands: [new InlineAsmBindingRefOperand("x")],
+                    flagEffect: null,
+                    rawText: "ret {x}"),
+            ],
             bindingNames: ["x"]);
 
         Assert.That(unknownMnemonic["x"], Is.EqualTo(InlineAsmBindingAccess.ReadWrite));
@@ -51,7 +89,7 @@ public class LowLevelSurfaceTests
     [Test]
     public void LowLevelModelTypes_ExposeExpectedSurface()
     {
-        AsmPhysicalRegisterOperand physical = new(0x1F8, "PTRA");
+        AsmPhysicalRegisterOperand physical = new(new P2Register(0x1F8));
         Assert.That(physical.Address, Is.EqualTo(0x1F8));
         Assert.That(physical.Format(), Is.EqualTo("PTRA"));
 

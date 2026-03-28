@@ -22,6 +22,7 @@ public static class LirLowerer
     private static LirFunction LowerFunction(MirFunction mirFunction)
     {
         Dictionary<MirValueId, LirVirtualRegister> registers = [];
+        Dictionary<MirBlockRef, LirBlockRef> blockRefs = [];
         int nextRegisterId = 0;
 
         LirVirtualRegister GetRegister(MirValueId value)
@@ -31,6 +32,16 @@ public static class LirLowerer
             LirVirtualRegister fresh = new(nextRegisterId++);
             registers[value] = fresh;
             return fresh;
+        }
+
+        LirBlockRef GetBlockRef(MirBlockRef blockRef)
+        {
+            if (blockRefs.TryGetValue(blockRef, out LirBlockRef? mapped) && mapped is not null)
+                return mapped;
+
+            LirBlockRef created = new(blockRef.DebugName);
+            blockRefs[blockRef] = created;
+            return created;
         }
 
         List<LirBlock> blocks = new(mirFunction.Blocks.Count);
@@ -70,8 +81,8 @@ public static class LirLowerer
                 }
             }
 
-            LirTerminator terminator = LowerTerminator(mirBlock.Terminator, GetRegister);
-            blocks.Add(new LirBlock(mirBlock.LabelSymbol, parameters, instructions, terminator));
+            LirTerminator terminator = LowerTerminator(mirBlock.Terminator, GetRegister, GetBlockRef);
+            blocks.Add(new LirBlock(GetBlockRef(mirBlock.Ref), parameters, instructions, terminator));
         }
 
         return new LirFunction(mirFunction, blocks);
@@ -99,10 +110,10 @@ public static class LirLowerer
                 constant.Span),
 
             MirLoadSymbolInstruction load => new LirOpInstruction(
-                new LirLoadSymbolOperation(),
+                new LirLoadAddressOperation(),
                 destination,
                 load.ResultType,
-                [new LirSymbolOperand(load.Symbol)],
+                [new LirPlaceOperand(load.Symbol)],
                 hasSideEffects: false,
                 predicate: null,
                 writesC: false,
@@ -424,19 +435,20 @@ public static class LirLowerer
 
     private static LirTerminator LowerTerminator(
         MirTerminator terminator,
-        System.Func<MirValueId, LirVirtualRegister> getRegister)
+        System.Func<MirValueId, LirVirtualRegister> getRegister,
+        System.Func<MirBlockRef, LirBlockRef> getBlockRef)
     {
         return terminator switch
         {
             MirGotoTerminator mirGoto => new LirGotoTerminator(
-                mirGoto.TargetLabelSymbol,
+                getBlockRef(mirGoto.Target),
                 LowerOperands(mirGoto.Arguments, getRegister),
                 mirGoto.Span),
 
             MirBranchTerminator branch => new LirBranchTerminator(
                 new LirRegisterOperand(getRegister(branch.Condition)),
-                branch.TrueLabelSymbol,
-                branch.FalseLabelSymbol,
+                getBlockRef(branch.TrueTarget),
+                getBlockRef(branch.FalseTarget),
                 LowerOperands(branch.TrueArguments, getRegister),
                 LowerOperands(branch.FalseArguments, getRegister),
                 branch.Span,

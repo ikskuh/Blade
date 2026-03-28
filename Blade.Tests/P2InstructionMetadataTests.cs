@@ -9,7 +9,7 @@ public class P2InstructionMetadataTests
     public void TryGetInstructionForm_ReturnsKnownForms()
     {
         Assert.That(P2InstructionMetadata.TryGetInstructionForm(P2Mnemonic.ADD, 2, out P2InstructionFormInfo add), Is.True);
-        Assert.That(add.Mnemonic, Is.EqualTo("ADD"));
+        Assert.That(add.Mnemonic, Is.EqualTo(P2Mnemonic.ADD));
         Assert.That(add.OperandCount, Is.EqualTo(2));
         Assert.That(add.Operand0.Role, Is.EqualTo(P2OperandRole.D));
         Assert.That(add.Operand0.Access, Is.EqualTo(P2OperandAccess.ReadWrite));
@@ -28,16 +28,16 @@ public class P2InstructionMetadataTests
     [Test]
     public void ConditionModczAndFlagHelpers_RecognizeCanonicalAndAliasValues()
     {
-        Assert.That(P2InstructionMetadata.IsValidConditionPrefix("if_c"), Is.True);
-        Assert.That(P2InstructionMetadata.IsCanonicalConditionPrefix("IF_C"), Is.True);
-        Assert.That(P2InstructionMetadata.IsCanonicalConditionPrefix("if_c"), Is.True);
-        Assert.That(P2InstructionMetadata.IsValidConditionPrefix("if_missing"), Is.False);
+        Assert.That(P2InstructionMetadata.TryParseConditionCode("if_c", out P2ConditionCode condition), Is.True);
+        Assert.That(condition, Is.EqualTo(P2ConditionCode.IF_C));
+        Assert.That(P2InstructionMetadata.GetConditionPrefixText(condition), Is.EqualTo("IF_C"));
+        Assert.That(P2InstructionMetadata.TryParseConditionCode("if_missing", out _), Is.False);
 
-        Assert.That(P2InstructionMetadata.IsValidModczOperand("_set"), Is.True);
-        Assert.That(P2InstructionMetadata.IsCanonicalModczOperand("_set"), Is.True);
-        Assert.That(P2InstructionMetadata.IsValidModczOperand("_bogus"), Is.False);
+        Assert.That(P2InstructionMetadata.TryParseModczOperand("_set", out P2ModczOperand modcz), Is.True);
+        Assert.That(modcz, Is.EqualTo(P2ModczOperand._SET));
+        Assert.That(P2InstructionMetadata.GetModczOperandText(modcz), Is.EqualTo("_SET"));
+        Assert.That(P2InstructionMetadata.TryParseModczOperand("_bogus", out _), Is.False);
 
-        Assert.That(P2InstructionMetadata.IsValidFlagEffect("WC"), Is.True);
         Assert.That(P2InstructionMetadata.TryParseFlagEffect("orz", out P2FlagEffect effect), Is.True);
         Assert.That(effect, Is.EqualTo(P2FlagEffect.ORZ));
         Assert.That(P2InstructionMetadata.TryParseFlagEffect("bogus", out P2FlagEffect invalid), Is.False);
@@ -47,11 +47,10 @@ public class P2InstructionMetadataTests
     [Test]
     public void FlagAndControlFlowQueries_ReturnExpectedResults()
     {
-        Assert.That(P2InstructionMetadata.AllowsFlagEffect(P2Mnemonic.ADD, 2, null), Is.True);
-        Assert.That(P2InstructionMetadata.AllowsFlagEffect(P2Mnemonic.ADD, 2, "WC"), Is.True);
-        Assert.That(P2InstructionMetadata.AllowsFlagEffect(P2Mnemonic.ADD, 2, "ORC"), Is.False);
-        Assert.That(P2InstructionMetadata.AllowsFlagEffect((P2Mnemonic)(-1), 2, "WC"), Is.False);
-        Assert.That(P2InstructionMetadata.AllowsFlagEffect(P2Mnemonic.ADD, 2, "bogus"), Is.False);
+        Assert.That(P2InstructionMetadata.AllowsFlagEffect(P2Mnemonic.ADD, 2, P2FlagEffect.None), Is.True);
+        Assert.That(P2InstructionMetadata.AllowsFlagEffect(P2Mnemonic.ADD, 2, P2FlagEffect.WC), Is.True);
+        Assert.That(P2InstructionMetadata.AllowsFlagEffect(P2Mnemonic.ADD, 2, P2FlagEffect.ORC), Is.False);
+        Assert.That(P2InstructionMetadata.AllowsFlagEffect((P2Mnemonic)(-1), 2, P2FlagEffect.WC), Is.False);
 
         Assert.That(P2InstructionMetadata.IsCall(P2Mnemonic.CALL, 1), Is.True);
         Assert.That(P2InstructionMetadata.IsReturn(P2Mnemonic.RET, 0), Is.True);
@@ -64,8 +63,9 @@ public class P2InstructionMetadataTests
         Assert.That(P2InstructionMetadata.UsesImmediateSymbolSyntax(P2Mnemonic.MOV, 2, 1), Is.False);
         Assert.That(P2InstructionMetadata.UsesImmediateSymbolSyntax(P2Mnemonic.JINT, 1, 0), Is.True);
         Assert.That(P2InstructionMetadata.UsesImmediateSyntax(P2Mnemonic.GETNIB, 3, 2), Is.True);
-        Assert.That(P2InstructionMetadata.IsSpecialRegisterName("PTRA"), Is.True);
-        Assert.That(P2InstructionMetadata.IsSpecialRegisterName("NOT_A_REGISTER"), Is.False);
+        Assert.That(P2InstructionMetadata.TryParseSpecialRegister("PTRA", out P2SpecialRegister register), Is.True);
+        Assert.That(register, Is.EqualTo(P2SpecialRegister.PTRA));
+        Assert.That(P2InstructionMetadata.TryParseSpecialRegister("NOT_A_REGISTER", out _), Is.False);
     }
 
     [Test]

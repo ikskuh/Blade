@@ -35,7 +35,7 @@ public sealed class MirCopyPropagation : IMirOptimization
                 }
 
                 MirTerminator terminator = block.Terminator.RewriteUses(ResolveAliasMap(aliases));
-                blocks.Add(new MirBlock(block.Label, block.Parameters, instructions, terminator));
+                blocks.Add(new MirBlock(block.Ref, block.Parameters, instructions, terminator));
             }
 
             functions.Add(new MirFunction(

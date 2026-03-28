@@ -62,7 +62,7 @@ public static class FinalAssemblyWriter
                 continue;
             }
 
-            if (P2InstructionMetadata.IsSpecialRegisterName(place.EmittedName))
+            if (P2InstructionMetadata.TryParseSpecialRegister(place.EmittedName, out _))
                 continue;
 
             if (!wroteHeader)
@@ -110,17 +110,16 @@ public static class FinalAssemblyWriter
         ref int index,
         IReadOnlySet<string> functionNames)
     {
-        if (nodes[index] is not AsmCommentNode { Text: "--- register file ---" })
+        if (nodes[index] is not AsmSectionNode { Section: AsmStorageSection.Register })
             return false;
 
         List<(string Label, string Directive, string Value)> rows = [];
         int rowIndex = index + 1;
         while (rowIndex + 1 < nodes.Count
             && nodes[rowIndex] is AsmLabelNode label
-            && nodes[rowIndex + 1] is AsmDirectiveNode directive
-            && TryParseDataDirective(directive.Text, out string directiveName, out string valueText))
+            && nodes[rowIndex + 1] is AsmDataNode data)
         {
-            rows.Add((label.Name, directiveName, valueText));
+            rows.Add((label.Name, FormatDataDirective(data.Directive), FormatDataValue(data)));
             rowIndex += 2;
         }
 
@@ -155,21 +154,20 @@ public static class FinalAssemblyWriter
         StringBuilder sb,
         IReadOnlyList<AsmNode> nodes,
         ref int index,
-        string sectionMarker,
+        AsmStorageSection section,
         string sectionHeader,
         IReadOnlySet<string> functionNames)
     {
-        if (nodes[index] is not AsmCommentNode comment || comment.Text != sectionMarker)
+        if (nodes[index] is not AsmSectionNode sectionNode || sectionNode.Section != section)
             return false;
 
         List<(string Label, string Directive, string Value)> rows = [];
         int rowIndex = index + 1;
         while (rowIndex + 1 < nodes.Count
             && nodes[rowIndex] is AsmLabelNode label
-            && nodes[rowIndex + 1] is AsmDirectiveNode directive
-            && TryParseDataDirective(directive.Text, out string directiveName, out string valueText))
+            && nodes[rowIndex + 1] is AsmDataNode data)
         {
-            rows.Add((label.Name, directiveName, valueText));
+            rows.Add((label.Name, FormatDataDirective(data.Directive), FormatDataValue(data)));
             rowIndex += 2;
         }
 
@@ -202,7 +200,7 @@ public static class FinalAssemblyWriter
         ref int index,
         IReadOnlySet<string> functionNames)
     {
-        if (nodes[index] is not AsmCommentNode comment || comment.Text != "--- lut file ---")
+        if (nodes[index] is not AsmSectionNode { Section: AsmStorageSection.Lut })
             return false;
 
         // COG code/data must fit within the first 512 longs; LUT starts at $200.
@@ -210,7 +208,7 @@ public static class FinalAssemblyWriter
         sb.AppendLine("    fit $200");
         sb.AppendLine("    org $200");
 
-        return TryWriteDataFileSection(sb, nodes, ref index, "--- lut file ---", "' --- lut file ---", functionNames);
+        return TryWriteDataFileSection(sb, nodes, ref index, AsmStorageSection.Lut, "' --- lut file ---", functionNames);
     }
 
     private static bool TryWriteHubFile(
@@ -219,14 +217,14 @@ public static class FinalAssemblyWriter
         ref int index,
         IReadOnlySet<string> functionNames)
     {
-        if (nodes[index] is not AsmCommentNode comment || comment.Text != "--- hub file ---")
+        if (nodes[index] is not AsmSectionNode { Section: AsmStorageSection.Hub })
             return false;
 
         // Switch from COG/LUT addressing to hub addressing.
         sb.AppendLine();
         sb.AppendLine("    orgh");
 
-        return TryWriteDataFileSection(sb, nodes, ref index, "--- hub file ---", "' --- hub file ---", functionNames);
+        return TryWriteDataFileSection(sb, nodes, ref index, AsmStorageSection.Hub, "' --- hub file ---", functionNames);
     }
 
     private static bool TryWriteConstantFile(
@@ -235,17 +233,16 @@ public static class FinalAssemblyWriter
         ref int index,
         IReadOnlySet<string> functionNames)
     {
-        if (nodes[index] is not AsmCommentNode { Text: "--- constant file ---" })
+        if (nodes[index] is not AsmSectionNode { Section: AsmStorageSection.Constant })
             return false;
 
         List<(string Label, string Directive, string Value)> rows = [];
         int rowIndex = index + 1;
         while (rowIndex + 1 < nodes.Count
             && nodes[rowIndex] is AsmLabelNode label
-            && nodes[rowIndex + 1] is AsmDirectiveNode directive
-            && TryParseDataDirective(directive.Text, out string directiveName, out string valueText))
+            && nodes[rowIndex + 1] is AsmDataNode data)
         {
-            rows.Add((label.Name, directiveName, valueText));
+            rows.Add((label.Name, FormatDataDirective(data.Directive), FormatDataValue(data)));
             rowIndex += 2;
         }
 
@@ -274,22 +271,30 @@ public static class FinalAssemblyWriter
         return true;
     }
 
-    private static bool TryParseDataDirective(string text, out string directiveName, out string valueText)
+    private static string FormatDataDirective(AsmDataDirective directive)
     {
-        directiveName = string.Empty;
-        valueText = string.Empty;
+        return directive switch
+        {
+            AsmDataDirective.Byte => "BYTE",
+            AsmDataDirective.Word => "WORD",
+            AsmDataDirective.Long => "LONG",
+            _ => Assert.UnreachableValue<string>(),
+        };
+    }
 
-        ReadOnlySpan<char> trimmed = text.AsSpan().Trim();
-        if (trimmed.IsEmpty)
-            return false;
+    private static string FormatDataValue(AsmDataNode data)
+    {
+        string initializer = data.Initializer switch
+        {
+            null => "0",
+            bool boolean => boolean ? "1" : "0",
+            uint u32 when data.UseHexFormat => $"${u32:X8}",
+            int i32 when data.UseHexFormat => $"${unchecked((uint)i32):X8}",
+            IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
+            _ => data.Initializer.ToString() ?? "0",
+        };
 
-        int separator = trimmed.IndexOf(' ');
-        if (separator < 0)
-            return false;
-
-        directiveName = trimmed[..separator].ToString();
-        valueText = trimmed[(separator + 1)..].TrimStart().ToString();
-        return IsDataDirective(directiveName);
+        return data.Count > 1 ? $"{initializer}[{data.Count}]" : initializer;
     }
 
     private static void WriteNode(StringBuilder sb, AsmNode node, IReadOnlySet<string> functionNames)
@@ -304,6 +309,10 @@ public static class FinalAssemblyWriter
                     sb.Append("    ");
                     sb.AppendLine(directive.Text);
                 }
+                break;
+
+            case AsmSectionNode:
+            case AsmDataNode:
                 break;
 
             case AsmLabelNode label:
@@ -431,7 +440,7 @@ public static class FinalAssemblyWriter
 
     private static string FormatIdentifier(string name, IReadOnlySet<string> functionNames)
     {
-        if (P2InstructionMetadata.IsSpecialRegisterName(name))
+        if (P2InstructionMetadata.TryParseSpecialRegister(name, out _))
             return name;
 
         return functionNames.Contains(name)

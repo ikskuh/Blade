@@ -476,6 +476,15 @@ public sealed class UnusedClassAnalyzer : DiagnosticAnalyzer
         {
             cancellationToken.ThrowIfCancellationRequested();
 
+            // Skip generated files: their types/members are still reached symbolically via
+            // ReachType, but scanning their syntax bodies is prohibitively expensive —
+            // Roslyn's GetSymbolInfo triggers full binding of field initializer expressions,
+            // and generated files like P2InstructionMetadata.g.cs contain massive collection
+            // initializers (thousands of constructor calls) that dominate analysis time.
+            string filePath = syntaxRef.SyntaxTree.FilePath;
+            if (filePath.EndsWith(".g.cs") || filePath.EndsWith(".generated.cs"))
+                continue;
+
             SyntaxNode root = syntaxRef.GetSyntax(cancellationToken);
 #pragma warning disable RS1030 // Whole-compilation reachability analysis requires GetSemanticModel per tree
             SemanticModel model = compilation.GetSemanticModel(root.SyntaxTree);

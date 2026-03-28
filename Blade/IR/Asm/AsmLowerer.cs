@@ -29,37 +29,37 @@ public static class AsmLowerer
         CallGraphResult cgResult = CallGraphAnalyzer.Analyze(module);
         (
             IReadOnlyList<StoragePlace> storagePlaces,
-            Dictionary<string, RecursiveCallingConventionInfo> recursiveCallingConvention,
-            Dictionary<string, CoroutineCallingConventionInfo> coroutineCallingConvention,
+            Dictionary<FunctionSymbol, RecursiveCallingConventionInfo> recursiveCallingConvention,
+            Dictionary<FunctionSymbol, CoroutineCallingConventionInfo> coroutineCallingConvention,
             StoragePlace? topLevelYieldStatePlace) =
             BuildCallingConventionStorage(module, cgResult);
 
         // Build a map of function name → block label → block parameter registers
         // so φ-moves can emit actual MOV instructions to the right target registers.
-        Dictionary<string, Dictionary<string, IReadOnlyList<LirBlockParameter>>> blockParamMap = [];
+        Dictionary<FunctionSymbol, Dictionary<LirBlockRef, IReadOnlyList<LirBlockParameter>>> blockParamMap = [];
         foreach (LirFunction function in module.Functions)
         {
-            Dictionary<string, IReadOnlyList<LirBlockParameter>> funcBlocks = [];
+            Dictionary<LirBlockRef, IReadOnlyList<LirBlockParameter>> funcBlocks = [];
             foreach (LirBlock block in function.Blocks)
-                funcBlocks[block.Label] = block.Parameters;
-            blockParamMap[function.Name] = funcBlocks;
+                funcBlocks[block.Ref] = block.Parameters;
+            blockParamMap[function.Symbol] = funcBlocks;
         }
 
         List<AsmFunction> functions = new(module.Functions.Count);
         foreach (LirFunction function in module.Functions)
         {
             // Eliminate dead (unreachable) functions from codegen
-            if (cgResult.DeadFunctions.Contains(function.Name))
+            if (cgResult.DeadFunctions.Contains(function.Symbol))
                 continue;
 
-            CallingConventionTier tier = cgResult.Tiers.GetValueOrDefault(function.Name, CallingConventionTier.General);
+            CallingConventionTier tier = cgResult.Tiers.GetValueOrDefault(function.Symbol, CallingConventionTier.General);
             bool containsYield = FunctionContainsYield(function);
             LoweringContext ctx = new(
                 function,
                 functionOrdinal: functions.Count,
                 tier,
                 cgResult.Tiers,
-                blockParamMap[function.Name],
+                blockParamMap[function.Symbol],
                 recursiveCallingConvention,
                 coroutineCallingConvention,
                 topLevelYieldStatePlace,
@@ -76,14 +76,15 @@ public static class AsmLowerer
         public LirFunction Function { get; }
         public int FunctionOrdinal { get; }
         public CallingConventionTier Tier { get; }
-        public Dictionary<string, CallingConventionTier> CalleeTiers { get; }
-        public Dictionary<string, IReadOnlyList<LirBlockParameter>> BlockParams { get; }
-        public Dictionary<string, RecursiveCallingConventionInfo> RecursiveCallingConvention { get; }
-        public Dictionary<string, CoroutineCallingConventionInfo> CoroutineCallingConvention { get; }
+        public Dictionary<FunctionSymbol, CallingConventionTier> CalleeTiers { get; }
+        public Dictionary<LirBlockRef, IReadOnlyList<LirBlockParameter>> BlockParams { get; }
+        public Dictionary<FunctionSymbol, RecursiveCallingConventionInfo> RecursiveCallingConvention { get; }
+        public Dictionary<FunctionSymbol, CoroutineCallingConventionInfo> CoroutineCallingConvention { get; }
         public StoragePlace? TopLevelYieldStatePlace { get; }
         public bool ContainsYield { get; }
         public DiagnosticBag? Diagnostics { get; }
         public HashSet<string> ReportedUnsupportedLowerings { get; } = new(StringComparer.Ordinal);
+        public Dictionary<LirBlockRef, ControlFlowLabelSymbol> BlockLabels { get; } = [];
         public int NextInlineAsmBlockOrdinal { get; set; }
         public int NextRepLabelOrdinal { get; set; }
 
@@ -91,23 +92,23 @@ public static class AsmLowerer
         /// Stack of REP end-label names for correlating setup/begin pseudo-ops with
         /// their corresponding iter/end pseudo-ops. Supports nesting.
         /// </summary>
-        public Stack<string> RepEndLabelStack { get; } = new();
+        public Stack<ControlFlowLabelSymbol> RepEndLabelStack { get; } = new();
 
         /// <summary>
         /// Registers whose values are only consumed as hardware flags (by a flag-aware branch),
         /// not as register values. Comparisons writing to these can skip materialization (WRZ/WRC).
         /// Recomputed per block.
         /// </summary>
-        public HashSet<int> FlagOnlyRegisters { get; } = [];
+        public HashSet<LirVirtualRegister> FlagOnlyRegisters { get; } = [];
 
         public LoweringContext(
             LirFunction function,
             int functionOrdinal,
             CallingConventionTier tier,
-            Dictionary<string, CallingConventionTier> calleeTiers,
-            Dictionary<string, IReadOnlyList<LirBlockParameter>> blockParams,
-            Dictionary<string, RecursiveCallingConventionInfo> recursiveCallingConvention,
-            Dictionary<string, CoroutineCallingConventionInfo> coroutineCallingConvention,
+            Dictionary<FunctionSymbol, CallingConventionTier> calleeTiers,
+            Dictionary<LirBlockRef, IReadOnlyList<LirBlockParameter>> blockParams,
+            Dictionary<FunctionSymbol, RecursiveCallingConventionInfo> recursiveCallingConvention,
+            Dictionary<FunctionSymbol, CoroutineCallingConventionInfo> coroutineCallingConvention,
             StoragePlace? topLevelYieldStatePlace,
             bool containsYield,
             DiagnosticBag? diagnostics)
@@ -122,6 +123,21 @@ public static class AsmLowerer
             TopLevelYieldStatePlace = topLevelYieldStatePlace;
             ContainsYield = containsYield;
             Diagnostics = diagnostics;
+        }
+
+        public ControlFlowLabelSymbol GetBlockLabel(LirBlockRef blockRef)
+        {
+            if (BlockLabels.TryGetValue(blockRef, out ControlFlowLabelSymbol? label))
+                return label;
+
+            label = new ControlFlowLabelSymbol($"{Function.Name}_{blockRef}");
+            BlockLabels.Add(blockRef, label);
+            return label;
+        }
+
+        public VirtualAsmRegister GetRegister(LirVirtualRegister register)
+        {
+            return VirtualAsmRegister.FromLir(register);
         }
     }
 
@@ -160,8 +176,7 @@ public static class AsmLowerer
 
         foreach (LirBlock block in ctx.Function.Blocks)
         {
-            string blockLabel = $"{ctx.Function.Name}_{block.Label}";
-            nodes.Add(new AsmLabelNode(blockLabel));
+            nodes.Add(new AsmLabelNode(ctx.GetBlockLabel(block.Ref)));
 
             if (ctx.Tier == CallingConventionTier.Recursive
                 && ReferenceEquals(block, ctx.Function.Blocks[0]))
@@ -187,22 +202,22 @@ public static class AsmLowerer
 
     private static (
         IReadOnlyList<StoragePlace> StoragePlaces,
-        Dictionary<string, RecursiveCallingConventionInfo> RecursiveCallingConvention,
-        Dictionary<string, CoroutineCallingConventionInfo> CoroutineCallingConvention,
+        Dictionary<FunctionSymbol, RecursiveCallingConventionInfo> RecursiveCallingConvention,
+        Dictionary<FunctionSymbol, CoroutineCallingConventionInfo> CoroutineCallingConvention,
         StoragePlace? TopLevelYieldStatePlace)
         BuildCallingConventionStorage(LirModule module, CallGraphResult cgResult)
     {
         List<StoragePlace> storagePlaces = new(module.StoragePlaces.Count);
         storagePlaces.AddRange(module.StoragePlaces);
 
-        Dictionary<string, RecursiveCallingConventionInfo> recursiveCallingConvention = new(StringComparer.Ordinal);
-        Dictionary<string, CoroutineCallingConventionInfo> coroutineCallingConvention = new(StringComparer.Ordinal);
+        Dictionary<FunctionSymbol, RecursiveCallingConventionInfo> recursiveCallingConvention = [];
+        Dictionary<FunctionSymbol, CoroutineCallingConventionInfo> coroutineCallingConvention = [];
         foreach (LirFunction function in module.Functions)
         {
-            if (cgResult.DeadFunctions.Contains(function.Name))
+            if (cgResult.DeadFunctions.Contains(function.Symbol))
                 continue;
 
-            CallingConventionTier functionTier = cgResult.Tiers.GetValueOrDefault(function.Name, CallingConventionTier.General);
+            CallingConventionTier functionTier = cgResult.Tiers.GetValueOrDefault(function.Symbol, CallingConventionTier.General);
             if (functionTier == CallingConventionTier.Recursive)
             {
                 Assert.Invariant(function.Blocks.Count > 0, "Recursive functions must have an entry block.");
@@ -260,7 +275,7 @@ public static class AsmLowerer
                     }
                 }
 
-                recursiveCallingConvention[function.Name] = new RecursiveCallingConventionInfo(parameterPlaces, registerReturnPlace);
+                recursiveCallingConvention[function.Symbol] = new RecursiveCallingConventionInfo(parameterPlaces, registerReturnPlace);
             }
             else if (functionTier == CallingConventionTier.Coroutine)
             {
@@ -304,7 +319,7 @@ public static class AsmLowerer
                     staticInitializer: entryLabel);
                 storagePlaces.Add(statePlace);
 
-                coroutineCallingConvention[function.Name] = new CoroutineCallingConventionInfo(statePlace, parameterPlaces);
+                coroutineCallingConvention[function.Symbol] = new CoroutineCallingConventionInfo(statePlace, parameterPlaces);
             }
         }
 
@@ -369,7 +384,7 @@ public static class AsmLowerer
 
     private static void EmitRecursiveFunctionEntryLoads(List<AsmNode> nodes, LirBlock block, LoweringContext ctx)
     {
-        var ok = ctx.RecursiveCallingConvention.TryGetValue(ctx.Function.Name, out RecursiveCallingConventionInfo? recursiveInfo);
+        var ok = ctx.RecursiveCallingConvention.TryGetValue(ctx.Function.Symbol, out RecursiveCallingConventionInfo? recursiveInfo);
         Assert.Invariant(ok, "Recursive functions must have calling-convention metadata.");
         Assert.Invariant(recursiveInfo != null);
         Assert.Invariant(recursiveInfo.ParameterPlaces.Count == block.Parameters.Count, "Recursive entry ABI must match the function parameter list.");
@@ -378,14 +393,14 @@ public static class AsmLowerer
         {
             nodes.Add(Emit(
                 P2Mnemonic.MOV,
-                new AsmRegisterOperand(block.Parameters[i].Register.Id),
+                new AsmRegisterOperand(ctx.GetRegister(block.Parameters[i].Register)),
                 new AsmPlaceOperand(recursiveInfo.ParameterPlaces[i])));
         }
     }
 
     private static void EmitCoroutineFunctionEntryLoads(List<AsmNode> nodes, LirBlock block, LoweringContext ctx)
     {
-        var ok = ctx.CoroutineCallingConvention.TryGetValue(ctx.Function.Name, out CoroutineCallingConventionInfo? coroutineInfo);
+        var ok = ctx.CoroutineCallingConvention.TryGetValue(ctx.Function.Symbol, out CoroutineCallingConventionInfo? coroutineInfo);
         Assert.Invariant(ok, "Coroutine functions must have calling-convention metadata.");
         Assert.Invariant(coroutineInfo != null);
         Assert.Invariant(coroutineInfo.ParameterPlaces.Count == block.Parameters.Count, "Coroutine entry ABI must match the function parameter list.");
@@ -394,7 +409,7 @@ public static class AsmLowerer
         {
             nodes.Add(Emit(
                 P2Mnemonic.MOV,
-                new AsmRegisterOperand(block.Parameters[i].Register.Id),
+                new AsmRegisterOperand(ctx.GetRegister(block.Parameters[i].Register)),
                 new AsmPlaceOperand(coroutineInfo.ParameterPlaces[i])));
         }
     }
@@ -415,7 +430,7 @@ public static class AsmLowerer
         if (branch.Condition is not LirRegisterOperand condReg)
             return;
 
-        int condId = condReg.Register.Id;
+        LirVirtualRegister condRegister = condReg.Register;
 
         // Check that no instruction in the block uses this register as an operand
         // (other than the instruction that defines it).
@@ -423,7 +438,7 @@ public static class AsmLowerer
         {
             foreach (LirOperand operand in instruction.Operands)
             {
-                if (operand is LirRegisterOperand reg && reg.Register.Id == condId)
+                if (operand is LirRegisterOperand reg && ReferenceEquals(reg.Register, condRegister))
                     return; // Used as an operand somewhere — need materialization.
             }
         }
@@ -431,17 +446,17 @@ public static class AsmLowerer
         // Also check terminator arguments (phi moves).
         foreach (LirOperand operand in branch.TrueArguments)
         {
-            if (operand is LirRegisterOperand reg && reg.Register.Id == condId)
+            if (operand is LirRegisterOperand reg && ReferenceEquals(reg.Register, condRegister))
                 return;
         }
 
         foreach (LirOperand operand in branch.FalseArguments)
         {
-            if (operand is LirRegisterOperand reg && reg.Register.Id == condId)
+            if (operand is LirRegisterOperand reg && ReferenceEquals(reg.Register, condRegister))
                 return;
         }
 
-        ctx.FlagOnlyRegisters.Add(condId);
+        ctx.FlagOnlyRegisters.Add(condRegister);
     }
 
     private static void LowerInstruction(List<AsmNode> nodes, LirInstruction instruction, LoweringContext ctx)
@@ -466,8 +481,8 @@ public static class AsmLowerer
             case LirMovOperation:
                 LowerMov(nodes, op);
                 break;
-            case LirLoadSymbolOperation:
-                LowerLoadSym(nodes, op);
+            case LirLoadAddressOperation:
+                LowerLoadAddress(nodes, op);
                 break;
             case LirLoadPlaceOperation:
                 LowerLoadPlace(nodes, op);
@@ -560,7 +575,7 @@ public static class AsmLowerer
         foreach (LirInlineAsmBinding binding in inlineAsm.Bindings)
             bindings[binding.Name] = LowerOperand(binding.Operand);
 
-        IReadOnlyDictionary<string, string> localLabels = CreateInlineAsmLocalLabels(ctx, inlineAsm.ParsedLines);
+        IReadOnlyDictionary<ControlFlowLabelSymbol, ControlFlowLabelSymbol> localLabels = CreateInlineAsmLocalLabels(ctx, inlineAsm.ParsedLines);
 
         bool isVolatile = inlineAsm.Volatility == AsmVolatility.Volatile;
 
@@ -575,10 +590,10 @@ public static class AsmLowerer
         List<AsmNode> nodes,
         LirInlineAsmInstruction inlineAsm,
         IReadOnlyDictionary<string, AsmOperand> bindings,
-        IReadOnlyDictionary<string, string> localLabels,
+        IReadOnlyDictionary<ControlFlowLabelSymbol, ControlFlowLabelSymbol> localLabels,
         bool isVolatile)
     {
-        Queue<InlineAssemblyValidator.AsmLine> parsedLines = new(inlineAsm.ParsedLines);
+        Queue<InlineAsmLine> parsedLines = new(inlineAsm.ParsedLines);
         List<AsmNode> lowered = [];
         foreach (InlineAsmSourceLine sourceLine in ParseInlineAsmSourceLines(inlineAsm.Body))
         {
@@ -594,15 +609,12 @@ public static class AsmLowerer
             if (sourceLine.InstructionText is null)
                 continue;
 
-            if (!parsedLines.TryDequeue(out InlineAssemblyValidator.AsmLine? line))
+            if (!parsedLines.TryDequeue(out InlineAsmLine? line))
                 return false;
 
-            if (line.IsLabel)
+            if (line is InlineAsmLabelLine labelLine)
             {
-                if (string.IsNullOrWhiteSpace(line.LabelName))
-                    return false;
-
-                lowered.Add(new AsmLabelNode(RewriteInlineAsmLocalLabel(line.LabelName, localLabels)));
+                lowered.Add(new AsmLabelNode(RewriteInlineAsmLocalLabel(labelLine.Label, localLabels)));
                 if (sourceLine.CommentText is not null)
                     lowered.Add(new AsmCommentNode(sourceLine.CommentText));
                 continue;
@@ -684,115 +696,78 @@ public static class AsmLowerer
     }
 
     private static bool TryLowerParsedInlineAsmLine(
-        InlineAssemblyValidator.AsmLine line,
+        InlineAsmLine line,
         IReadOnlyDictionary<string, AsmOperand> bindings,
-        IReadOnlyDictionary<string, string> localLabels,
+        IReadOnlyDictionary<ControlFlowLabelSymbol, ControlFlowLabelSymbol> localLabels,
         out AsmInstructionNode? instruction)
     {
         instruction = null;
-        if (line.Mnemonic is not P2Mnemonic mnemonic)
+        if (line is not InlineAsmInstructionLine instructionLine)
             return false;
 
-        List<AsmOperand> operands = new(line.Operands.Count);
-        foreach (string operandText in line.Operands)
+        List<AsmOperand> operands = new(instructionLine.Operands.Count);
+        foreach (InlineAsmOperand operandText in instructionLine.Operands)
         {
-            if (!TryParseInlineAsmOperand(operandText, bindings, localLabels, out AsmOperand? operand))
+            if (!TryLowerInlineAsmOperand(operandText, bindings, localLabels, out AsmOperand? operand))
                 return false;
             operands.Add(operand!);
         }
 
-        instruction = new AsmInstructionNode(mnemonic, operands, line.Condition, line.FlagEffect ?? P2FlagEffect.None);
+        instruction = new AsmInstructionNode(
+            instructionLine.Mnemonic,
+            operands,
+            instructionLine.Condition,
+            instructionLine.FlagEffect ?? P2FlagEffect.None);
         return true;
     }
 
-    private static bool TryParseInlineAsmOperand(
-        string text,
+    private static bool TryLowerInlineAsmOperand(
+        InlineAsmOperand operandNode,
         IReadOnlyDictionary<string, AsmOperand> bindings,
-        IReadOnlyDictionary<string, string> localLabels,
+        IReadOnlyDictionary<ControlFlowLabelSymbol, ControlFlowLabelSymbol> localLabels,
         out AsmOperand? operand)
     {
         operand = null;
-        string trimmed = text.Trim();
-        if (trimmed.Length == 0)
-            return false;
-
-        if (trimmed[0] == '{')
+        switch (operandNode)
         {
-            if (trimmed[^1] != '}')
-                return false;
+            case InlineAsmBindingRefOperand binding:
+                return bindings.TryGetValue(binding.BindingName, out operand);
 
-            string name = trimmed[1..^1].Trim();
-            if (name.Length == 0
-                || name.Contains('{', StringComparison.Ordinal)
-                || name.Contains('}', StringComparison.Ordinal)
-                || !bindings.TryGetValue(name, out AsmOperand? bound))
-            {
-                return false;
-            }
-
-            operand = bound;
-            return true;
-        }
-
-        if (trimmed.Contains('{', StringComparison.Ordinal)
-            || trimmed.Contains('}', StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        if (trimmed.StartsWith('#'))
-        {
-            string immediateText = trimmed[1..].Trim();
-            if (immediateText == "$")
-            {
-                operand = new AsmSymbolOperand("$", AsmSymbolAddressingMode.Immediate);
+            case InlineAsmImmediateOperand immediate:
+                operand = new AsmImmediateOperand(immediate.Value);
                 return true;
-            }
 
-            if (TryParseInlineAsmImmediate(immediateText, out long immediate))
-            {
-                operand = new AsmImmediateOperand(immediate);
+            case InlineAsmCurrentAddressOperand current:
+                operand = new AsmSymbolOperand(
+                    AsmCurrentAddressSymbol.Instance,
+                    current.AddressingMode == InlineAsmAddressingMode.Immediate
+                        ? AsmSymbolAddressingMode.Immediate
+                        : AsmSymbolAddressingMode.Register);
                 return true;
-            }
 
-            if (IsPlainInlineAsmSymbol(immediateText))
-            {
-                operand = new AsmSymbolOperand(RewriteInlineAsmLocalLabel(immediateText, localLabels), AsmSymbolAddressingMode.Immediate);
+            case InlineAsmLabelOperand label:
+                operand = new AsmSymbolOperand(
+                    RewriteInlineAsmLocalLabel(label.Label, localLabels),
+                    label.AddressingMode == InlineAsmAddressingMode.Immediate
+                        ? AsmSymbolAddressingMode.Immediate
+                        : AsmSymbolAddressingMode.Register);
                 return true;
-            }
 
-            return false;
-        }
+            case InlineAsmSpecialRegisterOperand specialRegister:
+                operand = new AsmSymbolOperand(specialRegister.Register);
+                return true;
 
-        if (trimmed.EndsWith(":"[0]))
-        {
-            string labelReference = trimmed[..^1].Trim();
-            if (!IsPlainInlineAsmSymbol(labelReference))
+            case InlineAsmSymbolOperand symbol:
+                operand = new AsmSymbolOperand(
+                    new AsmNamedSymbol(symbol.Name, SymbolType.ControlFlowLabel),
+                    symbol.AddressingMode == InlineAsmAddressingMode.Immediate
+                        ? AsmSymbolAddressingMode.Immediate
+                        : AsmSymbolAddressingMode.Register);
+                return true;
+
+            default:
                 return false;
-
-            operand = new AsmSymbolOperand(RewriteInlineAsmLocalLabel(labelReference, localLabels), AsmSymbolAddressingMode.Register);
-            return true;
         }
-
-        if (trimmed == "$" || IsPlainInlineAsmSymbol(trimmed))
-        {
-            operand = new AsmSymbolOperand(RewriteInlineAsmLocalLabel(trimmed, localLabels), AsmSymbolAddressingMode.Register);
-            return true;
-        }
-
-        return false;
-    }
-
-    private static bool IsPlainInlineAsmSymbol(string text)
-    {
-        foreach (char c in text)
-        {
-            if (char.IsAsciiLetterOrDigit(c) || c == '_' || c == '$')
-                continue;
-            return false;
-        }
-
-        return text.Length > 0;
     }
 
     private static IEnumerable<InlineAsmSourceLine> ParseInlineAsmSourceLines(string body)
@@ -826,32 +801,33 @@ public static class AsmLowerer
         => commentText.TrimStart();
 
 
-    private static IReadOnlyDictionary<string, string> CreateInlineAsmLocalLabels(
+    private static IReadOnlyDictionary<ControlFlowLabelSymbol, ControlFlowLabelSymbol> CreateInlineAsmLocalLabels(
         LoweringContext ctx,
-        IReadOnlyList<InlineAssemblyValidator.AsmLine> parsedLines)
+        IReadOnlyList<InlineAsmLine> parsedLines)
     {
-        Dictionary<string, string> localLabels = new(StringComparer.Ordinal);
-        List<string> labelNames = parsedLines
-            .Where(static line => line.IsLabel && !string.IsNullOrWhiteSpace(line.LabelName))
-            .Select(static line => line.LabelName!)
-            .Distinct(StringComparer.Ordinal)
+        Dictionary<ControlFlowLabelSymbol, ControlFlowLabelSymbol> localLabels = [];
+        List<ControlFlowLabelSymbol> labels = parsedLines
+            .OfType<InlineAsmLabelLine>()
+            .Select(static line => line.Label)
+            .Distinct()
             .ToList();
-        if (labelNames.Count == 0)
+        if (labels.Count == 0)
             return localLabels;
 
         int blockOrdinal = ctx.NextInlineAsmBlockOrdinal++;
-        foreach (string labelName in labelNames)
-            localLabels[labelName] = $"__asm_{ctx.FunctionOrdinal}_{blockOrdinal}_{EncodeInlineAsmLabelComponent(labelName)}";
+        foreach (ControlFlowLabelSymbol label in labels)
+        {
+            string rewrittenName = $"__asm_{ctx.FunctionOrdinal}_{blockOrdinal}_{EncodeInlineAsmLabelComponent(label.Name)}";
+            localLabels[label] = new ControlFlowLabelSymbol(rewrittenName);
+        }
 
         return localLabels;
     }
 
-    private static string RewriteInlineAsmLocalLabel(
-        string label,
-        IReadOnlyDictionary<string, string> localLabels)
-    {
-        return localLabels.TryGetValue(label, out string? rewritten) ? rewritten : label;
-    }
+    private static ControlFlowLabelSymbol RewriteInlineAsmLocalLabel(
+        ControlFlowLabelSymbol label,
+        IReadOnlyDictionary<ControlFlowLabelSymbol, ControlFlowLabelSymbol> localLabels)
+        => localLabels.TryGetValue(label, out ControlFlowLabelSymbol? rewritten) ? rewritten : label;
 
     private static string EncodeInlineAsmLabelComponent(string label)
     {
@@ -873,53 +849,6 @@ public static class AsmLowerer
     }
 
     private readonly record struct InlineAsmSourceLine(string? InstructionText, string? CommentText, bool IsBlank);
-
-    private static bool TryParseInlineAsmImmediate(string text, out long value)
-    {
-        value = 0;
-        if (text.Length == 0)
-            return false;
-
-        bool negative = false;
-        string remainder = text;
-        if (remainder[0] is '+' or '-')
-        {
-            negative = remainder[0] == '-';
-            remainder = remainder[1..];
-        }
-
-        remainder = remainder.Replace("_", "", StringComparison.Ordinal);
-        if (remainder.Length == 0)
-            return false;
-
-        try
-        {
-            if (remainder.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-            {
-                if (!long.TryParse(remainder[2..], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out long hex))
-                    return false;
-                value = negative ? -hex : hex;
-                return true;
-            }
-
-            if (remainder.StartsWith("0b", StringComparison.OrdinalIgnoreCase))
-            {
-                long binary = Convert.ToInt64(remainder[2..], 2);
-                value = negative ? -binary : binary;
-                return true;
-            }
-
-            if (!long.TryParse(remainder, NumberStyles.None, CultureInfo.InvariantCulture, out long decimalValue))
-                return false;
-
-            value = negative ? -decimalValue : decimalValue;
-            return true;
-        }
-        catch (OverflowException)
-        {
-            return false;
-        }
-    }
 
     private static void LowerConst(List<AsmNode> nodes, LirOpInstruction op)
     {
@@ -948,11 +877,11 @@ public static class AsmLowerer
         nodes.Add(Emit(P2Mnemonic.MOV, dest, src));
     }
 
-    private static void LowerLoadSym(List<AsmNode> nodes, LirOpInstruction op)
+    private static void LowerLoadAddress(List<AsmNode> nodes, LirOpInstruction op)
     {
         AsmRegisterOperand dest = DestReg(op);
-        IAsmSymbol symbol = ((LirSymbolOperand)op.Operands[0]).Symbol;
-        nodes.Add(Emit(P2Mnemonic.MOV, dest, new AsmSymbolOperand(symbol, AsmSymbolAddressingMode.Register)));
+        AsmPlaceOperand place = (AsmPlaceOperand)LowerOperand(op.Operands[0]);
+        nodes.Add(Emit(P2Mnemonic.MOV, dest, place));
     }
 
     private static void LowerLoadPlace(List<AsmNode> nodes, LirOpInstruction op)
@@ -1457,7 +1386,7 @@ public static class AsmLowerer
         AsmRegisterOperand dest = DestReg(op);
         AsmRegisterOperand left = OpReg(op.Operands[0]);
         AsmRegisterOperand right = OpReg(op.Operands[1]);
-        bool isFlagOnly = op.Destination is { } d && ctx.FlagOnlyRegisters.Contains(d.Id);
+        bool isFlagOnly = op.Destination is { } d && ctx.FlagOnlyRegisters.Contains(d);
         BoundBinaryOperatorKind kind = operation.OperatorKind;
 
         switch (kind)
@@ -1632,15 +1561,15 @@ public static class AsmLowerer
     {
         LirCallOperation operation = (LirCallOperation)op.Operation;
         FunctionSymbol target = operation.TargetFunction;
-        CallingConventionTier calleeTier = ctx.CalleeTiers.GetValueOrDefault(target.Name, CallingConventionTier.General);
+        CallingConventionTier calleeTier = ctx.CalleeTiers.GetValueOrDefault(target, CallingConventionTier.General);
 
         // Collect argument registers
         List<AsmRegisterOperand> args = [];
         for (int i = 0; i < op.Operands.Count; i++)
             args.Add(OpReg(op.Operands[i]));
 
-        AsmRegisterOperand? destReg = op.Destination is { } dest ? new AsmRegisterOperand(dest.Id) : null;
-        AsmSymbolOperand targetOp = new(new AsmTextSymbol(target.Name, SymbolType.Function), AsmSymbolAddressingMode.Immediate);
+        AsmRegisterOperand? destReg = op.Destination is { } dest ? new AsmRegisterOperand(ctx.GetRegister(dest)) : null;
+        AsmSymbolOperand targetOp = new(new AsmFunctionReferenceSymbol(target), AsmSymbolAddressingMode.Immediate);
 
         switch (calleeTier)
         {
@@ -1673,7 +1602,7 @@ public static class AsmLowerer
                 break;
 
             case CallingConventionTier.Recursive:
-                var ok = ctx.RecursiveCallingConvention.TryGetValue(target.Name, out RecursiveCallingConventionInfo? recursiveInfo);
+                var ok = ctx.RecursiveCallingConvention.TryGetValue(target, out RecursiveCallingConventionInfo? recursiveInfo);
                 Assert.Invariant(ok, "Recursive callees must have calling-convention metadata.");
                 Assert.Invariant(recursiveInfo!.ParameterPlaces.Count == args.Count, "Recursive call arguments must match the callee parameter ABI.");
 
@@ -1700,7 +1629,7 @@ public static class AsmLowerer
         Assert.Invariant(op.Destination is not null, "call.extract pseudo-op must have a destination register");
         LirVirtualRegister dest = op.Destination.Value;
 
-        AsmRegisterOperand destReg = new(dest.Id);
+        AsmRegisterOperand destReg = new(dest);
         P2Mnemonic opcode = flag switch
         {
             MirFlag.C => P2Mnemonic.BITC,
@@ -1723,7 +1652,7 @@ public static class AsmLowerer
         if (op.Destination is { } dest
             && ShouldEmitIntrinsicDestination(mnemonic, operands.Count))
         {
-            operands.Insert(0, new AsmRegisterOperand(dest.Id));
+            operands.Insert(0, new AsmRegisterOperand(dest));
         }
 
         nodes.Add(new AsmInstructionNode(mnemonic, operands));
@@ -1878,7 +1807,7 @@ public static class AsmLowerer
         if (op.Operands.Count < 1)
             return;
 
-        string endLabel = PushRepEndLabel(ctx);
+        ControlFlowLabelSymbol endLabel = PushRepEndLabel(ctx);
         AsmOperand iterations = LowerOperand(op.Operands[0]);
         nodes.Add(new AsmInstructionNode(P2Mnemonic.REP, [new AsmLabelRefOperand(endLabel), iterations]));
     }
@@ -1893,7 +1822,7 @@ public static class AsmLowerer
         if (op.Operands.Count < 2)
             return;
 
-        string endLabel = PushRepEndLabel(ctx);
+        ControlFlowLabelSymbol endLabel = PushRepEndLabel(ctx);
         AsmOperand end = LowerOperand(op.Operands[1]);
         nodes.Add(new AsmInstructionNode(P2Mnemonic.REP, [new AsmLabelRefOperand(endLabel), end]));
     }
@@ -1905,7 +1834,7 @@ public static class AsmLowerer
 
     private static void LowerNoIrqBegin(List<AsmNode> nodes, LoweringContext ctx)
     {
-        string endLabel = PushRepEndLabel(ctx);
+        ControlFlowLabelSymbol endLabel = PushRepEndLabel(ctx);
         nodes.Add(new AsmInstructionNode(P2Mnemonic.REP, [new AsmLabelRefOperand(endLabel), new AsmImmediateOperand(1)]));
     }
 
@@ -1914,15 +1843,15 @@ public static class AsmLowerer
         nodes.Add(new AsmLabelNode(PopRepEndLabel(ctx)));
     }
 
-    private static string PushRepEndLabel(LoweringContext ctx)
+    private static ControlFlowLabelSymbol PushRepEndLabel(LoweringContext ctx)
     {
         int ordinal = ctx.NextRepLabelOrdinal++;
-        string label = $"_rep_end_{ctx.FunctionOrdinal}_{ordinal}";
+        ControlFlowLabelSymbol label = new($"_rep_end_{ctx.FunctionOrdinal}_{ordinal}");
         ctx.RepEndLabelStack.Push(label);
         return label;
     }
 
-    private static string PopRepEndLabel(LoweringContext ctx)
+    private static ControlFlowLabelSymbol PopRepEndLabel(LoweringContext ctx)
     {
         Assert.Invariant(ctx.RepEndLabelStack.Count > 0);
         return ctx.RepEndLabelStack.Pop();
@@ -1952,7 +1881,7 @@ public static class AsmLowerer
         LirYieldToOperation operation,
         LoweringContext ctx)
     {
-        var hasTargetInfo = ctx.CoroutineCallingConvention.TryGetValue(operation.TargetFunctionName, out CoroutineCallingConventionInfo? targetInfo);
+        var hasTargetInfo = ctx.CoroutineCallingConvention.TryGetValue(operation.TargetFunction, out CoroutineCallingConventionInfo? targetInfo);
         if (!hasTargetInfo || targetInfo is null)
         {
             ReportUnsupportedOpcode(ctx, op.Span, op.DisplayName);
@@ -1964,7 +1893,7 @@ public static class AsmLowerer
             nodes.Add(Emit(P2Mnemonic.MOV, new AsmPlaceOperand(targetInfo.ParameterPlaces[i]), OpReg(op.Operands[i])));
 
         AsmOperand yieldStateDestination = ctx.Tier == CallingConventionTier.Coroutine
-            && ctx.CoroutineCallingConvention.TryGetValue(ctx.Function.Name, out CoroutineCallingConventionInfo? sourceInfo)
+            && ctx.CoroutineCallingConvention.TryGetValue(ctx.Function.Symbol, out CoroutineCallingConventionInfo? sourceInfo)
             && sourceInfo is not null
             ? new AsmPlaceOperand(sourceInfo.StatePlace)
             : ctx.TopLevelYieldStatePlace is not null
@@ -1976,13 +1905,11 @@ public static class AsmLowerer
 
     private static void LowerTerminator(List<AsmNode> nodes, LoweringContext ctx, LirTerminator terminator)
     {
-        string functionName = ctx.Function.Name;
-
         switch (terminator)
         {
             case LirGotoTerminator goto_:
-                EmitPhiMoves(nodes, goto_.Arguments, ctx, goto_.TargetLabel);
-                nodes.Add(Emit(P2Mnemonic.JMP, new AsmSymbolOperand($"{functionName}_{goto_.TargetLabel}", AsmSymbolAddressingMode.Immediate)));
+                EmitPhiMoves(nodes, goto_.Arguments, ctx, goto_.Target);
+                nodes.Add(Emit(P2Mnemonic.JMP, new AsmSymbolOperand(ctx.GetBlockLabel(goto_.Target), AsmSymbolAddressingMode.Immediate)));
                 break;
 
             case LirBranchTerminator branch:
@@ -2020,7 +1947,7 @@ public static class AsmLowerer
                     break;
 
                 case CallingConventionTier.Recursive:
-                    var ok = ctx.RecursiveCallingConvention.TryGetValue(ctx.Function.Name, out RecursiveCallingConventionInfo? recursiveInfo);
+                    var ok = ctx.RecursiveCallingConvention.TryGetValue(ctx.Function.Symbol, out RecursiveCallingConventionInfo? recursiveInfo);
                     Assert.Invariant(ok, "Recursive functions must have calling-convention metadata.");
                     Assert.Invariant(recursiveInfo!.RegisterReturnPlace is not null, "Recursive register-return functions must have a return storage place.");
                     nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [new AsmPlaceOperand(recursiveInfo.RegisterReturnPlace), resultOp]));
@@ -2069,9 +1996,9 @@ public static class AsmLowerer
                         _ => Assert.UnreachableValue<P2SpecialRegister>(),
                     };
                     nodes.Add(Emit(
-                        P2Mnemonic.MOV,
+                    P2Mnemonic.MOV,
                         new AsmSymbolOperand(interruptJumpRegister),
-                        new AsmSymbolOperand(ctx.Function.Name, AsmSymbolAddressingMode.Immediate)));
+                        new AsmSymbolOperand(new AsmFunctionReferenceSymbol(ctx.Function.Symbol), AsmSymbolAddressingMode.Immediate)));
                 }
 
                 P2Mnemonic retInsn = kind switch
@@ -2106,9 +2033,8 @@ public static class AsmLowerer
 
     private static void LowerBranch(List<AsmNode> nodes, LoweringContext ctx, LirBranchTerminator branch)
     {
-        string functionName = ctx.Function.Name;
-        string trueLabel = $"{functionName}_{branch.TrueLabel}";
-        string falseLabel = $"{functionName}_{branch.FalseLabel}";
+        ControlFlowLabelSymbol trueLabel = ctx.GetBlockLabel(branch.TrueTarget);
+        ControlFlowLabelSymbol falseLabel = ctx.GetBlockLabel(branch.FalseTarget);
 
         // Flag-aware branch: the condition already lives in a hardware flag (C or Z).
         // Use predicated jumps directly — no register test needed.
@@ -2140,9 +2066,9 @@ public static class AsmLowerer
             }
             else
             {
-                EmitPhiMovesConditioned(nodes, branch.FalseArguments, ctx, branch.FalseLabel, falsePredicate);
+                EmitPhiMovesConditioned(nodes, branch.FalseArguments, ctx, branch.FalseTarget, falsePredicate);
                 nodes.Add(Emit(P2Mnemonic.JMP, new AsmSymbolOperand(falseLabel, AsmSymbolAddressingMode.Immediate), predicate: falsePredicate));
-                EmitPhiMoves(nodes, branch.TrueArguments, ctx, branch.TrueLabel);
+                EmitPhiMoves(nodes, branch.TrueArguments, ctx, branch.TrueTarget);
                 nodes.Add(Emit(P2Mnemonic.JMP, new AsmSymbolOperand(trueLabel, AsmSymbolAddressingMode.Immediate)));
             }
 
@@ -2162,11 +2088,11 @@ public static class AsmLowerer
             nodes.Add(Emit(P2Mnemonic.CMP, cond, new AsmImmediateOperand(0), flagEffect: P2FlagEffect.WZ));
 
             // False path (Z=1, condition was zero)
-            EmitPhiMovesConditioned(nodes, branch.FalseArguments, ctx, branch.FalseLabel, P2ConditionCode.IF_Z);
+            EmitPhiMovesConditioned(nodes, branch.FalseArguments, ctx, branch.FalseTarget, P2ConditionCode.IF_Z);
             nodes.Add(Emit(P2Mnemonic.JMP, new AsmSymbolOperand(falseLabel, AsmSymbolAddressingMode.Immediate), predicate: P2ConditionCode.IF_Z));
 
             // True path (fall-through when NZ)
-            EmitPhiMoves(nodes, branch.TrueArguments, ctx, branch.TrueLabel);
+            EmitPhiMoves(nodes, branch.TrueArguments, ctx, branch.TrueTarget);
             nodes.Add(Emit(P2Mnemonic.JMP, new AsmSymbolOperand(trueLabel, AsmSymbolAddressingMode.Immediate)));
         }
     }
@@ -2179,14 +2105,14 @@ public static class AsmLowerer
         List<AsmNode> nodes,
         IReadOnlyList<LirOperand> arguments,
         LoweringContext ctx,
-        string targetLabel,
+        LirBlockRef targetBlock,
         P2ConditionCode? predicate = null)
     {
         if (arguments.Count == 0)
             return;
 
         IReadOnlyList<LirBlockParameter>? targetParams = null;
-        ctx.BlockParams.TryGetValue(targetLabel, out targetParams);
+        ctx.BlockParams.TryGetValue(targetBlock, out targetParams);
 
         for (int i = 0; i < arguments.Count; i++)
         {
@@ -2194,7 +2120,7 @@ public static class AsmLowerer
 
             if (targetParams is not null && i < targetParams.Count)
             {
-                AsmRegisterOperand paramReg = new(targetParams[i].Register.Id);
+                AsmRegisterOperand paramReg = new(targetParams[i].Register);
                 nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [paramReg, src], predicate));
             }
             else
@@ -2202,7 +2128,7 @@ public static class AsmLowerer
                 // Fallback: emit as comment if we can't resolve target param
                 ReportUnsupportedLowering(ctx, new TextSpan(0, 0), "phi-move");
                 string prefix = predicate is not null ? $"{P2InstructionMetadata.GetConditionPrefixText(predicate.Value)} " : "";
-                nodes.Add(new AsmCommentNode($"{prefix}phi[{i}] = {src.Format()} -> {ctx.Function.Name}_{targetLabel}"));
+                nodes.Add(new AsmCommentNode($"{prefix}phi[{i}] = {src.Format()} -> {ctx.GetBlockLabel(targetBlock).Name}"));
             }
         }
     }
@@ -2211,10 +2137,10 @@ public static class AsmLowerer
         List<AsmNode> nodes,
         IReadOnlyList<LirOperand> arguments,
         LoweringContext ctx,
-        string targetLabel,
+        LirBlockRef targetBlock,
         P2ConditionCode predicate)
     {
-        EmitPhiMoves(nodes, arguments, ctx, targetLabel, predicate);
+        EmitPhiMoves(nodes, arguments, ctx, targetBlock, predicate);
     }
 
     private static void ReportUnsupportedOpcode(LoweringContext ctx, TextSpan span, string opcode)
@@ -2253,13 +2179,13 @@ public static class AsmLowerer
     {
         if (op.Destination is not { } dest)
             throw new InvalidOperationException($"Instruction '{op.DisplayName}' expected a destination register");
-        return new AsmRegisterOperand(dest.Id);
+        return new AsmRegisterOperand(dest);
     }
 
     private static AsmRegisterOperand OpReg(LirOperand operand)
     {
         if (operand is LirRegisterOperand reg)
-            return new AsmRegisterOperand(reg.Register.Id);
+            return new AsmRegisterOperand(reg.Register);
         throw new InvalidOperationException($"Expected register operand, got {operand.GetType().Name}");
     }
 
@@ -2267,9 +2193,8 @@ public static class AsmLowerer
     {
         return operand switch
         {
-            LirRegisterOperand reg => new AsmRegisterOperand(reg.Register.Id),
+            LirRegisterOperand reg => new AsmRegisterOperand(reg.Register),
             LirImmediateOperand imm => new AsmImmediateOperand(GetImmediateValue(imm)),
-            LirSymbolOperand sym => new AsmSymbolOperand(sym.Symbol, AsmSymbolAddressingMode.Register),
             LirPlaceOperand place => new AsmPlaceOperand(place.Place),
             _ => throw new InvalidOperationException($"Unknown operand type: {operand.GetType().Name}"),
         };

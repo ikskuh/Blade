@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Blade;
+using Blade.Semantics;
 
 namespace Blade.IR.Asm;
 
@@ -38,26 +39,26 @@ internal static class AsmOptimizationHelpers
 
         return (left, right) switch
         {
-            (AsmRegisterOperand lhs, AsmRegisterOperand rhs) => lhs.RegisterId == rhs.RegisterId,
+            (AsmRegisterOperand lhs, AsmRegisterOperand rhs) => ReferenceEquals(lhs.Register, rhs.Register),
             (AsmImmediateOperand lhs, AsmImmediateOperand rhs) => lhs.Value == rhs.Value,
-            (AsmSymbolOperand lhs, AsmSymbolOperand rhs) => lhs.Name == rhs.Name,
-            (AsmPlaceOperand lhs, AsmPlaceOperand rhs) => ReferenceEquals(lhs.Place.Symbol, rhs.Place.Symbol),
-            (AsmPhysicalRegisterOperand lhs, AsmPhysicalRegisterOperand rhs) => lhs.Address == rhs.Address,
+            (AsmSymbolOperand lhs, AsmSymbolOperand rhs) => ReferenceEquals(lhs.Symbol, rhs.Symbol) && lhs.AddressingMode == rhs.AddressingMode,
+            (AsmPlaceOperand lhs, AsmPlaceOperand rhs) => ReferenceEquals(lhs.Place, rhs.Place),
+            (AsmPhysicalRegisterOperand lhs, AsmPhysicalRegisterOperand rhs) => lhs.Register == rhs.Register,
             _ => false,
         };
     }
 
-    internal static HashSet<string> CollectJumpTargets(IReadOnlyList<AsmNode> nodes)
+    internal static HashSet<ControlFlowLabelSymbol> CollectJumpTargets(IReadOnlyList<AsmNode> nodes)
     {
-        HashSet<string> targets = [];
+        HashSet<ControlFlowLabelSymbol> targets = [];
         foreach (AsmNode node in nodes)
         {
             if (node is AsmInstructionNode instruction
                 && instruction.Mnemonic == P2Mnemonic.JMP
                 && instruction.Operands.Count == 1
-                && instruction.Operands[0] is AsmSymbolOperand symbol)
+                && instruction.Operands[0] is AsmSymbolOperand { Symbol: ControlFlowLabelSymbol symbol })
             {
-                targets.Add(symbol.Name);
+                targets.Add(symbol);
             }
         }
 
@@ -108,36 +109,36 @@ internal static class AsmOptimizationHelpers
         return true;
     }
 
-    internal static IEnumerable<int> EnumerateUsedRegisters(AsmInstructionNode instruction)
+    internal static IEnumerable<VirtualAsmRegister> EnumerateUsedRegisters(AsmInstructionNode instruction)
     {
         int startIndex = IsPlainMov(instruction) ? 1 : 0;
         for (int i = startIndex; i < instruction.Operands.Count; i++)
         {
             if (instruction.Operands[i] is AsmRegisterOperand register)
-                yield return register.RegisterId;
+                yield return register.Register;
         }
     }
 
-    internal static bool TryGetDefinedRegister(AsmInstructionNode instruction, out int registerId)
+    internal static bool TryGetDefinedRegister(AsmInstructionNode instruction, out VirtualAsmRegister? register)
     {
-        registerId = default;
+        register = null;
         if (IsBarrier(instruction))
             return false;
 
-        if (instruction.Operands.Count == 0 || instruction.Operands[0] is not AsmRegisterOperand register)
+        if (instruction.Operands.Count == 0 || instruction.Operands[0] is not AsmRegisterOperand destination)
             return false;
 
-        registerId = register.RegisterId;
+        register = destination.Register;
         return true;
     }
 
-    internal static AsmOperand ResolveAlias(AsmOperand operand, IReadOnlyDictionary<int, AsmOperand> aliases)
+    internal static AsmOperand ResolveAlias(AsmOperand operand, IReadOnlyDictionary<VirtualAsmRegister, AsmOperand> aliases)
     {
         AsmOperand current = operand;
-        HashSet<int> seen = [];
+        HashSet<VirtualAsmRegister> seen = [];
         while (current is AsmRegisterOperand register
-            && aliases.TryGetValue(register.RegisterId, out AsmOperand? next)
-            && seen.Add(register.RegisterId))
+            && aliases.TryGetValue(register.Register, out AsmOperand? next)
+            && seen.Add(register.Register))
         {
             current = next;
         }
@@ -147,16 +148,16 @@ internal static class AsmOptimizationHelpers
 
     internal static void InvalidateAliases(
         AsmInstructionNode instruction,
-        IDictionary<int, AsmOperand> aliases)
+        IDictionary<VirtualAsmRegister, AsmOperand> aliases)
     {
         if (instruction.Operands.Count == 0)
             return;
 
         AsmOperand written = instruction.Operands[0];
         if (written is AsmRegisterOperand register)
-            aliases.Remove(register.RegisterId);
+            aliases.Remove(register.Register);
 
-        foreach (int alias in aliases.Keys.ToList())
+        foreach (VirtualAsmRegister alias in aliases.Keys.ToList())
         {
             if (OperandsEquivalent(aliases[alias], written))
                 aliases.Remove(alias);
@@ -165,7 +166,7 @@ internal static class AsmOptimizationHelpers
 
     internal static AsmInstructionNode RewriteInstructionSources(
         AsmInstructionNode instruction,
-        IReadOnlyDictionary<int, AsmOperand> aliases)
+        IReadOnlyDictionary<VirtualAsmRegister, AsmOperand> aliases)
     {
         if (instruction.Operands.Count <= 1)
             return instruction;
@@ -191,7 +192,7 @@ internal static class AsmOptimizationHelpers
 
     internal static AsmImplicitUseNode RewriteImplicitUse(
         AsmImplicitUseNode implicitUse,
-        IReadOnlyDictionary<int, AsmOperand> aliases)
+        IReadOnlyDictionary<VirtualAsmRegister, AsmOperand> aliases)
     {
         List<AsmOperand> operands = new(implicitUse.Operands.Count);
         bool changed = false;
@@ -205,7 +206,7 @@ internal static class AsmOptimizationHelpers
         return changed ? new AsmImplicitUseNode(operands) : implicitUse;
     }
 
-    internal static bool TryGetNextLabel(IReadOnlyList<AsmNode> nodes, int startIndex, out string? label)
+    internal static bool TryGetNextLabel(IReadOnlyList<AsmNode> nodes, int startIndex, out ControlFlowLabelSymbol? label)
     {
         for (int i = startIndex; i < nodes.Count; i++)
         {
@@ -215,7 +216,7 @@ internal static class AsmOptimizationHelpers
                     continue;
 
                 case AsmLabelNode nextLabel:
-                    label = nextLabel.Name;
+                    label = nextLabel.Label;
                     return true;
 
                 default:
@@ -231,16 +232,16 @@ internal static class AsmOptimizationHelpers
     internal static bool IsControlFlowInstruction(AsmInstructionNode instruction)
         => P2InstructionMetadata.IsControlFlow(instruction.Mnemonic, instruction.Operands.Count);
 
-    internal static bool EndsWithTargetedLabel(IReadOnlyList<AsmNode> nodes, IReadOnlySet<string> targets)
-        => nodes.Count > 0 && nodes[^1] is AsmLabelNode label && targets.Contains(label.Name);
+    internal static bool EndsWithTargetedLabel(IReadOnlyList<AsmNode> nodes, IReadOnlySet<ControlFlowLabelSymbol> targets)
+        => nodes.Count > 0 && nodes[^1] is AsmLabelNode label && targets.Contains(label.Label);
 
-    internal static bool IsDeadInstruction(AsmInstructionNode instruction, IReadOnlySet<int> live)
+    internal static bool IsDeadInstruction(AsmInstructionNode instruction, IReadOnlySet<VirtualAsmRegister> live)
     {
         if (instruction.IsNonElidable)
             return false;
 
         if (TryGetTrackedCopy(instruction, out AsmRegisterOperand copyDestination, out _))
-            return !live.Contains(copyDestination.RegisterId);
+            return !live.Contains(copyDestination.Register);
 
         if (!IsPureRegisterLocalInstruction(instruction)
             || instruction.Operands[0] is not AsmRegisterOperand destination)
@@ -248,7 +249,7 @@ internal static class AsmOptimizationHelpers
             return false;
         }
 
-        return !live.Contains(destination.RegisterId);
+        return !live.Contains(destination.Register);
     }
 
     internal static bool UsesNonLinearControlFlow(AsmFunction function)
@@ -270,8 +271,9 @@ internal static class AsmOptimizationHelpers
                 && instruction.Condition is null
                 && instruction.Operands.Count == 1
                 && instruction.Operands[0] is AsmSymbolOperand target
-                && TryGetNextLabel(function.Nodes, i + 1, out string? nextLabel)
-                && nextLabel == target.Name;
+                && target.Symbol is ControlFlowLabelSymbol targetLabel
+                && TryGetNextLabel(function.Nodes, i + 1, out ControlFlowLabelSymbol? nextLabel)
+                && ReferenceEquals(nextLabel, targetLabel);
 
             if (!isLinearJump)
             {

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Blade;
+using Blade.Semantics;
 using static Blade.IR.Asm.AsmOptimizationHelpers;
 
 namespace Blade.IR.Asm.Optimizations;
@@ -9,7 +10,7 @@ public sealed class AsmRetFusion : PerFunctionAsmOptimization
 {
     protected override AsmFunction? RunOnFunction(AsmFunction input)
     {
-        HashSet<string> targetedLabels = CollectJumpTargets(input.Nodes);
+        HashSet<ControlFlowLabelSymbol> targetedLabels = CollectJumpTargets(input.Nodes);
         List<AsmNode> nodes = [];
         bool changed = false;
 

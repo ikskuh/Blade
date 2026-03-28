@@ -68,11 +68,11 @@ public sealed class MirConstantPropagation : IMirOptimization
                     && TryGetBool(conditionValue, out bool condition))
                 {
                     terminator = condition
-                        ? new MirGotoTerminator(branch.TrueLabel, branch.TrueArguments, branch.Span)
-                        : new MirGotoTerminator(branch.FalseLabel, branch.FalseArguments, branch.Span);
+                        ? new MirGotoTerminator(branch.TrueTarget, branch.TrueArguments, branch.Span)
+                        : new MirGotoTerminator(branch.FalseTarget, branch.FalseArguments, branch.Span);
                 }
 
-                blocks.Add(new MirBlock(block.Label, block.Parameters, instructions, terminator));
+                blocks.Add(new MirBlock(block.Ref, block.Parameters, instructions, terminator));
             }
 
             functions.Add(new MirFunction(

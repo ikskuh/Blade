@@ -20,7 +20,7 @@ public sealed class AsmDeadRegisterElimination : PerFunctionAsmOptimization
             AsmNode node = input.Nodes[i];
             if (node is AsmInstructionNode instruction)
             {
-                IReadOnlySet<int> liveAfterInstruction = liveness.LiveRegistersAfterInstruction.TryGetValue(i, out HashSet<int>? liveSet)
+                IReadOnlySet<VirtualAsmRegister> liveAfterInstruction = liveness.LiveRegistersAfterInstruction.TryGetValue(i, out HashSet<VirtualAsmRegister>? liveSet)
                     ? liveSet
                     : [];
 
@@ -43,7 +43,7 @@ public sealed class AsmDeadRegisterElimination : PerFunctionAsmOptimization
 
     private static AsmFunction? RunStraightLine(AsmFunction input)
     {
-        HashSet<int> live = [];
+        HashSet<VirtualAsmRegister> live = [];
         List<AsmNode> kept = [];
         bool changed = false;
 
@@ -58,10 +58,13 @@ public sealed class AsmDeadRegisterElimination : PerFunctionAsmOptimization
                     continue;
                 }
 
-                if (TryGetDefinedRegister(instruction, out int definedRegister))
+                if (TryGetDefinedRegister(instruction, out VirtualAsmRegister? definedRegister)
+                    && definedRegister is not null)
+                {
                     live.Remove(definedRegister);
+                }
 
-                foreach (int usedRegister in EnumerateUsedRegisters(instruction))
+                foreach (VirtualAsmRegister usedRegister in EnumerateUsedRegisters(instruction))
                     live.Add(usedRegister);
             }
             else if (node is AsmImplicitUseNode implicitUse)
@@ -69,7 +72,7 @@ public sealed class AsmDeadRegisterElimination : PerFunctionAsmOptimization
                 foreach (AsmOperand operand in implicitUse.Operands)
                 {
                     if (operand is AsmRegisterOperand reg)
-                        live.Add(reg.RegisterId);
+                        live.Add(reg.Register);
                 }
             }
 

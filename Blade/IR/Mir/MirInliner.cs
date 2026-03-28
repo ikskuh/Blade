@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using Blade;
 using Blade.Semantics;
 using Blade.Source;
@@ -22,7 +21,7 @@ public static class MirInliner
                 return false;
 
             return enableSingleCallsiteInlining
-                && callCounts.TryGetValue(callee.Name, out int count)
+                && callCounts.TryGetValue(callee.Symbol, out int count)
                 && count == 1;
         });
     }
@@ -53,18 +52,19 @@ public static class MirInliner
         InlinePredicate shouldInline)
     {
         MirModule current = module;
+        int nextInlineOrdinal = 0;
         while (true)
         {
-            Dictionary<string, MirFunction> functionsByName = new();
+            Dictionary<FunctionSymbol, MirFunction> functionsByName = [];
             foreach (MirFunction function in current.Functions)
-                functionsByName[function.Name] = function;
+                functionsByName[function.Symbol] = function;
 
-            Dictionary<string, int> callCounts = CountCallSites(current);
+            Dictionary<FunctionSymbol, int> callCounts = CountCallSites(current);
             bool changed = false;
             List<MirFunction> rewrittenFunctions = new(current.Functions.Count);
             foreach (MirFunction function in current.Functions)
             {
-                MutableFunction mutable = new(function);
+                MutableFunction mutable = new(function, () => nextInlineOrdinal++);
                 bool functionChanged = mutable.TryInline(functionsByName, callCounts, shouldInline);
                 changed |= functionChanged;
                 rewrittenFunctions.Add(mutable.ToImmutable());
@@ -78,9 +78,9 @@ public static class MirInliner
         return current;
     }
 
-    private static Dictionary<string, int> CountCallSites(MirModule module)
+    private static Dictionary<FunctionSymbol, int> CountCallSites(MirModule module)
     {
-        Dictionary<string, int> counts = new();
+        Dictionary<FunctionSymbol, int> counts = [];
         foreach (MirFunction function in module.Functions)
         {
             foreach (MirBlock block in function.Blocks)
@@ -90,8 +90,8 @@ public static class MirInliner
                     if (instruction is not MirCallInstruction call)
                         continue;
 
-                    if (!counts.TryAdd(call.FunctionName, 1))
-                        counts[call.FunctionName]++;
+                    if (!counts.TryAdd(call.Function, 1))
+                        counts[call.Function]++;
                 }
             }
         }
@@ -115,28 +115,28 @@ public static class MirInliner
         MirFunction caller,
         MirCallInstruction call,
         MirFunction callee,
-        IReadOnlyDictionary<string, int> callCounts);
+        IReadOnlyDictionary<FunctionSymbol, int> callCounts);
 
     private sealed class MutableFunction
     {
         private readonly MirFunction _source;
         private readonly List<MutableBlock> _blocks;
+        private readonly Func<int> _nextInlineOrdinal;
         private int _nextValueId;
-        private int _inlineOrdinal;
 
-        public MutableFunction(MirFunction source)
+        public MutableFunction(MirFunction source, Func<int> nextInlineOrdinal)
         {
             _source = source;
+            _nextInlineOrdinal = Requires.NotNull(nextInlineOrdinal);
             _blocks = [];
             foreach (MirBlock block in source.Blocks)
-                _blocks.Add(new MutableBlock(block.Label, block.Parameters, block.Instructions, block.Terminator));
+                _blocks.Add(new MutableBlock(block.Ref, block.Parameters, block.Instructions, block.Terminator));
             _nextValueId = ComputeNextValueId(source);
-            _inlineOrdinal = ComputeNextInlineOrdinal(source);
         }
 
         public bool TryInline(
-            IReadOnlyDictionary<string, MirFunction> functionsByName,
-            IReadOnlyDictionary<string, int> callCounts,
+            IReadOnlyDictionary<FunctionSymbol, MirFunction> functionsByName,
+            IReadOnlyDictionary<FunctionSymbol, int> callCounts,
             InlinePredicate shouldInline)
         {
             for (int blockIndex = 0; blockIndex < _blocks.Count; blockIndex++)
@@ -147,7 +147,7 @@ public static class MirInliner
                     if (block.Instructions[instructionIndex] is not MirCallInstruction call)
                         continue;
 
-                    if (!functionsByName.TryGetValue(call.FunctionName, out MirFunction? callee))
+                    if (!functionsByName.TryGetValue(call.Function, out MirFunction? callee))
                         continue;
 
                     MirFunction caller = ToImmutable();
@@ -172,19 +172,19 @@ public static class MirInliner
             for (int i = instructionIndex + 1; i < callerBlock.Instructions.Count; i++)
                 suffix.Add(callerBlock.Instructions[i]);
 
-            int inlineOrdinal = _inlineOrdinal++;
+            int inlineOrdinal = _nextInlineOrdinal();
             MutableBlock afterBlock = CreateAfterBlock(call, suffix, callerBlock.Terminator, inlineOrdinal);
 
-            Dictionary<string, string> labelMap = new();
+            Dictionary<MirBlockRef, MirBlockRef> labelMap = [];
             foreach (MirBlock calleeBlock in callee.Blocks)
-                labelMap[calleeBlock.Label] = $"inl_{inlineOrdinal}_{calleeBlock.Label}";
+                labelMap[calleeBlock.Ref] = new MirBlockRef($"inl_{inlineOrdinal}_{calleeBlock.Label}");
 
             List<MutableBlock> clonedBlocks = CloneCalleeBlocks(call, callee, labelMap, afterBlock.Label);
             List<MirValueId> entryArguments = BuildEntryArguments(call, callee.Blocks[0], callerBlock, call.Span);
 
             callerBlock.Instructions = prefix;
             callerBlock.Terminator = new MirGotoTerminator(
-                labelMap[callee.Blocks[0].Label],
+                labelMap[callee.Blocks[0].Ref],
                 entryArguments,
                 call.Span);
 
@@ -197,8 +197,8 @@ public static class MirInliner
         private List<MutableBlock> CloneCalleeBlocks(
             MirCallInstruction call,
             MirFunction callee,
-            IReadOnlyDictionary<string, string> labelMap,
-            string returnTargetLabel)
+            IReadOnlyDictionary<MirBlockRef, MirBlockRef> labelMap,
+            MirBlockRef returnTargetLabel)
         {
             List<MutableBlock> cloned = [];
             Dictionary<MirValueId, MirValueId> valueMap = [];
@@ -221,7 +221,7 @@ public static class MirInliner
                 }
 
                 MirTerminator terminator = CloneTerminator(calleeBlock.Terminator, valueMap, labelMap, call, returnTargetLabel, instructions);
-                cloned.Add(new MutableBlock(labelMap[calleeBlock.Label], parameters, instructions, terminator));
+                cloned.Add(new MutableBlock(labelMap[calleeBlock.Ref], parameters, instructions, terminator));
             }
 
             return cloned;
@@ -272,7 +272,7 @@ public static class MirInliner
                     newResult,
                     inlineAsm.ResultType),
                 MirYieldInstruction yield => new MirYieldInstruction(yield.Span),
-                MirYieldToInstruction yieldTo => new MirYieldToInstruction(yieldTo.TargetFunctionName, yieldTo.Arguments, yieldTo.Span),
+                MirYieldToInstruction yieldTo => new MirYieldToInstruction(yieldTo.TargetFunction, yieldTo.Arguments, yieldTo.Span),
                 MirRepSetupInstruction repSetup => new MirRepSetupInstruction(repSetup.Count, repSetup.Span),
                 MirRepIterInstruction repIter => new MirRepIterInstruction(repIter.Count, repIter.Span),
                 MirRepForSetupInstruction repForSetup => new MirRepForSetupInstruction(repForSetup.Start, repForSetup.End, repForSetup.Span),
@@ -286,9 +286,9 @@ public static class MirInliner
         private MirTerminator CloneTerminator(
             MirTerminator terminator,
             IReadOnlyDictionary<MirValueId, MirValueId> valueMap,
-            IReadOnlyDictionary<string, string> labelMap,
+            IReadOnlyDictionary<MirBlockRef, MirBlockRef> labelMap,
             MirCallInstruction call,
-            string returnTargetLabel,
+            MirBlockRef returnTargetLabel,
             ICollection<MirInstruction> _)
         {
             MirTerminator rewritten = terminator.RewriteUses(valueMap);
@@ -296,15 +296,15 @@ public static class MirInliner
             {
                 case MirGotoTerminator mirGoto:
                     return new MirGotoTerminator(
-                        labelMap[mirGoto.TargetLabel],
+                        labelMap[mirGoto.Target],
                         mirGoto.Arguments,
                         mirGoto.Span);
 
                 case MirBranchTerminator branch:
                     return new MirBranchTerminator(
                         branch.Condition,
-                        labelMap[branch.TrueLabel],
-                        labelMap[branch.FalseLabel],
+                        labelMap[branch.TrueTarget],
+                        labelMap[branch.FalseTarget],
                         branch.TrueArguments,
                         branch.FalseArguments,
                         branch.Span,
@@ -357,7 +357,7 @@ public static class MirInliner
                 parameters.Add(new MirBlockParameter(value, $"ret{i + 1}", type));
             }
 
-            string label = $"inl_after_{inlineOrdinal}";
+            MirBlockRef label = new($"inl_after_{inlineOrdinal}");
             return new MutableBlock(label, parameters, suffix, terminator);
         }
 
@@ -387,18 +387,6 @@ public static class MirInliner
 
         private MirValueId NextValue() => new(_nextValueId++);
 
-        private static int ComputeNextInlineOrdinal(MirFunction function)
-        {
-            int nextOrdinal = 0;
-            foreach (MirBlock block in function.Blocks)
-            {
-                if (TryGetInlineOrdinal(block.Label, out int ordinal))
-                    nextOrdinal = Math.Max(nextOrdinal, ordinal + 1);
-            }
-
-            return nextOrdinal;
-        }
-
         private MirCallInstruction CloneMirCallInstruction(
             MirCallInstruction call,
             MirValueId? newResult,
@@ -416,31 +404,7 @@ public static class MirInliner
                 }
             }
 
-            return new MirCallInstruction(newResult, call.ResultType, call.FunctionName, call.Arguments, call.Span, clonedExtra);
-        }
-
-        private static bool TryGetInlineOrdinal(string label, out int ordinal)
-        {
-            ordinal = default;
-            const string inlinePrefix = "inl_";
-            const string afterPrefix = "inl_after_";
-
-            ReadOnlySpan<char> source = label.AsSpan();
-            if (source.StartsWith(afterPrefix, StringComparison.Ordinal))
-                return TryParseInlineOrdinal(source[afterPrefix.Length..], out ordinal);
-
-            if (!source.StartsWith(inlinePrefix, StringComparison.Ordinal))
-                return false;
-
-            return TryParseInlineOrdinal(source[inlinePrefix.Length..], out ordinal);
-        }
-
-        private static bool TryParseInlineOrdinal(ReadOnlySpan<char> source, out int ordinal)
-        {
-            ordinal = default;
-            int separator = source.IndexOf('_');
-            ReadOnlySpan<char> number = separator >= 0 ? source[..separator] : source;
-            return int.TryParse(number, NumberStyles.None, CultureInfo.InvariantCulture, out ordinal);
+            return new MirCallInstruction(newResult, call.ResultType, call.Function, call.Arguments, call.Span, clonedExtra);
         }
 
         private static int ComputeNextValueId(MirFunction function)
@@ -489,7 +453,7 @@ public static class MirInliner
     private sealed class MutableBlock
     {
         public MutableBlock(
-            string label,
+            MirBlockRef label,
             IReadOnlyList<MirBlockParameter> parameters,
             IReadOnlyList<MirInstruction> instructions,
             MirTerminator terminator)
@@ -500,7 +464,7 @@ public static class MirInliner
             Terminator = terminator;
         }
 
-        public string Label { get; }
+        public MirBlockRef Label { get; }
         public List<MirBlockParameter> Parameters { get; }
         public List<MirInstruction> Instructions { get; set; }
         public MirTerminator Terminator { get; set; }

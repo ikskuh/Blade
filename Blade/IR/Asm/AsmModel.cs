@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Blade;
 using Blade.IR;
 using Blade.IR.Lir;
@@ -19,9 +20,21 @@ internal sealed class AsmSpecialRegisterSymbol : IAsmSymbol
     public SymbolType SymbolType => SymbolType.RegVariable;
 }
 
-internal sealed class AsmTextSymbol : IAsmSymbol
+internal sealed class AsmCurrentAddressSymbol : IAsmSymbol
 {
-    public AsmTextSymbol(string name, SymbolType symbolType = SymbolType.ControlFlowLabel)
+    public static AsmCurrentAddressSymbol Instance { get; } = new();
+
+    private AsmCurrentAddressSymbol()
+    {
+    }
+
+    public string Name => "$";
+    public SymbolType SymbolType => SymbolType.ControlFlowLabel;
+}
+
+public sealed class AsmNamedSymbol : IAsmSymbol
+{
+    public AsmNamedSymbol(string name, SymbolType symbolType)
     {
         Name = Requires.NotNullOrWhiteSpace(name);
         SymbolType = symbolType;
@@ -29,6 +42,18 @@ internal sealed class AsmTextSymbol : IAsmSymbol
 
     public string Name { get; }
     public SymbolType SymbolType { get; }
+}
+
+internal sealed class AsmFunctionReferenceSymbol : IAsmSymbol
+{
+    public AsmFunctionReferenceSymbol(FunctionSymbol function)
+    {
+        Function = Requires.NotNull(function);
+    }
+
+    public FunctionSymbol Function { get; }
+    public string Name => Function.Name;
+    public SymbolType SymbolType => SymbolType.Function;
 }
 
 public sealed class AsmModule
@@ -96,6 +121,48 @@ public sealed class AsmDirectiveNode : AsmNode
     }
 
     public string Text { get; }
+}
+
+public enum AsmStorageSection
+{
+    Register,
+    Lut,
+    Hub,
+    Constant,
+}
+
+public enum AsmDataDirective
+{
+    Byte,
+    Word,
+    [SuppressMessage("Design", "CA1720:Identifier 'Long' contains type name ", Justification = "LONG is the flexspin assembly directive")]
+    Long,
+}
+
+public sealed class AsmSectionNode : AsmNode
+{
+    public AsmSectionNode(AsmStorageSection section)
+    {
+        Section = section;
+    }
+
+    public AsmStorageSection Section { get; }
+}
+
+public sealed class AsmDataNode : AsmNode
+{
+    public AsmDataNode(AsmDataDirective directive, object? initializer, int count = 1, bool useHexFormat = false)
+    {
+        Directive = directive;
+        Initializer = initializer;
+        Count = Requires.Positive(count);
+        UseHexFormat = useHexFormat;
+    }
+
+    public AsmDataDirective Directive { get; }
+    public object? Initializer { get; }
+    public int Count { get; }
+    public bool UseHexFormat { get; }
 }
 
 public sealed class AsmLabelNode : AsmNode
@@ -221,6 +288,11 @@ public sealed class AsmRegisterOperand : AsmOperand
     {
     }
 
+    public AsmRegisterOperand(VirtualLirRegister register)
+        : this(VirtualAsmRegister.FromLir(register))
+    {
+    }
+
     public AsmRegisterOperand(VirtualAsmRegister register)
     {
         Register = Requires.NotNull(register);
@@ -253,11 +325,6 @@ public sealed class AsmImmediateOperand : AsmOperand
 /// </summary>
 public sealed class AsmSymbolOperand : AsmOperand
 {
-    public AsmSymbolOperand(string symbolName, AsmSymbolAddressingMode addressingMode)
-        : this(new AsmTextSymbol(symbolName), addressingMode)
-    {
-    }
-
     public AsmSymbolOperand(P2SpecialRegister register)
         : this(new AsmSpecialRegisterSymbol(new P2Register(register)), AsmSymbolAddressingMode.Register)
     {
@@ -292,11 +359,6 @@ public sealed class AsmSymbolOperand : AsmOperand
 /// </summary>
 public sealed class AsmLabelRefOperand : AsmOperand
 {
-    public AsmLabelRefOperand(string label)
-        : this(new ControlFlowLabelSymbol(label))
-    {
-    }
-
     public AsmLabelRefOperand(ControlFlowLabelSymbol label)
     {
         Label = Requires.NotNull(label);
@@ -326,11 +388,6 @@ public sealed class AsmPlaceOperand : AsmOperand
 /// </summary>
 public sealed class AsmPhysicalRegisterOperand : AsmOperand
 {
-    public AsmPhysicalRegisterOperand(int address, string _)
-        : this(new P2Register(address))
-    {
-    }
-
     public AsmPhysicalRegisterOperand(P2Register register)
     {
         Register = register;

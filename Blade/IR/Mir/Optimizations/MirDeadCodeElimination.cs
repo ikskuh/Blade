@@ -13,11 +13,11 @@ public sealed class MirDeadCodeElimination : IMirOptimization
         List<MirFunction> functions = new(input.Functions.Count);
         foreach (MirFunction function in input.Functions)
         {
-            HashSet<string> reachable = ComputeReachableBlocks(function);
+            HashSet<MirBlockRef> reachable = ComputeReachableBlocks(function);
             List<MirBlock> blocks = [];
             foreach (MirBlock block in function.Blocks)
             {
-                if (!reachable.Contains(block.Label))
+                if (!reachable.Contains(block.Ref))
                     continue;
 
                 HashSet<MirValueId> live = [];
@@ -41,7 +41,7 @@ public sealed class MirDeadCodeElimination : IMirOptimization
                 }
 
                 kept.Reverse();
-                blocks.Add(new MirBlock(block.Label, block.Parameters, kept, block.Terminator));
+                blocks.Add(new MirBlock(block.Ref, block.Parameters, kept, block.Terminator));
             }
 
             functions.Add(new MirFunction(

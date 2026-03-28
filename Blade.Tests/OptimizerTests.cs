@@ -26,18 +26,22 @@ public class OptimizerTests
         MirValueId threaded = new(1);
         MirValueId merged = new(2);
         StoragePlace resultPlace = CreatePlace("result");
+        MirBlockRef bb0 = new("bb0");
+        MirBlockRef bb1 = new("bb1");
+        MirBlockRef bb2 = new("bb2");
+        MirBlockRef dead = new("dead");
 
         MirModule module = new([
             CreateMirFunction("f", isEntryPoint: false, FunctionKind.Default, [],
             [
-                new MirBlock("bb0", [], [new MirConstantInstruction(seed, BuiltinTypes.U32, 7, Span)],
-                    new MirGotoTerminator("bb1", [seed], Span)),
-                new MirBlock("bb1", [new MirBlockParameter(threaded, "x", BuiltinTypes.U32)], [],
-                    new MirGotoTerminator("bb2", [threaded], Span)),
-                new MirBlock("bb2", [new MirBlockParameter(merged, "y", BuiltinTypes.U32)],
+                new MirBlock(bb0, [], [new MirConstantInstruction(seed, BuiltinTypes.U32, 7, Span)],
+                    new MirGotoTerminator(bb1, [seed], Span)),
+                new MirBlock(bb1, [new MirBlockParameter(threaded, "x", BuiltinTypes.U32)], [],
+                    new MirGotoTerminator(bb2, [threaded], Span)),
+                new MirBlock(bb2, [new MirBlockParameter(merged, "y", BuiltinTypes.U32)],
                     [new MirStorePlaceInstruction(resultPlace, merged, Span)],
                     new MirReturnTerminator([], Span)),
-                new MirBlock("dead", [], [], new MirReturnTerminator([], Span)),
+                new MirBlock(dead, [], [], new MirReturnTerminator([], Span)),
             ]),
         ]);
 
@@ -67,11 +71,15 @@ public class OptimizerTests
         LirVirtualRegister threaded = new(2);
         LirVirtualRegister merged = new(3);
         StoragePlace resultPlace = CreatePlace("result");
+        LirBlockRef bb0 = new("bb0");
+        LirBlockRef bb1 = new("bb1");
+        LirBlockRef bb2 = new("bb2");
+        LirBlockRef dead = new("dead");
 
         LirModule module = new([
             CreateLirFunction("f", isEntryPoint: false, FunctionKind.Default, [],
             [
-                new LirBlock("bb0", [],
+                new LirBlock(bb0, [],
                 [
                     new LirOpInstruction(new LirConstOperation(), seed, BuiltinTypes.U32,
                         [new LirImmediateOperand(7, BuiltinTypes.U32)],
@@ -79,16 +87,16 @@ public class OptimizerTests
                     new LirOpInstruction(new LirMovOperation(), copy, BuiltinTypes.U32,
                         [new LirRegisterOperand(seed)],
                         hasSideEffects: false, predicate: null, writesC: false, writesZ: false, Span),
-                ], new LirGotoTerminator("bb1", [new LirRegisterOperand(copy)], Span)),
-                new LirBlock("bb1", [new LirBlockParameter(threaded, "x", BuiltinTypes.U32)], [],
-                    new LirGotoTerminator("bb2", [new LirRegisterOperand(threaded)], Span)),
-                new LirBlock("bb2", [new LirBlockParameter(merged, "y", BuiltinTypes.U32)],
+                ], new LirGotoTerminator(bb1, [new LirRegisterOperand(copy)], Span)),
+                new LirBlock(bb1, [new LirBlockParameter(threaded, "x", BuiltinTypes.U32)], [],
+                    new LirGotoTerminator(bb2, [new LirRegisterOperand(threaded)], Span)),
+                new LirBlock(bb2, [new LirBlockParameter(merged, "y", BuiltinTypes.U32)],
                 [
                     new LirOpInstruction(new LirStorePlaceOperation(), destination: null, resultType: null,
                         [new LirPlaceOperand(resultPlace), new LirRegisterOperand(merged)],
                         hasSideEffects: true, predicate: null, writesC: false, writesZ: false, Span),
                 ], new LirReturnTerminator([], Span)),
-                new LirBlock("dead", [], [], new LirReturnTerminator([], Span)),
+                new LirBlock(dead, [], [], new LirReturnTerminator([], Span)),
             ]),
         ]);
 
@@ -97,7 +105,7 @@ public class OptimizerTests
 
         Assert.That(function.Blocks, Has.Count.EqualTo(1));
         Assert.That(function.Blocks[0].Instructions, Has.Count.EqualTo(2));
-        Assert.That(function.Blocks[0].Instructions.Any(i => i is LirOpInstruction op && op.Opcode == "mov"), Is.False);
+        Assert.That(function.Blocks[0].Instructions.Any(i => i is LirOpInstruction op && op.DisplayName == "mov"), Is.False);
 
         LirOpInstruction store = (LirOpInstruction)function.Blocks[0].Instructions[1];
         Assert.That(store.Operands[1], Is.TypeOf<LirRegisterOperand>());
@@ -107,13 +115,16 @@ public class OptimizerTests
     [Test]
     public void AsmOptimizer_RemovesJumpToImmediatelyFollowingLabel()
     {
+        ControlFlowLabelSymbol bb0 = new("f_bb0");
+        ControlFlowLabelSymbol bb1 = new("f_bb1");
+
         AsmModule module = new([
             CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
             [
-                new AsmLabelNode("f_bb0"),
-                new AsmInstructionNode(P2Mnemonic.JMP, [new AsmSymbolOperand("f_bb1", AsmSymbolAddressingMode.Immediate)]),
+                new AsmLabelNode(bb0),
+                new AsmInstructionNode(P2Mnemonic.JMP, [new AsmSymbolOperand(bb1, AsmSymbolAddressingMode.Immediate)]),
                 new AsmCommentNode("between"),
-                new AsmLabelNode("f_bb1"),
+                new AsmLabelNode(bb1),
                 new AsmInstructionNode(P2Mnemonic.NOP, []),
             ]),
         ]);
@@ -168,8 +179,8 @@ public class OptimizerTests
     {
         AsmRegisterOperand r1 = new(1);
         AsmRegisterOperand r2 = new(2);
-        AsmSymbolOperand input = new("input", AsmSymbolAddressingMode.Register);
-        AsmSymbolOperand output = new("output", AsmSymbolAddressingMode.Register);
+        AsmSymbolOperand input = new(new AsmNamedSymbol("input", SymbolType.RegVariable), AsmSymbolAddressingMode.Register);
+        AsmSymbolOperand output = new(new AsmNamedSymbol("output", SymbolType.RegVariable), AsmSymbolAddressingMode.Register);
 
         AsmModule module = new([
             CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
@@ -195,8 +206,8 @@ public class OptimizerTests
     public void AsmOptimizer_DoesNotElideCopyAcrossInlineAsmBarrier()
     {
         AsmRegisterOperand r1 = new(1);
-        AsmSymbolOperand input = new("input", AsmSymbolAddressingMode.Register);
-        AsmSymbolOperand output = new("output", AsmSymbolAddressingMode.Register);
+        AsmSymbolOperand input = new(new AsmNamedSymbol("input", SymbolType.RegVariable), AsmSymbolAddressingMode.Register);
+        AsmSymbolOperand output = new(new AsmNamedSymbol("output", SymbolType.RegVariable), AsmSymbolAddressingMode.Register);
 
         AsmModule module = new([
             CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
@@ -303,7 +314,7 @@ public class OptimizerTests
 
         Assert.That(inlineAsm.Bindings[0].Operand, Is.TypeOf<LirRegisterOperand>());
         Assert.That(((LirRegisterOperand)inlineAsm.Bindings[0].Operand).Register, Is.EqualTo(r0));
-        Assert.That(function.Blocks[0].Instructions.OfType<LirOpInstruction>().Any(op => op.Opcode == "mov"), Is.False);
+        Assert.That(function.Blocks[0].Instructions.OfType<LirOpInstruction>().Any(op => op.DisplayName == "mov"), Is.False);
     }
 
     [Test]
@@ -331,7 +342,7 @@ public class OptimizerTests
         ]);
 
         LirFunction function = LirOptimizer.Optimize(module, maxIterations: 4, enabledOptimizations: OptimizationRegistry.AllLirOptimizations).Functions[0];
-        Assert.That(function.Blocks[0].Instructions.OfType<LirOpInstruction>().Any(op => op.Opcode == "const"), Is.True);
+        Assert.That(function.Blocks[0].Instructions.OfType<LirOpInstruction>().Any(op => op.DisplayName == "const"), Is.True);
     }
 
     [Test]

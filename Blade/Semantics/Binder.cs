@@ -2216,7 +2216,7 @@ public sealed class Binder
 
     private BoundExpression BindIntrinsicCallExpression(IntrinsicCallExpressionSyntax intrinsic)
     {
-        if (!P2InstructionMetadata.IsValidInstruction(intrinsic.Name.Text))
+        if (!P2InstructionMetadata.TryParseMnemonic(intrinsic.Name.Text, out P2Mnemonic mnemonic))
         {
             _diagnostics.ReportUnknownBuiltin(intrinsic.Name.Span, intrinsic.Name.Text);
             return new BoundErrorExpression(intrinsic.Span);
@@ -2226,8 +2226,6 @@ public sealed class Binder
         foreach (ExpressionSyntax argument in intrinsic.Arguments)
             arguments.Add(BindExpression(argument));
 
-        bool parsed = P2InstructionMetadata.TryParseMnemonic(intrinsic.Name.Text, out P2Mnemonic mnemonic);
-        Assert.Invariant(parsed, $"Builtin '{intrinsic.Name.Text}' must parse after prior validation.");
         return new BoundIntrinsicCallExpression(mnemonic, arguments, intrinsic.Span, BuiltinTypes.U32);
     }
 
