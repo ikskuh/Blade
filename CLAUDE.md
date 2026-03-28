@@ -33,6 +33,27 @@ Each stage independently testable.
 - `Blade/.editorconfig` is the analyzer rule source of truth.
 - In-source suppressions (`#pragma`, attributes) only for single occurrences with a clear explanation.
 
+## Type Safety Rules
+
+- Prefer strict and specialized typing throughout the compiler pipeline. Preserve semantic identity and provenance through dedicated types and object references instead of flattening data into text or numbers.
+- `string` is only legal at true text boundaries:
+  - source parsing and unresolved name lookup
+  - diagnostics and dump writers
+  - final assembly emission
+- `int` is only legal for arithmetic, sizes, widths, offsets, counts, indices, and validated physical register addresses. It must not be used as an identifier or as a stand-in for a distinct domain type.
+- Do not introduce `string`-based or `int`-based "typing". If a value has a domain meaning, introduce a dedicated type, enum, interface, or stage object instead.
+- Do not compare names or ids when object identity, provenance, or a dedicated enum can be used instead.
+- Frontend semantic symbols, MIR/LIR control-flow identities, and ASM-visible symbols are different domains and must not be collapsed into a shared weak representation.
+- Compatibility shims that accept raw `string` or `int` in typed compiler-internal APIs are forbidden unless the API is explicitly a parse/emission boundary.
+
+## Refactoring Policy
+
+- Prefer deletion-first refactoring for type-safety work.
+- When a stringly-typed or int-typed compatibility path is wrong, delete it first and then fix all call sites to use the correct typed path.
+- Do not preserve obsolete constructors, overloads, helper properties, or test-only shims just to avoid fallout.
+- Make tests fit the compiler, not the compiler fit outdated tests. If a test only validates an obsolete abstraction boundary, rewrite or delete the test instead of reintroducing the old behavior.
+- Prefer carrying references to prior-stage objects over recreating identity from names. MIR should point to bound/semantic objects, LIR should point to MIR objects, and ASM should point to LIR or dedicated ASM symbol objects as appropriate.
+
 ## Definition Of Done
 
 Before reporting a task as completed:
