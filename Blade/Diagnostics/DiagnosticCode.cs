@@ -90,6 +90,7 @@ public enum DiagnosticCode
     E0304_InlineAsmInvalidFlagOutput = 304,
     E0305_InlineAsmInvalidInstructionForm = 305,
     E0306_InlineAsmUndefinedLabel = 306,
+    W0307_InlineAsmTempReadBeforeWrite = 307,
 
     // Backend lowering errors
     E0401_UnsupportedLowering = 401,

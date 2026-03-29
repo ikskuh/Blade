@@ -16,13 +16,15 @@ internal sealed class StdioOutputWriter : ICompilerOutputWriter
         out int exitCode,
         out string? error)
     {
+        int errorCount = CountErrors(compilation.Diagnostics);
+
         foreach (Diagnostic diagnostic in compilation.Diagnostics)
         {
             SourceLocation location = compilation.Source.GetLocation(diagnostic.Span.Start);
             Console.WriteLine($"{location}: {diagnostic}");
         }
 
-        if (compilation.Diagnostics.Count > 0)
+        if (errorCount > 0)
         {
             exitCode = 1;
             error = null;
@@ -48,10 +50,22 @@ internal sealed class StdioOutputWriter : ICompilerOutputWriter
             options,
             dumpContent,
             metrics,
-            errorCount: compilation.Diagnostics.Count,
+            errorCount,
             out error);
         exitCode = writeSucceeded ? 0 : 1;
         return writeSucceeded;
+    }
+
+    private static int CountErrors(IReadOnlyList<Diagnostic> diagnostics)
+    {
+        int count = 0;
+        foreach (Diagnostic diagnostic in diagnostics)
+        {
+            if (diagnostic.IsError)
+                count++;
+        }
+
+        return count;
     }
 
     private static bool TryWriteText(

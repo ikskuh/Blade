@@ -561,7 +561,9 @@ public static class MirLowerer
                 else
                 {
                     TypeSymbol type = GetSymbolType(symbol);
-                    MirValueId value = ReadSymbol(symbol, type, asmStatement.Span);
+                    MirValueId value = IsInlineAsmTempSymbol(symbol) && !_currentValues.ContainsKey(symbol)
+                        ? NextValue()
+                        : ReadSymbol(symbol, type, asmStatement.Span);
                     bindings.Add(new MirInlineAsmBinding(slot, symbol, value, place: null, access));
                 }
             }
@@ -1651,6 +1653,9 @@ public static class MirLowerer
                 _ => false,
             };
         }
+
+        private static bool IsInlineAsmTempSymbol(Symbol symbol)
+            => symbol is VariableSymbol { Name: ['a', 's', 'm', '%', ..] };
 
         private static TypeSymbol GetSymbolType(Symbol symbol)
         {

@@ -63,11 +63,25 @@ public class DiagnosticBagTests
         bag.ReportInlineAsmUndefinedVariable(Span, "x");
         bag.ReportInlineAsmEmptyInstruction(Span);
         bag.ReportInlineAsmInvalidFlagOutput(Span, "Q");
+        bag.ReportInlineAsmTempReadBeforeWrite(Span, "%0");
         bag.ReportUnsupportedLowering(Span, "store.index");
         bag.ReportDuplicateVariableClause(Span, "@(...)");
 
-        Assert.That(bag.Count, Is.EqualTo(51));
+        Assert.That(bag.Count, Is.EqualTo(52));
         Assert.That(bag.HasErrors, Is.True);
         Assert.That(bag.Last().Code, Is.EqualTo(DiagnosticCode.E0108_DuplicateVariableClause));
+    }
+
+    [Test]
+    public void WarningOnlyBag_DoesNotReportErrors()
+    {
+        DiagnosticBag bag = new();
+
+        bag.ReportInlineAsmTempReadBeforeWrite(Span, "%0");
+
+        Assert.That(bag.Count, Is.EqualTo(1));
+        Assert.That(bag.ErrorCount, Is.EqualTo(0));
+        Assert.That(bag.HasErrors, Is.False);
+        Assert.That(bag.Single().Code, Is.EqualTo(DiagnosticCode.W0307_InlineAsmTempReadBeforeWrite));
     }
 }

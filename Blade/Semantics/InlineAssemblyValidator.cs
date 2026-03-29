@@ -17,6 +17,7 @@ public static class InlineAssemblyValidator
     {
         public Collection<InlineAsmLine> Lines { get; } = new();
         public Collection<InlineAsmBindingSlot> ReferencedBindings { get; } = new();
+        public Collection<InlineAsmBindingSlot> TempBindings { get; } = new();
         public bool IsValid { get; set; } = true;
     }
 
@@ -33,6 +34,7 @@ public static class InlineAssemblyValidator
         ValidationResult result = new();
         string[] rawLines = body.Split('\n');
         IReadOnlyDictionary<string, ControlFlowLabelSymbol> labels = CollectLabelDefinitions(rawLines);
+        Dictionary<string, InlineAsmBindingSlot> tempBindings = new(StringComparer.Ordinal);
 
         foreach (string rawLine in rawLines)
         {
@@ -40,7 +42,7 @@ public static class InlineAssemblyValidator
             if (trimmed is null)
                 continue;
 
-            InlineAsmLine? line = ParseAsmLine(trimmed, blockSpan, availableBindings, labels, diagnostics, result);
+            InlineAsmLine? line = ParseAsmLine(trimmed, blockSpan, availableBindings, tempBindings, labels, diagnostics, result);
             if (line is not null)
             {
                 result.Lines.Add(line);
@@ -51,6 +53,7 @@ public static class InlineAssemblyValidator
             }
         }
 
+        AnalyzeTempReadBeforeWrite(result.Lines, result.TempBindings, blockSpan, diagnostics);
         return result;
     }
 
@@ -75,6 +78,7 @@ public static class InlineAssemblyValidator
         string text,
         TextSpan blockSpan,
         IReadOnlyDictionary<string, InlineAsmBindingSlot> availableBindings,
+        IDictionary<string, InlineAsmBindingSlot> tempBindings,
         IReadOnlyDictionary<string, ControlFlowLabelSymbol> labels,
         DiagnosticBag diagnostics,
         ValidationResult result)
@@ -125,7 +129,7 @@ public static class InlineAssemblyValidator
                 if (operandText.Length == 0)
                     continue;
 
-                InlineAsmOperand? operand = ParseOperand(operandText, blockSpan, availableBindings, labels, diagnostics, result);
+                InlineAsmOperand? operand = ParseOperand(operandText, blockSpan, availableBindings, tempBindings, labels, diagnostics, result);
                 if (operand is null)
                     return null;
 
@@ -146,6 +150,7 @@ public static class InlineAssemblyValidator
         string operandText,
         TextSpan blockSpan,
         IReadOnlyDictionary<string, InlineAsmBindingSlot> availableBindings,
+        IDictionary<string, InlineAsmBindingSlot> tempBindings,
         IReadOnlyDictionary<string, ControlFlowLabelSymbol> labels,
         DiagnosticBag diagnostics,
         ValidationResult result)
@@ -165,6 +170,13 @@ public static class InlineAssemblyValidator
 
             AddReferencedBinding(result, bindingSlot);
             return new InlineAsmBindingRefOperand(bindingSlot);
+        }
+
+        if (TryParseTempBindingReference(trimmed, out string? tempBindingName))
+        {
+            InlineAsmBindingSlot tempBinding = GetOrAddTempBinding(tempBindings, result, tempBindingName!);
+            AddReferencedBinding(result, tempBinding);
+            return new InlineAsmBindingRefOperand(tempBinding);
         }
 
         if (trimmed.Contains('{', StringComparison.Ordinal) || trimmed.Contains('}', StringComparison.Ordinal))
@@ -212,6 +224,20 @@ public static class InlineAssemblyValidator
         diagnostics.ReportInlineAsmUndefinedLabel(blockSpan, trimmed);
         result.IsValid = false;
         return null;
+    }
+
+    private static InlineAsmBindingSlot GetOrAddTempBinding(
+        IDictionary<string, InlineAsmBindingSlot> tempBindings,
+        ValidationResult result,
+        string bindingName)
+    {
+        if (tempBindings.TryGetValue(bindingName, out InlineAsmBindingSlot? existing))
+            return existing;
+
+        InlineAsmBindingSlot created = new(bindingName);
+        tempBindings.Add(bindingName, created);
+        result.TempBindings.Add(created);
+        return created;
     }
 
     private static void AddReferencedBinding(ValidationResult result, InlineAsmBindingSlot bindingSlot)
@@ -272,6 +298,66 @@ public static class InlineAssemblyValidator
 
         bindingName = name;
         return true;
+    }
+
+    private static bool TryParseTempBindingReference(string text, out string? bindingName)
+    {
+        bindingName = null;
+        if (text.Length < 2 || text[0] != '%')
+            return false;
+
+        ReadOnlySpan<char> digits = text.AsSpan(1);
+        if (digits.IsEmpty)
+            return false;
+
+        foreach (char digit in digits)
+        {
+            if (!char.IsAsciiDigit(digit))
+                return false;
+        }
+
+        int firstNonZero = 0;
+        while (firstNonZero < digits.Length - 1 && digits[firstNonZero] == '0')
+            firstNonZero++;
+
+        bindingName = "%" + digits[firstNonZero..].ToString();
+        return true;
+    }
+
+    private static void AnalyzeTempReadBeforeWrite(
+        IReadOnlyList<InlineAsmLine> parsedLines,
+        IReadOnlyCollection<InlineAsmBindingSlot> tempBindings,
+        TextSpan blockSpan,
+        DiagnosticBag diagnostics)
+    {
+        if (tempBindings.Count == 0)
+            return;
+
+        HashSet<InlineAsmBindingSlot> tempBindingSet = new(tempBindings);
+        HashSet<InlineAsmBindingSlot> seenBindings = [];
+
+        foreach (InlineAsmLine line in parsedLines)
+        {
+            if (line is not InlineAsmInstructionLine instruction)
+                continue;
+
+            for (int operandIndex = 0; operandIndex < instruction.Operands.Count; operandIndex++)
+            {
+                if (instruction.Operands[operandIndex] is not InlineAsmBindingRefOperand binding
+                    || !tempBindingSet.Contains(binding.Slot)
+                    || !seenBindings.Add(binding.Slot))
+                {
+                    continue;
+                }
+
+                P2OperandAccess access = P2InstructionMetadata.GetOperandAccess(
+                    instruction.Mnemonic,
+                    instruction.Operands.Count,
+                    operandIndex);
+                if (access is P2OperandAccess.Read or P2OperandAccess.ReadWrite)
+                    diagnostics.ReportInlineAsmTempReadBeforeWrite(blockSpan, binding.Slot.PlaceholderText);
+            }
+        }
     }
 
     private static bool IsPlainInlineAsmSymbol(ReadOnlySpan<char> text)

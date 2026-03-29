@@ -925,6 +925,79 @@ public class IrPipelineTests
     }
 
     [Test]
+    public void InlineAsm_TemporaryRegisters_LowerThroughSharedBindingPipeline()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn f() -> u32 {
+                var out: u32 = 0;
+                asm {
+                    MOV %0, #10
+                    ADD %0, #20
+                    MOV %1, %0
+                    MOV {out}, %1
+                };
+                return out;
+            }
+
+            var sink: u32 = f();
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableSingleCallsiteInlining = false,
+            EnableMirInlining = false,
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        string lir = LirTextWriter.Write(build.LirModule);
+        Match tempMatch = Regex.Match(lir, @"inlineasm %0=(%r\d+):rw, %1=(%r\d+):rw, out=(%r\d+):w");
+        Assert.That(tempMatch.Success, Is.True, lir);
+        Assert.That(tempMatch.Groups[1].Value, Is.Not.EqualTo(tempMatch.Groups[2].Value), lir);
+        Assert.That(build.AssemblyText, Does.Not.Contain("%0"));
+        Assert.That(build.AssemblyText, Does.Not.Contain("%1"));
+    }
+
+    [Test]
+    public void AsmFunction_TemporaryRegisters_AreSupported()
+    {
+        CompilationResult compilation = CompilerDriver.Compile("""
+            asm fn add_vals() -> u32 {
+                MOV %0, #10
+                ADD %0, #20
+                MOV {return}, %0
+            }
+
+            reg var sink: u32 = 0;
+            sink = add_vals();
+            """, "asm_fn_temps.blade");
+
+        Assert.That(compilation.Diagnostics, Is.Empty, string.Join(Environment.NewLine, compilation.Diagnostics));
+        Assert.That(compilation.IrBuildResult, Is.Not.Null);
+        Assert.That(compilation.IrBuildResult!.AssemblyText, Does.Contain("ADD"));
+        Assert.That(compilation.IrBuildResult.AssemblyText, Does.Not.Contain("%0"));
+    }
+
+    [Test]
+    public void InlineAsm_TemporaryRegisterReadBeforeWrite_WarnsButStillBuilds()
+    {
+        CompilationResult compilation = CompilerDriver.Compile("""
+            asm fn read_temp() -> u32 {
+                MOV {return}, %0
+            }
+
+            reg var sink: u32 = 0;
+            sink = read_temp();
+            """, "asm_temp_warning.blade");
+
+        Assert.That(compilation.Diagnostics.Any(static diagnostic => diagnostic.Code == DiagnosticCode.W0307_InlineAsmTempReadBeforeWrite), Is.True);
+        Assert.That(compilation.Diagnostics.Any(static diagnostic => diagnostic.IsError), Is.False, string.Join(Environment.NewLine, compilation.Diagnostics));
+        Assert.That(compilation.IrBuildResult, Is.Not.Null);
+        Assert.That(MirTextWriter.Write(compilation.IrBuildResult!.MirModule), Does.Not.Contain("const 0:u32"));
+    }
+
+    [Test]
     public void InlineAsmVolatile_SurvivesMirAndLir()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""

@@ -76,7 +76,7 @@ public static class CompilerDriver
         BoundProgram boundProgram = Binder.Bind(unit, diagnostics, source.FilePath, effectiveOptions.NamedModuleRoots, effectiveOptions.ComptimeFuel);
 
         IrBuildResult? irBuildResult = null;
-        if (diagnostics.Count == 0)
+        if (!diagnostics.HasErrors)
         {
             IrPipelineOptions pipelineOptions = new()
             {

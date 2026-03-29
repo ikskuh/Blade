@@ -555,12 +555,11 @@ public sealed class Binder
         InlineAssemblyValidator.ValidationResult validationResult =
             InlineAssemblyValidator.Validate(asmSyntax.Body, asmSyntax.Span, availableBindings, _diagnostics);
 
-        Dictionary<InlineAsmBindingSlot, Symbol> referencedSymbols = [];
-        foreach (InlineAsmBindingSlot binding in validationResult.ReferencedBindings)
-        {
-            if (availableSymbols.TryGetValue(binding.PlaceholderText, out Symbol? referenced))
-                referencedSymbols[binding] = referenced;
-        }
+        Dictionary<string, VariableSymbol> tempSymbols = CreateInlineAsmTempSymbols(validationResult.TempBindings);
+        Dictionary<InlineAsmBindingSlot, Symbol> referencedSymbols = BuildInlineAsmReferencedSymbols(
+            validationResult,
+            availableSymbols,
+            tempSymbols);
 
         BoundAsmStatement asmStatement = new(volatility, asmSyntax.Body, flagOutput, validationResult.Lines, referencedSymbols, asmSyntax.Span);
 
@@ -819,12 +818,11 @@ public sealed class Binder
                 InlineAssemblyValidator.ValidationResult validationResult =
                     InlineAssemblyValidator.Validate(asm.Body, asm.Span, availableBindings, _diagnostics);
 
-                Dictionary<InlineAsmBindingSlot, Symbol> referencedSymbols = [];
-                foreach (InlineAsmBindingSlot binding in validationResult.ReferencedBindings)
-                {
-                    if (availableSymbols.TryGetValue(binding.PlaceholderText, out Symbol? referenced))
-                        referencedSymbols[binding] = referenced;
-                }
+                Dictionary<string, VariableSymbol> tempSymbols = CreateInlineAsmTempSymbols(validationResult.TempBindings);
+                Dictionary<InlineAsmBindingSlot, Symbol> referencedSymbols = BuildInlineAsmReferencedSymbols(
+                    validationResult,
+                    availableSymbols,
+                    tempSymbols);
 
                 if (outputSymbol is not null)
                     referencedSymbols[availableBindings[outputSymbol.Name]] = outputSymbol;
@@ -842,6 +840,52 @@ public sealed class Binder
         foreach (string name in names)
             bindings.Add(name, new InlineAsmBindingSlot(name));
         return bindings;
+    }
+
+    private Dictionary<string, VariableSymbol> CreateInlineAsmTempSymbols(
+        IReadOnlyCollection<InlineAsmBindingSlot> tempBindings)
+    {
+        Dictionary<string, VariableSymbol> symbols = new(StringComparer.Ordinal);
+        VariableScopeKind scopeKind = _currentFunction is null
+            ? VariableScopeKind.TopLevelAutomatic
+            : VariableScopeKind.Local;
+
+        foreach (InlineAsmBindingSlot tempBinding in tempBindings)
+        {
+            VariableSymbol symbol = new(
+                $"asm{tempBinding.PlaceholderText}",
+                BuiltinTypes.U32,
+                isConst: false,
+                VariableStorageClass.Automatic,
+                scopeKind,
+                isExtern: false,
+                fixedAddress: null,
+                alignment: null);
+            symbols[tempBinding.PlaceholderText] = symbol;
+        }
+
+        return symbols;
+    }
+
+    private static Dictionary<InlineAsmBindingSlot, Symbol> BuildInlineAsmReferencedSymbols(
+        InlineAssemblyValidator.ValidationResult validationResult,
+        IReadOnlyDictionary<string, Symbol> availableSymbols,
+        IReadOnlyDictionary<string, VariableSymbol> tempSymbols)
+    {
+        Dictionary<InlineAsmBindingSlot, Symbol> referencedSymbols = [];
+        foreach (InlineAsmBindingSlot binding in validationResult.ReferencedBindings)
+        {
+            if (availableSymbols.TryGetValue(binding.PlaceholderText, out Symbol? referenced))
+            {
+                referencedSymbols[binding] = referenced;
+                continue;
+            }
+
+            if (tempSymbols.TryGetValue(binding.PlaceholderText, out VariableSymbol? tempSymbol))
+                referencedSymbols[binding] = tempSymbol;
+        }
+
+        return referencedSymbols;
     }
 
     private BoundStatement? BindAssertStatement(AssertStatementSyntax assertStatement)

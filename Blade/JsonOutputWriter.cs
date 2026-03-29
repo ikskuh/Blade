@@ -69,7 +69,7 @@ internal static class JsonReportBuilder
         CommandLineOptions options,
         CompilationMetrics metrics)
     {
-        bool success = compilation.Diagnostics.Count == 0 && compilation.IrBuildResult is not null;
+        bool success = !HasErrors(compilation.Diagnostics) && compilation.IrBuildResult is not null;
         Dictionary<string, string?> dumps = BuildJsonDumps(compilation, options, success);
         List<JsonDiagnostic> diagnostics = [];
         foreach (Diagnostic diagnostic in compilation.Diagnostics)
@@ -92,6 +92,17 @@ internal static class JsonReportBuilder
             Result = success ? compilation.IrBuildResult!.AssemblyText : null,
             Metrics = metrics,
         };
+    }
+
+    private static bool HasErrors(IReadOnlyList<Diagnostic> diagnostics)
+    {
+        foreach (Diagnostic diagnostic in diagnostics)
+        {
+            if (diagnostic.IsError)
+                return true;
+        }
+
+        return false;
     }
 
     private static Dictionary<string, string?> BuildJsonDumps(

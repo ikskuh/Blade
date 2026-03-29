@@ -101,6 +101,17 @@
           }
         },
         {
+          "match": "(%)([0-9]+)\\b",
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.placeholder.begin.blade"
+            },
+            "2": {
+              "name": "variable.other.placeholder.blade"
+            }
+          }
+        },
+        {
           "match": "(#)(0[xX][0-9A-Fa-f](?:_?[0-9A-Fa-f])*|0[bB][01](?:_?[01])*|(?:0|[1-9](?:_?[0-9])*))\\b",
           "captures": {
             "1": {

@@ -1,5 +1,8 @@
+using System.Collections.Generic;
+using System.Linq;
 using Blade.IR.Asm;
 using Blade.IR.Lir;
+using Blade.Diagnostics;
 using Blade.Semantics;
 using Blade.Semantics.Bound;
 using Blade.Source;
@@ -90,6 +93,42 @@ public class LowLevelSurfaceTests
         Assert.That(InlineAssemblyBindingAnalysis.IncludesRead(InlineAsmBindingAccess.Write), Is.False);
         Assert.That(InlineAssemblyBindingAnalysis.IncludesWrite(InlineAsmBindingAccess.Write), Is.True);
         Assert.That(InlineAssemblyBindingAnalysis.IncludesWrite(InlineAsmBindingAccess.Read), Is.False);
+    }
+
+    [Test]
+    public void InlineAssemblyValidator_CanonicalizesTempBindings()
+    {
+        DiagnosticBag diagnostics = new();
+        InlineAssemblyValidator.ValidationResult result = InlineAssemblyValidator.Validate(
+            """
+            MOV %01, #1
+            ADD %1, #2
+            """,
+            new TextSpan(0, 0),
+            new Dictionary<string, InlineAsmBindingSlot>(),
+            diagnostics);
+
+        Assert.That(diagnostics, Is.Empty);
+        Assert.That(result.TempBindings.Select(static binding => binding.PlaceholderText), Is.EqualTo(new[] { "%1" }));
+        Assert.That(result.ReferencedBindings.Select(static binding => binding.PlaceholderText), Is.EqualTo(new[] { "%1" }));
+        InlineAsmInstructionLine firstInstruction = (InlineAsmInstructionLine)result.Lines[0];
+        InlineAsmBindingRefOperand firstOperand = (InlineAsmBindingRefOperand)firstInstruction.Operands[0];
+        Assert.That(firstOperand.Slot.PlaceholderText, Is.EqualTo("%1"));
+    }
+
+    [Test]
+    public void InlineAssemblyValidator_WarnsWhenTempIsReadBeforeWrite()
+    {
+        DiagnosticBag diagnostics = new();
+
+        _ = InlineAssemblyValidator.Validate(
+            "ADD %0, #1",
+            new TextSpan(0, 0),
+            new Dictionary<string, InlineAsmBindingSlot>(),
+            diagnostics);
+
+        Assert.That(diagnostics.Select(static diagnostic => diagnostic.Code), Does.Contain(DiagnosticCode.W0307_InlineAsmTempReadBeforeWrite));
+        Assert.That(diagnostics.Count(static diagnostic => diagnostic.Code == DiagnosticCode.W0307_InlineAsmTempReadBeforeWrite), Is.EqualTo(1));
     }
 
     [Test]

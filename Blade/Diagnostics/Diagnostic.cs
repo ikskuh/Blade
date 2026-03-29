@@ -2,6 +2,13 @@ using Blade.Source;
 
 namespace Blade.Diagnostics;
 
+public enum DiagnosticSeverity
+{
+    Error,
+    Warning,
+    Info,
+}
+
 /// <summary>
 /// A single diagnostic message with code, location, and human-readable text.
 /// </summary>
@@ -17,6 +24,9 @@ public sealed class Diagnostic
         Span = span;
         Message = message;
     }
+
+    public DiagnosticSeverity Severity => GetSeverity(Code);
+    public bool IsError => Severity == DiagnosticSeverity.Error;
 
     public string FormatCode()
     {
@@ -37,5 +47,21 @@ public sealed class Diagnostic
         }
 
         return 'E';
+    }
+
+    public static DiagnosticSeverity GetSeverity(DiagnosticCode code)
+    {
+        string? codeName = System.Enum.GetName(code);
+        if (!string.IsNullOrEmpty(codeName))
+        {
+            return codeName[0] switch
+            {
+                'W' => DiagnosticSeverity.Warning,
+                'I' => DiagnosticSeverity.Info,
+                _ => DiagnosticSeverity.Error,
+            };
+        }
+
+        return DiagnosticSeverity.Error;
     }
 }

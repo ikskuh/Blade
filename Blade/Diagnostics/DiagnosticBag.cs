@@ -14,7 +14,22 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
 
     public int Count => _diagnostics.Count;
 
-    public bool HasErrors => _diagnostics.Count > 0;
+    public int ErrorCount
+    {
+        get
+        {
+            int count = 0;
+            foreach (Diagnostic diagnostic in _diagnostics)
+            {
+                if (diagnostic.IsError)
+                    count++;
+            }
+
+            return count;
+        }
+    }
+
+    public bool HasErrors => ErrorCount > 0;
 
     public void Report(DiagnosticCode code, TextSpan span, string message)
     {
@@ -488,6 +503,14 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
             DiagnosticCode.E0306_InlineAsmUndefinedLabel,
             span,
             $"Inline assembly references undefined label '{name}'. Only labels defined within the same asm block are accessible.");
+    }
+
+    public void ReportInlineAsmTempReadBeforeWrite(TextSpan span, string name)
+    {
+        Report(
+            DiagnosticCode.W0307_InlineAsmTempReadBeforeWrite,
+            span,
+            $"Inline assembly temporary '{name}' is read before any prior write in the same asm block. The register contents are unspecified.");
     }
 
     public void ReportUnsupportedLowering(TextSpan span, string lowering)
