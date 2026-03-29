@@ -455,6 +455,14 @@ fn inline_asm_demo(a: u32, b: u32) {
         // The following line will bind the flag C to the name "state"
         // so it can be used efficiently by the compiler.
     } -> state: bool@C;
+
+    asm {
+        MOV %0, {a} // %0 is a temporary variable
+        ADD %0, {b} // %0 is always the same variable in a single `asm` block
+        MOV %1, {a} // %1 is a second 
+        MUL %1, %0  // we can always reuse the same registers, they won't be usable
+                    // in the next asm block.
+    }
 }
 
 // Sometimes, whole functions will be written in assembly. For this use case,
