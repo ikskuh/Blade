@@ -5,7 +5,7 @@ fn count_string(ptr: [*]hub const u8) -> u32 {
 
     while(ptr[0] != 0) {
         count += 1;
-        ptr = bitcast([*]hub const u8, bitcast(u32, ptr) + 1);
+        ptr += 1;
     }
 
     return count;

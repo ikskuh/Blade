@@ -228,7 +228,10 @@ public sealed class BoundIntrinsicCallExpression : BoundExpression
     }
 }
 
-public sealed class BoundEnumLiteralExpression : BoundExpression
+/// <summary>
+/// Only required inside the binder as a sentinel value, not a public api.
+/// </summary>
+internal sealed class BoundEnumLiteralExpression : BoundExpression
 {
     public BoundEnumLiteralExpression(EnumTypeSymbol enumType, string memberName, long value, TextSpan span)
         : base(BoundNodeKind.EnumLiteralExpression, span, enumType)
@@ -379,7 +382,10 @@ public sealed class BoundBitcastExpression : BoundExpression
     public BoundExpression Expression { get; }
 }
 
-public sealed class BoundErrorExpression : BoundExpression
+/// <summary>
+/// Only required inside the binder as a sentinel value, not a public api.
+/// </summary>
+internal sealed class BoundErrorExpression : BoundExpression
 {
     public BoundErrorExpression(TextSpan span)
         : base(BoundNodeKind.ErrorExpression, span, BuiltinTypes.Unknown)
@@ -470,7 +476,10 @@ public sealed class BoundDiscardAssignmentTarget : BoundAssignmentTarget
     }
 }
 
-public sealed class BoundErrorAssignmentTarget : BoundAssignmentTarget
+/// <summary>
+/// Only required inside the binder as a sentinel value, not a public api.
+/// </summary>
+internal sealed class BoundErrorAssignmentTarget : BoundAssignmentTarget
 {
     public BoundErrorAssignmentTarget(TextSpan span)
         : base(BoundNodeKind.ErrorAssignmentTarget, span, BuiltinTypes.Unknown)

@@ -107,6 +107,7 @@
       "LirLoadMemberOperation",
       "LirLoadPlaceOperation",
       "LirLoadSymbolOperation",
+      "LirMovOperation",
       "LirNoIrqBeginOperation",
       "LirNoIrqEndOperation",
       "LirPointerDifferenceOperation",
@@ -125,24 +126,20 @@
       "LirYieldOperation",
       "LirYieldToOperation"
     ],
-    "uncovered": [
-      "LirMovOperation"
-    ]
+    "uncovered": []
   },
   "asmir": {
     "covered": [
       "AsmCommentNode",
       "AsmDataNode",
       "AsmDirectiveNode",
+      "AsmImplicitUseNode",
       "AsmInstructionNode",
       "AsmLabelNode",
       "AsmSectionNode",
       "AsmVolatileRegionBeginNode",
       "AsmVolatileRegionEndNode"
     ],
-    "uncovered": [
-      "AsmImplicitUseNode",
-      "AsmSectionMarkerNode"
-    ]
+    "uncovered": []
   }
 }

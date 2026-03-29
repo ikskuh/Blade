@@ -1792,18 +1792,18 @@ public static class AsmLowerer
         }
 
         P2Mnemonic? opcode = operation.OperatorKind switch
-            {
-                BoundBinaryOperatorKind.Add => P2Mnemonic.ADD,
-                BoundBinaryOperatorKind.Subtract => P2Mnemonic.SUB,
-                BoundBinaryOperatorKind.BitwiseAnd => P2Mnemonic.AND,
-                BoundBinaryOperatorKind.BitwiseOr => P2Mnemonic.OR,
-                BoundBinaryOperatorKind.BitwiseXor => P2Mnemonic.XOR,
-                BoundBinaryOperatorKind.ShiftLeft => P2Mnemonic.SHL,
-                BoundBinaryOperatorKind.ShiftRight => P2Mnemonic.SHR,
-                BoundBinaryOperatorKind.ArithmeticShiftLeft => P2Mnemonic.SHL,
-                BoundBinaryOperatorKind.ArithmeticShiftRight => P2Mnemonic.SAR,
-                _ => null,
-            };
+        {
+            BoundBinaryOperatorKind.Add => P2Mnemonic.ADD,
+            BoundBinaryOperatorKind.Subtract => P2Mnemonic.SUB,
+            BoundBinaryOperatorKind.BitwiseAnd => P2Mnemonic.AND,
+            BoundBinaryOperatorKind.BitwiseOr => P2Mnemonic.OR,
+            BoundBinaryOperatorKind.BitwiseXor => P2Mnemonic.XOR,
+            BoundBinaryOperatorKind.ShiftLeft => P2Mnemonic.SHL,
+            BoundBinaryOperatorKind.ShiftRight => P2Mnemonic.SHR,
+            BoundBinaryOperatorKind.ArithmeticShiftLeft => P2Mnemonic.SHL,
+            BoundBinaryOperatorKind.ArithmeticShiftRight => P2Mnemonic.SAR,
+            _ => null,
+        };
 
         if (opcode is null)
         {
@@ -2066,6 +2066,12 @@ public static class AsmLowerer
 
             switch (ctx.Tier)
             {
+                case CallingConventionTier.General:
+                    // General: result stays in its register (caller knows which)
+                    nodes.Add(new AsmImplicitUseNode([resultOp]));
+                    nodes.Add(new AsmCommentNode($"return value: {resultOp.Format()}"));
+                    break;
+
                 case CallingConventionTier.Leaf:
                     // Result in PA
                     nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(P2SpecialRegister.PA), resultOp]));
@@ -2083,10 +2089,14 @@ public static class AsmLowerer
                     nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [new AsmPlaceOperand(recursiveInfo.RegisterReturnPlace), resultOp]));
                     break;
 
+                case CallingConventionTier.Coroutine:
+                case CallingConventionTier.EntryPoint:
+                case CallingConventionTier.Interrupt:
+                    Assert.Unreachable($"Functions of calling convention {ctx.Tier} must never produce a return value.");
+                    break;
+
                 default:
-                    // General: result stays in its register (caller knows which)
-                    nodes.Add(new AsmImplicitUseNode([resultOp]));
-                    nodes.Add(new AsmCommentNode($"return value: {resultOp.Format()}"));
+                    Assert.Unreachable($"Missing branch coverage for {ctx.Tier}");
                     break;
             }
         }
@@ -2141,8 +2151,18 @@ public static class AsmLowerer
                 nodes.Add(Emit(retInsn));
                 break;
 
-            default:
+            case CallingConventionTier.General:
+            case CallingConventionTier.SecondOrder:
+            case CallingConventionTier.Leaf:
                 nodes.Add(Emit(P2Mnemonic.RET));
+                break;
+
+            case CallingConventionTier.Coroutine:
+                Assert.Unreachable($"Coroutines must never return in the normal sense.");
+                break;
+
+            default:
+                Assert.Unreachable($"Missing branch coverage for {ctx.Tier}");
                 break;
         }
     }

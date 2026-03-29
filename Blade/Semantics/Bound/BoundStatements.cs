@@ -252,7 +252,10 @@ public sealed class BoundAsmStatement : BoundStatement
     public IReadOnlyDictionary<InlineAsmBindingSlot, Symbol> ReferencedSymbols { get; }
 }
 
-public sealed class BoundErrorStatement : BoundStatement
+/// <summary>
+/// Only required inside the binder as a sentinel value, not a public api.
+/// </summary>
+internal sealed class BoundErrorStatement : BoundStatement
 {
     public BoundErrorStatement(TextSpan span)
         : base(BoundNodeKind.ErrorStatement, span)

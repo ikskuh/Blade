@@ -243,7 +243,7 @@ internal sealed class RegressionIrCoverageSession
         foreach (IrCoverageGroupSpec spec in GroupSpecs)
         {
             Dictionary<string, List<Type>> typesByName = assembly.GetTypes()
-                .Where(type => !type.IsAbstract && spec.BaseType.IsAssignableFrom(type))
+                .Where(type => type.IsPublic && !type.IsAbstract && spec.BaseType.IsAssignableFrom(type))
                 .GroupBy(static type => type.Name, StringComparer.Ordinal)
                 .ToDictionary(static group => group.Key, static group => group.ToList(), StringComparer.Ordinal);
 
