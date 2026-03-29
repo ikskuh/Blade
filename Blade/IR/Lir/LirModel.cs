@@ -48,19 +48,15 @@ public sealed class LirBlock
         LirBlockRef blockRef,
         IReadOnlyList<LirBlockParameter> parameters,
         IReadOnlyList<LirInstruction> instructions,
-        LirTerminator terminator,
-        string? debugName = null)
+        LirTerminator terminator)
     {
         Ref = Requires.NotNull(blockRef);
-        if (debugName is not null)
-            Ref.DebugName = debugName;
         Parameters = parameters;
         Instructions = instructions;
         Terminator = terminator;
     }
 
     public LirBlockRef Ref { get; }
-    public string Label => Ref.ToString();
     public IReadOnlyList<LirBlockParameter> Parameters { get; }
     public IReadOnlyList<LirInstruction> Instructions { get; }
     public LirTerminator Terminator { get; }
@@ -147,11 +143,17 @@ public abstract class LirInstruction
     public bool WritesZ { get; }
     public TextSpan Span { get; }
 
+    /// <summary>
+    /// Human-readable dump name. Debug/output only; compiler logic must never branch on this text.
+    /// </summary>
     public abstract string DisplayName { get; }
 }
 
 public abstract class LirOperation
 {
+    /// <summary>
+    /// Human-readable dump name. Debug/output only; compiler logic must never branch on this text.
+    /// </summary>
     public abstract string DisplayName { get; }
 
     protected static string StorageClassSuffix(VariableStorageClass storageClass)
@@ -447,29 +449,6 @@ public sealed class LirOpInstruction : LirInstruction
         TypeSymbol? resultType,
         IReadOnlyList<LirOperand> operands,
         bool hasSideEffects,
-        string? predicateText,
-        bool writesC,
-        bool writesZ,
-        TextSpan span)
-        : this(
-            operation,
-            destination,
-            resultType,
-            operands,
-            hasSideEffects,
-            ParsePredicate(predicateText),
-            writesC,
-            writesZ,
-            span)
-    {
-    }
-
-    public LirOpInstruction(
-        LirOperation operation,
-        LirVirtualRegister? destination,
-        TypeSymbol? resultType,
-        IReadOnlyList<LirOperand> operands,
-        bool hasSideEffects,
         P2ConditionCode? predicate,
         bool writesC,
         bool writesZ,
@@ -482,16 +461,6 @@ public sealed class LirOpInstruction : LirInstruction
     public LirOperation Operation { get; }
 
     public override string DisplayName => Operation.DisplayName;
-
-    private static P2ConditionCode? ParsePredicate(string? predicate)
-    {
-        if (string.IsNullOrWhiteSpace(predicate))
-            return null;
-
-        bool parsed = P2InstructionMetadata.TryParseConditionCode(predicate, out P2ConditionCode code);
-        Assert.Invariant(parsed, $"Predicate '{predicate}' must resolve to a valid P2 condition code.");
-        return code;
-    }
 }
 
 public sealed class LirInlineAsmBinding

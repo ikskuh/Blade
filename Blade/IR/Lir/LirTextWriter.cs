@@ -26,6 +26,7 @@ public static class LirTextWriter
     private static void WriteFunction(StringBuilder sb, LirFunction function)
     {
         RegisterFormatter formatter = new();
+        BlockFormatter blockFormatter = new(function.Blocks);
 
         sb.Append("fn ");
         sb.Append(function.Name);
@@ -44,15 +45,15 @@ public static class LirTextWriter
         sb.AppendLine(")");
         sb.AppendLine("{");
         foreach (LirBlock block in function.Blocks)
-            WriteBlock(sb, block, formatter);
+            WriteBlock(sb, block, formatter, blockFormatter);
         sb.AppendLine("}");
         sb.AppendLine();
     }
 
-    private static void WriteBlock(StringBuilder sb, LirBlock block, RegisterFormatter formatter)
+    private static void WriteBlock(StringBuilder sb, LirBlock block, RegisterFormatter formatter, BlockFormatter blockFormatter)
     {
         sb.Append("  ");
-        sb.Append(block.Label);
+        sb.Append(blockFormatter.Format(block.Ref));
         sb.Append('(');
         for (int i = 0; i < block.Parameters.Count; i++)
         {
@@ -71,7 +72,7 @@ public static class LirTextWriter
         foreach (LirInstruction instruction in block.Instructions)
             WriteInstruction(sb, instruction, formatter);
 
-        WriteTerminator(sb, block.Terminator, formatter);
+        WriteTerminator(sb, block.Terminator, formatter, blockFormatter);
     }
 
     private static void WriteInstruction(StringBuilder sb, LirInstruction instruction, RegisterFormatter formatter)
@@ -145,14 +146,14 @@ public static class LirTextWriter
         sb.AppendLine();
     }
 
-    private static void WriteTerminator(StringBuilder sb, LirTerminator terminator, RegisterFormatter formatter)
+    private static void WriteTerminator(StringBuilder sb, LirTerminator terminator, RegisterFormatter formatter, BlockFormatter blockFormatter)
     {
         sb.Append("    ");
         switch (terminator)
         {
             case LirGotoTerminator gotoTerminator:
                 sb.Append("goto ");
-                sb.Append(gotoTerminator.Target);
+                sb.Append(blockFormatter.Format(gotoTerminator.Target));
                 sb.Append('(');
                 WriteOperandList(sb, gotoTerminator.Arguments, formatter);
                 sb.AppendLine(")");
@@ -162,11 +163,11 @@ public static class LirTextWriter
                 sb.Append("branch ");
                 sb.Append(FormatOperand(branchTerminator.Condition, formatter));
                 sb.Append(" ? ");
-                sb.Append(branchTerminator.TrueTarget);
+                sb.Append(blockFormatter.Format(branchTerminator.TrueTarget));
                 sb.Append('(');
                 WriteOperandList(sb, branchTerminator.TrueArguments, formatter);
                 sb.Append(") : ");
-                sb.Append(branchTerminator.FalseTarget);
+                sb.Append(blockFormatter.Format(branchTerminator.FalseTarget));
                 sb.Append('(');
                 WriteOperandList(sb, branchTerminator.FalseArguments, formatter);
                 sb.AppendLine(")");
@@ -251,5 +252,19 @@ public static class LirTextWriter
 
             return $"%r{id}";
         }
+    }
+
+    private sealed class BlockFormatter
+    {
+        private readonly Dictionary<LirBlockRef, int> _ids = [];
+
+        public BlockFormatter(IReadOnlyList<LirBlock> blocks)
+        {
+            for (int i = 0; i < blocks.Count; i++)
+                _ids[blocks[i].Ref] = i;
+        }
+
+        public string Format(LirBlockRef blockRef)
+            => $"bb{_ids[blockRef]}";
     }
 }

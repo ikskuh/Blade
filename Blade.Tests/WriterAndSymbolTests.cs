@@ -73,7 +73,7 @@ public class WriterAndSymbolTests
                 [
                     new LirOpInstruction(new LirMovOperation(), LirRegister(0), BuiltinTypes.U32,
                         [new LirImmediateOperand("hello", BuiltinTypes.String)],
-                        hasSideEffects: false, predicateText: "if_c", writesC: true, writesZ: true, Span),
+                        hasSideEffects: false, predicate: P2ConditionCode.IF_C, writesC: true, writesZ: true, Span),
                 ], new LirUnreachableTerminator(Span)),
             ]),
         ]);

@@ -4,9 +4,9 @@
 // - -fno-mir-opt=single-callsite-inline
 // - -fno-asmir-opt=conditional-move-fusion
 // SEQUENCE:
-// -   IF_NZ JMP #$top_inl_after_0
+// -   IF_NZ JMP #$top_bb2
 // -   MOV _r1, #2
-// - $top_inl_after_0
+// - $top_bb2
 // NOTE:
 //   Intended positive case for ASMIR conditional-move-fusion.
 //   The optimizer has unit coverage, but current .blade lowering does not expose a stable jump-over-single-instruction trigger yet.

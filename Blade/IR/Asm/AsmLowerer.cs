@@ -20,10 +20,29 @@ namespace Blade.IR.Asm;
 /// </summary>
 public static class AsmLowerer
 {
+    private enum UnsupportedLoweringKind
+    {
+        Range,
+        LoadMember,
+        LoadIndex,
+        LoadDeref,
+        BitfieldExtract,
+        BitfieldInsert,
+        StructLiteral,
+        StoreIndex,
+        StoreDeref,
+        InsertMember,
+        Yield,
+        YieldTo,
+        UpdatePlace,
+        PhiMove,
+    }
+
+    private readonly record struct UnsupportedLoweringKey(TextSpan Span, UnsupportedLoweringKind Kind);
+
     public static AsmModule Lower(LirModule module, DiagnosticBag? diagnostics = null)
     {
         Requires.NotNull(module);
-        VirtualAsmRegister.ResetMappings();
 
         // Run call graph analysis to determine CC tiers and dead functions
         CallGraphResult cgResult = CallGraphAnalyzer.Analyze(module);
@@ -83,8 +102,9 @@ public static class AsmLowerer
         public StoragePlace? TopLevelYieldStatePlace { get; }
         public bool ContainsYield { get; }
         public DiagnosticBag? Diagnostics { get; }
-        public HashSet<string> ReportedUnsupportedLowerings { get; } = new(StringComparer.Ordinal);
+        public HashSet<UnsupportedLoweringKey> ReportedUnsupportedLowerings { get; } = [];
         public Dictionary<LirBlockRef, ControlFlowLabelSymbol> BlockLabels { get; } = [];
+        public RegisterAssociator Registers { get; } = new();
         public int NextInlineAsmBlockOrdinal { get; set; }
         public int NextRepLabelOrdinal { get; set; }
 
@@ -130,14 +150,14 @@ public static class AsmLowerer
             if (BlockLabels.TryGetValue(blockRef, out ControlFlowLabelSymbol? label))
                 return label;
 
-            label = new ControlFlowLabelSymbol($"{Function.Name}_{blockRef}");
+            label = new ControlFlowLabelSymbol($"{Function.Name}_bb{BlockLabels.Count}");
             BlockLabels.Add(blockRef, label);
             return label;
         }
 
         public VirtualAsmRegister GetRegister(LirVirtualRegister register)
         {
-            return VirtualAsmRegister.FromLir(register);
+            return Registers.FromLir(register);
         }
     }
 
@@ -311,7 +331,7 @@ public static class AsmLowerer
                     isExtern: false,
                     fixedAddress: null,
                     alignment: null);
-                ControlFlowLabelSymbol entryLabel = new($"{function.Name}_{function.Blocks[0].Ref}");
+                ControlFlowLabelSymbol entryLabel = new($"{function.Name}_bb0");
                 StoragePlace statePlace = new(
                     stateSymbol,
                     StoragePlaceKind.AllocatableGlobalRegister,
@@ -477,28 +497,28 @@ public static class AsmLowerer
         switch (op.Operation)
         {
             case LirConstOperation:
-                LowerConst(nodes, op);
+                LowerConst(nodes, op, ctx);
                 break;
             case LirMovOperation:
-                LowerMov(nodes, op);
+                LowerMov(nodes, op, ctx);
                 break;
             case LirLoadAddressOperation:
-                LowerLoadAddress(nodes, op);
+                LowerLoadAddress(nodes, op, ctx);
                 break;
             case LirLoadPlaceOperation:
-                LowerLoadPlace(nodes, op);
+                LowerLoadPlace(nodes, op, ctx);
                 break;
             case LirCallOperation:
                 LowerCall(nodes, op, ctx);
                 break;
             case LirCallExtractFlagOperation extractFlag:
-                LowerCallExtractFlag(nodes, op, extractFlag.Flag);
+                LowerCallExtractFlag(nodes, op, extractFlag.Flag, ctx);
                 break;
             case LirIntrinsicOperation:
-                LowerIntrinsic(nodes, op);
+                LowerIntrinsic(nodes, op, ctx);
                 break;
             case LirConvertOperation:
-                LowerConvert(nodes, op);
+                LowerConvert(nodes, op, ctx);
                 break;
             case LirStructLiteralOperation structLiteral:
                 LowerStructLiteral(nodes, op, structLiteral, ctx);
@@ -507,10 +527,10 @@ public static class AsmLowerer
                 LowerBinary(nodes, op, binary, ctx);
                 break;
             case LirUnaryOperation unary:
-                LowerUnary(nodes, op, unary);
+                LowerUnary(nodes, op, unary, ctx);
                 break;
             case LirBitfieldExtractOperation bitfieldExtract:
-                LowerBitfieldExtract(nodes, op, bitfieldExtract);
+                LowerBitfieldExtract(nodes, op, bitfieldExtract, ctx);
                 break;
             case LirBitfieldInsertOperation bitfieldInsert:
                 LowerBitfieldInsert(nodes, op, bitfieldInsert, ctx);
@@ -525,7 +545,7 @@ public static class AsmLowerer
                 LowerLoadIndex(nodes, op, loadIndex, ctx);
                 break;
             case LirStorePlaceOperation:
-                LowerStorePlace(nodes, op);
+                LowerStorePlace(nodes, op, ctx);
                 break;
             case LirUpdatePlaceOperation updatePlace:
                 LowerUpdatePlace(nodes, op, updatePlace, ctx);
@@ -574,7 +594,7 @@ public static class AsmLowerer
     {
         Dictionary<InlineAsmBindingSlot, AsmOperand> bindings = [];
         foreach (LirInlineAsmBinding binding in inlineAsm.Bindings)
-            bindings[binding.Slot] = LowerOperand(binding.Operand);
+            bindings[binding.Slot] = LowerOperand(binding.Operand, ctx);
 
         IReadOnlyDictionary<ControlFlowLabelSymbol, ControlFlowLabelSymbol> localLabels = CreateInlineAsmLocalLabels(ctx, inlineAsm.ParsedLines);
 
@@ -851,9 +871,9 @@ public static class AsmLowerer
 
     private readonly record struct InlineAsmSourceLine(string? InstructionText, string? CommentText, bool IsBlank);
 
-    private static void LowerConst(List<AsmNode> nodes, LirOpInstruction op)
+    private static void LowerConst(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
-        AsmRegisterOperand dest = DestReg(op);
+        AsmRegisterOperand dest = DestReg(op, ctx);
         object? rawValue = ((LirImmediateOperand)op.Operands[0]).Value;
         object? normalizedValue = rawValue;
         if (op.ResultType is not null && TypeFacts.TryNormalizeValue(rawValue, op.ResultType, out object? converted))
@@ -871,24 +891,24 @@ public static class AsmLowerer
         nodes.Add(Emit(P2Mnemonic.MOV, dest, new AsmImmediateOperand(value)));
     }
 
-    private static void LowerMov(List<AsmNode> nodes, LirOpInstruction op)
+    private static void LowerMov(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
-        AsmRegisterOperand dest = DestReg(op);
-        AsmRegisterOperand src = OpReg(op.Operands[0]);
+        AsmRegisterOperand dest = DestReg(op, ctx);
+        AsmRegisterOperand src = OpReg(op.Operands[0], ctx);
         nodes.Add(Emit(P2Mnemonic.MOV, dest, src));
     }
 
-    private static void LowerLoadAddress(List<AsmNode> nodes, LirOpInstruction op)
+    private static void LowerLoadAddress(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
-        AsmRegisterOperand dest = DestReg(op);
-        AsmPlaceOperand place = (AsmPlaceOperand)LowerOperand(op.Operands[0]);
+        AsmRegisterOperand dest = DestReg(op, ctx);
+        AsmPlaceOperand place = (AsmPlaceOperand)LowerOperand(op.Operands[0], ctx);
         nodes.Add(Emit(P2Mnemonic.MOV, dest, place));
     }
 
-    private static void LowerLoadPlace(List<AsmNode> nodes, LirOpInstruction op)
+    private static void LowerLoadPlace(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
-        AsmRegisterOperand dest = DestReg(op);
-        AsmPlaceOperand place = (AsmPlaceOperand)LowerOperand(op.Operands[0]);
+        AsmRegisterOperand dest = DestReg(op, ctx);
+        AsmPlaceOperand place = (AsmPlaceOperand)LowerOperand(op.Operands[0], ctx);
 
         // For array-typed places in LUT/Hub, produce the base address (not the
         // stored value) because subsequent index operations need an address to
@@ -919,8 +939,8 @@ public static class AsmLowerer
         LirLoadDerefOperation operation,
         LoweringContext ctx)
     {
-        AsmRegisterOperand dest = DestReg(op);
-        AsmRegisterOperand pointer = OpReg(op.Operands[0]);
+        AsmRegisterOperand dest = DestReg(op, ctx);
+        AsmRegisterOperand pointer = OpReg(op.Operands[0], ctx);
         VariableStorageClass storageClass = operation.StorageClass;
 
         switch (storageClass)
@@ -952,8 +972,8 @@ public static class AsmLowerer
             return;
         }
 
-        AsmRegisterOperand dest = DestReg(op);
-        AsmRegisterOperand receiver = OpReg(op.Operands[0]);
+        AsmRegisterOperand dest = DestReg(op, ctx);
+        AsmRegisterOperand receiver = OpReg(op.Operands[0], ctx);
         EmitAggregateExtract(nodes, dest, receiver, shape, op.ResultType);
     }
 
@@ -963,9 +983,9 @@ public static class AsmLowerer
         LirLoadIndexOperation operation,
         LoweringContext ctx)
     {
-        AsmRegisterOperand dest = DestReg(op);
-        AsmOperand baseOp = LowerOperand(op.Operands[0]);
-        AsmRegisterOperand index = OpReg(op.Operands[1]);
+        AsmRegisterOperand dest = DestReg(op, ctx);
+        AsmOperand baseOp = LowerOperand(op.Operands[0], ctx);
+        AsmRegisterOperand index = OpReg(op.Operands[1], ctx);
         VariableStorageClass storageClass = operation.StorageClass;
 
         switch (storageClass)
@@ -996,8 +1016,8 @@ public static class AsmLowerer
         LirStoreDerefOperation operation,
         LoweringContext ctx)
     {
-        AsmRegisterOperand pointer = OpReg(op.Operands[0]);
-        AsmOperand value = LowerOperand(op.Operands[^1]);
+        AsmRegisterOperand pointer = OpReg(op.Operands[0], ctx);
+        AsmOperand value = LowerOperand(op.Operands[^1], ctx);
         VariableStorageClass storageClass = operation.StorageClass;
 
         switch (storageClass)
@@ -1021,9 +1041,9 @@ public static class AsmLowerer
         LirStoreIndexOperation operation,
         LoweringContext ctx)
     {
-        AsmOperand baseOp = LowerOperand(op.Operands[0]);
-        AsmRegisterOperand index = OpReg(op.Operands[1]);
-        AsmOperand value = LowerOperand(op.Operands[^1]);
+        AsmOperand baseOp = LowerOperand(op.Operands[0], ctx);
+        AsmRegisterOperand index = OpReg(op.Operands[1], ctx);
+        AsmOperand value = LowerOperand(op.Operands[^1], ctx);
         VariableStorageClass storageClass = operation.StorageClass;
 
         switch (storageClass)
@@ -1062,9 +1082,9 @@ public static class AsmLowerer
             return;
         }
 
-        AsmRegisterOperand dest = DestReg(op);
-        AsmRegisterOperand receiver = OpReg(op.Operands[0]);
-        AsmRegisterOperand value = OpReg(op.Operands[1]);
+        AsmRegisterOperand dest = DestReg(op, ctx);
+        AsmRegisterOperand receiver = OpReg(op.Operands[0], ctx);
+        AsmRegisterOperand value = OpReg(op.Operands[1], ctx);
         EmitAggregateInsert(nodes, dest, receiver, value, shape);
     }
 
@@ -1086,10 +1106,10 @@ public static class AsmLowerer
         _ => 0,
     };
 
-    private static void LowerConvert(List<AsmNode> nodes, LirOpInstruction op)
+    private static void LowerConvert(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
-        AsmRegisterOperand dest = DestReg(op);
-        AsmRegisterOperand src = OpReg(op.Operands[0]);
+        AsmRegisterOperand dest = DestReg(op, ctx);
+        AsmRegisterOperand src = OpReg(op.Operands[0], ctx);
         nodes.Add(Emit(P2Mnemonic.MOV, dest, src));
 
         if (op.ResultType is null || !TypeFacts.TryGetIntegerWidth(op.ResultType, out int width) || width >= 32)
@@ -1127,7 +1147,7 @@ public static class AsmLowerer
             return;
         }
 
-        AsmRegisterOperand dest = DestReg(op);
+        AsmRegisterOperand dest = DestReg(op, ctx);
         nodes.Add(Emit(P2Mnemonic.MOV, dest, new AsmImmediateOperand(0)));
 
         for (int i = 0; i < op.Operands.Count; i++)
@@ -1141,7 +1161,7 @@ public static class AsmLowerer
                 return;
             }
 
-            AsmRegisterOperand value = OpReg(op.Operands[i]);
+            AsmRegisterOperand value = OpReg(op.Operands[i], ctx);
             EmitAggregateInsert(nodes, dest, dest, value, shape);
         }
     }
@@ -1149,13 +1169,14 @@ public static class AsmLowerer
     private static void LowerBitfieldExtract(
         List<AsmNode> nodes,
         LirOpInstruction op,
-        LirBitfieldExtractOperation operation)
+        LirBitfieldExtractOperation operation,
+        LoweringContext ctx)
     {
         int bitOffset = operation.Member.BitOffset;
         int bitWidth = operation.Member.BitWidth;
 
-        AsmRegisterOperand dest = DestReg(op);
-        AsmRegisterOperand src = OpReg(op.Operands[0]);
+        AsmRegisterOperand dest = DestReg(op, ctx);
+        AsmRegisterOperand src = OpReg(op.Operands[0], ctx);
 
         if (bitWidth == 1)
         {
@@ -1207,9 +1228,9 @@ public static class AsmLowerer
         int bitOffset = operation.Member.BitOffset;
         int bitWidth = operation.Member.BitWidth;
 
-        AsmRegisterOperand dest = DestReg(op);
-        AsmRegisterOperand source = OpReg(op.Operands[0]);
-        AsmRegisterOperand value = OpReg(op.Operands[1]);
+        AsmRegisterOperand dest = DestReg(op, ctx);
+        AsmRegisterOperand source = OpReg(op.Operands[0], ctx);
+        AsmRegisterOperand value = OpReg(op.Operands[1], ctx);
 
         nodes.Add(Emit(P2Mnemonic.MOV, dest, source));
 
@@ -1384,9 +1405,9 @@ public static class AsmLowerer
         LirBinaryOperation operation,
         LoweringContext ctx)
     {
-        AsmRegisterOperand dest = DestReg(op);
-        AsmRegisterOperand left = OpReg(op.Operands[0]);
-        AsmRegisterOperand right = OpReg(op.Operands[1]);
+        AsmRegisterOperand dest = DestReg(op, ctx);
+        AsmRegisterOperand left = OpReg(op.Operands[0], ctx);
+        AsmRegisterOperand right = OpReg(op.Operands[1], ctx);
         bool isFlagOnly = op.Destination is { } d && ctx.FlagOnlyRegisters.Contains(d);
         BoundBinaryOperatorKind kind = operation.OperatorKind;
 
@@ -1507,10 +1528,11 @@ public static class AsmLowerer
     private static void LowerUnary(
         List<AsmNode> nodes,
         LirOpInstruction op,
-        LirUnaryOperation operation)
+        LirUnaryOperation operation,
+        LoweringContext ctx)
     {
-        AsmRegisterOperand dest = DestReg(op);
-        AsmRegisterOperand src = OpReg(op.Operands[0]);
+        AsmRegisterOperand dest = DestReg(op, ctx);
+        AsmRegisterOperand src = OpReg(op.Operands[0], ctx);
         BoundUnaryOperatorKind kind = operation.OperatorKind;
 
         switch (kind)
@@ -1567,7 +1589,7 @@ public static class AsmLowerer
         // Collect argument registers
         List<AsmRegisterOperand> args = [];
         for (int i = 0; i < op.Operands.Count; i++)
-            args.Add(OpReg(op.Operands[i]));
+            args.Add(OpReg(op.Operands[i], ctx));
 
         AsmRegisterOperand? destReg = op.Destination is { } dest ? new AsmRegisterOperand(ctx.GetRegister(dest)) : null;
         AsmSymbolOperand targetOp = new(new AsmFunctionReferenceSymbol(target), AsmSymbolAddressingMode.Immediate);
@@ -1625,12 +1647,12 @@ public static class AsmLowerer
         }
     }
 
-    private static void LowerCallExtractFlag(List<AsmNode> nodes, LirOpInstruction op, MirFlag flag)
+    private static void LowerCallExtractFlag(List<AsmNode> nodes, LirOpInstruction op, MirFlag flag, LoweringContext ctx)
     {
         Assert.Invariant(op.Destination is not null, "call.extract pseudo-op must have a destination register");
         LirVirtualRegister dest = op.Destination!;
 
-        AsmRegisterOperand destReg = new(dest);
+        AsmRegisterOperand destReg = new(ctx.GetRegister(dest));
         P2Mnemonic opcode = flag switch
         {
             MirFlag.C => P2Mnemonic.BITC,
@@ -1642,18 +1664,18 @@ public static class AsmLowerer
         nodes.Add(Emit(opcode, destReg, new AsmImmediateOperand(0)));
     }
 
-    private static void LowerIntrinsic(List<AsmNode> nodes, LirOpInstruction op)
+    private static void LowerIntrinsic(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
         LirIntrinsicOperation intrinsic = (LirIntrinsicOperation)op.Operation;
         P2Mnemonic mnemonic = intrinsic.Mnemonic;
         List<AsmOperand> operands = [];
         for (int i = 0; i < op.Operands.Count; i++)
-            operands.Add(LowerOperand(op.Operands[i]));
+            operands.Add(LowerOperand(op.Operands[i], ctx));
 
         if (op.Destination is { } dest
             && ShouldEmitIntrinsicDestination(mnemonic, operands.Count))
         {
-            operands.Insert(0, new AsmRegisterOperand(dest));
+            operands.Insert(0, new AsmRegisterOperand(ctx.GetRegister(dest)));
         }
 
         nodes.Add(new AsmInstructionNode(mnemonic, operands));
@@ -1679,10 +1701,10 @@ public static class AsmLowerer
         return operand.Access is P2OperandAccess.Write or P2OperandAccess.ReadWrite;
     }
 
-    private static void LowerStorePlace(List<AsmNode> nodes, LirOpInstruction op)
+    private static void LowerStorePlace(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
-        AsmPlaceOperand place = (AsmPlaceOperand)LowerOperand(op.Operands[0]);
-        AsmOperand valueOp = LowerOperand(op.Operands[1]);
+        AsmPlaceOperand place = (AsmPlaceOperand)LowerOperand(op.Operands[0], ctx);
+        AsmOperand valueOp = LowerOperand(op.Operands[1], ctx);
 
         TypeSymbol? placeType = (place.Place.Symbol as VariableSymbol)?.Type;
 
@@ -1711,8 +1733,8 @@ public static class AsmLowerer
         LirUpdatePlaceOperation operation,
         LoweringContext ctx)
     {
-        AsmPlaceOperand place = (AsmPlaceOperand)LowerOperand(op.Operands[0]);
-        AsmOperand value = LowerOperand(op.Operands[1]);
+        AsmPlaceOperand place = (AsmPlaceOperand)LowerOperand(op.Operands[0], ctx);
+        AsmOperand value = LowerOperand(op.Operands[1], ctx);
 
         P2Mnemonic? opcode = operation.OperatorKind switch
             {
@@ -1737,7 +1759,7 @@ public static class AsmLowerer
                 return;
             }
 
-            ReportUnsupportedLowering(ctx, op.Span, "update.place");
+            ReportUnsupportedLowering(ctx, op.Span, UnsupportedLoweringKind.UpdatePlace);
             nodes.Add(new AsmCommentNode($"unhandled update place: {operation.OperatorKind}"));
             return;
         }
@@ -1809,7 +1831,7 @@ public static class AsmLowerer
             return;
 
         ControlFlowLabelSymbol endLabel = PushRepEndLabel(ctx);
-        AsmOperand iterations = LowerOperand(op.Operands[0]);
+        AsmOperand iterations = LowerOperand(op.Operands[0], ctx);
         nodes.Add(new AsmInstructionNode(P2Mnemonic.REP, [new AsmLabelRefOperand(endLabel), iterations]));
     }
 
@@ -1824,7 +1846,7 @@ public static class AsmLowerer
             return;
 
         ControlFlowLabelSymbol endLabel = PushRepEndLabel(ctx);
-        AsmOperand end = LowerOperand(op.Operands[1]);
+        AsmOperand end = LowerOperand(op.Operands[1], ctx);
         nodes.Add(new AsmInstructionNode(P2Mnemonic.REP, [new AsmLabelRefOperand(endLabel), end]));
     }
 
@@ -1891,7 +1913,7 @@ public static class AsmLowerer
 
         Assert.Invariant(targetInfo.ParameterPlaces.Count == op.Operands.Count, "Coroutine yieldto argument count must match target parameter ABI.");
         for (int i = 0; i < op.Operands.Count; i++)
-            nodes.Add(Emit(P2Mnemonic.MOV, new AsmPlaceOperand(targetInfo.ParameterPlaces[i]), OpReg(op.Operands[i])));
+            nodes.Add(Emit(P2Mnemonic.MOV, new AsmPlaceOperand(targetInfo.ParameterPlaces[i]), OpReg(op.Operands[i], ctx)));
 
         AsmOperand yieldStateDestination = ctx.Tier == CallingConventionTier.Coroutine
             && ctx.CoroutineCallingConvention.TryGetValue(ctx.Function.Symbol, out CoroutineCallingConventionInfo? sourceInfo)
@@ -1933,7 +1955,7 @@ public static class AsmLowerer
         // Move first return value (register-placed) to appropriate location based on CC tier
         if (ret.Values.Count > 0)
         {
-            AsmOperand resultOp = LowerOperand(ret.Values[0]);
+            AsmOperand resultOp = LowerOperand(ret.Values[0], ctx);
 
             switch (ctx.Tier)
             {
@@ -1966,7 +1988,7 @@ public static class AsmLowerer
         IReadOnlyList<ReturnSlot> returnSlots = ctx.Function.ReturnSlots;
         for (int i = 1; i < ret.Values.Count && i < returnSlots.Count; i++)
         {
-            AsmOperand flagValue = LowerOperand(ret.Values[i]);
+            AsmOperand flagValue = LowerOperand(ret.Values[i], ctx);
             ReturnPlacement placement = returnSlots[i].Placement;
             if (placement == ReturnPlacement.FlagC)
                 nodes.Add(new AsmInstructionNode(P2Mnemonic.TESTB, [flagValue, new AsmImmediateOperand(0)], flagEffect: P2FlagEffect.WC));
@@ -2077,7 +2099,7 @@ public static class AsmLowerer
         }
 
         // Register-based branch: test the condition register.
-        AsmRegisterOperand cond = OpReg(branch.Condition);
+        AsmRegisterOperand cond = OpReg(branch.Condition, ctx);
 
         if (branch.TrueArguments.Count == 0 && branch.FalseArguments.Count == 0)
         {
@@ -2117,17 +2139,17 @@ public static class AsmLowerer
 
         for (int i = 0; i < arguments.Count; i++)
         {
-            AsmOperand src = LowerOperand(arguments[i]);
+            AsmOperand src = LowerOperand(arguments[i], ctx);
 
             if (targetParams is not null && i < targetParams.Count)
             {
-                AsmRegisterOperand paramReg = new(targetParams[i].Register);
+                AsmRegisterOperand paramReg = new(ctx.GetRegister(targetParams[i].Register));
                 nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [paramReg, src], predicate));
             }
             else
             {
                 // Fallback: emit as comment if we can't resolve target param
-                ReportUnsupportedLowering(ctx, new TextSpan(0, 0), "phi-move");
+                ReportUnsupportedLowering(ctx, new TextSpan(0, 0), UnsupportedLoweringKind.PhiMove);
                 string prefix = predicate is not null ? $"{P2InstructionMetadata.GetConditionPrefixText(predicate.Value)} " : "";
                 nodes.Add(new AsmCommentNode($"{prefix}phi[{i}] = {src.Format()} -> {ctx.GetBlockLabel(targetBlock).Name}"));
             }
@@ -2146,62 +2168,84 @@ public static class AsmLowerer
 
     private static void ReportUnsupportedOpcode(LoweringContext ctx, LirOpInstruction instruction)
     {
-        ReportUnsupportedLowering(ctx, instruction.Span, GetUnsupportedLoweringName(instruction.Operation));
+        ReportUnsupportedLowering(ctx, instruction.Span, GetUnsupportedLoweringKind(instruction.Operation));
     }
 
-    private static void ReportUnsupportedLowering(LoweringContext ctx, TextSpan span, string lowering)
+    private static void ReportUnsupportedLowering(LoweringContext ctx, TextSpan span, UnsupportedLoweringKind lowering)
     {
         if (ctx.Diagnostics is null)
             return;
 
-        string key = $"{span.Start}:{span.Length}:{lowering}";
+        UnsupportedLoweringKey key = new(span, lowering);
         if (!ctx.ReportedUnsupportedLowerings.Add(key))
             return;
 
-        ctx.Diagnostics.ReportUnsupportedLowering(span, lowering);
+        ctx.Diagnostics.ReportUnsupportedLowering(span, GetUnsupportedLoweringName(lowering));
     }
 
-    private static string GetUnsupportedLoweringName(LirOperation operation)
+    private static UnsupportedLoweringKind GetUnsupportedLoweringKind(LirOperation operation)
     {
         return operation switch
         {
-            LirRangeOperation => "range",
-            LirLoadMemberOperation => "load.member",
-            LirLoadIndexOperation => "load.index",
-            LirLoadDerefOperation => "load.deref",
-            LirBitfieldExtractOperation => "bitfield.extract",
-            LirBitfieldInsertOperation => "bitfield.insert",
-            LirStructLiteralOperation => "structlit",
-            LirStoreIndexOperation => "store.index",
-            LirStoreDerefOperation => "store.deref",
-            LirInsertMemberOperation => "insert.member",
-            LirYieldOperation => "yield",
-            LirYieldToOperation => "yieldto",
-            _ => Assert.UnreachableValue<string>($"Unsupported lowering category must be defined for '{operation.GetType().Name}'."),
+            LirRangeOperation => UnsupportedLoweringKind.Range,
+            LirLoadMemberOperation => UnsupportedLoweringKind.LoadMember,
+            LirLoadIndexOperation => UnsupportedLoweringKind.LoadIndex,
+            LirLoadDerefOperation => UnsupportedLoweringKind.LoadDeref,
+            LirBitfieldExtractOperation => UnsupportedLoweringKind.BitfieldExtract,
+            LirBitfieldInsertOperation => UnsupportedLoweringKind.BitfieldInsert,
+            LirStructLiteralOperation => UnsupportedLoweringKind.StructLiteral,
+            LirStoreIndexOperation => UnsupportedLoweringKind.StoreIndex,
+            LirStoreDerefOperation => UnsupportedLoweringKind.StoreDeref,
+            LirInsertMemberOperation => UnsupportedLoweringKind.InsertMember,
+            LirYieldOperation => UnsupportedLoweringKind.Yield,
+            LirYieldToOperation => UnsupportedLoweringKind.YieldTo,
+            _ => Assert.UnreachableValue<UnsupportedLoweringKind>($"Unsupported lowering category must be defined for '{operation.GetType().Name}'."),
+        };
+    }
+
+    private static string GetUnsupportedLoweringName(UnsupportedLoweringKind lowering)
+    {
+        return lowering switch
+        {
+            UnsupportedLoweringKind.Range => "range",
+            UnsupportedLoweringKind.LoadMember => "load.member",
+            UnsupportedLoweringKind.LoadIndex => "load.index",
+            UnsupportedLoweringKind.LoadDeref => "load.deref",
+            UnsupportedLoweringKind.BitfieldExtract => "bitfield.extract",
+            UnsupportedLoweringKind.BitfieldInsert => "bitfield.insert",
+            UnsupportedLoweringKind.StructLiteral => "structlit",
+            UnsupportedLoweringKind.StoreIndex => "store.index",
+            UnsupportedLoweringKind.StoreDeref => "store.deref",
+            UnsupportedLoweringKind.InsertMember => "insert.member",
+            UnsupportedLoweringKind.Yield => "yield",
+            UnsupportedLoweringKind.YieldTo => "yieldto",
+            UnsupportedLoweringKind.UpdatePlace => "update.place",
+            UnsupportedLoweringKind.PhiMove => "phi-move",
+            _ => Assert.UnreachableValue<string>(),
         };
     }
 
     // --- Helpers ---
 
-    private static AsmRegisterOperand DestReg(LirOpInstruction op)
+    private static AsmRegisterOperand DestReg(LirOpInstruction op, LoweringContext ctx)
     {
         if (op.Destination is not { } dest)
             throw new InvalidOperationException($"Instruction '{op.DisplayName}' expected a destination register");
-        return new AsmRegisterOperand(dest);
+        return new AsmRegisterOperand(ctx.GetRegister(dest));
     }
 
-    private static AsmRegisterOperand OpReg(LirOperand operand)
+    private static AsmRegisterOperand OpReg(LirOperand operand, LoweringContext ctx)
     {
         if (operand is LirRegisterOperand reg)
-            return new AsmRegisterOperand(reg.Register);
+            return new AsmRegisterOperand(ctx.GetRegister(reg.Register));
         throw new InvalidOperationException($"Expected register operand, got {operand.GetType().Name}");
     }
 
-    private static AsmOperand LowerOperand(LirOperand operand)
+    private static AsmOperand LowerOperand(LirOperand operand, LoweringContext ctx)
     {
         return operand switch
         {
-            LirRegisterOperand reg => new AsmRegisterOperand(reg.Register),
+            LirRegisterOperand reg => new AsmRegisterOperand(ctx.GetRegister(reg.Register)),
             LirImmediateOperand imm => new AsmImmediateOperand(GetImmediateValue(imm)),
             LirPlaceOperand place => new AsmPlaceOperand(place.Place),
             _ => throw new InvalidOperationException($"Unknown operand type: {operand.GetType().Name}"),

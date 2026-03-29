@@ -11,6 +11,7 @@ internal static class IrTestFactory
 {
     private static readonly Dictionary<int, MirValueId> MirValues = [];
     private static readonly Dictionary<int, LirVirtualRegister> LirRegisters = [];
+    private static readonly Dictionary<int, VirtualAsmRegister> AsmRegisters = [];
 
     public static MirValueId MirValue(int id)
     {
@@ -34,11 +35,20 @@ internal static class IrTestFactory
         return register;
     }
 
-    public static AsmRegisterOperand AsmRegister(int id) => new(LirRegister(id));
+    public static AsmRegisterOperand AsmRegister(int id)
+    {
+        if (!AsmRegisters.TryGetValue(id, out VirtualAsmRegister? register))
+        {
+            register = new VirtualAsmRegister();
+            AsmRegisters.Add(id, register);
+        }
 
-    public static MirBlockRef MirBlockRef(string name) => new(name);
+        return new AsmRegisterOperand(register);
+    }
 
-    public static LirBlockRef LirBlockRef(string name) => new(name);
+    public static MirBlockRef MirBlockRef(string name) => new();
+
+    public static LirBlockRef LirBlockRef(string name) => new();
 
     public static MirFunction CreateMirFunction(
         string name,

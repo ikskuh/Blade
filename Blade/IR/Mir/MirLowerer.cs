@@ -321,7 +321,6 @@ public static class MirLowerer
         private readonly BlockBuilder _exitBlock;
         private readonly Dictionary<Symbol, MirValueId> _currentValues = [];
         private BlockBuilder _currentBlock;
-        private int _nextBlockId;
 
         public FunctionLoweringContext(
             FunctionSymbol symbol,
@@ -423,7 +422,7 @@ public static class MirLowerer
 
         private BlockBuilder CreateBlock()
         {
-            BlockBuilder block = new(new MirBlockRef($"bb{_nextBlockId++}"));
+            BlockBuilder block = new(new MirBlockRef());
             _blocks.Add(block);
             return block;
         }

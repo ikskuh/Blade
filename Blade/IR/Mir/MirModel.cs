@@ -65,19 +65,15 @@ public sealed class MirBlock
         MirBlockRef blockRef,
         IReadOnlyList<MirBlockParameter> parameters,
         IReadOnlyList<MirInstruction> instructions,
-        MirTerminator terminator,
-        string? debugName = null)
+        MirTerminator terminator)
     {
         Ref = Requires.NotNull(blockRef);
-        if (debugName is not null)
-            Ref.DebugName = debugName;
         Parameters = parameters;
         Instructions = instructions;
         Terminator = terminator;
     }
 
     public MirBlockRef Ref { get; }
-    public string Label => Ref.ToString();
     public IReadOnlyList<MirBlockParameter> Parameters { get; }
     public IReadOnlyList<MirInstruction> Instructions { get; }
     public MirTerminator Terminator { get; }

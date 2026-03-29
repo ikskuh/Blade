@@ -171,16 +171,11 @@ public static class MirInliner
                 suffix.Add(callerBlock.Instructions[i]);
 
             int inlineOrdinal = _nextInlineOrdinal();
-            MutableBlock afterBlock = CreateAfterBlock(call, suffix, callerBlock.Terminator, inlineOrdinal);
+            MutableBlock afterBlock = CreateAfterBlock(call, suffix, callerBlock.Terminator);
 
             Dictionary<MirBlockRef, MirBlockRef> labelMap = [];
             foreach (MirBlock calleeBlock in callee.Blocks)
-            {
-                labelMap[calleeBlock.Ref] = new MirBlockRef(
-                    calleeBlock.Ref.DebugName is string debugName
-                        ? $"inl_{inlineOrdinal}_{debugName}"
-                        : $"inl_{inlineOrdinal}");
-            }
+                labelMap[calleeBlock.Ref] = new MirBlockRef();
 
             List<MutableBlock> clonedBlocks = CloneCalleeBlocks(call, callee, labelMap, afterBlock.Label);
             List<MirValueId> entryArguments = BuildEntryArguments(call, callee.Blocks[0], callerBlock, call.Span);
@@ -344,8 +339,7 @@ public static class MirInliner
         private MutableBlock CreateAfterBlock(
             MirCallInstruction call,
             IReadOnlyList<MirInstruction> suffix,
-            MirTerminator terminator,
-            int inlineOrdinal)
+            MirTerminator terminator)
         {
             List<MirBlockParameter> parameters = [];
             if (call.Result is MirValueId callResult)
@@ -360,7 +354,7 @@ public static class MirInliner
                 parameters.Add(new MirBlockParameter(value, $"ret{i + 1}", type));
             }
 
-            MirBlockRef label = new($"inl_after_{inlineOrdinal}");
+            MirBlockRef label = new();
             return new MutableBlock(label, parameters, suffix, terminator);
         }
 

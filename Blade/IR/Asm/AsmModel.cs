@@ -32,16 +32,28 @@ internal sealed class AsmCurrentAddressSymbol : IAsmSymbol
     public SymbolType SymbolType => SymbolType.ControlFlowLabel;
 }
 
-public sealed class AsmNamedSymbol : IAsmSymbol
+internal sealed class AsmSpillSlotSymbol : IAsmSymbol
 {
-    public AsmNamedSymbol(string name, SymbolType symbolType)
+    public AsmSpillSlotSymbol(int slot)
     {
-        Name = Requires.NotNullOrWhiteSpace(name);
-        SymbolType = symbolType;
+        Slot = Requires.NonNegative(slot);
     }
 
-    public string Name { get; }
-    public SymbolType SymbolType { get; }
+    public int Slot { get; }
+    public string Name => $"_r{Slot}";
+    public SymbolType SymbolType => SymbolType.RegVariable;
+}
+
+internal sealed class AsmSharedConstantSymbol : IAsmSymbol
+{
+    public AsmSharedConstantSymbol(uint value)
+    {
+        Value = value;
+    }
+
+    public uint Value { get; }
+    public string Name => $"c_{Value}";
+    public SymbolType SymbolType => SymbolType.RegVariable;
 }
 
 internal sealed class AsmFunctionReferenceSymbol : IAsmSymbol
@@ -283,11 +295,6 @@ public enum AsmSymbolAddressingMode
 /// </summary>
 public sealed class AsmRegisterOperand : AsmOperand
 {
-    public AsmRegisterOperand(VirtualLirRegister register)
-        : this(VirtualAsmRegister.FromLir(register))
-    {
-    }
-
     public AsmRegisterOperand(VirtualAsmRegister register)
     {
         Register = Requires.NotNull(register);

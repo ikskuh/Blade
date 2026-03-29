@@ -26,10 +26,10 @@ public class OptimizerTests
         MirValueId threaded = MirValue(1);
         MirValueId merged = MirValue(2);
         StoragePlace resultPlace = CreatePlace("result");
-        MirBlockRef bb0 = new("bb0");
-        MirBlockRef bb1 = new("bb1");
-        MirBlockRef bb2 = new("bb2");
-        MirBlockRef dead = new("dead");
+        MirBlockRef bb0 = new();
+        MirBlockRef bb1 = new();
+        MirBlockRef bb2 = new();
+        MirBlockRef dead = new();
 
         MirModule module = new([
             CreateMirFunction("f", isEntryPoint: false, FunctionKind.Default, [],
@@ -55,7 +55,7 @@ public class OptimizerTests
         MirFunction function = optimized.Functions[0];
 
         Assert.That(function.Blocks, Has.Count.EqualTo(1));
-        Assert.That(function.Blocks[0].Label, Is.EqualTo("bb0"));
+        Assert.That(function.Blocks[0].Ref, Is.SameAs(bb0));
         Assert.That(function.Blocks[0].Instructions, Has.Count.EqualTo(2));
         Assert.That(function.Blocks[0].Instructions[1], Is.TypeOf<MirStorePlaceInstruction>());
 
@@ -71,10 +71,10 @@ public class OptimizerTests
         LirVirtualRegister threaded = LirRegister(2);
         LirVirtualRegister merged = LirRegister(3);
         StoragePlace resultPlace = CreatePlace("result");
-        LirBlockRef bb0 = new("bb0");
-        LirBlockRef bb1 = new("bb1");
-        LirBlockRef bb2 = new("bb2");
-        LirBlockRef dead = new("dead");
+        LirBlockRef bb0 = new();
+        LirBlockRef bb1 = new();
+        LirBlockRef bb2 = new();
+        LirBlockRef dead = new();
 
         LirModule module = new([
             CreateLirFunction("f", isEntryPoint: false, FunctionKind.Default, [],
@@ -177,10 +177,12 @@ public class OptimizerTests
     [Test]
     public void AsmOptimizer_ElidesStraightLineMovChainWhenDeadAtFunctionEnd()
     {
+        StoragePlace inputPlace = new(CreateVariableSymbol("input", scopeKind: VariableScopeKind.GlobalStorage, storageClass: VariableStorageClass.Reg), StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, staticInitializer: null, emittedName: "input");
+        StoragePlace outputPlace = new(CreateVariableSymbol("output", scopeKind: VariableScopeKind.GlobalStorage, storageClass: VariableStorageClass.Reg), StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, staticInitializer: null, emittedName: "output");
         AsmRegisterOperand r1 = AsmRegister(1);
         AsmRegisterOperand r2 = AsmRegister(2);
-        AsmSymbolOperand input = new(new AsmNamedSymbol("input", SymbolType.RegVariable), AsmSymbolAddressingMode.Register);
-        AsmSymbolOperand output = new(new AsmNamedSymbol("output", SymbolType.RegVariable), AsmSymbolAddressingMode.Register);
+        AsmSymbolOperand input = new(inputPlace, AsmSymbolAddressingMode.Register);
+        AsmSymbolOperand output = new(outputPlace, AsmSymbolAddressingMode.Register);
 
         AsmModule module = new([
             CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
@@ -205,9 +207,11 @@ public class OptimizerTests
     [Test]
     public void AsmOptimizer_DoesNotElideCopyAcrossInlineAsmBarrier()
     {
+        StoragePlace inputPlace = new(CreateVariableSymbol("input", scopeKind: VariableScopeKind.GlobalStorage, storageClass: VariableStorageClass.Reg), StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, staticInitializer: null, emittedName: "input");
+        StoragePlace outputPlace = new(CreateVariableSymbol("output", scopeKind: VariableScopeKind.GlobalStorage, storageClass: VariableStorageClass.Reg), StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, staticInitializer: null, emittedName: "output");
         AsmRegisterOperand r1 = AsmRegister(1);
-        AsmSymbolOperand input = new(new AsmNamedSymbol("input", SymbolType.RegVariable), AsmSymbolAddressingMode.Register);
-        AsmSymbolOperand output = new(new AsmNamedSymbol("output", SymbolType.RegVariable), AsmSymbolAddressingMode.Register);
+        AsmSymbolOperand input = new(inputPlace, AsmSymbolAddressingMode.Register);
+        AsmSymbolOperand output = new(outputPlace, AsmSymbolAddressingMode.Register);
 
         AsmModule module = new([
             CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,

@@ -78,7 +78,7 @@ public class MirModelTests
             [f0] = MirValue(13),
         };
 
-        MirBranchTerminator branch = new(condition, new MirBlockRef("bb_true"), new MirBlockRef("bb_false"), [t0], [f0], Span);
+        MirBranchTerminator branch = new(condition, new MirBlockRef(), new MirBlockRef(), [t0], [f0], Span);
         MirBranchTerminator rewrittenBranch = (MirBranchTerminator)branch.RewriteUses(mapping);
         Assert.That(rewrittenBranch.Condition, Is.EqualTo(mapping[condition]));
         Assert.That(rewrittenBranch.TrueArguments, Is.EqualTo(new[] { mapping[t0] }));

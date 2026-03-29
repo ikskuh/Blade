@@ -26,6 +26,7 @@ public static class MirTextWriter
     private static void WriteFunction(StringBuilder sb, MirFunction function)
     {
         ValueFormatter formatter = new();
+        BlockFormatter blockFormatter = new(function.Blocks);
 
         sb.Append("fn ");
         sb.Append(function.Name);
@@ -45,16 +46,16 @@ public static class MirTextWriter
         sb.AppendLine("{");
 
         foreach (MirBlock block in function.Blocks)
-            WriteBlock(sb, block, formatter);
+            WriteBlock(sb, block, formatter, blockFormatter);
 
         sb.AppendLine("}");
         sb.AppendLine();
     }
 
-    private static void WriteBlock(StringBuilder sb, MirBlock block, ValueFormatter formatter)
+    private static void WriteBlock(StringBuilder sb, MirBlock block, ValueFormatter formatter, BlockFormatter blockFormatter)
     {
         sb.Append("  ");
-        sb.Append(block.Label);
+        sb.Append(blockFormatter.Format(block.Ref));
         sb.Append('(');
         for (int i = 0; i < block.Parameters.Count; i++)
         {
@@ -72,7 +73,7 @@ public static class MirTextWriter
         foreach (MirInstruction instruction in block.Instructions)
             WriteInstruction(sb, instruction, formatter);
 
-        WriteTerminator(sb, block.Terminator, formatter);
+        WriteTerminator(sb, block.Terminator, formatter, blockFormatter);
     }
 
     private static void WriteInstruction(StringBuilder sb, MirInstruction instruction, ValueFormatter formatter)
@@ -358,14 +359,14 @@ public static class MirTextWriter
         sb.AppendLine();
     }
 
-    private static void WriteTerminator(StringBuilder sb, MirTerminator terminator, ValueFormatter formatter)
+    private static void WriteTerminator(StringBuilder sb, MirTerminator terminator, ValueFormatter formatter, BlockFormatter blockFormatter)
     {
         sb.Append("    ");
         switch (terminator)
         {
             case MirGotoTerminator mirGoto:
                 sb.Append("goto ");
-                sb.Append(mirGoto.Target);
+                sb.Append(blockFormatter.Format(mirGoto.Target));
                 sb.Append('(');
                 WriteValueList(sb, mirGoto.Arguments, formatter);
                 sb.AppendLine(")");
@@ -381,11 +382,11 @@ public static class MirTextWriter
                     sb.Append(']');
                 }
                 sb.Append(" ? ");
-                sb.Append(branch.TrueTarget);
+                sb.Append(blockFormatter.Format(branch.TrueTarget));
                 sb.Append('(');
                 WriteValueList(sb, branch.TrueArguments, formatter);
                 sb.Append(") : ");
-                sb.Append(branch.FalseTarget);
+                sb.Append(blockFormatter.Format(branch.FalseTarget));
                 sb.Append('(');
                 WriteValueList(sb, branch.FalseArguments, formatter);
                 sb.AppendLine(")");
@@ -460,5 +461,19 @@ public static class MirTextWriter
 
             return $"%v{id}";
         }
+    }
+
+    private sealed class BlockFormatter
+    {
+        private readonly Dictionary<MirBlockRef, int> _ids = [];
+
+        public BlockFormatter(IReadOnlyList<MirBlock> blocks)
+        {
+            for (int i = 0; i < blocks.Count; i++)
+                _ids[blocks[i].Ref] = i;
+        }
+
+        public string Format(MirBlockRef blockRef)
+            => $"bb{_ids[blockRef]}";
     }
 }

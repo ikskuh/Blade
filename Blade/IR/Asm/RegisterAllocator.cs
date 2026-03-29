@@ -552,13 +552,13 @@ public static class RegisterAllocator
                 allUsedSlots.Add(slot);
         }
 
-        Dictionary<int, AsmNamedSymbol> slotSymbols = [];
+        Dictionary<int, AsmSpillSlotSymbol> slotSymbols = [];
 
-        AsmNamedSymbol GetSlotSymbol(int slot)
+        AsmSpillSlotSymbol GetSlotSymbol(int slot)
         {
-            if (!slotSymbols.TryGetValue(slot, out AsmNamedSymbol? symbol))
+            if (!slotSymbols.TryGetValue(slot, out AsmSpillSlotSymbol? symbol))
             {
-                symbol = new AsmNamedSymbol(SlotLabel(slot), SymbolType.RegVariable);
+                symbol = new AsmSpillSlotSymbol(slot);
                 slotSymbols.Add(slot, symbol);
             }
 
@@ -621,10 +621,10 @@ public static class RegisterAllocator
         extendedNodes.Add(new AsmSectionNode(AsmStorageSection.Register));
 
         // Emit global variable storage places
-        HashSet<string> emitted = [];
+        HashSet<IAsmSymbol> emitted = [];
         foreach (StoragePlace place in module.StoragePlaces.Where(p => p.Kind == StoragePlaceKind.AllocatableGlobalRegister))
         {
-            if (!emitted.Add(place.EmittedName))
+            if (!emitted.Add(place))
                 continue;
             extendedNodes.Add(new AsmLabelNode(place.EmittedName));
             extendedNodes.Add(new AsmDataNode(AsmDataDirective.Long, place.StaticInitializer));
@@ -633,10 +633,10 @@ public static class RegisterAllocator
         // Emit shared register slots
         foreach (int slot in allUsedSlots.Order())
         {
-            string label = SlotLabel(slot);
+            AsmSpillSlotSymbol label = GetSlotSymbol(slot);
             if (!emitted.Add(label))
                 continue;
-            extendedNodes.Add(new AsmLabelNode(label));
+            extendedNodes.Add(new AsmLabelNode(label.Name));
             extendedNodes.Add(new AsmDataNode(AsmDataDirective.Long, 0));
         }
 
@@ -678,14 +678,12 @@ public static class RegisterAllocator
     private static AsmOperand RewriteOperand(
         AsmOperand operand,
         IReadOnlyDictionary<VirtualAsmRegister, int> regToSlot,
-        Func<int, AsmNamedSymbol> getSlotSymbol)
+        Func<int, AsmSpillSlotSymbol> getSlotSymbol)
     {
         if (operand is AsmRegisterOperand reg && regToSlot.TryGetValue(reg.Register, out int slot))
             return new AsmSymbolOperand(getSlotSymbol(slot), AsmSymbolAddressingMode.Register);
         return operand;
     }
-
-    private static string SlotLabel(int slot) => $"_r{slot}";
 
     private static AsmDataDirective SelectDataDirective(TypeSymbol type)
     {

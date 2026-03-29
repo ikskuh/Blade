@@ -35,11 +35,11 @@ public static class AsmLegalizer
 
         // Immediates used 2+ times → allocate a shared constant register.
         // Immediates used once → use AUG prefix inline.
-        Dictionary<uint, AsmNamedSymbol> constantRegisters = [];
+        Dictionary<uint, AsmSharedConstantSymbol> constantRegisters = [];
         foreach ((uint value, int count) in immediateUseCounts.OrderBy(static pair => pair.Key))
         {
             if (count >= 2)
-                constantRegisters[value] = new AsmNamedSymbol($"c_{value}", SymbolType.RegVariable);
+                constantRegisters[value] = new AsmSharedConstantSymbol(value);
         }
 
         // Second pass: legalize each function
@@ -69,7 +69,7 @@ public static class AsmLegalizer
             extendedNodes.AddRange(entry.Nodes);
 
             extendedNodes.Add(new AsmSectionNode(AsmStorageSection.Constant));
-            foreach ((uint value, AsmNamedSymbol label) in constantRegisters.OrderBy(static pair => pair.Key))
+            foreach ((uint value, AsmSharedConstantSymbol label) in constantRegisters.OrderBy(static pair => pair.Key))
             {
                 extendedNodes.Add(new AsmLabelNode(label.Name));
                 extendedNodes.Add(new AsmDataNode(AsmDataDirective.Long, value, useHexFormat: true));
@@ -109,7 +109,7 @@ public static class AsmLegalizer
 
     private static AsmFunction LegalizeFunction(
         AsmFunction function,
-        Dictionary<uint, AsmNamedSymbol> constantRegisters)
+        Dictionary<uint, AsmSharedConstantSymbol> constantRegisters)
     {
         List<AsmNode> nodes = new(function.Nodes.Count);
 
@@ -127,7 +127,7 @@ public static class AsmLegalizer
     private static void LegalizeInstruction(
         List<AsmNode> nodes,
         AsmInstructionNode instruction,
-        Dictionary<uint, AsmNamedSymbol> constantRegisters)
+        Dictionary<uint, AsmSharedConstantSymbol> constantRegisters)
     {
         bool modified = false;
         List<AsmOperand> newOperands = new(instruction.Operands.Count);
@@ -152,7 +152,7 @@ public static class AsmLegalizer
                 {
                     // Check if this value has a shared constant register
                     if (CanUseSharedConstant(operandInfo)
-                        && constantRegisters.TryGetValue(uval, out AsmNamedSymbol? constLabel))
+                        && constantRegisters.TryGetValue(uval, out AsmSharedConstantSymbol? constLabel))
                     {
                         // Replace immediate with reference to constant register
                         newOperands.Add(new AsmSymbolOperand(constLabel, AsmSymbolAddressingMode.Register));

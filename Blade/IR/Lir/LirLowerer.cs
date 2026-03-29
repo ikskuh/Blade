@@ -37,7 +37,7 @@ public static class LirLowerer
             if (blockRefs.TryGetValue(blockRef, out LirBlockRef? mapped) && mapped is not null)
                 return mapped;
 
-            LirBlockRef created = new(blockRef.DebugName);
+            LirBlockRef created = new();
             blockRefs[blockRef] = created;
             return created;
         }

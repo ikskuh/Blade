@@ -7,6 +7,10 @@ namespace Blade.IR;
 
 internal static class BackendSymbolNaming
 {
+    /// <summary>
+    /// Assigns final assembly-visible identifiers to backend symbols.
+    /// This is an emission concern only and must not be used as semantic or IR identity.
+    /// </summary>
     public static void AssignStorageNames(IReadOnlyList<StoragePlace> places)
     {
         Requires.NotNull(places);
@@ -26,6 +30,10 @@ internal static class BackendSymbolNaming
         }
     }
 
+    /// <summary>
+    /// Converts arbitrary source-facing names into legal assembly identifiers.
+    /// This is a final naming step only and must not be used as compiler identity.
+    /// </summary>
     public static string SanitizeIdentifier(string name)
     {
         Requires.NotNull(name);

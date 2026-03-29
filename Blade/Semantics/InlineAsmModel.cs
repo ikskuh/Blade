@@ -15,6 +15,10 @@ public abstract class InlineAsmLine
         RawText = Requires.NotNull(rawText);
     }
 
+    /// <summary>
+    /// Original source text for diagnostics and human-readable dumps only.
+    /// Compiler logic must use the typed fields on the parsed line instead.
+    /// </summary>
     public string RawText { get; }
 }
 
@@ -62,6 +66,10 @@ public sealed class InlineAsmBindingSlot
         PlaceholderText = Requires.NotNullOrWhiteSpace(placeholderText);
     }
 
+    /// <summary>
+    /// Original placeholder spelling for diagnostics and dumps only.
+    /// Binding identity is the slot object itself, not this text.
+    /// </summary>
     public string PlaceholderText { get; }
 
     public override string ToString() => PlaceholderText;

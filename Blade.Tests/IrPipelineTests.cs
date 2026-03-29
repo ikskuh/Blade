@@ -650,15 +650,16 @@ public class IrPipelineTests
     [Test]
     public void FinalAssemblyWriter_FormatsInlineAsmAndRegisterFileForReadability()
     {
+        StoragePlace r4 = new(CreateVariableSymbol("r4", scopeKind: VariableScopeKind.GlobalStorage, storageClass: VariableStorageClass.Reg), StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, staticInitializer: null, emittedName: "_r4");
         AsmModule module = new([],
         [
             CreateAsmFunction("$top", isEntryPoint: true, CallingConventionTier.EntryPoint,
             [
                 new AsmLabelNode("$top_bb0"),
                 new AsmCommentNode("inline asm typed begin"),
-                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(new AsmNamedSymbol("_r4", SymbolType.RegVariable), AsmSymbolAddressingMode.Register), new AsmImmediateOperand(42)]),
+                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(r4, AsmSymbolAddressingMode.Register), new AsmImmediateOperand(42)]),
                 new AsmCommentNode("inline asm typed end"),
-                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(new AsmNamedSymbol("_r4", SymbolType.RegVariable), AsmSymbolAddressingMode.Register), new AsmImmediateOperand(0)]),
+                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(r4, AsmSymbolAddressingMode.Register), new AsmImmediateOperand(0)]),
                 new AsmSectionNode(AsmStorageSection.Register),
                 new AsmLabelNode("g_input_word_7"),
                 new AsmDataNode(AsmDataDirective.Long, 13),
@@ -683,18 +684,19 @@ public class IrPipelineTests
     [Test]
     public void FinalAssemblyWriter_PrefixesFunctionSymbolsDeterministically()
     {
-        AsmModule module = new([],
-        [
-            CreateAsmFunction("step", isEntryPoint: false, CallingConventionTier.General,
+        AsmFunction step = CreateAsmFunction("step", isEntryPoint: false, CallingConventionTier.General,
             [
                 new AsmLabelNode("step_bb0"),
                 new AsmInstructionNode(P2Mnemonic.RET, []),
-            ]),
+            ]);
+        AsmModule module = new([],
+        [
+            step,
             CreateAsmFunction("caller", isEntryPoint: true, CallingConventionTier.EntryPoint,
             [
                 new AsmLabelNode("caller_bb0"),
-                new AsmInstructionNode(P2Mnemonic.CALLB, [new AsmSymbolOperand(new AsmNamedSymbol("step", SymbolType.Function), AsmSymbolAddressingMode.Immediate)]),
-                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmPhysicalRegisterOperand(new P2Register(0)), new AsmSymbolOperand(new AsmNamedSymbol("step", SymbolType.Function), AsmSymbolAddressingMode.Register)]),
+                new AsmInstructionNode(P2Mnemonic.CALLB, [new AsmSymbolOperand(step, AsmSymbolAddressingMode.Immediate)]),
+                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmPhysicalRegisterOperand(new P2Register(0)), new AsmSymbolOperand(step, AsmSymbolAddressingMode.Register)]),
             ]),
         ]);
 
@@ -1161,10 +1163,10 @@ public class IrPipelineTests
         string mir = MirTextWriter.Write(build.MirModule);
         string lir = LirTextWriter.Write(build.LirModule);
         string[] duplicateMirLabels = build.MirModule.Functions
-            .SelectMany(f => f.Blocks.Select(block => $"{f.Name}:{block.Label}"))
-            .GroupBy(label => label)
+            .SelectMany(f => f.Blocks.Select(static block => block.Ref))
+            .GroupBy(static blockRef => blockRef)
             .Where(group => group.Count() > 1)
-            .Select(group => group.Key)
+            .Select(_ => "duplicate-ref")
             .ToArray();
         string[] duplicateAsmLabels = build.AsmModule.Functions
             .SelectMany(f => f.Nodes.OfType<AsmLabelNode>())
