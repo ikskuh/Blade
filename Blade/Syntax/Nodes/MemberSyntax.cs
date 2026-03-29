@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Blade;
 using Blade.Source;
 
@@ -27,6 +28,7 @@ public interface IFunctionSignatureSyntax
 
 public sealed class ImportDeclarationSyntax : MemberSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token ImportKeyword { get; }
 
     /// <summary>
@@ -35,8 +37,10 @@ public sealed class ImportDeclarationSyntax : MemberSyntax
     /// </summary>
     public Token Source { get; }
 
+    [ExcludeFromCodeCoverage]
     public Token? AsKeyword { get; }
     public Token? Alias { get; }
+    [ExcludeFromCodeCoverage]
     public Token Semicolon { get; }
 
     public ImportDeclarationSyntax(Token importKeyword, Token source, Token? asKeyword, Token? alias, Token semicolon)
@@ -56,10 +60,13 @@ public sealed class ImportDeclarationSyntax : MemberSyntax
 public sealed class FunctionDeclarationSyntax : MemberSyntax, IFunctionSignatureSyntax
 {
     public Token? FuncKindKeyword { get; }
+    [ExcludeFromCodeCoverage]
     public Token FnKeyword { get; }
     public Token Name { get; }
+    [ExcludeFromCodeCoverage]
     public Token OpenParen { get; }
     public SeparatedSyntaxList<ParameterSyntax> Parameters { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseParen { get; }
     public Token? Arrow { get; }
     public SeparatedSyntaxList<ReturnItemSyntax>? ReturnSpec { get; }
@@ -89,12 +96,14 @@ public sealed class VariableDeclarationSyntax : MemberSyntax
     public Token? StorageClassKeyword { get; }
     public Token MutabilityKeyword { get; }
     public Token Name { get; }
+    [ExcludeFromCodeCoverage]
     public Token Colon { get; }
     public TypeSyntax Type { get; }
     public Token? EqualsToken { get; }
     public ExpressionSyntax? Initializer { get; }
     public AddressClauseSyntax? AtClause { get; }
     public AlignClauseSyntax? AlignClause { get; }
+    [ExcludeFromCodeCoverage]
     public Token Semicolon { get; }
 
     public VariableDeclarationSyntax(Token? externKeyword, Token? storageClassKeyword, Token mutabilityKeyword,
@@ -121,8 +130,10 @@ public sealed class TypeAliasDeclarationSyntax : MemberSyntax
 {
     public Token TypeOrConstKeyword { get; }
     public Token Name { get; }
+    [ExcludeFromCodeCoverage] 
     public Token EqualsToken { get; }
     public TypeSyntax Type { get; }
+    [ExcludeFromCodeCoverage]
     public Token Semicolon { get; }
 
     public TypeAliasDeclarationSyntax(Token typeOrConstKeyword, Token name, Token equalsToken, TypeSyntax type, Token semicolon)
@@ -140,15 +151,20 @@ public sealed class AsmFunctionDeclarationSyntax : MemberSyntax, IFunctionSignat
 {
     public Token AsmKeyword { get; }
     public Token? VolatileKeyword { get; }
+    [ExcludeFromCodeCoverage]
     public Token FnKeyword { get; }
     public Token Name { get; }
+    [ExcludeFromCodeCoverage]
     public Token OpenParen { get; }
     public SeparatedSyntaxList<ParameterSyntax> Parameters { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseParen { get; }
     public Token? Arrow { get; }
     public SeparatedSyntaxList<ReturnItemSyntax>? ReturnSpec { get; }
+    [ExcludeFromCodeCoverage]
     public Token OpenBrace { get; }
     public string Body { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseBrace { get; }
 
     public AsmFunctionDeclarationSyntax(Token asmKeyword, Token? volatileKeyword, Token fnKeyword, Token name,

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Blade;
 using Blade.Source;
 
@@ -36,8 +37,10 @@ public sealed class NameExpressionSyntax : ExpressionSyntax
 
 public sealed class ParenthesizedExpressionSyntax : ExpressionSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token OpenParen { get; }
     public ExpressionSyntax Expression { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseParen { get; }
 
     public ParenthesizedExpressionSyntax(Token openParen, ExpressionSyntax expression, Token closeParen)
@@ -93,6 +96,7 @@ public sealed class PostfixUnaryExpressionSyntax : ExpressionSyntax
 public sealed class MemberAccessExpressionSyntax : ExpressionSyntax
 {
     public ExpressionSyntax Expression { get; }
+    [ExcludeFromCodeCoverage]
     public Token Dot { get; }
     public Token Member { get; }
 
@@ -108,8 +112,8 @@ public sealed class MemberAccessExpressionSyntax : ExpressionSyntax
 public sealed class PointerDerefExpressionSyntax : ExpressionSyntax
 {
     public ExpressionSyntax Expression { get; }
-    public Token Dot { get; }
-    public Token Star { get; }
+    [ExcludeFromCodeCoverage] public Token Dot { get; }
+    [ExcludeFromCodeCoverage] public Token Star { get; }
 
     public PointerDerefExpressionSyntax(ExpressionSyntax expression, Token dot, Token star)
         : base(TextSpan.FromBounds(Requires.NotNull(expression).Span.Start, star.Span.End))
@@ -123,8 +127,10 @@ public sealed class PointerDerefExpressionSyntax : ExpressionSyntax
 public sealed class IndexExpressionSyntax : ExpressionSyntax
 {
     public ExpressionSyntax Expression { get; }
+    [ExcludeFromCodeCoverage]
     public Token OpenBracket { get; }
     public ExpressionSyntax Index { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseBracket { get; }
 
     public IndexExpressionSyntax(ExpressionSyntax expression, Token openBracket, ExpressionSyntax index, Token closeBracket)
@@ -140,8 +146,10 @@ public sealed class IndexExpressionSyntax : ExpressionSyntax
 public sealed class CallExpressionSyntax : ExpressionSyntax
 {
     public ExpressionSyntax Callee { get; }
+    [ExcludeFromCodeCoverage]
     public Token OpenParen { get; }
     public SeparatedSyntaxList<ExpressionSyntax> Arguments { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseParen { get; }
 
     public CallExpressionSyntax(ExpressionSyntax callee, Token openParen, SeparatedSyntaxList<ExpressionSyntax> arguments, Token closeParen)
@@ -156,10 +164,13 @@ public sealed class CallExpressionSyntax : ExpressionSyntax
 
 public sealed class IntrinsicCallExpressionSyntax : ExpressionSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token AtToken { get; }
     public Token Name { get; }
+    [ExcludeFromCodeCoverage]
     public Token OpenParen { get; }
     public SeparatedSyntaxList<ExpressionSyntax> Arguments { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseParen { get; }
 
     public IntrinsicCallExpressionSyntax(Token atToken, Token name, Token openParen, SeparatedSyntaxList<ExpressionSyntax> arguments, Token closeParen)
@@ -175,11 +186,15 @@ public sealed class IntrinsicCallExpressionSyntax : ExpressionSyntax
 
 public sealed class IfExpressionSyntax : ExpressionSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token IfKeyword { get; }
+    [ExcludeFromCodeCoverage]
     public Token OpenParen { get; }
     public ExpressionSyntax Condition { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseParen { get; }
     public ExpressionSyntax ThenExpression { get; }
+    [ExcludeFromCodeCoverage]
     public Token ElseKeyword { get; }
     public ExpressionSyntax ElseExpression { get; }
 
@@ -200,6 +215,7 @@ public sealed class IfExpressionSyntax : ExpressionSyntax
 public sealed class CastExpressionSyntax : ExpressionSyntax
 {
     public ExpressionSyntax Expression { get; }
+    [ExcludeFromCodeCoverage]
     public Token AsKeyword { get; }
     public TypeSyntax TargetType { get; }
 
@@ -214,11 +230,14 @@ public sealed class CastExpressionSyntax : ExpressionSyntax
 
 public sealed class BitcastExpressionSyntax : ExpressionSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token BitcastKeyword { get; }
+    [ExcludeFromCodeCoverage]
     public Token OpenParen { get; }
     public TypeSyntax TargetType { get; }
     public Token Comma { get; }
     public ExpressionSyntax Value { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseParen { get; }
 
     public BitcastExpressionSyntax(Token bitcastKeyword, Token openParen, TypeSyntax targetType,
@@ -237,10 +256,12 @@ public sealed class BitcastExpressionSyntax : ExpressionSyntax
 public sealed class QueryExpressionSyntax : ExpressionSyntax
 {
     public Token Keyword { get; }
+    [ExcludeFromCodeCoverage]
     public Token OpenParen { get; }
     public TypeSyntax Subject { get; }
     public Token? Comma { get; }
     public ExpressionSyntax? MemorySpace { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseParen { get; }
 
     public QueryExpressionSyntax(Token keyword, Token openParen, TypeSyntax subject,
@@ -260,6 +281,7 @@ public sealed class QueryExpressionSyntax : ExpressionSyntax
 
 public sealed class EnumLiteralExpressionSyntax : ExpressionSyntax
 {
+    [ExcludeFromCodeCoverage]    
     public Token Dot { get; }
     public Token MemberName { get; }
 
@@ -273,8 +295,10 @@ public sealed class EnumLiteralExpressionSyntax : ExpressionSyntax
 
 public sealed class ArrayLiteralExpressionSyntax : ExpressionSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token OpenBracket { get; }
     public SeparatedSyntaxList<ArrayElementSyntax> Elements { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseBracket { get; }
 
     public ArrayLiteralExpressionSyntax(Token openBracket, SeparatedSyntaxList<ArrayElementSyntax> elements,
@@ -304,8 +328,10 @@ public sealed class ArrayElementSyntax : SyntaxNode
 public sealed class TypedStructLiteralExpressionSyntax : ExpressionSyntax
 {
     public ExpressionSyntax TypeName { get; }
+    [ExcludeFromCodeCoverage]
     public Token OpenBrace { get; }
     public SeparatedSyntaxList<FieldInitializerSyntax> Initializers { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseBrace { get; }
 
     public TypedStructLiteralExpressionSyntax(ExpressionSyntax typeName, Token openBrace,
@@ -323,6 +349,7 @@ public sealed class TypedStructLiteralExpressionSyntax : ExpressionSyntax
 public sealed class RangeExpressionSyntax : ExpressionSyntax
 {
     public ExpressionSyntax Start { get; }
+    [ExcludeFromCodeCoverage]    
     public Token DotDot { get; }
     public ExpressionSyntax End { get; }
 

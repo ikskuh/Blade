@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Blade;
 using Blade.Source;
 
@@ -7,6 +8,7 @@ public sealed class ParameterSyntax : SyntaxNode
 {
     public Token? StorageClassKeyword { get; }
     public Token Name { get; }
+    [ExcludeFromCodeCoverage]
     public Token Colon { get; }
     public TypeSyntax Type { get; }
 
@@ -43,6 +45,7 @@ public sealed class ReturnItemSyntax : SyntaxNode
 
 public sealed class FlagAnnotationSyntax : SyntaxNode
 {
+    [ExcludeFromCodeCoverage]
     public Token AtToken { get; }
     public Token Flag { get; }
 
@@ -56,9 +59,12 @@ public sealed class FlagAnnotationSyntax : SyntaxNode
 
 public sealed class AddressClauseSyntax : SyntaxNode
 {
+    [ExcludeFromCodeCoverage]
     public Token AtToken { get; }
+    [ExcludeFromCodeCoverage]
     public Token OpenParen { get; }
     public ExpressionSyntax Address { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseParen { get; }
 
     public AddressClauseSyntax(Token atToken, Token openParen, ExpressionSyntax address, Token closeParen)
@@ -73,9 +79,12 @@ public sealed class AddressClauseSyntax : SyntaxNode
 
 public sealed class AlignClauseSyntax : SyntaxNode
 {
+    [ExcludeFromCodeCoverage]
     public Token AlignKeyword { get; }
+    [ExcludeFromCodeCoverage]
     public Token OpenParen { get; }
     public ExpressionSyntax Alignment { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseParen { get; }
 
     public AlignClauseSyntax(Token alignKeyword, Token openParen, ExpressionSyntax alignment, Token closeParen)
@@ -90,6 +99,7 @@ public sealed class AlignClauseSyntax : SyntaxNode
 
 public sealed class ElseClauseSyntax : SyntaxNode
 {
+    [ExcludeFromCodeCoverage]
     public Token ElseKeyword { get; }
     public StatementSyntax Body { get; }
 
@@ -103,6 +113,7 @@ public sealed class ElseClauseSyntax : SyntaxNode
 
 public sealed class FieldInitializerSyntax : SyntaxNode
 {
+    [ExcludeFromCodeCoverage]
     public Token Dot { get; }
     public Token Name { get; }
     public Token EqualsToken { get; }
@@ -121,6 +132,7 @@ public sealed class FieldInitializerSyntax : SyntaxNode
 public sealed class StructFieldSyntax : SyntaxNode
 {
     public Token Name { get; }
+    [ExcludeFromCodeCoverage]
     public Token Colon { get; }
     public TypeSyntax Type { get; }
 
@@ -135,8 +147,10 @@ public sealed class StructFieldSyntax : SyntaxNode
 
 public sealed class AsmOutputBindingSyntax : SyntaxNode
 {
+    [ExcludeFromCodeCoverage]
     public Token Arrow { get; }
     public Token Name { get; }
+    [ExcludeFromCodeCoverage]
     public Token Colon { get; }
     public TypeSyntax Type { get; }
     public FlagAnnotationSyntax? FlagAnnotation { get; }
@@ -173,6 +187,7 @@ public sealed class EnumMemberSyntax : SyntaxNode
 
 public sealed class ForBindingSyntax : SyntaxNode
 {
+    [ExcludeFromCodeCoverage]
     public Token Arrow { get; }
     public Token? Ampersand { get; }
     public Token ItemName { get; }
@@ -193,6 +208,7 @@ public sealed class ForBindingSyntax : SyntaxNode
 public sealed class NamedArgumentSyntax : ExpressionSyntax
 {
     public Token Name { get; }
+    [ExcludeFromCodeCoverage]
     public Token EqualsToken { get; }
     public ExpressionSyntax Value { get; }
 

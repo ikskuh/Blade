@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Blade;
 using Blade.Source;
 
@@ -14,6 +15,7 @@ public abstract class TypeSyntax : SyntaxNode
 
 public sealed class PrimitiveTypeSyntax : TypeSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token Keyword { get; }
 
     public PrimitiveTypeSyntax(Token keyword)
@@ -25,9 +27,15 @@ public sealed class PrimitiveTypeSyntax : TypeSyntax
 
 public sealed class GenericWidthTypeSyntax : TypeSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token Keyword { get; }
+
+    [ExcludeFromCodeCoverage]
     public Token OpenParen { get; }
+
     public ExpressionSyntax Width { get; }
+
+    [ExcludeFromCodeCoverage]
     public Token CloseParen { get; }
 
     public GenericWidthTypeSyntax(Token keyword, Token openParen, ExpressionSyntax width, Token closeParen)
@@ -42,8 +50,10 @@ public sealed class GenericWidthTypeSyntax : TypeSyntax
 
 public sealed class ArrayTypeSyntax : TypeSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token OpenBracket { get; }
     public ExpressionSyntax Size { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseBracket { get; }
     public TypeSyntax ElementType { get; }
 
@@ -59,8 +69,10 @@ public sealed class ArrayTypeSyntax : TypeSyntax
 
 public sealed class PointerTypeSyntax : TypeSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token Star { get; }
     public Token? StorageClassKeyword { get; }
+    [ExcludeFromCodeCoverage]
     public Token? ConstKeyword { get; }
     public Token? VolatileKeyword { get; }
     public AlignClauseSyntax? AlignClause { get; }
@@ -81,8 +93,11 @@ public sealed class PointerTypeSyntax : TypeSyntax
 
 public sealed class MultiPointerTypeSyntax : TypeSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token OpenBracket { get; }
+    [ExcludeFromCodeCoverage]
     public Token Star { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseBracket { get; }
     public Token? StorageClassKeyword { get; }
     public Token? ConstKeyword { get; }
@@ -109,9 +124,12 @@ public sealed class MultiPointerTypeSyntax : TypeSyntax
 
 public sealed class StructTypeSyntax : TypeSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token StructKeyword { get; }
+    [ExcludeFromCodeCoverage]
     public Token OpenBrace { get; }
     public SeparatedSyntaxList<StructFieldSyntax> Fields { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseBrace { get; }
 
     public StructTypeSyntax(Token structKeyword, Token openBrace,
@@ -127,9 +145,12 @@ public sealed class StructTypeSyntax : TypeSyntax
 
 public sealed class UnionTypeSyntax : TypeSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token UnionKeyword { get; }
+    [ExcludeFromCodeCoverage]
     public Token OpenBrace { get; }
     public SeparatedSyntaxList<StructFieldSyntax> Fields { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseBrace { get; }
 
     public UnionTypeSyntax(Token unionKeyword, Token openBrace,
@@ -145,12 +166,17 @@ public sealed class UnionTypeSyntax : TypeSyntax
 
 public sealed class EnumTypeSyntax : TypeSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token EnumKeyword { get; }
+    [ExcludeFromCodeCoverage]
     public Token OpenParen { get; }
     public TypeSyntax BackingType { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseParen { get; }
+    [ExcludeFromCodeCoverage]
     public Token OpenBrace { get; }
     public SeparatedSyntaxList<EnumMemberSyntax> Members { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseBrace { get; }
 
     public EnumTypeSyntax(Token enumKeyword, Token openParen, TypeSyntax backingType, Token closeParen,
@@ -169,12 +195,18 @@ public sealed class EnumTypeSyntax : TypeSyntax
 
 public sealed class BitfieldTypeSyntax : TypeSyntax
 {
+    [ExcludeFromCodeCoverage]
+
     public Token BitfieldKeyword { get; }
+    [ExcludeFromCodeCoverage]
     public Token OpenParen { get; }
     public TypeSyntax BackingType { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseParen { get; }
+    [ExcludeFromCodeCoverage]
     public Token OpenBrace { get; }
     public SeparatedSyntaxList<StructFieldSyntax> Fields { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseBrace { get; }
 
     public BitfieldTypeSyntax(Token bitfieldKeyword, Token openParen, TypeSyntax backingType, Token closeParen,

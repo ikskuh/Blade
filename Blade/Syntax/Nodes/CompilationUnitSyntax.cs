@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Blade.Source;
 
 namespace Blade.Syntax.Nodes;
@@ -9,6 +10,8 @@ namespace Blade.Syntax.Nodes;
 public sealed class CompilationUnitSyntax : SyntaxNode
 {
     public IReadOnlyList<MemberSyntax> Members { get; }
+    
+    [ExcludeFromCodeCoverage]    
     public Token EndOfFileToken { get; }
 
     public CompilationUnitSyntax(IReadOnlyList<MemberSyntax> members, Token endOfFileToken)

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Blade;
 using Blade.Source;
 
@@ -14,8 +15,10 @@ public abstract class StatementSyntax : SyntaxNode
 
 public sealed class BlockStatementSyntax : StatementSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token OpenBrace { get; }
     public IReadOnlyList<StatementSyntax> Statements { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseBrace { get; }
 
     public BlockStatementSyntax(Token openBrace, IReadOnlyList<StatementSyntax> statements, Token closeBrace)
@@ -41,6 +44,7 @@ public sealed class VariableDeclarationStatementSyntax : StatementSyntax
 public sealed class ExpressionStatementSyntax : StatementSyntax
 {
     public ExpressionSyntax Expression { get; }
+    [ExcludeFromCodeCoverage]
     public Token Semicolon { get; }
 
     public ExpressionStatementSyntax(ExpressionSyntax expression, Token semicolon)
@@ -56,6 +60,7 @@ public sealed class AssignmentStatementSyntax : StatementSyntax
     public ExpressionSyntax Target { get; }
     public Token Operator { get; }
     public ExpressionSyntax Value { get; }
+    [ExcludeFromCodeCoverage]
     public Token Semicolon { get; }
 
     public AssignmentStatementSyntax(ExpressionSyntax target, Token @operator, ExpressionSyntax value, Token semicolon)
@@ -73,6 +78,7 @@ public sealed class MultiAssignmentStatementSyntax : StatementSyntax
     public SeparatedSyntaxList<ExpressionSyntax> Targets { get; }
     public Token Operator { get; }
     public ExpressionSyntax Value { get; }
+    [ExcludeFromCodeCoverage]
     public Token Semicolon { get; }
 
     public MultiAssignmentStatementSyntax(SeparatedSyntaxList<ExpressionSyntax> targets, Token @operator,
@@ -88,9 +94,12 @@ public sealed class MultiAssignmentStatementSyntax : StatementSyntax
 
 public sealed class IfStatementSyntax : StatementSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token IfKeyword { get; }
+    [ExcludeFromCodeCoverage]
     public Token OpenParen { get; }
     public ExpressionSyntax Condition { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseParen { get; }
     public StatementSyntax ThenBody { get; }
     public ElseClauseSyntax? ElseClause { get; }
@@ -112,9 +121,12 @@ public sealed class IfStatementSyntax : StatementSyntax
 
 public sealed class WhileStatementSyntax : StatementSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token WhileKeyword { get; }
+    [ExcludeFromCodeCoverage]
     public Token OpenParen { get; }
     public ExpressionSyntax Condition { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseParen { get; }
     public BlockStatementSyntax Body { get; }
 
@@ -131,9 +143,12 @@ public sealed class WhileStatementSyntax : StatementSyntax
 
 public sealed class ForStatementSyntax : StatementSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token ForKeyword { get; }
+    [ExcludeFromCodeCoverage]
     public Token OpenParen { get; }
     public ExpressionSyntax Iterable { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseParen { get; }
     public ForBindingSyntax? Binding { get; }
     public BlockStatementSyntax Body { get; }
@@ -153,6 +168,7 @@ public sealed class ForStatementSyntax : StatementSyntax
 
 public sealed class LoopStatementSyntax : StatementSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token LoopKeyword { get; }
     public BlockStatementSyntax Body { get; }
 
@@ -166,7 +182,9 @@ public sealed class LoopStatementSyntax : StatementSyntax
 
 public sealed class RepLoopStatementSyntax : StatementSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token RepKeyword { get; }
+    [ExcludeFromCodeCoverage]
     public Token LoopKeyword { get; }
     public BlockStatementSyntax Body { get; }
 
@@ -181,10 +199,14 @@ public sealed class RepLoopStatementSyntax : StatementSyntax
 
 public sealed class RepForStatementSyntax : StatementSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token RepKeyword { get; }
+    [ExcludeFromCodeCoverage]
     public Token ForKeyword { get; }
+    [ExcludeFromCodeCoverage]
     public Token OpenParen { get; }
     public ExpressionSyntax Iterable { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseParen { get; }
     public ForBindingSyntax? Binding { get; }
     public BlockStatementSyntax Body { get; }
@@ -206,6 +228,7 @@ public sealed class RepForStatementSyntax : StatementSyntax
 
 public sealed class NoirqStatementSyntax : StatementSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token NoirqKeyword { get; }
     public BlockStatementSyntax Body { get; }
 
@@ -219,10 +242,12 @@ public sealed class NoirqStatementSyntax : StatementSyntax
 
 public sealed class AssertStatementSyntax : StatementSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token AssertKeyword { get; }
     public ExpressionSyntax Condition { get; }
     public Token? CommaToken { get; }
     public Token? MessageLiteral { get; }
+    [ExcludeFromCodeCoverage]
     public Token Semicolon { get; }
 
     public AssertStatementSyntax(Token assertKeyword, ExpressionSyntax condition, Token? commaToken, Token? messageLiteral, Token semicolon)
@@ -238,8 +263,10 @@ public sealed class AssertStatementSyntax : StatementSyntax
 
 public sealed class ReturnStatementSyntax : StatementSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token ReturnKeyword { get; }
     public SeparatedSyntaxList<ExpressionSyntax>? Values { get; }
+    [ExcludeFromCodeCoverage]
     public Token Semicolon { get; }
 
     public ReturnStatementSyntax(Token returnKeyword, SeparatedSyntaxList<ExpressionSyntax>? values, Token semicolon)
@@ -253,7 +280,9 @@ public sealed class ReturnStatementSyntax : StatementSyntax
 
 public sealed class BreakStatementSyntax : StatementSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token BreakKeyword { get; }
+    [ExcludeFromCodeCoverage]
     public Token Semicolon { get; }
 
     public BreakStatementSyntax(Token breakKeyword, Token semicolon)
@@ -266,7 +295,9 @@ public sealed class BreakStatementSyntax : StatementSyntax
 
 public sealed class ContinueStatementSyntax : StatementSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token ContinueKeyword { get; }
+    [ExcludeFromCodeCoverage]
     public Token Semicolon { get; }
 
     public ContinueStatementSyntax(Token continueKeyword, Token semicolon)
@@ -279,7 +310,9 @@ public sealed class ContinueStatementSyntax : StatementSyntax
 
 public sealed class YieldStatementSyntax : StatementSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token YieldKeyword { get; }
+    [ExcludeFromCodeCoverage]
     public Token Semicolon { get; }
 
     public YieldStatementSyntax(Token yieldKeyword, Token semicolon)
@@ -292,11 +325,15 @@ public sealed class YieldStatementSyntax : StatementSyntax
 
 public sealed class YieldtoStatementSyntax : StatementSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token YieldtoKeyword { get; }
     public Token Target { get; }
+    [ExcludeFromCodeCoverage]
     public Token OpenParen { get; }
     public SeparatedSyntaxList<ExpressionSyntax> Arguments { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseParen { get; }
+    [ExcludeFromCodeCoverage]
     public Token Semicolon { get; }
 
     public YieldtoStatementSyntax(Token yieldtoKeyword, Token target, Token openParen,
@@ -314,12 +351,16 @@ public sealed class YieldtoStatementSyntax : StatementSyntax
 
 public sealed class AsmBlockStatementSyntax : StatementSyntax
 {
+    [ExcludeFromCodeCoverage]
     public Token AsmKeyword { get; }
     public Token? VolatileKeyword { get; }
+    [ExcludeFromCodeCoverage]
     public Token OpenBrace { get; }
     public string Body { get; }
+    [ExcludeFromCodeCoverage]
     public Token CloseBrace { get; }
     public AsmOutputBindingSyntax? OutputBinding { get; }
+    [ExcludeFromCodeCoverage]
     public Token Semicolon { get; }
     public AsmVolatility Volatility => VolatileKeyword is null ? AsmVolatility.NonVolatile : AsmVolatility.Volatile;
 
