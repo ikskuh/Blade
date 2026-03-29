@@ -16,7 +16,6 @@ public static class MirLowerer
     public static MirModule Lower(BoundProgram program)
     {
         Requires.NotNull(program);
-        VirtualMirValue.ResetDebugIds();
 
         List<StoragePlace> storagePlaces = CollectStoragePlaces(program);
         BackendSymbolNaming.AssignStorageNames(storagePlaces);
@@ -323,7 +322,6 @@ public static class MirLowerer
         private readonly Dictionary<Symbol, MirValueId> _currentValues = [];
         private BlockBuilder _currentBlock;
         private int _nextBlockId;
-        private int _nextValueId;
 
         public FunctionLoweringContext(
             FunctionSymbol symbol,
@@ -430,7 +428,7 @@ public static class MirLowerer
             return block;
         }
 
-        private MirValueId NextValue() => new(_nextValueId++);
+        private MirValueId NextValue() => new();
 
         private void EnsureWritableBlock()
         {
@@ -579,7 +577,7 @@ public static class MirLowerer
                 flagResult = NextValue();
                 flagResultType = BuiltinTypes.Bool;
                 MirFlag flag = asmStatement.FlagOutput == InlineAsmFlagOutput.C ? MirFlag.C : MirFlag.Z;
-                _flagValues[flagResult.Value] = flag;
+                _flagValues[flagResult] = flag;
             }
 
             _currentBlock.Instructions.Add(new MirInlineAsmInstruction(
@@ -595,7 +593,7 @@ public static class MirLowerer
             // Track flag results so that empty return statements in asm functions
             // can pick them up as implicit return values.
             if (flagResult is not null)
-                _pendingFlagReturns.Add(flagResult.Value);
+                _pendingFlagReturns.Add(flagResult);
         }
 
         private void LowerLoopTransfer(bool isBreak, TextSpan span)
@@ -690,7 +688,7 @@ public static class MirLowerer
 
             // Write results to targets (skip discards)
             if (targets.Count > 0 && targets[0] is not BoundDiscardAssignmentTarget && primaryResult is not null)
-                LowerAssignmentTargetWrite(targets[0], primaryResult.Value, multiAssignment.Span);
+                LowerAssignmentTargetWrite(targets[0], primaryResult, multiAssignment.Span);
 
             for (int i = 0; i < extraResults.Count; i++)
             {

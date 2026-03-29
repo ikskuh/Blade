@@ -122,7 +122,6 @@ public static class MirInliner
         private readonly MirFunction _source;
         private readonly List<MutableBlock> _blocks;
         private readonly Func<int> _nextInlineOrdinal;
-        private int _nextValueId;
 
         public MutableFunction(MirFunction source, Func<int> nextInlineOrdinal)
         {
@@ -131,7 +130,6 @@ public static class MirInliner
             _blocks = [];
             foreach (MirBlock block in source.Blocks)
                 _blocks.Add(new MutableBlock(block.Ref, block.Parameters, block.Instructions, block.Terminator));
-            _nextValueId = ComputeNextValueId(source);
         }
 
         public bool TryInline(
@@ -177,7 +175,12 @@ public static class MirInliner
 
             Dictionary<MirBlockRef, MirBlockRef> labelMap = [];
             foreach (MirBlock calleeBlock in callee.Blocks)
-                labelMap[calleeBlock.Ref] = new MirBlockRef($"inl_{inlineOrdinal}_{calleeBlock.Label}");
+            {
+                labelMap[calleeBlock.Ref] = new MirBlockRef(
+                    calleeBlock.Ref.DebugName is string debugName
+                        ? $"inl_{inlineOrdinal}_{debugName}"
+                        : $"inl_{inlineOrdinal}");
+            }
 
             List<MutableBlock> clonedBlocks = CloneCalleeBlocks(call, callee, labelMap, afterBlock.Label);
             List<MirValueId> entryArguments = BuildEntryArguments(call, callee.Blocks[0], callerBlock, call.Span);
@@ -241,21 +244,21 @@ public static class MirInliner
 
             return rewritten switch
             {
-                MirConstantInstruction constant => new MirConstantInstruction(newResult!.Value, constant.ResultType!, constant.Value, constant.Span),
-                MirLoadSymbolInstruction load => new MirLoadSymbolInstruction(newResult!.Value, load.ResultType!, load.Symbol, load.Span),
-                MirLoadPlaceInstruction loadPlace => new MirLoadPlaceInstruction(newResult!.Value, loadPlace.ResultType!, loadPlace.Place, loadPlace.Span),
-                MirCopyInstruction copy => new MirCopyInstruction(newResult!.Value, copy.ResultType!, copy.Source, copy.Span),
-                MirUnaryInstruction unary => new MirUnaryInstruction(newResult!.Value, unary.ResultType!, unary.Operator, unary.Operand, unary.Span),
-                MirBinaryInstruction binary => new MirBinaryInstruction(newResult!.Value, binary.ResultType!, binary.Operator, binary.Left, binary.Right, binary.Span),
-                MirConvertInstruction convert => new MirConvertInstruction(newResult!.Value, convert.ResultType!, convert.Operand, convert.Span),
-                MirRangeInstruction range => new MirRangeInstruction(newResult!.Value, range.ResultType!, range.Start, range.End, range.Span),
-                MirStructLiteralInstruction structLiteral => new MirStructLiteralInstruction(newResult!.Value, (StructTypeSymbol)structLiteral.ResultType!, structLiteral.Fields, structLiteral.Span),
-                MirLoadMemberInstruction loadMember => new MirLoadMemberInstruction(newResult!.Value, loadMember.ResultType!, loadMember.Receiver, loadMember.Member, loadMember.Span),
-                MirLoadIndexInstruction loadIndex => new MirLoadIndexInstruction(newResult!.Value, loadIndex.ResultType!, loadIndex.Indexed, loadIndex.Index, loadIndex.StorageClass, loadIndex.HasSideEffects, loadIndex.Span),
-                MirLoadDerefInstruction loadDeref => new MirLoadDerefInstruction(newResult!.Value, loadDeref.ResultType!, loadDeref.Address, loadDeref.StorageClass, loadDeref.HasSideEffects, loadDeref.Span),
-                MirBitfieldExtractInstruction bitfieldExtract => new MirBitfieldExtractInstruction(newResult!.Value, bitfieldExtract.ResultType!, bitfieldExtract.Receiver, bitfieldExtract.Member, bitfieldExtract.Span),
-                MirBitfieldInsertInstruction bitfieldInsert => new MirBitfieldInsertInstruction(newResult!.Value, bitfieldInsert.ResultType!, bitfieldInsert.Receiver, bitfieldInsert.Value, bitfieldInsert.Member, bitfieldInsert.Span),
-                MirInsertMemberInstruction insertMember => new MirInsertMemberInstruction(newResult!.Value, insertMember.ResultType!, insertMember.Receiver, insertMember.Value, insertMember.Member, insertMember.Span),
+                MirConstantInstruction constant => new MirConstantInstruction(newResult!, constant.ResultType!, constant.Value, constant.Span),
+                MirLoadSymbolInstruction load => new MirLoadSymbolInstruction(newResult!, load.ResultType!, load.Symbol, load.Span),
+                MirLoadPlaceInstruction loadPlace => new MirLoadPlaceInstruction(newResult!, loadPlace.ResultType!, loadPlace.Place, loadPlace.Span),
+                MirCopyInstruction copy => new MirCopyInstruction(newResult!, copy.ResultType!, copy.Source, copy.Span),
+                MirUnaryInstruction unary => new MirUnaryInstruction(newResult!, unary.ResultType!, unary.Operator, unary.Operand, unary.Span),
+                MirBinaryInstruction binary => new MirBinaryInstruction(newResult!, binary.ResultType!, binary.Operator, binary.Left, binary.Right, binary.Span),
+                MirConvertInstruction convert => new MirConvertInstruction(newResult!, convert.ResultType!, convert.Operand, convert.Span),
+                MirRangeInstruction range => new MirRangeInstruction(newResult!, range.ResultType!, range.Start, range.End, range.Span),
+                MirStructLiteralInstruction structLiteral => new MirStructLiteralInstruction(newResult!, (StructTypeSymbol)structLiteral.ResultType!, structLiteral.Fields, structLiteral.Span),
+                MirLoadMemberInstruction loadMember => new MirLoadMemberInstruction(newResult!, loadMember.ResultType!, loadMember.Receiver, loadMember.Member, loadMember.Span),
+                MirLoadIndexInstruction loadIndex => new MirLoadIndexInstruction(newResult!, loadIndex.ResultType!, loadIndex.Indexed, loadIndex.Index, loadIndex.StorageClass, loadIndex.HasSideEffects, loadIndex.Span),
+                MirLoadDerefInstruction loadDeref => new MirLoadDerefInstruction(newResult!, loadDeref.ResultType!, loadDeref.Address, loadDeref.StorageClass, loadDeref.HasSideEffects, loadDeref.Span),
+                MirBitfieldExtractInstruction bitfieldExtract => new MirBitfieldExtractInstruction(newResult!, bitfieldExtract.ResultType!, bitfieldExtract.Receiver, bitfieldExtract.Member, bitfieldExtract.Span),
+                MirBitfieldInsertInstruction bitfieldInsert => new MirBitfieldInsertInstruction(newResult!, bitfieldInsert.ResultType!, bitfieldInsert.Receiver, bitfieldInsert.Value, bitfieldInsert.Member, bitfieldInsert.Span),
+                MirInsertMemberInstruction insertMember => new MirInsertMemberInstruction(newResult!, insertMember.ResultType!, insertMember.Receiver, insertMember.Value, insertMember.Member, insertMember.Span),
                 MirCallInstruction call => CloneMirCallInstruction(call, newResult, valueMap),
                 MirIntrinsicCallInstruction intrinsic => new MirIntrinsicCallInstruction(newResult, intrinsic.ResultType, intrinsic.Mnemonic, intrinsic.Arguments, intrinsic.Span),
                 MirStoreIndexInstruction storeIndex => new MirStoreIndexInstruction(storeIndex.ResultType, storeIndex.Indexed, storeIndex.Index, storeIndex.Value, storeIndex.StorageClass, storeIndex.Span),
@@ -385,7 +388,7 @@ public static class MirInliner
             return arguments;
         }
 
-        private MirValueId NextValue() => new(_nextValueId++);
+        private static MirValueId NextValue() => new();
 
         private MirCallInstruction CloneMirCallInstruction(
             MirCallInstruction call,
@@ -405,33 +408,6 @@ public static class MirInliner
             }
 
             return new MirCallInstruction(newResult, call.ResultType, call.Function, call.Arguments, call.Span, clonedExtra);
-        }
-
-        private static int ComputeNextValueId(MirFunction function)
-        {
-            int maxId = -1;
-            foreach (MirBlock block in function.Blocks)
-            {
-                foreach (MirBlockParameter parameter in block.Parameters)
-                    maxId = parameter.Value.DebugId > maxId ? parameter.Value.DebugId : maxId;
-                foreach (MirInstruction instruction in block.Instructions)
-                {
-                    if (instruction.Result is MirValueId result && result.DebugId > maxId)
-                        maxId = result.DebugId;
-                    if (instruction is MirCallInstruction callInstr)
-                    {
-                        foreach ((MirValueId extraVal, _) in callInstr.ExtraResults)
-                            maxId = extraVal.DebugId > maxId ? extraVal.DebugId : maxId;
-                    }
-                    foreach (MirValueId use in instruction.Uses)
-                        maxId = use.DebugId > maxId ? use.DebugId : maxId;
-                }
-
-                foreach (MirValueId use in block.Terminator.Uses)
-                    maxId = use.DebugId > maxId ? use.DebugId : maxId;
-            }
-
-            return maxId + 1;
         }
 
         public MirFunction ToImmutable()

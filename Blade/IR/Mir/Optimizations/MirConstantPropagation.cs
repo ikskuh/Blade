@@ -24,20 +24,20 @@ public sealed class MirConstantPropagation : IMirOptimization
                     MirInstruction rewritten = instruction;
                     if (instruction is MirCopyInstruction copy && TryGetConstant(constants, copy.Source, out object? copyConstant))
                     {
-                        rewritten = new MirConstantInstruction(copy.Result!.Value, copy.ResultType!, copyConstant, copy.Span);
+                        rewritten = new MirConstantInstruction(copy.Result!, copy.ResultType!, copyConstant, copy.Span);
                     }
                     else if (instruction is MirUnaryInstruction unary
                         && TryGetConstant(constants, unary.Operand, out object? unaryOperand)
                         && TryFoldUnary(unary.Operator, unaryOperand, out object? unaryResult))
                     {
-                        rewritten = new MirConstantInstruction(unary.Result!.Value, unary.ResultType!, unaryResult, unary.Span);
+                        rewritten = new MirConstantInstruction(unary.Result!, unary.ResultType!, unaryResult, unary.Span);
                     }
                     else if (instruction is MirBinaryInstruction binary
                         && TryGetConstant(constants, binary.Left, out object? left)
                         && TryGetConstant(constants, binary.Right, out object? right)
                         && TryFoldBinary(binary.Operator, left, right, out object? binaryResult))
                     {
-                        rewritten = new MirConstantInstruction(binary.Result!.Value, binary.ResultType!, binaryResult, binary.Span);
+                        rewritten = new MirConstantInstruction(binary.Result!, binary.ResultType!, binaryResult, binary.Span);
                     }
                     else if (instruction is MirConvertInstruction convert
                         && convert.Result is MirValueId convertResult

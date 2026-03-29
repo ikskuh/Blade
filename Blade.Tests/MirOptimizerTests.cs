@@ -16,15 +16,15 @@ public class MirOptimizerTests
     {
         TextSpan span = new(0, 0);
 
-        MirValueId intOne = new(1);
-        MirValueId intTwo = new(2);
-        MirValueId intSeven = new(3);
-        MirValueId intEight = new(4);
-        MirValueId boolTrue = new(5);
-        MirValueId boolFalse = new(6);
-        MirValueId stringLeft = new(7);
-        MirValueId stringRight = new(8);
-        MirValueId zero = new(30);
+        MirValueId intOne = MirValue(1);
+        MirValueId intTwo = MirValue(2);
+        MirValueId intSeven = MirValue(3);
+        MirValueId intEight = MirValue(4);
+        MirValueId boolTrue = MirValue(5);
+        MirValueId boolFalse = MirValue(6);
+        MirValueId stringLeft = MirValue(7);
+        MirValueId stringRight = MirValue(8);
+        MirValueId zero = MirValue(30);
 
         List<MirInstruction> instructions =
         [
@@ -37,83 +37,83 @@ public class MirOptimizerTests
             new MirConstantInstruction(boolFalse, BuiltinTypes.Bool, false, span),
             new MirConstantInstruction(stringLeft, BuiltinTypes.String, "left", span),
             new MirConstantInstruction(stringRight, BuiltinTypes.String, "right", span),
-            new MirUnaryInstruction(new MirValueId(10), BuiltinTypes.Bool, BoundUnaryOperatorKind.LogicalNot, boolFalse, span),
-            new MirUnaryInstruction(new MirValueId(11), BuiltinTypes.I32, BoundUnaryOperatorKind.Negation, intOne, span),
-            new MirUnaryInstruction(new MirValueId(12), BuiltinTypes.U32, BoundUnaryOperatorKind.BitwiseNot, intOne, span),
-            new MirUnaryInstruction(new MirValueId(13), BuiltinTypes.U32, BoundUnaryOperatorKind.UnaryPlus, intTwo, span),
-            new MirUnaryInstruction(new MirValueId(14), BuiltinTypes.Bool, BoundUnaryOperatorKind.LogicalNot, stringLeft, span),
-            new MirBinaryInstruction(new MirValueId(20), BuiltinTypes.U32, BoundBinaryOperatorKind.Add, intOne, intTwo, span),
-            new MirBinaryInstruction(new MirValueId(21), BuiltinTypes.U32, BoundBinaryOperatorKind.Subtract, intTwo, intOne, span),
-            new MirBinaryInstruction(new MirValueId(22), BuiltinTypes.U32, BoundBinaryOperatorKind.Multiply, intTwo, intTwo, span),
-            new MirBinaryInstruction(new MirValueId(23), BuiltinTypes.U32, BoundBinaryOperatorKind.Divide, intEight, intTwo, span),
-            new MirBinaryInstruction(new MirValueId(24), BuiltinTypes.U32, BoundBinaryOperatorKind.Divide, intEight, zero, span),
-            new MirBinaryInstruction(new MirValueId(25), BuiltinTypes.U32, BoundBinaryOperatorKind.Modulo, intSeven, intTwo, span),
-            new MirBinaryInstruction(new MirValueId(26), BuiltinTypes.U32, BoundBinaryOperatorKind.Modulo, intSeven, zero, span),
-            new MirBinaryInstruction(new MirValueId(27), BuiltinTypes.U32, BoundBinaryOperatorKind.BitwiseAnd, intSeven, intTwo, span),
-            new MirBinaryInstruction(new MirValueId(28), BuiltinTypes.U32, BoundBinaryOperatorKind.BitwiseOr, intOne, intTwo, span),
-            new MirBinaryInstruction(new MirValueId(29), BuiltinTypes.U32, BoundBinaryOperatorKind.BitwiseXor, intSeven, intTwo, span),
-            new MirBinaryInstruction(new MirValueId(31), BuiltinTypes.U32, BoundBinaryOperatorKind.ShiftLeft, intOne, intTwo, span),
-            new MirBinaryInstruction(new MirValueId(32), BuiltinTypes.U32, BoundBinaryOperatorKind.ShiftRight, intEight, intOne, span),
-            new MirBinaryInstruction(new MirValueId(33), BuiltinTypes.U32, BoundBinaryOperatorKind.ArithmeticShiftLeft, intOne, intTwo, span),
-            new MirBinaryInstruction(new MirValueId(34), BuiltinTypes.U32, BoundBinaryOperatorKind.ArithmeticShiftRight, intEight, intOne, span),
-            new MirBinaryInstruction(new MirValueId(35), BuiltinTypes.U32, BoundBinaryOperatorKind.RotateLeft, intOne, intTwo, span),
-            new MirBinaryInstruction(new MirValueId(36), BuiltinTypes.U32, BoundBinaryOperatorKind.RotateRight, intEight, intOne, span),
-            new MirBinaryInstruction(new MirValueId(37), BuiltinTypes.Bool, BoundBinaryOperatorKind.Equals, intOne, intOne, span),
-            new MirBinaryInstruction(new MirValueId(38), BuiltinTypes.Bool, BoundBinaryOperatorKind.NotEquals, intOne, intTwo, span),
-            new MirBinaryInstruction(new MirValueId(39), BuiltinTypes.Bool, BoundBinaryOperatorKind.Less, intOne, intTwo, span),
-            new MirBinaryInstruction(new MirValueId(40), BuiltinTypes.Bool, BoundBinaryOperatorKind.LessOrEqual, intOne, intTwo, span),
-            new MirBinaryInstruction(new MirValueId(41), BuiltinTypes.Bool, BoundBinaryOperatorKind.Greater, intTwo, intOne, span),
-            new MirBinaryInstruction(new MirValueId(42), BuiltinTypes.Bool, BoundBinaryOperatorKind.GreaterOrEqual, intTwo, intOne, span),
-            new MirBinaryInstruction(new MirValueId(43), BuiltinTypes.Bool, BoundBinaryOperatorKind.Equals, boolTrue, boolFalse, span),
-            new MirBinaryInstruction(new MirValueId(44), BuiltinTypes.Bool, BoundBinaryOperatorKind.NotEquals, boolTrue, boolFalse, span),
-            new MirBinaryInstruction(new MirValueId(45), BuiltinTypes.Bool, BoundBinaryOperatorKind.LogicalAnd, boolTrue, boolFalse, span),
-            new MirBinaryInstruction(new MirValueId(46), BuiltinTypes.Bool, BoundBinaryOperatorKind.LogicalOr, boolTrue, boolFalse, span),
-            new MirBinaryInstruction(new MirValueId(47), BuiltinTypes.Bool, BoundBinaryOperatorKind.LogicalAnd, stringLeft, stringRight, span),
-            new MirBinaryInstruction(new MirValueId(48), BuiltinTypes.Bool, BoundBinaryOperatorKind.LogicalAnd, intOne, intTwo, span),
-            new MirBinaryInstruction(new MirValueId(49), BuiltinTypes.Bool, BoundBinaryOperatorKind.Add, boolTrue, boolFalse, span),
+            new MirUnaryInstruction(MirValue(10), BuiltinTypes.Bool, BoundUnaryOperatorKind.LogicalNot, boolFalse, span),
+            new MirUnaryInstruction(MirValue(11), BuiltinTypes.I32, BoundUnaryOperatorKind.Negation, intOne, span),
+            new MirUnaryInstruction(MirValue(12), BuiltinTypes.U32, BoundUnaryOperatorKind.BitwiseNot, intOne, span),
+            new MirUnaryInstruction(MirValue(13), BuiltinTypes.U32, BoundUnaryOperatorKind.UnaryPlus, intTwo, span),
+            new MirUnaryInstruction(MirValue(14), BuiltinTypes.Bool, BoundUnaryOperatorKind.LogicalNot, stringLeft, span),
+            new MirBinaryInstruction(MirValue(20), BuiltinTypes.U32, BoundBinaryOperatorKind.Add, intOne, intTwo, span),
+            new MirBinaryInstruction(MirValue(21), BuiltinTypes.U32, BoundBinaryOperatorKind.Subtract, intTwo, intOne, span),
+            new MirBinaryInstruction(MirValue(22), BuiltinTypes.U32, BoundBinaryOperatorKind.Multiply, intTwo, intTwo, span),
+            new MirBinaryInstruction(MirValue(23), BuiltinTypes.U32, BoundBinaryOperatorKind.Divide, intEight, intTwo, span),
+            new MirBinaryInstruction(MirValue(24), BuiltinTypes.U32, BoundBinaryOperatorKind.Divide, intEight, zero, span),
+            new MirBinaryInstruction(MirValue(25), BuiltinTypes.U32, BoundBinaryOperatorKind.Modulo, intSeven, intTwo, span),
+            new MirBinaryInstruction(MirValue(26), BuiltinTypes.U32, BoundBinaryOperatorKind.Modulo, intSeven, zero, span),
+            new MirBinaryInstruction(MirValue(27), BuiltinTypes.U32, BoundBinaryOperatorKind.BitwiseAnd, intSeven, intTwo, span),
+            new MirBinaryInstruction(MirValue(28), BuiltinTypes.U32, BoundBinaryOperatorKind.BitwiseOr, intOne, intTwo, span),
+            new MirBinaryInstruction(MirValue(29), BuiltinTypes.U32, BoundBinaryOperatorKind.BitwiseXor, intSeven, intTwo, span),
+            new MirBinaryInstruction(MirValue(31), BuiltinTypes.U32, BoundBinaryOperatorKind.ShiftLeft, intOne, intTwo, span),
+            new MirBinaryInstruction(MirValue(32), BuiltinTypes.U32, BoundBinaryOperatorKind.ShiftRight, intEight, intOne, span),
+            new MirBinaryInstruction(MirValue(33), BuiltinTypes.U32, BoundBinaryOperatorKind.ArithmeticShiftLeft, intOne, intTwo, span),
+            new MirBinaryInstruction(MirValue(34), BuiltinTypes.U32, BoundBinaryOperatorKind.ArithmeticShiftRight, intEight, intOne, span),
+            new MirBinaryInstruction(MirValue(35), BuiltinTypes.U32, BoundBinaryOperatorKind.RotateLeft, intOne, intTwo, span),
+            new MirBinaryInstruction(MirValue(36), BuiltinTypes.U32, BoundBinaryOperatorKind.RotateRight, intEight, intOne, span),
+            new MirBinaryInstruction(MirValue(37), BuiltinTypes.Bool, BoundBinaryOperatorKind.Equals, intOne, intOne, span),
+            new MirBinaryInstruction(MirValue(38), BuiltinTypes.Bool, BoundBinaryOperatorKind.NotEquals, intOne, intTwo, span),
+            new MirBinaryInstruction(MirValue(39), BuiltinTypes.Bool, BoundBinaryOperatorKind.Less, intOne, intTwo, span),
+            new MirBinaryInstruction(MirValue(40), BuiltinTypes.Bool, BoundBinaryOperatorKind.LessOrEqual, intOne, intTwo, span),
+            new MirBinaryInstruction(MirValue(41), BuiltinTypes.Bool, BoundBinaryOperatorKind.Greater, intTwo, intOne, span),
+            new MirBinaryInstruction(MirValue(42), BuiltinTypes.Bool, BoundBinaryOperatorKind.GreaterOrEqual, intTwo, intOne, span),
+            new MirBinaryInstruction(MirValue(43), BuiltinTypes.Bool, BoundBinaryOperatorKind.Equals, boolTrue, boolFalse, span),
+            new MirBinaryInstruction(MirValue(44), BuiltinTypes.Bool, BoundBinaryOperatorKind.NotEquals, boolTrue, boolFalse, span),
+            new MirBinaryInstruction(MirValue(45), BuiltinTypes.Bool, BoundBinaryOperatorKind.LogicalAnd, boolTrue, boolFalse, span),
+            new MirBinaryInstruction(MirValue(46), BuiltinTypes.Bool, BoundBinaryOperatorKind.LogicalOr, boolTrue, boolFalse, span),
+            new MirBinaryInstruction(MirValue(47), BuiltinTypes.Bool, BoundBinaryOperatorKind.LogicalAnd, stringLeft, stringRight, span),
+            new MirBinaryInstruction(MirValue(48), BuiltinTypes.Bool, BoundBinaryOperatorKind.LogicalAnd, intOne, intTwo, span),
+            new MirBinaryInstruction(MirValue(49), BuiltinTypes.Bool, BoundBinaryOperatorKind.Add, boolTrue, boolFalse, span),
         ];
 
-        MirBlock block = new("bb0", [], instructions, new MirReturnTerminator([], span));
+        MirBlock block = new(MirBlockRef("bb0"), [], instructions, new MirReturnTerminator([], span));
         MirFunction function = CreateMirFunction("test", isEntryPoint: true, FunctionKind.Default, [], [block]);
         MirModule optimized = MirOptimizer.Optimize(new MirModule([function]), maxIterations: 1, enabledOptimizations: [OptimizationRegistry.GetMirOptimization("const-prop")!]);
 
         IReadOnlyList<MirInstruction> rewritten = optimized.Functions[0].Blocks[0].Instructions;
-        Dictionary<int, object?> constants = rewritten
+        Dictionary<MirValueId, object?> constants = rewritten
             .OfType<MirConstantInstruction>()
-            .ToDictionary(instruction => instruction.Result!.Value.DebugId, instruction => instruction.Value);
+            .ToDictionary(instruction => instruction.Result!, instruction => instruction.Value);
 
         Assert.That(rewritten[13], Is.Not.TypeOf<MirConstantInstruction>());
         Assert.That(rewritten[^1], Is.Not.TypeOf<MirConstantInstruction>());
-        Assert.That(constants[10], Is.EqualTo(true));
-        Assert.That(constants[11], Is.EqualTo(-1L));
-        Assert.That(constants[12], Is.EqualTo(~1L));
-        Assert.That(constants[13], Is.EqualTo(2L));
-        Assert.That(constants[20], Is.EqualTo(3L));
-        Assert.That(constants[21], Is.EqualTo(1L));
-        Assert.That(constants[22], Is.EqualTo(4L));
-        Assert.That(constants[23], Is.EqualTo(4L));
-        Assert.That(constants[24], Is.EqualTo(8L));
-        Assert.That(constants[25], Is.EqualTo(1L));
-        Assert.That(constants[26], Is.EqualTo(7L));
-        Assert.That(constants[27], Is.EqualTo(2L));
-        Assert.That(constants[28], Is.EqualTo(3L));
-        Assert.That(constants[29], Is.EqualTo(5L));
-        Assert.That(constants[31], Is.EqualTo(4L));
-        Assert.That(constants[32], Is.EqualTo(4L));
-        Assert.That(constants[33], Is.EqualTo(4L));
-        Assert.That(constants[34], Is.EqualTo(4L));
-        Assert.That(constants[35], Is.EqualTo(4L));
-        Assert.That(constants[36], Is.EqualTo(4L));
-        Assert.That(constants[37], Is.EqualTo(true));
-        Assert.That(constants[38], Is.EqualTo(true));
-        Assert.That(constants[39], Is.EqualTo(true));
-        Assert.That(constants[40], Is.EqualTo(true));
-        Assert.That(constants[41], Is.EqualTo(true));
-        Assert.That(constants[42], Is.EqualTo(true));
-        Assert.That(constants[43], Is.EqualTo(false));
-        Assert.That(constants[44], Is.EqualTo(true));
-        Assert.That(constants[45], Is.EqualTo(false));
-        Assert.That(constants[46], Is.EqualTo(true));
-        Assert.That(constants[48], Is.EqualTo(true));
+        Assert.That(constants[MirValue(10)], Is.EqualTo(true));
+        Assert.That(constants[MirValue(11)], Is.EqualTo(-1L));
+        Assert.That(constants[MirValue(12)], Is.EqualTo(~1L));
+        Assert.That(constants[MirValue(13)], Is.EqualTo(2L));
+        Assert.That(constants[MirValue(20)], Is.EqualTo(3L));
+        Assert.That(constants[MirValue(21)], Is.EqualTo(1L));
+        Assert.That(constants[MirValue(22)], Is.EqualTo(4L));
+        Assert.That(constants[MirValue(23)], Is.EqualTo(4L));
+        Assert.That(constants[MirValue(24)], Is.EqualTo(8L));
+        Assert.That(constants[MirValue(25)], Is.EqualTo(1L));
+        Assert.That(constants[MirValue(26)], Is.EqualTo(7L));
+        Assert.That(constants[MirValue(27)], Is.EqualTo(2L));
+        Assert.That(constants[MirValue(28)], Is.EqualTo(3L));
+        Assert.That(constants[MirValue(29)], Is.EqualTo(5L));
+        Assert.That(constants[MirValue(31)], Is.EqualTo(4L));
+        Assert.That(constants[MirValue(32)], Is.EqualTo(4L));
+        Assert.That(constants[MirValue(33)], Is.EqualTo(4L));
+        Assert.That(constants[MirValue(34)], Is.EqualTo(4L));
+        Assert.That(constants[MirValue(35)], Is.EqualTo(4L));
+        Assert.That(constants[MirValue(36)], Is.EqualTo(4L));
+        Assert.That(constants[MirValue(37)], Is.EqualTo(true));
+        Assert.That(constants[MirValue(38)], Is.EqualTo(true));
+        Assert.That(constants[MirValue(39)], Is.EqualTo(true));
+        Assert.That(constants[MirValue(40)], Is.EqualTo(true));
+        Assert.That(constants[MirValue(41)], Is.EqualTo(true));
+        Assert.That(constants[MirValue(42)], Is.EqualTo(true));
+        Assert.That(constants[MirValue(43)], Is.EqualTo(false));
+        Assert.That(constants[MirValue(44)], Is.EqualTo(true));
+        Assert.That(constants[MirValue(45)], Is.EqualTo(false));
+        Assert.That(constants[MirValue(46)], Is.EqualTo(true));
+        Assert.That(constants[MirValue(48)], Is.EqualTo(true));
     }
 }

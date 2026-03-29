@@ -45,15 +45,6 @@ public sealed class LirFunction
 public sealed class LirBlock
 {
     public LirBlock(
-        string label,
-        IReadOnlyList<LirBlockParameter> parameters,
-        IReadOnlyList<LirInstruction> instructions,
-        LirTerminator terminator)
-        : this(new LirBlockRef(label), parameters, instructions, terminator, label)
-    {
-    }
-
-    public LirBlock(
         LirBlockRef blockRef,
         IReadOnlyList<LirBlockParameter> parameters,
         IReadOnlyList<LirInstruction> instructions,

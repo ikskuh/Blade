@@ -62,15 +62,6 @@ public sealed class MirFunction
 public sealed class MirBlock
 {
     public MirBlock(
-        string label,
-        IReadOnlyList<MirBlockParameter> parameters,
-        IReadOnlyList<MirInstruction> instructions,
-        MirTerminator terminator)
-        : this(new MirBlockRef(label), parameters, instructions, terminator, label)
-    {
-    }
-
-    public MirBlock(
         MirBlockRef blockRef,
         IReadOnlyList<MirBlockParameter> parameters,
         IReadOnlyList<MirInstruction> instructions,
@@ -186,7 +177,7 @@ public sealed class MirCopyInstruction : MirInstruction
     public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
     {
         MirValueId source = mapping.TryGetValue(Source, out MirValueId mapped) ? mapped : Source;
-        return source == Source ? this : new MirCopyInstruction(Result!.Value, ResultType!, source, Span);
+        return source == Source ? this : new MirCopyInstruction(Result!, ResultType!, source, Span);
     }
 }
 
@@ -207,7 +198,7 @@ public sealed class MirUnaryInstruction : MirInstruction
     public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
     {
         MirValueId operand = mapping.TryGetValue(Operand, out MirValueId mapped) ? mapped : Operand;
-        return operand == Operand ? this : new MirUnaryInstruction(Result!.Value, ResultType!, Operator, operand, Span);
+        return operand == Operand ? this : new MirUnaryInstruction(Result!, ResultType!, Operator, operand, Span);
     }
 }
 
@@ -239,7 +230,7 @@ public sealed class MirBinaryInstruction : MirInstruction
         MirValueId right = mapping.TryGetValue(Right, out MirValueId mappedRight) ? mappedRight : Right;
         if (left == Left && right == Right)
             return this;
-        return new MirBinaryInstruction(Result!.Value, ResultType!, Operator, left, right, Span);
+        return new MirBinaryInstruction(Result!, ResultType!, Operator, left, right, Span);
     }
 }
 
@@ -258,7 +249,7 @@ public sealed class MirConvertInstruction : MirInstruction
     public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
     {
         MirValueId operand = mapping.TryGetValue(Operand, out MirValueId mapped) ? mapped : Operand;
-        return operand == Operand ? this : new MirConvertInstruction(Result!.Value, ResultType!, operand, Span);
+        return operand == Operand ? this : new MirConvertInstruction(Result!, ResultType!, operand, Span);
     }
 }
 
@@ -282,7 +273,7 @@ public sealed class MirRangeInstruction : MirInstruction
         MirValueId end = mapping.TryGetValue(End, out MirValueId mappedEnd) ? mappedEnd : End;
         return start == Start && end == End
             ? this
-            : new MirRangeInstruction(Result!.Value, ResultType!, start, end, Span);
+            : new MirRangeInstruction(Result!, ResultType!, start, end, Span);
     }
 }
 
@@ -334,7 +325,7 @@ public sealed class MirStructLiteralInstruction : MirInstruction
 
         return rewritten is null
             ? this
-            : new MirStructLiteralInstruction(Result!.Value, (StructTypeSymbol)ResultType!, rewritten, Span);
+            : new MirStructLiteralInstruction(Result!, (StructTypeSymbol)ResultType!, rewritten, Span);
     }
 }
 
@@ -357,7 +348,7 @@ public sealed class MirLoadMemberInstruction : MirInstruction
         MirValueId receiver = mapping.TryGetValue(Receiver, out MirValueId mapped) ? mapped : Receiver;
         return receiver == Receiver
             ? this
-            : new MirLoadMemberInstruction(Result!.Value, ResultType!, receiver, Member, Span);
+            : new MirLoadMemberInstruction(Result!, ResultType!, receiver, Member, Span);
     }
 }
 
@@ -390,7 +381,7 @@ public sealed class MirLoadIndexInstruction : MirInstruction
         MirValueId index = mapping.TryGetValue(Index, out MirValueId mappedIndex) ? mappedIndex : Index;
         return indexed == Indexed && index == Index
             ? this
-            : new MirLoadIndexInstruction(Result!.Value, ResultType!, indexed, index, StorageClass, HasSideEffects, Span);
+            : new MirLoadIndexInstruction(Result!, ResultType!, indexed, index, StorageClass, HasSideEffects, Span);
     }
 }
 
@@ -419,7 +410,7 @@ public sealed class MirLoadDerefInstruction : MirInstruction
         MirValueId address = mapping.TryGetValue(Address, out MirValueId mapped) ? mapped : Address;
         return address == Address
             ? this
-            : new MirLoadDerefInstruction(Result!.Value, ResultType!, address, StorageClass, HasSideEffects, Span);
+            : new MirLoadDerefInstruction(Result!, ResultType!, address, StorageClass, HasSideEffects, Span);
     }
 }
 
@@ -442,7 +433,7 @@ public sealed class MirBitfieldExtractInstruction : MirInstruction
         MirValueId receiver = mapping.TryGetValue(Receiver, out MirValueId mapped) ? mapped : Receiver;
         return receiver == Receiver
             ? this
-            : new MirBitfieldExtractInstruction(Result!.Value, ResultType!, receiver, Member, Span);
+            : new MirBitfieldExtractInstruction(Result!, ResultType!, receiver, Member, Span);
     }
 }
 
@@ -474,7 +465,7 @@ public sealed class MirBitfieldInsertInstruction : MirInstruction
         MirValueId value = mapping.TryGetValue(Value, out MirValueId mappedValue) ? mappedValue : Value;
         return receiver == Receiver && value == Value
             ? this
-            : new MirBitfieldInsertInstruction(Result!.Value, ResultType!, receiver, value, Member, Span);
+            : new MirBitfieldInsertInstruction(Result!, ResultType!, receiver, value, Member, Span);
     }
 }
 
@@ -506,7 +497,7 @@ public sealed class MirInsertMemberInstruction : MirInstruction
         MirValueId value = mapping.TryGetValue(Value, out MirValueId mappedValue) ? mappedValue : Value;
         return receiver == Receiver && value == Value
             ? this
-            : new MirInsertMemberInstruction(Result!.Value, ResultType!, receiver, value, Member, Span);
+            : new MirInsertMemberInstruction(Result!, ResultType!, receiver, value, Member, Span);
     }
 }
 

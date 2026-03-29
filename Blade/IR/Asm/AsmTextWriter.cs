@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text;
 using Blade;
 
@@ -21,6 +22,8 @@ public static class AsmTextWriter
 
     private static void WriteFunction(StringBuilder sb, AsmFunction function)
     {
+        RegisterFormatter formatter = new();
+
         sb.Append("function ");
         sb.Append(function.Name);
         if (function.IsEntryPoint)
@@ -31,12 +34,12 @@ public static class AsmTextWriter
         sb.AppendLine();
         sb.AppendLine("{");
         foreach (AsmNode node in function.Nodes)
-            WriteNode(sb, node);
+            WriteNode(sb, node, formatter);
         sb.AppendLine("}");
         sb.AppendLine();
     }
 
-    private static void WriteNode(StringBuilder sb, AsmNode node)
+    private static void WriteNode(StringBuilder sb, AsmNode node, RegisterFormatter formatter)
     {
         switch (node)
         {
@@ -62,7 +65,7 @@ public static class AsmTextWriter
                 {
                     if (i > 0)
                         sb.Append(", ");
-                    sb.Append(implicitUse.Operands[i].Format());
+                    sb.Append(FormatOperand(implicitUse.Operands[i], formatter));
                 }
                 sb.AppendLine();
                 break;
@@ -83,7 +86,7 @@ public static class AsmTextWriter
                     {
                         if (i > 0)
                             sb.Append(", ");
-                        sb.Append(instruction.Operands[i].Format());
+                        sb.Append(FormatOperand(instruction.Operands[i], formatter));
                     }
                 }
 
@@ -109,5 +112,30 @@ public static class AsmTextWriter
     private static string FormatFlagEffect(P2FlagEffect effect)
     {
         return effect == P2FlagEffect.None ? string.Empty : effect.ToString();
+    }
+
+    private static string FormatOperand(AsmOperand operand, RegisterFormatter formatter)
+    {
+        return operand switch
+        {
+            AsmRegisterOperand register => formatter.Format(register.Register),
+            _ => operand.Format(),
+        };
+    }
+
+    private sealed class RegisterFormatter
+    {
+        private readonly Dictionary<VirtualAsmRegister, int> _ids = [];
+
+        public string Format(VirtualAsmRegister register)
+        {
+            if (!_ids.TryGetValue(register, out int id))
+            {
+                id = _ids.Count;
+                _ids.Add(register, id);
+            }
+
+            return $"%r{id}";
+        }
     }
 }

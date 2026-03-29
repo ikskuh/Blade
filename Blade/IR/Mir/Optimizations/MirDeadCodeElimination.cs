@@ -30,7 +30,7 @@ public sealed class MirDeadCodeElimination : IMirOptimization
                     MirInstruction instruction = block.Instructions[i];
                     bool keep = instruction.HasSideEffects
                         || instruction.Result is null
-                        || live.Contains(instruction.Result.Value);
+                        || live.Contains(instruction.Result);
 
                     if (!keep)
                         continue;

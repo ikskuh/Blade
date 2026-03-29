@@ -23,7 +23,7 @@ public static class AsmLowerer
     public static AsmModule Lower(LirModule module, DiagnosticBag? diagnostics = null)
     {
         Requires.NotNull(module);
-        VirtualAsmRegister.ResetDebugIds();
+        VirtualAsmRegister.ResetMappings();
 
         // Run call graph analysis to determine CC tiers and dead functions
         CallGraphResult cgResult = CallGraphAnalyzer.Analyze(module);
@@ -1628,7 +1628,7 @@ public static class AsmLowerer
     private static void LowerCallExtractFlag(List<AsmNode> nodes, LirOpInstruction op, MirFlag flag)
     {
         Assert.Invariant(op.Destination is not null, "call.extract pseudo-op must have a destination register");
-        LirVirtualRegister dest = op.Destination.Value;
+        LirVirtualRegister dest = op.Destination!;
 
         AsmRegisterOperand destReg = new(dest);
         P2Mnemonic opcode = flag switch

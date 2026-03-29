@@ -16,7 +16,7 @@ public sealed class AsmCleanupSelfMov : PerFunctionAsmOptimization
         {
             if (node is AsmLabelNode label)
             {
-                if (previousLabel is not null && previousLabel.Name == label.Name)
+                if (previousLabel is not null && ReferenceEquals(previousLabel.Label, label.Label))
                 {
                     changed = true;
                     continue;

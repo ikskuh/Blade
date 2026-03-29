@@ -25,6 +25,8 @@ public static class MirTextWriter
 
     private static void WriteFunction(StringBuilder sb, MirFunction function)
     {
+        ValueFormatter formatter = new();
+
         sb.Append("fn ");
         sb.Append(function.Name);
         sb.Append(" kind=");
@@ -43,13 +45,13 @@ public static class MirTextWriter
         sb.AppendLine("{");
 
         foreach (MirBlock block in function.Blocks)
-            WriteBlock(sb, block);
+            WriteBlock(sb, block, formatter);
 
         sb.AppendLine("}");
         sb.AppendLine();
     }
 
-    private static void WriteBlock(StringBuilder sb, MirBlock block)
+    private static void WriteBlock(StringBuilder sb, MirBlock block, ValueFormatter formatter)
     {
         sb.Append("  ");
         sb.Append(block.Label);
@@ -59,7 +61,7 @@ public static class MirTextWriter
             if (i > 0)
                 sb.Append(", ");
             MirBlockParameter parameter = block.Parameters[i];
-            sb.Append(parameter.Value);
+            sb.Append(formatter.Format(parameter.Value));
             sb.Append(':');
             sb.Append(parameter.Type.Name);
             sb.Append(' ');
@@ -68,17 +70,17 @@ public static class MirTextWriter
 
         sb.AppendLine("):");
         foreach (MirInstruction instruction in block.Instructions)
-            WriteInstruction(sb, instruction);
+            WriteInstruction(sb, instruction, formatter);
 
-        WriteTerminator(sb, block.Terminator);
+        WriteTerminator(sb, block.Terminator, formatter);
     }
 
-    private static void WriteInstruction(StringBuilder sb, MirInstruction instruction)
+    private static void WriteInstruction(StringBuilder sb, MirInstruction instruction, ValueFormatter formatter)
     {
         sb.Append("    ");
         if (instruction.Result is MirValueId result)
         {
-            sb.Append(result);
+            sb.Append(formatter.Format(result));
             sb.Append(':');
             sb.Append(instruction.ResultType?.Name ?? "<unknown>");
             sb.Append(" = ");
@@ -92,8 +94,7 @@ public static class MirTextWriter
                 break;
 
             case MirLoadSymbolInstruction load:
-                sb.Append("load ");
-                sb.Append('@');
+                sb.Append("load @");
                 sb.Append(load.SymbolName);
                 break;
 
@@ -104,35 +105,35 @@ public static class MirTextWriter
 
             case MirCopyInstruction copy:
                 sb.Append("copy ");
-                sb.Append(copy.Source);
+                sb.Append(formatter.Format(copy.Source));
                 break;
 
             case MirUnaryInstruction unary:
                 sb.Append("unary.");
                 sb.Append(unary.Operator);
                 sb.Append(' ');
-                sb.Append(unary.Operand);
+                sb.Append(formatter.Format(unary.Operand));
                 break;
 
             case MirBinaryInstruction binary:
                 sb.Append("binary.");
                 sb.Append(binary.Operator);
                 sb.Append(' ');
-                sb.Append(binary.Left);
+                sb.Append(formatter.Format(binary.Left));
                 sb.Append(", ");
-                sb.Append(binary.Right);
+                sb.Append(formatter.Format(binary.Right));
                 break;
 
             case MirConvertInstruction convert:
                 sb.Append("convert ");
-                sb.Append(convert.Operand);
+                sb.Append(formatter.Format(convert.Operand));
                 break;
 
             case MirRangeInstruction range:
                 sb.Append("range ");
-                sb.Append(range.Start);
+                sb.Append(formatter.Format(range.Start));
                 sb.Append(", ");
-                sb.Append(range.End);
+                sb.Append(formatter.Format(range.End));
                 break;
 
             case MirStructLiteralInstruction structLiteral:
@@ -149,7 +150,7 @@ public static class MirTextWriter
                     {
                         if (i > 0)
                             sb.Append(", ");
-                        sb.Append(structLiteral.Fields[i].Value);
+                        sb.Append(formatter.Format(structLiteral.Fields[i].Value));
                     }
                 }
                 break;
@@ -160,23 +161,23 @@ public static class MirTextWriter
                 sb.Append('.');
                 sb.Append(loadMember.Member.ByteOffset);
                 sb.Append(' ');
-                sb.Append(loadMember.Receiver);
+                sb.Append(formatter.Format(loadMember.Receiver));
                 break;
 
             case MirLoadIndexInstruction loadIndex:
                 sb.Append("load.index.");
                 sb.Append(FormatStorageClass(loadIndex.StorageClass));
                 sb.Append(' ');
-                sb.Append(loadIndex.Indexed);
+                sb.Append(formatter.Format(loadIndex.Indexed));
                 sb.Append(", ");
-                sb.Append(loadIndex.Index);
+                sb.Append(formatter.Format(loadIndex.Index));
                 break;
 
             case MirLoadDerefInstruction loadDeref:
                 sb.Append("load.deref.");
                 sb.Append(FormatStorageClass(loadDeref.StorageClass));
                 sb.Append(' ');
-                sb.Append(loadDeref.Address);
+                sb.Append(formatter.Format(loadDeref.Address));
                 break;
 
             case MirBitfieldExtractInstruction extract:
@@ -185,7 +186,7 @@ public static class MirTextWriter
                 sb.Append('.');
                 sb.Append(extract.Member.BitWidth);
                 sb.Append(' ');
-                sb.Append(extract.Receiver);
+                sb.Append(formatter.Format(extract.Receiver));
                 break;
 
             case MirBitfieldInsertInstruction insertBitfield:
@@ -194,9 +195,9 @@ public static class MirTextWriter
                 sb.Append('.');
                 sb.Append(insertBitfield.Member.BitWidth);
                 sb.Append(' ');
-                sb.Append(insertBitfield.Receiver);
+                sb.Append(formatter.Format(insertBitfield.Receiver));
                 sb.Append(", ");
-                sb.Append(insertBitfield.Value);
+                sb.Append(formatter.Format(insertBitfield.Value));
                 break;
 
             case MirInsertMemberInstruction insertMember:
@@ -205,24 +206,25 @@ public static class MirTextWriter
                 sb.Append('.');
                 sb.Append(insertMember.Member.ByteOffset);
                 sb.Append(' ');
-                sb.Append(insertMember.Receiver);
+                sb.Append(formatter.Format(insertMember.Receiver));
                 sb.Append(", ");
-                sb.Append(insertMember.Value);
+                sb.Append(formatter.Format(insertMember.Value));
                 break;
 
             case MirCallInstruction call:
                 sb.Append("call ");
                 sb.Append(call.Function.Name);
                 sb.Append('(');
-                WriteValueList(sb, call.Arguments);
+                WriteValueList(sb, call.Arguments, formatter);
                 sb.Append(')');
                 if (call.ExtraResults.Count > 0)
                 {
                     sb.Append(" extra=[");
                     for (int i = 0; i < call.ExtraResults.Count; i++)
                     {
-                        if (i > 0) sb.Append(", ");
-                        sb.Append(call.ExtraResults[i].Value);
+                        if (i > 0)
+                            sb.Append(", ");
+                        sb.Append(formatter.Format(call.ExtraResults[i].Value));
                         sb.Append(':');
                         sb.Append(call.ExtraResults[i].Type.Name);
                     }
@@ -234,7 +236,7 @@ public static class MirTextWriter
                 sb.Append("intrinsic @");
                 sb.Append(P2InstructionMetadata.GetMnemonicText(intrinsic.Mnemonic));
                 sb.Append('(');
-                WriteValueList(sb, intrinsic.Arguments);
+                WriteValueList(sb, intrinsic.Arguments, formatter);
                 sb.Append(')');
                 break;
 
@@ -242,11 +244,11 @@ public static class MirTextWriter
                 sb.Append("store index.");
                 sb.Append(FormatStorageClass(storeIndex.StorageClass));
                 sb.Append('(');
-                sb.Append(storeIndex.Indexed);
+                sb.Append(formatter.Format(storeIndex.Indexed));
                 sb.Append(", ");
-                sb.Append(storeIndex.Index);
+                sb.Append(formatter.Format(storeIndex.Index));
                 sb.Append(", ");
-                sb.Append(storeIndex.Value);
+                sb.Append(formatter.Format(storeIndex.Value));
                 sb.Append(')');
                 break;
 
@@ -254,9 +256,9 @@ public static class MirTextWriter
                 sb.Append("store deref.");
                 sb.Append(FormatStorageClass(storeDeref.StorageClass));
                 sb.Append('(');
-                sb.Append(storeDeref.Address);
+                sb.Append(formatter.Format(storeDeref.Address));
                 sb.Append(", ");
-                sb.Append(storeDeref.Value);
+                sb.Append(formatter.Format(storeDeref.Value));
                 sb.Append(')');
                 break;
 
@@ -264,7 +266,7 @@ public static class MirTextWriter
                 sb.Append("store.place ");
                 sb.Append(storePlace.Place.EmittedName);
                 sb.Append('(');
-                sb.Append(storePlace.Value);
+                sb.Append(formatter.Format(storePlace.Value));
                 sb.Append(')');
                 break;
 
@@ -274,15 +276,14 @@ public static class MirTextWriter
                 sb.Append(' ');
                 sb.Append(updatePlace.OperatorKind);
                 sb.Append(' ');
-                sb.Append(updatePlace.Value);
+                sb.Append(formatter.Format(updatePlace.Value));
                 break;
 
             case MirInlineAsmInstruction inlineAsm:
                 sb.Append(inlineAsm.Volatility == AsmVolatility.Volatile ? "inlineasm.volatile" : "inlineasm");
                 if (inlineAsm.FlagOutput is not null)
                 {
-                    sb.Append(" -> ");
-                    sb.Append('@');
+                    sb.Append(" -> @");
                     sb.Append(inlineAsm.FlagOutput);
                 }
                 if (inlineAsm.Bindings.Count > 0)
@@ -296,7 +297,7 @@ public static class MirTextWriter
                         sb.Append(binding.PlaceholderText);
                         sb.Append('=');
                         if (binding.Value is MirValueId value)
-                            sb.Append(value);
+                            sb.Append(formatter.Format(value));
                         else
                             sb.Append(binding.Place?.EmittedName ?? "<none>");
                         sb.Append(':');
@@ -315,32 +316,32 @@ public static class MirTextWriter
                 if (yieldTo.Arguments.Count > 0)
                 {
                     sb.Append(' ');
-                    WriteValueList(sb, yieldTo.Arguments);
+                    WriteValueList(sb, yieldTo.Arguments, formatter);
                 }
                 break;
 
             case MirRepSetupInstruction repSetup:
                 sb.Append("rep.setup ");
-                sb.Append(repSetup.Count);
+                sb.Append(formatter.Format(repSetup.Count));
                 break;
 
             case MirRepIterInstruction repIter:
                 sb.Append("rep.iter ");
-                sb.Append(repIter.Count);
+                sb.Append(formatter.Format(repIter.Count));
                 break;
 
             case MirRepForSetupInstruction repForSetup:
                 sb.Append("repfor.setup ");
-                sb.Append(repForSetup.Start);
+                sb.Append(formatter.Format(repForSetup.Start));
                 sb.Append(", ");
-                sb.Append(repForSetup.End);
+                sb.Append(formatter.Format(repForSetup.End));
                 break;
 
             case MirRepForIterInstruction repForIter:
                 sb.Append("repfor.iter ");
-                sb.Append(repForIter.Start);
+                sb.Append(formatter.Format(repForIter.Start));
                 sb.Append(", ");
-                sb.Append(repForIter.End);
+                sb.Append(formatter.Format(repForIter.End));
                 break;
 
             case MirNoIrqBeginInstruction:
@@ -350,7 +351,6 @@ public static class MirTextWriter
             case MirNoIrqEndInstruction:
                 sb.Append("noirq.end");
                 break;
-
         }
 
         if (instruction.HasSideEffects)
@@ -358,7 +358,7 @@ public static class MirTextWriter
         sb.AppendLine();
     }
 
-    private static void WriteTerminator(StringBuilder sb, MirTerminator terminator)
+    private static void WriteTerminator(StringBuilder sb, MirTerminator terminator, ValueFormatter formatter)
     {
         sb.Append("    ");
         switch (terminator)
@@ -367,13 +367,13 @@ public static class MirTextWriter
                 sb.Append("goto ");
                 sb.Append(mirGoto.Target);
                 sb.Append('(');
-                WriteValueList(sb, mirGoto.Arguments);
+                WriteValueList(sb, mirGoto.Arguments, formatter);
                 sb.AppendLine(")");
                 break;
 
             case MirBranchTerminator branch:
                 sb.Append("branch ");
-                sb.Append(branch.Condition);
+                sb.Append(formatter.Format(branch.Condition));
                 if (branch.ConditionFlag is not null)
                 {
                     sb.Append(" [flag:");
@@ -383,17 +383,17 @@ public static class MirTextWriter
                 sb.Append(" ? ");
                 sb.Append(branch.TrueTarget);
                 sb.Append('(');
-                WriteValueList(sb, branch.TrueArguments);
+                WriteValueList(sb, branch.TrueArguments, formatter);
                 sb.Append(") : ");
                 sb.Append(branch.FalseTarget);
                 sb.Append('(');
-                WriteValueList(sb, branch.FalseArguments);
+                WriteValueList(sb, branch.FalseArguments, formatter);
                 sb.AppendLine(")");
                 break;
 
             case MirReturnTerminator ret:
                 sb.Append("ret ");
-                WriteValueList(sb, ret.Values);
+                WriteValueList(sb, ret.Values, formatter);
                 sb.AppendLine();
                 break;
 
@@ -403,13 +403,13 @@ public static class MirTextWriter
         }
     }
 
-    private static void WriteValueList(StringBuilder sb, IReadOnlyList<MirValueId> values)
+    private static void WriteValueList(StringBuilder sb, IReadOnlyList<MirValueId> values, ValueFormatter formatter)
     {
         for (int i = 0; i < values.Count; i++)
         {
             if (i > 0)
                 sb.Append(", ");
-            sb.Append(values[i]);
+            sb.Append(formatter.Format(values[i]));
         }
     }
 
@@ -444,5 +444,21 @@ public static class MirTextWriter
             VariableStorageClass.Hub => "hub",
             _ => "reg",
         };
+    }
+
+    private sealed class ValueFormatter
+    {
+        private readonly Dictionary<MirValueId, int> _ids = [];
+
+        public string Format(MirValueId value)
+        {
+            if (!_ids.TryGetValue(value, out int id))
+            {
+                id = _ids.Count;
+                _ids.Add(value, id);
+            }
+
+            return $"%v{id}";
+        }
     }
 }

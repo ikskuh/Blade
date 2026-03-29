@@ -22,18 +22,18 @@ public class MirModelTests
     [Test]
     public void RewriteUses_CoversMirInstructionVariants()
     {
-        MirValueId v0 = new(0);
-        MirValueId v1 = new(1);
-        MirValueId v2 = new(2);
-        MirValueId v3 = new(3);
-        MirValueId v4 = new(4);
+        MirValueId v0 = MirValue(0);
+        MirValueId v1 = MirValue(1);
+        MirValueId v2 = MirValue(2);
+        MirValueId v3 = MirValue(3);
+        MirValueId v4 = MirValue(4);
         StoragePlace place = CreatePlace("slot");
         Dictionary<MirValueId, MirValueId> mapping = new()
         {
-            [v1] = new MirValueId(10),
-            [v2] = new MirValueId(20),
-            [v3] = new MirValueId(30),
-            [v4] = new MirValueId(40),
+            [v1] = MirValue(10),
+            [v2] = MirValue(20),
+            [v3] = MirValue(30),
+            [v4] = MirValue(40),
         };
 
         MirLoadSymbolInstruction loadSymbol = new(v0, BuiltinTypes.U32, CreatePlace("global_symbol"), Span);
@@ -68,14 +68,14 @@ public class MirModelTests
     [Test]
     public void RewriteUses_CoversMirTerminatorsAndModelProperties()
     {
-        MirValueId condition = new(1);
-        MirValueId t0 = new(2);
-        MirValueId f0 = new(3);
+        MirValueId condition = MirValue(1);
+        MirValueId t0 = MirValue(2);
+        MirValueId f0 = MirValue(3);
         Dictionary<MirValueId, MirValueId> mapping = new()
         {
-            [condition] = new MirValueId(11),
-            [t0] = new MirValueId(12),
-            [f0] = new MirValueId(13),
+            [condition] = MirValue(11),
+            [t0] = MirValue(12),
+            [f0] = MirValue(13),
         };
 
         MirBranchTerminator branch = new(condition, new MirBlockRef("bb_true"), new MirBlockRef("bb_false"), [t0], [f0], Span);
@@ -88,7 +88,7 @@ public class MirModelTests
         Assert.That(unreachable.Uses, Is.Empty);
         Assert.That(unreachable.RewriteUses(mapping), Is.SameAs(unreachable));
 
-        MirValueId value = new(4);
+        MirValueId value = MirValue(4);
         MirInlineAsmInstruction inlineAsm = new(
             AsmVolatility.NonVolatile,
             "MOV {x}, {x}",
@@ -97,7 +97,7 @@ public class MirModelTests
             bindings:
             [
                 new MirInlineAsmBinding(CreateBindingSlot("x"), CreateVariableSymbol("x"), value, null, InlineAsmBindingAccess.ReadWrite),
-                new MirInlineAsmBinding(CreateBindingSlot("y"), CreateVariableSymbol("y"), new MirValueId(5), null, InlineAsmBindingAccess.Write),
+                new MirInlineAsmBinding(CreateBindingSlot("y"), CreateVariableSymbol("y"), MirValue(5), null, InlineAsmBindingAccess.Write),
             ],
             Span);
 

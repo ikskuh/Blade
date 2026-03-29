@@ -22,9 +22,9 @@ public class OptimizerTests
     [Test]
     public void MirOptimizer_ThreadsMergesAndRemovesUnreachableBlocks()
     {
-        MirValueId seed = new(0);
-        MirValueId threaded = new(1);
-        MirValueId merged = new(2);
+        MirValueId seed = MirValue(0);
+        MirValueId threaded = MirValue(1);
+        MirValueId merged = MirValue(2);
         StoragePlace resultPlace = CreatePlace("result");
         MirBlockRef bb0 = new("bb0");
         MirBlockRef bb1 = new("bb1");
@@ -66,10 +66,10 @@ public class OptimizerTests
     [Test]
     public void LirOptimizer_PropagatesCopiesAcrossGotoArgumentsAndMergesBlocks()
     {
-        LirVirtualRegister seed = new(0);
-        LirVirtualRegister copy = new(1);
-        LirVirtualRegister threaded = new(2);
-        LirVirtualRegister merged = new(3);
+        LirVirtualRegister seed = LirRegister(0);
+        LirVirtualRegister copy = LirRegister(1);
+        LirVirtualRegister threaded = LirRegister(2);
+        LirVirtualRegister merged = LirRegister(3);
         StoragePlace resultPlace = CreatePlace("result");
         LirBlockRef bb0 = new("bb0");
         LirBlockRef bb1 = new("bb1");
@@ -177,8 +177,8 @@ public class OptimizerTests
     [Test]
     public void AsmOptimizer_ElidesStraightLineMovChainWhenDeadAtFunctionEnd()
     {
-        AsmRegisterOperand r1 = new(1);
-        AsmRegisterOperand r2 = new(2);
+        AsmRegisterOperand r1 = AsmRegister(1);
+        AsmRegisterOperand r2 = AsmRegister(2);
         AsmSymbolOperand input = new(new AsmNamedSymbol("input", SymbolType.RegVariable), AsmSymbolAddressingMode.Register);
         AsmSymbolOperand output = new(new AsmNamedSymbol("output", SymbolType.RegVariable), AsmSymbolAddressingMode.Register);
 
@@ -205,7 +205,7 @@ public class OptimizerTests
     [Test]
     public void AsmOptimizer_DoesNotElideCopyAcrossInlineAsmBarrier()
     {
-        AsmRegisterOperand r1 = new(1);
+        AsmRegisterOperand r1 = AsmRegister(1);
         AsmSymbolOperand input = new(new AsmNamedSymbol("input", SymbolType.RegVariable), AsmSymbolAddressingMode.Register);
         AsmSymbolOperand output = new(new AsmNamedSymbol("output", SymbolType.RegVariable), AsmSymbolAddressingMode.Register);
 
@@ -226,14 +226,14 @@ public class OptimizerTests
         Assert.That(instructions, Has.Length.EqualTo(2));
         Assert.That(instructions[0].Operands[0], Is.TypeOf<AsmRegisterOperand>());
         Assert.That(instructions[1].Operands[1], Is.TypeOf<AsmRegisterOperand>());
-        Assert.That(((AsmRegisterOperand)instructions[1].Operands[1]).Register.DebugId, Is.EqualTo(1));
+        Assert.That(((AsmRegisterOperand)instructions[1].Operands[1]).Register, Is.SameAs(r1.Register));
     }
 
     [Test]
     public void AsmOptimizer_RemovesDeadPureRegisterOnlyInlineAsmInstructions()
     {
-        AsmRegisterOperand r1 = new(1);
-        AsmRegisterOperand r2 = new(2);
+        AsmRegisterOperand r1 = AsmRegister(1);
+        AsmRegisterOperand r2 = AsmRegister(2);
 
         AsmModule module = new([
             CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
@@ -251,7 +251,7 @@ public class OptimizerTests
     [Test]
     public void AsmOptimizer_DoesNotRemoveNonRegisterDestinationInstruction()
     {
-        AsmRegisterOperand r1 = new(1);
+        AsmRegisterOperand r1 = AsmRegister(1);
 
         AsmModule module = new([
             CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
@@ -268,7 +268,7 @@ public class OptimizerTests
     [Test]
     public void AsmOptimizer_PreservesInstructionUsedByImplicitReturnUse()
     {
-        AsmRegisterOperand r1 = new(1);
+        AsmRegisterOperand r1 = AsmRegister(1);
 
         AsmModule module = new([
             CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
@@ -287,13 +287,13 @@ public class OptimizerTests
     [Test]
     public void LirOptimizer_RewritesInlineAsmBindingsDuringCopyPropagation()
     {
-        LirVirtualRegister r0 = new(0);
-        LirVirtualRegister r1 = new(1);
+        LirVirtualRegister r0 = LirRegister(0);
+        LirVirtualRegister r1 = LirRegister(1);
 
         LirModule module = new([
             CreateLirFunction("f", isEntryPoint: false, FunctionKind.Default, [],
             [
-                new LirBlock("bb0", [new LirBlockParameter(r0, "x", BuiltinTypes.U32)],
+                new LirBlock(LirBlockRef("bb0"), [new LirBlockParameter(r0, "x", BuiltinTypes.U32)],
                 [
                     new LirOpInstruction(new LirMovOperation(), r1, BuiltinTypes.U32,
                         [new LirRegisterOperand(r0)],
@@ -320,12 +320,12 @@ public class OptimizerTests
     [Test]
     public void LirOptimizer_KeepsDefinitionUsedByInlineAsmBinding()
     {
-        LirVirtualRegister r0 = new(0);
+        LirVirtualRegister r0 = LirRegister(0);
 
         LirModule module = new([
             CreateLirFunction("f", isEntryPoint: false, FunctionKind.Default, [],
             [
-                new LirBlock("bb0", [],
+                new LirBlock(LirBlockRef("bb0"), [],
                 [
                     new LirOpInstruction(new LirConstOperation(), r0, BuiltinTypes.U32,
                         [new LirImmediateOperand(13, BuiltinTypes.U32)],
@@ -348,14 +348,14 @@ public class OptimizerTests
     [Test]
     public void LirOptimizer_DoesNotPropagateAliasAcrossInlineAsmWriteBinding()
     {
-        LirVirtualRegister r0 = new(0);
-        LirVirtualRegister r1 = new(1);
-        LirVirtualRegister r2 = new(2);
+        LirVirtualRegister r0 = LirRegister(0);
+        LirVirtualRegister r1 = LirRegister(1);
+        LirVirtualRegister r2 = LirRegister(2);
 
         LirModule module = new([
             CreateLirFunction("f", isEntryPoint: false, FunctionKind.Default, [BuiltinTypes.U32],
             [
-                new LirBlock("bb0", [new LirBlockParameter(r0, "x", BuiltinTypes.U32)],
+                new LirBlock(LirBlockRef("bb0"), [new LirBlockParameter(r0, "x", BuiltinTypes.U32)],
                 [
                     new LirOpInstruction(new LirMovOperation(), r1, BuiltinTypes.U32,
                         [new LirRegisterOperand(r0)],

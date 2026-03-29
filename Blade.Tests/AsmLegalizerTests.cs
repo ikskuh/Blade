@@ -49,7 +49,7 @@ public class AsmLegalizerTests
         AsmModule module = CreateModule(
             new AsmInstructionNode(
                 P2Mnemonic.GETNIB,
-                [new AsmRegisterOperand(1), new AsmImmediateOperand(0), new AsmImmediateOperand(8)]));
+                [AsmRegister(1), new AsmImmediateOperand(0), new AsmImmediateOperand(8)]));
 
         Assert.That(
             () => AsmLegalizer.Legalize(module),

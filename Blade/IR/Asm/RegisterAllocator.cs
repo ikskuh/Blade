@@ -69,6 +69,7 @@ public static class RegisterAllocator
         {
             FunctionLiveness liveness = livenessMap[function];
             List<AsmNode> rewrittenNodes = new(function.Nodes.Count);
+            IReadOnlyDictionary<VirtualAsmRegister, int> registerOrder = ComputeRegisterOrder(function);
 
             for (int i = 0; i < function.Nodes.Count; i++)
             {
@@ -81,7 +82,7 @@ public static class RegisterAllocator
 
                 List<VirtualAsmRegister> liveRegisters = [];
                 if (liveness.LiveRegistersByCallInstruction.TryGetValue(i, out HashSet<VirtualAsmRegister>? liveSet))
-                    liveRegisters.AddRange(liveSet.OrderBy(static register => register.DebugId));
+                    liveRegisters.AddRange(liveSet.OrderBy(register => registerOrder.GetValueOrDefault(register, int.MaxValue)));
 
                 foreach (VirtualAsmRegister register in liveRegisters)
                     rewrittenNodes.Add(new AsmInstructionNode(P2Mnemonic.PUSHB, [new AsmRegisterOperand(register)]));
@@ -96,6 +97,36 @@ public static class RegisterAllocator
         }
 
         return new AsmModule(module.StoragePlaces, functions);
+    }
+
+    private static IReadOnlyDictionary<VirtualAsmRegister, int> ComputeRegisterOrder(AsmFunction function)
+    {
+        Dictionary<VirtualAsmRegister, int> order = [];
+        int next = 0;
+
+        void Track(AsmOperand operand)
+        {
+            if (operand is AsmRegisterOperand register && !order.ContainsKey(register.Register))
+                order.Add(register.Register, next++);
+        }
+
+        foreach (AsmNode node in function.Nodes)
+        {
+            switch (node)
+            {
+                case AsmInstructionNode instruction:
+                    foreach (AsmOperand operand in instruction.Operands)
+                        Track(operand);
+                    break;
+
+                case AsmImplicitUseNode implicitUse:
+                    foreach (AsmOperand operand in implicitUse.Operands)
+                        Track(operand);
+                    break;
+            }
+        }
+
+        return order;
     }
 
     // ── Intra-function coloring ─────────────────────────────────────

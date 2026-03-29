@@ -14,8 +14,8 @@ public class RegisterAllocatorTests
     [Test]
     public void CodegenPipeline_RemovesSelfMovesIntroducedByRegisterAllocation()
     {
-        AsmRegisterOperand source = new(1);
-        AsmRegisterOperand copy = new(2);
+        AsmRegisterOperand source = AsmRegister(1);
+        AsmRegisterOperand copy = AsmRegister(2);
 
         AsmModule asmModule = new([
             CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
@@ -37,8 +37,8 @@ public class RegisterAllocatorTests
     [Test]
     public void CodegenPipeline_LeavesAllocatorSelfMovesWhenCleanupSelfMovDisabled()
     {
-        AsmRegisterOperand source = new(1);
-        AsmRegisterOperand copy = new(2);
+        AsmRegisterOperand source = AsmRegister(1);
+        AsmRegisterOperand copy = AsmRegister(2);
 
         AsmModule asmModule = new([
             CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,

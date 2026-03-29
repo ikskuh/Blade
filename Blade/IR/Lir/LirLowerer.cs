@@ -11,7 +11,6 @@ public static class LirLowerer
     public static LirModule Lower(MirModule module)
     {
         Requires.NotNull(module);
-        VirtualLirRegister.ResetDebugIds();
 
         List<LirFunction> functions = new(module.Functions.Count);
         foreach (MirFunction mirFunction in module.Functions)
@@ -23,13 +22,12 @@ public static class LirLowerer
     {
         Dictionary<MirValueId, LirVirtualRegister> registers = [];
         Dictionary<MirBlockRef, LirBlockRef> blockRefs = [];
-        int nextRegisterId = 0;
 
         LirVirtualRegister GetRegister(MirValueId value)
         {
             if (registers.TryGetValue(value, out LirVirtualRegister? register) && register is not null)
                 return register;
-            LirVirtualRegister fresh = new(nextRegisterId++);
+            LirVirtualRegister fresh = new();
             registers[value] = fresh;
             return fresh;
         }

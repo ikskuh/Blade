@@ -30,7 +30,7 @@ public sealed class LirDeadCodeElimination : ILirOptimization
                     LirInstruction instruction = block.Instructions[i];
                     bool keep = instruction.HasSideEffects
                         || instruction.Destination is null
-                        || live.Contains(instruction.Destination.Value);
+                        || live.Contains(instruction.Destination);
 
                     if (!keep)
                         continue;

@@ -1783,9 +1783,9 @@ public class IrPipelineTests
     public void AsmLowerer_InvalidBitfieldOpcodes_EmitComments()
     {
         TextSpan span = new(0, 0);
-        LirVirtualRegister sourceRegister = new(0);
-        LirVirtualRegister valueRegister = new(1);
-        LirVirtualRegister destinationRegister = new(2);
+        LirVirtualRegister sourceRegister = LirRegister(0);
+        LirVirtualRegister valueRegister = LirRegister(1);
+        LirVirtualRegister destinationRegister = LirRegister(2);
         AggregateMemberSymbol unsupportedInsert = new("bits", BuiltinTypes.U32, byteOffset: 0, bitOffset: 2, bitWidth: 5, isBitfield: true);
         LirFunction function = CreateLirFunction(
             "demo",
@@ -1794,7 +1794,7 @@ public class IrPipelineTests
             [],
             [
                 new LirBlock(
-                    "bb0",
+                    LirBlockRef("bb0"),
                     [],
                     [
                         new LirOpInstruction(
@@ -1821,8 +1821,8 @@ public class IrPipelineTests
     public void AsmLowerer_BitfieldExtractWithoutResultType_SkipsExtension()
     {
         TextSpan span = new(0, 0);
-        LirVirtualRegister sourceRegister = new(0);
-        LirVirtualRegister destinationRegister = new(1);
+        LirVirtualRegister sourceRegister = LirRegister(0);
+        LirVirtualRegister destinationRegister = LirRegister(1);
         AggregateMemberSymbol byteMember = new("b", BuiltinTypes.U8, byteOffset: 0, bitOffset: 8, bitWidth: 8, isBitfield: true);
         AggregateMemberSymbol wordMember = new("w", BuiltinTypes.U16, byteOffset: 0, bitOffset: 16, bitWidth: 16, isBitfield: true);
         AggregateMemberSymbol shiftMember = new("s", BuiltinTypes.U32, byteOffset: 0, bitOffset: 1, bitWidth: 4, isBitfield: true);
@@ -1833,7 +1833,7 @@ public class IrPipelineTests
             [],
             [
                 new LirBlock(
-                    "bb0",
+                    LirBlockRef("bb0"),
                     [],
                     [
                         new LirOpInstruction(
@@ -1882,10 +1882,10 @@ public class IrPipelineTests
     public void AsmLowerer_SingleWordStructOps_EmitAggregateInstructions()
     {
         TextSpan span = new(0, 0);
-        LirVirtualRegister loRegister = new(0);
-        LirVirtualRegister hiRegister = new(1);
-        LirVirtualRegister midRegister = new(2);
-        LirVirtualRegister destinationRegister = new(3);
+        LirVirtualRegister loRegister = LirRegister(0);
+        LirVirtualRegister hiRegister = LirRegister(1);
+        LirVirtualRegister midRegister = LirRegister(2);
+        LirVirtualRegister destinationRegister = LirRegister(3);
         StructTypeSymbol packedType = CreateStructType(
             "Packed",
             sizeBytes: 4,
@@ -1909,7 +1909,7 @@ public class IrPipelineTests
             [],
             [
                 new LirBlock(
-                    "bb0",
+                    LirBlockRef("bb0"),
                     [],
                     [
                         new LirOpInstruction(
@@ -1983,15 +1983,15 @@ public class IrPipelineTests
         Assert.That(asmir, Does.Contain("SETWORD"));
         Assert.That(asmir, Does.Contain("GETBYTE"));
         Assert.That(asmir, Does.Contain("ZEROX"));
-        Assert.That(asmir, Does.Contain("MOV %r3, %r3"));
+        Assert.That(asmir, Does.Contain("MOV %r0, %r0"));
     }
 
     [Test]
     public void AsmLowerer_InvalidAggregateOpcodes_EmitComments()
     {
         TextSpan span = new(0, 0);
-        LirVirtualRegister sourceRegister = new(0);
-        LirVirtualRegister destinationRegister = new(1);
+        LirVirtualRegister sourceRegister = LirRegister(0);
+        LirVirtualRegister destinationRegister = LirRegister(1);
         StructTypeSymbol pairType = CreateStructType(
             "Pair",
             sizeBytes: 4,
@@ -2018,7 +2018,7 @@ public class IrPipelineTests
             [],
             [
                 new LirBlock(
-                    "bb0",
+                    LirBlockRef("bb0"),
                     [],
                     [
                         new LirOpInstruction(

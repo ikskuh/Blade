@@ -9,6 +9,37 @@ namespace Blade.Tests;
 
 internal static class IrTestFactory
 {
+    private static readonly Dictionary<int, MirValueId> MirValues = [];
+    private static readonly Dictionary<int, LirVirtualRegister> LirRegisters = [];
+
+    public static MirValueId MirValue(int id)
+    {
+        if (!MirValues.TryGetValue(id, out MirValueId? value))
+        {
+            value = new MirValueId();
+            MirValues.Add(id, value);
+        }
+
+        return value;
+    }
+
+    public static LirVirtualRegister LirRegister(int id)
+    {
+        if (!LirRegisters.TryGetValue(id, out LirVirtualRegister? register))
+        {
+            register = new LirVirtualRegister();
+            LirRegisters.Add(id, register);
+        }
+
+        return register;
+    }
+
+    public static AsmRegisterOperand AsmRegister(int id) => new(LirRegister(id));
+
+    public static MirBlockRef MirBlockRef(string name) => new(name);
+
+    public static LirBlockRef LirBlockRef(string name) => new(name);
+
     public static MirFunction CreateMirFunction(
         string name,
         bool isEntryPoint,

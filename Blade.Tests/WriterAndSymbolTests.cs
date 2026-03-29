@@ -58,10 +58,10 @@ public class WriterAndSymbolTests
         MirModule mir = new([
             CreateMirFunction("mir_fn", isEntryPoint: true, FunctionKind.Leaf, [BuiltinTypes.U32],
             [
-                new MirBlock("bb0", [new MirBlockParameter(new MirValueId(0), "p", BuiltinTypes.U32)],
+                new MirBlock(MirBlockRef("bb0"), [new MirBlockParameter(MirValue(0), "p", BuiltinTypes.U32)],
                 [
-                    new MirLoadPlaceInstruction(new MirValueId(1), BuiltinTypes.U32, place, Span),
-                    new MirRepSetupInstruction(new MirValueId(1), Span),
+                    new MirLoadPlaceInstruction(MirValue(1), BuiltinTypes.U32, place, Span),
+                    new MirRepSetupInstruction(MirValue(1), Span),
                 ], new MirUnreachableTerminator(Span)),
             ]),
         ]);
@@ -69,9 +69,9 @@ public class WriterAndSymbolTests
         LirModule lir = new([
             CreateLirFunction("lir_fn", isEntryPoint: false, FunctionKind.Default, [],
             [
-                new LirBlock("bb0", [],
+                new LirBlock(LirBlockRef("bb0"), [],
                 [
-                    new LirOpInstruction(new LirMovOperation(), new LirVirtualRegister(0), BuiltinTypes.U32,
+                    new LirOpInstruction(new LirMovOperation(), LirRegister(0), BuiltinTypes.U32,
                         [new LirImmediateOperand("hello", BuiltinTypes.String)],
                         hasSideEffects: false, predicateText: "if_c", writesC: true, writesZ: true, Span),
                 ], new LirUnreachableTerminator(Span)),
@@ -84,9 +84,9 @@ public class WriterAndSymbolTests
                 new AsmDirectiveNode("org 0"),
                 new AsmLabelNode("asm_fn_bb0"),
                 new AsmCommentNode("test"),
-                new AsmImplicitUseNode([new AsmRegisterOperand(1)]),
-                new AsmInstructionNode(P2Mnemonic.ADD, [new AsmRegisterOperand(1), new AsmImmediateOperand(5)], P2ConditionCode.IF_C, flagEffect: P2FlagEffect.WCZ),
-                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmRegisterOperand(1), new AsmImmediateOperand(1)]),
+                new AsmImplicitUseNode([AsmRegister(1)]),
+                new AsmInstructionNode(P2Mnemonic.ADD, [AsmRegister(1), new AsmImmediateOperand(5)], P2ConditionCode.IF_C, flagEffect: P2FlagEffect.WCZ),
+                new AsmInstructionNode(P2Mnemonic.MOV, [AsmRegister(1), new AsmImmediateOperand(1)]),
             ]),
         ]);
 
@@ -105,8 +105,8 @@ public class WriterAndSymbolTests
 
         Assert.That(asmText, Does.Contain(".org 0"));
         Assert.That(asmText, Does.Contain("' test"));
-        Assert.That(asmText, Does.Contain(".use %r1"));
-        Assert.That(asmText, Does.Contain("IF_C ADD %r1, #5 WCZ"));
-        Assert.That(asmText, Does.Contain("MOV %r1, #1"));
+        Assert.That(asmText, Does.Contain(".use %r0"));
+        Assert.That(asmText, Does.Contain("IF_C ADD %r0, #5 WCZ"));
+        Assert.That(asmText, Does.Contain("MOV %r0, #1"));
     }
 }

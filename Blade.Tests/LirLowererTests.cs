@@ -15,17 +15,17 @@ public sealed class LirLowererTests
     public void Lower_CallWithMoreThanTwoExtraResults_ThrowsInsteadOfPickingAnAbiFallback()
     {
         MirCallInstruction call = new(
-            new MirValueId(0),
+            MirValue(0),
             BuiltinTypes.U32,
             new FunctionSymbol("too_many_results", FunctionKind.Default),
             [],
             Span,
             [
-                (new MirValueId(1), BuiltinTypes.Bool),
-                (new MirValueId(2), BuiltinTypes.Bool),
-                (new MirValueId(3), BuiltinTypes.Bool),
+                (MirValue(1), BuiltinTypes.Bool),
+                (MirValue(2), BuiltinTypes.Bool),
+                (MirValue(3), BuiltinTypes.Bool),
             ]);
-        MirBlock block = new("bb0", [], [call], new MirReturnTerminator([], Span));
+        MirBlock block = new(MirBlockRef("bb0"), [], [call], new MirReturnTerminator([], Span));
         MirFunction function = CreateMirFunction("$top", isEntryPoint: true, FunctionKind.Default, [], [block]);
         MirModule module = new([function]);
 

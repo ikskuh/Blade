@@ -283,11 +283,6 @@ public enum AsmSymbolAddressingMode
 /// </summary>
 public sealed class AsmRegisterOperand : AsmOperand
 {
-    public AsmRegisterOperand(int registerId)
-        : this(new VirtualAsmRegister(registerId))
-    {
-    }
-
     public AsmRegisterOperand(VirtualLirRegister register)
         : this(VirtualAsmRegister.FromLir(register))
     {
@@ -300,7 +295,7 @@ public sealed class AsmRegisterOperand : AsmOperand
 
     public VirtualAsmRegister Register { get; }
 
-    public override string Format() => Register.ToString();
+    public override string Format() => "%r?";
 }
 
 /// <summary>

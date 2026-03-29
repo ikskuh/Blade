@@ -25,6 +25,8 @@ public static class LirTextWriter
 
     private static void WriteFunction(StringBuilder sb, LirFunction function)
     {
+        RegisterFormatter formatter = new();
+
         sb.Append("fn ");
         sb.Append(function.Name);
         sb.Append(" kind=");
@@ -42,12 +44,12 @@ public static class LirTextWriter
         sb.AppendLine(")");
         sb.AppendLine("{");
         foreach (LirBlock block in function.Blocks)
-            WriteBlock(sb, block);
+            WriteBlock(sb, block, formatter);
         sb.AppendLine("}");
         sb.AppendLine();
     }
 
-    private static void WriteBlock(StringBuilder sb, LirBlock block)
+    private static void WriteBlock(StringBuilder sb, LirBlock block, RegisterFormatter formatter)
     {
         sb.Append("  ");
         sb.Append(block.Label);
@@ -57,7 +59,7 @@ public static class LirTextWriter
             if (i > 0)
                 sb.Append(", ");
             LirBlockParameter parameter = block.Parameters[i];
-            sb.Append(parameter.Register);
+            sb.Append(formatter.Format(parameter.Register));
             sb.Append(':');
             sb.Append(parameter.Type.Name);
             sb.Append(' ');
@@ -67,23 +69,23 @@ public static class LirTextWriter
         sb.AppendLine("):");
 
         foreach (LirInstruction instruction in block.Instructions)
-            WriteInstruction(sb, instruction);
+            WriteInstruction(sb, instruction, formatter);
 
-        WriteTerminator(sb, block.Terminator);
+        WriteTerminator(sb, block.Terminator, formatter);
     }
 
-    private static void WriteInstruction(StringBuilder sb, LirInstruction instruction)
+    private static void WriteInstruction(StringBuilder sb, LirInstruction instruction, RegisterFormatter formatter)
     {
         if (instruction is LirInlineAsmInstruction inlineAsm)
         {
-            WriteInlineAsmInstruction(sb, inlineAsm);
+            WriteInlineAsmInstruction(sb, inlineAsm, formatter);
             return;
         }
 
         sb.Append("    ");
         if (instruction.Destination is LirVirtualRegister destination)
         {
-            sb.Append(destination);
+            sb.Append(formatter.Format(destination));
             sb.Append(':');
             sb.Append(instruction.ResultType?.Name ?? "<unknown>");
             sb.Append(" = ");
@@ -98,7 +100,7 @@ public static class LirTextWriter
 
         sb.Append(instruction.DisplayName);
         sb.Append(' ');
-        WriteOperandList(sb, instruction.Operands);
+        WriteOperandList(sb, instruction.Operands, formatter);
         if (instruction.WritesC || instruction.WritesZ)
         {
             sb.Append(" flags=");
@@ -113,14 +115,13 @@ public static class LirTextWriter
         sb.AppendLine();
     }
 
-    private static void WriteInlineAsmInstruction(StringBuilder sb, LirInlineAsmInstruction instruction)
+    private static void WriteInlineAsmInstruction(StringBuilder sb, LirInlineAsmInstruction instruction, RegisterFormatter formatter)
     {
         sb.Append("    ");
         sb.Append(instruction.Volatility == AsmVolatility.Volatile ? "inlineasm.volatile" : "inlineasm");
         if (instruction.FlagOutput is not null)
         {
-            sb.Append(" -> ");
-            sb.Append('@');
+            sb.Append(" -> @");
             sb.Append(instruction.FlagOutput);
         }
 
@@ -134,7 +135,7 @@ public static class LirTextWriter
                 LirInlineAsmBinding binding = instruction.Bindings[i];
                 sb.Append(binding.PlaceholderText);
                 sb.Append('=');
-                sb.Append(FormatOperand(binding.Operand));
+                sb.Append(FormatOperand(binding.Operand, formatter));
                 sb.Append(':');
                 sb.Append(FormatInlineAsmAccess(binding.Access));
             }
@@ -144,7 +145,7 @@ public static class LirTextWriter
         sb.AppendLine();
     }
 
-    private static void WriteTerminator(StringBuilder sb, LirTerminator terminator)
+    private static void WriteTerminator(StringBuilder sb, LirTerminator terminator, RegisterFormatter formatter)
     {
         sb.Append("    ");
         switch (terminator)
@@ -153,27 +154,27 @@ public static class LirTextWriter
                 sb.Append("goto ");
                 sb.Append(gotoTerminator.Target);
                 sb.Append('(');
-                WriteOperandList(sb, gotoTerminator.Arguments);
+                WriteOperandList(sb, gotoTerminator.Arguments, formatter);
                 sb.AppendLine(")");
                 break;
 
             case LirBranchTerminator branchTerminator:
                 sb.Append("branch ");
-                sb.Append(FormatOperand(branchTerminator.Condition));
+                sb.Append(FormatOperand(branchTerminator.Condition, formatter));
                 sb.Append(" ? ");
                 sb.Append(branchTerminator.TrueTarget);
                 sb.Append('(');
-                WriteOperandList(sb, branchTerminator.TrueArguments);
+                WriteOperandList(sb, branchTerminator.TrueArguments, formatter);
                 sb.Append(") : ");
                 sb.Append(branchTerminator.FalseTarget);
                 sb.Append('(');
-                WriteOperandList(sb, branchTerminator.FalseArguments);
+                WriteOperandList(sb, branchTerminator.FalseArguments, formatter);
                 sb.AppendLine(")");
                 break;
 
             case LirReturnTerminator returnTerminator:
                 sb.Append("ret ");
-                WriteOperandList(sb, returnTerminator.Values);
+                WriteOperandList(sb, returnTerminator.Values, formatter);
                 sb.AppendLine();
                 break;
 
@@ -183,21 +184,21 @@ public static class LirTextWriter
         }
     }
 
-    private static void WriteOperandList(StringBuilder sb, IReadOnlyList<LirOperand> operands)
+    private static void WriteOperandList(StringBuilder sb, IReadOnlyList<LirOperand> operands, RegisterFormatter formatter)
     {
         for (int i = 0; i < operands.Count; i++)
         {
             if (i > 0)
                 sb.Append(", ");
-            sb.Append(FormatOperand(operands[i]));
+            sb.Append(FormatOperand(operands[i], formatter));
         }
     }
 
-    private static string FormatOperand(LirOperand operand)
+    private static string FormatOperand(LirOperand operand, RegisterFormatter formatter)
     {
         return operand switch
         {
-            LirRegisterOperand register => register.Register.ToString(),
+            LirRegisterOperand register => formatter.Format(register.Register),
             LirImmediateOperand immediate => $"{FormatImmediate(immediate.Value)}:{immediate.Type.Name}",
             LirPlaceOperand place => $"%place({place.Place.EmittedName})",
             _ => "<op>",
@@ -234,5 +235,21 @@ public static class LirTextWriter
             InlineAsmBindingAccess.ReadWrite => "rw",
             _ => "?",
         };
+    }
+
+    private sealed class RegisterFormatter
+    {
+        private readonly Dictionary<LirVirtualRegister, int> _ids = [];
+
+        public string Format(LirVirtualRegister register)
+        {
+            if (!_ids.TryGetValue(register, out int id))
+            {
+                id = _ids.Count;
+                _ids.Add(register, id);
+            }
+
+            return $"%r{id}";
+        }
     }
 }
