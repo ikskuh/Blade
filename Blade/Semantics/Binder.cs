@@ -550,16 +550,12 @@ public sealed class Binder
         }
 
         Dictionary<string, Symbol> availableSymbols = CollectInlineAsmAvailableSymbols();
-        Dictionary<string, InlineAsmBindingSlot> availableBindings = CreateInlineAsmBindingSlots(availableSymbols.Keys);
+        Dictionary<string, InlineAsmVarBindingSlot> availableBindings = CreateInlineAsmBindingSlots(availableSymbols.Keys);
 
         InlineAssemblyValidator.ValidationResult validationResult =
             InlineAssemblyValidator.Validate(asmSyntax.Body, asmSyntax.Span, availableBindings, _diagnostics);
 
-        Dictionary<string, VariableSymbol> tempSymbols = CreateInlineAsmTempSymbols(validationResult.TempBindings);
-        Dictionary<InlineAsmBindingSlot, Symbol> referencedSymbols = BuildInlineAsmReferencedSymbols(
-            validationResult,
-            availableSymbols,
-            tempSymbols);
+        Dictionary<InlineAsmBindingSlot, Symbol> referencedSymbols = BuildInlineAsmReferencedSymbols(validationResult, availableSymbols);
 
         BoundAsmStatement asmStatement = new(volatility, asmSyntax.Body, flagOutput, validationResult.Lines, referencedSymbols, asmSyntax.Span);
 
@@ -813,16 +809,12 @@ public sealed class Binder
                 }
 
                 Dictionary<string, Symbol> availableSymbols = CollectInlineAsmAvailableSymbols();
-                Dictionary<string, InlineAsmBindingSlot> availableBindings = CreateInlineAsmBindingSlots(availableSymbols.Keys);
+                Dictionary<string, InlineAsmVarBindingSlot> availableBindings = CreateInlineAsmBindingSlots(availableSymbols.Keys);
 
                 InlineAssemblyValidator.ValidationResult validationResult =
                     InlineAssemblyValidator.Validate(asm.Body, asm.Span, availableBindings, _diagnostics);
 
-                Dictionary<string, VariableSymbol> tempSymbols = CreateInlineAsmTempSymbols(validationResult.TempBindings);
-                Dictionary<InlineAsmBindingSlot, Symbol> referencedSymbols = BuildInlineAsmReferencedSymbols(
-                    validationResult,
-                    availableSymbols,
-                    tempSymbols);
+                Dictionary<InlineAsmBindingSlot, Symbol> referencedSymbols = BuildInlineAsmReferencedSymbols(validationResult, availableSymbols);
 
                 if (outputSymbol is not null)
                     referencedSymbols[availableBindings[outputSymbol.Name]] = outputSymbol;
@@ -834,55 +826,37 @@ public sealed class Binder
         return new BoundErrorStatement(statement.Span);
     }
 
-    private static Dictionary<string, InlineAsmBindingSlot> CreateInlineAsmBindingSlots(IEnumerable<string> names)
+    private static Dictionary<string, InlineAsmVarBindingSlot> CreateInlineAsmBindingSlots(IEnumerable<string> names)
     {
-        Dictionary<string, InlineAsmBindingSlot> bindings = new(StringComparer.Ordinal);
+        Dictionary<string, InlineAsmVarBindingSlot> bindings = new(StringComparer.Ordinal);
         foreach (string name in names)
-            bindings.Add(name, new InlineAsmBindingSlot(name));
+            bindings.Add(name, new InlineAsmVarBindingSlot(name));
         return bindings;
     }
 
-    private Dictionary<string, VariableSymbol> CreateInlineAsmTempSymbols(
-        IReadOnlyCollection<InlineAsmBindingSlot> tempBindings)
+    private Dictionary<InlineAsmBindingSlot, Symbol> BuildInlineAsmReferencedSymbols(
+        InlineAssemblyValidator.ValidationResult validationResult,
+        IReadOnlyDictionary<string, Symbol> availableSymbols)
     {
-        Dictionary<string, VariableSymbol> symbols = new(StringComparer.Ordinal);
-        VariableScopeKind scopeKind = _currentFunction is null
-            ? VariableScopeKind.TopLevelAutomatic
-            : VariableScopeKind.Local;
-
-        foreach (InlineAsmBindingSlot tempBinding in tempBindings)
+        Dictionary<InlineAsmBindingSlot, Symbol> referencedSymbols = [];
+        foreach (InlineAsmVarBindingSlot binding in validationResult.ReferencedBindings)
         {
-            VariableSymbol symbol = new(
-                $"asm{tempBinding.PlaceholderText}",
+            if (availableSymbols.TryGetValue(binding.PlaceholderText, out Symbol? referenced))
+                referencedSymbols[binding] = referenced;
+        }
+
+        foreach (InlineAsmTempBindingSlot tempBinding in validationResult.TempBindings)
+        {
+            VariableSymbol tempSymbol = new(
+                $"asm%{tempBinding.TempId}",
                 BuiltinTypes.U32,
                 isConst: false,
                 VariableStorageClass.Automatic,
-                scopeKind,
+                VariableScopeKind.InlineAsmTemporary,
                 isExtern: false,
                 fixedAddress: null,
                 alignment: null);
-            symbols[tempBinding.PlaceholderText] = symbol;
-        }
-
-        return symbols;
-    }
-
-    private static Dictionary<InlineAsmBindingSlot, Symbol> BuildInlineAsmReferencedSymbols(
-        InlineAssemblyValidator.ValidationResult validationResult,
-        IReadOnlyDictionary<string, Symbol> availableSymbols,
-        IReadOnlyDictionary<string, VariableSymbol> tempSymbols)
-    {
-        Dictionary<InlineAsmBindingSlot, Symbol> referencedSymbols = [];
-        foreach (InlineAsmBindingSlot binding in validationResult.ReferencedBindings)
-        {
-            if (availableSymbols.TryGetValue(binding.PlaceholderText, out Symbol? referenced))
-            {
-                referencedSymbols[binding] = referenced;
-                continue;
-            }
-
-            if (tempSymbols.TryGetValue(binding.PlaceholderText, out VariableSymbol? tempSymbol))
-                referencedSymbols[binding] = tempSymbol;
+            referencedSymbols[tempBinding] = tempSymbol;
         }
 
         return referencedSymbols;

@@ -16,15 +16,15 @@ public static class InlineAssemblyValidator
     public sealed class ValidationResult
     {
         public Collection<InlineAsmLine> Lines { get; } = new();
-        public Collection<InlineAsmBindingSlot> ReferencedBindings { get; } = new();
-        public Collection<InlineAsmBindingSlot> TempBindings { get; } = new();
+        public Collection<InlineAsmVarBindingSlot> ReferencedBindings { get; } = new();
+        public Collection<InlineAsmTempBindingSlot> TempBindings { get; } = new();
         public bool IsValid { get; set; } = true;
     }
 
     public static ValidationResult Validate(
         string body,
         TextSpan blockSpan,
-        IReadOnlyDictionary<string, InlineAsmBindingSlot> availableBindings,
+        IReadOnlyDictionary<string, InlineAsmVarBindingSlot> availableBindings,
         DiagnosticBag diagnostics)
     {
         Requires.NotNull(body);
@@ -34,7 +34,7 @@ public static class InlineAssemblyValidator
         ValidationResult result = new();
         string[] rawLines = body.Split('\n');
         IReadOnlyDictionary<string, ControlFlowLabelSymbol> labels = CollectLabelDefinitions(rawLines);
-        Dictionary<string, InlineAsmBindingSlot> tempBindings = new(StringComparer.Ordinal);
+        Dictionary<int, InlineAsmTempBindingSlot> tempBindings = [];
 
         foreach (string rawLine in rawLines)
         {
@@ -77,8 +77,8 @@ public static class InlineAssemblyValidator
     private static InlineAsmLine? ParseAsmLine(
         string text,
         TextSpan blockSpan,
-        IReadOnlyDictionary<string, InlineAsmBindingSlot> availableBindings,
-        IDictionary<string, InlineAsmBindingSlot> tempBindings,
+        IReadOnlyDictionary<string, InlineAsmVarBindingSlot> availableBindings,
+        IDictionary<int, InlineAsmTempBindingSlot> tempBindings,
         IReadOnlyDictionary<string, ControlFlowLabelSymbol> labels,
         DiagnosticBag diagnostics,
         ValidationResult result)
@@ -149,8 +149,8 @@ public static class InlineAssemblyValidator
     private static InlineAsmOperand? ParseOperand(
         string operandText,
         TextSpan blockSpan,
-        IReadOnlyDictionary<string, InlineAsmBindingSlot> availableBindings,
-        IDictionary<string, InlineAsmBindingSlot> tempBindings,
+        IReadOnlyDictionary<string, InlineAsmVarBindingSlot> availableBindings,
+        IDictionary<int, InlineAsmTempBindingSlot> tempBindings,
         IReadOnlyDictionary<string, ControlFlowLabelSymbol> labels,
         DiagnosticBag diagnostics,
         ValidationResult result)
@@ -161,7 +161,7 @@ public static class InlineAssemblyValidator
 
         if (TryParseBindingReference(trimmed, out string? bindingName))
         {
-            if (!availableBindings.TryGetValue(bindingName!, out InlineAsmBindingSlot? bindingSlot))
+            if (!availableBindings.TryGetValue(bindingName!, out InlineAsmVarBindingSlot? bindingSlot))
             {
                 diagnostics.ReportInlineAsmUndefinedVariable(blockSpan, bindingName!);
                 result.IsValid = false;
@@ -172,10 +172,9 @@ public static class InlineAssemblyValidator
             return new InlineAsmBindingRefOperand(bindingSlot);
         }
 
-        if (TryParseTempBindingReference(trimmed, out string? tempBindingName))
+        if (TryParseTempBindingReference(trimmed, out int tempBindingId))
         {
-            InlineAsmBindingSlot tempBinding = GetOrAddTempBinding(tempBindings, result, tempBindingName!);
-            AddReferencedBinding(result, tempBinding);
+            InlineAsmTempBindingSlot tempBinding = GetOrAddTempBinding(tempBindings, result, tempBindingId);
             return new InlineAsmBindingRefOperand(tempBinding);
         }
 
@@ -215,7 +214,7 @@ public static class InlineAssemblyValidator
         if (P2InstructionMetadata.TryParseSpecialRegister(trimmed, out P2SpecialRegister register))
             return new InlineAsmSpecialRegisterOperand(register);
 
-        if (availableBindings.TryGetValue(trimmed, out InlineAsmBindingSlot? directBinding))
+        if (availableBindings.TryGetValue(trimmed, out InlineAsmVarBindingSlot? directBinding))
         {
             AddReferencedBinding(result, directBinding);
             return new InlineAsmBindingRefOperand(directBinding);
@@ -226,21 +225,21 @@ public static class InlineAssemblyValidator
         return null;
     }
 
-    private static InlineAsmBindingSlot GetOrAddTempBinding(
-        IDictionary<string, InlineAsmBindingSlot> tempBindings,
+    private static InlineAsmTempBindingSlot GetOrAddTempBinding(
+        IDictionary<int, InlineAsmTempBindingSlot> tempBindings,
         ValidationResult result,
-        string bindingName)
+        int tempId)
     {
-        if (tempBindings.TryGetValue(bindingName, out InlineAsmBindingSlot? existing))
+        if (tempBindings.TryGetValue(tempId, out InlineAsmTempBindingSlot? existing))
             return existing;
 
-        InlineAsmBindingSlot created = new(bindingName);
-        tempBindings.Add(bindingName, created);
+        InlineAsmTempBindingSlot created = new(tempId);
+        tempBindings.Add(tempId, created);
         result.TempBindings.Add(created);
         return created;
     }
 
-    private static void AddReferencedBinding(ValidationResult result, InlineAsmBindingSlot bindingSlot)
+    private static void AddReferencedBinding(ValidationResult result, InlineAsmVarBindingSlot bindingSlot)
     {
         if (!result.ReferencedBindings.Contains(bindingSlot))
             result.ReferencedBindings.Add(bindingSlot);
@@ -300,9 +299,9 @@ public static class InlineAssemblyValidator
         return true;
     }
 
-    private static bool TryParseTempBindingReference(string text, out string? bindingName)
+    private static bool TryParseTempBindingReference(string text, out int tempId)
     {
-        bindingName = null;
+        tempId = 0;
         if (text.Length < 2 || text[0] != '%')
             return false;
 
@@ -316,25 +315,20 @@ public static class InlineAssemblyValidator
                 return false;
         }
 
-        int firstNonZero = 0;
-        while (firstNonZero < digits.Length - 1 && digits[firstNonZero] == '0')
-            firstNonZero++;
-
-        bindingName = "%" + digits[firstNonZero..].ToString();
-        return true;
+        return int.TryParse(digits, out tempId);
     }
 
     private static void AnalyzeTempReadBeforeWrite(
         IReadOnlyList<InlineAsmLine> parsedLines,
-        IReadOnlyCollection<InlineAsmBindingSlot> tempBindings,
+        IReadOnlyCollection<InlineAsmTempBindingSlot> tempBindings,
         TextSpan blockSpan,
         DiagnosticBag diagnostics)
     {
         if (tempBindings.Count == 0)
             return;
 
-        HashSet<InlineAsmBindingSlot> tempBindingSet = new(tempBindings);
-        HashSet<InlineAsmBindingSlot> seenBindings = [];
+        HashSet<InlineAsmTempBindingSlot> tempBindingSet = new(tempBindings);
+        HashSet<InlineAsmTempBindingSlot> seenBindings = [];
 
         foreach (InlineAsmLine line in parsedLines)
         {
@@ -344,8 +338,9 @@ public static class InlineAssemblyValidator
             for (int operandIndex = 0; operandIndex < instruction.Operands.Count; operandIndex++)
             {
                 if (instruction.Operands[operandIndex] is not InlineAsmBindingRefOperand binding
-                    || !tempBindingSet.Contains(binding.Slot)
-                    || !seenBindings.Add(binding.Slot))
+                    || binding.Slot is not InlineAsmTempBindingSlot tempBinding
+                    || !tempBindingSet.Contains(tempBinding)
+                    || !seenBindings.Add(tempBinding))
                 {
                     continue;
                 }
@@ -355,7 +350,7 @@ public static class InlineAssemblyValidator
                     instruction.Operands.Count,
                     operandIndex);
                 if (access is P2OperandAccess.Read or P2OperandAccess.ReadWrite)
-                    diagnostics.ReportInlineAsmTempReadBeforeWrite(blockSpan, binding.Slot.PlaceholderText);
+                    diagnostics.ReportInlineAsmTempReadBeforeWrite(blockSpan, tempBinding.PlaceholderText);
             }
         }
     }

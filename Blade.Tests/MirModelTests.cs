@@ -17,7 +17,7 @@ public class MirModelTests
         return new StoragePlace(symbol, StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, staticInitializer: null, emittedName: $"g_{name}");
     }
 
-    private static InlineAsmBindingSlot CreateBindingSlot(string name) => new(name);
+    private static InlineAsmVarBindingSlot CreateBindingSlot(string name) => new(name);
 
     [Test]
     public void RewriteUses_CoversMirInstructionVariants()

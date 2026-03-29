@@ -952,7 +952,7 @@ public class IrPipelineTests
         });
 
         string lir = LirTextWriter.Write(build.LirModule);
-        Match tempMatch = Regex.Match(lir, @"inlineasm %0=(%r\d+):rw, %1=(%r\d+):rw, out=(%r\d+):w");
+        Match tempMatch = Regex.Match(lir, @"inlineasm out=%r\d+:w, %0=(%r\d+):rw, %1=(%r\d+):rw");
         Assert.That(tempMatch.Success, Is.True, lir);
         Assert.That(tempMatch.Groups[1].Value, Is.Not.EqualTo(tempMatch.Groups[2].Value), lir);
         Assert.That(build.AssemblyText, Does.Not.Contain("%0"));

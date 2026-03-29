@@ -15,9 +15,9 @@ public class LowLevelSurfaceTests
     [Test]
     public void InlineAssemblyBindingAnalysis_ComputesPreciseTypedAccesses()
     {
-        InlineAsmBindingSlot dst = new("dst");
-        InlineAsmBindingSlot src = new("src");
-        InlineAsmBindingSlot unused = new("unused");
+        InlineAsmVarBindingSlot dst = new("dst");
+        InlineAsmVarBindingSlot src = new("src");
+        InlineAsmVarBindingSlot unused = new("unused");
         IReadOnlyDictionary<InlineAsmBindingSlot, InlineAsmBindingAccess> access = InlineAssemblyBindingAnalysis.ComputeBindingAccess(
             parsedLines:
             [
@@ -52,8 +52,8 @@ public class LowLevelSurfaceTests
     [Test]
     public void InlineAssemblyBindingAnalysis_FallsBackToReadWriteWhenLoweringIsUnsafe()
     {
-        InlineAsmBindingSlot x = new("x");
-        InlineAsmBindingSlot y = new("y");
+        InlineAsmVarBindingSlot x = new("x");
+        InlineAsmVarBindingSlot y = new("y");
 
         // Volatile asm now gets precise per-operand analysis (not conservative ReadWrite).
         IReadOnlyDictionary<InlineAsmBindingSlot, InlineAsmBindingAccess> volatileAccess = InlineAssemblyBindingAnalysis.ComputeBindingAccess(
@@ -105,12 +105,12 @@ public class LowLevelSurfaceTests
             ADD %1, #2
             """,
             new TextSpan(0, 0),
-            new Dictionary<string, InlineAsmBindingSlot>(),
+            new Dictionary<string, InlineAsmVarBindingSlot>(),
             diagnostics);
 
         Assert.That(diagnostics, Is.Empty);
         Assert.That(result.TempBindings.Select(static binding => binding.PlaceholderText), Is.EqualTo(new[] { "%1" }));
-        Assert.That(result.ReferencedBindings.Select(static binding => binding.PlaceholderText), Is.EqualTo(new[] { "%1" }));
+        Assert.That(result.ReferencedBindings, Is.Empty);
         InlineAsmInstructionLine firstInstruction = (InlineAsmInstructionLine)result.Lines[0];
         InlineAsmBindingRefOperand firstOperand = (InlineAsmBindingRefOperand)firstInstruction.Operands[0];
         Assert.That(firstOperand.Slot.PlaceholderText, Is.EqualTo("%1"));
@@ -124,7 +124,7 @@ public class LowLevelSurfaceTests
         _ = InlineAssemblyValidator.Validate(
             "ADD %0, #1",
             new TextSpan(0, 0),
-            new Dictionary<string, InlineAsmBindingSlot>(),
+            new Dictionary<string, InlineAsmVarBindingSlot>(),
             diagnostics);
 
         Assert.That(diagnostics.Select(static diagnostic => diagnostic.Code), Does.Contain(DiagnosticCode.W0307_InlineAsmTempReadBeforeWrite));

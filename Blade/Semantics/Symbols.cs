@@ -115,7 +115,7 @@ public sealed class VariableSymbol : Symbol
     public int? FixedAddress { get; private set; }
     public int? Alignment { get; private set; }
 
-    public bool IsAutomatic => ScopeKind is VariableScopeKind.Local or VariableScopeKind.TopLevelAutomatic;
+    public bool IsAutomatic => ScopeKind is VariableScopeKind.Local or VariableScopeKind.TopLevelAutomatic or VariableScopeKind.InlineAsmTemporary;
     public bool IsGlobalStorage => ScopeKind == VariableScopeKind.GlobalStorage;
     public bool UsesGlobalRegisterStorage => IsGlobalStorage && StorageClass == VariableStorageClass.Reg;
     public bool UsesGlobalLutStorage => IsGlobalStorage && StorageClass == VariableStorageClass.Lut;
@@ -153,6 +153,7 @@ public enum VariableScopeKind
     Local,
     Parameter,
     TopLevelAutomatic,
+    InlineAsmTemporary,
     GlobalStorage,
 }
 

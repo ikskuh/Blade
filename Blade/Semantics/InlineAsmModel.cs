@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace Blade.Semantics;
 
@@ -59,9 +60,15 @@ public abstract class InlineAsmOperand
 {
 }
 
-public sealed class InlineAsmBindingSlot
+public abstract class InlineAsmBindingSlot
 {
-    public InlineAsmBindingSlot(string placeholderText)
+    public abstract string PlaceholderText { get; }
+    public override string ToString() => PlaceholderText;
+}
+
+public sealed class InlineAsmVarBindingSlot : InlineAsmBindingSlot
+{
+    public InlineAsmVarBindingSlot(string placeholderText)
     {
         PlaceholderText = Requires.NotNullOrWhiteSpace(placeholderText);
     }
@@ -70,9 +77,19 @@ public sealed class InlineAsmBindingSlot
     /// Original placeholder spelling for diagnostics and dumps only.
     /// Binding identity is the slot object itself, not this text.
     /// </summary>
-    public string PlaceholderText { get; }
+    public override string PlaceholderText { get; }
+}
 
-    public override string ToString() => PlaceholderText;
+public sealed class InlineAsmTempBindingSlot : InlineAsmBindingSlot
+{
+    public InlineAsmTempBindingSlot(int tempId)
+    {
+        Requires.NonNegative(tempId);
+        TempId = tempId;
+    }
+
+    public int TempId { get; }
+    public override string PlaceholderText => "%" + TempId.ToString(CultureInfo.InvariantCulture);
 }
 
 public sealed class InlineAsmBindingRefOperand : InlineAsmOperand

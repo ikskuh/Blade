@@ -1655,7 +1655,7 @@ public static class MirLowerer
         }
 
         private static bool IsInlineAsmTempSymbol(Symbol symbol)
-            => symbol is VariableSymbol { Name: ['a', 's', 'm', '%', ..] };
+            => symbol is VariableSymbol { ScopeKind: VariableScopeKind.InlineAsmTemporary };
 
         private static TypeSymbol GetSymbolType(Symbol symbol)
         {
