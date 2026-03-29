@@ -20,11 +20,6 @@ public sealed class AsmCopyPropagation : PerFunctionAsmOptimization
                     nodes.Add(node);
                     break;
 
-                case AsmImplicitUseNode implicitUse:
-                    nodes.Add(RewriteImplicitUse(implicitUse, aliases));
-                    aliases.Clear();
-                    break;
-
                 case AsmLabelNode:
                 case AsmDirectiveNode:
                 case AsmVolatileRegionBeginNode:

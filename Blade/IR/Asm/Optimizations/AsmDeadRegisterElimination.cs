@@ -67,14 +67,6 @@ public sealed class AsmDeadRegisterElimination : PerFunctionAsmOptimization
                 foreach (VirtualAsmRegister usedRegister in EnumerateUsedRegisters(instruction))
                     live.Add(usedRegister);
             }
-            else if (node is AsmImplicitUseNode implicitUse)
-            {
-                foreach (AsmOperand operand in implicitUse.Operands)
-                {
-                    if (operand is AsmRegisterOperand reg)
-                        live.Add(reg.Register);
-                }
-            }
 
             kept.Add(node);
         }

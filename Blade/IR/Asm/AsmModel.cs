@@ -193,16 +193,6 @@ public sealed class AsmLabelNode : AsmNode
     public string Name => Label.Name;
 }
 
-public sealed class AsmImplicitUseNode : AsmNode
-{
-    public AsmImplicitUseNode(IReadOnlyList<AsmOperand> operands)
-    {
-        Operands = operands;
-    }
-
-    public IReadOnlyList<AsmOperand> Operands { get; }
-}
-
 /// <summary>
 /// Represents a PASM2 instruction with real P2 mnemonics, virtual registers,
 /// and optional flag effects / condition predicates.

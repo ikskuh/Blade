@@ -128,7 +128,6 @@
       "AsmCommentNode",
       "AsmDataNode",
       "AsmDirectiveNode",
-      "AsmImplicitUseNode",
       "AsmInstructionNode",
       "AsmLabelNode",
       "AsmSectionNode",

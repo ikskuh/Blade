@@ -161,14 +161,19 @@ public enum FunctionKind
 {
     Default,
     Leaf,
-    Inline,
-    Noinline,
     Rec,
     Coro,
     Comptime,
     Int1,
     Int2,
     Int3,
+}
+
+public enum FunctionInliningPolicy
+{
+    Default,
+    ForceInline,
+    NeverInline,
 }
 
 public enum ReturnPlacement
@@ -185,20 +190,29 @@ public readonly record struct ReturnSlot(TypeSymbol Type, ReturnPlacement Placem
 
 public sealed class FunctionSymbol : Symbol
 {
-    public FunctionSymbol(string name, IFunctionSignatureSyntax syntax, FunctionKind kind)
+    public FunctionSymbol(
+        string name,
+        IFunctionSignatureSyntax syntax,
+        FunctionKind kind,
+        FunctionInliningPolicy inliningPolicy = FunctionInliningPolicy.Default)
         : base(name)
     {
         Syntax = Requires.NotNull(syntax);
         Kind = kind;
+        InliningPolicy = inliningPolicy;
     }
 
-    public FunctionSymbol(string name, FunctionKind kind)
-        : this(name, new SyntheticFunctionSignatureSyntax(name), kind)
+    public FunctionSymbol(
+        string name,
+        FunctionKind kind,
+        FunctionInliningPolicy inliningPolicy = FunctionInliningPolicy.Default)
+        : this(name, new SyntheticFunctionSignatureSyntax(name), kind, inliningPolicy)
     {
     }
 
     public IFunctionSignatureSyntax Syntax { get; }
     public FunctionKind Kind { get; }
+    public FunctionInliningPolicy InliningPolicy { get; }
     public bool IsAsmFunction => Syntax is AsmFunctionDeclarationSyntax;
     public IReadOnlyList<ParameterSymbol> Parameters { get; set; } = [];
     public IReadOnlyList<ReturnSlot> ReturnSlots { get; set; } = [];

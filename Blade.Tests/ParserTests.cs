@@ -453,8 +453,54 @@ public class ParserTests
         AssertNoDiagnostics(diag);
 
         FunctionDeclarationSyntax func = (FunctionDeclarationSyntax)unit.Members[0];
-        Assert.That(func.FuncKindKeyword?.Kind, Is.EqualTo(TokenKind.ComptimeKeyword));
+        Assert.That(func.Modifiers.Select(static token => token.Kind).ToArray(), Is.EqualTo(new[] { TokenKind.ComptimeKeyword }));
         Assert.That(func.Name.Text, Is.EqualTo("init"));
+    }
+
+    [Test]
+    public void NoinlineLeafFunctionDeclaration_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("noinline leaf fn demo() { return; }");
+        AssertNoDiagnostics(diag);
+
+        FunctionDeclarationSyntax func = (FunctionDeclarationSyntax)unit.Members[0];
+        Assert.That(func.Modifiers.Select(static token => token.Kind).ToArray(), Is.EqualTo(new[] { TokenKind.NoinlineKeyword, TokenKind.LeafKeyword }));
+        Assert.That(func.Name.Text, Is.EqualTo("demo"));
+    }
+
+    [Test]
+    public void LeafNoinlineFunctionDeclaration_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("leaf noinline fn demo() { return; }");
+        AssertNoDiagnostics(diag);
+
+        FunctionDeclarationSyntax func = (FunctionDeclarationSyntax)unit.Members[0];
+        Assert.That(func.Modifiers.Select(static token => token.Kind).ToArray(), Is.EqualTo(new[] { TokenKind.LeafKeyword, TokenKind.NoinlineKeyword }));
+        Assert.That(func.Name.Text, Is.EqualTo("demo"));
+    }
+
+    [Test]
+    public void DuplicateFunctionCallingConventionModifier_ReportsDiagnostic()
+    {
+        (CompilationUnitSyntax _, DiagnosticBag diag) = Parse("leaf rec fn demo() { return; }");
+
+        Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0101_UnexpectedToken), Is.True);
+    }
+
+    [Test]
+    public void DuplicateFunctionInliningModifier_ReportsDiagnostic()
+    {
+        (CompilationUnitSyntax _, DiagnosticBag diag) = Parse("inline noinline fn demo() { return; }");
+
+        Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0101_UnexpectedToken), Is.True);
+    }
+
+    [Test]
+    public void InlineNonDefaultCallingConvention_ReportsDiagnostic()
+    {
+        (CompilationUnitSyntax _, DiagnosticBag diag) = Parse("inline leaf fn demo() { return; }");
+
+        Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0101_UnexpectedToken), Is.True);
     }
 
     [Test]

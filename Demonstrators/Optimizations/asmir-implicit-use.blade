@@ -1,12 +1,13 @@
-// EXPECT: xfail
+// EXPECT: pass
 // STAGE: asmir
-// SEQUENCE:
-// - MOV g_sink, ?1
-// - ADD ?1, #2
+// CONTAINS:
+// - MOV g_gen_general_use_arg0, g_source
+// - CALL #general_use
+// - MOV g_sink, g_gen_general_use_ret0
+// - MOV PB, g_gen_general_use_arg0
+// - _RET_ MOV g_gen_general_use_ret0, _r4
 // NOTE:
-//   This case covers the use of the AsmImplicitUseNode node.
-//   This node is only emitted for regular functions that aren't auto-leafed
-//   or auto-inlined.
+//   Covers the explicit general-calling-convention argument and return storage path.
 
 noinline fn leaf_func(v: u32) -> u32 {
     return v;

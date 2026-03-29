@@ -53,6 +53,7 @@ public sealed class MirFunction
     public string Name => Symbol.Name;
     public bool IsEntryPoint { get; }
     public FunctionKind Kind => Symbol.Kind;
+    public FunctionInliningPolicy InliningPolicy => Symbol.InliningPolicy;
     public IReadOnlyList<TypeSymbol> ReturnTypes { get; }
     public IReadOnlyList<ReturnSlot> ReturnSlots { get; }
     public IReadOnlyDictionary<MirValueId, MirFlag> FlagValues { get; }

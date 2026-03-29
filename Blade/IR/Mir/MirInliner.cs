@@ -14,10 +14,10 @@ public static class MirInliner
 
         return Inline(module, (_, _, callee, callCounts) =>
         {
-            if (callee.Kind == FunctionKind.Inline)
+            if (callee.InliningPolicy == FunctionInliningPolicy.ForceInline)
                 return true;
 
-            if (callee.Kind == FunctionKind.Noinline)
+            if (callee.InliningPolicy == FunctionInliningPolicy.NeverInline)
                 return false;
 
             return enableSingleCallsiteInlining
@@ -32,8 +32,8 @@ public static class MirInliner
 
         return Inline(module, (_, _, callee, _) =>
         {
-            if (callee.Kind is FunctionKind.Noinline
-                or FunctionKind.Rec
+            if (callee.InliningPolicy == FunctionInliningPolicy.NeverInline
+                || callee.Kind is FunctionKind.Rec
                 or FunctionKind.Coro
                 or FunctionKind.Int1
                 or FunctionKind.Int2

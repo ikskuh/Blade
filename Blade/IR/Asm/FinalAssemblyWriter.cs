@@ -326,7 +326,6 @@ public static class FinalAssemblyWriter
                 sb.AppendLine(comment.Text);
                 break;
 
-            case AsmImplicitUseNode:
             case AsmVolatileRegionBeginNode:
             case AsmVolatileRegionEndNode:
                 break;

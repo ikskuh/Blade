@@ -237,15 +237,6 @@ public static class LivenessAnalyzer
                     case AsmInstructionNode instruction:
                         ProcessInstruction(instruction, block);
                         break;
-
-                    case AsmImplicitUseNode implicitUse:
-                        foreach (AsmOperand operand in implicitUse.Operands)
-                        {
-                            if (operand is AsmRegisterOperand reg)
-                                AddUse(block, reg.Register);
-                        }
-                        break;
-
                 }
             }
         }
@@ -391,17 +382,6 @@ public static class LivenessAnalyzer
 
                         break;
                     }
-
-                    case AsmImplicitUseNode implicitUse:
-                        foreach (AsmOperand operand in implicitUse.Operands)
-                        {
-                            if (operand is not AsmRegisterOperand reg)
-                                continue;
-                            EnsureNode(interference, reg.Register);
-                            live.Add(reg.Register);
-                        }
-                        break;
-
                 }
             }
         }

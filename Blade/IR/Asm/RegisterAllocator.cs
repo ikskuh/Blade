@@ -112,17 +112,10 @@ public static class RegisterAllocator
 
         foreach (AsmNode node in function.Nodes)
         {
-            switch (node)
+            if (node is AsmInstructionNode instruction)
             {
-                case AsmInstructionNode instruction:
-                    foreach (AsmOperand operand in instruction.Operands)
-                        Track(operand);
-                    break;
-
-                case AsmImplicitUseNode implicitUse:
-                    foreach (AsmOperand operand in implicitUse.Operands)
-                        Track(operand);
-                    break;
+                foreach (AsmOperand operand in instruction.Operands)
+                    Track(operand);
             }
         }
 
@@ -145,22 +138,13 @@ public static class RegisterAllocator
         HashSet<VirtualAsmRegister> allRegs = [];
         foreach (AsmNode node in function.Nodes)
         {
-            switch (node)
+            if (node is AsmInstructionNode instruction)
             {
-                case AsmInstructionNode instruction:
-                    foreach (AsmOperand operand in instruction.Operands)
-                    {
-                        if (operand is AsmRegisterOperand reg)
-                            allRegs.Add(reg.Register);
-                    }
-                    break;
-                case AsmImplicitUseNode implicitUse:
-                    foreach (AsmOperand operand in implicitUse.Operands)
-                    {
-                        if (operand is AsmRegisterOperand reg)
-                            allRegs.Add(reg.Register);
-                    }
-                    break;
+                foreach (AsmOperand operand in instruction.Operands)
+                {
+                    if (operand is AsmRegisterOperand reg)
+                        allRegs.Add(reg.Register);
+                }
             }
         }
 
@@ -587,15 +571,6 @@ public static class RegisterAllocator
                             instruction.Condition,
                             instruction.FlagEffect,
                             instruction.IsNonElidable));
-                        break;
-                    }
-
-                    case AsmImplicitUseNode implicitUse:
-                    {
-                        List<AsmOperand> operands = new(implicitUse.Operands.Count);
-                        foreach (AsmOperand operand in implicitUse.Operands)
-                            operands.Add(RewriteOperand(operand, regToSlot, GetSlotSymbol));
-                        rewrittenNodes.Add(new AsmImplicitUseNode(operands));
                         break;
                     }
 

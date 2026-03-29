@@ -330,3 +330,12 @@ Implement common constant multiply/divide strategies (QMUL takes 51 cycles, so w
 - `* 7` = `a*8 - a`
 - ...
 
+## Argument/return fusion
+
+Implement optimization that function argument/retval storage places can be fused.
+Different labels for clarity, but same memory slot for efficiency when proven that 
+they cannot overlap anyways.
+
+## Rework register allocator to run backwards
+
+This should give much much better results than running front-to-back.

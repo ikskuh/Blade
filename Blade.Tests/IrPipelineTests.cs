@@ -1182,7 +1182,8 @@ public class IrPipelineTests
         AsmFunction function = build.AsmModule.Functions.Single(f => f.Name == "f");
         Assert.That(function.CcTier, Is.EqualTo(CallingConventionTier.General));
         Assert.That(function.Nodes.OfType<AsmInstructionNode>().Any(i => i.Opcode == "ADD"), Is.True);
-        Assert.That(function.Nodes.OfType<AsmImplicitUseNode>().Any(), Is.True);
+        Assert.That(AsmTextWriter.Write(build.AsmModule), Does.Contain("g_gen_f_ret0"));
+        Assert.That(AsmTextWriter.Write(build.AsmModule), Does.Contain("MOV g_gen_f_ret0"));
     }
 
     [Test]

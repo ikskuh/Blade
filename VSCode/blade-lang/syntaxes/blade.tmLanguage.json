@@ -368,7 +368,7 @@
       }
     },
     "function-definitions": {
-      "begin": "\\b(?:(asm)\\s+(?:(volatile)\\s+)?)?(?:(leaf|inline|noinline|rec|coro|comptime|int1|int2|int3)\\s+)?(fn)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b",
+      "begin": "\\b(?:(asm)\\s+(?:(volatile)\\s+)?)?(?:(leaf|inline|noinline|rec|coro|comptime|int1|int2|int3)\\s+)*(fn)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.asm.blade"

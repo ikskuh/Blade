@@ -59,17 +59,6 @@ public static class AsmTextWriter
                 sb.AppendLine(comment.Text);
                 break;
 
-            case AsmImplicitUseNode implicitUse:
-                sb.Append("    .use ");
-                for (int i = 0; i < implicitUse.Operands.Count; i++)
-                {
-                    if (i > 0)
-                        sb.Append(", ");
-                    sb.Append(FormatOperand(implicitUse.Operands[i], formatter));
-                }
-                sb.AppendLine();
-                break;
-
             case AsmInstructionNode instruction:
                 sb.Append("    ");
                 if (instruction.Condition is P2ConditionCode condition)

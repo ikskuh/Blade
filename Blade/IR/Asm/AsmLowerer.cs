@@ -48,6 +48,7 @@ public static class AsmLowerer
         CallGraphResult cgResult = CallGraphAnalyzer.Analyze(module);
         (
             IReadOnlyList<StoragePlace> storagePlaces,
+            Dictionary<FunctionSymbol, GeneralCallingConventionInfo> generalCallingConvention,
             Dictionary<FunctionSymbol, RecursiveCallingConventionInfo> recursiveCallingConvention,
             Dictionary<FunctionSymbol, CoroutineCallingConventionInfo> coroutineCallingConvention,
             StoragePlace? topLevelYieldStatePlace) =
@@ -79,6 +80,7 @@ public static class AsmLowerer
                 tier,
                 cgResult.Tiers,
                 blockParamMap[function.Symbol],
+                generalCallingConvention,
                 recursiveCallingConvention,
                 coroutineCallingConvention,
                 topLevelYieldStatePlace,
@@ -97,6 +99,7 @@ public static class AsmLowerer
         public CallingConventionTier Tier { get; }
         public Dictionary<FunctionSymbol, CallingConventionTier> CalleeTiers { get; }
         public Dictionary<LirBlockRef, IReadOnlyList<LirBlockParameter>> BlockParams { get; }
+        public Dictionary<FunctionSymbol, GeneralCallingConventionInfo> GeneralCallingConvention { get; }
         public Dictionary<FunctionSymbol, RecursiveCallingConventionInfo> RecursiveCallingConvention { get; }
         public Dictionary<FunctionSymbol, CoroutineCallingConventionInfo> CoroutineCallingConvention { get; }
         public StoragePlace? TopLevelYieldStatePlace { get; }
@@ -127,6 +130,7 @@ public static class AsmLowerer
             CallingConventionTier tier,
             Dictionary<FunctionSymbol, CallingConventionTier> calleeTiers,
             Dictionary<LirBlockRef, IReadOnlyList<LirBlockParameter>> blockParams,
+            Dictionary<FunctionSymbol, GeneralCallingConventionInfo> generalCallingConvention,
             Dictionary<FunctionSymbol, RecursiveCallingConventionInfo> recursiveCallingConvention,
             Dictionary<FunctionSymbol, CoroutineCallingConventionInfo> coroutineCallingConvention,
             StoragePlace? topLevelYieldStatePlace,
@@ -138,6 +142,7 @@ public static class AsmLowerer
             Tier = tier;
             CalleeTiers = calleeTiers;
             BlockParams = blockParams;
+            GeneralCallingConvention = generalCallingConvention;
             RecursiveCallingConvention = recursiveCallingConvention;
             CoroutineCallingConvention = coroutineCallingConvention;
             TopLevelYieldStatePlace = topLevelYieldStatePlace;
@@ -159,6 +164,20 @@ public static class AsmLowerer
         {
             return Registers.FromLir(register);
         }
+    }
+
+    private sealed class GeneralCallingConventionInfo
+    {
+        public GeneralCallingConventionInfo(
+            IReadOnlyList<StoragePlace> parameterPlaces,
+            StoragePlace? registerReturnPlace)
+        {
+            ParameterPlaces = parameterPlaces;
+            RegisterReturnPlace = registerReturnPlace;
+        }
+
+        public IReadOnlyList<StoragePlace> ParameterPlaces { get; }
+        public StoragePlace? RegisterReturnPlace { get; }
     }
 
     private sealed class RecursiveCallingConventionInfo
@@ -198,7 +217,12 @@ public static class AsmLowerer
         {
             nodes.Add(new AsmLabelNode(ctx.GetBlockLabel(block.Ref)));
 
-            if (ctx.Tier == CallingConventionTier.Recursive
+            if (ctx.Tier == CallingConventionTier.General
+                && ReferenceEquals(block, ctx.Function.Blocks[0]))
+            {
+                EmitGeneralFunctionEntryLoads(nodes, block, ctx);
+            }
+            else if (ctx.Tier == CallingConventionTier.Recursive
                 && ReferenceEquals(block, ctx.Function.Blocks[0]))
             {
                 EmitRecursiveFunctionEntryLoads(nodes, block, ctx);
@@ -222,6 +246,7 @@ public static class AsmLowerer
 
     private static (
         IReadOnlyList<StoragePlace> StoragePlaces,
+        Dictionary<FunctionSymbol, GeneralCallingConventionInfo> GeneralCallingConvention,
         Dictionary<FunctionSymbol, RecursiveCallingConventionInfo> RecursiveCallingConvention,
         Dictionary<FunctionSymbol, CoroutineCallingConventionInfo> CoroutineCallingConvention,
         StoragePlace? TopLevelYieldStatePlace)
@@ -230,6 +255,7 @@ public static class AsmLowerer
         List<StoragePlace> storagePlaces = new(module.StoragePlaces.Count);
         storagePlaces.AddRange(module.StoragePlaces);
 
+        Dictionary<FunctionSymbol, GeneralCallingConventionInfo> generalCallingConvention = [];
         Dictionary<FunctionSymbol, RecursiveCallingConventionInfo> recursiveCallingConvention = [];
         Dictionary<FunctionSymbol, CoroutineCallingConventionInfo> coroutineCallingConvention = [];
         foreach (LirFunction function in module.Functions)
@@ -238,7 +264,59 @@ public static class AsmLowerer
                 continue;
 
             CallingConventionTier functionTier = cgResult.Tiers.GetValueOrDefault(function.Symbol, CallingConventionTier.General);
-            if (functionTier == CallingConventionTier.Recursive)
+            if (functionTier == CallingConventionTier.General)
+            {
+                Assert.Invariant(function.Blocks.Count > 0, "General functions must have an entry block.");
+                IReadOnlyList<LirBlockParameter> entryParameters = function.Blocks[0].Parameters;
+                List<StoragePlace> parameterPlaces = new(entryParameters.Count);
+                for (int i = 0; i < entryParameters.Count; i++)
+                {
+                    VariableSymbol parameterSymbol = new(
+                        $"gen_{function.Name}_arg{i}",
+                        entryParameters[i].Type,
+                        isConst: false,
+                        VariableStorageClass.Reg,
+                        VariableScopeKind.GlobalStorage,
+                        isExtern: false,
+                        fixedAddress: null,
+                        alignment: null);
+                    StoragePlace parameterPlace = new(
+                        parameterSymbol,
+                        StoragePlaceKind.AllocatableGlobalRegister,
+                        fixedAddress: null,
+                        staticInitializer: null);
+                    parameterPlaces.Add(parameterPlace);
+                    storagePlaces.Add(parameterPlace);
+                }
+
+                ReturnSlot? registerReturnSlot = function.ReturnSlots
+                    .Where(static slot => slot.Placement == ReturnPlacement.Register)
+                    .Cast<ReturnSlot?>()
+                    .FirstOrDefault();
+
+                StoragePlace? registerReturnPlace = null;
+                if (registerReturnSlot is { } slot)
+                {
+                    VariableSymbol returnSymbol = new(
+                        $"gen_{function.Name}_ret0",
+                        slot.Type,
+                        isConst: false,
+                        VariableStorageClass.Reg,
+                        VariableScopeKind.GlobalStorage,
+                        isExtern: false,
+                        fixedAddress: null,
+                        alignment: null);
+                    registerReturnPlace = new StoragePlace(
+                        returnSymbol,
+                        StoragePlaceKind.AllocatableGlobalRegister,
+                        fixedAddress: null,
+                        staticInitializer: null);
+                    storagePlaces.Add(registerReturnPlace);
+                }
+
+                generalCallingConvention[function.Symbol] = new GeneralCallingConventionInfo(parameterPlaces, registerReturnPlace);
+            }
+            else if (functionTier == CallingConventionTier.Recursive)
             {
                 Assert.Invariant(function.Blocks.Count > 0, "Recursive functions must have an entry block.");
                 IReadOnlyList<LirBlockParameter> entryParameters = function.Blocks[0].Parameters;
@@ -364,7 +442,7 @@ public static class AsmLowerer
         }
 
         BackendSymbolNaming.AssignStorageNames(storagePlaces);
-        return (storagePlaces, recursiveCallingConvention, coroutineCallingConvention, topLevelYieldStatePlace);
+        return (storagePlaces, generalCallingConvention, recursiveCallingConvention, coroutineCallingConvention, topLevelYieldStatePlace);
     }
 
     private static bool FunctionContainsYield(LirFunction function)
@@ -416,6 +494,21 @@ public static class AsmLowerer
                 P2Mnemonic.MOV,
                 new AsmRegisterOperand(ctx.GetRegister(block.Parameters[i].Register)),
                 new AsmPlaceOperand(recursiveInfo.ParameterPlaces[i])));
+        }
+    }
+
+    private static void EmitGeneralFunctionEntryLoads(List<AsmNode> nodes, LirBlock block, LoweringContext ctx)
+    {
+        bool found = ctx.GeneralCallingConvention.TryGetValue(ctx.Function.Symbol, out GeneralCallingConventionInfo? info);
+        Assert.Invariant(found, "General functions must have calling-convention metadata.");
+        Assert.Invariant(info!.ParameterPlaces.Count == block.Parameters.Count, "General entry ABI must match the function parameter list.");
+
+        for (int i = 0; i < block.Parameters.Count; i++)
+        {
+            nodes.Add(Emit(
+                P2Mnemonic.MOV,
+                new AsmRegisterOperand(ctx.GetRegister(block.Parameters[i].Register)),
+                new AsmPlaceOperand(info.ParameterPlaces[i])));
         }
     }
 
@@ -1655,13 +1748,23 @@ public static class AsmLowerer
                 break;
 
             case CallingConventionTier.General:
-            case CallingConventionTier.EntryPoint:
-                // CALL: params in global registers, result in assigned register
+            {
+                bool hasInfo = ctx.GeneralCallingConvention.TryGetValue(target, out GeneralCallingConventionInfo? generalInfo);
+                Assert.Invariant(hasInfo, "General callees must have calling-convention metadata.");
+                Assert.Invariant(generalInfo!.ParameterPlaces.Count == args.Count, "General call arguments must match the callee parameter ABI.");
+
                 for (int i = 0; i < args.Count; i++)
-                    nodes.Add(new AsmCommentNode($"arg{i} = {args[i].Format()}"));
+                    nodes.Add(Emit(P2Mnemonic.MOV, new AsmPlaceOperand(generalInfo.ParameterPlaces[i]), args[i]));
+
                 nodes.Add(Emit(P2Mnemonic.CALL, targetOp));
-                if (destReg is not null)
-                    nodes.Add(new AsmCommentNode($"result -> {destReg.Format()}"));
+
+                if (destReg is not null && generalInfo.RegisterReturnPlace is not null)
+                    nodes.Add(Emit(P2Mnemonic.MOV, destReg, new AsmPlaceOperand(generalInfo.RegisterReturnPlace)));
+                break;
+            }
+
+            case CallingConventionTier.EntryPoint:
+                Assert.Unreachable("Entry point functions cannot be called.");
                 break;
 
             case CallingConventionTier.Recursive:
@@ -2067,9 +2170,10 @@ public static class AsmLowerer
             switch (ctx.Tier)
             {
                 case CallingConventionTier.General:
-                    // General: result stays in its register (caller knows which)
-                    nodes.Add(new AsmImplicitUseNode([resultOp]));
-                    nodes.Add(new AsmCommentNode($"return value: {resultOp.Format()}"));
+                    bool hasInfo = ctx.GeneralCallingConvention.TryGetValue(ctx.Function.Symbol, out GeneralCallingConventionInfo? generalInfo);
+                    Assert.Invariant(hasInfo, "General functions must have calling-convention metadata.");
+                    Assert.Invariant(generalInfo!.RegisterReturnPlace is not null, "General register-return functions must have a return storage place.");
+                    nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [new AsmPlaceOperand(generalInfo.RegisterReturnPlace), resultOp]));
                     break;
 
                 case CallingConventionTier.Leaf:
@@ -2158,7 +2262,7 @@ public static class AsmLowerer
                 break;
 
             case CallingConventionTier.Coroutine:
-                Assert.Unreachable($"Coroutines must never return in the normal sense.");
+                Assert.Unreachable("Coroutines must never return in the normal sense.");
                 break;
 
             default:

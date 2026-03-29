@@ -1,0 +1,17 @@
+
+// UART Driver
+
+
+// Writes `value` to the given smart `pin` index.
+asm fn write(pin: u32, value: u32) {
+         WYPIN  {value}, {pin}  // load output word
+         WAITX  #1              // wait 2+1 clocks before polling busy
+wait:
+         RDPIN  INA, {pin} WC   // get busy flag into C
+    IF_C JMP    #wait           // loop until C = 0
+}
+
+// Blockingly reads a value from the smart `pin`.
+asm fn read(pin: u32) -> u32 {
+    
+}

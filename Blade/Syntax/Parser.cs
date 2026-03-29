@@ -99,12 +99,7 @@ public sealed class Parser
                 return ParseTypeAliasDeclaration();
 
             case TokenKind.FnKeyword:
-                return ParseFunctionDeclaration(funcKindKeyword: null);
-
-            case TokenKind.LeafKeyword or TokenKind.InlineKeyword or TokenKind.NoinlineKeyword or TokenKind.RecKeyword
-                 or TokenKind.CoroKeyword or TokenKind.Int1Keyword or TokenKind.Int2Keyword
-                 or TokenKind.Int3Keyword:
-                return ParseFunctionDeclaration(NextToken());
+                return ParseFunctionDeclaration([]);
 
             case TokenKind.AsmKeyword:
                 // asm fn ... or asm volatile fn ... → asm function declaration
@@ -116,8 +111,16 @@ public sealed class Parser
                 return ParseGlobalStatement();
 
             case TokenKind.ComptimeKeyword:
-                if (Peek(1).Kind == TokenKind.FnKeyword)
-                    return ParseFunctionDeclaration(NextToken());
+            case TokenKind.LeafKeyword:
+            case TokenKind.InlineKeyword:
+            case TokenKind.NoinlineKeyword:
+            case TokenKind.RecKeyword:
+            case TokenKind.CoroKeyword:
+            case TokenKind.Int1Keyword:
+            case TokenKind.Int2Keyword:
+            case TokenKind.Int3Keyword:
+                if (LooksLikeFunctionDeclarationWithModifiers())
+                    return ParseFunctionDeclaration(ParseFunctionModifiers());
                 return ParseGlobalStatement();
 
             default:
@@ -150,7 +153,7 @@ public sealed class Parser
         return new ImportDeclarationSyntax(importKw, source, asKw, alias, semi);
     }
 
-    private FunctionDeclarationSyntax ParseFunctionDeclaration(Token? funcKindKeyword)
+    private FunctionDeclarationSyntax ParseFunctionDeclaration(IReadOnlyList<Token> modifiers)
     {
         Token fnKw = MatchToken(TokenKind.FnKeyword);
         Token name = MatchToken(TokenKind.Identifier);
@@ -173,8 +176,69 @@ public sealed class Parser
         }
 
         BlockStatementSyntax body = ParseBlockStatement();
-        return new FunctionDeclarationSyntax(funcKindKeyword, fnKw, name, openParen, parameters, closeParen, arrow, returnSpec, body);
+        return new FunctionDeclarationSyntax(modifiers, fnKw, name, openParen, parameters, closeParen, arrow, returnSpec, body);
     }
+
+    private bool LooksLikeFunctionDeclarationWithModifiers()
+    {
+        int offset = 0;
+        while (IsFunctionModifierKeyword(Peek(offset).Kind))
+            offset++;
+
+        return Peek(offset).Kind == TokenKind.FnKeyword;
+    }
+
+    private IReadOnlyList<Token> ParseFunctionModifiers()
+    {
+        List<Token> modifiers = [];
+        Token? callingConventionModifier = null;
+        Token? inliningModifier = null;
+
+        while (IsFunctionModifierKeyword(Current.Kind))
+        {
+            Token modifier = NextToken();
+            modifiers.Add(modifier);
+
+            if (IsCallingConventionModifier(modifier.Kind))
+            {
+                if (callingConventionModifier is not null)
+                    Diagnostics.ReportUnexpectedToken(modifier.Span, "'fn'", modifier.Text);
+                else
+                    callingConventionModifier = modifier;
+            }
+            else
+            {
+                Assert.Invariant(IsInliningModifier(modifier.Kind), "Function modifier must be calling-convention or inlining related.");
+                if (inliningModifier is not null)
+                    Diagnostics.ReportUnexpectedToken(modifier.Span, "'fn'", modifier.Text);
+                else
+                    inliningModifier = modifier;
+            }
+        }
+
+        if (inliningModifier?.Kind == TokenKind.InlineKeyword
+            && callingConventionModifier is not null)
+        {
+            Diagnostics.ReportUnexpectedToken(inliningModifier.Value.Span, "'fn'", inliningModifier.Value.Text);
+        }
+
+        return modifiers;
+    }
+
+    private static bool IsFunctionModifierKeyword(TokenKind kind)
+        => IsCallingConventionModifier(kind) || IsInliningModifier(kind);
+
+    private static bool IsCallingConventionModifier(TokenKind kind)
+        => kind is TokenKind.LeafKeyword
+            or TokenKind.RecKeyword
+            or TokenKind.CoroKeyword
+            or TokenKind.ComptimeKeyword
+            or TokenKind.Int1Keyword
+            or TokenKind.Int2Keyword
+            or TokenKind.Int3Keyword;
+
+    private static bool IsInliningModifier(TokenKind kind)
+        => kind is TokenKind.InlineKeyword or TokenKind.NoinlineKeyword;
 
     private AsmFunctionDeclarationSyntax ParseAsmFunctionDeclaration()
     {

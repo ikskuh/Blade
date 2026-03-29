@@ -270,16 +270,18 @@ public class OptimizerTests
     }
 
     [Test]
-    public void AsmOptimizer_PreservesInstructionUsedByImplicitReturnUse()
+    public void AsmOptimizer_PreservesInstructionUsedByGeneralReturnStore()
     {
         AsmRegisterOperand r1 = AsmRegister(1);
+        StoragePlace returnPlace = CreatePlace("gen_f_ret0");
 
-        AsmModule module = new([
+        AsmModule module = new([returnPlace],
+        [
             CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
             [
                 new AsmLabelNode("f_bb0"),
                 new AsmInstructionNode(P2Mnemonic.ADD, [r1, new AsmImmediateOperand(1)]),
-                new AsmImplicitUseNode([r1]),
+                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmPlaceOperand(returnPlace), r1]),
                 new AsmInstructionNode(P2Mnemonic.RET, []),
             ]),
         ]);

@@ -59,7 +59,7 @@ public sealed class ImportDeclarationSyntax : MemberSyntax
 
 public sealed class FunctionDeclarationSyntax : MemberSyntax, IFunctionSignatureSyntax
 {
-    public Token? FuncKindKeyword { get; }
+    public IReadOnlyList<Token> Modifiers { get; }
     [ExcludeFromCodeCoverage]
     public Token FnKeyword { get; }
     public Token Name { get; }
@@ -72,13 +72,13 @@ public sealed class FunctionDeclarationSyntax : MemberSyntax, IFunctionSignature
     public SeparatedSyntaxList<ReturnItemSyntax>? ReturnSpec { get; }
     public BlockStatementSyntax Body { get; }
 
-    public FunctionDeclarationSyntax(Token? funcKindKeyword, Token fnKeyword, Token name, Token openParen,
+    public FunctionDeclarationSyntax(IReadOnlyList<Token> modifiers, Token fnKeyword, Token name, Token openParen,
                                       SeparatedSyntaxList<ParameterSyntax> parameters, Token closeParen,
                                       Token? arrow, SeparatedSyntaxList<ReturnItemSyntax>? returnSpec,
                                       BlockStatementSyntax body)
-        : base(TextSpan.FromBounds(funcKindKeyword?.Span.Start ?? fnKeyword.Span.Start, Requires.NotNull(body).Span.End))
+        : base(TextSpan.FromBounds(GetStart(modifiers, fnKeyword), Requires.NotNull(body).Span.End))
     {
-        FuncKindKeyword = funcKindKeyword;
+        Modifiers = Requires.NotNull(modifiers);
         FnKeyword = fnKeyword;
         Name = name;
         OpenParen = openParen;
@@ -87,6 +87,12 @@ public sealed class FunctionDeclarationSyntax : MemberSyntax, IFunctionSignature
         Arrow = arrow;
         ReturnSpec = returnSpec;
         Body = Requires.NotNull(body);
+    }
+
+    private static int GetStart(IReadOnlyList<Token> modifiers, Token fnKeyword)
+    {
+        IReadOnlyList<Token> checkedModifiers = Requires.NotNull(modifiers);
+        return checkedModifiers.Count > 0 ? checkedModifiers[0].Span.Start : fnKeyword.Span.Start;
     }
 }
 

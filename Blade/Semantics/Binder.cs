@@ -93,11 +93,13 @@ public sealed class Binder
             switch (member)
             {
                 case FunctionDeclarationSyntax function:
-                    boundFunctions.Add(BindFunction(function));
+                    if (_functions.ContainsKey(function.Name.Text))
+                        boundFunctions.Add(BindFunction(function));
                     break;
 
                 case AsmFunctionDeclarationSyntax asmFunction:
-                    boundFunctions.Add(BindAsmFunction(asmFunction));
+                    if (_functions.ContainsKey(asmFunction.Name.Text))
+                        boundFunctions.Add(BindAsmFunction(asmFunction));
                     break;
             }
         }
@@ -316,24 +318,29 @@ public sealed class Binder
         {
             IFunctionSignatureSyntax syntax;
             FunctionKind kind;
+            FunctionInliningPolicy inliningPolicy;
 
             switch (member)
             {
                 case FunctionDeclarationSyntax functionDecl:
                     syntax = functionDecl;
-                    kind = GetFunctionKind(functionDecl.FuncKindKeyword?.Kind);
+                    (kind, inliningPolicy) = GetFunctionModifiers(functionDecl.Modifiers);
                     break;
 
                 case AsmFunctionDeclarationSyntax asmFunctionDecl:
                     syntax = asmFunctionDecl;
                     kind = FunctionKind.Leaf;
+                    inliningPolicy = FunctionInliningPolicy.Default;
                     break;
 
                 default:
                     continue;
             }
 
-            FunctionSymbol function = new(syntax.Name.Text, syntax, kind);
+            if (string.IsNullOrWhiteSpace(syntax.Name.Text))
+                continue;
+
+            FunctionSymbol function = new(syntax.Name.Text, syntax, kind, inliningPolicy);
             if (!_functions.TryAdd(function.Name, function))
             {
                 _diagnostics.ReportSymbolAlreadyDeclared(syntax.Name.Span, function.Name);
@@ -3488,19 +3495,47 @@ public sealed class Binder
             _loopStack.Pop();
     }
 
-    private static FunctionKind GetFunctionKind(TokenKind? kind) => kind switch
+    private static (FunctionKind Kind, FunctionInliningPolicy InliningPolicy) GetFunctionModifiers(IReadOnlyList<Token> modifiers)
     {
-        TokenKind.LeafKeyword => FunctionKind.Leaf,
-        TokenKind.InlineKeyword => FunctionKind.Inline,
-        TokenKind.NoinlineKeyword => FunctionKind.Noinline,
-        TokenKind.RecKeyword => FunctionKind.Rec,
-        TokenKind.CoroKeyword => FunctionKind.Coro,
-        TokenKind.ComptimeKeyword => FunctionKind.Comptime,
-        TokenKind.Int1Keyword => FunctionKind.Int1,
-        TokenKind.Int2Keyword => FunctionKind.Int2,
-        TokenKind.Int3Keyword => FunctionKind.Int3,
-        _ => FunctionKind.Default,
-    };
+        FunctionKind kind = FunctionKind.Default;
+        FunctionInliningPolicy inliningPolicy = FunctionInliningPolicy.Default;
+
+        foreach (Token modifier in modifiers)
+        {
+            switch (modifier.Kind)
+            {
+                case TokenKind.LeafKeyword:
+                    kind = FunctionKind.Leaf;
+                    break;
+                case TokenKind.RecKeyword:
+                    kind = FunctionKind.Rec;
+                    break;
+                case TokenKind.CoroKeyword:
+                    kind = FunctionKind.Coro;
+                    break;
+                case TokenKind.ComptimeKeyword:
+                    kind = FunctionKind.Comptime;
+                    break;
+                case TokenKind.Int1Keyword:
+                    kind = FunctionKind.Int1;
+                    break;
+                case TokenKind.Int2Keyword:
+                    kind = FunctionKind.Int2;
+                    break;
+                case TokenKind.Int3Keyword:
+                    kind = FunctionKind.Int3;
+                    break;
+                case TokenKind.InlineKeyword:
+                    inliningPolicy = FunctionInliningPolicy.ForceInline;
+                    break;
+                case TokenKind.NoinlineKeyword:
+                    inliningPolicy = FunctionInliningPolicy.NeverInline;
+                    break;
+            }
+        }
+
+        return (kind, inliningPolicy);
+    }
 
     private enum LoopContext
     {

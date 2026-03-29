@@ -190,22 +190,6 @@ internal static class AsmOptimizationHelpers
             : instruction;
     }
 
-    internal static AsmImplicitUseNode RewriteImplicitUse(
-        AsmImplicitUseNode implicitUse,
-        IReadOnlyDictionary<VirtualAsmRegister, AsmOperand> aliases)
-    {
-        List<AsmOperand> operands = new(implicitUse.Operands.Count);
-        bool changed = false;
-        foreach (AsmOperand operand in implicitUse.Operands)
-        {
-            AsmOperand rewritten = ResolveAlias(operand, aliases);
-            operands.Add(rewritten);
-            changed |= !ReferenceEquals(rewritten, operand);
-        }
-
-        return changed ? new AsmImplicitUseNode(operands) : implicitUse;
-    }
-
     internal static bool TryGetNextLabel(IReadOnlyList<AsmNode> nodes, int startIndex, out ControlFlowLabelSymbol? label)
     {
         for (int i = startIndex; i < nodes.Count; i++)

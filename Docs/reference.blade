@@ -133,6 +133,9 @@ comptime fn cc_comptime() -> u32 {
 // If it makes sense to have a piece of instructions to never use the call stack,
 // a force-inlined function can be used:
 inline fn cc_inline() {
+    // note that functions with the `inline` marker must not have an
+    // explicit calling convention as these functions are never called anyways.
+    
     // the code in here is pasted into the calling function.
 }
 
@@ -145,6 +148,21 @@ noinline fn cc_noinline() {
     // and functions with only a *single caller* must be force-inlined
     // into their caller (unless they use `noinline`). 
 }
+
+// noinline functions still can use an explicit calling convention,
+// as it may be useful to force the CC:
+noinline leaf fn cc_noinline_leaf() {
+}
+
+// Especially useful when you really want to keep the recursive
+// structure:
+noinline rec fn cc_noinline_rec() {
+
+
+}
+// noinline works together with *all* calling conventions.
+// The compiler rejects duplicate calling-convention modifiers, duplicate
+// inlining modifiers, and `inline` combined with any explicit calling convention.
 
 // The Propeller 2 supports a fancy way of doing coroutines through `CALLD`.
 // This is natively supported in Blade by the use of:
