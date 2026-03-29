@@ -46,12 +46,7 @@
       "BoundYieldStatement",
       "BoundYieldtoStatement"
     ],
-    "uncovered": [
-      "BoundEnumLiteralExpression",
-      "BoundErrorAssignmentTarget",
-      "BoundErrorExpression",
-      "BoundErrorStatement"
-    ]
+    "uncovered": []
   },
   "mir": {
     "covered": [

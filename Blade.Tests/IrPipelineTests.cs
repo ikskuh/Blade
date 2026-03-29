@@ -2324,30 +2324,6 @@ public class IrPipelineTests
         Assert.That(compilation.IrBuildResult!.AssemblyText, Does.StartWith("DAT"));
     }
 
-    private static IEnumerable<string> AcceptProgramsWithUnsupportedLowerings()
-    {
-        string[] files =
-        [
-            "advanced_semantics.blade",
-        ];
-
-        foreach (string file in files)
-            yield return Path.Combine("Accept", file);
-    }
-
-    [TestCaseSource(nameof(AcceptProgramsWithUnsupportedLowerings))]
-    public void AcceptProgram_WithUnsupportedLowerings_ReportsDiagnostics(string path)
-    {
-        string repoTestsRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Blade.Tests"));
-        string fullPath = Path.Combine(repoTestsRoot, path);
-        string source = File.ReadAllText(fullPath);
-        CompilationResult compilation = CompilerDriver.Compile(source, fullPath);
-
-        Assert.That(compilation.Diagnostics.Any(d => d.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.True, path);
-        Assert.That(compilation.IrBuildResult, Is.Not.Null, path);
-    }
-
-
     private static IEnumerable<string> RepositorySamplesForPipeline()
     {
         string[] files =

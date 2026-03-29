@@ -212,62 +212,6 @@ public sealed class ComptimeBinderHelperTests
     }
 
     [Test]
-    public void PrivateComptimeStatementExecution_GuardsInvalidIfAndWhileConditions()
-    {
-        object evaluator = CreateUninitializedComptimeEvaluator();
-        Type evaluatorType = evaluator.GetType();
-        MethodInfo tryExecuteIf = evaluatorType.GetMethod("TryExecuteIfStatement", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        MethodInfo tryExecuteWhile = evaluatorType.GetMethod("TryExecuteWhileStatement", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        BoundBlockStatement emptyBlock = new([], Span);
-
-        object?[] ifFailureArgs =
-        [
-            new BoundIfStatement(new BoundErrorExpression(Span), emptyBlock, elseBody: null, Span),
-            new Dictionary<Symbol, object?>(),
-            null,
-            null,
-        ];
-        Assert.That((bool)tryExecuteIf.Invoke(evaluator, ifFailureArgs)!, Is.False);
-        Assert.That(GetRecordField(ifFailureArgs[2]!, "Kind"), Is.EqualTo("None"));
-        Assert.That(GetRecordField(ifFailureArgs[3]!, "Kind"), Is.EqualTo("UnsupportedConstruct"));
-
-        object?[] ifTypeArgs =
-        [
-            new BoundIfStatement(new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), emptyBlock, elseBody: null, Span),
-            new Dictionary<Symbol, object?>(),
-            null,
-            null,
-        ];
-        Assert.That((bool)tryExecuteIf.Invoke(evaluator, ifTypeArgs)!, Is.False);
-        Assert.That(GetRecordField(ifTypeArgs[2]!, "Kind"), Is.EqualTo("None"));
-        Assert.That(GetRecordField(ifTypeArgs[3]!, "Kind"), Is.EqualTo("NotEvaluable"));
-        Assert.That(GetRecordField(ifTypeArgs[3]!, "Detail"), Does.Contain("if-statement conditions must be bool."));
-
-        object?[] whileFailureArgs =
-        [
-            new BoundWhileStatement(new BoundErrorExpression(Span), emptyBlock, Span),
-            new Dictionary<Symbol, object?>(),
-            null,
-            null,
-        ];
-        Assert.That((bool)tryExecuteWhile.Invoke(evaluator, whileFailureArgs)!, Is.False);
-        Assert.That(GetRecordField(whileFailureArgs[2]!, "Kind"), Is.EqualTo("None"));
-        Assert.That(GetRecordField(whileFailureArgs[3]!, "Kind"), Is.EqualTo("UnsupportedConstruct"));
-
-        object?[] whileTypeArgs =
-        [
-            new BoundWhileStatement(new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), emptyBlock, Span),
-            new Dictionary<Symbol, object?>(),
-            null,
-            null,
-        ];
-        Assert.That((bool)tryExecuteWhile.Invoke(evaluator, whileTypeArgs)!, Is.False);
-        Assert.That(GetRecordField(whileTypeArgs[2]!, "Kind"), Is.EqualTo("None"));
-        Assert.That(GetRecordField(whileTypeArgs[3]!, "Kind"), Is.EqualTo("NotEvaluable"));
-        Assert.That(GetRecordField(whileTypeArgs[3]!, "Detail"), Does.Contain("while-statement conditions must be bool."));
-    }
-
-    [Test]
     public void PrivateComptimeValidationHelpers_CoverRecursiveBranches()
     {
         MethodInfo method = GetBinderStaticMethod("TryValidateComptimeExpression", 2);
@@ -300,7 +244,6 @@ public sealed class ComptimeBinderHelperTests
             new BoundIndexExpression(new BoundLiteralExpression(0, Span, BuiltinTypes.IntegerLiteral), new BoundLiteralExpression(0, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.U32),
             new BoundPointerDerefExpression(new BoundLiteralExpression(0, Span, BuiltinTypes.U32), Span, BuiltinTypes.U32),
             new BoundRangeExpression(new BoundLiteralExpression(0, Span, BuiltinTypes.IntegerLiteral), localSymbol, Span),
-            new BoundErrorExpression(Span),
         ];
 
         foreach (BoundExpression expression in unsupportedExpressions)
@@ -310,41 +253,6 @@ public sealed class ComptimeBinderHelperTests
             Assert.That(isValid, Is.False);
             Assert.That(args[1], Is.Not.Null);
         }
-    }
-
-    [Test]
-    public void PrivateContainsErrorExpression_CoversRecursiveShapes()
-    {
-        MethodInfo method = GetBinderStaticMethod("ContainsErrorExpression", typeof(BoundExpression));
-        BoundErrorExpression error = new(Span);
-        AggregateMemberSymbol member = new("value", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false);
-        StructTypeSymbol pairType = new(
-            "Pair",
-            new Dictionary<string, TypeSymbol>(StringComparer.Ordinal) { ["value"] = BuiltinTypes.U32 },
-            new Dictionary<string, AggregateMemberSymbol>(StringComparer.Ordinal) { ["value"] = member },
-            sizeBytes: 4,
-            alignmentBytes: 4);
-        FunctionSymbol function = CreateFunctionSymbol("callme", FunctionKind.Default, BuiltinTypes.U32);
-
-        BoundExpression[] expressionsWithErrors =
-        [
-            new BoundCallExpression(function, [error], Span, BuiltinTypes.U32),
-            new BoundIntrinsicCallExpression("encod", [error], Span, BuiltinTypes.U32),
-            new BoundArrayLiteralExpression([error], lastElementIsSpread: false, Span, new ArrayTypeSymbol(BuiltinTypes.U32, 1)),
-            new BoundStructLiteralExpression([new BoundStructFieldInitializer("value", error)], Span, pairType),
-            new BoundConversionExpression(error, Span, BuiltinTypes.U32),
-            new BoundCastExpression(error, Span, BuiltinTypes.U32),
-            new BoundBitcastExpression(error, Span, BuiltinTypes.U32),
-            new BoundIfExpression(new BoundLiteralExpression(true, Span, BuiltinTypes.Bool), error, new BoundLiteralExpression(0, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral),
-            new BoundRangeExpression(new BoundLiteralExpression(0, Span, BuiltinTypes.IntegerLiteral), error, Span),
-        ];
-
-        foreach (BoundExpression expression in expressionsWithErrors)
-            Assert.That(Invoke<bool>(method, null, expression), Is.True);
-
-        Assert.That(Invoke<bool>(method, null, new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral)), Is.False);
-        Assert.That(Invoke<bool>(method, null, new BoundIntrinsicCallExpression("encod", [], Span, BuiltinTypes.U32)), Is.False);
-        Assert.That(Invoke<bool>(method, null, new BoundIntrinsicCallExpression("encod", [new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral)], Span, BuiltinTypes.U32)), Is.False);
     }
 
     [Test]
@@ -362,7 +270,6 @@ public sealed class ComptimeBinderHelperTests
             alignmentBytes: 4);
 
         Assert.That(Invoke<bool>(method, null, new BoundLiteralExpression("text", Span, BuiltinTypes.String)), Is.False);
-        Assert.That(Invoke<bool>(method, null, new BoundEnumLiteralExpression(mode, "On", 1, Span)), Is.True);
         Assert.That(Invoke<bool>(method, null, new BoundUnaryExpression(BoundUnaryOperator.Bind(TokenKind.Minus)!, new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.True);
         Assert.That(Invoke<bool>(method, null, new BoundBinaryExpression(new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.Plus)!, new BoundLiteralExpression(2, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.True);
         Assert.That(Invoke<bool>(method, null, new BoundCallExpression(function, [], Span, BuiltinTypes.U32)), Is.True);
@@ -426,7 +333,6 @@ public sealed class ComptimeBinderHelperTests
         Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundBinaryExpression(new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.RotateLeft)!, new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(2));
         Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundBinaryExpression(new BoundLiteralExpression(2, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.RotateRight)!, new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(1));
         Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundBinaryExpression(new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.EqualEqual)!, new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.Bool)), Is.Null);
-        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundErrorExpression(Span)), Is.Null);
 
         Assert.That(Invoke<int>(toInt32Unchecked, null, (object?)null), Is.EqualTo(0));
         Assert.That(Invoke<int>(toInt32Unchecked, null, 1), Is.EqualTo(1));

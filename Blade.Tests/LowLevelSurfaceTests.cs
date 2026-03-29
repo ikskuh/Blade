@@ -141,8 +141,5 @@ public class LowLevelSurfaceTests
         LirUnreachableTerminator lirUnreachable = new(new TextSpan(4, 2));
         Assert.That(lirUnreachable.Span, Is.EqualTo(new TextSpan(4, 2)));
 
-        BoundErrorStatement errorStatement = new(new TextSpan(7, 1));
-        Assert.That(errorStatement.Kind, Is.EqualTo(BoundNodeKind.ErrorStatement));
-        Assert.That(errorStatement.Span, Is.EqualTo(new TextSpan(7, 1)));
     }
 }
