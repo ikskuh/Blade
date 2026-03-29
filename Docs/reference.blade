@@ -771,8 +771,14 @@ fn pointer_arithmetics() {
     p2 = p1 + 10; // moves the pointer 10 elements beyond the current one
     p2 = p1 - 10; // moves the pointer 10 elements before the current one
 
+    p2 += 10; // op fusion works here
+    p2 -= 10; // op fusion works here
+
     p2 = p1 + cnt; // legal with u32
     p2 = p1 + delta; // also legal with i32
+
+    p2 += cnt;  // op fusion for u32 as well
+    p2 += delta; // op fusion for i32 as well
 
     // Pointer subtract requires compatible pointer types (same memory space, same type):
     delta = p2 - p1; // delta receives the number of elements between p2 and p1.

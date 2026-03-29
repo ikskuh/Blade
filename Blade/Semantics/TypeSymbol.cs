@@ -522,6 +522,11 @@ public static class TypeFacts
         return TryGetSizeBytes(type, out size);
     }
 
+    public static bool TryGetPointerElementStride(TypeSymbol pointeeType, VariableStorageClass storageClass, out int stride)
+    {
+        return TryGetSizeInMemorySpace(pointeeType, storageClass, out stride) && stride > 0;
+    }
+
     public static bool TryGetAlignmentInMemorySpace(TypeSymbol type, VariableStorageClass storageClass, out int alignment)
     {
         if (storageClass is VariableStorageClass.Reg or VariableStorageClass.Lut)

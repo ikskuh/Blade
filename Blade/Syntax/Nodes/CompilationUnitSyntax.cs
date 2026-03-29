@@ -10,8 +10,8 @@ namespace Blade.Syntax.Nodes;
 public sealed class CompilationUnitSyntax : SyntaxNode
 {
     public IReadOnlyList<MemberSyntax> Members { get; }
-    
-    [ExcludeFromCodeCoverage]    
+
+    [ExcludeFromCodeCoverage]
     public Token EndOfFileToken { get; }
 
     public CompilationUnitSyntax(IReadOnlyList<MemberSyntax> members, Token endOfFileToken)

@@ -245,6 +245,8 @@ public static class MirInliner
                 MirCopyInstruction copy => new MirCopyInstruction(newResult!, copy.ResultType!, copy.Source, copy.Span),
                 MirUnaryInstruction unary => new MirUnaryInstruction(newResult!, unary.ResultType!, unary.Operator, unary.Operand, unary.Span),
                 MirBinaryInstruction binary => new MirBinaryInstruction(newResult!, binary.ResultType!, binary.Operator, binary.Left, binary.Right, binary.Span),
+                MirPointerOffsetInstruction pointerOffset => new MirPointerOffsetInstruction(newResult!, pointerOffset.ResultType!, pointerOffset.OperatorKind, pointerOffset.BaseAddress, pointerOffset.Delta, pointerOffset.Stride, pointerOffset.Span),
+                MirPointerDifferenceInstruction pointerDifference => new MirPointerDifferenceInstruction(newResult!, pointerDifference.ResultType!, pointerDifference.Left, pointerDifference.Right, pointerDifference.Stride, pointerDifference.Span),
                 MirConvertInstruction convert => new MirConvertInstruction(newResult!, convert.ResultType!, convert.Operand, convert.Span),
                 MirRangeInstruction range => new MirRangeInstruction(newResult!, range.ResultType!, range.Start, range.End, range.Span),
                 MirStructLiteralInstruction structLiteral => new MirStructLiteralInstruction(newResult!, (StructTypeSymbol)structLiteral.ResultType!, structLiteral.Fields, structLiteral.Span),
@@ -259,7 +261,7 @@ public static class MirInliner
                 MirStoreIndexInstruction storeIndex => new MirStoreIndexInstruction(storeIndex.ResultType, storeIndex.Indexed, storeIndex.Index, storeIndex.Value, storeIndex.StorageClass, storeIndex.Span),
                 MirStoreDerefInstruction storeDeref => new MirStoreDerefInstruction(storeDeref.ResultType, storeDeref.Address, storeDeref.Value, storeDeref.StorageClass, storeDeref.Span),
                 MirStorePlaceInstruction storePlace => new MirStorePlaceInstruction(storePlace.Place, storePlace.Value, storePlace.Span),
-                MirUpdatePlaceInstruction updatePlace => new MirUpdatePlaceInstruction(updatePlace.Place, updatePlace.OperatorKind, updatePlace.Value, updatePlace.Span),
+                MirUpdatePlaceInstruction updatePlace => new MirUpdatePlaceInstruction(updatePlace.Place, updatePlace.OperatorKind, updatePlace.Value, updatePlace.Span, updatePlace.PointerArithmeticStride),
                 MirInlineAsmInstruction inlineAsm => new MirInlineAsmInstruction(
                     inlineAsm.Volatility,
                     inlineAsm.Body,

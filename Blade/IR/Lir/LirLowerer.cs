@@ -162,6 +162,28 @@ public static class LirLowerer
                 writesZ: false,
                 binary.Span),
 
+            MirPointerOffsetInstruction pointerOffset => new LirOpInstruction(
+                new LirPointerOffsetOperation(pointerOffset.OperatorKind, pointerOffset.Stride),
+                destination,
+                pointerOffset.ResultType,
+                [new LirRegisterOperand(getRegister(pointerOffset.BaseAddress)), new LirRegisterOperand(getRegister(pointerOffset.Delta))],
+                hasSideEffects: false,
+                predicate: null,
+                writesC: false,
+                writesZ: false,
+                pointerOffset.Span),
+
+            MirPointerDifferenceInstruction pointerDifference => new LirOpInstruction(
+                new LirPointerDifferenceOperation(pointerDifference.Stride),
+                destination,
+                pointerDifference.ResultType,
+                [new LirRegisterOperand(getRegister(pointerDifference.Left)), new LirRegisterOperand(getRegister(pointerDifference.Right))],
+                hasSideEffects: false,
+                predicate: null,
+                writesC: false,
+                writesZ: false,
+                pointerDifference.Span),
+
             MirConvertInstruction convert => new LirOpInstruction(
                 new LirConvertOperation(),
                 destination,
@@ -321,7 +343,7 @@ public static class LirLowerer
                 storePlace.Span),
 
             MirUpdatePlaceInstruction updatePlace => new LirOpInstruction(
-                new LirUpdatePlaceOperation(updatePlace.OperatorKind),
+                new LirUpdatePlaceOperation(updatePlace.OperatorKind, updatePlace.PointerArithmeticStride),
                 destination: null,
                 resultType: null,
                 [new LirPlaceOperand(updatePlace.Place), new LirRegisterOperand(getRegister(updatePlace.Value))],

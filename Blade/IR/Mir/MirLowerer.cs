@@ -1290,32 +1290,17 @@ public static class MirLowerer
         {
             MirValueId baseAddress = LowerExpression(indexExpression.Expression);
             MirValueId offset = LowerExpression(indexExpression.Index);
-
-            if (GetStorageClass(indexExpression.Expression) == VariableStorageClass.Hub)
-            {
-                int elementSize = GetHubIndexedElementSize(indexExpression.Type);
-                if (elementSize > 1)
-                {
-                    MirValueId shiftAmount = EmitConstant((long)ShiftForHubElementSize(elementSize), BuiltinTypes.U32, span);
-                    MirValueId shiftedOffset = NextValue();
-                    _currentBlock.Instructions.Add(new MirBinaryInstruction(
-                        shiftedOffset,
-                        BuiltinTypes.U32,
-                        BoundBinaryOperatorKind.ShiftLeft,
-                        offset,
-                        shiftAmount,
-                        span));
-                    offset = shiftedOffset;
-                }
-            }
+            VariableStorageClass storageClass = GetStorageClass(indexExpression.Expression);
+            int stride = GetPointerElementStride(indexExpression.Type, storageClass);
 
             MirValueId address = NextValue();
-            _currentBlock.Instructions.Add(new MirBinaryInstruction(
+            _currentBlock.Instructions.Add(new MirPointerOffsetInstruction(
                 address,
                 pointerType,
                 BoundBinaryOperatorKind.Add,
                 baseAddress,
                 offset,
+                stride,
                 span));
             return address;
         }
@@ -1341,6 +1326,37 @@ public static class MirLowerer
         {
             if (binaryExpression.Operator.Kind is BoundBinaryOperatorKind.LogicalAnd or BoundBinaryOperatorKind.LogicalOr)
                 return LowerShortCircuitBinaryExpression(binaryExpression);
+
+            if (binaryExpression.Left.Type is MultiPointerTypeSymbol leftPointer
+                && binaryExpression.Operator.Kind is BoundBinaryOperatorKind.Add or BoundBinaryOperatorKind.Subtract)
+            {
+                MirValueId leftValue = LowerExpression(binaryExpression.Left);
+                MirValueId rightValue = LowerExpression(binaryExpression.Right);
+                MirValueId pointerResult = NextValue();
+                int stride = GetPointerElementStride(leftPointer.PointeeType, leftPointer.StorageClass);
+
+                if (binaryExpression.Type is MultiPointerTypeSymbol)
+                {
+                    _currentBlock.Instructions.Add(new MirPointerOffsetInstruction(
+                        pointerResult,
+                        binaryExpression.Type,
+                        binaryExpression.Operator.Kind,
+                        leftValue,
+                        rightValue,
+                        stride,
+                        binaryExpression.Span));
+                    return pointerResult;
+                }
+
+                _currentBlock.Instructions.Add(new MirPointerDifferenceInstruction(
+                    pointerResult,
+                    binaryExpression.Type,
+                    leftValue,
+                    rightValue,
+                    stride,
+                    binaryExpression.Span));
+                return pointerResult;
+            }
 
             MirValueId left = LowerExpression(binaryExpression.Left);
             MirValueId right = LowerExpression(binaryExpression.Right);
@@ -1774,23 +1790,11 @@ public static class MirLowerer
             return result;
         }
 
-        private static int GetHubIndexedElementSize(TypeSymbol type)
+        private static int GetPointerElementStride(TypeSymbol pointeeType, VariableStorageClass storageClass)
         {
-            if (TypeFacts.TryGetIntegerWidth(type, out int width))
-            {
-                if (width <= 8)
-                    return 1;
-                if (width <= 16)
-                    return 2;
-            }
-
-            return 4;
-        }
-
-        private static int ShiftForHubElementSize(int size)
-        {
-            Assert.Invariant(size is 2 or 4, $"Unexpected hub element size '{size}' for indexed address-of lowering.");
-            return size == 2 ? 1 : 2;
+            bool ok = TypeFacts.TryGetPointerElementStride(pointeeType, storageClass, out int stride);
+            Assert.Invariant(ok, $"Pointer arithmetic requires a concrete element stride for '{pointeeType.Name}' in '{storageClass}'.");
+            return stride;
         }
 
         private MirValueId EmitBitfieldExtract(MirValueId receiver, AggregateMemberSymbol member, TextSpan span)
@@ -1823,16 +1827,25 @@ public static class MirLowerer
         {
             if (place.StorageClass is VariableStorageClass.Lut or VariableStorageClass.Hub)
             {
-                TypeSymbol placeType = ((VariableSymbol)place.Symbol).Type;
-                MirValueId loaded = NextValue();
-                _currentBlock.Instructions.Add(new MirLoadPlaceInstruction(loaded, placeType, place, span));
-                MirValueId result = NextValue();
-                _currentBlock.Instructions.Add(new MirBinaryInstruction(result, placeType, operatorKind, loaded, value, span));
-                _currentBlock.Instructions.Add(new MirStorePlaceInstruction(place, result, span));
-                return;
+                TypeSymbol placeType = GetSymbolType(place.Symbol);
+                if (placeType is not MultiPointerTypeSymbol)
+                {
+                    MirValueId loaded = NextValue();
+                    _currentBlock.Instructions.Add(new MirLoadPlaceInstruction(loaded, placeType, place, span));
+                    MirValueId result = NextValue();
+                    _currentBlock.Instructions.Add(new MirBinaryInstruction(result, placeType, operatorKind, loaded, value, span));
+                    _currentBlock.Instructions.Add(new MirStorePlaceInstruction(place, result, span));
+                    return;
+                }
             }
 
-            _currentBlock.Instructions.Add(new MirUpdatePlaceInstruction(place, operatorKind, value, span));
+            int? pointerStride = null;
+            if (GetSymbolType(place.Symbol) is MultiPointerTypeSymbol pointerType)
+            {
+                pointerStride = GetPointerElementStride(pointerType.PointeeType, pointerType.StorageClass);
+            }
+
+            _currentBlock.Instructions.Add(new MirUpdatePlaceInstruction(place, operatorKind, value, span, pointerStride));
         }
 
         private sealed class BlockBuilder

@@ -82,6 +82,8 @@ public enum DiagnosticCode
     E0254_InvalidMemorySpaceArgument = 254,
     E0255_AssertionFailed = 255,
     E0256_UnknownBuiltin = 256,
+    E0257_InvalidPointerArithmetic = 257,
+    E0258_IncompatiblePointerSubtraction = 258,
 
     // Inline assembly errors
     E0301_InlineAsmUnknownInstruction = 301,

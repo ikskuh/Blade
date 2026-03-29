@@ -1,8 +1,8 @@
 // EXPECT: pass
 // STAGE: mir
 // CONTAINS:
-// - binary.Add
-// - binary.ShiftLeft
+// - ptr.offset.Add[1]
+// - ptr.offset.Add[2]
 // NOTE:
 //   Exercises hub indexed address-of for byte- and word-sized elements so MIR
 //   covers the size-selection branches used for offset scaling.

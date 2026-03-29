@@ -1,0 +1,16 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - L12, E0257
+// - L13, E0257
+// - L14, E0258
+// - L15, E0257
+// NOTE:
+//   Pointer arithmetic is limited to '[*]' pointers with integer deltas, and
+//   pointer subtraction requires matching element types and memory spaces.
+
+fn bad(ptr: *reg u32, many: [*]reg u32, other: [*]hub u32) {
+    var a: [*]reg u32 = ptr + 1;
+    var b: [*]reg u32 = many + false;
+    var c: i32 = many - other;
+    many %= 2;
+}

@@ -648,6 +648,93 @@ public class IrPipelineTests
     }
 
     [Test]
+    public void PointerCompoundAssignments_CarryStrideMetadataThroughUpdatePlace()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            hub var words: [8]u16 = undefined;
+            reg var cursor: [*]hub u16 = undefined;
+            cursor = &words;
+            cursor += 2;
+            cursor -= 1;
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        string mir = MirTextWriter.Write(build.MirModule);
+        Assert.That(mir, Does.Contain("update.place g_cursor Add[2]"));
+        Assert.That(mir, Does.Contain("update.place g_cursor Subtract[2]"));
+        Assert.That(build.AssemblyText, Does.Contain("SHL"));
+        Assert.That(build.AssemblyText, Does.Contain("ADD"));
+        Assert.That(build.AssemblyText, Does.Contain("SUB"));
+    }
+
+    [Test]
+    public void PointerArithmetic_NonPowerOfTwoStride_UsesMultiplyAndSignedDivision()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            hub var chunks: [4][3]u8 = undefined;
+            reg var diff_sink: i32 = 0;
+
+            noinline fn diff_chunks(base: [*]hub [3]u8, step: i8) -> i32 {
+                var p: [*]hub [3]u8 = base + step;
+                return p - base;
+            }
+
+            diff_sink = diff_chunks(&chunks, 2);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        string mir = MirTextWriter.Write(build.MirModule);
+        Assert.That(mir, Does.Contain("ptr.offset.Add[3]"));
+        Assert.That(mir, Does.Contain("ptr.diff[3]"));
+        Assert.That(build.AssemblyText, Does.Contain("QMUL"));
+        Assert.That(build.AssemblyText, Does.Contain("QDIV"));
+        Assert.That(build.AssemblyText, Does.Contain("GETQX"));
+        Assert.That(build.AssemblyText, Does.Contain("NEGC"));
+    }
+
+    [Test]
+    public void PointerDifference_PowerOfTwoStride_UsesArithmeticShift()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            hub var words: [8]u16 = undefined;
+            reg var diff_sink: i32 = 0;
+
+            noinline fn diff_words(base: [*]hub u16, step: u8) -> i32 {
+                var p: [*]hub u16 = base + step;
+                return p - base;
+            }
+
+            diff_sink = diff_words(&words, 2);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        string mir = MirTextWriter.Write(build.MirModule);
+        Assert.That(mir, Does.Contain("ptr.diff[2]"));
+        Assert.That(build.AssemblyText, Does.Contain("SAR"));
+    }
+
+    [Test]
     public void FinalAssemblyWriter_FormatsInlineAsmAndRegisterFileForReadability()
     {
         StoragePlace r4 = new(CreateVariableSymbol("r4", scopeKind: VariableScopeKind.GlobalStorage, storageClass: VariableStorageClass.Reg), StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, staticInitializer: null, emittedName: "_r4");

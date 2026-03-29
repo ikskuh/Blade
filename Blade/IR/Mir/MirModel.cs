@@ -230,6 +230,73 @@ public sealed class MirBinaryInstruction : MirInstruction
     }
 }
 
+public sealed class MirPointerOffsetInstruction : MirInstruction
+{
+    public MirPointerOffsetInstruction(
+        MirValueId result,
+        TypeSymbol type,
+        BoundBinaryOperatorKind operatorKind,
+        MirValueId baseAddress,
+        MirValueId delta,
+        int stride,
+        TextSpan span)
+        : base(result, type, span, hasSideEffects: false)
+    {
+        OperatorKind = operatorKind;
+        BaseAddress = baseAddress;
+        Delta = delta;
+        Stride = stride;
+    }
+
+    public BoundBinaryOperatorKind OperatorKind { get; }
+    public MirValueId BaseAddress { get; }
+    public MirValueId Delta { get; }
+    public int Stride { get; }
+
+    public override IReadOnlyList<MirValueId> Uses => [BaseAddress, Delta];
+
+    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
+    {
+        MirValueId baseAddress = mapping.TryGetValue(BaseAddress, out MirValueId mappedBaseAddress) ? mappedBaseAddress : BaseAddress;
+        MirValueId delta = mapping.TryGetValue(Delta, out MirValueId mappedDelta) ? mappedDelta : Delta;
+        if (baseAddress == BaseAddress && delta == Delta)
+            return this;
+        return new MirPointerOffsetInstruction(Result!, ResultType!, OperatorKind, baseAddress, delta, Stride, Span);
+    }
+}
+
+public sealed class MirPointerDifferenceInstruction : MirInstruction
+{
+    public MirPointerDifferenceInstruction(
+        MirValueId result,
+        TypeSymbol type,
+        MirValueId left,
+        MirValueId right,
+        int stride,
+        TextSpan span)
+        : base(result, type, span, hasSideEffects: false)
+    {
+        Left = left;
+        Right = right;
+        Stride = stride;
+    }
+
+    public MirValueId Left { get; }
+    public MirValueId Right { get; }
+    public int Stride { get; }
+
+    public override IReadOnlyList<MirValueId> Uses => [Left, Right];
+
+    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
+    {
+        MirValueId left = mapping.TryGetValue(Left, out MirValueId mappedLeft) ? mappedLeft : Left;
+        MirValueId right = mapping.TryGetValue(Right, out MirValueId mappedRight) ? mappedRight : Right;
+        if (left == Left && right == Right)
+            return this;
+        return new MirPointerDifferenceInstruction(Result!, ResultType!, left, right, Stride, Span);
+    }
+}
+
 public sealed class MirConvertInstruction : MirInstruction
 {
     public MirConvertInstruction(MirValueId result, TypeSymbol type, MirValueId operand, TextSpan span)
@@ -680,24 +747,32 @@ public sealed class MirStorePlaceInstruction : MirInstruction
 
 public sealed class MirUpdatePlaceInstruction : MirInstruction
 {
-    public MirUpdatePlaceInstruction(StoragePlace place, BoundBinaryOperatorKind operatorKind, MirValueId value, TextSpan span)
+    public MirUpdatePlaceInstruction(
+        StoragePlace place,
+        BoundBinaryOperatorKind operatorKind,
+        MirValueId value,
+        TextSpan span,
+        int? pointerArithmeticStride = null)
         : base(result: null, resultType: null, span, hasSideEffects: true)
     {
         Place = place;
         OperatorKind = operatorKind;
         Value = value;
+        PointerArithmeticStride = pointerArithmeticStride;
     }
 
     public StoragePlace Place { get; }
     public BoundBinaryOperatorKind OperatorKind { get; }
     public MirValueId Value { get; }
+    public int? PointerArithmeticStride { get; }
+    public bool IsPointerArithmetic => PointerArithmeticStride is not null;
 
     public override IReadOnlyList<MirValueId> Uses => [Value];
 
     public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
     {
         MirValueId value = mapping.TryGetValue(Value, out MirValueId mapped) ? mapped : Value;
-        return value == Value ? this : new MirUpdatePlaceInstruction(Place, OperatorKind, value, Span);
+        return value == Value ? this : new MirUpdatePlaceInstruction(Place, OperatorKind, value, Span, PointerArithmeticStride);
     }
 }
 

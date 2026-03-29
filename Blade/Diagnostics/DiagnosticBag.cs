@@ -467,6 +467,22 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
         Report(DiagnosticCode.E0256_UnknownBuiltin, span, $"Unknown builtin '@{name}'.");
     }
 
+    public void ReportInvalidPointerArithmetic(TextSpan span, string operation)
+    {
+        Report(
+            DiagnosticCode.E0257_InvalidPointerArithmetic,
+            span,
+            $"Invalid pointer arithmetic for '{operation}'. Only '[*]' pointers support '+', '-', '+=', and '-=' with integer deltas.");
+    }
+
+    public void ReportIncompatiblePointerSubtraction(TextSpan span, string leftType, string rightType)
+    {
+        Report(
+            DiagnosticCode.E0258_IncompatiblePointerSubtraction,
+            span,
+            $"Pointer subtraction requires matching '[*]' pointer element types and memory spaces, but got '{leftType}' and '{rightType}'.");
+    }
+
     // Inline assembly diagnostics
 
     public void ReportInlineAsmUnknownInstruction(TextSpan span, string mnemonic)

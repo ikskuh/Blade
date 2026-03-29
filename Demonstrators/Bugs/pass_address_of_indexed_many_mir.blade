@@ -2,7 +2,7 @@
 // STAGE: mir
 // CONTAINS:
 // - load @g_values
-// - binary.Add
+// - ptr.offset.Add[1]
 // NOTE:
 //   Taking the address of an indexed [*] pointer element should reuse the
 //   pointer value directly and add the index without the old E0223 rejection.

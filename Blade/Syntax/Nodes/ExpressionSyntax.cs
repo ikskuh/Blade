@@ -281,7 +281,7 @@ public sealed class QueryExpressionSyntax : ExpressionSyntax
 
 public sealed class EnumLiteralExpressionSyntax : ExpressionSyntax
 {
-    [ExcludeFromCodeCoverage]    
+    [ExcludeFromCodeCoverage]
     public Token Dot { get; }
     public Token MemberName { get; }
 
@@ -349,7 +349,7 @@ public sealed class TypedStructLiteralExpressionSyntax : ExpressionSyntax
 public sealed class RangeExpressionSyntax : ExpressionSyntax
 {
     public ExpressionSyntax Start { get; }
-    [ExcludeFromCodeCoverage]    
+    [ExcludeFromCodeCoverage]
     public Token DotDot { get; }
     public ExpressionSyntax End { get; }
 

@@ -28,10 +28,6 @@ operand.
 
 These silicon bugs must be respected by the compiler, otherwise miscompilations appear.
 
-## Pointer arithmetic
-
-Implement `ptr = ptr + 1` for `[*]T`
-
 ## Missing optimizations
 
 ```
@@ -324,4 +320,13 @@ Apply new `?` operand matching instead of hardcoding internals like generated sy
 ## Optimizations
 
 Implement load/store for larger types between (register|lut)<->hub with block transfers.
+
+Implement common constant multiply/divide strategies (QMUL takes 51 cycles, so we have up to 25 instructions before a blocking QMUL is good)
+
+- `* POT` == shift by log2(pot)
+- `* 3` = `a*2 + a`
+- `* 5` = `a*4 + a`
+- `* 6` = `a*4 + a*2`
+- `* 7` = `a*8 - a`
+- ...
 

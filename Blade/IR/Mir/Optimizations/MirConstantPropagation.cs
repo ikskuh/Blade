@@ -39,6 +39,20 @@ public sealed class MirConstantPropagation : IMirOptimization
                     {
                         rewritten = new MirConstantInstruction(binary.Result!, binary.ResultType!, binaryResult, binary.Span);
                     }
+                    else if (instruction is MirPointerOffsetInstruction pointerOffset
+                        && TryGetConstant(constants, pointerOffset.BaseAddress, out object? pointerValue)
+                        && TryGetConstant(constants, pointerOffset.Delta, out object? deltaValue)
+                        && TryFoldPointerOffset(pointerOffset.OperatorKind, pointerValue, deltaValue, pointerOffset.Stride, out object? offsetResult))
+                    {
+                        rewritten = new MirConstantInstruction(pointerOffset.Result!, pointerOffset.ResultType!, offsetResult, pointerOffset.Span);
+                    }
+                    else if (instruction is MirPointerDifferenceInstruction pointerDifference
+                        && TryGetConstant(constants, pointerDifference.Left, out object? leftPointer)
+                        && TryGetConstant(constants, pointerDifference.Right, out object? rightPointer)
+                        && TryFoldPointerDifference(leftPointer, rightPointer, pointerDifference.Stride, out object? differenceResult))
+                    {
+                        rewritten = new MirConstantInstruction(pointerDifference.Result!, pointerDifference.ResultType!, differenceResult, pointerDifference.Span);
+                    }
                     else if (instruction is MirConvertInstruction convert
                         && convert.Result is MirValueId convertResult
                         && TryGetConstant(constants, convert.Operand, out object? convertValue)
@@ -244,6 +258,31 @@ public sealed class MirConstantPropagation : IMirOptimization
         return unchecked((int)((bits >> amount) | (bits << ((32 - amount) & 31))));
     }
 
+    private static bool TryFoldPointerOffset(BoundBinaryOperatorKind kind, object? pointerValue, object? deltaValue, int stride, out object? result)
+    {
+        result = null;
+        if (!TryGetUnsigned32(pointerValue, out uint pointer) || !TryGetUnsigned32(deltaValue, out uint delta))
+            return false;
+
+        uint scaledDelta = unchecked(delta * (uint)stride);
+        uint offset = kind == BoundBinaryOperatorKind.Add
+            ? unchecked(pointer + scaledDelta)
+            : unchecked(pointer - scaledDelta);
+        result = offset;
+        return true;
+    }
+
+    private static bool TryFoldPointerDifference(object? leftValue, object? rightValue, int stride, out object? result)
+    {
+        result = null;
+        if (!TryGetUnsigned32(leftValue, out uint left) || !TryGetUnsigned32(rightValue, out uint right))
+            return false;
+
+        int rawDifference = unchecked((int)(left - right));
+        result = rawDifference / stride;
+        return true;
+    }
+
     private static bool TryGetInteger(object? value, out long result)
     {
         switch (value)
@@ -259,6 +298,43 @@ public sealed class MirConstantPropagation : IMirOptimization
                 return true;
             case byte b:
                 result = b;
+                return true;
+            case uint u:
+                result = unchecked((int)u);
+                return true;
+            default:
+                result = 0;
+                return false;
+        }
+    }
+
+    private static bool TryGetUnsigned32(object? value, out uint result)
+    {
+        switch (value)
+        {
+            case uint u:
+                result = u;
+                return true;
+            case int i:
+                result = unchecked((uint)i);
+                return true;
+            case long l:
+                result = unchecked((uint)l);
+                return true;
+            case ulong ul:
+                result = unchecked((uint)ul);
+                return true;
+            case short s:
+                result = unchecked((uint)s);
+                return true;
+            case ushort us:
+                result = us;
+                return true;
+            case byte b:
+                result = b;
+                return true;
+            case sbyte sb:
+                result = unchecked((uint)sb);
                 return true;
             default:
                 result = 0;

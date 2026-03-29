@@ -654,7 +654,7 @@ public sealed class Binder
             case AssignmentStatementSyntax assignment:
             {
                 BoundAssignmentTarget target = BindAssignmentTarget(assignment.Target);
-                BoundExpression value = BindExpression(assignment.Value, target.Type);
+                BoundExpression value = BindAssignmentValue(assignment, target);
                 return new BoundAssignmentStatement(target, value, assignment.Operator.Kind, assignment.Span);
             }
 
@@ -1707,6 +1707,12 @@ public sealed class Binder
             right = BindExpression(binary.Right);
         }
 
+        if (binaryOperator.Kind is BoundBinaryOperatorKind.Add or BoundBinaryOperatorKind.Subtract
+            && TryBindPointerArithmeticExpression(binary, binaryOperator, left, right, out BoundExpression? pointerArithmetic))
+        {
+            return Requires.NotNull(pointerArithmetic);
+        }
+
         if (binaryOperator.IsComparison)
         {
             if (!IsComparable(left.Type, right.Type))
@@ -1738,6 +1744,115 @@ public sealed class Binder
         left = BindConversion(left, resultType, left.Span, reportMismatch: false);
         right = BindConversion(right, resultType, right.Span, reportMismatch: false);
         return new BoundBinaryExpression(left, binaryOperator, right, binary.Span, resultType);
+    }
+
+    private BoundExpression BindAssignmentValue(AssignmentStatementSyntax assignment, BoundAssignmentTarget target)
+    {
+        if (target.Type is MultiPointerTypeSymbol pointerType)
+        {
+            return assignment.Operator.Kind switch
+            {
+                TokenKind.Equal => BindExpression(assignment.Value, target.Type),
+                TokenKind.PlusEqual => BindPointerDeltaExpression(assignment.Value, assignment.Operator.Span, operatorText: "+="),
+                TokenKind.MinusEqual => BindPointerDeltaExpression(assignment.Value, assignment.Operator.Span, operatorText: "-="),
+                _ => BindInvalidPointerAssignmentValue(assignment.Value, assignment.Operator.Span, SyntaxFacts.GetText(assignment.Operator.Kind) ?? assignment.Operator.Text),
+            };
+        }
+
+        return BindExpression(assignment.Value, target.Type);
+    }
+
+    private BoundExpression BindInvalidPointerAssignmentValue(ExpressionSyntax valueSyntax, TextSpan span, string operatorText)
+    {
+        _ = BindExpression(valueSyntax);
+        _diagnostics.ReportInvalidPointerArithmetic(span, operatorText);
+        return new BoundErrorExpression(span);
+    }
+
+    private bool TryBindPointerArithmeticExpression(
+        BinaryExpressionSyntax binary,
+        BoundBinaryOperator binaryOperator,
+        BoundExpression left,
+        BoundExpression right,
+        out BoundExpression? bound)
+    {
+        bound = null;
+
+        bool leftIsPointer = left.Type is PointerLikeTypeSymbol;
+        bool rightIsPointer = right.Type is PointerLikeTypeSymbol;
+        if (!leftIsPointer && !rightIsPointer)
+            return false;
+
+        string operatorText = SyntaxFacts.GetText(binary.Operator.Kind) ?? binary.Operator.Text;
+
+        if (left.Type is not MultiPointerTypeSymbol leftPointer)
+        {
+            _diagnostics.ReportInvalidPointerArithmetic(binary.Span, operatorText);
+            bound = new BoundErrorExpression(binary.Span);
+            return true;
+        }
+
+        if (binaryOperator.Kind == BoundBinaryOperatorKind.Add)
+        {
+            if (rightIsPointer)
+            {
+                _diagnostics.ReportInvalidPointerArithmetic(binary.Span, operatorText);
+                bound = new BoundErrorExpression(binary.Span);
+                return true;
+            }
+
+            BoundExpression delta = BindPointerDeltaExpression(right, binary.Span, operatorText);
+            bound = delta is BoundErrorExpression
+                ? new BoundErrorExpression(binary.Span)
+                : new BoundBinaryExpression(left, binaryOperator, delta, binary.Span, left.Type);
+            return true;
+        }
+
+        if (!rightIsPointer)
+        {
+            BoundExpression delta = BindPointerDeltaExpression(right, binary.Span, operatorText);
+            bound = delta is BoundErrorExpression
+                ? new BoundErrorExpression(binary.Span)
+                : new BoundBinaryExpression(left, binaryOperator, delta, binary.Span, left.Type);
+            return true;
+        }
+
+        if (right.Type is not MultiPointerTypeSymbol rightPointer)
+        {
+            _diagnostics.ReportInvalidPointerArithmetic(binary.Span, operatorText);
+            bound = new BoundErrorExpression(binary.Span);
+            return true;
+        }
+
+        if (!AreCompatiblePointerSubtractionOperands(leftPointer, rightPointer))
+        {
+            _diagnostics.ReportIncompatiblePointerSubtraction(binary.Span, left.Type.Name, right.Type.Name);
+            bound = new BoundErrorExpression(binary.Span);
+            return true;
+        }
+
+        bound = new BoundBinaryExpression(left, binaryOperator, right, binary.Span, BuiltinTypes.I32);
+        return true;
+    }
+
+    private BoundExpression BindPointerDeltaExpression(ExpressionSyntax expressionSyntax, TextSpan span, string operatorText)
+    {
+        BoundExpression expression = BindExpression(expressionSyntax);
+        return BindPointerDeltaExpression(expression, span, operatorText);
+    }
+
+    private BoundExpression BindPointerDeltaExpression(BoundExpression expression, TextSpan span, string operatorText)
+    {
+        if (expression.Type.IsUnknown)
+            return expression;
+
+        if (expression.Type is PointerLikeTypeSymbol || !expression.Type.IsInteger)
+        {
+            _diagnostics.ReportInvalidPointerArithmetic(span, operatorText);
+            return new BoundErrorExpression(span);
+        }
+
+        return BindConversion(expression, BuiltinTypes.U32, span, reportMismatch: false);
     }
 
     private BoundExpression BindMemberAccessExpression(MemberAccessExpressionSyntax memberAccess)
@@ -3304,6 +3419,33 @@ public sealed class Binder
             return ReferenceEquals(target, source);
 
         return target.Name == source.Name;
+    }
+
+    private static bool AreCompatiblePointerSubtractionOperands(MultiPointerTypeSymbol left, MultiPointerTypeSymbol right)
+    {
+        return left.StorageClass == right.StorageClass
+            && AreSameType(left.PointeeType, right.PointeeType);
+    }
+
+    private static bool AreSameType(TypeSymbol left, TypeSymbol right)
+    {
+        if (ReferenceEquals(left, right))
+            return true;
+
+        if (left.GetType() != right.GetType())
+            return false;
+
+        return (left, right) switch
+        {
+            (ArrayTypeSymbol leftArray, ArrayTypeSymbol rightArray) => leftArray.Length == rightArray.Length
+                && AreSameType(leftArray.ElementType, rightArray.ElementType),
+            (PointerLikeTypeSymbol leftPointer, PointerLikeTypeSymbol rightPointer) => leftPointer.IsConst == rightPointer.IsConst
+                && leftPointer.IsVolatile == rightPointer.IsVolatile
+                && leftPointer.Alignment == rightPointer.Alignment
+                && leftPointer.StorageClass == rightPointer.StorageClass
+                && AreSameType(leftPointer.PointeeType, rightPointer.PointeeType),
+            _ => false,
+        };
     }
 
     private static int AlignTo(int value, int alignment)

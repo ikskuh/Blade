@@ -211,6 +211,32 @@ public sealed class LirBinaryOperation : LirOperation
     public override string DisplayName => $"binary.{OperatorKind}";
 }
 
+public sealed class LirPointerOffsetOperation : LirOperation
+{
+    public LirPointerOffsetOperation(BoundBinaryOperatorKind operatorKind, int stride)
+    {
+        OperatorKind = operatorKind;
+        Stride = stride;
+    }
+
+    public BoundBinaryOperatorKind OperatorKind { get; }
+    public int Stride { get; }
+
+    public override string DisplayName => $"ptr.offset.{OperatorKind}[{Stride}]";
+}
+
+public sealed class LirPointerDifferenceOperation : LirOperation
+{
+    public LirPointerDifferenceOperation(int stride)
+    {
+        Stride = stride;
+    }
+
+    public int Stride { get; }
+
+    public override string DisplayName => $"ptr.diff[{Stride}]";
+}
+
 public sealed class LirConvertOperation : LirOperation
 {
     public override string DisplayName => "convert";
@@ -384,14 +410,19 @@ public sealed class LirStorePlaceOperation : LirOperation
 
 public sealed class LirUpdatePlaceOperation : LirOperation
 {
-    public LirUpdatePlaceOperation(BoundBinaryOperatorKind operatorKind)
+    public LirUpdatePlaceOperation(BoundBinaryOperatorKind operatorKind, int? pointerArithmeticStride = null)
     {
         OperatorKind = operatorKind;
+        PointerArithmeticStride = pointerArithmeticStride;
     }
 
     public BoundBinaryOperatorKind OperatorKind { get; }
+    public int? PointerArithmeticStride { get; }
+    public bool IsPointerArithmetic => PointerArithmeticStride is not null;
 
-    public override string DisplayName => $"update.place.{OperatorKind}";
+    public override string DisplayName => PointerArithmeticStride is int stride
+        ? $"update.place.{OperatorKind}[{stride}]"
+        : $"update.place.{OperatorKind}";
 }
 
 public sealed class LirYieldOperation : LirOperation

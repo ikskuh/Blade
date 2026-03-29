@@ -130,7 +130,7 @@ public sealed class TypeAliasDeclarationSyntax : MemberSyntax
 {
     public Token TypeOrConstKeyword { get; }
     public Token Name { get; }
-    [ExcludeFromCodeCoverage] 
+    [ExcludeFromCodeCoverage]
     public Token EqualsToken { get; }
     public TypeSyntax Type { get; }
     [ExcludeFromCodeCoverage]

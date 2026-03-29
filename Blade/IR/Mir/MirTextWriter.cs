@@ -125,6 +125,26 @@ public static class MirTextWriter
                 sb.Append(formatter.Format(binary.Right));
                 break;
 
+            case MirPointerOffsetInstruction pointerOffset:
+                sb.Append("ptr.offset.");
+                sb.Append(pointerOffset.OperatorKind);
+                sb.Append('[');
+                sb.Append(pointerOffset.Stride);
+                sb.Append("] ");
+                sb.Append(formatter.Format(pointerOffset.BaseAddress));
+                sb.Append(", ");
+                sb.Append(formatter.Format(pointerOffset.Delta));
+                break;
+
+            case MirPointerDifferenceInstruction pointerDifference:
+                sb.Append("ptr.diff[");
+                sb.Append(pointerDifference.Stride);
+                sb.Append("] ");
+                sb.Append(formatter.Format(pointerDifference.Left));
+                sb.Append(", ");
+                sb.Append(formatter.Format(pointerDifference.Right));
+                break;
+
             case MirConvertInstruction convert:
                 sb.Append("convert ");
                 sb.Append(formatter.Format(convert.Operand));
@@ -276,6 +296,12 @@ public static class MirTextWriter
                 sb.Append(updatePlace.Place.EmittedName);
                 sb.Append(' ');
                 sb.Append(updatePlace.OperatorKind);
+                if (updatePlace.PointerArithmeticStride is int stride)
+                {
+                    sb.Append('[');
+                    sb.Append(stride);
+                    sb.Append(']');
+                }
                 sb.Append(' ');
                 sb.Append(formatter.Format(updatePlace.Value));
                 break;

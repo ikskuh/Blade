@@ -526,6 +526,12 @@ public static class AsmLowerer
             case LirBinaryOperation binary:
                 LowerBinary(nodes, op, binary, ctx);
                 break;
+            case LirPointerOffsetOperation pointerOffset:
+                LowerPointerOffset(nodes, op, pointerOffset, ctx);
+                break;
+            case LirPointerDifferenceOperation pointerDifference:
+                LowerPointerDifference(nodes, op, pointerDifference, ctx);
+                break;
             case LirUnaryOperation unary:
                 LowerUnary(nodes, op, unary, ctx);
                 break;
@@ -1525,6 +1531,40 @@ public static class AsmLowerer
         }
     }
 
+    private static void LowerPointerOffset(
+        List<AsmNode> nodes,
+        LirOpInstruction op,
+        LirPointerOffsetOperation operation,
+        LoweringContext ctx)
+    {
+        AsmRegisterOperand dest = DestReg(op, ctx);
+        AsmRegisterOperand pointer = OpReg(op.Operands[0], ctx);
+        AsmRegisterOperand delta = OpReg(op.Operands[1], ctx);
+
+        nodes.Add(Emit(P2Mnemonic.MOV, dest, pointer));
+        ScaleRegisterByStride(nodes, delta, operation.Stride);
+
+        P2Mnemonic opcode = operation.OperatorKind == BoundBinaryOperatorKind.Add
+            ? P2Mnemonic.ADD
+            : P2Mnemonic.SUB;
+        nodes.Add(Emit(opcode, dest, delta));
+    }
+
+    private static void LowerPointerDifference(
+        List<AsmNode> nodes,
+        LirOpInstruction op,
+        LirPointerDifferenceOperation operation,
+        LoweringContext ctx)
+    {
+        AsmRegisterOperand dest = DestReg(op, ctx);
+        AsmRegisterOperand left = OpReg(op.Operands[0], ctx);
+        AsmRegisterOperand right = OpReg(op.Operands[1], ctx);
+
+        nodes.Add(Emit(P2Mnemonic.MOV, dest, left));
+        nodes.Add(Emit(P2Mnemonic.SUB, dest, right));
+        DivideSignedRegisterByPositiveStride(nodes, dest, operation.Stride);
+    }
+
     private static void LowerUnary(
         List<AsmNode> nodes,
         LirOpInstruction op,
@@ -1736,6 +1776,21 @@ public static class AsmLowerer
         AsmPlaceOperand place = (AsmPlaceOperand)LowerOperand(op.Operands[0], ctx);
         AsmOperand value = LowerOperand(op.Operands[1], ctx);
 
+        if (operation.PointerArithmeticStride is int pointerStride)
+        {
+            Assert.Invariant(
+                operation.OperatorKind is BoundBinaryOperatorKind.Add or BoundBinaryOperatorKind.Subtract,
+                $"Pointer update-place only supports add/sub, got '{operation.OperatorKind}'.");
+            Assert.Invariant(value is AsmRegisterOperand, "Pointer update-place requires a register delta operand.");
+
+            AsmRegisterOperand delta = (AsmRegisterOperand)value;
+            ScaleRegisterByStride(nodes, delta, pointerStride);
+            nodes.Add(new AsmInstructionNode(
+                operation.OperatorKind == BoundBinaryOperatorKind.Add ? P2Mnemonic.ADD : P2Mnemonic.SUB,
+                [place, delta]));
+            return;
+        }
+
         P2Mnemonic? opcode = operation.OperatorKind switch
             {
                 BoundBinaryOperatorKind.Add => P2Mnemonic.ADD,
@@ -1765,6 +1820,58 @@ public static class AsmLowerer
         }
 
         nodes.Add(new AsmInstructionNode(opcode.Value, [place, value]));
+    }
+
+    private static void ScaleRegisterByStride(List<AsmNode> nodes, AsmRegisterOperand value, int stride)
+    {
+        Assert.Invariant(stride > 0, $"Pointer arithmetic stride must be positive, got {stride}.");
+        if (stride == 1)
+            return;
+
+        if (IsPowerOfTwo(stride))
+        {
+            nodes.Add(Emit(P2Mnemonic.SHL, value, new AsmImmediateOperand(Log2(stride))));
+            return;
+        }
+
+        nodes.Add(Emit(P2Mnemonic.QMUL, value, new AsmImmediateOperand(stride)));
+        nodes.Add(Emit(P2Mnemonic.GETQX, value));
+    }
+
+    private static void DivideSignedRegisterByPositiveStride(List<AsmNode> nodes, AsmRegisterOperand value, int stride)
+    {
+        Assert.Invariant(stride > 0, $"Pointer arithmetic stride must be positive, got {stride}.");
+        if (stride == 1)
+            return;
+
+        if (IsPowerOfTwo(stride))
+        {
+            nodes.Add(Emit(P2Mnemonic.SAR, value, new AsmImmediateOperand(Log2(stride))));
+            return;
+        }
+
+        nodes.Add(Emit(P2Mnemonic.ABS, value, flagEffect: P2FlagEffect.WC));
+        nodes.Add(Emit(P2Mnemonic.QDIV, value, new AsmImmediateOperand(stride)));
+        nodes.Add(Emit(P2Mnemonic.GETQX, value));
+        nodes.Add(Emit(P2Mnemonic.NEGC, value));
+    }
+
+    private static bool IsPowerOfTwo(int value)
+    {
+        return value > 0 && (value & (value - 1)) == 0;
+    }
+
+    private static int Log2(int value)
+    {
+        Assert.Invariant(IsPowerOfTwo(value), $"Expected power-of-two stride, got {value}.");
+        int shift = 0;
+        while (value > 1)
+        {
+            value >>= 1;
+            shift++;
+        }
+
+        return shift;
     }
 
     private static P2Mnemonic SelectHubReadOpcode(TypeSymbol type)

@@ -20,8 +20,8 @@ public sealed class SeparatedSyntaxList<T> : IEnumerable<T> where T : SyntaxNode
     public int Count => (_nodesAndSeparators.Count + 1) / 2;
 
     public T this[int index] => (T)_nodesAndSeparators[index * 2];
-    
-    [ExcludeFromCodeCoverage]    
+
+    [ExcludeFromCodeCoverage]
     public Token GetSeparator(int index) => (Token)_nodesAndSeparators[(index * 2) + 1];
 
     public IEnumerator<T> GetEnumerator()
