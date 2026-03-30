@@ -1,13 +1,17 @@
+' 40_final.spin2
 CON
-    F_CPU   = 200_000_000
-    BAUD    =     115_200
+        RT_F_CPU   = 200_000_000
+        RT_BAUD    =     115_200
 
-    TXD_PIN = 62
-    RXD_PIN = 63
+        RT_TXD_PIN = 62
+        RT_RXD_PIN = 63
 
-    UART_CLOCKS = F_CPU / BAUD
+        RT_UART_CLOCKS = RT_F_CPU / RT_BAUD
 
-    UART_CFG = (F_CPU / BAUD * $1_0000) | (8-1) ' 115200 @ 8 bit
+        RT_UART_CFG = (RT_F_CPU / RT_BAUD * $1_0000) | (8-1) ' 115200 @ 8 bit
+
+        RT_START_MARKER = $02 ' STX
+        RT_END_MARKER = $03 ' ETC
 
 DAT
 
@@ -22,31 +26,28 @@ DAT
         '' => "CLK = XI * 20 with PLL enabled"
         hubset ##16779771 '' _clkmode = 0x10009FB = 200 MHz
     
-        WRPIN #P_TT_01 | P_ASYNC_TX, #TXD_PIN
-        WRPIN #P_TT_00 | P_ASYNC_RX, #RXD_PIN
-
-        WXPIN ##UART_CFG, #TXD_PIN
-        WXPIN ##UART_CFG, #RXD_PIN
+        WRPIN #P_TT_01 | P_ASYNC_TX, #RT_TXD_PIN
+        WXPIN ##RT_UART_CFG, #RT_TXD_PIN
 
         '' enable smart pin
-        DIRH #TXD_PIN
-        DIRH #RXD_PIN
+        DIRH #RT_TXD_PIN
 
-        WAITX ##20_000_000
+        WAITX ##1_000_000
 
         ' First write must be without the "wait busy" logic as the pin would never trigger this!
         ' Write the "start of execution marker":
-        WYPIN #"!", #TXD_PIN 
+        WYPIN #RT_START_MARKER, #RT_TXD_PIN 
         JMP #blade_entry
 
-blade_exit
-        CALLPA #"?", #rt_write_byte
+blade_halt
+        CALLPA #RT_END_MARKER, #rt_write_byte
 
-        CALLPB #0, #rt_write_hex_long
-        CALLPB #$7E, #rt_write_hex_long
-        CALLPB #$100, #rt_write_hex_long
-        CALLPB #$1FF, #rt_write_hex_long
-        CALLPB ##$CAFEBABE, #rt_write_hex_long
+        CALLPB rt_result, #rt_write_hex_long
+        CALLPA #$0A, #rt_write_byte
+        ' CALLPB #$7E, #rt_write_hex_long
+        ' CALLPB #$100, #rt_write_hex_long
+        ' CALLPB #$1FF, #rt_write_hex_long
+        ' CALLPB ##$CAFEBABE, #rt_write_hex_long
 
         REP @.end, #0
         NOP
@@ -65,26 +66,28 @@ IF_LT   ADD     rt_tmp1, #"0"
         RET
 
 rt_write_byte ' (chr: PA)
-        TESTP   #TXD_PIN        WC      ' wait for empty buffer
+        TESTP   #RT_TXD_PIN        WC   ' wait for empty buffer
 IF_NC   JMP     #rt_write_byte          ' if not empty, test again
-_RET_   WYPIN   PA, #TXD_PIN            ' write PA
+_RET_   WYPIN   PA, #RT_TXD_PIN         ' write PA
 
-rt_tmp0     long 0
-rt_tmp1     long 0
+rt_tmp0     LONG 0
+rt_tmp1     LONG 0
+rt_result   LONG 0
+
+' start of blade code
+    ' --- Blade compiler output ---
+
+    ' function $top (EntryPoint)
+  blade_entry
+  f_l_top
+  l_top_bb0
+    AUGS #3735928559
+    MOV rt_result, #239
+    ' halt: runtime hook
+    JMP #blade_halt
+
+' --- register file ---
+' end of blade code
 
 
 
-
-blade_entry
-        TESTP   #RXD_PIN WC
-IF_NC   JMP     #blade_entry
-
-        RDPIN   rt_tmp0, #RXD_PIN ' read received word
-        SHR     rt_tmp0, #32-8      ' right-justify it
-
-        CALLPA  rt_tmp0, #rt_write_byte
-
-        CMP     rt_tmp0, #"x" WZ
-IF_Z    JMP     #blade_exit
-
-        JMP     #blade_entry

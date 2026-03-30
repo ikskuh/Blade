@@ -12,8 +12,8 @@ public class AsmLegalizerTests
             new AsmInstructionNode(P2Mnemonic.SETXFRQ, [new AsmImmediateOperand(0x456)]));
 
         Assert.That(nodes, Has.Count.EqualTo(2));
-        AssertAugInstruction(nodes[0], "AUGD", 0x456 >> 9);
-        AssertInstruction(nodes[1], "SETXFRQ", 0x456 & 0x1FF);
+        AssertAugInstruction(nodes[0], "AUGD", 0x456);
+        AssertInstruction(nodes[1], "SETXFRQ", 0x56);
     }
 
     [Test]
@@ -23,8 +23,8 @@ public class AsmLegalizerTests
             new AsmInstructionNode(P2Mnemonic.AKPIN, [new AsmImmediateOperand(0x456)]));
 
         Assert.That(nodes, Has.Count.EqualTo(2));
-        AssertAugInstruction(nodes[0], "AUGS", 0x456 >> 9);
-        AssertInstruction(nodes[1], "AKPIN", 0x456 & 0x1FF);
+        AssertAugInstruction(nodes[0], "AUGS", 0x456);
+        AssertInstruction(nodes[1], "AKPIN", 0x56);
     }
 
     [Test]
@@ -34,13 +34,13 @@ public class AsmLegalizerTests
             new AsmInstructionNode(P2Mnemonic.WRPIN, [new AsmImmediateOperand(0x456), new AsmImmediateOperand(0x789)]));
 
         Assert.That(nodes, Has.Count.EqualTo(3));
-        AssertAugInstruction(nodes[0], "AUGD", 0x456 >> 9);
-        AssertAugInstruction(nodes[1], "AUGS", 0x789 >> 9);
+        AssertAugInstruction(nodes[0], "AUGD", 0x456);
+        AssertAugInstruction(nodes[1], "AUGS", 0x789);
 
         AsmInstructionNode wrpin = (AsmInstructionNode)nodes[2];
         Assert.That(wrpin.Opcode, Is.EqualTo("WRPIN"));
-        Assert.That(((AsmImmediateOperand)wrpin.Operands[0]).Value, Is.EqualTo(0x456 & 0x1FF));
-        Assert.That(((AsmImmediateOperand)wrpin.Operands[1]).Value, Is.EqualTo(0x789 & 0x1FF));
+        Assert.That(((AsmImmediateOperand)wrpin.Operands[0]).Value, Is.EqualTo(0x56));
+        Assert.That(((AsmImmediateOperand)wrpin.Operands[1]).Value, Is.EqualTo(0x189));
     }
 
     [Test]

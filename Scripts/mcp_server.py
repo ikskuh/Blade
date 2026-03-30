@@ -89,7 +89,7 @@ class RawCompilerResult(BaseModel):
     diagnostics: list[Diagnostic]
     dumps: CompilerDumps
     result: str | None
-    metrics: Metrics
+    metrics: Metrics | None
 
 
 class CompilerOutput(BaseModel):
@@ -191,6 +191,9 @@ def compile_file(params: CompileParameter) -> CompilerOutput | McpOutput:
             "--output",
             "-",
         ]
+
+        if params.metrics:
+            argv.append("--metrics")
 
         for name, raw_path in sorted(params.modules.items()):
             path = map_path(raw_path)

@@ -122,3 +122,20 @@ compile-all-samples: build \
 compile-sample foo:
     Blade/bin/Debug/net10.0/blade --dump-all {{foo}} > {{ without_extension(foo) }}.dump.txt 
  
+
+hwtest path:
+    mkdir -p .hwtest
+
+    Blade/bin/Debug/net10.0/blade \
+        "--runtime=Blade.HwTestRunner/Runtime.spin2" \
+        "--output" ".hwtest/payload.spin2" \
+        "{{path}}"
+    
+    flexspin \
+        -2 -b \
+        -o ".hwtest/payload.bin" \
+        ".hwtest/payload.spin2"
+
+    Blade.HwTestRunner/bin/Debug/net10.0/Blade.HwTestRunner \
+        .hwtest/payload.bin \
+        0xDEADBEEF

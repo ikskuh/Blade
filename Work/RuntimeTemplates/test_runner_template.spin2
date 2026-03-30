@@ -1,0 +1,13 @@
+CON
+  ' <<BLADE_CON>>
+
+DAT
+  runtime_entry
+    JMP #blade_entry
+  ' <<BLADE_DAT>>
+
+  rt_result
+    LONG 0
+
+  blade_halt
+    JMP #blade_halt

@@ -25,6 +25,7 @@ internal static class CommandLineParser
         bool dumpFinalAsm = false;
         bool dumpAll = false;
         bool json = false;
+        bool emitMetrics = false;
         string? outputPath = null;
         List<string> compilerArgs = [];
 
@@ -71,6 +72,10 @@ internal static class CommandLineParser
 
                 case "--json":
                     json = true;
+                    break;
+
+                case "--metrics":
+                    emitMetrics = true;
                     break;
 
                 case string value when CompilationOptionsCommandLine.IsCompilationOption(value):
@@ -166,6 +171,7 @@ internal static class CommandLineParser
             DumpFinalAsm = dumpFinalAsm,
             DumpDirectory = dumpDirectory,
             Json = json,
+            EmitMetrics = emitMetrics,
             OutputPath = outputPath,
             EnableSingleCallsiteInlining = compilerOptions.EnableSingleCallsiteInlining,
             EnabledMirOptimizations = compilerOptions.EnabledMirOptimizations,
@@ -192,6 +198,7 @@ internal static class CommandLineParser
         Console.Error.WriteLine("  --dump-all");
         Console.Error.WriteLine("  --dump-dir <path>");
         Console.Error.WriteLine("  --json");
+        Console.Error.WriteLine("  --metrics");
         Console.Error.WriteLine("  --output <file>");
         Console.Error.WriteLine("  --comptime-fuel=<positive-integer>");
         Console.Error.WriteLine("  -fmir-opt=<csv> / -fno-mir-opt=<csv>");

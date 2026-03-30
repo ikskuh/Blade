@@ -166,8 +166,12 @@ public static class AsmLegalizer
                             $"Immediate value #{imm.Value} does not fit operand {i} of instruction '{instruction.Opcode}' and cannot be AUG-extended.");
                     }
 
-                    prefixes.Add((GetAugOpcode(operandInfo.AugPrefix), unchecked((long)(uval >> operandInfo.BitWidth))));
-                    long lowImmediateBits = unchecked((long)(uval & GetOperandMask(operandInfo.BitWidth)));
+                    // PASM source accepts the original literal on the AUG* prefix,
+                    // but the following instruction operand still has to fit its
+                    // encoded field width. The assembler consumes the upper bits
+                    // from AUG* and the low bits from the instruction operand.
+                    prefixes.Add((GetAugOpcode(operandInfo.AugPrefix), imm.Value));
+                    long lowImmediateBits = uval & GetOperandMask(operandInfo.BitWidth);
                     newOperands.Add(new AsmImmediateOperand(lowImmediateBits));
                     modified = true;
                 }

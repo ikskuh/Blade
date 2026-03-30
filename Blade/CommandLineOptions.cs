@@ -21,6 +21,7 @@ internal sealed class CommandLineOptions
     public bool DumpFinalAsm { get; init; }
     public string? DumpDirectory { get; init; }
     public bool Json { get; init; }
+    public bool EmitMetrics { get; init; }
     public string? OutputPath { get; init; }
     public bool EnableSingleCallsiteInlining { get; init; }
     public IReadOnlyList<MirOptimization> EnabledMirOptimizations { get; init; } = OptimizationRegistry.AllMirOptimizations;

@@ -90,7 +90,7 @@ internal static class JsonReportBuilder
             Diagnostics = diagnostics,
             Dumps = dumps,
             Result = success ? compilation.IrBuildResult!.AssemblyText : null,
-            Metrics = metrics,
+            Metrics = options.EmitMetrics ? metrics : null,
         };
     }
 
@@ -158,7 +158,7 @@ internal sealed class JsonCompilationReport
     public required string? Result { get; init; }
 
     [JsonPropertyName("metrics")]
-    public required CompilationMetrics Metrics { get; init; }
+    public required CompilationMetrics? Metrics { get; init; }
 }
 
 internal sealed class JsonDiagnostic

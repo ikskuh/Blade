@@ -86,20 +86,21 @@ internal sealed class StdioOutputWriter : ICompilerOutputWriter
                     File.WriteAllText(path, content);
                 }
 
-                WriteTextReport(Console.Out, dumpContent, metrics, errorCount, includeDumps: false);
+                if (options.EmitMetrics)
+                    WriteTextReport(Console.Out, dumpContent, metrics, errorCount, includeDumps: false);
                 error = null;
                 return true;
             }
 
             if (options.OutputPath is null || options.OutputPath == "-")
             {
-                WriteTextReport(Console.Out, dumpContent, metrics, errorCount, includeDumps: true);
+                WriteTextReport(Console.Out, dumpContent, metrics, errorCount, includeDumps: true, includeMetrics: options.EmitMetrics);
                 error = null;
                 return true;
             }
 
             using StreamWriter writer = new(options.OutputPath);
-            WriteTextReport(writer, dumpContent, metrics, errorCount, includeDumps: true);
+            WriteTextReport(writer, dumpContent, metrics, errorCount, includeDumps: true, includeMetrics: options.EmitMetrics);
             error = null;
             return true;
         }
@@ -116,7 +117,8 @@ internal sealed class StdioOutputWriter : ICompilerOutputWriter
         IReadOnlyDictionary<string, string> dumpContent,
         CompilationMetrics metrics,
         int errorCount,
-        bool includeDumps)
+        bool includeDumps,
+        bool includeMetrics = true)
     {
         if (includeDumps)
         {
@@ -134,11 +136,14 @@ internal sealed class StdioOutputWriter : ICompilerOutputWriter
                 writer.WriteLine();
         }
 
-        writer.WriteLine($"tokens : {metrics.TokenCount}");
-        writer.WriteLine($"members: {metrics.MemberCount}");
-        writer.WriteLine($"bound-fns: {metrics.BoundFunctionCount}");
-        writer.WriteLine($"mir-fns: {metrics.MirFunctionCount}");
-        writer.WriteLine($"errors : {errorCount}");
-        writer.WriteLine($"time   : {metrics.TimeMs:F2} ms");
+        if (!includeMetrics)
+            return;
+
+        writer.WriteLine($"' tokens : {metrics.TokenCount}");
+        writer.WriteLine($"' members: {metrics.MemberCount}");
+        writer.WriteLine($"' bound-fns: {metrics.BoundFunctionCount}");
+        writer.WriteLine($"' mir-fns: {metrics.MirFunctionCount}");
+        writer.WriteLine($"' errors : {errorCount}");
+        writer.WriteLine($"' time   : {metrics.TimeMs:F2} ms");
     }
 }

@@ -85,6 +85,7 @@ public class ProgramTests
             "--dump-asmir",
             "--dump-final-asm",
             "--json",
+            "--metrics",
             "--output",
             "report.json");
 
@@ -99,6 +100,7 @@ public class ProgramTests
         Assert.That(GetProperty<bool>(options!, "DumpAsmir"), Is.True);
         Assert.That(GetProperty<bool>(options!, "DumpFinalAsm"), Is.True);
         Assert.That(GetProperty<bool>(options!, "Json"), Is.True);
+        Assert.That(GetProperty<bool>(options!, "EmitMetrics"), Is.True);
         Assert.That(GetProperty<string?>(options!, "OutputPath"), Is.EqualTo("report.json"));
         Assert.That(GetProperty<string?>(options!, "DumpDirectory"), Is.Null);
     }
@@ -127,6 +129,7 @@ public class ProgramTests
         Assert.That(noArgs, Is.Null);
         Assert.That(noArgsErr, Does.Contain("Usage: blade"));
         Assert.That(noArgsErr, Does.Contain("--comptime-fuel=<positive-integer>"));
+        Assert.That(noArgsErr, Does.Contain("--metrics"));
 
         (object? missingDumpDir, _, string missingDumpDirErr) = CaptureConsole(() => ParseOptions("input.blade", "--dump-dir"));
         Assert.That(missingDumpDir, Is.Null);
@@ -284,11 +287,10 @@ public class ProgramTests
             (int exitCode, string stdout, string stderr) = CaptureConsole(() => InvokeEntryPoint([filePath, "--dump-bound", "--dump-final-asm", "--dump-dir", dumpDir]));
 
             Assert.That(exitCode, Is.EqualTo(0));
+            Assert.That(stdout, Is.Empty);
             Assert.That(stderr, Is.Empty);
             Assert.That(File.Exists(Path.Combine(dumpDir, "00_bound.ir")), Is.True);
             Assert.That(File.Exists(Path.Combine(dumpDir, "40_final.spin2")), Is.True);
-            Assert.That(stdout, Does.Contain("tokens :"));
-            Assert.That(stdout, Does.Contain("errors : 0"));
         }
         finally
         {
@@ -313,7 +315,7 @@ public class ProgramTests
             Assert.That(stderr, Is.Empty);
             Assert.That(stdout, Does.Contain("' 00_bound.ir"));
             Assert.That(stdout, Does.Contain("Program"));
-            Assert.That(stdout, Does.Contain("errors : 0"));
+            Assert.That(stdout, Does.Not.Contain("errors :"));
         }
         finally
         {
@@ -343,6 +345,28 @@ public class ProgramTests
     }
 
     [Test]
+    public void EntryPoint_PrintsMetricsAsCommentsWhenRequested()
+    {
+        string filePath = Path.Combine(Path.GetTempPath(), $"blade-stdout-metrics-{Guid.NewGuid():N}.blade");
+        File.WriteAllText(filePath, "reg var x: u32 = 1;");
+
+        try
+        {
+            (int exitCode, string stdout, string stderr) = CaptureConsole(() => InvokeEntryPoint([filePath, "--metrics"]));
+
+            Assert.That(exitCode, Is.EqualTo(0));
+            Assert.That(stderr, Is.Empty);
+            Assert.That(stdout, Does.Contain("' 40_final.spin2"));
+            Assert.That(stdout, Does.Contain("' tokens :"));
+            Assert.That(stdout, Does.Contain("' errors : 0"));
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
+    }
+
+    [Test]
     public void EntryPoint_WritesRequestedDumpAsJsonToStdout()
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-json-stdout-{Guid.NewGuid():N}.blade");
@@ -362,7 +386,7 @@ public class ProgramTests
             Assert.That(root.GetProperty("dumps").GetProperty("bound").GetString(), Does.Contain("Program"));
             Assert.That(root.GetProperty("dumps").GetProperty("asmir").ValueKind, Is.EqualTo(JsonValueKind.Null));
             Assert.That(root.GetProperty("result").GetString(), Does.Contain("org 0"));
-            Assert.That(root.GetProperty("metrics").GetProperty("token_count").GetInt32(), Is.GreaterThan(0));
+            Assert.That(root.GetProperty("metrics").ValueKind, Is.EqualTo(JsonValueKind.Null));
         }
         finally
         {
@@ -387,7 +411,7 @@ public class ProgramTests
 
             string report = File.ReadAllText(outputPath);
             Assert.That(report, Does.Contain("' 00_bound.ir"));
-            Assert.That(report, Does.Contain("errors : 0"));
+            Assert.That(report, Does.Not.Contain("errors :"));
         }
         finally
         {
@@ -444,7 +468,7 @@ public class ProgramTests
             Assert.That(root.GetProperty("success").GetBoolean(), Is.True);
             Assert.That(root.GetProperty("dumps").GetProperty("bound").GetString(), Does.Contain("Program"));
             Assert.That(root.GetProperty("result").GetString(), Does.Contain("org 0"));
-            Assert.That(root.GetProperty("metrics").GetProperty("token_count").GetInt32(), Is.GreaterThan(0));
+            Assert.That(root.GetProperty("metrics").ValueKind, Is.EqualTo(JsonValueKind.Null));
         }
         finally
         {
@@ -452,6 +476,30 @@ public class ProgramTests
                 File.Delete(filePath);
             if (File.Exists(outputPath))
                 File.Delete(outputPath);
+        }
+    }
+
+    [Test]
+    public void EntryPoint_EmitsJsonMetricsOnlyWhenRequested()
+    {
+        string filePath = Path.Combine(Path.GetTempPath(), $"blade-json-metrics-{Guid.NewGuid():N}.blade");
+        File.WriteAllText(filePath, "reg var x: u32 = 1;");
+
+        try
+        {
+            (int exitCode, string stdout, string stderr) = CaptureConsole(() => InvokeEntryPoint([filePath, "--json", "--metrics"]));
+
+            Assert.That(exitCode, Is.EqualTo(0));
+            Assert.That(stderr, Is.Empty);
+
+            using JsonDocument document = JsonDocument.Parse(stdout);
+            JsonElement root = document.RootElement;
+            Assert.That(root.GetProperty("metrics").GetProperty("token_count").GetInt32(), Is.GreaterThan(0));
+        }
+        finally
+        {
+            if (File.Exists(filePath))
+                File.Delete(filePath);
         }
     }
 
