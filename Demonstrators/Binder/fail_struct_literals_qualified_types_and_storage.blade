@@ -30,7 +30,7 @@ fn locals() {
 }
 
 fn duplicate_fields(seed: u32) {
-    Pair { .x = seed, .x = 0 };
+    _ = Pair { .x = seed, .x = 0 };
 }
 
 var ok_one: Alias = Alias { .value = 1 };

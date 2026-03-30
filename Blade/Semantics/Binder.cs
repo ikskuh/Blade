@@ -658,11 +658,6 @@ public sealed class Binder
             case ExpressionStatementSyntax expressionStatement:
             {
                 BoundExpression expr = BindExpression(expressionStatement.Expression);
-                if (expr is not BoundCallExpression
-                    and not BoundIntrinsicCallExpression
-                    and not BoundModuleCallExpression
-                    and not BoundErrorExpression)
-                    _diagnostics.ReportExpressionNotAStatement(expressionStatement.Expression.Span);
                 return new BoundExpressionStatement(expr, expressionStatement.Span);
             }
 

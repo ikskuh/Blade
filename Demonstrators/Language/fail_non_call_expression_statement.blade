@@ -1,0 +1,10 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0259
+// NOTE:
+//   Verifies that non-call expressions as standalone statements are rejected.
+
+fn demo(x: u32, y: u32) -> u32 {
+    x;
+    x + y;
+    return 0;
+}

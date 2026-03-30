@@ -1251,66 +1251,6 @@ public class BinderTests
     }
 
     [Test]
-    public void BitfieldPostIncrement_BindsThroughBitfieldTargetReadPath()
-    {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            type Flags = bitfield (u32) {
-                low: nib,
-                high: nib,
-            };
-
-            reg var flags: Flags = undefined;
-            flags.high++;
-            """);
-
-        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
-        string dump = BoundTreeWriter.Write(program);
-        Assert.That(dump, Does.Contain("Unary<nib> PostIncrement"));
-        Assert.That(dump, Does.Contain("Member<nib> .high"));
-    }
-
-    [Test]
-    public void PostfixMemberAndInvalidTargets_CoverRemainingBranches()
-    {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            type Pair = struct {
-                value: u32,
-            };
-
-            fn demo() void {
-            }
-
-            reg var pair: Pair = Pair { .value = 1 };
-            pair.value--;
-            demo++;
-            """);
-
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0106_InvalidAssignmentTarget), Is.True);
-        string dump = BoundTreeWriter.Write(program);
-        Assert.That(dump, Does.Contain("Member<u32> .value"));
-        Assert.That(dump, Does.Contain("ErrorExpr"));
-    }
-
-    [Test]
-    public void PostfixIncrement_CoversIndexAndDerefTargetsAndRejectsBool()
-    {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            fn demo(ptr: *reg u32) void {
-                var values: [2]u32 = undefined;
-                var flag: bool = false;
-                values[0]++;
-                ptr.*++;
-                flag++;
-            }
-            """);
-
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
-        string dump = BoundTreeWriter.Write(program);
-        Assert.That(dump, Does.Contain("Index<u32>"));
-        Assert.That(dump, Does.Contain("Deref<u32>"));
-    }
-
-    [Test]
     public void ArrayLiteral_BindsFromElementInference()
     {
         (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
@@ -1319,7 +1259,7 @@ public class BinderTests
             }
             """);
 
-        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+        Assert.That(diagnostics.Select(d => d.Code), Is.EqualTo(new[] { DiagnosticCode.E0259_ExpressionNotAStatement }));
         BoundFunctionMember function = program.Functions.Single();
         BoundExpressionStatement statement = (BoundExpressionStatement)function.Body.Statements[0];
         BoundArrayLiteralExpression literal = (BoundArrayLiteralExpression)statement.Expression;

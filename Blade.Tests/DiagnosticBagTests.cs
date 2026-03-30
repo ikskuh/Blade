@@ -55,6 +55,8 @@ public class DiagnosticBagTests
         bag.ReportBitcastSizeMismatch(Span, "u32", "u16");
         bag.ReportAddressOfRecursiveLocal(Span, "x");
         bag.ReportMissingReturnValue(Span, "f");
+        bag.ReportExpressionNotAStatement(Span);
+        bag.ReportRangeIterationRequiresBinding(Span);
         bag.ReportEnumLiteralRequiresContext(Span, "Idle");
         bag.ReportBitfieldWidthOverflow(Span, "Flags", "wide", 40, 32);
         bag.ReportArrayLiteralRequiresContext(Span);
@@ -67,7 +69,7 @@ public class DiagnosticBagTests
         bag.ReportUnsupportedLowering(Span, "store.index");
         bag.ReportDuplicateVariableClause(Span, "@(...)");
 
-        Assert.That(bag.Count, Is.EqualTo(52));
+        Assert.That(bag.Count, Is.EqualTo(54));
         Assert.That(bag.HasErrors, Is.True);
         Assert.That(bag.Last().Code, Is.EqualTo(DiagnosticCode.E0108_DuplicateVariableClause));
     }

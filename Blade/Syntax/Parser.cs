@@ -813,8 +813,14 @@ public sealed class Parser
         }
 
         Token semicolon = MatchToken(TokenKind.Semicolon);
+        if (!IsValidExpressionStatement(expression))
+            Diagnostics.ReportExpressionNotAStatement(expression.Span);
+
         return new ExpressionStatementSyntax(expression, semicolon);
     }
+
+    private static bool IsValidExpressionStatement(ExpressionSyntax expression)
+        => expression is CallExpressionSyntax or IntrinsicCallExpressionSyntax;
 
     // ──────────────────────────────────────────
     //  Types

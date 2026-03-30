@@ -1,7 +1,8 @@
 // EXPECT: fail
-// DIAGNOSTICS: E0205, E0206, E0207, E0212
+// DIAGNOSTICS: E0205, E0206, E0207, E0212, E0259
 // NOTE:
-//   Covers unary/binary type errors, not-callable expressions, and call-shape edge cases.
+//   Covers unary/binary type errors, not-callable expressions, call-shape edge cases,
+//   and expression-not-a-statement errors.
 
 type Pair = struct {
     value: u32,
@@ -20,7 +21,7 @@ fn demo(flag: bool, values: [2]u32, pair: Pair) {
     -flag;
     ~flag;
     +flag;
-    flag++;
+    flag + flag;
     pair == values[0];
     1 && 2;
     values[false];

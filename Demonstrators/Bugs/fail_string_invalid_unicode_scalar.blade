@@ -1,10 +1,12 @@
 // EXPECT: fail
 // DIAGNOSTICS:
-// - L9, E0006
 // - L10, E0006
+// - L11, E0006
 // NOTE:
 //   Unicode brace escapes in string literals must reject scalars outside the
 //   Unicode range and surrogate code points without crashing the lexer.
 
-"\u{110000}";
-"\u{D800}";
+fn demo() {
+    var out_of_range: [*]reg const u8 = "\u{110000}";
+    var surrogate: [*]reg const u8 = "\u{D800}";
+}

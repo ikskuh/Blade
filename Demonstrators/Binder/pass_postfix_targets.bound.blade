@@ -1,12 +1,12 @@
 // EXPECT: pass
 // STAGE: bound
 // CONTAINS:
-// - Unary<nib> PostIncrement
-// - Member<u32> .value
-// - Index<u32>
-// - Deref<u32>
+// - TargetMember<u32> .value
+// - TargetBitfield<nib> .high
+// - TargetIndex<u32>
+// - TargetDeref<u32>
 // NOTE:
-//   Covers postfix binding paths for member, bitfield, index, and dereference targets.
+//   Covers fusion assignment paths for member, bitfield, index, and dereference targets.
 
 type Pair = struct {
     value: u32,
@@ -24,8 +24,8 @@ reg var flags: Flags = undefined;
 fn demo(ptr: *reg u32) {
     var values: [2]u32 = undefined;
 
-    pair.value--;
-    flags.high++;
-    values[0]++;
-    ptr.*++;
+    pair.value -= 1;
+    flags.high += 1;
+    values[0] += 1;
+    ptr.* += 1;
 }

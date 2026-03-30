@@ -411,7 +411,7 @@ public class IrPipelineTests
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
             noinline fn demo(p: *reg volatile u32) -> u32 {
-                p.*;
+                _ = p.*;
                 return 0;
             }
             """);
@@ -434,7 +434,7 @@ public class IrPipelineTests
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
             noinline fn demo(p: [*]reg volatile u32, i: u32) -> u32 {
-                p[i];
+                _ = p[i];
                 return 0;
             }
             """);
@@ -1572,7 +1572,7 @@ public class IrPipelineTests
                 while (true) { break; }
                 loop { continue; }
                 rep for (2) { sink = sink + 1; }
-                rep for (1..2) -> i { sink = sink + i; }
+                rep for (1..<2) -> i { sink = sink + i; }
                 noirq { sink = sink + 1; }
 
                 sink = pair.left;
@@ -1583,7 +1583,7 @@ public class IrPipelineTests
                 ptr.* = sink;
                 sink = if (true) pair.left else pair.right;
                 @encod(sink);
-                1..2;
+                _ = 1..<2;
                 asm {
                     MOV {sink}, {sink}
                 };
@@ -1766,7 +1766,7 @@ public class IrPipelineTests
             reg var values: [4]u32 = undefined;
 
             noinline fn demo(many: [*]reg volatile u32) -> u32 {
-                many[1];
+                _ = many[1];
                 return 0;
             }
 

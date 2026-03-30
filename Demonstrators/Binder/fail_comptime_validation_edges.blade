@@ -47,7 +47,7 @@ extern reg var check_binary: u32 @(seed + 1);
 extern reg var check_if: u32 @(if (true) seed else 1);
 extern reg var check_member: u32 @(pair.value);
 extern reg var check_index: u32 @(values[0]);
-extern reg var check_deref: u32 @(*ptr);
+extern reg var check_deref: u32 @(ptr.*);
 extern reg var check_module: u32 @(ext());
 extern reg var check_symbol: u32 @(seed);
 

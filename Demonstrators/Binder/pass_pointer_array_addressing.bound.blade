@@ -8,5 +8,5 @@ fn demo(values: [2]u32, many: [*]reg u32) {
     many[0] = first;
 
     var alias: [*]reg u32 = &values;
-    alias[0]++;
+    alias[0] += 1;
 }

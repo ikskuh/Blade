@@ -5,36 +5,36 @@
 
 fn demo(count: u32, values: [2]u32) {
     if (count == 0)
-        count;
+        _ = count;
     else
-        values[0];
+        _ = values[0];
 
     for(values) -> &item, index {
         item = index;
     }
 
     for(count) -> i {
-        i;
+        _ = i;
     }
 
     for(values) {
-        values[0];
+        _ = values[0];
     }
 
     rep loop {
-        count;
+        _ = count;
         return;
     }
 
-    rep for(1..count) -> i {
-        i;
+    rep for(1..<count) -> i {
+        _ = i;
     }
 
     rep for(count) {
-        count;
+        _ = count;
     }
 
     noirq {
-        count;
+        _ = count;
     }
 }

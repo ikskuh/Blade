@@ -3,7 +3,7 @@
 // - E0242
 
 fn deref_value(ptr: *reg u32) -> u32 {
-    return *ptr;
+    return ptr.*;
 }
 
 reg const folded: u32 = deref_value(bitcast(*reg u32, 0));
