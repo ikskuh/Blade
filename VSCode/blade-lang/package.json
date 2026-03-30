@@ -3,23 +3,77 @@
   "displayName": "Blade",
   "description": "Support for the Blade programming language.",
   "version": "0.0.1",
+  "private": true,
   "engines": {
     "vscode": "^1.110.0"
+  },
+  "main": "./out/src/extension.js",
+  "activationEvents": [
+    "onLanguage:blade",
+    "onCommand:blade.openPreviewToSide"
+  ],
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -w -p ./",
+    "test": "npm run compile && node --test out/test/*.test.js"
   },
   "categories": [
     "Programming Languages"
   ],
   "contributes": {
-    "languages": [{
-      "id": "blade",
-      "aliases": ["Blade", "blade"],
-      "extensions": [".blade"],
-      "configuration": "./language-configuration.json"
-    }],
-    "grammars": [{
-      "language": "blade",
-      "scopeName": "source.blade",
-      "path": "./syntaxes/blade.tmLanguage.json"
-    }]
+    "languages": [
+      {
+        "id": "blade",
+        "aliases": [
+          "Blade",
+          "blade"
+        ],
+        "extensions": [
+          ".blade"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "blade",
+        "scopeName": "source.blade",
+        "path": "./syntaxes/blade.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "blade.openPreviewToSide",
+        "title": "Blade: Open Preview To The Side",
+        "icon": {
+          "light": "resources/preview-light.svg",
+          "dark": "resources/preview-dark.svg"
+        }
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "blade.openPreviewToSide",
+          "when": "resourceLangId == blade",
+          "group": "navigation@50"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Blade",
+      "properties": {
+        "blade.path": {
+          "type": "string",
+          "scope": "machine-overridable",
+          "markdownDescription": "Path to the Blade compiler executable. When unset, the extension runs `blade` from your `PATH`."
+        }
+      }
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "@types/vscode": "^1.110.0",
+    "typescript": "^6.0.2"
   }
 }

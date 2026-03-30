@@ -1,65 +1,30 @@
-# blade-lang README
+# Blade
 
-This is the README for your extension "blade-lang". After writing up a brief description, we recommend including the following sections.
+VS Code support for the Blade programming language.
 
 ## Features
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
-
-For example if there is an image subfolder under your extension project workspace:
-
-\!\[feature X\]\(images/feature-x.png\)
-
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+- Syntax highlighting for `.blade` files.
+- `Blade: Open Preview To The Side` command for compiling the active Blade document and showing the generated assembly in a side preview.
+- Live preview refresh as the source document changes.
 
 ## Requirements
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+- The Blade compiler must be installed on the host machine.
+- When `blade.path` is not configured, the extension runs `blade` from `PATH`.
 
 ## Extension Settings
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
+This extension contributes the following setting:
 
-For example:
+- `blade.path`: Path to the Blade compiler executable. Leave unset to use `blade` from `PATH`.
 
-This extension contributes the following settings:
+## Preview
 
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
+The preview command compiles the active document by invoking:
 
-## Known Issues
+```text
+<blade.path or blade> --json -
+```
 
-Calling out known issues can help limit users opening duplicate issues against your extension.
-
-## Release Notes
-
-Users appreciate release notes as you update your extension.
-
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
-
----
-
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+The document source is piped to stdin, and the extension renders the JSON report's `result` field inside a single `<pre><code>` block.

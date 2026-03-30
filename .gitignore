@@ -10,3 +10,6 @@ __pycache__/
 
 fuzzing/
 .tmp/
+
+VSCode/blade-lang/node_modules/
+VSCode/blade-lang/out/
