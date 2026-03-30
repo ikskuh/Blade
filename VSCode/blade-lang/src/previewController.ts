@@ -1,13 +1,15 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import {
-    renderAssemblyHtml,
+    type BladeCompilationReport,
+    type BladeDiagnostic,
     resolveBladeExecutable,
     selectBladeWorkingDirectory,
     startBladeCompilation,
     type BladeCompilationOutcome,
 } from "./bladeCompiler";
 import { LatestOnlyJobRunner } from "./latestOnlyJobRunner";
+import { renderCompilationReportHtml } from "./previewHtml";
 
 const PreviewRefreshDelayMs = 250;
 
@@ -63,8 +65,9 @@ class BladePreviewSession implements vscode.Disposable {
             },
             {
                 enableFindWidget: true,
+                enableCommandUris: true,
             });
-        this.panel.webview.html = renderAssemblyHtml("");
+        this.panel.webview.html = renderReport(emptyReport());
 
         this.disposables.push(this.panel.onDidDispose(() => {
             this.disposeCore(false);
@@ -131,11 +134,10 @@ class BladePreviewSession implements vscode.Disposable {
             return;
 
         switch (completion.value.kind) {
-            case "success":
-                this.panel.webview.html = renderAssemblyHtml(completion.value.assembly);
+            case "report":
+                this.panel.webview.html = renderReport(completion.value.report);
                 break;
 
-            case "diagnostic-error":
             case "execution-error":
                 void vscode.window.showErrorMessage(completion.value.message);
                 break;
@@ -192,4 +194,36 @@ function buildPreviewTitle(documentUri: vscode.Uri): string {
     const basename = path.posix.basename(documentUri.path);
     const name = basename.length > 0 ? basename : documentUri.toString();
     return `Blade Preview: ${name}`;
+}
+
+function renderReport(report: BladeCompilationReport): string {
+    return renderCompilationReportHtml(report, buildDiagnosticLink);
+}
+
+function buildDiagnosticLink(diagnostic: BladeDiagnostic): { href: string; label: string } | undefined {
+    if (diagnostic.file === undefined)
+        return undefined;
+
+    const label = diagnostic.line !== undefined
+        ? `${diagnostic.file}:${diagnostic.line}`
+        : diagnostic.file;
+    const argument = {
+        file: diagnostic.file,
+        line: diagnostic.line ?? 1,
+    };
+
+    return {
+        href: `command:blade.openDiagnosticLocation?${encodeURIComponent(JSON.stringify([argument]))}`,
+        label,
+    };
+}
+
+function emptyReport(): BladeCompilationReport {
+    return {
+        diagnostics: [],
+        dumps: {},
+        metrics: {},
+        result: null,
+        success: true,
+    };
 }

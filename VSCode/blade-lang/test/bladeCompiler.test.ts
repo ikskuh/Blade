@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import {
     interpretBladeCompilerOutput,
-    renderAssemblyHtml,
     resolveBladeExecutable,
     selectBladeWorkingDirectory,
     startBladeCompilation,
@@ -64,11 +63,17 @@ test("selectBladeWorkingDirectory uses the first workspace folder for untitled d
     assert.equal(cwd, "/workspace/project");
 });
 
-test("interpretBladeCompilerOutput returns assembly from a successful JSON envelope", () => {
+test("interpretBladeCompilerOutput returns the full successful JSON report", () => {
     const outcome = interpretBladeCompilerOutput(
         JSON.stringify({
             success: true,
             diagnostics: [],
+            dumps: {
+                bound: "Program",
+            },
+            metrics: {
+                token_count: 2,
+            },
             result: "org 0\nmov r0, #1\n",
         }),
         "",
@@ -76,12 +81,22 @@ test("interpretBladeCompilerOutput returns assembly from a successful JSON envel
         null);
 
     assert.deepEqual(outcome, {
-        kind: "success",
-        assembly: "org 0\nmov r0, #1\n",
+        kind: "report",
+        report: {
+            diagnostics: [],
+            dumps: {
+                bound: "Program",
+            },
+            metrics: {
+                token_count: 2,
+            },
+            result: "org 0\nmov r0, #1\n",
+            success: true,
+        },
     });
 });
 
-test("interpretBladeCompilerOutput formats diagnostic failures from JSON", () => {
+test("interpretBladeCompilerOutput preserves diagnostics in a failed JSON report", () => {
     const outcome = interpretBladeCompilerOutput(
         JSON.stringify({
             success: false,
@@ -92,6 +107,12 @@ test("interpretBladeCompilerOutput formats diagnostic failures from JSON", () =>
                     message: "Expected expression.",
                 },
             ],
+            dumps: {
+                bound: null,
+            },
+            metrics: {
+                token_count: 4,
+            },
             result: null,
         }),
         "ignored text diagnostics",
@@ -99,8 +120,25 @@ test("interpretBladeCompilerOutput formats diagnostic failures from JSON", () =>
         null);
 
     assert.deepEqual(outcome, {
-        kind: "diagnostic-error",
-        message: "E0202 line 4: Expected expression.",
+        kind: "report",
+        report: {
+            diagnostics: [
+                {
+                    code: "E0202",
+                    file: undefined,
+                    line: 4,
+                    message: "Expected expression.",
+                },
+            ],
+            dumps: {
+                bound: null,
+            },
+            metrics: {
+                token_count: 4,
+            },
+            result: null,
+            success: false,
+        },
     });
 });
 
@@ -113,15 +151,12 @@ test("interpretBladeCompilerOutput reports invalid JSON output as an execution e
     });
 });
 
-test("renderAssemblyHtml escapes HTML-sensitive assembly text", () => {
-    const html = renderAssemblyHtml("<mov & jump>");
+test("startBladeCompilation requests json and all dumps", async () => {
+    let capturedArgs: readonly string[] | undefined;
 
-    assert.match(html, /<pre><code>&lt;mov &amp; jump&gt;<\/code><\/pre>/);
-    assert.doesNotMatch(html, /<pre><code><mov/);
-});
+    const fakeSpawn: SpawnProcess = (_command, args) => {
+        capturedArgs = args;
 
-test("startBladeCompilation reports spawn failures", async () => {
-    const fakeSpawn: SpawnProcess = () => {
         const child = new FakeChildProcess();
         queueMicrotask(() => {
             child.emit("error", new Error("spawn ENOENT"));
@@ -142,6 +177,7 @@ test("startBladeCompilation reports spawn failures", async () => {
         kind: "execution-error",
         message: "Blade compiler invocation failed: spawn ENOENT",
     });
+    assert.deepEqual(capturedArgs, ["--json", "--dump-all", "-"]);
 });
 
 class FakeChildProcess extends EventEmitter implements SpawnedProcess {

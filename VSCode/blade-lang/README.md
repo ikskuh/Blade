@@ -5,7 +5,7 @@ VS Code support for the Blade programming language.
 ## Features
 
 - Syntax highlighting for `.blade` files.
-- `Blade: Open Preview To The Side` command for compiling the active Blade document and showing the generated assembly in a side preview.
+- `Blade: Open Preview To The Side` command for compiling the active Blade document and showing diagnostics, assembly, IR dumps, and metrics in a side preview.
 - Live preview refresh as the source document changes.
 
 ## Requirements
@@ -24,7 +24,7 @@ This extension contributes the following setting:
 The preview command compiles the active document by invoking:
 
 ```text
-<blade.path or blade> --json -
+<blade.path or blade> --json --dump-all -
 ```
 
-The document source is piped to stdin, and the extension renders the JSON report's `result` field inside a single `<pre><code>` block.
+The document source is piped to stdin. The preview renders the JSON report as ordered `<details>` sections for diagnostics, final assembly, compiler dumps, and metrics. Diagnostics include clickable links that jump to the reported source location in VS Code.

@@ -7,4 +7,4 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 ## [Unreleased]
 
 - Added the `blade.path` setting for choosing the Blade compiler executable.
-- Added `Blade: Open Preview To The Side` with a live-refreshing assembly preview.
+- Added `Blade: Open Preview To The Side` with a live-refreshing preview for diagnostics, final assembly, IR dumps, and metrics.

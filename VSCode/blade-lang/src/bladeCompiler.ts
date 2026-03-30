@@ -8,6 +8,14 @@ export interface BladeDiagnostic {
     readonly message?: string;
 }
 
+export interface BladeCompilationReport {
+    readonly diagnostics: readonly BladeDiagnostic[];
+    readonly dumps: Readonly<Record<string, string | null>>;
+    readonly metrics: Readonly<Record<string, unknown>>;
+    readonly result: string | null;
+    readonly success: boolean;
+}
+
 export interface BladePathVariables {
     readonly cwd?: string;
     readonly env?: Readonly<Record<string, string | undefined>>;
@@ -22,13 +30,8 @@ export interface BladeCompilationRequest {
 }
 
 export interface BladeCompilationSuccess {
-    readonly kind: "success";
-    readonly assembly: string;
-}
-
-export interface BladeCompilationDiagnosticFailure {
-    readonly kind: "diagnostic-error";
-    readonly message: string;
+    readonly kind: "report";
+    readonly report: BladeCompilationReport;
 }
 
 export interface BladeCompilationExecutionFailure {
@@ -42,7 +45,6 @@ export interface BladeCompilationCancelled {
 
 export type BladeCompilationOutcome =
     | BladeCompilationSuccess
-    | BladeCompilationDiagnosticFailure
     | BladeCompilationExecutionFailure
     | BladeCompilationCancelled;
 
@@ -67,6 +69,8 @@ export type SpawnProcess = (
 
 interface BladeJsonReport {
     readonly diagnostics?: unknown;
+    readonly dumps?: unknown;
+    readonly metrics?: unknown;
     readonly result?: unknown;
     readonly success?: unknown;
 }
@@ -97,34 +101,6 @@ export function selectBladeWorkingDirectory(
     return workspaceFolderPaths[0] ?? process.cwd();
 }
 
-export function renderAssemblyHtml(assembly: string): string {
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<style>
-body {
-    margin: 0;
-    padding: 12px;
-    background: var(--vscode-editor-background);
-    color: var(--vscode-editor-foreground);
-}
-
-pre {
-    margin: 0;
-    white-space: pre-wrap;
-    word-break: break-word;
-    font-family: var(--vscode-editor-font-family);
-    font-size: var(--vscode-editor-font-size);
-    line-height: var(--vscode-editor-line-height);
-}
-</style>
-</head>
-<body><pre><code>${escapeHtml(assembly)}</code></pre></body>
-</html>`;
-}
-
 export function interpretBladeCompilerOutput(
     stdout: string,
     stderr: string,
@@ -142,31 +118,29 @@ export function interpretBladeCompilerOutput(
         };
     }
 
-    if (parsedReport.success === true) {
-        if (typeof parsedReport.result !== "string") {
-            return {
-                kind: "execution-error",
-                message: buildExecutionFailureMessage("Blade compiler JSON output did not include assembly text.", stderr, exitCode, signal),
-            };
-        }
-
+    if (typeof parsedReport.success !== "boolean") {
         return {
-            kind: "success",
-            assembly: parsedReport.result,
+            kind: "execution-error",
+            message: buildExecutionFailureMessage("Blade compiler JSON output was missing the success flag.", stderr, exitCode, signal),
         };
     }
 
-    if (parsedReport.success === false) {
-        const diagnostics = asDiagnostics(parsedReport.diagnostics);
+    if (parsedReport.success && typeof parsedReport.result !== "string") {
         return {
-            kind: "diagnostic-error",
-            message: formatDiagnosticSummary(diagnostics[0]),
+            kind: "execution-error",
+            message: buildExecutionFailureMessage("Blade compiler JSON output did not include assembly text.", stderr, exitCode, signal),
         };
     }
 
     return {
-        kind: "execution-error",
-        message: buildExecutionFailureMessage("Blade compiler JSON output was missing the success flag.", stderr, exitCode, signal),
+        kind: "report",
+        report: {
+            diagnostics: asDiagnostics(parsedReport.diagnostics),
+            dumps: asDumps(parsedReport.dumps),
+            metrics: asMetrics(parsedReport.metrics),
+            result: typeof parsedReport.result === "string" ? parsedReport.result : null,
+            success: parsedReport.success,
+        },
     };
 }
 
@@ -192,7 +166,7 @@ export function startBladeCompilation(
         try {
             childProcess = spawnProcess(
                 request.executablePath,
-                ["--json", "-"],
+                ["--json", "--dump-all", "-"],
                 {
                     cwd: request.cwd,
                     windowsHide: true,
@@ -242,13 +216,13 @@ export function startBladeCompilation(
             });
         });
 
-        childProcess.on("close", (exitCode, signal) => {
+        childProcess.on("close", (closeExitCode, closeSignal) => {
             if (cancelled) {
                 settle({ kind: "cancelled" });
                 return;
             }
 
-            settle(interpretBladeCompilerOutput(stdout, stderr, exitCode, signal));
+            settle(interpretBladeCompilerOutput(stdout, stderr, closeExitCode, closeSignal));
         });
 
         childProcess.stdin.end(request.sourceText);
@@ -290,15 +264,6 @@ function isWithinFolder(filePath: string, folderPath: string): boolean {
     const relativePath = path.relative(folderPath, filePath);
     return relativePath === ""
         || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
-}
-
-function escapeHtml(value: string): string {
-    return value
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll("\"", "&quot;")
-        .replaceAll("'", "&#39;");
 }
 
 function expandBladePathVariables(value: string, variables: BladePathVariables): string {
@@ -374,17 +339,24 @@ function asDiagnostics(value: unknown): readonly BladeDiagnostic[] {
     return diagnostics;
 }
 
-function formatDiagnosticSummary(diagnostic: BladeDiagnostic | undefined): string {
-    if (diagnostic === undefined)
-        return "Blade compilation failed.";
+function asDumps(value: unknown): Readonly<Record<string, string | null>> {
+    if (!isRecord(value))
+        return {};
 
-    const code = diagnostic.code ?? "error";
-    const lineSuffix = diagnostic.line !== undefined
-        ? ` line ${diagnostic.line}`
-        : "";
-    const message = diagnostic.message ?? "Blade compilation failed.";
+    const dumps: Record<string, string | null> = {};
+    for (const [name, dumpValue] of Object.entries(value)) {
+        if (typeof dumpValue === "string" || dumpValue === null)
+            dumps[name] = dumpValue;
+    }
 
-    return `${code}${lineSuffix}: ${message}`;
+    return dumps;
+}
+
+function asMetrics(value: unknown): Readonly<Record<string, unknown>> {
+    if (!isRecord(value))
+        return {};
+
+    return value;
 }
 
 function buildExecutionFailureMessage(
