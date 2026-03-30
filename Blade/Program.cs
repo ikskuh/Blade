@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using Blade.IR;
 using Blade.IR.Asm;
+using Blade.IR.Mir;
 
 namespace Blade;
 
@@ -15,7 +16,7 @@ internal static class Program
         if (options is null)
             return 1;
 
-        if (!File.Exists(options.FilePath))
+        if (options.FilePath != "-" && !File.Exists(options.FilePath))
         {
             Console.Error.WriteLine($"error: file not found: {options.FilePath}");
             return 1;
@@ -23,17 +24,27 @@ internal static class Program
 
 
         Stopwatch sw = Stopwatch.StartNew();
-        CompilationResult compilation = CompilerDriver.CompileFile(
-            options.FilePath,
-            new CompilationOptions
-            {
-                EnableSingleCallsiteInlining = options.EnableSingleCallsiteInlining,
-                EnabledMirOptimizations = options.EnabledMirOptimizations,
-                EnabledLirOptimizations = options.EnabledLirOptimizations,
-                EnabledAsmirOptimizations = options.EnabledAsmirOptimizations,
-                NamedModuleRoots = options.NamedModuleRoots,
-                ComptimeFuel = options.ComptimeFuel,
-            });
+
+        var bladeOptions = new CompilationOptions
+        {
+            EnableSingleCallsiteInlining = options.EnableSingleCallsiteInlining,
+            EnabledMirOptimizations = options.EnabledMirOptimizations,
+            EnabledLirOptimizations = options.EnabledLirOptimizations,
+            EnabledAsmirOptimizations = options.EnabledAsmirOptimizations,
+            NamedModuleRoots = options.NamedModuleRoots,
+            ComptimeFuel = options.ComptimeFuel,
+        };
+
+        CompilationResult compilation;
+        if (options.FilePath == "-")
+        {
+            var stdinText = Console.In.ReadToEnd();
+            compilation = CompilerDriver.Compile(stdinText, "<stdin>", bladeOptions);
+        }
+        else
+        {
+            compilation = CompilerDriver.CompileFile(options.FilePath, bladeOptions);
+        }
         sw.Stop();
 
         CompilationMetrics metrics = new()
