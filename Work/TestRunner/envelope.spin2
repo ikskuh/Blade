@@ -32,20 +32,46 @@ DAT
     DIRH #TXD_PIN
     DIRH #RXD_PIN
 
-    WAITX ##1_000_000
+    WAITX ##20_000_000
 
-    WYPIN #$21, #TXD_PIN '' write '!'
+    WYPIN #$21, #TXD_PIN
+
+    CALLPA #"?", #rt_write_byte
+
+    CALLPB #0, #rt_write_hex_long
+    CALLPB #$7E, #rt_write_hex_long
+    CALLPB #$100, #rt_write_hex_long
+    CALLPB #$1FF, #rt_write_hex_long
+    CALLPB ##$CAFEBABE, #rt_write_hex_long
 
   main_loop
     TESTP #RXD_PIN WC
     IF_NC JMP #main_loop
 
-    RDPIN tmp, #RXD_PIN '' read received word
-    SHR tmp, #32-8 '' right-justify it
+    RDPIN rt_tmp0, #RXD_PIN '' read received word
+    SHR rt_tmp0, #32-8 '' right-justify it
 
-    WYPIN  tmp, #TXD_PIN '' echo
+    CALLPA rt_tmp0, #rt_write_byte
 
     JMP #main_loop
 
-  tmp
-    long 0
+
+rt_write_hex_long ' (chr: PB)
+        MOV     rt_tmp0, #8
+  .nib_loop
+        GETNIB  rt_tmp1, PB, #7
+        CMP     rt_tmp1, #10    WCZ
+IF_GE   ADD     rt_tmp1, #"A"-10
+IF_LT   ADD     rt_tmp1, #"0"
+        CALLPA  rt_tmp1, #rt_write_byte
+        SHL     PB, #4
+        DJNZ    rt_tmp0, #.nib_loop
+        RET
+
+rt_write_byte ' (chr: PA)
+        TESTP   #TXD_PIN        WC      ' wait for empty buffer
+IF_NC   JMP     #rt_write_byte          ' if not empty, test again
+_RET_   WYPIN   PA, #TXD_PIN            ' write PA
+
+rt_tmp0     long 0
+rt_tmp1     long 0

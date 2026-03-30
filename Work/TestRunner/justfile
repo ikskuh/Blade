@@ -13,6 +13,6 @@ compile:
 
 load:
     loadp2 \
-        -p /dev/ttyUSB0 \
         -v \
+        -p /dev/ttyUSB0 \
         -t envelope.bin
