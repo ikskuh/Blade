@@ -195,6 +195,7 @@ public static class MirLowerer
                 CollectAddressTakenSymbols(whileStatement.Body, symbols);
                 break;
             case BoundForStatement forStatement:
+                CollectAddressTakenSymbols(forStatement.Iterable, symbols);
                 CollectAddressTakenSymbols(forStatement.Body, symbols);
                 break;
             case BoundLoopStatement loopStatement:
@@ -797,24 +798,50 @@ public static class MirLowerer
                 return;
             }
 
-            // Lower the iterable expression and determine the loop count.
-            MirValueId iterableValue = LowerExpression(forStatement.Iterable);
+            bool isRangeIteration = forStatement.Iterable is BoundRangeExpression;
             bool isArrayIteration = forStatement.Iterable.Type is ArrayTypeSymbol;
+
+            MirValueId one = EmitConstant(1L, BuiltinTypes.U32, forStatement.Span);
+            MirValueId initialIndex;
             MirValueId count;
-            if (isArrayIteration)
+            MirValueId iterableValue;
+
+            if (isRangeIteration)
             {
-                ArrayTypeSymbol arrayType = (ArrayTypeSymbol)forStatement.Iterable.Type;
-                count = EmitConstant((long)(arrayType.Length ?? 0), BuiltinTypes.U32, forStatement.Span);
+                // Range iteration: start index at range.Start, loop while index < range.End (exclusive).
+                // Inclusive ranges are handled by normalizing end + 1 here.
+                BoundRangeExpression rangeExpr = (BoundRangeExpression)forStatement.Iterable;
+                initialIndex = LowerExpression(rangeExpr.Start);
+                MirValueId endVal = LowerExpression(rangeExpr.End);
+                if (rangeExpr.IsInclusive)
+                {
+                    MirValueId adjustedEnd = NextValue();
+                    _currentBlock.Instructions.Add(new MirBinaryInstruction(
+                        adjustedEnd, BuiltinTypes.U32, BoundBinaryOperatorKind.Add,
+                        endVal, one, forStatement.Span));
+                    endVal = adjustedEnd;
+                }
+                count = endVal;
+                iterableValue = initialIndex; // unused for range, placeholder
             }
             else
             {
-                count = iterableValue;
+                // Lower the iterable expression and determine the loop count.
+                iterableValue = LowerExpression(forStatement.Iterable);
+                if (isArrayIteration)
+                {
+                    ArrayTypeSymbol arrayType = (ArrayTypeSymbol)forStatement.Iterable.Type;
+                    count = EmitConstant((long)(arrayType.Length ?? 0), BuiltinTypes.U32, forStatement.Span);
+                }
+                else
+                {
+                    count = iterableValue;
+                }
+                initialIndex = EmitConstant(0L, BuiltinTypes.U32, forStatement.Span);
             }
 
-            // Initialize index to 0.
-            MirValueId zero = EmitConstant(0L, BuiltinTypes.U32, forStatement.Span);
-            MirValueId one = EmitConstant(1L, BuiltinTypes.U32, forStatement.Span);
-            WriteSymbol(forStatement.IndexVariable, zero, forStatement.Span);
+            // Initialize index.
+            WriteSymbol(forStatement.IndexVariable, initialIndex, forStatement.Span);
 
             Dictionary<Symbol, MirValueId> beforeEnv = SnapshotAutomaticEnvironment();
             IReadOnlyList<Symbol> envSymbols = GetOrderedAutomaticSymbols(beforeEnv);
@@ -1252,22 +1279,6 @@ public static class MirLowerer
             }
 
             MirValueId operand = LowerExpression(unaryExpression.Operand);
-            if (unaryExpression.Operator.Kind is BoundUnaryOperatorKind.PostIncrement or BoundUnaryOperatorKind.PostDecrement)
-            {
-                BoundBinaryOperatorKind binaryKind = unaryExpression.Operator.Kind == BoundUnaryOperatorKind.PostIncrement
-                    ? BoundBinaryOperatorKind.Add
-                    : BoundBinaryOperatorKind.Subtract;
-                MirValueId one = EmitConstant(1, unaryExpression.Type, unaryExpression.Span);
-                MirValueId updated = NextValue();
-                _currentBlock.Instructions.Add(new MirBinaryInstruction(
-                    updated,
-                    unaryExpression.Type,
-                    binaryKind,
-                    operand,
-                    one,
-                    unaryExpression.Span));
-                return updated;
-            }
 
             if (unaryExpression.Operator.Kind == BoundUnaryOperatorKind.UnaryPlus)
             {

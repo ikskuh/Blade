@@ -456,13 +456,11 @@ public sealed class Lexer
         {
             case '+':
                 Advance();
-                if (Current == '+') { Advance(); return MakeToken(TokenKind.PlusPlus); }
                 if (Current == '=') { Advance(); return MakeToken(TokenKind.PlusEqual); }
                 return MakeToken(TokenKind.Plus);
 
             case '-':
                 Advance();
-                if (Current == '-') { Advance(); return MakeToken(TokenKind.MinusMinus); }
                 if (Current == '>') { Advance(); return MakeToken(TokenKind.Arrow); }
                 if (Current == '=') { Advance(); return MakeToken(TokenKind.MinusEqual); }
                 return MakeToken(TokenKind.Minus);
@@ -524,6 +522,8 @@ public sealed class Lexer
                 {
                     Advance();
                     if (Current == '.') { Advance(); return MakeToken(TokenKind.DotDotDot); }
+                    if (Current == '=') { Advance(); return MakeToken(TokenKind.DotDotEqual); }
+                    if (Current == '<') { Advance(); return MakeToken(TokenKind.DotDotLess); }
                     return MakeToken(TokenKind.DotDot);
                 }
                 return MakeToken(TokenKind.Dot);

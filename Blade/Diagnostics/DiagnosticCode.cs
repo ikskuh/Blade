@@ -84,6 +84,8 @@ public enum DiagnosticCode
     E0256_UnknownBuiltin = 256,
     E0257_InvalidPointerArithmetic = 257,
     E0258_IncompatiblePointerSubtraction = 258,
+    E0259_ExpressionNotAStatement = 259,
+    E0260_RangeIterationRequiresBinding = 260,
 
     // Inline assembly errors
     E0301_InlineAsmUnknownInstruction = 301,

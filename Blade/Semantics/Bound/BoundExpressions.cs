@@ -45,8 +45,6 @@ public enum BoundUnaryOperatorKind
     BitwiseNot,
     UnaryPlus,
     AddressOf,
-    PostIncrement,
-    PostDecrement,
 }
 
 public sealed class BoundUnaryOperator
@@ -69,8 +67,6 @@ public sealed class BoundUnaryOperator
             TokenKind.Tilde => new BoundUnaryOperator(kind, BoundUnaryOperatorKind.BitwiseNot),
             TokenKind.Plus => new BoundUnaryOperator(kind, BoundUnaryOperatorKind.UnaryPlus),
             TokenKind.Ampersand => new BoundUnaryOperator(kind, BoundUnaryOperatorKind.AddressOf),
-            TokenKind.PlusPlus => new BoundUnaryOperator(kind, BoundUnaryOperatorKind.PostIncrement),
-            TokenKind.MinusMinus => new BoundUnaryOperator(kind, BoundUnaryOperatorKind.PostDecrement),
             _ => null,
         };
     }
@@ -315,15 +311,17 @@ public sealed class BoundIfExpression : BoundExpression
 
 public sealed class BoundRangeExpression : BoundExpression
 {
-    public BoundRangeExpression(BoundExpression start, BoundExpression end, TextSpan span)
+    public BoundRangeExpression(BoundExpression start, BoundExpression end, bool isInclusive, TextSpan span)
         : base(BoundNodeKind.RangeExpression, span, BuiltinTypes.Range)
     {
         Start = start;
         End = end;
+        IsInclusive = isInclusive;
     }
 
     public BoundExpression Start { get; }
     public BoundExpression End { get; }
+    public bool IsInclusive { get; }
 }
 
 public sealed class BoundStructFieldInitializer

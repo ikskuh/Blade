@@ -180,8 +180,8 @@ public static class SyntaxFacts
         TokenKind.Arrow => "->",
         TokenKind.DotDot => "..",
         TokenKind.DotDotDot => "...",
-        TokenKind.PlusPlus => "++",
-        TokenKind.MinusMinus => "--",
+        TokenKind.DotDotEqual => "..=",
+        TokenKind.DotDotLess => "..<",
         TokenKind.LessLess => "<<",
         TokenKind.GreaterGreater => ">>",
         TokenKind.LessLessLess => "<<<",
@@ -254,7 +254,7 @@ public static class SyntaxFacts
     public static int GetUnaryOperatorPrecedence(TokenKind kind) => kind switch
     {
         TokenKind.Bang or TokenKind.Minus or TokenKind.Plus or TokenKind.Tilde
-            or TokenKind.Ampersand or TokenKind.Star => 10,
+            or TokenKind.Ampersand => 10,
         _ => 0,
     };
 

@@ -232,7 +232,7 @@ public static class BoundTreeWriter
                 break;
 
             case BoundRangeExpression range:
-                AppendLine(sb, indent, $"Range<{range.Type.Name}>");
+                AppendLine(sb, indent, $"Range<{range.Type.Name}> {(range.IsInclusive ? "inclusive" : "exclusive")}");
                 WriteExpression(sb, indent + 1, range.Start);
                 WriteExpression(sb, indent + 1, range.End);
                 break;

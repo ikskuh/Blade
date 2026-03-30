@@ -656,7 +656,15 @@ public sealed class Binder
                 return BindLocalVariableDeclaration(variableDeclStatement.Declaration);
 
             case ExpressionStatementSyntax expressionStatement:
-                return new BoundExpressionStatement(BindExpression(expressionStatement.Expression), expressionStatement.Span);
+            {
+                BoundExpression expr = BindExpression(expressionStatement.Expression);
+                if (expr is not BoundCallExpression
+                    and not BoundIntrinsicCallExpression
+                    and not BoundModuleCallExpression
+                    and not BoundErrorExpression)
+                    _diagnostics.ReportExpressionNotAStatement(expressionStatement.Expression.Span);
+                return new BoundExpressionStatement(expr, expressionStatement.Span);
+            }
 
             case AssignmentStatementSyntax assignment:
             {
@@ -731,10 +739,20 @@ public sealed class Binder
                         _diagnostics.ReportTypeMismatch(range.Start.Span, "integer", start.Type.Name);
                     if (!end.Type.IsInteger)
                         _diagnostics.ReportTypeMismatch(range.End.Span, "integer", end.Type.Name);
+                    // Normalize inclusive range: end + 1 → exclusive
+                    if (range.IsInclusive && end.Type.IsInteger)
+                    {
+                        end = new BoundBinaryExpression(
+                            end,
+                            Requires.NotNull(BoundBinaryOperator.Bind(TokenKind.Plus)),
+                            new BoundLiteralExpression(1L, range.End.Span, BuiltinTypes.U32),
+                            range.End.Span,
+                            end.Type);
+                    }
                 }
                 else
                 {
-                    // Non-range iterable — use as count (0..count)
+                    // Non-range iterable — use as count (0..<count)
                     start = new BoundLiteralExpression(0L, repFor.Iterable.Span, BuiltinTypes.U32);
                     end = iterable;
                 }
@@ -980,6 +998,7 @@ public sealed class Binder
         ForBindingSyntax? binding = forStatement.Binding;
         bool isArrayIteration = iterable.Type is ArrayTypeSymbol;
         bool isIntegerIteration = iterable.Type.IsInteger || iterable.Type == BuiltinTypes.IntegerLiteral;
+        bool isRangeIteration = iterable is BoundRangeExpression;
 
         VariableSymbol? itemVariable = null;
         bool itemIsMutable = false;
@@ -1041,9 +1060,28 @@ public sealed class Binder
                     alignment: null);
                 _currentScope.TryDeclare(indexVariable);
             }
+            else if (isRangeIteration)
+            {
+                // for(start..<end) -> index: the binding variable is the range index
+                if (itemIsMutable)
+                {
+                    _diagnostics.ReportTypeMismatch(binding.Ampersand!.Value.Span, "range", iterable.Type.Name);
+                }
+
+                indexVariable = new VariableSymbol(
+                    binding.ItemName.Text,
+                    BuiltinTypes.U32,
+                    isConst: true,
+                    VariableStorageClass.Automatic,
+                    VariableScopeKind.Local,
+                    isExtern: false,
+                    fixedAddress: null,
+                    alignment: null);
+                _currentScope.TryDeclare(indexVariable);
+            }
             else
             {
-                _diagnostics.ReportTypeMismatch(forStatement.Iterable.Span, "integer or array", iterable.Type.Name);
+                _diagnostics.ReportTypeMismatch(forStatement.Iterable.Span, "integer, array, or range", iterable.Type.Name);
             }
         }
         else if (isIntegerIteration || isArrayIteration)
@@ -1060,9 +1098,24 @@ public sealed class Binder
                 alignment: null);
             _currentScope.TryDeclare(indexVariable);
         }
+        else if (isRangeIteration)
+        {
+            _diagnostics.ReportRangeIterationRequiresBinding(forStatement.Iterable.Span);
+            // Create synthetic index so lowering has something to work with
+            indexVariable = new VariableSymbol(
+                "__for_index",
+                BuiltinTypes.U32,
+                isConst: true,
+                VariableStorageClass.Automatic,
+                VariableScopeKind.Local,
+                isExtern: false,
+                fixedAddress: null,
+                alignment: null);
+            _currentScope.TryDeclare(indexVariable);
+        }
         else if (!iterable.Type.IsUnknown)
         {
-            _diagnostics.ReportTypeMismatch(forStatement.Iterable.Span, "integer or array", iterable.Type.Name);
+            _diagnostics.ReportTypeMismatch(forStatement.Iterable.Span, "integer, array, or range", iterable.Type.Name);
         }
 
         PushLoop(LoopContext.Regular);
@@ -1379,9 +1432,6 @@ public sealed class Binder
             case BinaryExpressionSyntax binary:
                 return BindBinaryExpression(binary);
 
-            case PostfixUnaryExpressionSyntax postfixUnary:
-                return BindPostfixUnaryExpression(postfixUnary);
-
             case MemberAccessExpressionSyntax memberAccess:
                 return BindMemberAccessExpression(memberAccess);
 
@@ -1526,13 +1576,6 @@ public sealed class Binder
 
     private BoundExpression BindUnaryExpression(UnaryExpressionSyntax unary)
     {
-        if (unary.Operator.Kind == TokenKind.Star)
-        {
-            BoundExpression operand = BindExpression(unary.Operand);
-            TypeSymbol type = BindPointerDerefType(unary.Operand.Span, operand.Type);
-            return new BoundPointerDerefExpression(operand, unary.Span, type);
-        }
-
         BoundUnaryOperator? op = BoundUnaryOperator.Bind(unary.Operator.Kind);
         Assert.Invariant(op is not null, "Parser should only produce unary operators that the binder understands.");
         BoundUnaryOperator unaryOperator = Requires.NotNull(op);
@@ -1559,10 +1602,7 @@ public sealed class Binder
                 return BindAddressOfExpression(unary, unaryOperator);
         }
 
-        Assert.Invariant(
-            unaryOperator.Kind is BoundUnaryOperatorKind.PostIncrement or BoundUnaryOperatorKind.PostDecrement,
-            "BindUnaryExpression should only see prefix unary operators.");
-        return new BoundErrorExpression(unary.Span);
+        return Assert.UnreachableValue<BoundExpression>();
     }
 
     private BoundExpression BindAddressOfExpression(UnaryExpressionSyntax unary, BoundUnaryOperator op)
@@ -1697,33 +1737,6 @@ public sealed class Binder
                 pointerType = null;
                 return false;
         }
-    }
-
-    private BoundExpression BindPostfixUnaryExpression(PostfixUnaryExpressionSyntax postfixUnary)
-    {
-        BoundAssignmentTarget target = BindAssignmentTarget(postfixUnary.Operand);
-        if (!target.Type.IsInteger)
-            _diagnostics.ReportTypeMismatch(postfixUnary.Operand.Span, "integer", target.Type.Name);
-
-        BoundExpression operandExpression = target switch
-        {
-            BoundSymbolAssignmentTarget symbol => new BoundSymbolExpression(symbol.Symbol, postfixUnary.Operand.Span, symbol.Type),
-            BoundMemberAssignmentTarget member => new BoundMemberAccessExpression(member.Receiver, member.Member, postfixUnary.Operand.Span),
-            BoundBitfieldAssignmentTarget bitfield => new BoundMemberAccessExpression(bitfield.ReceiverValue, bitfield.Member, postfixUnary.Operand.Span),
-            BoundIndexAssignmentTarget index => new BoundIndexExpression(index.Expression, index.Index, postfixUnary.Operand.Span, index.Type),
-            BoundPointerDerefAssignmentTarget deref => new BoundPointerDerefExpression(deref.Expression, postfixUnary.Operand.Span, deref.Type),
-            _ => new BoundErrorExpression(postfixUnary.Operand.Span),
-        };
-
-        BoundUnaryOperatorKind kind = postfixUnary.Operator.Kind == TokenKind.PlusPlus
-            ? BoundUnaryOperatorKind.PostIncrement
-            : BoundUnaryOperatorKind.PostDecrement;
-
-        return new BoundUnaryExpression(
-            new BoundUnaryOperator(postfixUnary.Operator.Kind, kind),
-            operandExpression,
-            postfixUnary.Span,
-            target.Type);
     }
 
     private BoundExpression BindBinaryExpression(BinaryExpressionSyntax binary)
@@ -2167,7 +2180,7 @@ public sealed class Binder
                 return true;
 
             case BoundUnaryExpression unary:
-                if (unary.Operator.Kind is BoundUnaryOperatorKind.AddressOf or BoundUnaryOperatorKind.PostIncrement or BoundUnaryOperatorKind.PostDecrement)
+                if (unary.Operator.Kind is BoundUnaryOperatorKind.AddressOf)
                 {
                     failure = new ComptimeFailure(ComptimeFailureKind.UnsupportedConstruct, unary.Span, $"operator '{unary.Operator.Kind}' is not supported in a comptime-required context.");
                     return false;
@@ -2577,7 +2590,7 @@ public sealed class Binder
         if (!end.Type.IsInteger)
             _diagnostics.ReportTypeMismatch(rangeExpression.End.Span, "integer", end.Type.Name);
 
-        return new BoundRangeExpression(start, end, rangeExpression.Span);
+        return new BoundRangeExpression(start, end, rangeExpression.IsInclusive, rangeExpression.Span);
     }
 
     private BoundExpression BindCastExpression(CastExpressionSyntax castExpression)

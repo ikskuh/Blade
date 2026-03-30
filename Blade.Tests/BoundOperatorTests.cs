@@ -16,8 +16,6 @@ public class BoundOperatorTests
             [TokenKind.Tilde] = BoundUnaryOperatorKind.BitwiseNot,
             [TokenKind.Plus] = BoundUnaryOperatorKind.UnaryPlus,
             [TokenKind.Ampersand] = BoundUnaryOperatorKind.AddressOf,
-            [TokenKind.PlusPlus] = BoundUnaryOperatorKind.PostIncrement,
-            [TokenKind.MinusMinus] = BoundUnaryOperatorKind.PostDecrement,
         };
 
         foreach (TokenKind kind in Enum.GetValues<TokenKind>())

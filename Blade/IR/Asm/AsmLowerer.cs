@@ -1680,16 +1680,6 @@ public static class AsmLowerer
                 nodes.Add(Emit(P2Mnemonic.MOV, dest, src));
                 break;
 
-            case BoundUnaryOperatorKind.PostIncrement:
-                nodes.Add(Emit(P2Mnemonic.MOV, dest, src));
-                nodes.Add(Emit(P2Mnemonic.ADD, src, new AsmImmediateOperand(1)));
-                break;
-
-            case BoundUnaryOperatorKind.PostDecrement:
-                nodes.Add(Emit(P2Mnemonic.MOV, dest, src));
-                nodes.Add(Emit(P2Mnemonic.SUB, src, new AsmImmediateOperand(1)));
-                break;
-
             default:
                 Assert.Unreachable($"Unexpected unary operator kind: {kind}");
                 break;

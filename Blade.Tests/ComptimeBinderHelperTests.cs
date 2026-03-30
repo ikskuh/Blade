@@ -243,7 +243,8 @@ public sealed class ComptimeBinderHelperTests
             new BoundMemberAccessExpression(new BoundStructLiteralExpression([], Span, pairType), member, Span),
             new BoundIndexExpression(new BoundLiteralExpression(0, Span, BuiltinTypes.IntegerLiteral), new BoundLiteralExpression(0, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.U32),
             new BoundPointerDerefExpression(new BoundLiteralExpression(0, Span, BuiltinTypes.U32), Span, BuiltinTypes.U32),
-            new BoundRangeExpression(new BoundLiteralExpression(0, Span, BuiltinTypes.IntegerLiteral), localSymbol, Span),
+            new BoundRangeExpression(new BoundLiteralExpression(0, Span, BuiltinTypes.IntegerLiteral), localSymbol, false, Span),
+            new BoundRangeExpression(new BoundLiteralExpression(0, Span, BuiltinTypes.IntegerLiteral), localSymbol, true, Span),
         ];
 
         foreach (BoundExpression expression in unsupportedExpressions)

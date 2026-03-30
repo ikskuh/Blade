@@ -1098,12 +1098,13 @@ public sealed class Parser
 
         while (true)
         {
-            // Check for range operator (..) — lower precedence than all binary ops
-            if (Current.Kind == TokenKind.DotDot && parentPrecedence == 0)
+            // Check for range operators (..= inclusive, ..< exclusive) — lower precedence than all binary ops
+            if (Current.Kind is TokenKind.DotDotEqual or TokenKind.DotDotLess && parentPrecedence == 0)
             {
+                bool isInclusive = Current.Kind == TokenKind.DotDotEqual;
                 Token dotDot = NextToken();
                 ExpressionSyntax right = ParseBinaryExpression(1); // bind tighter than range itself
-                left = new RangeExpressionSyntax(left, dotDot, right);
+                left = new RangeExpressionSyntax(left, dotDot, right, isInclusive);
                 continue;
             }
 
@@ -1159,10 +1160,6 @@ public sealed class Parser
                     expression = new CallExpressionSyntax(expression, openParen, args, closeParen);
                     break;
                 }
-
-                case TokenKind.PlusPlus or TokenKind.MinusMinus:
-                    expression = new PostfixUnaryExpressionSyntax(expression, NextToken());
-                    break;
 
                 case TokenKind.AsKeyword:
                 {

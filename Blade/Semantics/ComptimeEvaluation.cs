@@ -334,7 +334,7 @@ internal sealed class ComptimeFunctionSupportAnalyzer
 
             case BoundUnaryExpression unary:
             {
-                if (unary.Operator.Kind is BoundUnaryOperatorKind.AddressOf or BoundUnaryOperatorKind.PostIncrement or BoundUnaryOperatorKind.PostDecrement)
+                if (unary.Operator.Kind is BoundUnaryOperatorKind.AddressOf)
                     return Unsupported(unary.Span, $"operator '{unary.Operator.Kind}' is not supported during comptime evaluation.");
 
                 return AnalyzeExpression(unary.Operand);

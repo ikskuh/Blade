@@ -483,6 +483,16 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
             $"Pointer subtraction requires matching '[*]' pointer element types and memory spaces, but got '{leftType}' and '{rightType}'.");
     }
 
+    public void ReportExpressionNotAStatement(TextSpan span)
+    {
+        Report(DiagnosticCode.E0259_ExpressionNotAStatement, span, "An expression is not a statement. Only function calls are allowed as standalone statements.");
+    }
+
+    public void ReportRangeIterationRequiresBinding(TextSpan span)
+    {
+        Report(DiagnosticCode.E0260_RangeIterationRequiresBinding, span, "Range iteration requires an index binding '-> index'.");
+    }
+
     // Inline assembly diagnostics
 
     public void ReportInlineAsmUnknownInstruction(TextSpan span, string mnemonic)

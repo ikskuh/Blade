@@ -110,8 +110,8 @@ public enum TokenKind
     Arrow,                  // ->
     DotDot,                 // ..
     DotDotDot,              // ...
-    PlusPlus,               // ++
-    MinusMinus,             // --
+    DotDotEqual,            // ..=
+    DotDotLess,             // ..<
     LessLess,               // <<
     GreaterGreater,         // >>
     LessLessLess,           // <<<

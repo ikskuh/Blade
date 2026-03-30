@@ -80,18 +80,6 @@ public sealed class BinaryExpressionSyntax : ExpressionSyntax
     }
 }
 
-public sealed class PostfixUnaryExpressionSyntax : ExpressionSyntax
-{
-    public ExpressionSyntax Operand { get; }
-    public Token Operator { get; }
-
-    public PostfixUnaryExpressionSyntax(ExpressionSyntax operand, Token @operator)
-        : base(TextSpan.FromBounds(Requires.NotNull(operand).Span.Start, @operator.Span.End))
-    {
-        Operand = Requires.NotNull(operand);
-        Operator = @operator;
-    }
-}
 
 public sealed class MemberAccessExpressionSyntax : ExpressionSyntax
 {
@@ -352,12 +340,14 @@ public sealed class RangeExpressionSyntax : ExpressionSyntax
     [ExcludeFromCodeCoverage]
     public Token DotDot { get; }
     public ExpressionSyntax End { get; }
+    public bool IsInclusive { get; }
 
-    public RangeExpressionSyntax(ExpressionSyntax start, Token dotDot, ExpressionSyntax end)
+    public RangeExpressionSyntax(ExpressionSyntax start, Token dotDot, ExpressionSyntax end, bool isInclusive)
         : base(TextSpan.FromBounds(Requires.NotNull(start).Span.Start, Requires.NotNull(end).Span.End))
     {
         Start = Requires.NotNull(start);
         DotDot = dotDot;
         End = Requires.NotNull(end);
+        IsInclusive = isInclusive;
     }
 }

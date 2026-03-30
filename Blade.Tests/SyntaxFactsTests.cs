@@ -88,8 +88,8 @@ public class SyntaxFactsTests
         [TokenKind.Arrow] = "->",
         [TokenKind.DotDot] = "..",
         [TokenKind.DotDotDot] = "...",
-        [TokenKind.PlusPlus] = "++",
-        [TokenKind.MinusMinus] = "--",
+        [TokenKind.DotDotEqual] = "..=",
+        [TokenKind.DotDotLess] = "..<",
         [TokenKind.LessLess] = "<<",
         [TokenKind.GreaterGreater] = ">>",
         [TokenKind.LessLessLess] = "<<<",
@@ -177,10 +177,10 @@ public class SyntaxFactsTests
     {
         Assert.That(SyntaxFacts.GetUnaryOperatorPrecedence(TokenKind.Bang), Is.EqualTo(10));
         Assert.That(SyntaxFacts.GetUnaryOperatorPrecedence(TokenKind.Minus), Is.EqualTo(10));
-        Assert.That(SyntaxFacts.GetUnaryOperatorPrecedence(TokenKind.Star), Is.EqualTo(10));
         Assert.That(SyntaxFacts.GetUnaryOperatorPrecedence(TokenKind.Plus), Is.EqualTo(10));
         Assert.That(SyntaxFacts.GetUnaryOperatorPrecedence(TokenKind.Tilde), Is.EqualTo(10));
         Assert.That(SyntaxFacts.GetUnaryOperatorPrecedence(TokenKind.Ampersand), Is.EqualTo(10));
+        Assert.That(SyntaxFacts.GetUnaryOperatorPrecedence(TokenKind.Star), Is.EqualTo(0));
     }
 
     [Test]

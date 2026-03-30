@@ -679,11 +679,25 @@ public class ParserTests
     [Test]
     public void RangeExpression_ParsesCorrectly()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var span: u32 = 1..4;");
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var span: u32 = 1..<4;");
         AssertNoDiagnostics(diag);
 
         VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
         Assert.That(decl.Initializer, Is.TypeOf<RangeExpressionSyntax>());
+        RangeExpressionSyntax range = (RangeExpressionSyntax)decl.Initializer!;
+        Assert.That(range.IsInclusive, Is.False);
+    }
+
+    [Test]
+    public void RangeExpression_Inclusive_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var span: u32 = 1..=4;");
+        AssertNoDiagnostics(diag);
+
+        VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
+        Assert.That(decl.Initializer, Is.TypeOf<RangeExpressionSyntax>());
+        RangeExpressionSyntax range = (RangeExpressionSyntax)decl.Initializer!;
+        Assert.That(range.IsInclusive, Is.True);
     }
 
     [Test]
@@ -709,14 +723,12 @@ public class ParserTests
     }
 
     [Test]
-    public void CallIndexAndPostfixExpressions_ParseCorrectly()
+    public void CallAndIndexExpressions_ParseCorrectly()
     {
         (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("""
             {
                 items[0];
                 invoke(a, b);
-                counter++;
-                other--;
             }
             """);
         AssertNoDiagnostics(diag);
@@ -724,8 +736,6 @@ public class ParserTests
         BlockStatementSyntax block = (BlockStatementSyntax)((GlobalStatementSyntax)unit.Members[0]).Statement;
         Assert.That(((ExpressionStatementSyntax)block.Statements[0]).Expression, Is.TypeOf<IndexExpressionSyntax>());
         Assert.That(((ExpressionStatementSyntax)block.Statements[1]).Expression, Is.TypeOf<CallExpressionSyntax>());
-        Assert.That(((ExpressionStatementSyntax)block.Statements[2]).Expression, Is.TypeOf<PostfixUnaryExpressionSyntax>());
-        Assert.That(((ExpressionStatementSyntax)block.Statements[3]).Expression, Is.TypeOf<PostfixUnaryExpressionSyntax>());
     }
 
     [Test]
