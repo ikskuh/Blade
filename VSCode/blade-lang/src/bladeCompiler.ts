@@ -8,6 +8,13 @@ export interface BladeDiagnostic {
     readonly message?: string;
 }
 
+export interface BladePathVariables {
+    readonly cwd?: string;
+    readonly env?: Readonly<Record<string, string | undefined>>;
+    readonly file?: string;
+    readonly workspaceFolder?: string;
+}
+
 export interface BladeCompilationRequest {
     readonly cwd: string;
     readonly executablePath: string;
@@ -64,13 +71,15 @@ interface BladeJsonReport {
     readonly success?: unknown;
 }
 
-export function resolveBladeExecutable(configuredPath: string | null | undefined): string {
+export function resolveBladeExecutable(
+    configuredPath: string | null | undefined,
+    variables: BladePathVariables = {}): string {
     if (typeof configuredPath !== "string")
         return "blade";
 
     const trimmedPath = configuredPath.trim();
     return trimmedPath.length > 0
-        ? trimmedPath
+        ? expandBladePathVariables(trimmedPath, variables)
         : "blade";
 }
 
@@ -290,6 +299,51 @@ function escapeHtml(value: string): string {
         .replaceAll(">", "&gt;")
         .replaceAll("\"", "&quot;")
         .replaceAll("'", "&#39;");
+}
+
+function expandBladePathVariables(value: string, variables: BladePathVariables): string {
+    const workspaceFolder = variables.workspaceFolder;
+    const file = variables.file;
+    const cwd = variables.cwd ?? process.cwd();
+
+    return value.replaceAll(/\$\{([^}]+)\}/g, (match, name: string) => {
+        switch (name) {
+            case "workspaceFolder":
+                return workspaceFolder ?? match;
+
+            case "workspaceFolderBasename":
+                return workspaceFolder !== undefined
+                    ? path.basename(workspaceFolder)
+                    : match;
+
+            case "file":
+                return file ?? match;
+
+            case "fileBasename":
+                return file !== undefined
+                    ? path.basename(file)
+                    : match;
+
+            case "fileDirname":
+                return file !== undefined
+                    ? path.dirname(file)
+                    : match;
+
+            case "fileExtname":
+                return file !== undefined
+                    ? path.extname(file)
+                    : match;
+
+            case "cwd":
+                return cwd;
+
+            default:
+                if (!name.startsWith("env:"))
+                    return match;
+
+                return variables.env?.[name.slice("env:".length)] ?? match;
+        }
+    });
 }
 
 function parseJsonReport(stdout: string): BladeJsonReport {

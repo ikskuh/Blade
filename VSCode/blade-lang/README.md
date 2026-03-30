@@ -17,7 +17,7 @@ VS Code support for the Blade programming language.
 
 This extension contributes the following setting:
 
-- `blade.path`: Path to the Blade compiler executable. Leave unset to use `blade` from `PATH`.
+- `blade.path`: Path to the Blade compiler executable. Leave unset to use `blade` from `PATH`. Supports `${workspaceFolder}`, `${file}`, `${cwd}`, and `${env:NAME}` expansion.
 
 ## Preview
 

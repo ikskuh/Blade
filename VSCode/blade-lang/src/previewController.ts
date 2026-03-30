@@ -107,10 +107,18 @@ class BladePreviewSession implements vscode.Disposable {
 
     private async runRefresh(document: vscode.TextDocument): Promise<void> {
         const workspaceFolderPaths = vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath) ?? [];
-        const executablePath = resolveBladeExecutable(
-            vscode.workspace.getConfiguration("blade", document.uri).get<string | null>("path"));
         const documentPath = document.isUntitled ? undefined : document.uri.fsPath;
         const workingDirectory = selectBladeWorkingDirectory(documentPath, workspaceFolderPaths);
+        const workspaceFolderPath = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
+            ?? workspaceFolderPaths[0];
+        const executablePath = resolveBladeExecutable(
+            vscode.workspace.getConfiguration("blade", document.uri).get<string | null>("path"),
+            {
+                cwd: workingDirectory,
+                env: process.env,
+                file: documentPath,
+                workspaceFolder: workspaceFolderPath,
+            });
 
         const completion = await this.refreshRunner.run(() =>
             startBladeCompilation({

@@ -23,6 +23,29 @@ test("resolveBladeExecutable preserves an explicit path", () => {
     assert.equal(resolveBladeExecutable("/opt/blade/bin/blade"), "/opt/blade/bin/blade");
 });
 
+test("resolveBladeExecutable expands workspace and file variables", () => {
+    const resolvedPath = resolveBladeExecutable(
+        "${workspaceFolder}/tools/${fileBasename}",
+        {
+            file: "/workspace/project/toolchains/blade",
+            workspaceFolder: "/workspace/project",
+        });
+
+    assert.equal(resolvedPath, "/workspace/project/tools/blade");
+});
+
+test("resolveBladeExecutable expands environment variables and leaves unknown variables intact", () => {
+    const resolvedPath = resolveBladeExecutable(
+        "${env:BLADE_ROOT}/bin/blade-${unknown}",
+        {
+            env: {
+                BLADE_ROOT: "/opt/blade",
+            },
+        });
+
+    assert.equal(resolvedPath, "/opt/blade/bin/blade-${unknown}");
+});
+
 test("selectBladeWorkingDirectory prefers the containing workspace folder", () => {
     const cwd = selectBladeWorkingDirectory(
         "/workspace/project/src/main.blade",

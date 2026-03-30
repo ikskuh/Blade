@@ -66,7 +66,7 @@
         "blade.path": {
           "type": "string",
           "scope": "machine-overridable",
-          "markdownDescription": "Path to the Blade compiler executable. When unset, the extension runs `blade` from your `PATH`."
+          "markdownDescription": "Path to the Blade compiler executable. When unset, the extension runs `blade` from your `PATH`. Supports variables such as `${workspaceFolder}`, `${file}`, `${cwd}`, and `${env:NAME}`."
         }
       }
     }
