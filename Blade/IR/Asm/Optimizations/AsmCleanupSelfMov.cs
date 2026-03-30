@@ -30,10 +30,24 @@ public sealed class AsmCleanupSelfMov : PerFunctionAsmOptimization
             previousLabel = null;
 
             if (node is AsmInstructionNode instruction
-                && !instruction.IsNonElidable
-                && IsPlainMov(instruction)
+                && instruction.Mnemonic == P2Mnemonic.MOV
+                && instruction.FlagEffect == P2FlagEffect.None
+                && instruction.Operands.Count == 2
                 && OperandsEquivalent(instruction.Operands[0], instruction.Operands[1]))
             {
+                if (instruction.Condition == P2ConditionCode._RET_)
+                {
+                    nodes.Add(new AsmInstructionNode(P2Mnemonic.RET, []));
+                    changed = true;
+                    continue;
+                }
+
+                if (instruction.IsNonElidable)
+                {
+                    nodes.Add(node);
+                    continue;
+                }
+
                 changed = true;
                 continue;
             }

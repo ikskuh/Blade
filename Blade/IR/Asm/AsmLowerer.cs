@@ -108,6 +108,8 @@ public static class AsmLowerer
         public HashSet<UnsupportedLoweringKey> ReportedUnsupportedLowerings { get; } = [];
         public Dictionary<LirBlockRef, ControlFlowLabelSymbol> BlockLabels { get; } = [];
         public RegisterAssociator Registers { get; } = new();
+        public Dictionary<VirtualAsmRegister, AsmRegisterConstraint> RegisterConstraints { get; } = [];
+        public List<StoragePlace> SharedRegisterPlaces { get; } = [];
         public int NextInlineAsmBlockOrdinal { get; set; }
         public int NextRepLabelOrdinal { get; set; }
 
@@ -164,6 +166,18 @@ public static class AsmLowerer
         {
             return Registers.FromLir(register);
         }
+
+        public void TieRegisterToPlace(LirVirtualRegister register, StoragePlace place)
+        {
+            VirtualAsmRegister asmRegister = GetRegister(register);
+            RegisterConstraints[asmRegister] = new AsmRegisterConstraint(place);
+        }
+
+        public void FixRegisterToSpecialRegister(LirVirtualRegister register, P2SpecialRegister specialRegister)
+        {
+            VirtualAsmRegister asmRegister = GetRegister(register);
+            RegisterConstraints[asmRegister] = new AsmRegisterConstraint(new P2Register(specialRegister));
+        }
     }
 
     private sealed class GeneralCallingConventionInfo
@@ -213,25 +227,12 @@ public static class AsmLowerer
         List<AsmNode> nodes = [];
         nodes.Add(new AsmDirectiveNode($"function {ctx.Function.Name}"));
 
+        if (ctx.Function.Blocks.Count > 0)
+            ConstrainEntryBlockParameters(ctx, ctx.Function.Blocks[0]);
+
         foreach (LirBlock block in ctx.Function.Blocks)
         {
             nodes.Add(new AsmLabelNode(ctx.GetBlockLabel(block.Ref)));
-
-            if (ctx.Tier == CallingConventionTier.General
-                && ReferenceEquals(block, ctx.Function.Blocks[0]))
-            {
-                EmitGeneralFunctionEntryLoads(nodes, block, ctx);
-            }
-            else if (ctx.Tier == CallingConventionTier.Recursive
-                && ReferenceEquals(block, ctx.Function.Blocks[0]))
-            {
-                EmitRecursiveFunctionEntryLoads(nodes, block, ctx);
-            }
-            else if (ctx.Tier == CallingConventionTier.Coroutine
-                     && ReferenceEquals(block, ctx.Function.Blocks[0]))
-            {
-                EmitCoroutineFunctionEntryLoads(nodes, block, ctx);
-            }
 
             ComputeFlagOnlyRegisters(ctx, block);
 
@@ -241,7 +242,7 @@ public static class AsmLowerer
             LowerTerminator(nodes, ctx, block.Terminator);
         }
 
-        return new AsmFunction(ctx.Function, ctx.Tier, nodes);
+        return new AsmFunction(ctx.Function, ctx.Tier, nodes, ctx.RegisterConstraints, ctx.SharedRegisterPlaces);
     }
 
     private static (
@@ -271,72 +272,11 @@ public static class AsmLowerer
                 List<StoragePlace> parameterPlaces = new(entryParameters.Count);
                 for (int i = 0; i < entryParameters.Count; i++)
                 {
-                    VariableSymbol parameterSymbol = new(
+                    StoragePlace parameterPlace = CreateInternalRegisterPlace(
                         $"gen_{function.Name}_arg{i}",
                         entryParameters[i].Type,
-                        isConst: false,
-                        VariableStorageClass.Reg,
-                        VariableScopeKind.GlobalStorage,
-                        isExtern: false,
-                        fixedAddress: null,
-                        alignment: null);
-                    StoragePlace parameterPlace = new(
-                        parameterSymbol,
-                        StoragePlaceKind.AllocatableGlobalRegister,
-                        fixedAddress: null,
-                        staticInitializer: null);
-                    parameterPlaces.Add(parameterPlace);
-                    storagePlaces.Add(parameterPlace);
-                }
-
-                ReturnSlot? registerReturnSlot = function.ReturnSlots
-                    .Where(static slot => slot.Placement == ReturnPlacement.Register)
-                    .Cast<ReturnSlot?>()
-                    .FirstOrDefault();
-
-                StoragePlace? registerReturnPlace = null;
-                if (registerReturnSlot is { } slot)
-                {
-                    VariableSymbol returnSymbol = new(
-                        $"gen_{function.Name}_ret0",
-                        slot.Type,
-                        isConst: false,
-                        VariableStorageClass.Reg,
-                        VariableScopeKind.GlobalStorage,
-                        isExtern: false,
-                        fixedAddress: null,
-                        alignment: null);
-                    registerReturnPlace = new StoragePlace(
-                        returnSymbol,
-                        StoragePlaceKind.AllocatableGlobalRegister,
-                        fixedAddress: null,
-                        staticInitializer: null);
-                    storagePlaces.Add(registerReturnPlace);
-                }
-
-                generalCallingConvention[function.Symbol] = new GeneralCallingConventionInfo(parameterPlaces, registerReturnPlace);
-            }
-            else if (functionTier == CallingConventionTier.Recursive)
-            {
-                Assert.Invariant(function.Blocks.Count > 0, "Recursive functions must have an entry block.");
-                IReadOnlyList<LirBlockParameter> entryParameters = function.Blocks[0].Parameters;
-                List<StoragePlace> parameterPlaces = new(entryParameters.Count);
-                for (int i = 0; i < entryParameters.Count; i++)
-                {
-                    VariableSymbol parameterSymbol = new(
-                        $"rec_{function.Name}_arg{i}",
-                        entryParameters[i].Type,
-                        isConst: false,
-                        VariableStorageClass.Reg,
-                        VariableScopeKind.GlobalStorage,
-                        isExtern: false,
-                        fixedAddress: null,
-                        alignment: null);
-                    StoragePlace parameterPlace = new(
-                        parameterSymbol,
-                        StoragePlaceKind.AllocatableGlobalRegister,
-                        fixedAddress: null,
-                        staticInitializer: null);
+                        StoragePlaceKind.AllocatableInternalSharedRegister,
+                        preferredRegisters: i == 0 ? [new P2Register(P2SpecialRegister.PB), new P2Register(P2SpecialRegister.PA)] : null);
                     parameterPlaces.Add(parameterPlace);
                     storagePlaces.Add(parameterPlace);
                 }
@@ -355,20 +295,52 @@ public static class AsmLowerer
                     }
                     else
                     {
-                        VariableSymbol returnSymbol = new(
+                        registerReturnPlace = CreateInternalRegisterPlace(
+                            $"gen_{function.Name}_ret0",
+                            slot.Type,
+                            StoragePlaceKind.AllocatableInternalSharedRegister,
+                            preferredRegisters: [new P2Register(P2SpecialRegister.PB), new P2Register(P2SpecialRegister.PA)]);
+                        storagePlaces.Add(registerReturnPlace);
+                    }
+                }
+
+                generalCallingConvention[function.Symbol] = new GeneralCallingConventionInfo(parameterPlaces, registerReturnPlace);
+            }
+            else if (functionTier == CallingConventionTier.Recursive)
+            {
+                Assert.Invariant(function.Blocks.Count > 0, "Recursive functions must have an entry block.");
+                IReadOnlyList<LirBlockParameter> entryParameters = function.Blocks[0].Parameters;
+                List<StoragePlace> parameterPlaces = new(entryParameters.Count);
+                for (int i = 0; i < entryParameters.Count; i++)
+                {
+                    StoragePlace parameterPlace = CreateInternalRegisterPlace(
+                        $"rec_{function.Name}_arg{i}",
+                        entryParameters[i].Type,
+                        StoragePlaceKind.AllocatableInternalSharedRegister,
+                        preferredRegisters: i == 0 ? [new P2Register(P2SpecialRegister.PB), new P2Register(P2SpecialRegister.PA)] : null);
+                    parameterPlaces.Add(parameterPlace);
+                    storagePlaces.Add(parameterPlace);
+                }
+
+                ReturnSlot? registerReturnSlot = function.ReturnSlots
+                    .Where(static slot => slot.Placement == ReturnPlacement.Register)
+                    .Cast<ReturnSlot?>()
+                    .FirstOrDefault();
+
+                StoragePlace? registerReturnPlace = null;
+                if (registerReturnSlot is { } slot)
+                {
+                    if (parameterPlaces.Count > 0)
+                    {
+                        registerReturnPlace = parameterPlaces[0];
+                    }
+                    else
+                    {
+                        registerReturnPlace = CreateInternalRegisterPlace(
                             $"rec_{function.Name}_ret0",
                             slot.Type,
-                            isConst: false,
-                            VariableStorageClass.Reg,
-                            VariableScopeKind.GlobalStorage,
-                            isExtern: false,
-                            fixedAddress: null,
-                            alignment: null);
-                        registerReturnPlace = new StoragePlace(
-                            returnSymbol,
-                            StoragePlaceKind.AllocatableGlobalRegister,
-                            fixedAddress: null,
-                            staticInitializer: null);
+                            StoragePlaceKind.AllocatableInternalSharedRegister,
+                            preferredRegisters: [new P2Register(P2SpecialRegister.PB), new P2Register(P2SpecialRegister.PA)]);
                         storagePlaces.Add(registerReturnPlace);
                     }
                 }
@@ -382,39 +354,20 @@ public static class AsmLowerer
                 List<StoragePlace> parameterPlaces = new(entryParameters.Count);
                 for (int i = 0; i < entryParameters.Count; i++)
                 {
-                    VariableSymbol parameterSymbol = new(
+                    StoragePlace parameterPlace = CreateInternalRegisterPlace(
                         $"coro_{function.Name}_arg{i}",
                         entryParameters[i].Type,
-                        isConst: false,
-                        VariableStorageClass.Reg,
-                        VariableScopeKind.GlobalStorage,
-                        isExtern: false,
-                        fixedAddress: null,
-                        alignment: null);
-                    StoragePlace parameterPlace = new(
-                        parameterSymbol,
-                        StoragePlaceKind.AllocatableGlobalRegister,
-                        fixedAddress: null,
-                        staticInitializer: null);
+                        StoragePlaceKind.AllocatableInternalDedicatedRegister);
                     parameterPlaces.Add(parameterPlace);
                     storagePlaces.Add(parameterPlace);
                 }
 
-                VariableSymbol stateSymbol = new(
+                ControlFlowLabelSymbol entryLabel = new($"{function.Name}_bb0");
+                StoragePlace statePlace = CreateInternalRegisterPlace(
                     $"coro_{function.Name}_state",
                     BuiltinTypes.U32,
-                    isConst: false,
-                    VariableStorageClass.Reg,
-                    VariableScopeKind.GlobalStorage,
-                    isExtern: false,
-                    fixedAddress: null,
-                    alignment: null);
-                ControlFlowLabelSymbol entryLabel = new($"{function.Name}_bb0");
-                StoragePlace statePlace = new(
-                    stateSymbol,
-                    StoragePlaceKind.AllocatableGlobalRegister,
-                    fixedAddress: null,
-                    staticInitializer: entryLabel);
+                    StoragePlaceKind.AllocatableInternalDedicatedRegister,
+                    entryLabel);
                 storagePlaces.Add(statePlace);
 
                 coroutineCallingConvention[function.Symbol] = new CoroutineCallingConventionInfo(statePlace, parameterPlaces);
@@ -443,6 +396,25 @@ public static class AsmLowerer
 
         BackendSymbolNaming.AssignStorageNames(storagePlaces);
         return (storagePlaces, generalCallingConvention, recursiveCallingConvention, coroutineCallingConvention, topLevelYieldStatePlace);
+    }
+
+    private static StoragePlace CreateInternalRegisterPlace(
+        string name,
+        TypeSymbol type,
+        StoragePlaceKind kind,
+        object? staticInitializer = null,
+        IReadOnlyList<P2Register>? preferredRegisters = null)
+    {
+        VariableSymbol symbol = new(
+            name,
+            type,
+            isConst: false,
+            VariableStorageClass.Reg,
+            VariableScopeKind.GlobalStorage,
+                isExtern: false,
+                fixedAddress: null,
+                alignment: null);
+        return new StoragePlace(symbol, kind, fixedAddress: null, staticInitializer: staticInitializer, preferredRegisters: preferredRegisters);
     }
 
     private static bool FunctionContainsYield(LirFunction function)
@@ -481,50 +453,61 @@ public static class AsmLowerer
         return false;
     }
 
-    private static void EmitRecursiveFunctionEntryLoads(List<AsmNode> nodes, LirBlock block, LoweringContext ctx)
+    private static void ConstrainEntryBlockParameters(LoweringContext ctx, LirBlock block)
     {
-        var ok = ctx.RecursiveCallingConvention.TryGetValue(ctx.Function.Symbol, out RecursiveCallingConventionInfo? recursiveInfo);
-        Assert.Invariant(ok, "Recursive functions must have calling-convention metadata.");
-        Assert.Invariant(recursiveInfo != null);
-        Assert.Invariant(recursiveInfo.ParameterPlaces.Count == block.Parameters.Count, "Recursive entry ABI must match the function parameter list.");
-
-        for (int i = 0; i < block.Parameters.Count; i++)
+        switch (ctx.Tier)
         {
-            nodes.Add(Emit(
-                P2Mnemonic.MOV,
-                new AsmRegisterOperand(ctx.GetRegister(block.Parameters[i].Register)),
-                new AsmPlaceOperand(recursiveInfo.ParameterPlaces[i])));
-        }
-    }
+            case CallingConventionTier.Leaf:
+                if (block.Parameters.Count > 0)
+                    ctx.FixRegisterToSpecialRegister(block.Parameters[0].Register, P2SpecialRegister.PA);
+                break;
 
-    private static void EmitGeneralFunctionEntryLoads(List<AsmNode> nodes, LirBlock block, LoweringContext ctx)
-    {
-        bool found = ctx.GeneralCallingConvention.TryGetValue(ctx.Function.Symbol, out GeneralCallingConventionInfo? info);
-        Assert.Invariant(found, "General functions must have calling-convention metadata.");
-        Assert.Invariant(info!.ParameterPlaces.Count == block.Parameters.Count, "General entry ABI must match the function parameter list.");
+            case CallingConventionTier.SecondOrder:
+                if (block.Parameters.Count > 0)
+                    ctx.FixRegisterToSpecialRegister(block.Parameters[0].Register, P2SpecialRegister.PB);
+                break;
 
-        for (int i = 0; i < block.Parameters.Count; i++)
-        {
-            nodes.Add(Emit(
-                P2Mnemonic.MOV,
-                new AsmRegisterOperand(ctx.GetRegister(block.Parameters[i].Register)),
-                new AsmPlaceOperand(info.ParameterPlaces[i])));
-        }
-    }
+            case CallingConventionTier.General:
+                {
+                    bool found = ctx.GeneralCallingConvention.TryGetValue(ctx.Function.Symbol, out GeneralCallingConventionInfo? info);
+                    Assert.Invariant(found, "General functions must have calling-convention metadata.");
+                    Assert.Invariant(info!.ParameterPlaces.Count == block.Parameters.Count, "General entry ABI must match the function parameter list.");
+                    for (int i = 0; i < block.Parameters.Count; i++)
+                    {
+                        ctx.TieRegisterToPlace(block.Parameters[i].Register, info.ParameterPlaces[i]);
+                        ctx.SharedRegisterPlaces.Add(info.ParameterPlaces[i]);
+                    }
 
-    private static void EmitCoroutineFunctionEntryLoads(List<AsmNode> nodes, LirBlock block, LoweringContext ctx)
-    {
-        var ok = ctx.CoroutineCallingConvention.TryGetValue(ctx.Function.Symbol, out CoroutineCallingConventionInfo? coroutineInfo);
-        Assert.Invariant(ok, "Coroutine functions must have calling-convention metadata.");
-        Assert.Invariant(coroutineInfo != null);
-        Assert.Invariant(coroutineInfo.ParameterPlaces.Count == block.Parameters.Count, "Coroutine entry ABI must match the function parameter list.");
+                    if (info.RegisterReturnPlace is not null)
+                        ctx.SharedRegisterPlaces.Add(info.RegisterReturnPlace);
+                    break;
+                }
 
-        for (int i = 0; i < block.Parameters.Count; i++)
-        {
-            nodes.Add(Emit(
-                P2Mnemonic.MOV,
-                new AsmRegisterOperand(ctx.GetRegister(block.Parameters[i].Register)),
-                new AsmPlaceOperand(coroutineInfo.ParameterPlaces[i])));
+            case CallingConventionTier.Recursive:
+                {
+                    bool found = ctx.RecursiveCallingConvention.TryGetValue(ctx.Function.Symbol, out RecursiveCallingConventionInfo? info);
+                    Assert.Invariant(found, "Recursive functions must have calling-convention metadata.");
+                    Assert.Invariant(info!.ParameterPlaces.Count == block.Parameters.Count, "Recursive entry ABI must match the function parameter list.");
+                    for (int i = 0; i < block.Parameters.Count; i++)
+                    {
+                        ctx.TieRegisterToPlace(block.Parameters[i].Register, info.ParameterPlaces[i]);
+                        ctx.SharedRegisterPlaces.Add(info.ParameterPlaces[i]);
+                    }
+
+                    if (info.RegisterReturnPlace is not null)
+                        ctx.SharedRegisterPlaces.Add(info.RegisterReturnPlace);
+                    break;
+                }
+
+            case CallingConventionTier.Coroutine:
+                {
+                    bool found = ctx.CoroutineCallingConvention.TryGetValue(ctx.Function.Symbol, out CoroutineCallingConventionInfo? info);
+                    Assert.Invariant(found, "Coroutine functions must have calling-convention metadata.");
+                    Assert.Invariant(info!.ParameterPlaces.Count == block.Parameters.Count, "Coroutine entry ABI must match the function parameter list.");
+                    for (int i = 0; i < block.Parameters.Count; i++)
+                        ctx.TieRegisterToPlace(block.Parameters[i].Register, info.ParameterPlaces[i]);
+                    break;
+                }
         }
     }
 
@@ -1731,37 +1714,49 @@ public static class AsmLowerer
         {
             case CallingConventionTier.Leaf:
                 // CALLPA: param in PA, result in PA
-                if (args.Count > 0)
-                    nodes.Add(Emit(P2Mnemonic.MOV, new AsmSymbolOperand(P2SpecialRegister.PA), args[0]));
-                nodes.Add(Emit(P2Mnemonic.CALLPA, new AsmSymbolOperand(P2SpecialRegister.PA), targetOp));
+                if (op.Destination is { } leafDest)
+                    ctx.FixRegisterToSpecialRegister(leafDest, P2SpecialRegister.PA);
+                AsmOperand leafTransport = args.Count > 0
+                    ? args[0]
+                    : new AsmSymbolOperand(P2SpecialRegister.PA);
+                nodes.Add(Emit(P2Mnemonic.CALLPA, leafTransport, targetOp));
                 if (destReg is not null)
                     nodes.Add(Emit(P2Mnemonic.MOV, destReg, new AsmSymbolOperand(P2SpecialRegister.PA)));
                 break;
 
             case CallingConventionTier.SecondOrder:
                 // CALLPB: param in PB, result in PB
-                if (args.Count > 0)
-                    nodes.Add(Emit(P2Mnemonic.MOV, new AsmSymbolOperand(P2SpecialRegister.PB), args[0]));
-                nodes.Add(Emit(P2Mnemonic.CALLPB, new AsmSymbolOperand(P2SpecialRegister.PB), targetOp));
+                if (op.Destination is { } secondOrderDest)
+                    ctx.FixRegisterToSpecialRegister(secondOrderDest, P2SpecialRegister.PB);
+                AsmOperand secondOrderTransport = args.Count > 0
+                    ? args[0]
+                    : new AsmSymbolOperand(P2SpecialRegister.PB);
+                nodes.Add(Emit(P2Mnemonic.CALLPB, secondOrderTransport, targetOp));
                 if (destReg is not null)
                     nodes.Add(Emit(P2Mnemonic.MOV, destReg, new AsmSymbolOperand(P2SpecialRegister.PB)));
                 break;
 
             case CallingConventionTier.General:
-            {
-                bool hasInfo = ctx.GeneralCallingConvention.TryGetValue(target, out GeneralCallingConventionInfo? generalInfo);
-                Assert.Invariant(hasInfo, "General callees must have calling-convention metadata.");
-                Assert.Invariant(generalInfo!.ParameterPlaces.Count == args.Count, "General call arguments must match the callee parameter ABI.");
+                {
+                    bool hasInfo = ctx.GeneralCallingConvention.TryGetValue(target, out GeneralCallingConventionInfo? generalInfo);
+                    Assert.Invariant(hasInfo, "General callees must have calling-convention metadata.");
+                    Assert.Invariant(generalInfo!.ParameterPlaces.Count == args.Count, "General call arguments must match the callee parameter ABI.");
+                    ctx.SharedRegisterPlaces.AddRange(generalInfo.ParameterPlaces);
+                    if (generalInfo.RegisterReturnPlace is not null)
+                        ctx.SharedRegisterPlaces.Add(generalInfo.RegisterReturnPlace);
 
-                for (int i = 0; i < args.Count; i++)
-                    nodes.Add(Emit(P2Mnemonic.MOV, new AsmPlaceOperand(generalInfo.ParameterPlaces[i]), args[i]));
+                    for (int i = 0; i < args.Count; i++)
+                        nodes.Add(Emit(P2Mnemonic.MOV, new AsmPlaceOperand(generalInfo.ParameterPlaces[i]), args[i]));
 
-                nodes.Add(Emit(P2Mnemonic.CALL, targetOp));
+                    nodes.Add(Emit(P2Mnemonic.CALL, targetOp));
 
-                if (destReg is not null && generalInfo.RegisterReturnPlace is not null)
-                    nodes.Add(Emit(P2Mnemonic.MOV, destReg, new AsmPlaceOperand(generalInfo.RegisterReturnPlace)));
-                break;
-            }
+                    if (destReg is not null && generalInfo.RegisterReturnPlace is not null)
+                    {
+                        ctx.TieRegisterToPlace(op.Destination!, generalInfo.RegisterReturnPlace);
+                        nodes.Add(Emit(P2Mnemonic.MOV, destReg, new AsmPlaceOperand(generalInfo.RegisterReturnPlace)));
+                    }
+                    break;
+                }
 
             case CallingConventionTier.EntryPoint:
                 Assert.Unreachable("Entry point functions cannot be called.");
@@ -1771,6 +1766,9 @@ public static class AsmLowerer
                 var ok = ctx.RecursiveCallingConvention.TryGetValue(target, out RecursiveCallingConventionInfo? recursiveInfo);
                 Assert.Invariant(ok, "Recursive callees must have calling-convention metadata.");
                 Assert.Invariant(recursiveInfo!.ParameterPlaces.Count == args.Count, "Recursive call arguments must match the callee parameter ABI.");
+                ctx.SharedRegisterPlaces.AddRange(recursiveInfo.ParameterPlaces);
+                if (recursiveInfo.RegisterReturnPlace is not null)
+                    ctx.SharedRegisterPlaces.Add(recursiveInfo.RegisterReturnPlace);
 
                 for (int i = 0; i < args.Count; i++)
                     nodes.Add(Emit(P2Mnemonic.MOV, new AsmPlaceOperand(recursiveInfo.ParameterPlaces[i]), args[i]));
@@ -1780,6 +1778,7 @@ public static class AsmLowerer
                 if (destReg is not null)
                 {
                     Assert.Invariant(recursiveInfo.RegisterReturnPlace is not null, "Recursive register-return calls must have a return storage place.");
+                    ctx.TieRegisterToPlace(op.Destination!, recursiveInfo.RegisterReturnPlace);
                     nodes.Add(Emit(P2Mnemonic.MOV, destReg, new AsmPlaceOperand(recursiveInfo.RegisterReturnPlace)));
                 }
                 break;
@@ -2166,6 +2165,7 @@ public static class AsmLowerer
         if (ret.Values.Count > 0)
         {
             AsmOperand resultOp = LowerOperand(ret.Values[0], ctx);
+            LirRegisterOperand? resultRegister = ret.Values[0] as LirRegisterOperand;
 
             switch (ctx.Tier)
             {
@@ -2173,16 +2173,22 @@ public static class AsmLowerer
                     bool hasInfo = ctx.GeneralCallingConvention.TryGetValue(ctx.Function.Symbol, out GeneralCallingConventionInfo? generalInfo);
                     Assert.Invariant(hasInfo, "General functions must have calling-convention metadata.");
                     Assert.Invariant(generalInfo!.RegisterReturnPlace is not null, "General register-return functions must have a return storage place.");
+                    if (resultRegister is not null)
+                        ctx.TieRegisterToPlace(resultRegister.Register, generalInfo.RegisterReturnPlace);
                     nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [new AsmPlaceOperand(generalInfo.RegisterReturnPlace), resultOp]));
                     break;
 
                 case CallingConventionTier.Leaf:
                     // Result in PA
+                    if (resultRegister is not null)
+                        ctx.FixRegisterToSpecialRegister(resultRegister.Register, P2SpecialRegister.PA);
                     nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(P2SpecialRegister.PA), resultOp]));
                     break;
 
                 case CallingConventionTier.SecondOrder:
                     // Result in PB
+                    if (resultRegister is not null)
+                        ctx.FixRegisterToSpecialRegister(resultRegister.Register, P2SpecialRegister.PB);
                     nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(P2SpecialRegister.PB), resultOp]));
                     break;
 
@@ -2190,6 +2196,8 @@ public static class AsmLowerer
                     var ok = ctx.RecursiveCallingConvention.TryGetValue(ctx.Function.Symbol, out RecursiveCallingConventionInfo? recursiveInfo);
                     Assert.Invariant(ok, "Recursive functions must have calling-convention metadata.");
                     Assert.Invariant(recursiveInfo!.RegisterReturnPlace is not null, "Recursive register-return functions must have a return storage place.");
+                    if (resultRegister is not null)
+                        ctx.TieRegisterToPlace(resultRegister.Register, recursiveInfo.RegisterReturnPlace);
                     nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [new AsmPlaceOperand(recursiveInfo.RegisterReturnPlace), resultOp]));
                     break;
 

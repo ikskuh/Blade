@@ -66,6 +66,8 @@ internal static class BackendSymbolNaming
     {
         return place.Kind switch
         {
+            StoragePlaceKind.AllocatableInternalSharedRegister
+                or StoragePlaceKind.AllocatableInternalDedicatedRegister => $"abi_{SanitizeIdentifier(place.Symbol.Name)}",
             StoragePlaceKind.FixedRegisterAlias
                 or StoragePlaceKind.FixedLutAlias
                 or StoragePlaceKind.FixedHubAlias

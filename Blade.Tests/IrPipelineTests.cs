@@ -373,7 +373,8 @@ public class IrPipelineTests
         });
 
         Assert.That(MirTextWriter.Write(build.MirModule), Does.Contain("load @g_x"));
-        Assert.That(build.AssemblyText, Does.Match(@"MOV _r\d+,\s+g_x\b"));
+        Assert.That(build.AssemblyText, Does.Contain("MOV g_x, PA"));
+        Assert.That(build.AssemblyText, Does.Contain("MOV PA, g_x"));
     }
 
     [Test]
@@ -401,7 +402,8 @@ public class IrPipelineTests
         });
 
         Assert.That(MirTextWriter.Write(build.MirModule), Does.Contain("load @g_param"));
-        Assert.That(build.AssemblyText, Does.Match(@"MOV g_param\b,\s+_r1"));
+        Assert.That(build.AssemblyText, Does.Contain("MOV g_param, PA"));
+        Assert.That(build.AssemblyText, Does.Contain("MOV PA, g_param"));
     }
 
     [Test]
@@ -1182,8 +1184,9 @@ public class IrPipelineTests
         AsmFunction function = build.AsmModule.Functions.Single(f => f.Name == "f");
         Assert.That(function.CcTier, Is.EqualTo(CallingConventionTier.General));
         Assert.That(function.Nodes.OfType<AsmInstructionNode>().Any(i => i.Opcode == "ADD"), Is.True);
-        Assert.That(AsmTextWriter.Write(build.AsmModule), Does.Contain("g_gen_f_ret0"));
-        Assert.That(AsmTextWriter.Write(build.AsmModule), Does.Contain("MOV g_gen_f_ret0"));
+        string asmir = AsmTextWriter.Write(build.AsmModule);
+        Assert.That(asmir, Does.Contain("CALLPB"));
+        Assert.That(asmir, Does.Contain("ADD _r0, #1"));
     }
 
     [Test]
@@ -1213,7 +1216,7 @@ public class IrPipelineTests
 
         Assert.That(build.AssemblyText, Does.Contain("' keep this comment"));
         Assert.That(build.AssemblyText, Does.Not.Contain("// keep this comment"));
-        Assert.That(build.AssemblyText, Does.Match(@"MOV\s+_r\d+,\s*_r\d+"));
+        Assert.That(build.AssemblyText, Does.Contain("MOV PA, PA"));
     }
 
     [Test]
@@ -1518,8 +1521,7 @@ public class IrPipelineTests
 
         Assert.That(build.AssemblyText, Does.Not.Contain("%r"),
             "No virtual registers should remain in final output");
-        Assert.That(build.AssemblyText, Does.Match(@"_r\d+"),
-            "Physical register slots should be present");
+        Assert.That(build.AssemblyText, Does.Contain("CALLPA #42, #f_use_value"));
     }
 
     [Test]

@@ -2,16 +2,18 @@
 // STAGE: final-asm
 // CONTAINS:
 // - CALLB #f_descend
-// - MOV OUTA, g_rec_descend_ret0
-// - g_rec_descend_ret0 LONG 0
+// - MOV OUTA, PB
 // - RETB
+// ! abi_rec_descend_ret0
+// ! g_rec_descend_ret0
 // SEQUENCE:
 // - descend_bb2
-// - MOV _r2, #7
+// - MOV PB, #7
 // - JMP #descend_bb3
 // NOTE:
 //   Covers the recursive ABI branch for a register-returning rec fn with no
-//   parameters, which requires a dedicated recursive return slot.
+//   parameters. The recursive return value now comes back in the shared
+//   register slot instead of a synthetic transport label.
 
 extern reg var OUTA: u32 @(0x1FC);
 

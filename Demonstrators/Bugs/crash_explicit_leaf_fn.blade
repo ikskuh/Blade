@@ -1,4 +1,14 @@
 // EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - CALLPB g_source, #f_general_use
+// - CALLPA PB, #f_leaf_func
+// - ADD PB, #2
+// - RET
+// ! g_gen_
+// NOTE:
+//   Regression for the former explicit `noinline leaf fn` crash and the broken
+//   second-order parameter/result handoff. The callee now uses PB directly.
 
 noinline leaf fn leaf_func(v: u32) -> u32 {
     return v;

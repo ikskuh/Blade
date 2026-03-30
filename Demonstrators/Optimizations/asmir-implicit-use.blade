@@ -1,13 +1,16 @@
 // EXPECT: pass
-// STAGE: asmir
+// STAGE: final-asm
 // CONTAINS:
-// - MOV g_gen_general_use_arg0, g_source
-// - CALL #general_use
-// - MOV g_sink, g_gen_general_use_ret0
-// - MOV PB, g_gen_general_use_arg0
-// - _RET_ MOV g_gen_general_use_ret0, _r4
+// - CALLPB g_source, #f_general_use
+// - CALLPB PB, #f_general_use
+// - CALLPB PB, #f_leaf2_func
+// - CALLPA PB, #f_leaf_func
+// - ADD PB, #2
+// ! abi_gen_general_use_arg0
+// ! g_gen_general_use_arg0
 // NOTE:
-//   Covers the explicit general-calling-convention argument and return storage path.
+//   Covers shared general ABI placement fused onto PB, including direct
+//   call transport from register-backed globals without synthetic transport labels.
 
 noinline fn leaf_func(v: u32) -> u32 {
     return v;

@@ -2,19 +2,25 @@
 // STAGE: asmir
 // ARGS:
 // - -fno-mir-opt=*
+// - -fno-mir-opt=single-callsite-inline
 // - -fno-lir-opt=*
 // - -fno-asmir-opt=*
 // - -fasmir-opt=ret-fusion
 // CONTAINS:
-// - _RET_ MOV PA, _r1
+// - _RET_ MOV PB, PB
 // NOTE:
-//   Positive case for ASMIR ret-fusion: the RET should fuse into the preceding instruction.
+//   Positive case for ASMIR ret-fusion: the RET should fuse into the preceding
+//   register handoff instead of surviving as a standalone terminator.
 
 reg var sink: u32 = 0;
 var input: u32 = 1;
 
-noinline fn add1(x: u32) -> u32 {
-    return x + 1;
+noinline fn leaf_id(x: u32) -> u32 {
+    return x;
 }
 
-sink = add1(input);
+noinline fn wrap(x: u32) -> u32 {
+    return leaf_id(x);
+}
+
+sink = wrap(input);

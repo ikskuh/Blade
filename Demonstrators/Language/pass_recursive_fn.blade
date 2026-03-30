@@ -1,22 +1,23 @@
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// - MOV g_rec_factorial_arg0, g_n
+// - MOV PB, g_n
 // - CALLB #f_factorial
 // - PUSHB
 // - POPB
 // - RETB
+// ! abi_rec_factorial_arg0
 // ! g_rec_factorial_ret0
 // ! WRLONG
 // ! RDLONG
 // SEQUENCE:
 // - factorial_bb2
-// - MOV _r2, #1
+// - MOV _r1, PB
 // - JMP #factorial_bb3
 // NOTE:
 //   Exercises recursive function (rec fn) calling convention with
-//   hub-based stack via PTRB, including shared argument/return storage
-//   and stack-backed preservation of the live caller value across the self-call.
+//   PB as the shared argument/return slot plus stack-backed preservation of the
+//   live caller value across the self-call.
 
 extern reg var OUTA: u32 @(0x1FC);
 

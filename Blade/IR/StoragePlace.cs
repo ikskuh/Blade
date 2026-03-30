@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Blade;
 using Blade.Semantics;
 
@@ -7,6 +8,8 @@ namespace Blade.IR;
 public enum StoragePlaceKind
 {
     AllocatableGlobalRegister,
+    AllocatableInternalSharedRegister,
+    AllocatableInternalDedicatedRegister,
     FixedRegisterAlias,
     ExternalAlias,
     AllocatableLutEntry,
@@ -26,12 +29,14 @@ public sealed class StoragePlace : IAsmSymbol
         StoragePlaceKind kind,
         int? fixedAddress,
         object? staticInitializer,
-        string? emittedName = null)
+        string? emittedName = null,
+        IReadOnlyList<P2Register>? preferredRegisters = null)
     {
         Symbol = Requires.NotNull(symbol);
         Kind = kind;
         FixedAddress = fixedAddress;
         StaticInitializer = staticInitializer;
+        PreferredRegisters = preferredRegisters ?? [];
         if (!string.IsNullOrWhiteSpace(emittedName))
             _emittedName = emittedName;
         if (P2InstructionMetadata.TryParseSpecialRegister(Symbol.Name, out P2SpecialRegister specialRegister))
@@ -42,6 +47,7 @@ public sealed class StoragePlace : IAsmSymbol
     public StoragePlaceKind Kind { get; }
     public int? FixedAddress { get; }
     public object? StaticInitializer { get; }
+    public IReadOnlyList<P2Register> PreferredRegisters { get; }
     public P2Register? SpecialRegisterAlias { get; }
 
     public bool HasStaticInitializer => StaticInitializer is not null;
@@ -57,6 +63,19 @@ public sealed class StoragePlace : IAsmSymbol
             or StoragePlaceKind.ExternalHubAlias => VariableStorageClass.Hub,
         _ => VariableStorageClass.Reg,
     };
+
+    public bool IsInternalRegisterSlot => Kind is StoragePlaceKind.AllocatableInternalSharedRegister
+        or StoragePlaceKind.AllocatableInternalDedicatedRegister;
+
+    public bool IsDedicatedRegisterSlot => Kind is StoragePlaceKind.AllocatableGlobalRegister
+        or StoragePlaceKind.AllocatableInternalDedicatedRegister;
+
+    public bool EmitsStorageLabel => Kind is StoragePlaceKind.AllocatableGlobalRegister
+        or StoragePlaceKind.AllocatableLutEntry
+        or StoragePlaceKind.AllocatableHubEntry
+        or StoragePlaceKind.FixedRegisterAlias
+        or StoragePlaceKind.FixedLutAlias
+        or StoragePlaceKind.FixedHubAlias;
 
     public string EmittedName => _emittedName ?? Assert.UnreachableValue<string>("Storage place emitted names must be assigned by backend naming.");
 

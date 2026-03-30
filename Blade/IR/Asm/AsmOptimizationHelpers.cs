@@ -41,11 +41,37 @@ internal static class AsmOptimizationHelpers
         {
             (AsmRegisterOperand lhs, AsmRegisterOperand rhs) => ReferenceEquals(lhs.Register, rhs.Register),
             (AsmImmediateOperand lhs, AsmImmediateOperand rhs) => lhs.Value == rhs.Value,
-            (AsmSymbolOperand lhs, AsmSymbolOperand rhs) => ReferenceEquals(lhs.Symbol, rhs.Symbol) && lhs.AddressingMode == rhs.AddressingMode,
+            (AsmSymbolOperand lhs, AsmSymbolOperand rhs) => SymbolOperandsEquivalent(lhs, rhs),
             (AsmPlaceOperand lhs, AsmPlaceOperand rhs) => ReferenceEquals(lhs.Place, rhs.Place),
+            (AsmPhysicalRegisterOperand lhs, AsmSymbolOperand rhs) => PhysicalAndSymbolEquivalent(lhs, rhs),
+            (AsmSymbolOperand lhs, AsmPhysicalRegisterOperand rhs) => PhysicalAndSymbolEquivalent(rhs, lhs),
             (AsmPhysicalRegisterOperand lhs, AsmPhysicalRegisterOperand rhs) => lhs.Register == rhs.Register,
             _ => false,
         };
+    }
+
+    private static bool SymbolOperandsEquivalent(AsmSymbolOperand left, AsmSymbolOperand right)
+    {
+        if (left.AddressingMode != right.AddressingMode)
+            return false;
+
+        if (ReferenceEquals(left.Symbol, right.Symbol))
+            return true;
+
+        if (left.Symbol is AsmSpecialRegisterSymbol leftRegister
+            && right.Symbol is AsmSpecialRegisterSymbol rightRegister)
+        {
+            return leftRegister.Register == rightRegister.Register;
+        }
+
+        return false;
+    }
+
+    private static bool PhysicalAndSymbolEquivalent(AsmPhysicalRegisterOperand physical, AsmSymbolOperand symbol)
+    {
+        return symbol.AddressingMode == AsmSymbolAddressingMode.Register
+            && symbol.Symbol is AsmSpecialRegisterSymbol specialRegister
+            && specialRegister.Register == physical.Register;
     }
 
     internal static HashSet<ControlFlowLabelSymbol> CollectJumpTargets(IReadOnlyList<AsmNode> nodes)

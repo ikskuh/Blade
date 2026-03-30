@@ -1,17 +1,15 @@
 // EXPECT: pass
 // STAGE: final-asm
 // SEQUENCE:
-// - MOV PA, g_input
-// - CALLPA PA, #f_get_pair
+// - CALLPA g_input, #f_get_pair
 // - BITC _r1, #0
-// - WRLONG _r2, #g_result
+// - WRLONG PA, #g_result
 // - WRBYTE _r1, #g_flag1
-// - MOV PA, g_input
-// - CALLPA PA, #f_get_triple
-// - BITC _r2, #0
+// - CALLPA g_input, #f_get_triple
+// - BITC PA, #0
 // - BITZ _r1, #0
-// - WRLONG _r3, #g_result
-// - WRBYTE _r2, #g_flag1
+// - WRLONG PA, #g_result
+// - WRBYTE PA, #g_flag1
 // - WRBYTE _r1, #g_flag2
 // CONTAINS:
 // ! MOV g_result,

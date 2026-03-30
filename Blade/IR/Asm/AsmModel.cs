@@ -85,18 +85,55 @@ public sealed class AsmModule
     public IReadOnlyList<AsmFunction> Functions { get; }
 }
 
+public enum AsmRegisterConstraintKind
+{
+    FixedPhysicalRegister,
+    TiedStoragePlace,
+}
+
+public sealed class AsmRegisterConstraint
+{
+    public AsmRegisterConstraint(P2Register fixedRegister)
+    {
+        Kind = AsmRegisterConstraintKind.FixedPhysicalRegister;
+        FixedRegister = fixedRegister;
+    }
+
+    public AsmRegisterConstraint(StoragePlace tiedPlace)
+    {
+        Kind = AsmRegisterConstraintKind.TiedStoragePlace;
+        TiedPlace = Requires.NotNull(tiedPlace);
+    }
+
+    public AsmRegisterConstraintKind Kind { get; }
+    public P2Register? FixedRegister { get; }
+    public StoragePlace? TiedPlace { get; }
+}
+
 public sealed class AsmFunction : IAsmSymbol
 {
     public AsmFunction(AsmFunction sourceFunction, IReadOnlyList<AsmNode> nodes)
-        : this(Requires.NotNull(sourceFunction).SourceFunction, sourceFunction.CcTier, nodes)
+        : this(
+            Requires.NotNull(sourceFunction).SourceFunction,
+            sourceFunction.CcTier,
+            nodes,
+            sourceFunction.RegisterConstraints,
+            sourceFunction.SharedRegisterPlaces)
     {
     }
 
-    public AsmFunction(LirFunction sourceFunction, CallingConventionTier ccTier, IReadOnlyList<AsmNode> nodes)
+    public AsmFunction(
+        LirFunction sourceFunction,
+        CallingConventionTier ccTier,
+        IReadOnlyList<AsmNode> nodes,
+        IReadOnlyDictionary<VirtualAsmRegister, AsmRegisterConstraint>? registerConstraints = null,
+        IReadOnlyList<StoragePlace>? sharedRegisterPlaces = null)
     {
         SourceFunction = Requires.NotNull(sourceFunction);
         CcTier = ccTier;
         Nodes = nodes;
+        RegisterConstraints = registerConstraints ?? new Dictionary<VirtualAsmRegister, AsmRegisterConstraint>();
+        SharedRegisterPlaces = sharedRegisterPlaces ?? [];
     }
 
     public LirFunction SourceFunction { get; }
@@ -105,6 +142,8 @@ public sealed class AsmFunction : IAsmSymbol
     public bool IsEntryPoint => SourceFunction.IsEntryPoint;
     public CallingConventionTier CcTier { get; }
     public IReadOnlyList<AsmNode> Nodes { get; }
+    public IReadOnlyDictionary<VirtualAsmRegister, AsmRegisterConstraint> RegisterConstraints { get; }
+    public IReadOnlyList<StoragePlace> SharedRegisterPlaces { get; }
     public SymbolType SymbolType => SymbolType.Function;
 }
 
