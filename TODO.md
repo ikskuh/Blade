@@ -292,7 +292,6 @@ that must never be reordered at all.
 
 This should simplify the code generation pipeline by reducing a lot of "rewriting".
 
-
 ## Add support for temporary registers in inline assembly
 
 Right now, one needs to allocate local variables to obtain temp variables for inline assembly. This should not be
@@ -315,7 +314,7 @@ Apply new `?` operand matching instead of hardcoding internals like generated sy
 
 ## Code Smells
 
-`nodes.Add(new AsmInstructionNode(ParseMnemonic(opcode), [place, value]));` 
+`nodes.Add(new AsmInstructionNode(ParseMnemonic(opcode), [place, value]));`
 
 ## Optimizations
 

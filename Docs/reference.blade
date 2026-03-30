@@ -371,6 +371,23 @@ fn control_flow_demo(count: u32, cond: bool) {
         // loops index from all values including 0 up to (count-1), backed by REP
     }
 
+    // Iteration over inclusive ranges:
+    for(start..=end) -> index {
+        // loop starts at "start" and ends at "end", with "end" being the last element iterated.
+        // if start > end, no iteration will happen
+    }
+    rep for(start..=end) -> index {
+        // same as regular for with inclusive range, but backed by REP.
+    }
+
+    // Iteration over exclusive ranges:
+    for(start..<end) -> index {
+        // loop starts at "start" and ends at "end", with "end-1" being the last element iterated.
+        // if start >= end, no iteration will happen at all
+    }
+    rep for(start..<end) -> index {
+        // same as regular for with exclusive range, but backed by REP.
+    }
 
     var array: [4]u32 = [0,0,0,0];
 
@@ -667,6 +684,14 @@ fn func_2(x: u32, y: u32) -> u32  {
     return 0;
 }
 
+// Important note: Expressions in Blade are not statements and cannot be used
+// standalone. The only top-level constructs except for control flow are:
+// - Assignments
+// - Function Calls
+// 
+// Also, postfix or prefix "++" and "--" operators like the C family are explicitly
+// excluded as they obscure the code readability and reasoning capabilities
+// over the language.
 fn expressions() {
     var a: [2]u32 = [0,0];
     var x: u32 = 0;
@@ -769,6 +794,25 @@ fn expressions() {
     cls = memoryof(rv_01); // returns MemorySpace.reg
     cls = memoryof(lv_01); // returns MemorySpace.lut
     cls = memoryof(hv_01); // returns MemorySpace.hub
+
+    // A lot of operators also support lhs-fused assignment operations:
+
+    a += b; // equivalent to "a + b"
+    a -= b;
+    a *= b;
+    a /= b;
+    a %= b;
+    
+    a |= b;
+    a &= b;
+    a ^= b;
+
+    a <<= b;
+    a >>= b;
+    a <<<= b;
+    a >>>= b;
+    a <%<= b;
+    a >%>= b;
 }
 
 fn pointer_arithmetics() {
