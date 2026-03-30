@@ -338,3 +338,19 @@ they cannot overlap anyways.
 ## Rework register allocator to run backwards
 
 This should give much much better results than running front-to-back.
+
+## Rewire inline assembly into proper language syntax
+
+Right now, inline assembly is an afterthought.
+
+Wire it properly into the language frontend so it's parsed by the parser, not by a
+later staged validator.
+
+This removes a lot of surface from the compiler and gives additional useful properties
+like proper location tracking
+
+## Add emission of JSON based debug info
+
+- Source <=> Assembly mapping
+- Resolved values for all symbols
+
