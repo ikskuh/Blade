@@ -1,8 +1,5 @@
 ﻿
 using System;
-using System.Globalization;
-
-
 namespace Blade.HwTestRunner;
 
 
@@ -19,7 +16,7 @@ internal static class Program
         }
 
         var binary = args[0];
-        var expected = args.Length >= 2 ? ParseUInt(args[1]) : 0U;
+        var expected = args.Length >= 2 ? UIntLiteralParser.Parse(args[1]) : 0U;
 
         Console.WriteLine("Create runner...");
 
@@ -40,16 +37,4 @@ internal static class Program
 
         return 0;
     }
-
-    private static uint ParseUInt(string arg)
-    {
-        if(arg.StartsWith("0x"))
-            return Convert.ToUInt32(arg[2..], 16);
-        if(arg.StartsWith("0b"))
-            return Convert.ToUInt32(arg[2..], 2);
-        if(arg.StartsWith("0o"))
-            return Convert.ToUInt32(arg[2..], 8);
-        return Convert.ToUInt32(arg, 10);
-    }
 }
-

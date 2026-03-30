@@ -18,6 +18,9 @@
     <ProjectReference Include="..\Blade\blade.csproj">
       <ShouldBeValidatedAsExecutableReference>false</ShouldBeValidatedAsExecutableReference>
     </ProjectReference>
+    <ProjectReference Include="..\Blade.HwTestRunner\Blade.HwTestRunner.csproj">
+      <ShouldBeValidatedAsExecutableReference>false</ShouldBeValidatedAsExecutableReference>
+    </ProjectReference>
   </ItemGroup>
 
 </Project>

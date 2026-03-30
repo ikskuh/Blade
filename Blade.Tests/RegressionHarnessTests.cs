@@ -1,6 +1,7 @@
 using System;
-using System.Text.Json;
 using System.Linq;
+using System.Reflection;
+using System.Text.Json;
 using Blade.Regressions;
 
 namespace Blade.Tests;
@@ -111,6 +112,199 @@ public sealed class RegressionHarnessTests
             Assert.Fail(RegressionReportFormatter.Format(result));
 
         Assert.That(result.FixtureResults, Is.Not.Empty);
+    }
+
+    [Test]
+    public void PassHwFixture_WithoutConfiguredPort_UsesImplicitHardwareRuntimeAndPasses()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        WriteHardwareRuntime(temp);
+        temp.WriteFile("Demonstrators/hw_runtime_injected.blade", """
+        // EXPECT: pass-hw
+        // OUTPUT: 0x0
+        // STAGE: final-asm
+        // CONTAINS:
+        // - rt_result LONG 0
+        extern reg var rt_result: u32;
+        rt_result = 0;
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(result =>
+            result.RelativePath == "Demonstrators/hw_runtime_injected.blade");
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Pass));
+            Assert.That(fixtureResult.Summary, Is.EqualTo("passed"));
+        });
+    }
+
+    [Test]
+    public void PassHwFixture_WithExplicitRuntime_KeepsExplicitRuntimeInsteadOfImplicitHardwareRuntime()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        WriteHardwareRuntime(temp);
+        temp.WriteFile("Demonstrators/custom_runtime.spin2", """
+        CON
+            ' <<BLADE_CON>>
+        DAT
+            JMP #blade_entry
+        blade_halt
+            REP #1, #0
+            NOP
+        custom_marker LONG 0
+        ' <<BLADE_DAT>>
+        """);
+        temp.WriteFile("Demonstrators/hw_explicit_runtime.blade", """
+        // EXPECT: pass-hw
+        // OUTPUT: 0x0
+        // ARGS: --runtime=custom_runtime.spin2
+        // STAGE: final-asm
+        // CONTAINS:
+        // - custom_marker LONG 0
+        // ! rt_result LONG 0
+        var x: u32 = 1;
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(result =>
+            result.RelativePath == "Demonstrators/hw_explicit_runtime.blade");
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Pass));
+        });
+    }
+
+    [Test]
+    public void PassHwFixture_RequiresOutputDirective()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/missing_output.blade", """
+        // EXPECT: pass-hw
+        var x: u32 = 0;
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(result =>
+            result.RelativePath == "Demonstrators/missing_output.blade");
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
+            Assert.That(fixtureResult.Details, Has.Some.Contains("EXPECT: pass-hw requires OUTPUT."));
+        });
+    }
+
+    [Test]
+    public void OutputDirective_IsRejectedForPlainPassFixture()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/output_on_plain_pass.blade", """
+        // EXPECT: pass
+        // OUTPUT: 0x0
+        var x: u32 = 0;
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(result =>
+            result.RelativePath == "Demonstrators/output_on_plain_pass.blade");
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
+            Assert.That(fixtureResult.Details, Has.Some.Contains("OUTPUT is only valid with EXPECT: pass-hw."));
+        });
+    }
+
+    [Test]
+    public void RegressionCommandLine_UsesEnvironmentHardwarePortWhenCliFlagIsAbsent()
+    {
+        string? previous = Environment.GetEnvironmentVariable("BLADE_TEST_PORT");
+        try
+        {
+            Environment.SetEnvironmentVariable("BLADE_TEST_PORT", "env-port");
+            RegressionRunOptions options = ParseRegressionCommandLine();
+            Assert.That(options.HardwarePort, Is.EqualTo("env-port"));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("BLADE_TEST_PORT", previous);
+        }
+    }
+
+    [Test]
+    public void RegressionCommandLine_CliHardwarePortOverridesEnvironment()
+    {
+        string? previous = Environment.GetEnvironmentVariable("BLADE_TEST_PORT");
+        try
+        {
+            Environment.SetEnvironmentVariable("BLADE_TEST_PORT", "env-port");
+            RegressionRunOptions options = ParseRegressionCommandLine("--hw-port", "cli-port");
+            Assert.That(options.HardwarePort, Is.EqualTo("cli-port"));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("BLADE_TEST_PORT", previous);
+        }
+    }
+
+    [Test]
+    public void PassHwFixture_WithConfiguredPort_AttemptsHardwareExecutionAndSurfacesFailures()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        WriteHardwareRuntime(temp);
+        temp.WriteFile("Demonstrators/hw_exec.blade", """
+        // EXPECT: pass-hw
+        // OUTPUT: 0x0
+        extern reg var rt_result: u32;
+        rt_result = 0;
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+            HardwarePort = "/definitely/not/a/serial/port",
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(result =>
+            result.RelativePath == "Demonstrators/hw_exec.blade");
+        if (fixtureResult.Outcome == RegressionFixtureOutcome.Skipped)
+            Assert.Ignore("flexspin is not available in this environment");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
+            Assert.That(fixtureResult.Details, Has.Some.StartsWith("hardware execution failed:"));
+        });
     }
 
     [Test]
@@ -293,8 +487,33 @@ public sealed class RegressionHarnessTests
         temp.MakeDir("Examples");
         temp.MakeDir("Demonstrators");
         temp.MakeDir("Blade.Tests");
+        temp.MakeDir("Blade");
         temp.WriteFile("justfile", "fuzz:\n    false\n");
         temp.WriteFile("Examples/smoke.blade", "fn inc(x: u32) -> u32 { return x + 1; }");
+    }
+
+    private static void WriteHardwareRuntime(TempDirectory temp)
+    {
+        temp.WriteFile("Blade.HwTestRunner/Runtime.spin2", """
+        CON
+            ' <<BLADE_CON>>
+        DAT
+            JMP #blade_entry
+        blade_halt
+            REP #1, #0
+            NOP
+        rt_result LONG 0
+        ' <<BLADE_DAT>>
+        """);
+    }
+
+    private static RegressionRunOptions ParseRegressionCommandLine(params string[] args)
+    {
+        Type commandLineType = typeof(RegressionRunner).Assembly.GetType("Blade.Regressions.RegressionCommandLine")
+            ?? throw new InvalidOperationException("RegressionCommandLine type not found.");
+        MethodInfo parseMethod = commandLineType.GetMethod("Parse", BindingFlags.Public | BindingFlags.Static)
+            ?? throw new InvalidOperationException("RegressionCommandLine.Parse method not found.");
+        return (RegressionRunOptions)parseMethod.Invoke(null, [args])!;
     }
 
     private static string[] ReadGuardArray(TempDirectory temp, string groupName, string arrayName)

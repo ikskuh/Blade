@@ -1,9 +1,10 @@
-// EXPECT: pass
-// HARDWARE: true
-// NOTE: 
-//   The expect should actually be "pass-hw" to signal it must pass
-//   on true hardware if available
+// EXPECT: pass-hw
+// OUTPUT: 0xDEADBEEF
 // ARGS: --runtime=../../Blade.HwTestRunner/Runtime.spin2
+// NOTE:
+//   This test is the baseline for hardware tests.
+//   If it fails, there's either a deeply rooted problem
+//   in the compiler, or the test fixture is broken.
 
 
 extern reg var rt_result: u32;

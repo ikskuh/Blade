@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Blade;
 using Blade.Diagnostics;
+using Blade.HwTestRunner;
 using Blade.IR;
 using Blade.Source;
 
@@ -18,6 +19,7 @@ public sealed class RegressionRunOptions
     public string? RepositoryRootPath { get; init; }
     public IReadOnlyList<string> Filters { get; init; } = [];
     public bool WriteFailureArtifacts { get; init; } = true;
+    public string? HardwarePort { get; init; }
 }
 
 public sealed class RegressionRunResult
@@ -88,6 +90,7 @@ public enum RegressionFixtureKind
 public enum RegressionExpectationKind
 {
     Pass,
+    PassHw,
     Fail,
     XFail,
 }
@@ -180,7 +183,8 @@ public sealed class RegressionExpectation
         IReadOnlyList<string> looseDiagnosticCodes,
         IReadOnlyList<ExpectedDiagnostic> exactDiagnostics,
         FlexspinExpectation flexspinExpectation,
-        IReadOnlyList<string> compilerArgs)
+        IReadOnlyList<string> compilerArgs,
+        uint? expectedHardwareOutput)
     {
         ExpectationKind = expectationKind;
         Stage = stage;
@@ -191,6 +195,7 @@ public sealed class RegressionExpectation
         ExactDiagnostics = exactDiagnostics;
         FlexspinExpectation = flexspinExpectation;
         CompilerArgs = compilerArgs;
+        ExpectedHardwareOutput = expectedHardwareOutput;
     }
 
     public RegressionExpectationKind ExpectationKind { get; }
@@ -202,6 +207,7 @@ public sealed class RegressionExpectation
     public IReadOnlyList<ExpectedDiagnostic> ExactDiagnostics { get; }
     public FlexspinExpectation FlexspinExpectation { get; }
     public IReadOnlyList<string> CompilerArgs { get; }
+    public uint? ExpectedHardwareOutput { get; }
     public bool HasCodeAssertions => ContainsSnippets.Count > 0 || SequenceSnippets.Count > 0 || ExactText is not null;
     public bool HasDiagnosticAssertions => LooseDiagnosticCodes.Count > 0 || ExactDiagnostics.Count > 0;
 }
@@ -254,6 +260,7 @@ public static class RegressionRunner
     {
         RegressionRunOptions effectiveOptions = options ?? new RegressionRunOptions();
         string repositoryRootPath = RepositoryLayout.FindRepositoryRoot(effectiveOptions.RepositoryRootPath);
+        string? hardwarePort = HardwarePortResolver.Resolve(effectiveOptions.HardwarePort);
         bool isFullRun = effectiveOptions.Filters.Count == 0;
 
         FlexspinProbeResult flexspinProbe = FlexspinRunner.ProbeAvailability();
@@ -264,7 +271,13 @@ public static class RegressionRunner
 
         foreach (string fixturePath in fixturePaths)
         {
-            RegressionFixtureResult result = EvaluateFixture(repositoryRootPath, fixturePath, artifactWriter, flexspinProbe, irCoverageSession);
+            RegressionFixtureResult result = EvaluateFixture(
+                repositoryRootPath,
+                fixturePath,
+                artifactWriter,
+                flexspinProbe,
+                irCoverageSession,
+                hardwarePort);
             fixtureResults.Add(result);
         }
 
@@ -311,7 +324,8 @@ public static class RegressionRunner
         string fixturePath,
         ArtifactWriter artifactWriter,
         FlexspinProbeResult flexspinProbe,
-        RegressionIrCoverageSession? irCoverageSession)
+        RegressionIrCoverageSession? irCoverageSession,
+        string? hardwarePort)
     {
         string relativePath = Path.GetRelativePath(repositoryRootPath, fixturePath).Replace('\\', '/');
         RegressionFixture? fixture = null;
@@ -325,7 +339,7 @@ public static class RegressionRunner
                 return new RegressionFixtureResult(relativePath, RegressionFixtureOutcome.Pass, "passed", [], null);
             }
 
-            EvaluatedFixture evaluatedFixture = ExecuteFixture(fixture, irCoverageSession);
+            EvaluatedFixture evaluatedFixture = ExecuteFixture(repositoryRootPath, fixture, irCoverageSession);
             List<string> issues = [];
 
             issues.AddRange(EvaluateDiagnostics(fixture.Expectation, evaluatedFixture.Diagnostics));
@@ -341,6 +355,13 @@ public static class RegressionRunner
             }
 
             issues.AddRange(EvaluateFlexspin(fixture, evaluatedFixture));
+            if (issues.Count == 0)
+            {
+                HardwareExecutionResult hardwareExecution = EvaluateHardwareExecution(fixture, evaluatedFixture, hardwarePort);
+                issues.AddRange(hardwareExecution.Issues);
+                if (hardwareExecution.BinaryBytes is not null)
+                    evaluatedFixture = evaluatedFixture.WithHardwareBinary(hardwareExecution.BinaryBytes);
+            }
 
             RegressionFixtureOutcome outcome = ComputeOutcome(
                 fixture.Expectation.ExpectationKind,
@@ -376,18 +397,22 @@ public static class RegressionRunner
                     [],
                     [],
                     FlexspinExpectation.Forbidden,
-                    []));
+                    [],
+                    null));
             string summary = "fixture evaluation crashed";
             string? artifactDirectoryPath = artifactWriter.WriteFailureArtifacts(syntheticFixture, failedFixture, summary, details);
             return new RegressionFixtureResult(relativePath, RegressionFixtureOutcome.Fail, summary, details, artifactDirectoryPath);
         }
     }
 
-    private static EvaluatedFixture ExecuteFixture(RegressionFixture fixture, RegressionIrCoverageSession? irCoverageSession)
+    private static EvaluatedFixture ExecuteFixture(
+        string repositoryRootPath,
+        RegressionFixture fixture,
+        RegressionIrCoverageSession? irCoverageSession)
     {
         return fixture.Kind switch
         {
-            RegressionFixtureKind.Blade => ExecuteBladeFixture(fixture, irCoverageSession),
+            RegressionFixtureKind.Blade => ExecuteBladeFixture(repositoryRootPath, fixture, irCoverageSession),
             RegressionFixtureKind.BladeCrash => ExecuteBladeCrashFixture(fixture),
             RegressionFixtureKind.Pasm2 => EvaluatedFixture.ForAssembly(fixture.BodyText),
             RegressionFixtureKind.Spin2 => EvaluatedFixture.ForAssembly(fixture.BodyText),
@@ -395,9 +420,12 @@ public static class RegressionRunner
         };
     }
 
-    private static EvaluatedFixture ExecuteBladeFixture(RegressionFixture fixture, RegressionIrCoverageSession? irCoverageSession)
+    private static EvaluatedFixture ExecuteBladeFixture(
+        string repositoryRootPath,
+        RegressionFixture fixture,
+        RegressionIrCoverageSession? irCoverageSession)
     {
-        CompilationOptions options = BuildCompilationOptions(fixture.Expectation.CompilerArgs, fixture.AbsolutePath);
+        CompilationOptions options = BuildCompilationOptions(repositoryRootPath, fixture.Expectation, fixture.AbsolutePath);
         CompilationResult compilation = CompilerDriver.Compile(fixture.Text, fixture.AbsolutePath, options);
         List<ActualDiagnostic> diagnostics = compilation.Diagnostics
             .Select(diag =>
@@ -438,7 +466,8 @@ public static class RegressionRunner
             diagnostics,
             stageOutputs,
             compilation.IrBuildResult?.AssemblyText,
-            fixture.BodyText);
+            fixture.BodyText,
+            null);
     }
 
     private static EvaluatedFixture ExecuteBladeCrashFixture(RegressionFixture fixture)
@@ -474,10 +503,21 @@ public static class RegressionRunner
             yield return line;
     }
 
-    private static CompilationOptions BuildCompilationOptions(IReadOnlyList<string> compilerArgs, string fixturePath)
+    private static CompilationOptions BuildCompilationOptions(
+        string repositoryRootPath,
+        RegressionExpectation expectation,
+        string fixturePath)
     {
+        List<string> effectiveArgs = new(expectation.CompilerArgs);
+        if (expectation.ExpectationKind == RegressionExpectationKind.PassHw
+            && !effectiveArgs.Any(static arg => arg.StartsWith("--runtime=", StringComparison.Ordinal)))
+        {
+            string runtimePath = Path.Combine(repositoryRootPath, "Blade.HwTestRunner", "Runtime.spin2");
+            effectiveArgs.Add($"--runtime={runtimePath}");
+        }
+
         string baseDirectory = Path.GetDirectoryName(fixturePath) ?? Environment.CurrentDirectory;
-        return CompilationOptionsCommandLine.Parse(compilerArgs, baseDirectory);
+        return CompilationOptionsCommandLine.Parse(effectiveArgs, baseDirectory);
     }
 
     private static List<string> EvaluateDiagnostics(RegressionExpectation expectation, IReadOnlyList<ActualDiagnostic> diagnostics)
@@ -519,7 +559,9 @@ public static class RegressionRunner
             return issues;
         }
 
-        if (expectation.ExpectationKind == RegressionExpectationKind.Pass && diagnostics.Count > 0)
+        if ((expectation.ExpectationKind == RegressionExpectationKind.Pass
+                || expectation.ExpectationKind == RegressionExpectationKind.PassHw)
+            && diagnostics.Count > 0)
         {
             foreach (ActualDiagnostic diagnostic in diagnostics)
                 issues.Add($"unexpected diagnostic: {diagnostic.Display()}");
@@ -765,6 +807,55 @@ public static class RegressionRunner
         return issues;
     }
 
+    private static HardwareExecutionResult EvaluateHardwareExecution(
+        RegressionFixture fixture,
+        EvaluatedFixture evaluatedFixture,
+        string? hardwarePort)
+    {
+        if (fixture.Kind != RegressionFixtureKind.Blade
+            || fixture.Expectation.ExpectationKind != RegressionExpectationKind.PassHw
+            || string.IsNullOrWhiteSpace(hardwarePort))
+        {
+            return HardwareExecutionResult.NotAttempted();
+        }
+
+        if (string.IsNullOrWhiteSpace(evaluatedFixture.FinalAssemblyText))
+        {
+            return HardwareExecutionResult.Failed(["hardware execution was requested, but no final assembly text was available"]);
+        }
+
+        FlexspinBinaryResult binaryResult = FlexspinRunner.BuildBinary(evaluatedFixture.FinalAssemblyText);
+        if (!binaryResult.Succeeded)
+        {
+            List<string> issues = ["hardware binary build failed:"];
+            issues.AddRange(binaryResult.OutputLines);
+            return HardwareExecutionResult.Failed(issues, binaryResult.BinaryBytes);
+        }
+
+        if (binaryResult.BinaryBytes is null)
+            return HardwareExecutionResult.Failed(["hardware binary build succeeded, but no output binary was produced"]);
+
+        try
+        {
+            uint actualOutput = HardwareFixtureRunner.Run(binaryResult.BinaryBytes, hardwarePort);
+            uint expectedOutput = fixture.Expectation.ExpectedHardwareOutput!.Value;
+            if (actualOutput != expectedOutput)
+            {
+                return HardwareExecutionResult.Failed(
+                    [$"hardware output mismatch: expected 0x{expectedOutput:X8}, got 0x{actualOutput:X8}"],
+                    binaryResult.BinaryBytes);
+            }
+
+            return HardwareExecutionResult.Succeeded(binaryResult.BinaryBytes);
+        }
+        catch (Exception ex)
+        {
+            return HardwareExecutionResult.Failed(
+                [$"hardware execution failed: {ex.Message}"],
+                binaryResult.BinaryBytes);
+        }
+    }
+
     private static bool ShouldRunFlexspin(RegressionFixture fixture)
     {
         return fixture.Expectation.FlexspinExpectation switch
@@ -772,7 +863,8 @@ public static class RegressionRunner
             FlexspinExpectation.Required => true,
             FlexspinExpectation.Forbidden => false,
             FlexspinExpectation.Auto => fixture.Kind != RegressionFixtureKind.Blade
-                || fixture.Expectation.ExpectationKind == RegressionExpectationKind.Pass,
+                || fixture.Expectation.ExpectationKind == RegressionExpectationKind.Pass
+                || fixture.Expectation.ExpectationKind == RegressionExpectationKind.PassHw,
             _ => false,
         };
     }
@@ -869,35 +961,43 @@ internal sealed class EvaluatedFixture
         IReadOnlyList<ActualDiagnostic> diagnostics,
         IReadOnlyDictionary<RegressionStage, string> stageOutputs,
         string? finalAssemblyText,
-        string bodyText)
+        string bodyText,
+        byte[]? hardwareBinary)
     {
         Diagnostics = diagnostics;
         StageOutputs = stageOutputs;
         FinalAssemblyText = finalAssemblyText;
         BodyText = bodyText;
+        HardwareBinary = hardwareBinary;
     }
 
     public IReadOnlyList<ActualDiagnostic> Diagnostics { get; }
     public IReadOnlyDictionary<RegressionStage, string> StageOutputs { get; }
     public string? FinalAssemblyText { get; }
     public string BodyText { get; }
+    public byte[]? HardwareBinary { get; }
+
+    public EvaluatedFixture WithHardwareBinary(byte[] hardwareBinary)
+    {
+        return new EvaluatedFixture(Diagnostics, StageOutputs, FinalAssemblyText, BodyText, hardwareBinary);
+    }
 
     public static EvaluatedFixture ForAssembly(string bodyText)
     {
-        return new EvaluatedFixture([], new Dictionary<RegressionStage, string>(), null, bodyText);
+        return new EvaluatedFixture([], new Dictionary<RegressionStage, string>(), null, bodyText, null);
     }
 
     public static EvaluatedFixture Empty(string relativePath)
     {
         _ = relativePath;
-        return new EvaluatedFixture([], new Dictionary<RegressionStage, string>(), null, string.Empty);
+        return new EvaluatedFixture([], new Dictionary<RegressionStage, string>(), null, string.Empty, null);
     }
 }
 
 internal static class RegressionFixtureParser
 {
     private static readonly Regex DirectiveRegex = new(
-        @"^(?<name>EXPECT|NOTE|DIAGNOSTICS|STAGE|CONTAINS|SEQUENCE|EXACT|FLEXSPIN|ARGS):(?<value>.*)$",
+        @"^(?<name>EXPECT|NOTE|DIAGNOSTICS|STAGE|CONTAINS|SEQUENCE|EXACT|FLEXSPIN|ARGS|OUTPUT):(?<value>.*)$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex ExactDiagnosticRegex = new(
@@ -926,7 +1026,8 @@ internal static class RegressionFixtureParser
                     [],
                     [],
                     FlexspinExpectation.Forbidden,
-                    []));
+                    [],
+                    null));
         }
 
         string text = File.ReadAllText(fixturePath);
@@ -946,7 +1047,8 @@ internal static class RegressionFixtureParser
                 [],
                 [],
                 FlexspinExpectation.Auto,
-                []);
+                [],
+                null);
 
         if (kind != RegressionFixtureKind.Blade && expectation.HasDiagnosticAssertions)
             throw new InvalidOperationException("Assembly fixtures do not support DIAGNOSTICS assertions.");
@@ -960,10 +1062,20 @@ internal static class RegressionFixtureParser
         if (kind != RegressionFixtureKind.Blade && expectation.CompilerArgs.Count > 0)
             throw new InvalidOperationException("ARGS is only valid for .blade fixtures.");
 
-        if (expectation.ExpectationKind == RegressionExpectationKind.Pass
+        if (kind != RegressionFixtureKind.Blade && expectation.ExpectedHardwareOutput is not null)
+            throw new InvalidOperationException("OUTPUT is only valid for .blade fixtures.");
+
+        if (expectation.ExpectationKind != RegressionExpectationKind.PassHw && expectation.ExpectedHardwareOutput is not null)
+            throw new InvalidOperationException("OUTPUT is only valid with EXPECT: pass-hw.");
+
+        if (expectation.ExpectationKind == RegressionExpectationKind.PassHw && expectation.ExpectedHardwareOutput is null)
+            throw new InvalidOperationException("EXPECT: pass-hw requires OUTPUT.");
+
+        if ((expectation.ExpectationKind == RegressionExpectationKind.Pass
+                || expectation.ExpectationKind == RegressionExpectationKind.PassHw)
             && EnumerateExpectedDiagnosticCodes(expectation).Any(code => code.StartsWith('E')))
         {
-            throw new InvalidOperationException("EXPECT: pass cannot be combined with error diagnostic expectations.");
+            throw new InvalidOperationException($"EXPECT: {ExpectationName(expectation.ExpectationKind)} cannot be combined with error diagnostic expectations.");
         }
 
         return new RegressionFixture(fixturePath, relativePath, kind, text, headerScan.BodyText, expectation);
@@ -1002,6 +1114,7 @@ internal static class RegressionFixtureParser
         List<ExpectedDiagnostic> exactDiagnostics = [];
         FlexspinExpectation flexspinExpectation = FlexspinExpectation.Auto;
         List<string> compilerArgs = [];
+        uint? expectedHardwareOutput = null;
         StringBuilder? exactText = null;
         HeaderBlock? activeBlock = null;
 
@@ -1044,6 +1157,7 @@ internal static class RegressionFixtureParser
                         expectationKind = directiveValue switch
                         {
                             "pass" => RegressionExpectationKind.Pass,
+                            "pass-hw" => RegressionExpectationKind.PassHw,
                             "fail" => RegressionExpectationKind.Fail,
                             "xfail" => RegressionExpectationKind.XFail,
                             _ => throw new InvalidOperationException($"Unsupported EXPECT value '{directiveValue}'."),
@@ -1098,6 +1212,17 @@ internal static class RegressionFixtureParser
                             _ => throw new InvalidOperationException($"Unsupported FLEXSPIN value '{directiveValue}'."),
                         };
                         break;
+
+                    case "OUTPUT":
+                        try
+                        {
+                            expectedHardwareOutput = UIntLiteralParser.Parse(directiveValue);
+                        }
+                        catch (Exception ex) when (ex is FormatException or OverflowException)
+                        {
+                            throw new InvalidOperationException($"Invalid OUTPUT value '{directiveValue}'.", ex);
+                        }
+                        break;
                 }
 
                 continue;
@@ -1151,7 +1276,20 @@ internal static class RegressionFixtureParser
             looseDiagnosticCodes,
             exactDiagnostics,
             flexspinExpectation,
-            compilerArgs);
+            compilerArgs,
+            expectedHardwareOutput);
+    }
+
+    private static string ExpectationName(RegressionExpectationKind expectationKind)
+    {
+        return expectationKind switch
+        {
+            RegressionExpectationKind.Pass => "pass",
+            RegressionExpectationKind.PassHw => "pass-hw",
+            RegressionExpectationKind.Fail => "fail",
+            RegressionExpectationKind.XFail => "xfail",
+            _ => throw new InvalidOperationException($"Unknown expectation kind '{expectationKind}'."),
+        };
     }
 
     private static IReadOnlyList<string> SplitHeaderArgs(string text)
@@ -1579,6 +1717,9 @@ internal sealed class ArtifactWriter
             File.WriteAllText(Path.Combine(artifactDirectoryPath, stageFileName), content);
         }
 
+        if (evaluatedFixture.HardwareBinary is not null)
+            File.WriteAllBytes(Path.Combine(artifactDirectoryPath, "hardware.bin"), evaluatedFixture.HardwareBinary);
+
         if (fixture.Kind != RegressionFixtureKind.Blade)
             File.WriteAllText(Path.Combine(artifactDirectoryPath, "fixture-body.txt"), fixture.BodyText);
 
@@ -1667,6 +1808,20 @@ internal sealed class FlexspinResult
     public IReadOnlyList<string> OutputLines { get; }
 }
 
+internal sealed class FlexspinBinaryResult
+{
+    public FlexspinBinaryResult(bool succeeded, IReadOnlyList<string> outputLines, byte[]? binaryBytes)
+    {
+        Succeeded = succeeded;
+        OutputLines = outputLines;
+        BinaryBytes = binaryBytes;
+    }
+
+    public bool Succeeded { get; }
+    public IReadOnlyList<string> OutputLines { get; }
+    public byte[]? BinaryBytes { get; }
+}
+
 internal static class FlexspinRunner
 {
     public static FlexspinProbeResult ProbeAvailability()
@@ -1706,19 +1861,47 @@ internal static class FlexspinRunner
 
     public static FlexspinResult Run(string sourceText, string fileExtension)
     {
+        return RunCore(sourceText, fileExtension);
+    }
+
+    public static FlexspinBinaryResult BuildBinary(string sourceText)
+    {
+        string tempDirectoryPath = Path.Combine(Path.GetTempPath(), "blade-regressions", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDirectoryPath);
+        string sourcePath = Path.Combine(tempDirectoryPath, "fixture.spin2");
+        string binaryPath = Path.Combine(tempDirectoryPath, "fixture.bin");
+        File.WriteAllText(sourcePath, sourceText);
+
+        ProcessStartInfo startInfo = CreateStartInfo();
+        startInfo.ArgumentList.Add("-2");
+        startInfo.ArgumentList.Add("-b");
+        startInfo.ArgumentList.Add("-o");
+        startInfo.ArgumentList.Add(binaryPath);
+        startInfo.ArgumentList.Add(sourcePath);
+
+        using Process process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Failed to start flexspin.");
+        string stdout = process.StandardOutput.ReadToEnd();
+        string stderr = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+
+        List<string> outputLines = CombineOutputLines(stdout, stderr);
+        byte[]? binaryBytes = process.ExitCode == 0 && File.Exists(binaryPath)
+            ? File.ReadAllBytes(binaryPath)
+            : null;
+
+        DeleteTempDirectory(tempDirectoryPath);
+        return new FlexspinBinaryResult(process.ExitCode == 0, outputLines, binaryBytes);
+    }
+
+    private static FlexspinResult RunCore(string sourceText, string fileExtension)
+    {
         string tempDirectoryPath = Path.Combine(Path.GetTempPath(), "blade-regressions", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDirectoryPath);
         string sourcePath = Path.Combine(tempDirectoryPath, $"fixture{fileExtension}");
         File.WriteAllText(sourcePath, sourceText);
 
-        ProcessStartInfo startInfo = new()
-        {
-            FileName = "flexspin",
-            RedirectStandardError = true,
-            RedirectStandardOutput = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
+        ProcessStartInfo startInfo = CreateStartInfo();
         startInfo.ArgumentList.Add("-2");
         startInfo.ArgumentList.Add("-c");
         startInfo.ArgumentList.Add("-q");
@@ -1730,11 +1913,34 @@ internal static class FlexspinRunner
         string stderr = process.StandardError.ReadToEnd();
         process.WaitForExit();
 
-        List<string> outputLines = stdout
+        List<string> outputLines = CombineOutputLines(stdout, stderr);
+        DeleteTempDirectory(tempDirectoryPath);
+
+        return new FlexspinResult(process.ExitCode == 0, outputLines);
+    }
+
+    private static ProcessStartInfo CreateStartInfo()
+    {
+        return new ProcessStartInfo
+        {
+            FileName = "flexspin",
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+    }
+
+    private static List<string> CombineOutputLines(string stdout, string stderr)
+    {
+        return stdout
             .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Concat(stderr.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             .ToList();
+    }
 
+    internal static void DeleteTempDirectory(string tempDirectoryPath)
+    {
         try
         {
             Directory.Delete(tempDirectoryPath, recursive: true);
@@ -1745,8 +1951,62 @@ internal static class FlexspinRunner
         catch (UnauthorizedAccessException)
         {
         }
+    }
+}
 
-        return new FlexspinResult(process.ExitCode == 0, outputLines);
+internal sealed class HardwareExecutionResult
+{
+    private HardwareExecutionResult(bool attempted, IReadOnlyList<string> issues, byte[]? binaryBytes)
+    {
+        Attempted = attempted;
+        Issues = issues;
+        BinaryBytes = binaryBytes;
+    }
+
+    public bool Attempted { get; }
+    public IReadOnlyList<string> Issues { get; }
+    public byte[]? BinaryBytes { get; }
+
+    public static HardwareExecutionResult NotAttempted() => new(false, [], null);
+
+    public static HardwareExecutionResult Succeeded(byte[] binaryBytes) => new(true, [], binaryBytes);
+
+    public static HardwareExecutionResult Failed(IReadOnlyList<string> issues, byte[]? binaryBytes = null) => new(true, issues, binaryBytes);
+}
+
+internal static class HardwareFixtureRunner
+{
+    public static uint Run(byte[] binaryBytes, string portName)
+    {
+        string tempDirectoryPath = Path.Combine(Path.GetTempPath(), "blade-regressions", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDirectoryPath);
+        string binaryPath = Path.Combine(tempDirectoryPath, "fixture.bin");
+        File.WriteAllBytes(binaryPath, binaryBytes);
+
+        try
+        {
+            Runner runner = new()
+            {
+                PortName = portName,
+            };
+            return runner.Execute(binaryPath);
+        }
+        finally
+        {
+            FlexspinRunner.DeleteTempDirectory(tempDirectoryPath);
+        }
+    }
+}
+
+internal static class HardwarePortResolver
+{
+    public static string? Resolve(string? explicitPort)
+    {
+        if (!string.IsNullOrWhiteSpace(explicitPort))
+            return explicitPort;
+
+        string? envPort = Environment.GetEnvironmentVariable("BLADE_TEST_PORT");
+        return string.IsNullOrWhiteSpace(envPort) ? null : envPort;
     }
 }
 
@@ -1894,6 +2154,7 @@ internal static class RegressionCommandLine
     public static RegressionRunOptions Parse(string[] args)
     {
         string? repositoryRootPath = null;
+        string? hardwarePort = null;
         bool writeFailureArtifacts = true;
         List<string> filters = [];
 
@@ -1912,6 +2173,12 @@ internal static class RegressionCommandLine
                     writeFailureArtifacts = false;
                     break;
 
+                case "--hw-port":
+                    if (i + 1 >= args.Length)
+                        throw new InvalidOperationException("Missing value for --hw-port.");
+                    hardwarePort = args[++i];
+                    break;
+
                 default:
                     filters.Add(arg);
                     break;
@@ -1923,6 +2190,7 @@ internal static class RegressionCommandLine
             RepositoryRootPath = repositoryRootPath,
             Filters = filters,
             WriteFailureArtifacts = writeFailureArtifacts,
+            HardwarePort = HardwarePortResolver.Resolve(hardwarePort),
         };
     }
 }

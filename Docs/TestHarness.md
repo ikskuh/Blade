@@ -46,11 +46,24 @@ The supported directives are intentionally simple.
 // EXPECT: pass
 // EXPECT: fail
 // EXPECT: xfail
+// EXPECT: pass-hw
 ```
 
 - `pass` means the fixture must satisfy all assertions and, unless `DIAGNOSTICS` says otherwise, emit zero diagnostics.
+- `pass-hw` means the fixture must satisfy the normal `pass` checks and, when hardware is configured, also pass real hardware execution using the hardware test runtime and `OUTPUT`.
 - `fail` means the fixture must fail in the way the header describes.
 - `xfail` means the current failure shape is intentional. If the fixture unexpectedly starts passing, the suite fails so the expectation can be revisited.
+
+### `OUTPUT`
+
+`OUTPUT` is only valid for `.blade` fixtures with `EXPECT: pass-hw` and is required there.
+
+```blade
+// EXPECT: pass-hw
+// OUTPUT: 0xDEADBEEF
+```
+
+The value is parsed as an unsigned 32-bit integer. Supported prefixes are `0x` (hex), `0b` (binary), and `0o` (octal); unprefixed values are decimal.
 
 ### `NOTE`
 
@@ -204,6 +217,8 @@ Block form:
 
 Supported options are compiler optimization toggles, `-fno-mir-opt=single-callsite-inline`, module mappings via `--module=<name>=<path>`, and runtime templates via `--runtime=<path>` (resolved relative to the fixture file).
 
+For `EXPECT: pass-hw`, the regression harness implicitly injects `--runtime=<repo-root>/Blade.HwTestRunner/Runtime.spin2` unless the fixture already specifies an explicit `--runtime=...` in `ARGS`.
+
 ### `FLEXSPIN`
 
 ```blade
@@ -255,7 +270,14 @@ entry
 ## Commands
 
 - `just regressions` runs the full regression corpus
+- `just regressions -- --hw-port <port>` runs the full regression corpus and enables real hardware execution for `EXPECT: pass-hw` fixtures
 - `just coverage` runs `dotnet test --collect:"XPlat Code Coverage"`
+
+Hardware port resolution order for `EXPECT: pass-hw` is:
+
+- `--hw-port <port>`
+- `BLADE_TEST_PORT`
+- no hardware execution; the fixture still runs as a normal compile/FlexSpin regression using the hardware runtime
 
 The NUnit suite contains a thin wrapper that invokes the regression runner in-process, so the regression harness contributes to the existing coverage data without a second coverage pipeline.
 

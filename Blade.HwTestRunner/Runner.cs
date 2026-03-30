@@ -95,7 +95,6 @@ public sealed class Runner
         }
         catch (Exception)
         {
-
             Console.Error.WriteLine("stdout: {0}", Convert.ToHexString(suffix_bytes));
             Console.Error.WriteLine("stderr: {0}", Convert.ToHexString(stderr_bytes));
             throw;
