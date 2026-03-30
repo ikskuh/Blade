@@ -1,0 +1,9 @@
+// EXPECT: pass
+// STAGE: final-asm
+// ARGS: --runtime=../../Work/RuntimeTemplates/basic_template.spin2
+// CONTAINS:
+// - RUNTIME_BOOT_MAGIC = $42
+// - JMP #blade_entry
+// - blade_entry
+// - JMP #blade_halt
+var flag: u32 = 1;

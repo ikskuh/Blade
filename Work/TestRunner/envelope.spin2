@@ -34,8 +34,12 @@ DAT
 
     WAITX ##20_000_000
 
-    WYPIN #$21, #TXD_PIN
+    ' First write must be without the "wait busy" logic as the pin would never trigger this!
+    ' Write the "start of execution marker":
+    WYPIN #"!", #TXD_PIN 
+    JMP #blade_entry
 
+blade_exit
     CALLPA #"?", #rt_write_byte
 
     CALLPB #0, #rt_write_hex_long
@@ -44,17 +48,23 @@ DAT
     CALLPB #$1FF, #rt_write_hex_long
     CALLPB ##$CAFEBABE, #rt_write_hex_long
 
-  main_loop
-    TESTP #RXD_PIN WC
-    IF_NC JMP #main_loop
+    REP @.end, #0
+    NOP
+.end
 
-    RDPIN rt_tmp0, #RXD_PIN '' read received word
-    SHR rt_tmp0, #32-8 '' right-justify it
+blade_entry
+        TESTP   #RXD_PIN WC
+IF_NC   JMP     #blade_entry
 
-    CALLPA rt_tmp0, #rt_write_byte
+        RDPIN   rt_tmp0, #RXD_PIN ' read received word
+        SHR     rt_tmp0, #32-8      ' right-justify it
 
-    JMP #main_loop
+        CALLPA  rt_tmp0, #rt_write_byte
 
+        CMP     rt_tmp0, #"x" WZ
+IF_Z    JMP     #blade_exit
+
+        JMP     #blade_entry
 
 rt_write_hex_long ' (chr: PB)
         MOV     rt_tmp0, #8

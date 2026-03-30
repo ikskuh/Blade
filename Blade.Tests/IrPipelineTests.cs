@@ -56,6 +56,22 @@ public class IrPipelineTests
     }
 
     [Test]
+    public void EntryPointExit_ExportsBladeEntryAndJumpsToBladeHalt()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            var flag: u32 = 1;
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        IrBuildResult build = IrPipeline.Build(program);
+
+        Assert.That(build.AssemblyText, Does.Contain("blade_entry"));
+        Assert.That(build.AssemblyText, Does.Contain("JMP #blade_halt"));
+        Assert.That(build.AssemblyText, Does.Contain("blade_halt"));
+        Assert.That(build.AssemblyText, Does.Contain("REP #1, #0"));
+    }
+
+    [Test]
     public void DumpContentBuilder_CanEmitPreOptimizationStageDumps()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""

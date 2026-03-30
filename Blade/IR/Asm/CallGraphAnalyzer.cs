@@ -39,7 +39,7 @@ public enum CallingConventionTier
     Interrupt,
 
     /// <summary>Entry point (top-level code). No calling convention — just runs.
-    /// Exit is an endless halt loop (REP #1, #0 + NOP).</summary>
+    /// Exit transfers to the runtime halt hook.</summary>
     EntryPoint,
 }
 

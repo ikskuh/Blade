@@ -33,6 +33,7 @@ internal static class Program
             EnabledAsmirOptimizations = options.EnabledAsmirOptimizations,
             NamedModuleRoots = options.NamedModuleRoots,
             ComptimeFuel = options.ComptimeFuel,
+            RuntimeTemplate = options.RuntimeTemplate,
         };
 
         CompilationResult compilation;

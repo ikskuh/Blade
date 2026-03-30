@@ -143,6 +143,23 @@ def contains_param(items: Iterable[str], name: str) -> bool:
         
     return False 
 
+def map_argument(arg: str) -> str | McpOutput:
+    "Maps connector-specific path-bearing compiler arguments."
+
+    if not arg.startswith("--runtime="):
+        return arg
+
+    raw_path = arg[len("--runtime="):]
+    path = map_path(raw_path)
+    if path is None:
+        return McpOutput(
+            reason=f"runtime template {raw_path!r} is a path outside the repository"
+        )
+    if not path.is_file():
+        return McpOutput(reason=f"runtime template {raw_path!r} does not exist")
+
+    return f"--runtime={path.as_posix()}"
+
 @mcp.tool()
 def compile_file(params: CompileParameter) -> CompilerOutput | McpOutput:
     """
@@ -206,7 +223,11 @@ def compile_file(params: CompileParameter) -> CompilerOutput | McpOutput:
             if RequestedDump.final_asm in params.dumps:
                 argv.append("--dump-final-asm")
 
-        argv.extend(params.arguments)
+        for arg in params.arguments:
+            mapped = map_argument(arg)
+            if isinstance(mapped, McpOutput):
+                return mapped
+            argv.append(mapped)
         argv.append(str(input_file))
 
         result = subprocess.run(

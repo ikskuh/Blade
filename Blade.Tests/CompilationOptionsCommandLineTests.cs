@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using Blade.IR;
 
 namespace Blade.Tests;
@@ -14,6 +15,7 @@ public sealed class CompilationOptionsCommandLineTests
         Assert.That(CompilationOptionsCommandLine.IsCompilationOption("-fasmir-opt=*"), Is.True);
         Assert.That(CompilationOptionsCommandLine.IsCompilationOption("--comptime-fuel=123"), Is.True);
         Assert.That(CompilationOptionsCommandLine.IsCompilationOption("--module=extmod=mods/ext.blade"), Is.True);
+        Assert.That(CompilationOptionsCommandLine.IsCompilationOption("--runtime=runtime.spin2"), Is.True);
         Assert.That(CompilationOptionsCommandLine.IsCompilationOption("--dump-bound"), Is.False);
         Assert.That(CompilationOptionsCommandLine.IsCompilationOption("input.blade"), Is.False);
     }
@@ -76,6 +78,67 @@ public sealed class CompilationOptionsCommandLineTests
         Assert.That(succeeded, Is.False);
         Assert.That(errorMessage, Is.EqualTo("error: module name 'builtin' is reserved for the compiler-provided builtin module."));
         Assert.That(options.NamedModuleRoots.Count, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void TryParse_ResolvesRuntimeTemplateRelativeToBaseDirectory()
+    {
+        using TempDirectory tempDirectory = new();
+        string runtimeDirectory = Path.Combine(tempDirectory.Path, "runtimes");
+        Directory.CreateDirectory(runtimeDirectory);
+        string runtimePath = Path.Combine(runtimeDirectory, "basic.spin2");
+        File.WriteAllText(runtimePath, """
+            CON
+                ' <<BLADE_CON>>
+
+            DAT
+              runtime_entry
+                JMP #blade_entry
+              ' <<BLADE_DAT>>
+
+              blade_halt
+                JMP #blade_halt
+            """);
+
+        bool succeeded = CompilationOptionsCommandLine.TryParse(
+            ["--runtime=runtimes/basic.spin2"],
+            tempDirectory.Path,
+            out CompilationOptions options,
+            out string? errorMessage);
+
+        Assert.That(succeeded, Is.True);
+        Assert.That(errorMessage, Is.Null);
+        Assert.That(options.RuntimeTemplate, Is.Not.Null);
+        Assert.That(options.RuntimeTemplate!.SourcePath, Is.EqualTo(runtimePath));
+    }
+
+    [Test]
+    public void TryParse_RejectsDuplicateRuntimeTemplateSpecification()
+    {
+        using TempDirectory tempDirectory = new();
+        string runtimePath = Path.Combine(tempDirectory.Path, "basic.spin2");
+        File.WriteAllText(runtimePath, """
+            CON
+                ' <<BLADE_CON>>
+
+            DAT
+              runtime_entry
+                JMP #blade_entry
+              ' <<BLADE_DAT>>
+
+              blade_halt
+                JMP #blade_halt
+            """);
+
+        bool succeeded = CompilationOptionsCommandLine.TryParse(
+            ["--runtime=basic.spin2", "--runtime=basic.spin2"],
+            tempDirectory.Path,
+            out CompilationOptions options,
+            out string? errorMessage);
+
+        Assert.That(succeeded, Is.False);
+        Assert.That(errorMessage, Is.EqualTo("error: duplicate runtime template specification."));
+        Assert.That(options.RuntimeTemplate, Is.Null);
     }
 
     [TestCase("--comptime-fuel=0", "0")]

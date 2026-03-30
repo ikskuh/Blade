@@ -2144,7 +2144,7 @@ public static class AsmLowerer
 
             case LirUnreachableTerminator:
                 nodes.Add(new AsmCommentNode("unreachable"));
-                EmitHaltLoop(nodes);
+                EmitHaltJump(nodes);
                 break;
         }
     }
@@ -2218,8 +2218,8 @@ public static class AsmLowerer
         switch (ctx.Tier)
         {
             case CallingConventionTier.EntryPoint:
-                // Entry point "returns" by halting: endless loop with interrupts shielded
-                EmitHaltLoop(nodes);
+                // Entry point "returns" by transferring control into the runtime halt hook.
+                EmitHaltJump(nodes);
                 break;
 
             case CallingConventionTier.Recursive:
@@ -2269,18 +2269,12 @@ public static class AsmLowerer
         }
     }
 
-    /// <summary>
-    /// Emit an endless halt loop: REP #1, #0 followed by NOP.
-    /// REP #1, #0 repeats the next 1 instruction forever (count=0 means infinite).
-    /// This keeps the COG alive without executing real work.
-    /// </summary>
-    private static void EmitHaltLoop(List<AsmNode> nodes)
+    private static void EmitHaltJump(List<AsmNode> nodes)
     {
-        nodes.Add(new AsmCommentNode("halt: endless loop"));
-        nodes.Add(new AsmInstructionNode(P2Mnemonic.REP,
-            [new AsmImmediateOperand(1), new AsmImmediateOperand(0)],
-            isNonElidable: true));
-        nodes.Add(new AsmInstructionNode(P2Mnemonic.NOP, [], isNonElidable: true));
+        nodes.Add(new AsmCommentNode("halt: runtime hook"));
+        nodes.Add(Emit(
+            P2Mnemonic.JMP,
+            new AsmSymbolOperand(new ControlFlowLabelSymbol(RuntimeTemplate.HaltLabel), AsmSymbolAddressingMode.Immediate)));
     }
 
     private static void LowerBranch(List<AsmNode> nodes, LoweringContext ctx, LirBranchTerminator branch)

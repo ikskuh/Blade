@@ -18,6 +18,9 @@ public static class CompilationOptionsCommandLine
         if (arg.StartsWith("--module=", StringComparison.Ordinal))
             return true;
 
+        if (arg.StartsWith("--runtime=", StringComparison.Ordinal))
+            return true;
+
         if (arg.StartsWith("-fmir-opt=", StringComparison.Ordinal) ||
             arg.StartsWith("-fno-mir-opt=", StringComparison.Ordinal) ||
             arg.StartsWith("-flir-opt=", StringComparison.Ordinal) ||
@@ -39,6 +42,7 @@ public static class CompilationOptionsCommandLine
         string normalizedBaseDirectory = Path.GetFullPath(baseDirectory);
         Dictionary<string, string> namedModuleRoots = new(StringComparer.Ordinal);
         int parsedComptimeFuel = 250;
+        RuntimeTemplate? runtimeTemplate = null;
 
         OptimizationSet<MirOptimization> mirSet = new(OptimizationRegistry.AllMirOptimizations, "mir");
         OptimizationSet<LirOptimization> lirSet = new(OptimizationRegistry.AllLirOptimizations, "lir");
@@ -129,6 +133,25 @@ public static class CompilationOptionsCommandLine
                 return false;
             }
 
+            if (TryParseRuntimeTemplate(arg, normalizedBaseDirectory, out RuntimeTemplate? parsedRuntimeTemplate, out errorMessage))
+            {
+                if (runtimeTemplate is not null)
+                {
+                    options = new CompilationOptions();
+                    errorMessage = "error: duplicate runtime template specification.";
+                    return false;
+                }
+
+                runtimeTemplate = parsedRuntimeTemplate;
+                continue;
+            }
+
+            if (errorMessage is not null)
+            {
+                options = new CompilationOptions();
+                return false;
+            }
+
             options = new CompilationOptions();
             errorMessage = $"error: unsupported compiler option '{arg}'.";
             return false;
@@ -141,6 +164,7 @@ public static class CompilationOptionsCommandLine
             EnabledAsmirOptimizations = asmirSet.ToList(),
             NamedModuleRoots = namedModuleRoots,
             ComptimeFuel = parsedComptimeFuel,
+            RuntimeTemplate = runtimeTemplate,
         };
         errorMessage = null;
         return true;
@@ -218,6 +242,29 @@ public static class CompilationOptionsCommandLine
         moduleName = name;
         modulePath = Path.GetFullPath(pathText, baseDirectory);
         return true;
+    }
+
+    private static bool TryParseRuntimeTemplate(
+        string arg,
+        string baseDirectory,
+        out RuntimeTemplate? runtimeTemplate,
+        out string? errorMessage)
+    {
+        runtimeTemplate = null;
+        errorMessage = null;
+
+        if (!TryGetArgumentValue(arg, "--runtime=", out string? pathText))
+            return false;
+
+        string trimmedPath = pathText.Trim();
+        if (trimmedPath.Length == 0)
+        {
+            errorMessage = "error: invalid runtime template specification '--runtime='. Expected --runtime=<path>.";
+            return false;
+        }
+
+        string fullPath = Path.GetFullPath(trimmedPath, baseDirectory);
+        return RuntimeTemplate.TryLoad(fullPath, out runtimeTemplate, out errorMessage);
     }
 
     private sealed class OptimizationSet<T> where T : Optimization

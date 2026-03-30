@@ -173,6 +173,7 @@ internal static class CommandLineParser
             EnabledAsmirOptimizations = compilerOptions.EnabledAsmirOptimizations,
             NamedModuleRoots = compilerOptions.NamedModuleRoots,
             ComptimeFuel = compilerOptions.ComptimeFuel,
+            RuntimeTemplate = compilerOptions.RuntimeTemplate,
         };
     }
 
@@ -197,5 +198,6 @@ internal static class CommandLineParser
         Console.Error.WriteLine("  -flir-opt=<csv> / -fno-lir-opt=<csv>");
         Console.Error.WriteLine("  -fasmir-opt=<csv> / -fno-asmir-opt=<csv>");
         Console.Error.WriteLine("  --module=<name>=<path>");
+        Console.Error.WriteLine("  --runtime=<path>");
     }
 }

@@ -21,6 +21,20 @@ public static class FinalAssemblyWriter
 
     public static string Write(AsmModule module)
     {
+        return Build(module).Text;
+    }
+
+    public static FinalAssembly Build(AsmModule module, RuntimeTemplate? runtimeTemplate = null)
+    {
+        Requires.NotNull(module);
+
+        string conSectionContents = WriteConSectionContents(module);
+        string datSectionContents = WriteDatSectionContents(module, includeDefaultBladeHalt: runtimeTemplate is null);
+        return FinalAssemblyComposer.Compose(conSectionContents, datSectionContents, runtimeTemplate);
+    }
+
+    public static string WriteConSectionContents(AsmModule module)
+    {
         Requires.NotNull(module);
 
         HashSet<string> functionNames = module.Functions
@@ -28,9 +42,24 @@ public static class FinalAssemblyWriter
             .ToHashSet(StringComparer.Ordinal);
 
         StringBuilder sb = new();
-        WriteConBlock(sb, module, functionNames);
-        sb.AppendLine("DAT");
-        sb.AppendLine("    org 0");
+        WriteConSectionContents(sb, module, functionNames);
+        return sb.ToString();
+    }
+
+    public static string WriteDatSectionContents(AsmModule module)
+    {
+        return WriteDatSectionContents(module, includeDefaultBladeHalt: false);
+    }
+
+    private static string WriteDatSectionContents(AsmModule module, bool includeDefaultBladeHalt)
+    {
+        Requires.NotNull(module);
+
+        HashSet<string> functionNames = module.Functions
+            .Select(static function => function.Name)
+            .ToHashSet(StringComparer.Ordinal);
+
+        StringBuilder sb = new();
         sb.AppendLine("    ' --- Blade compiler output ---");
 
         foreach (AsmFunction function in module.Functions)
@@ -41,17 +70,18 @@ public static class FinalAssemblyWriter
             sb.Append(" (");
             sb.Append(function.CcTier);
             sb.AppendLine(")");
+            if (function.IsEntryPoint)
+                sb.AppendLine("  blade_entry");
             sb.Append("  ");
             sb.AppendLine(FormatFunctionIdentifier(function.Name));
-            WriteFunctionNodes(sb, function.Nodes, functionNames);
+            WriteFunctionNodes(sb, function.Nodes, functionNames, includeDefaultBladeHalt && function.IsEntryPoint);
         }
 
         return sb.ToString();
     }
 
-    private static void WriteConBlock(StringBuilder sb, AsmModule module, IReadOnlySet<string> functionNames)
+    private static void WriteConSectionContents(StringBuilder sb, AsmModule module, IReadOnlySet<string> functionNames)
     {
-        bool wroteHeader = false;
         foreach (StoragePlace place in module.StoragePlaces)
         {
             if (place.Kind is not (StoragePlaceKind.FixedRegisterAlias
@@ -65,28 +95,32 @@ public static class FinalAssemblyWriter
             if (place.SpecialRegisterAlias is not null)
                 continue;
 
-            if (!wroteHeader)
-            {
-                sb.AppendLine("CON");
-                wroteHeader = true;
-            }
-
             sb.Append("    ");
             sb.Append(FormatIdentifier(place.EmittedName, functionNames));
             sb.Append(" = $");
             sb.Append(place.FixedAddress.Value.ToString("X", CultureInfo.InvariantCulture));
             sb.AppendLine();
         }
-
-        if (wroteHeader)
-            sb.AppendLine();
     }
 
-    private static void WriteFunctionNodes(StringBuilder sb, IReadOnlyList<AsmNode> nodes, IReadOnlySet<string> functionNames)
+    private static void WriteFunctionNodes(
+        StringBuilder sb,
+        IReadOnlyList<AsmNode> nodes,
+        IReadOnlySet<string> functionNames,
+        bool includeDefaultBladeHalt)
     {
         int index = 0;
+        bool wroteDefaultBladeHalt = false;
         while (index < nodes.Count)
         {
+            if (includeDefaultBladeHalt
+                && !wroteDefaultBladeHalt
+                && nodes[index] is AsmSectionNode)
+            {
+                WriteDefaultBladeHalt(sb);
+                wroteDefaultBladeHalt = true;
+            }
+
             if (TryWriteRegisterFile(sb, nodes, ref index, functionNames))
                 continue;
 
@@ -102,6 +136,18 @@ public static class FinalAssemblyWriter
             WriteNode(sb, nodes[index], functionNames);
             index++;
         }
+
+        if (includeDefaultBladeHalt && !wroteDefaultBladeHalt)
+            WriteDefaultBladeHalt(sb);
+    }
+
+    private static void WriteDefaultBladeHalt(StringBuilder sb)
+    {
+        sb.AppendLine();
+        sb.AppendLine("    ' halt: default runtime hook");
+        sb.AppendLine("  blade_halt");
+        sb.AppendLine("    REP #1, #0");
+        sb.AppendLine("    NOP");
     }
 
     private static bool TryWriteRegisterFile(

@@ -7,11 +7,10 @@
 // - OR _r1, #0
 // - ADD _r1, #0
 // SEQUENCE:
-// - REP #1, #0
-// - NOP
+// - JMP #blade_halt
 // NOTE:
 //   Negative case for elide-nops: with optimization disabled, the inline no-ops remain
-//   and the halt sentinel still retains its exact REP+NOP shape.
+//   and the entry-point exit still targets the runtime halt hook.
 
 reg var sink: u32 = 0;
 var x: u32 = 1;

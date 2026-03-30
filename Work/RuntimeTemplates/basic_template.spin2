@@ -1,0 +1,11 @@
+CON
+    RUNTIME_BOOT_MAGIC = $42
+    ' <<BLADE_CON>>
+
+DAT
+  runtime_entry
+    JMP #blade_entry
+  ' <<BLADE_DAT>>
+
+  blade_halt
+    JMP #blade_halt

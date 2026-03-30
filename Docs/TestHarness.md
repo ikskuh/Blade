@@ -202,7 +202,7 @@ Block form:
 // - -fasmir-opt=elide-nops
 ```
 
-Supported options are compiler optimization toggles, `-fno-mir-opt=single-callsite-inline`, and module mappings via `--module=<name>=<path>` (resolved relative to the fixture file).
+Supported options are compiler optimization toggles, `-fno-mir-opt=single-callsite-inline`, module mappings via `--module=<name>=<path>`, and runtime templates via `--runtime=<path>` (resolved relative to the fixture file).
 
 ### `FLEXSPIN`
 

@@ -56,6 +56,7 @@ public static class IrPipeline
         EmitResult emitResult = CodegenPipeline.Emit(preEmit, new EmitOptions
         {
             EnabledAsmirOptimizations = options.EnabledAsmirOptimizations,
+            RuntimeTemplate = options.RuntimeTemplate,
         });
         return new IrBuildResult(
             boundProgram,

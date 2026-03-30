@@ -8,4 +8,5 @@ public sealed class EmitOptions
     public IReadOnlyList<AsmOptimization> EnabledAsmirOptimizations { get; init; } = OptimizationRegistry.AllAsmOptimizations;
     public bool EnableRegisterAllocation { get; init; } = true;
     public bool EnableLegalization { get; init; } = true;
+    public RuntimeTemplate? RuntimeTemplate { get; init; }
 }

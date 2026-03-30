@@ -42,7 +42,7 @@ public static class CodegenPipeline
         if (options.EnableLegalization)
             asmModule = AsmLegalizer.Legalize(asmModule);
 
-        string assemblyText = FinalAssemblyWriter.Write(asmModule);
-        return new EmitResult(asmModule, assemblyText);
+        FinalAssembly finalAssembly = FinalAssemblyWriter.Build(asmModule, options.RuntimeTemplate);
+        return new EmitResult(asmModule, finalAssembly.Text);
     }
 }

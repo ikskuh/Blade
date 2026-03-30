@@ -9,11 +9,10 @@
 // ! OR #_r1, #0
 // ! ADD #_r1, #0
 // SEQUENCE:
-// - REP #1, #0
-// - NOP
+// - JMP #blade_halt
 // NOTE:
 //   Positive case for elide-nops: semantic no-ops inside asm must be removed
-//   without stripping the entry-point halt sentinel.
+//   without stripping the entry-point runtime halt jump.
 
 reg var sink: u32 = 0;
 var x: u32 = 1;

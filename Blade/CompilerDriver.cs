@@ -19,6 +19,7 @@ public sealed class CompilationOptions
     public IReadOnlyList<AsmOptimization> EnabledAsmirOptimizations { get; init; } = OptimizationRegistry.AllAsmOptimizations;
     public IReadOnlyDictionary<string, string> NamedModuleRoots { get; init; } = new Dictionary<string, string>();
     public int ComptimeFuel { get; init; } = 250;
+    public RuntimeTemplate? RuntimeTemplate { get; init; }
 }
 
 public sealed class CompilationResult
@@ -84,6 +85,7 @@ public static class CompilerDriver
                 EnabledMirOptimizations = SortOptimizations(effectiveOptions.EnabledMirOptimizations),
                 EnabledLirOptimizations = SortOptimizations(effectiveOptions.EnabledLirOptimizations),
                 EnabledAsmirOptimizations = SortOptimizations(effectiveOptions.EnabledAsmirOptimizations),
+                RuntimeTemplate = effectiveOptions.RuntimeTemplate,
             };
             irBuildResult = IrPipeline.Build(boundProgram, pipelineOptions, diagnostics);
         }
