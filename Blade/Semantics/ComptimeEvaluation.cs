@@ -9,7 +9,6 @@ namespace Blade.Semantics;
 
 internal enum ComptimeFailureKind
 {
-    None,
     NotEvaluable,
     UnsupportedConstruct,
     ForbiddenSymbolAccess,
@@ -18,10 +17,199 @@ internal enum ComptimeFailureKind
 
 internal readonly record struct ComptimeFailure(ComptimeFailureKind Kind, TextSpan Span, string Detail)
 {
-    public static ComptimeFailure None => new(ComptimeFailureKind.None, new TextSpan(0, 0), string.Empty);
+
 }
 
 internal readonly record struct ComptimeSupportResult(bool IsSupported, ComptimeFailure Failure);
+
+internal enum ComptimeType
+{
+    Void,
+    Undefined,
+    Bool,
+    Long,
+    Int,
+    UInt,
+    String,
+
+    /// <summary>
+    /// The comptime evaluation failed due to a evaluation error.
+    /// </summary>
+    EvaluationError,
+
+    /// <summary>
+    /// The comptime evaluation failed due to an unsupported construct in comptime code.
+    /// </summary>
+    Unsupported,
+}
+
+internal sealed class ComptimeResult
+{
+    /// <summary>
+    /// The value of the "void" type.
+    /// </summary>
+    public static readonly ComptimeResult Void = new(ComptimeType.Void, null);
+
+    /// <summary>
+    /// The value "undefined"
+    /// </summary>
+    public static readonly ComptimeResult Undefined = new(ComptimeType.Undefined, null);
+
+    /// <summary>
+    /// Truthy boolean value
+    /// </summary>
+    public static readonly ComptimeResult True = new(true);
+
+    /// <summary>
+    /// Falsy boolean value
+    /// </summary>
+    public static readonly ComptimeResult False = new(false);
+
+    private readonly object? value;
+
+    private ComptimeResult(ComptimeType type, object? value)
+    {
+        this.Type = type;
+        this.value = value;
+    }
+
+    public ComptimeResult(bool value) : this(ComptimeType.Bool, value) { }
+    public ComptimeResult(long value) : this(ComptimeType.Long, value) { }
+    public ComptimeResult(int value) : this(ComptimeType.Int, value) { }
+    public ComptimeResult(uint value) : this(ComptimeType.UInt, value) { }
+    public ComptimeResult(string value) : this(ComptimeType.String, value) { }
+
+    public ComptimeResult(ComptimeFailureKind kind, TextSpan span, string detail)
+    {
+        this.Type = kind switch
+        {
+            ComptimeFailureKind.ForbiddenSymbolAccess => ComptimeType.Unsupported,
+            ComptimeFailureKind.UnsupportedConstruct => ComptimeType.Unsupported,
+            ComptimeFailureKind.NotEvaluable => ComptimeType.EvaluationError,
+            ComptimeFailureKind.FuelExhausted => ComptimeType.EvaluationError,
+            _ => Assert.UnreachableValue<ComptimeType>($"Unsupported ComptimeFailureKind: {kind}"),
+        };
+        this.value = new ComptimeFailure(kind, span, detail);
+    }
+
+    public ComptimeResult(ComptimeFailure failure)
+        : this(failure.Kind, failure.Span, failure.Detail)
+    {
+    }
+
+    private bool TryGetValue<T>(ComptimeType expectedType, out T? result)
+    {
+        if (this.Type != expectedType)
+        {
+            result = default;
+            return false;
+        }
+        result = (T?)this.value;
+        return true;
+    }
+
+    public bool TryGetBool(out bool result)
+    {
+        result = default;
+        if (!this.TryGetValue<bool>(ComptimeType.Bool, out var erased))
+            return false;
+        result = (bool)erased;
+        return true;
+    }
+
+    public bool TryGetLong(out long result)
+    {
+        result = default;
+        if (!this.TryGetValue<long>(ComptimeType.Long, out var erased))
+            return false;
+        result = (long)erased;
+        return true;
+    }
+
+    public bool TryGetInt(out int result)
+    {
+        result = default;
+        if (!this.TryGetValue<int>(ComptimeType.Int, out var erased))
+            return false;
+        result = (int)erased;
+        return true;
+    }
+
+    public bool TryGetUInt(out uint result)
+    {
+        result = default;
+        if (!this.TryGetValue<uint>(ComptimeType.UInt, out var erased))
+            return false;
+        result = (uint)erased;
+        return true;
+    }
+
+    public bool TryGetString(out string result)
+    {
+        result = "";
+        if (!this.TryGetValue<string>(ComptimeType.String, out var erased))
+            return false;
+        Assert.Invariant(erased != null);
+        result = (string)erased;
+        return true;
+    }
+
+    public bool TryGetFailure(out ComptimeFailure result)
+    {
+        result = default;
+        if (!this.TryGetValue<ComptimeFailure>(ComptimeType.EvaluationError, out var erased))
+        {
+            if (!this.TryGetValue<ComptimeFailure>(ComptimeType.Unsupported, out erased))
+            {
+                return false;
+            }
+        }
+        result = (ComptimeFailure)erased;
+        return true;
+    }
+
+    /// <summary>
+    /// Converts the result into a long if possible. Only applies to numeric types (int, uint, long).
+    /// </summary>
+    /// <param name="result"></param>
+    /// <returns></returns>
+    public bool TryConvertToLong(out long result)
+    {
+        long? value = this.Type switch
+        {
+            ComptimeType.Bool => null,
+            ComptimeType.EvaluationError => null,
+            ComptimeType.Int => (int)this.value!,
+            ComptimeType.UInt => (uint)this.value!,
+            ComptimeType.Long => (long)this.value!,
+            ComptimeType.String => null,
+            ComptimeType.Undefined => null,
+            ComptimeType.Unsupported => null,
+            ComptimeType.Void => null,
+            _ => Assert.UnreachableValue<long?>($"Unexpected ComptimeType {this.Type}"),
+        };
+        result = value ?? 0L;
+        return value != null;
+    }
+
+    public ComptimeType Type { get; }
+
+    public bool IsFailed => this.Type switch
+    {
+        ComptimeType.EvaluationError => true,
+        ComptimeType.Unsupported => true,
+        _ => false,
+    };
+
+    public bool IsNumeric => this.Type switch
+    {
+        ComptimeType.Int => true,
+        ComptimeType.UInt => true,
+        ComptimeType.Long => true,
+        _ => false,
+    };
+}
+
 
 internal static class ComptimeTypeFacts
 {
@@ -192,68 +380,68 @@ internal sealed class ComptimeFunctionSupportAnalyzer
                     : AnalyzeExpression(declaration.Initializer);
 
             case BoundAssignmentStatement assignment:
-            {
-                ComptimeSupportResult targetResult = AnalyzeAssignmentTarget(assignment.Target);
-                if (!targetResult.IsSupported)
-                    return targetResult;
-
-                if (assignment.OperatorKind is not TokenKind.Equal
-                    and not TokenKind.PlusEqual
-                    and not TokenKind.MinusEqual
-                    and not TokenKind.PercentEqual
-                    and not TokenKind.AmpersandEqual
-                    and not TokenKind.PipeEqual
-                    and not TokenKind.CaretEqual
-                    and not TokenKind.LessLessEqual
-                    and not TokenKind.GreaterGreaterEqual)
                 {
-                    return Unsupported(assignment.Span, $"assignment operator '{assignment.OperatorKind}' is not supported.");
-                }
+                    ComptimeSupportResult targetResult = AnalyzeAssignmentTarget(assignment.Target);
+                    if (!targetResult.IsSupported)
+                        return targetResult;
 
-                return AnalyzeExpression(assignment.Value);
-            }
+                    if (assignment.OperatorKind is not TokenKind.Equal
+                        and not TokenKind.PlusEqual
+                        and not TokenKind.MinusEqual
+                        and not TokenKind.PercentEqual
+                        and not TokenKind.AmpersandEqual
+                        and not TokenKind.PipeEqual
+                        and not TokenKind.CaretEqual
+                        and not TokenKind.LessLessEqual
+                        and not TokenKind.GreaterGreaterEqual)
+                    {
+                        return Unsupported(assignment.Span, $"assignment operator '{assignment.OperatorKind}' is not supported.");
+                    }
+
+                    return AnalyzeExpression(assignment.Value);
+                }
 
             case BoundExpressionStatement expressionStatement:
                 return AnalyzeExpression(expressionStatement.Expression);
 
             case BoundIfStatement ifStatement:
-            {
-                ComptimeSupportResult conditionResult = AnalyzeExpression(ifStatement.Condition);
-                if (!conditionResult.IsSupported)
-                    return conditionResult;
+                {
+                    ComptimeSupportResult conditionResult = AnalyzeExpression(ifStatement.Condition);
+                    if (!conditionResult.IsSupported)
+                        return conditionResult;
 
-                ComptimeSupportResult thenResult = AnalyzeStatement(ifStatement.ThenBody);
-                if (!thenResult.IsSupported)
-                    return thenResult;
+                    ComptimeSupportResult thenResult = AnalyzeStatement(ifStatement.ThenBody);
+                    if (!thenResult.IsSupported)
+                        return thenResult;
 
-                return ifStatement.ElseBody is null
-                    ? Supported()
-                    : AnalyzeStatement(ifStatement.ElseBody);
-            }
+                    return ifStatement.ElseBody is null
+                        ? Supported()
+                        : AnalyzeStatement(ifStatement.ElseBody);
+                }
 
             case BoundWhileStatement whileStatement:
-            {
-                ComptimeSupportResult conditionResult = AnalyzeExpression(whileStatement.Condition);
-                if (!conditionResult.IsSupported)
-                    return conditionResult;
+                {
+                    ComptimeSupportResult conditionResult = AnalyzeExpression(whileStatement.Condition);
+                    if (!conditionResult.IsSupported)
+                        return conditionResult;
 
-                return AnalyzeStatement(whileStatement.Body);
-            }
+                    return AnalyzeStatement(whileStatement.Body);
+                }
 
             case BoundForStatement forStatement:
-            {
-                ComptimeSupportResult iterableResult = AnalyzeExpression(forStatement.Iterable);
-                if (!iterableResult.IsSupported)
-                    return iterableResult;
+                {
+                    ComptimeSupportResult iterableResult = AnalyzeExpression(forStatement.Iterable);
+                    if (!iterableResult.IsSupported)
+                        return iterableResult;
 
-                if (forStatement.Iterable.Type is ArrayTypeSymbol)
-                    return Unsupported(forStatement.Iterable.Span, "array iteration is not supported during comptime evaluation.");
+                    if (forStatement.Iterable.Type is ArrayTypeSymbol)
+                        return Unsupported(forStatement.Iterable.Span, "array iteration is not supported during comptime evaluation.");
 
-                if (forStatement.ItemVariable is not null && ComptimeTypeFacts.InvolvesPointers(forStatement.ItemVariable.Type))
-                    return Unsupported(forStatement.Span, $"loop item '{forStatement.ItemVariable.Name}' has a pointer-involving type.");
+                    if (forStatement.ItemVariable is not null && ComptimeTypeFacts.InvolvesPointers(forStatement.ItemVariable.Type))
+                        return Unsupported(forStatement.Span, $"loop item '{forStatement.ItemVariable.Name}' has a pointer-involving type.");
 
-                return AnalyzeStatement(forStatement.Body);
-            }
+                    return AnalyzeStatement(forStatement.Body);
+                }
 
             case BoundLoopStatement loopStatement:
                 return AnalyzeStatement(loopStatement.Body);
@@ -262,20 +450,20 @@ internal sealed class ComptimeFunctionSupportAnalyzer
                 return AnalyzeStatement(repLoopStatement.Body);
 
             case BoundRepForStatement repForStatement:
-            {
-                if (ComptimeTypeFacts.InvolvesPointers(repForStatement.Variable.Type))
-                    return Unsupported(repForStatement.Span, $"loop variable '{repForStatement.Variable.Name}' has a pointer-involving type.");
+                {
+                    if (ComptimeTypeFacts.InvolvesPointers(repForStatement.Variable.Type))
+                        return Unsupported(repForStatement.Span, $"loop variable '{repForStatement.Variable.Name}' has a pointer-involving type.");
 
-                ComptimeSupportResult startResult = AnalyzeExpression(repForStatement.Start);
-                if (!startResult.IsSupported)
-                    return startResult;
+                    ComptimeSupportResult startResult = AnalyzeExpression(repForStatement.Start);
+                    if (!startResult.IsSupported)
+                        return startResult;
 
-                ComptimeSupportResult endResult = AnalyzeExpression(repForStatement.End);
-                if (!endResult.IsSupported)
-                    return endResult;
+                    ComptimeSupportResult endResult = AnalyzeExpression(repForStatement.End);
+                    if (!endResult.IsSupported)
+                        return endResult;
 
-                return AnalyzeStatement(repForStatement.Body);
-            }
+                    return AnalyzeStatement(repForStatement.Body);
+                }
 
             case BoundNoirqStatement noirqStatement:
                 return AnalyzeStatement(noirqStatement.Body);
@@ -351,49 +539,49 @@ internal sealed class ComptimeFunctionSupportAnalyzer
                 return AnalyzeSymbolExpression(symbolExpression);
 
             case BoundUnaryExpression unary:
-            {
-                if (unary.Operator.Kind is BoundUnaryOperatorKind.AddressOf)
-                    return Unsupported(unary.Span, $"operator '{unary.Operator.Kind}' is not supported during comptime evaluation.");
-
-                return AnalyzeExpression(unary.Operand);
-            }
-
-            case BoundBinaryExpression binary:
-            {
-                ComptimeSupportResult leftResult = AnalyzeExpression(binary.Left);
-                if (!leftResult.IsSupported)
-                    return leftResult;
-
-                return AnalyzeExpression(binary.Right);
-            }
-
-            case BoundCallExpression call:
-            {
-                if (call.Function.ReturnTypes.Count > 1)
-                    return Unsupported(call.Span, $"function '{call.Function.Name}' returns multiple values.");
-
-                foreach (BoundExpression argument in call.Arguments)
                 {
-                    ComptimeSupportResult argumentResult = AnalyzeExpression(argument);
-                    if (!argumentResult.IsSupported)
-                        return argumentResult;
+                    if (unary.Operator.Kind is BoundUnaryOperatorKind.AddressOf)
+                        return Unsupported(unary.Span, $"operator '{unary.Operator.Kind}' is not supported during comptime evaluation.");
+
+                    return AnalyzeExpression(unary.Operand);
                 }
 
-                return Supported();
-            }
+            case BoundBinaryExpression binary:
+                {
+                    ComptimeSupportResult leftResult = AnalyzeExpression(binary.Left);
+                    if (!leftResult.IsSupported)
+                        return leftResult;
+
+                    return AnalyzeExpression(binary.Right);
+                }
+
+            case BoundCallExpression call:
+                {
+                    if (call.Function.ReturnTypes.Count > 1)
+                        return Unsupported(call.Span, $"function '{call.Function.Name}' returns multiple values.");
+
+                    foreach (BoundExpression argument in call.Arguments)
+                    {
+                        ComptimeSupportResult argumentResult = AnalyzeExpression(argument);
+                        if (!argumentResult.IsSupported)
+                            return argumentResult;
+                    }
+
+                    return Supported();
+                }
 
             case BoundIfExpression ifExpression:
-            {
-                ComptimeSupportResult conditionResult = AnalyzeExpression(ifExpression.Condition);
-                if (!conditionResult.IsSupported)
-                    return conditionResult;
+                {
+                    ComptimeSupportResult conditionResult = AnalyzeExpression(ifExpression.Condition);
+                    if (!conditionResult.IsSupported)
+                        return conditionResult;
 
-                ComptimeSupportResult thenResult = AnalyzeExpression(ifExpression.ThenExpression);
-                if (!thenResult.IsSupported)
-                    return thenResult;
+                    ComptimeSupportResult thenResult = AnalyzeExpression(ifExpression.ThenExpression);
+                    if (!thenResult.IsSupported)
+                        return thenResult;
 
-                return AnalyzeExpression(ifExpression.ElseExpression);
-            }
+                    return AnalyzeExpression(ifExpression.ElseExpression);
+                }
 
             case BoundConversionExpression conversion:
                 return AnalyzeExpression(conversion.Expression);
@@ -448,7 +636,7 @@ internal sealed class ComptimeFunctionSupportAnalyzer
         };
     }
 
-    private static ComptimeSupportResult Supported() => new(true, ComptimeFailure.None);
+    private static ComptimeSupportResult Supported() => new(true, default);
 
     private static ComptimeSupportResult Unsupported(TextSpan span, string detail)
         => new(false, new ComptimeFailure(ComptimeFailureKind.UnsupportedConstruct, span, detail));
@@ -476,248 +664,164 @@ internal sealed class ComptimeEvaluator
 
     public int Fuel { get; private set; }
 
-    public bool TryEvaluateExpression(BoundExpression expression, out object? value, out ComptimeFailure failure)
+    public ComptimeResult TryEvaluateExpression(BoundExpression expression)
     {
-        return TryEvaluateExpression(expression, new Dictionary<Symbol, object?>(), out value, out failure);
+        return TryEvaluateExpression(expression, new Dictionary<Symbol, ComptimeResult>());
     }
 
-    public bool TryEvaluateExpression(
+    public ComptimeResult TryEvaluateExpression(
         BoundExpression expression,
-        IReadOnlyDictionary<Symbol, object?> initialFrame,
-        out object? value,
-        out ComptimeFailure failure)
+        IReadOnlyDictionary<Symbol, ComptimeResult> initialFrame)
     {
-        Dictionary<Symbol, object?> frame = new(initialFrame.Count);
-        foreach ((Symbol symbol, object? symbolValue) in initialFrame)
+        Dictionary<Symbol, ComptimeResult> frame = new(initialFrame.Count);
+        foreach ((Symbol symbol, ComptimeResult symbolValue) in initialFrame)
             frame[symbol] = symbolValue;
 
-        return TryEvaluateExpression(expression, frame, out value, out failure);
+        return TryEvaluateExpression(expression, frame);
     }
 
-    private bool TryEvaluateExpression(
+    private ComptimeResult TryEvaluateExpression(
         BoundExpression expression,
-        Dictionary<Symbol, object?> frame,
-        out object? value,
-        out ComptimeFailure failure)
+        Dictionary<Symbol, ComptimeResult> frame)
     {
-        switch (expression)
+        return expression switch
         {
-            case BoundLiteralExpression literal:
-                value = literal.Value;
-                failure = ComptimeFailure.None;
-                return true;
-
-            case BoundEnumLiteralExpression enumLiteral:
-                value = enumLiteral.Value;
-                failure = ComptimeFailure.None;
-                return true;
-
-            case BoundSymbolExpression symbolExpression:
-                return TryEvaluateSymbol(symbolExpression, frame, out value, out failure);
-
-            case BoundUnaryExpression unary:
-                return TryEvaluateUnary(unary, frame, out value, out failure);
-
-            case BoundBinaryExpression binary:
-                return TryEvaluateBinary(binary, frame, out value, out failure);
-
-            case BoundCallExpression call:
-                return TryEvaluateCall(call, frame, out value, out failure);
-
-            case BoundIfExpression ifExpression:
-                return TryEvaluateIfExpression(ifExpression, frame, out value, out failure);
-
-            case BoundConversionExpression conversion:
-                return TryEvaluateConverted(conversion.Expression, conversion.Type, frame, conversion.Span, out value, out failure);
-
-            case BoundCastExpression cast:
-                return TryEvaluateConverted(cast.Expression, cast.Type, frame, cast.Span, out value, out failure);
-
-            case BoundBitcastExpression bitcast:
-                return TryEvaluateConverted(bitcast.Expression, bitcast.Type, frame, bitcast.Span, out value, out failure);
-
-            default:
-                value = null;
-                failure = new ComptimeFailure(ComptimeFailureKind.UnsupportedConstruct, expression.Span, $"expression '{expression.Kind}' is not supported during comptime evaluation.");
-                return false;
-        }
+            BoundLiteralExpression literal => CreateValueResult(literal.Value, literal.Type),
+            BoundEnumLiteralExpression enumLiteral => new ComptimeResult(enumLiteral.Value),
+            BoundSymbolExpression symbolExpression => TryEvaluateSymbol(symbolExpression, frame),
+            BoundUnaryExpression unary => TryEvaluateUnary(unary, frame),
+            BoundBinaryExpression binary => TryEvaluateBinary(binary, frame),
+            BoundCallExpression call => TryEvaluateCall(call, frame),
+            BoundIfExpression ifExpression => TryEvaluateIfExpression(ifExpression, frame),
+            BoundConversionExpression conversion => TryEvaluateConverted(conversion.Expression, conversion.Type, frame, conversion.Span),
+            BoundCastExpression cast => TryEvaluateConverted(cast.Expression, cast.Type, frame, cast.Span),
+            BoundBitcastExpression bitcast => TryEvaluateConverted(bitcast.Expression, bitcast.Type, frame, bitcast.Span),
+            _ => new ComptimeResult(ComptimeFailureKind.UnsupportedConstruct, expression.Span, $"expression '{expression.Kind}' is not supported during comptime evaluation."),
+        };
     }
 
-    private bool TryEvaluateSymbol(
+    private ComptimeResult TryEvaluateSymbol(
         BoundSymbolExpression symbolExpression,
-        Dictionary<Symbol, object?> frame,
-        out object? value,
-        out ComptimeFailure failure)
+        Dictionary<Symbol, ComptimeResult> frame)
     {
-        if (!frame.TryGetValue(symbolExpression.Symbol, out value))
+        if (!frame.TryGetValue(symbolExpression.Symbol, out ComptimeResult? value))
         {
-            failure = symbolExpression.Symbol switch
+            return symbolExpression.Symbol switch
             {
-                VariableSymbol variable => new ComptimeFailure(ComptimeFailureKind.ForbiddenSymbolAccess, symbolExpression.Span, $"'{variable.Name}' cannot be accessed during comptime evaluation."),
-                _ => new ComptimeFailure(ComptimeFailureKind.UnsupportedConstruct, symbolExpression.Span, $"symbol '{symbolExpression.Symbol.Name}' is not supported during comptime evaluation."),
+                VariableSymbol variable => new ComptimeResult(ComptimeFailureKind.ForbiddenSymbolAccess, symbolExpression.Span, $"'{variable.Name}' cannot be accessed during comptime evaluation."),
+                _ => new ComptimeResult(ComptimeFailureKind.UnsupportedConstruct, symbolExpression.Span, $"symbol '{symbolExpression.Symbol.Name}' is not supported during comptime evaluation."),
             };
-            return false;
         }
 
-        failure = ComptimeFailure.None;
-        return true;
+        Assert.Invariant(value is not null);
+        return value;
     }
 
-    private bool TryEvaluateUnary(
+    private ComptimeResult TryEvaluateUnary(
         BoundUnaryExpression unary,
-        Dictionary<Symbol, object?> frame,
-        out object? value,
-        out ComptimeFailure failure)
+        Dictionary<Symbol, ComptimeResult> frame)
     {
-        if (!TryEvaluateExpression(unary.Operand, frame, out object? operandValue, out failure))
-        {
-            value = null;
-            return false;
-        }
+        ComptimeResult operandResult = TryEvaluateExpression(unary.Operand, frame);
+        if (operandResult.IsFailed)
+            return operandResult;
 
         switch (unary.Operator.Kind)
         {
-            case BoundUnaryOperatorKind.LogicalNot when operandValue is bool boolOperand:
-                value = !boolOperand;
-                failure = ComptimeFailure.None;
-                return true;
+            case BoundUnaryOperatorKind.LogicalNot when operandResult.TryGetBool(out bool boolOperand):
+                return boolOperand ? ComptimeResult.False : ComptimeResult.True;
 
             case BoundUnaryOperatorKind.Negation:
-                if (!TryConvertToInt64(operandValue, unary.Operand.Span, "unary operand is not a compile-time integer.", out long negatedValue, out failure))
-                {
-                    value = null;
-                    return false;
-                }
+            {
+                ComptimeResult converted = TryConvertToInt64(operandResult, unary.Operand.Span, "unary operand is not a compile-time integer.");
+                if (converted.IsFailed)
+                    return converted;
 
-                value = -negatedValue;
-                failure = ComptimeFailure.None;
-                return true;
+                converted.TryGetLong(out long negatedValue);
+                return new ComptimeResult(-negatedValue);
+            }
 
             case BoundUnaryOperatorKind.BitwiseNot:
-                if (!TryConvertToInt64(operandValue, unary.Operand.Span, "unary operand is not a compile-time integer.", out long bitwiseValue, out failure))
-                {
-                    value = null;
-                    return false;
-                }
+            {
+                ComptimeResult converted = TryConvertToInt64(operandResult, unary.Operand.Span, "unary operand is not a compile-time integer.");
+                if (converted.IsFailed)
+                    return converted;
 
-                value = ~bitwiseValue;
-                failure = ComptimeFailure.None;
-                return true;
+                converted.TryGetLong(out long bitwiseValue);
+                return new ComptimeResult(~bitwiseValue);
+            }
 
             case BoundUnaryOperatorKind.UnaryPlus:
-                if (!TryConvertToInt64(operandValue, unary.Operand.Span, "unary operand is not a compile-time integer.", out long positiveValue, out failure))
-                {
-                    value = null;
-                    return false;
-                }
+            {
+                ComptimeResult converted = TryConvertToInt64(operandResult, unary.Operand.Span, "unary operand is not a compile-time integer.");
+                if (converted.IsFailed)
+                    return converted;
 
-                value = positiveValue;
-                failure = ComptimeFailure.None;
-                return true;
+                converted.TryGetLong(out long positiveValue);
+                return new ComptimeResult(positiveValue);
+            }
 
             default:
-                value = null;
-                failure = new ComptimeFailure(ComptimeFailureKind.UnsupportedConstruct, unary.Span, $"operator '{unary.Operator.Kind}' is not supported during comptime evaluation.");
-                return false;
+                return new ComptimeResult(ComptimeFailureKind.UnsupportedConstruct, unary.Span, $"operator '{unary.Operator.Kind}' is not supported during comptime evaluation.");
         }
     }
 
-    private bool TryEvaluateBinary(
+    private ComptimeResult TryEvaluateBinary(
         BoundBinaryExpression binary,
-        Dictionary<Symbol, object?> frame,
-        out object? value,
-        out ComptimeFailure failure)
+        Dictionary<Symbol, ComptimeResult> frame)
     {
         if (binary.Operator.Kind == BoundBinaryOperatorKind.LogicalAnd)
         {
-            if (!TryEvaluateExpression(binary.Left, frame, out object? leftValue, out failure))
-            {
-                value = null;
-                return false;
-            }
+            ComptimeResult logicalLeftResult = TryEvaluateExpression(binary.Left, frame);
+            if (logicalLeftResult.IsFailed)
+                return logicalLeftResult;
 
-            if (leftValue is not bool leftBool)
-            {
-                value = null;
-                failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, binary.Left.Span, "logical expressions require bool operands.");
-                return false;
-            }
+            if (!logicalLeftResult.TryGetBool(out bool leftBool))
+                return new ComptimeResult(ComptimeFailureKind.NotEvaluable, binary.Left.Span, "logical expressions require bool operands.");
 
             if (!leftBool)
-            {
-                value = false;
-                failure = ComptimeFailure.None;
-                return true;
-            }
+                return ComptimeResult.False;
 
-            if (!TryEvaluateExpression(binary.Right, frame, out object? rightValue, out failure))
-            {
-                value = null;
-                return false;
-            }
+            ComptimeResult logicalRightResult = TryEvaluateExpression(binary.Right, frame);
+            if (logicalRightResult.IsFailed)
+                return logicalRightResult;
 
-            if (rightValue is not bool rightBool)
-            {
-                value = null;
-                failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, binary.Right.Span, "logical expressions require bool operands.");
-                return false;
-            }
-
-            value = rightBool;
-            failure = ComptimeFailure.None;
-            return true;
+            return logicalRightResult.TryGetBool(out bool rightBool)
+                ? new ComptimeResult(rightBool)
+                : new ComptimeResult(ComptimeFailureKind.NotEvaluable, binary.Right.Span, "logical expressions require bool operands.");
         }
 
         if (binary.Operator.Kind == BoundBinaryOperatorKind.LogicalOr)
         {
-            if (!TryEvaluateExpression(binary.Left, frame, out object? leftValue, out failure))
-            {
-                value = null;
-                return false;
-            }
+            ComptimeResult logicalLeftResult = TryEvaluateExpression(binary.Left, frame);
+            if (logicalLeftResult.IsFailed)
+                return logicalLeftResult;
 
-            if (leftValue is not bool leftBool)
-            {
-                value = null;
-                failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, binary.Left.Span, "logical expressions require bool operands.");
-                return false;
-            }
+            if (!logicalLeftResult.TryGetBool(out bool leftBool))
+                return new ComptimeResult(ComptimeFailureKind.NotEvaluable, binary.Left.Span, "logical expressions require bool operands.");
 
             if (leftBool)
-            {
-                value = true;
-                failure = ComptimeFailure.None;
-                return true;
-            }
+                return ComptimeResult.True;
 
-            if (!TryEvaluateExpression(binary.Right, frame, out object? rightValue, out failure))
-            {
-                value = null;
-                return false;
-            }
+            ComptimeResult logicalRightResult = TryEvaluateExpression(binary.Right, frame);
+            if (logicalRightResult.IsFailed)
+                return logicalRightResult;
 
-            if (rightValue is not bool rightBool)
-            {
-                value = null;
-                failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, binary.Right.Span, "logical expressions require bool operands.");
-                return false;
-            }
-
-            value = rightBool;
-            failure = ComptimeFailure.None;
-            return true;
+            return logicalRightResult.TryGetBool(out bool rightBool)
+                ? new ComptimeResult(rightBool)
+                : new ComptimeResult(ComptimeFailureKind.NotEvaluable, binary.Right.Span, "logical expressions require bool operands.");
         }
 
-        if (!TryEvaluateExpression(binary.Left, frame, out object? rawLeftValue, out failure)
-            || !TryEvaluateExpression(binary.Right, frame, out object? rawRightValue, out failure))
-        {
-            value = null;
-            return false;
-        }
+        ComptimeResult leftResult = TryEvaluateExpression(binary.Left, frame);
+        if (leftResult.IsFailed)
+            return leftResult;
 
-        if (rawLeftValue is bool leftBoolValue && rawRightValue is bool rightBoolValue)
+        ComptimeResult rightResult = TryEvaluateExpression(binary.Right, frame);
+        if (rightResult.IsFailed)
+            return rightResult;
+
+        if (leftResult.TryGetBool(out bool leftBoolValue) && rightResult.TryGetBool(out bool rightBoolValue))
         {
-            object? boolResult = binary.Operator.Kind switch
+            bool? boolResult = binary.Operator.Kind switch
             {
                 BoundBinaryOperatorKind.Equals => leftBoolValue == rightBoolValue,
                 BoundBinaryOperatorKind.NotEquals => leftBoolValue != rightBoolValue,
@@ -725,365 +829,238 @@ internal sealed class ComptimeEvaluator
             };
 
             if (boolResult is not null)
-            {
-                value = boolResult;
-                failure = ComptimeFailure.None;
-                return true;
-            }
+                return new ComptimeResult(boolResult.Value);
         }
 
-        if (!TryConvertToInt64(rawLeftValue, binary.Left.Span, "binary operands are not compile-time integers.", out long left, out failure)
-            || !TryConvertToInt64(rawRightValue, binary.Right.Span, "binary operands are not compile-time integers.", out long right, out failure))
+        ComptimeResult leftConverted = TryConvertToInt64(leftResult, binary.Left.Span, "binary operands are not compile-time integers.");
+        if (leftConverted.IsFailed)
+            return leftConverted;
+
+        ComptimeResult rightConverted = TryConvertToInt64(rightResult, binary.Right.Span, "binary operands are not compile-time integers.");
+        if (rightConverted.IsFailed)
+            return rightConverted;
+
+        leftConverted.TryGetLong(out long left);
+        rightConverted.TryGetLong(out long right);
+
+        return binary.Operator.Kind switch
         {
-            value = null;
-            return false;
-        }
-        switch (binary.Operator.Kind)
-        {
-            case BoundBinaryOperatorKind.Add:
-                value = left + right;
-                failure = ComptimeFailure.None;
-                return true;
-            case BoundBinaryOperatorKind.Subtract:
-                value = left - right;
-                failure = ComptimeFailure.None;
-                return true;
-            case BoundBinaryOperatorKind.Multiply:
-                value = left * right;
-                failure = ComptimeFailure.None;
-                return true;
-            case BoundBinaryOperatorKind.Divide:
-                if (right == 0)
-                    return FailNotEvaluable(binary.Span, "division by zero is not evaluable at compile time.", out value, out failure);
-                value = left / right;
-                failure = ComptimeFailure.None;
-                return true;
-            case BoundBinaryOperatorKind.Modulo:
-                if (right == 0)
-                    return FailNotEvaluable(binary.Span, "modulo by zero is not evaluable at compile time.", out value, out failure);
-                value = left % right;
-                failure = ComptimeFailure.None;
-                return true;
-            case BoundBinaryOperatorKind.BitwiseAnd:
-                value = left & right;
-                failure = ComptimeFailure.None;
-                return true;
-            case BoundBinaryOperatorKind.BitwiseOr:
-                value = left | right;
-                failure = ComptimeFailure.None;
-                return true;
-            case BoundBinaryOperatorKind.BitwiseXor:
-                value = left ^ right;
-                failure = ComptimeFailure.None;
-                return true;
-            case BoundBinaryOperatorKind.ShiftLeft:
-            case BoundBinaryOperatorKind.ArithmeticShiftLeft:
-                value = left << (int)right;
-                failure = ComptimeFailure.None;
-                return true;
-            case BoundBinaryOperatorKind.ShiftRight:
-            case BoundBinaryOperatorKind.ArithmeticShiftRight:
-                value = left >> (int)right;
-                failure = ComptimeFailure.None;
-                return true;
-            case BoundBinaryOperatorKind.RotateLeft:
-                value = (long)(((uint)left << (int)right) | ((uint)left >> (32 - ((int)right & 31))));
-                failure = ComptimeFailure.None;
-                return true;
-            case BoundBinaryOperatorKind.RotateRight:
-                value = (long)(((uint)left >> (int)right) | ((uint)left << (32 - ((int)right & 31))));
-                failure = ComptimeFailure.None;
-                return true;
-            case BoundBinaryOperatorKind.Equals:
-                value = left == right;
-                failure = ComptimeFailure.None;
-                return true;
-            case BoundBinaryOperatorKind.NotEquals:
-                value = left != right;
-                failure = ComptimeFailure.None;
-                return true;
-            case BoundBinaryOperatorKind.Less:
-                value = left < right;
-                failure = ComptimeFailure.None;
-                return true;
-            case BoundBinaryOperatorKind.LessOrEqual:
-                value = left <= right;
-                failure = ComptimeFailure.None;
-                return true;
-            case BoundBinaryOperatorKind.Greater:
-                value = left > right;
-                failure = ComptimeFailure.None;
-                return true;
-            case BoundBinaryOperatorKind.GreaterOrEqual:
-                value = left >= right;
-                failure = ComptimeFailure.None;
-                return true;
-            default:
-                value = null;
-                failure = new ComptimeFailure(ComptimeFailureKind.UnsupportedConstruct, binary.Span, $"operator '{binary.Operator.Kind}' is not supported during comptime evaluation.");
-                return false;
-        }
+            BoundBinaryOperatorKind.Add => new ComptimeResult(left + right),
+            BoundBinaryOperatorKind.Subtract => new ComptimeResult(left - right),
+            BoundBinaryOperatorKind.Multiply => new ComptimeResult(left * right),
+            BoundBinaryOperatorKind.Divide when right == 0 => FailNotEvaluable(binary.Span, "division by zero is not evaluable at compile time."),
+            BoundBinaryOperatorKind.Divide => new ComptimeResult(left / right),
+            BoundBinaryOperatorKind.Modulo when right == 0 => FailNotEvaluable(binary.Span, "modulo by zero is not evaluable at compile time."),
+            BoundBinaryOperatorKind.Modulo => new ComptimeResult(left % right),
+            BoundBinaryOperatorKind.BitwiseAnd => new ComptimeResult(left & right),
+            BoundBinaryOperatorKind.BitwiseOr => new ComptimeResult(left | right),
+            BoundBinaryOperatorKind.BitwiseXor => new ComptimeResult(left ^ right),
+            BoundBinaryOperatorKind.ShiftLeft or BoundBinaryOperatorKind.ArithmeticShiftLeft => new ComptimeResult(left << (int)right),
+            BoundBinaryOperatorKind.ShiftRight or BoundBinaryOperatorKind.ArithmeticShiftRight => new ComptimeResult(left >> (int)right),
+            BoundBinaryOperatorKind.RotateLeft => new ComptimeResult((long)(((uint)left << (int)right) | ((uint)left >> (32 - ((int)right & 31))))),
+            BoundBinaryOperatorKind.RotateRight => new ComptimeResult((long)(((uint)left >> (int)right) | ((uint)left << (32 - ((int)right & 31))))),
+            BoundBinaryOperatorKind.Equals => new ComptimeResult(left == right),
+            BoundBinaryOperatorKind.NotEquals => new ComptimeResult(left != right),
+            BoundBinaryOperatorKind.Less => new ComptimeResult(left < right),
+            BoundBinaryOperatorKind.LessOrEqual => new ComptimeResult(left <= right),
+            BoundBinaryOperatorKind.Greater => new ComptimeResult(left > right),
+            BoundBinaryOperatorKind.GreaterOrEqual => new ComptimeResult(left >= right),
+            _ => new ComptimeResult(ComptimeFailureKind.UnsupportedConstruct, binary.Span, $"operator '{binary.Operator.Kind}' is not supported during comptime evaluation."),
+        };
     }
 
-    private bool TryEvaluateIfExpression(
+    private ComptimeResult TryEvaluateIfExpression(
         BoundIfExpression ifExpression,
-        Dictionary<Symbol, object?> frame,
-        out object? value,
-        out ComptimeFailure failure)
+        Dictionary<Symbol, ComptimeResult> frame)
     {
-        if (!TryEvaluateExpression(ifExpression.Condition, frame, out object? conditionValue, out failure))
-        {
-            value = null;
-            return false;
-        }
+        ComptimeResult conditionResult = TryEvaluateExpression(ifExpression.Condition, frame);
+        if (conditionResult.IsFailed)
+            return conditionResult;
 
-        if (conditionValue is not bool conditionBool)
-        {
-            value = null;
-            failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, ifExpression.Condition.Span, "if-expression conditions must be bool.");
-            return false;
-        }
+        if (!conditionResult.TryGetBool(out bool conditionBool))
+            return new ComptimeResult(ComptimeFailureKind.NotEvaluable, ifExpression.Condition.Span, "if-expression conditions must be bool.");
 
-        return TryEvaluateExpression(conditionBool ? ifExpression.ThenExpression : ifExpression.ElseExpression, frame, out value, out failure);
+        return TryEvaluateExpression(conditionBool ? ifExpression.ThenExpression : ifExpression.ElseExpression, frame);
     }
 
-    private bool TryEvaluateConverted(
+    private ComptimeResult TryEvaluateConverted(
         BoundExpression expression,
         TypeSymbol targetType,
-        Dictionary<Symbol, object?> frame,
-        TextSpan span,
-        out object? value,
-        out ComptimeFailure failure)
+        Dictionary<Symbol, ComptimeResult> frame,
+        TextSpan span)
     {
-        if (!TryEvaluateExpression(expression, frame, out object? operandValue, out failure))
-        {
-            value = null;
-            return false;
-        }
-
-        return NormalizeLiteral(operandValue, targetType, span, out value, out failure);
+        ComptimeResult operandResult = TryEvaluateExpression(expression, frame);
+        return operandResult.IsFailed
+            ? operandResult
+            : NormalizeLiteral(operandResult, targetType, span);
     }
 
-    private bool TryEvaluateCall(
+    private ComptimeResult TryEvaluateCall(
         BoundCallExpression call,
-        Dictionary<Symbol, object?> callerFrame,
-        out object? value,
-        out ComptimeFailure failure)
+        Dictionary<Symbol, ComptimeResult> callerFrame)
     {
         if (call.Arguments.Count != call.Function.Parameters.Count)
-        {
-            value = null;
-            failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, call.Span, $"call to '{call.Function.Name}' does not have a full argument list.");
-            return false;
-        }
+            return new ComptimeResult(ComptimeFailureKind.NotEvaluable, call.Span, $"call to '{call.Function.Name}' does not have a full argument list.");
 
         BoundBlockStatement? body = _functionBodyResolver(call.Function);
         if (body is null)
-        {
-            value = null;
-            failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, call.Span, $"function body for '{call.Function.Name}' is unavailable during comptime evaluation.");
-            return false;
-        }
+            return new ComptimeResult(ComptimeFailureKind.NotEvaluable, call.Span, $"function body for '{call.Function.Name}' is unavailable during comptime evaluation.");
 
         ComptimeSupportResult support = _supportResolver(call.Function);
         if (!support.IsSupported)
-        {
-            value = null;
-            failure = support.Failure;
-            return false;
-        }
+            return new ComptimeResult(support.Failure);
 
-        Dictionary<Symbol, object?> calleeFrame = new(callerFrame);
+        Dictionary<Symbol, ComptimeResult> calleeFrame = new(callerFrame);
         for (int i = 0; i < call.Function.Parameters.Count; i++)
         {
-            if (!TryEvaluateExpression(call.Arguments[i], callerFrame, out object? argumentValue, out failure))
-            {
-                value = null;
-                return false;
-            }
+            ComptimeResult argumentValue = TryEvaluateExpression(call.Arguments[i], callerFrame);
+            if (argumentValue.IsFailed)
+                return argumentValue;
 
             ParameterSymbol parameter = call.Function.Parameters[i];
-            if (!NormalizeLiteral(argumentValue, parameter.Type, call.Arguments[i].Span, out object? normalizedArgument, out failure))
-            {
-                value = null;
-                return false;
-            }
+            ComptimeResult normalizedArgument = NormalizeLiteral(argumentValue, parameter.Type, call.Arguments[i].Span);
+            if (normalizedArgument.IsFailed)
+                return normalizedArgument;
 
             calleeFrame[parameter] = normalizedArgument;
         }
 
-        if (!TryExecuteBlock(body, calleeFrame, out EvaluationOutcome outcome, out failure))
-        {
-            value = null;
-            return false;
-        }
+        EvaluationOutcome outcome = TryExecuteBlock(body, calleeFrame);
+        if (outcome.Kind == EvaluationOutcomeKind.Failed)
+            return outcome.Value;
 
         if (outcome.Kind != EvaluationOutcomeKind.Return)
         {
-            value = call.Function.ReturnTypes.Count == 0 ? null : 0L;
-            failure = ComptimeFailure.None;
             return call.Function.ReturnTypes.Count == 0
-                || NormalizeLiteral(value, call.Type, call.Span, out value, out failure);
+                ? ComptimeResult.Void
+                : NormalizeLiteral(new ComptimeResult(0L), call.Type, call.Span);
         }
 
-        if (call.Function.ReturnTypes.Count == 0)
-        {
-            value = null;
-            failure = ComptimeFailure.None;
-            return true;
-        }
-
-        return NormalizeLiteral(outcome.Value, call.Type, call.Span, out value, out failure);
+        return call.Function.ReturnTypes.Count == 0
+            ? ComptimeResult.Void
+            : NormalizeLiteral(outcome.Value, call.Type, call.Span);
     }
 
-    private bool TryExecuteBlock(
+    private EvaluationOutcome TryExecuteBlock(
         BoundBlockStatement block,
-        Dictionary<Symbol, object?> frame,
-        out EvaluationOutcome outcome,
-        out ComptimeFailure failure)
+        Dictionary<Symbol, ComptimeResult> frame)
     {
         foreach (BoundStatement statement in block.Statements)
         {
-            if (!TryExecuteStatement(statement, frame, out outcome, out failure))
-                return false;
-
+            EvaluationOutcome outcome = TryExecuteStatement(statement, frame);
             if (outcome.Kind != EvaluationOutcomeKind.None)
-                return true;
+                return outcome;
         }
 
-        outcome = EvaluationOutcome.None;
-        failure = ComptimeFailure.None;
-        return true;
+        return EvaluationOutcome.None;
     }
 
-    private bool TryExecuteStatement(
+    private EvaluationOutcome TryExecuteStatement(
         BoundStatement statement,
-        Dictionary<Symbol, object?> frame,
-        out EvaluationOutcome outcome,
-        out ComptimeFailure failure)
+        Dictionary<Symbol, ComptimeResult> frame)
     {
         switch (statement)
         {
             case BoundBlockStatement block:
-                return TryExecuteBlock(block, frame, out outcome, out failure);
+                return TryExecuteBlock(block, frame);
 
             case BoundVariableDeclarationStatement declaration:
             {
-                object? initializerValue = 0L;
-                if (declaration.Initializer is not null
-                    && !TryEvaluateExpression(declaration.Initializer, frame, out initializerValue, out failure))
-                {
-                    outcome = EvaluationOutcome.None;
-                    return false;
-                }
+                ComptimeResult initializerValue = declaration.Initializer is null
+                    ? new ComptimeResult(0L)
+                    : TryEvaluateExpression(declaration.Initializer, frame);
+                if (initializerValue.IsFailed)
+                    return EvaluationOutcome.Failed(initializerValue);
 
-                if (!NormalizeLiteral(initializerValue, declaration.Symbol.Type, declaration.Span, out object? normalizedInitializer, out failure))
-                {
-                    outcome = EvaluationOutcome.None;
-                    return false;
-                }
+                ComptimeResult normalizedInitializer = NormalizeLiteral(initializerValue, declaration.Symbol.Type, declaration.Span);
+                if (normalizedInitializer.IsFailed)
+                    return EvaluationOutcome.Failed(normalizedInitializer);
 
                 frame[declaration.Symbol] = normalizedInitializer;
-                outcome = EvaluationOutcome.None;
-                return true;
+                return EvaluationOutcome.None;
             }
 
             case BoundAssignmentStatement assignment:
-                return TryExecuteAssignment(assignment, frame, out outcome, out failure);
+                return TryExecuteAssignment(assignment, frame);
 
             case BoundExpressionStatement expressionStatement:
             {
-                if (!TryEvaluateExpression(expressionStatement.Expression, frame, out _, out failure))
-                {
-                    outcome = EvaluationOutcome.None;
-                    return false;
-                }
-
-                outcome = EvaluationOutcome.None;
-                return true;
+                ComptimeResult expressionResult = TryEvaluateExpression(expressionStatement.Expression, frame);
+                return expressionResult.IsFailed
+                    ? EvaluationOutcome.Failed(expressionResult)
+                    : EvaluationOutcome.None;
             }
 
             case BoundIfStatement ifStatement:
-                return TryExecuteIfStatement(ifStatement, frame, out outcome, out failure);
+                return TryExecuteIfStatement(ifStatement, frame);
 
             case BoundWhileStatement whileStatement:
-                return TryExecuteWhileStatement(whileStatement, frame, out outcome, out failure);
+                return TryExecuteWhileStatement(whileStatement, frame);
 
             case BoundForStatement forStatement:
-                return TryExecuteForStatement(forStatement, frame, out outcome, out failure);
+                return TryExecuteForStatement(forStatement, frame);
 
             case BoundLoopStatement loopStatement:
-                return TryExecuteLoopStatement(loopStatement, frame, out outcome, out failure);
+                return TryExecuteLoopStatement(loopStatement, frame);
 
             case BoundRepLoopStatement repLoopStatement:
-                return TryExecuteRepLoopStatement(repLoopStatement, frame, out outcome, out failure);
+                return TryExecuteRepLoopStatement(repLoopStatement, frame);
 
             case BoundRepForStatement repForStatement:
-                return TryExecuteRepForStatement(repForStatement, frame, out outcome, out failure);
+                return TryExecuteRepForStatement(repForStatement, frame);
 
             case BoundNoirqStatement noirqStatement:
-                return TryExecuteBlock(noirqStatement.Body, frame, out outcome, out failure);
+                return TryExecuteBlock(noirqStatement.Body, frame);
 
             case BoundReturnStatement returnStatement:
             {
-                object? returnValue = null;
-                if (returnStatement.Values.Count > 0
-                    && !TryEvaluateExpression(returnStatement.Values[0], frame, out returnValue, out failure))
-                {
-                    outcome = EvaluationOutcome.None;
-                    return false;
-                }
+                if (returnStatement.Values.Count == 0)
+                    return EvaluationOutcome.Return(ComptimeResult.Void);
 
-                failure = ComptimeFailure.None;
-                outcome = EvaluationOutcome.Return(returnValue);
-                return true;
+                ComptimeResult returnValue = TryEvaluateExpression(returnStatement.Values[0], frame);
+                return returnValue.IsFailed
+                    ? EvaluationOutcome.Failed(returnValue)
+                    : EvaluationOutcome.Return(returnValue);
             }
 
             case BoundBreakStatement:
-                outcome = EvaluationOutcome.Break;
-                failure = ComptimeFailure.None;
-                return true;
+                return EvaluationOutcome.Break;
 
             case BoundContinueStatement:
-                outcome = EvaluationOutcome.Continue;
-                failure = ComptimeFailure.None;
-                return true;
+                return EvaluationOutcome.Continue;
 
             default:
-                outcome = EvaluationOutcome.None;
-                failure = new ComptimeFailure(ComptimeFailureKind.UnsupportedConstruct, statement.Span, $"statement '{statement.Kind}' is not supported during comptime evaluation.");
-                return false;
+                return EvaluationOutcome.Failed(new ComptimeResult(ComptimeFailureKind.UnsupportedConstruct, statement.Span, $"statement '{statement.Kind}' is not supported during comptime evaluation."));
         }
     }
 
-    private bool TryExecuteAssignment(
+    private EvaluationOutcome TryExecuteAssignment(
         BoundAssignmentStatement assignment,
-        Dictionary<Symbol, object?> frame,
-        out EvaluationOutcome outcome,
-        out ComptimeFailure failure)
+        Dictionary<Symbol, ComptimeResult> frame)
     {
         if (assignment.Target is not BoundSymbolAssignmentTarget symbolTarget
             || symbolTarget.Symbol is not VariableSymbol { ScopeKind: VariableScopeKind.Local } variable)
         {
-            outcome = EvaluationOutcome.None;
-            failure = new ComptimeFailure(
+            return EvaluationOutcome.Failed(new ComptimeResult(
                 ComptimeFailureKind.UnsupportedConstruct,
                 assignment.Span,
-                "assignment target is not supported during comptime evaluation.");
-            return false;
+                "assignment target is not supported during comptime evaluation."));
         }
 
-        if (!TryEvaluateExpression(assignment.Value, frame, out object? assignedValue, out failure))
-        {
-            outcome = EvaluationOutcome.None;
-            return false;
-        }
+        ComptimeResult assignedValue = TryEvaluateExpression(assignment.Value, frame);
+        if (assignedValue.IsFailed)
+            return EvaluationOutcome.Failed(assignedValue);
 
-        object? finalValue = assignedValue;
-        if (assignment.OperatorKind != TokenKind.Equal)
+        ComptimeResult finalValue;
+        if (assignment.OperatorKind == TokenKind.Equal)
         {
-            var ok = frame.TryGetValue(symbolTarget.Symbol, out object? currentValue);
-            Assert.Invariant(ok);
+            finalValue = NormalizeLiteral(assignedValue, variable.Type, assignment.Value.Span);
+        }
+        else
+        {
+            bool foundCurrentValue = frame.TryGetValue(symbolTarget.Symbol, out ComptimeResult? currentValue);
+            Assert.Invariant(foundCurrentValue);
+            Assert.Invariant(currentValue is not null);
 
             BoundBinaryOperatorKind operation = assignment.OperatorKind switch
             {
@@ -1098,336 +1075,309 @@ internal sealed class ComptimeEvaluator
                 _ => BoundBinaryOperatorKind.Add,
             };
 
-            if (!TryApplyCompoundAssignment(operation, currentValue, assignedValue, variable.Type, assignment.Span, out finalValue, out failure))
-            {
-                outcome = EvaluationOutcome.None;
-                return false;
-            }
+            finalValue = TryApplyCompoundAssignment(operation, currentValue, assignedValue, variable.Type, assignment.Span);
         }
 
-        if (!NormalizeLiteral(finalValue, variable.Type, assignment.Value.Span, out object? normalizedValue, out failure))
-        {
-            outcome = EvaluationOutcome.None;
-            return false;
-        }
+        if (finalValue.IsFailed)
+            return EvaluationOutcome.Failed(finalValue);
 
-        frame[symbolTarget.Symbol] = normalizedValue;
-        outcome = EvaluationOutcome.None;
-        return true;
+        frame[symbolTarget.Symbol] = finalValue;
+        return EvaluationOutcome.None;
     }
 
-    private static bool TryApplyCompoundAssignment(
+    private static ComptimeResult TryApplyCompoundAssignment(
         BoundBinaryOperatorKind operation,
-        object? leftValue,
-        object? rightValue,
+        ComptimeResult leftValue,
+        ComptimeResult rightValue,
         TypeSymbol targetType,
-        TextSpan span,
-        out object? result,
-        out ComptimeFailure failure)
+        TextSpan span)
     {
-        if (!TryConvertToInt64(leftValue, span, "compound assignment operands are not compile-time integers.", out long left, out failure)
-            || !TryConvertToInt64(rightValue, span, "compound assignment operands are not compile-time integers.", out long right, out failure))
-        {
-            result = null;
-            return false;
-        }
+        ComptimeResult leftConverted = TryConvertToInt64(leftValue, span, "compound assignment operands are not compile-time integers.");
+        if (leftConverted.IsFailed)
+            return leftConverted;
+
+        ComptimeResult rightConverted = TryConvertToInt64(rightValue, span, "compound assignment operands are not compile-time integers.");
+        if (rightConverted.IsFailed)
+            return rightConverted;
+
+        leftConverted.TryGetLong(out long left);
+        rightConverted.TryGetLong(out long right);
+
+        if (operation == BoundBinaryOperatorKind.Modulo && right == 0)
+            return new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, "modulo by zero is not evaluable at compile time.");
 
         long raw = operation switch
         {
             BoundBinaryOperatorKind.Add => left + right,
             BoundBinaryOperatorKind.Subtract => left - right,
-            BoundBinaryOperatorKind.Modulo when right != 0 => left % right,
+            BoundBinaryOperatorKind.Modulo => left % right,
             BoundBinaryOperatorKind.BitwiseAnd => left & right,
             BoundBinaryOperatorKind.BitwiseOr => left | right,
             BoundBinaryOperatorKind.BitwiseXor => left ^ right,
             BoundBinaryOperatorKind.ShiftLeft => left << (int)right,
             BoundBinaryOperatorKind.ShiftRight => left >> (int)right,
-            _ => long.MinValue,
+            _ => Assert.UnreachableValue<long>($"Unsupported compound operation '{operation}'."),
         };
 
-        if (operation == BoundBinaryOperatorKind.Modulo && right == 0)
-        {
-            result = null;
-            failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, span, "modulo by zero is not evaluable at compile time.");
-            return false;
-        }
-
-        return NormalizeLiteral(raw, targetType, span, out result, out failure);
+        return NormalizeLiteral(new ComptimeResult(raw), targetType, span);
     }
 
-    private bool TryExecuteIfStatement(
+    private EvaluationOutcome TryExecuteIfStatement(
         BoundIfStatement ifStatement,
-        Dictionary<Symbol, object?> frame,
-        out EvaluationOutcome outcome,
-        out ComptimeFailure failure)
+        Dictionary<Symbol, ComptimeResult> frame)
     {
-        if (!TryEvaluateExpression(ifStatement.Condition, frame, out object? conditionValue, out failure))
-        {
-            outcome = EvaluationOutcome.None;
-            return false;
-        }
+        ComptimeResult conditionValue = TryEvaluateExpression(ifStatement.Condition, frame);
+        if (conditionValue.IsFailed)
+            return EvaluationOutcome.Failed(conditionValue);
 
-        if (conditionValue is not bool conditionBool)
-        {
-            outcome = EvaluationOutcome.None;
-            failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, ifStatement.Condition.Span, "if-statement conditions must be bool.");
-            return false;
-        }
+        if (!conditionValue.TryGetBool(out bool conditionBool))
+            return EvaluationOutcome.Failed(new ComptimeResult(ComptimeFailureKind.NotEvaluable, ifStatement.Condition.Span, "if-statement conditions must be bool."));
 
-        return TryExecuteStatement(
-            conditionBool ? ifStatement.ThenBody : ifStatement.ElseBody ?? EmptyBlock,
-            frame,
-            out outcome,
-            out failure);
+        return TryExecuteStatement(conditionBool ? ifStatement.ThenBody : ifStatement.ElseBody ?? EmptyBlock, frame);
     }
 
-    private bool TryExecuteWhileStatement(
+    private EvaluationOutcome TryExecuteWhileStatement(
         BoundWhileStatement whileStatement,
-        Dictionary<Symbol, object?> frame,
-        out EvaluationOutcome outcome,
-        out ComptimeFailure failure)
+        Dictionary<Symbol, ComptimeResult> frame)
     {
         while (true)
         {
-            if (!TryEvaluateExpression(whileStatement.Condition, frame, out object? conditionValue, out failure))
-            {
-                outcome = EvaluationOutcome.None;
-                return false;
-            }
+            ComptimeResult conditionValue = TryEvaluateExpression(whileStatement.Condition, frame);
+            if (conditionValue.IsFailed)
+                return EvaluationOutcome.Failed(conditionValue);
 
-            if (conditionValue is not bool conditionBool)
-            {
-                outcome = EvaluationOutcome.None;
-                failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, whileStatement.Condition.Span, "while-statement conditions must be bool.");
-                return false;
-            }
+            if (!conditionValue.TryGetBool(out bool conditionBool))
+                return EvaluationOutcome.Failed(new ComptimeResult(ComptimeFailureKind.NotEvaluable, whileStatement.Condition.Span, "while-statement conditions must be bool."));
 
             if (!conditionBool)
                 break;
 
-            if (!TryExecuteBlock(whileStatement.Body, frame, out outcome, out failure))
-                return false;
+            EvaluationOutcome outcome = TryExecuteBlock(whileStatement.Body, frame);
+            if (outcome.Kind == EvaluationOutcomeKind.Failed || outcome.Kind == EvaluationOutcomeKind.Return)
+                return outcome;
 
-            if (outcome.Kind == EvaluationOutcomeKind.Return)
-                return true;
             if (outcome.Kind == EvaluationOutcomeKind.Break)
                 break;
 
-            if (!SpendFuel(whileStatement.Span, out failure))
-            {
-                outcome = EvaluationOutcome.None;
-                return false;
-            }
+            ComptimeResult fuel = SpendFuel(whileStatement.Span);
+            if (fuel.IsFailed)
+                return EvaluationOutcome.Failed(fuel);
         }
 
-        outcome = EvaluationOutcome.None;
-        failure = ComptimeFailure.None;
-        return true;
+        return EvaluationOutcome.None;
     }
 
-    private bool TryExecuteForStatement(
+    private EvaluationOutcome TryExecuteForStatement(
         BoundForStatement forStatement,
-        Dictionary<Symbol, object?> frame,
-        out EvaluationOutcome outcome,
-        out ComptimeFailure failure)
+        Dictionary<Symbol, ComptimeResult> frame)
     {
-        if (!TryEvaluateExpression(forStatement.Iterable, frame, out object? iterableValue, out failure))
-        {
-            outcome = EvaluationOutcome.None;
-            return false;
-        }
+        ComptimeResult iterableValue = TryEvaluateExpression(forStatement.Iterable, frame);
+        if (iterableValue.IsFailed)
+            return EvaluationOutcome.Failed(iterableValue);
 
-        if (!TryConvertToInt64(iterableValue, forStatement.Iterable.Span, "for loop iterable must be a compile-time integer.", out long count, out failure))
-        {
-            outcome = EvaluationOutcome.None;
-            return false;
-        }
+        ComptimeResult iterableCount = TryConvertToInt64(iterableValue, forStatement.Iterable.Span, "for loop iterable must be a compile-time integer.");
+        if (iterableCount.IsFailed)
+            return EvaluationOutcome.Failed(iterableCount);
 
+        iterableCount.TryGetLong(out long count);
         for (long index = 0; index < count; index++)
         {
             if (forStatement.IndexVariable is not null)
-                frame[forStatement.IndexVariable] = unchecked((uint)index);
-
-            if (!TryExecuteBlock(forStatement.Body, frame, out outcome, out failure))
-                return false;
-
-            if (outcome.Kind == EvaluationOutcomeKind.Return)
-                return true;
-            if (outcome.Kind == EvaluationOutcomeKind.Break)
-                break;
-        }
-
-        outcome = EvaluationOutcome.None;
-        failure = ComptimeFailure.None;
-        return true;
-    }
-
-    private bool TryExecuteLoopStatement(
-        BoundLoopStatement loopStatement,
-        Dictionary<Symbol, object?> frame,
-        out EvaluationOutcome outcome,
-        out ComptimeFailure failure)
-    {
-        while (true)
-        {
-            if (!TryExecuteBlock(loopStatement.Body, frame, out outcome, out failure))
-                return false;
-
-            if (outcome.Kind == EvaluationOutcomeKind.Return)
-                return true;
-            if (outcome.Kind == EvaluationOutcomeKind.Break)
-                break;
-
-            if (!SpendFuel(loopStatement.Span, out failure))
             {
-                outcome = EvaluationOutcome.None;
-                return false;
+                ComptimeResult loopIndex = NormalizeLiteral(new ComptimeResult(index), forStatement.IndexVariable.Type, forStatement.Iterable.Span);
+                if (loopIndex.IsFailed)
+                    return EvaluationOutcome.Failed(loopIndex);
+
+                frame[forStatement.IndexVariable] = loopIndex;
             }
+
+            EvaluationOutcome outcome = TryExecuteBlock(forStatement.Body, frame);
+            if (outcome.Kind == EvaluationOutcomeKind.Failed || outcome.Kind == EvaluationOutcomeKind.Return)
+                return outcome;
+
+            if (outcome.Kind == EvaluationOutcomeKind.Break)
+                break;
         }
 
-        outcome = EvaluationOutcome.None;
-        failure = ComptimeFailure.None;
-        return true;
+        return EvaluationOutcome.None;
     }
 
-    private bool TryExecuteRepLoopStatement(
-        BoundRepLoopStatement repLoopStatement,
-        Dictionary<Symbol, object?> frame,
-        out EvaluationOutcome outcome,
-        out ComptimeFailure failure)
+    private EvaluationOutcome TryExecuteLoopStatement(
+        BoundLoopStatement loopStatement,
+        Dictionary<Symbol, ComptimeResult> frame)
     {
         while (true)
         {
-            if (!TryExecuteBlock(repLoopStatement.Body, frame, out outcome, out failure))
-                return false;
+            EvaluationOutcome outcome = TryExecuteBlock(loopStatement.Body, frame);
+            if (outcome.Kind == EvaluationOutcomeKind.Failed || outcome.Kind == EvaluationOutcomeKind.Return)
+                return outcome;
 
-            if (outcome.Kind == EvaluationOutcomeKind.Return)
-                return true;
+            if (outcome.Kind == EvaluationOutcomeKind.Break)
+                break;
+
+            ComptimeResult fuel = SpendFuel(loopStatement.Span);
+            if (fuel.IsFailed)
+                return EvaluationOutcome.Failed(fuel);
+        }
+
+        return EvaluationOutcome.None;
+    }
+
+    private EvaluationOutcome TryExecuteRepLoopStatement(
+        BoundRepLoopStatement repLoopStatement,
+        Dictionary<Symbol, ComptimeResult> frame)
+    {
+        while (true)
+        {
+            EvaluationOutcome outcome = TryExecuteBlock(repLoopStatement.Body, frame);
+            if (outcome.Kind == EvaluationOutcomeKind.Failed || outcome.Kind == EvaluationOutcomeKind.Return)
+                return outcome;
+
             Assert.Invariant(outcome.Kind != EvaluationOutcomeKind.Break);
 
-            if (!SpendFuel(repLoopStatement.Span, out failure))
-            {
-                outcome = EvaluationOutcome.None;
-                return false;
-            }
+            ComptimeResult fuel = SpendFuel(repLoopStatement.Span);
+            if (fuel.IsFailed)
+                return EvaluationOutcome.Failed(fuel);
         }
     }
 
-    private bool TryExecuteRepForStatement(
+    private EvaluationOutcome TryExecuteRepForStatement(
         BoundRepForStatement repForStatement,
-        Dictionary<Symbol, object?> frame,
-        out EvaluationOutcome outcome,
-        out ComptimeFailure failure)
+        Dictionary<Symbol, ComptimeResult> frame)
     {
-        if (!TryEvaluateExpression(repForStatement.Start, frame, out object? startValue, out failure)
-            || !TryEvaluateExpression(repForStatement.End, frame, out object? endValue, out failure))
-        {
-            outcome = EvaluationOutcome.None;
-            return false;
-        }
+        ComptimeResult startValue = TryEvaluateExpression(repForStatement.Start, frame);
+        if (startValue.IsFailed)
+            return EvaluationOutcome.Failed(startValue);
 
-        if (!TryConvertToInt64(startValue, repForStatement.Start.Span, "rep for bounds must be compile-time integers.", out long start, out failure)
-            || !TryConvertToInt64(endValue, repForStatement.End.Span, "rep for bounds must be compile-time integers.", out long end, out failure))
-        {
-            outcome = EvaluationOutcome.None;
-            return false;
-        }
+        ComptimeResult endValue = TryEvaluateExpression(repForStatement.End, frame);
+        if (endValue.IsFailed)
+            return EvaluationOutcome.Failed(endValue);
+
+        ComptimeResult normalizedStart = TryConvertToInt64(startValue, repForStatement.Start.Span, "rep for bounds must be compile-time integers.");
+        if (normalizedStart.IsFailed)
+            return EvaluationOutcome.Failed(normalizedStart);
+
+        ComptimeResult normalizedEnd = TryConvertToInt64(endValue, repForStatement.End.Span, "rep for bounds must be compile-time integers.");
+        if (normalizedEnd.IsFailed)
+            return EvaluationOutcome.Failed(normalizedEnd);
+
+        normalizedStart.TryGetLong(out long start);
+        normalizedEnd.TryGetLong(out long end);
 
         for (long index = start; index < end; index++)
         {
-            frame[repForStatement.Variable] = index;
-            if (!TryExecuteBlock(repForStatement.Body, frame, out outcome, out failure))
-                return false;
+            ComptimeResult loopIndex = NormalizeLiteral(new ComptimeResult(index), repForStatement.Variable.Type, repForStatement.Start.Span);
+            if (loopIndex.IsFailed)
+                return EvaluationOutcome.Failed(loopIndex);
 
-            if (outcome.Kind == EvaluationOutcomeKind.Return)
-                return true;
+            frame[repForStatement.Variable] = loopIndex;
+            EvaluationOutcome outcome = TryExecuteBlock(repForStatement.Body, frame);
+            if (outcome.Kind == EvaluationOutcomeKind.Failed || outcome.Kind == EvaluationOutcomeKind.Return)
+                return outcome;
+
             if (outcome.Kind == EvaluationOutcomeKind.Break)
                 break;
         }
 
-        outcome = EvaluationOutcome.None;
-        failure = ComptimeFailure.None;
-        return true;
+        return EvaluationOutcome.None;
     }
 
-    private bool SpendFuel(TextSpan span, out ComptimeFailure failure)
+    private ComptimeResult SpendFuel(TextSpan span)
     {
         Fuel--;
-        if (Fuel >= 0)
-        {
-            failure = ComptimeFailure.None;
-            return true;
-        }
-
-        failure = new ComptimeFailure(ComptimeFailureKind.FuelExhausted, span, "comptime evaluation ran out of fuel.");
-        return false;
+        return Fuel >= 0
+            ? ComptimeResult.Void
+            : new ComptimeResult(ComptimeFailureKind.FuelExhausted, span, "comptime evaluation ran out of fuel.");
     }
 
-    private static bool NormalizeLiteral(object? rawValue, TypeSymbol targetType, TextSpan span, out object? normalizedValue, out ComptimeFailure failure)
+    private static ComptimeResult NormalizeLiteral(ComptimeResult value, TypeSymbol targetType, TextSpan span)
     {
         if (targetType.IsVoid)
-        {
-            normalizedValue = null;
-            failure = ComptimeFailure.None;
-            return true;
-        }
+            return ComptimeResult.Void;
+
+        if (value.Type == ComptimeType.Undefined)
+            return ComptimeResult.Undefined;
 
         if (targetType.IsUnknown)
+            return value;
+
+        if (targetType.IsUndefinedLiteral)
         {
-            normalizedValue = rawValue;
-            failure = ComptimeFailure.None;
-            return true;
+            return value.Type == ComptimeType.Undefined
+                ? ComptimeResult.Undefined
+                : new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'.");
         }
 
-        if (!ComptimeTypeFacts.TryNormalizeValue(rawValue, targetType, out normalizedValue))
+        if (targetType is EnumTypeSymbol enumType)
+            return NormalizeLiteral(value, enumType.BackingType, span);
+
+        if (ReferenceEquals(targetType, BuiltinTypes.Bool))
         {
-            failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'.");
-            return false;
+            if (value.TryGetBool(out bool boolValue))
+                return boolValue ? ComptimeResult.True : ComptimeResult.False;
+
+            if (value.TryConvertToLong(out long integerBoolValue))
+                return integerBoolValue != 0 ? ComptimeResult.True : ComptimeResult.False;
+
+            return new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'.");
         }
 
-        failure = ComptimeFailure.None;
-        return true;
+        if (ReferenceEquals(targetType, BuiltinTypes.IntegerLiteral))
+        {
+            if (!value.TryConvertToLong(out long integerLiteral))
+                return new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'.");
+
+            return new ComptimeResult(integerLiteral);
+        }
+
+        return value.Type switch
+        {
+            ComptimeType.Int when value.TryGetInt(out int intValue) => NormalizeConcreteLiteral(intValue, targetType, span),
+            ComptimeType.UInt when value.TryGetUInt(out uint uintValue) => NormalizeConcreteLiteral(uintValue, targetType, span),
+            ComptimeType.Long when value.TryGetLong(out long longValue) => NormalizeConcreteLiteral(longValue, targetType, span),
+            _ => new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'."),
+        };
     }
 
-    private static bool FailNotEvaluable(TextSpan span, string detail, out object? value, out ComptimeFailure failure)
+    private static ComptimeResult NormalizeConcreteLiteral<T>(T rawValue, TypeSymbol targetType, TextSpan span)
     {
-        value = null;
-        failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, span, detail);
-        return false;
+        if (!ComptimeTypeFacts.TryNormalizeValue(rawValue, targetType, out object? normalizedValue))
+            return new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'.");
+
+        return CreateValueResult(normalizedValue, targetType);
     }
 
-    private static bool TryConvertToInt64(object? value, TextSpan span, string detail, out long converted, out ComptimeFailure failure)
+    private static ComptimeResult CreateValueResult(object? value, TypeSymbol type)
     {
-        if (value is not IConvertible convertible || !TryConvertConvertibleToInt64(convertible, out converted))
+        return value switch
         {
-            converted = 0;
-            failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, span, detail);
-            return false;
-        }
-
-        failure = ComptimeFailure.None;
-        return true;
+            null when type.IsVoid => ComptimeResult.Void,
+            null => ComptimeResult.Undefined,
+            bool boolValue => boolValue ? ComptimeResult.True : ComptimeResult.False,
+            long longValue => new ComptimeResult(longValue),
+            int intValue => new ComptimeResult(intValue),
+            uint uintValue => new ComptimeResult(uintValue),
+            sbyte sbyteValue => new ComptimeResult((int)sbyteValue),
+            byte byteValue => new ComptimeResult((uint)byteValue),
+            short shortValue => new ComptimeResult((int)shortValue),
+            ushort ushortValue => new ComptimeResult((uint)ushortValue),
+            ulong ulongValue when ulongValue <= uint.MaxValue => new ComptimeResult((uint)ulongValue),
+            ulong ulongValue when ulongValue <= long.MaxValue => new ComptimeResult((long)ulongValue),
+            string stringValue => new ComptimeResult(stringValue),
+            _ => Assert.UnreachableValue<ComptimeResult>($"Unsupported comptime value '{value}'."),
+        };
     }
 
-    private static bool TryConvertConvertibleToInt64(IConvertible convertible, out long converted)
+    private static ComptimeResult FailNotEvaluable(TextSpan span, string detail)
     {
-        try
-        {
-            converted = Convert.ToInt64(convertible, CultureInfo.InvariantCulture);
-            return true;
-        }
-        catch (FormatException)
-        {
-        }
-        catch (InvalidCastException)
-        {
-        }
-        catch (OverflowException)
-        {
-        }
+        return new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, detail);
+    }
 
-        converted = 0;
-        return false;
+    private static ComptimeResult TryConvertToInt64(ComptimeResult value, TextSpan span, string detail)
+    {
+        return value.TryConvertToLong(out long converted)
+            ? new ComptimeResult(converted)
+            : new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, detail);
     }
 
     private enum EvaluationOutcomeKind
@@ -1436,13 +1386,19 @@ internal sealed class ComptimeEvaluator
         Return,
         Break,
         Continue,
+        Failed,
     }
 
-    private readonly record struct EvaluationOutcome(EvaluationOutcomeKind Kind, object? Value)
+    private readonly record struct EvaluationOutcome(EvaluationOutcomeKind Kind, ComptimeResult Value)
     {
-        public static EvaluationOutcome None => new(EvaluationOutcomeKind.None, null);
-        public static EvaluationOutcome Break => new(EvaluationOutcomeKind.Break, null);
-        public static EvaluationOutcome Continue => new(EvaluationOutcomeKind.Continue, null);
-        public static EvaluationOutcome Return(object? value) => new(EvaluationOutcomeKind.Return, value);
+        public static EvaluationOutcome None => new(EvaluationOutcomeKind.None, ComptimeResult.Void);
+        public static EvaluationOutcome Break => new(EvaluationOutcomeKind.Break, ComptimeResult.Void);
+        public static EvaluationOutcome Continue => new(EvaluationOutcomeKind.Continue, ComptimeResult.Void);
+        public static EvaluationOutcome Return(ComptimeResult value) => new(EvaluationOutcomeKind.Return, value);
+        public static EvaluationOutcome Failed(ComptimeResult failure)
+        {
+            Assert.Invariant(failure.IsFailed);
+            return new EvaluationOutcome(EvaluationOutcomeKind.Failed, failure);
+        }
     }
 }

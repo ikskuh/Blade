@@ -320,9 +320,11 @@ public sealed class ComptimeBinderHelperTests
     [Test]
     public void PrivateConstantIntegerHelpers_CoverConversionsAndOperators()
     {
-        MethodInfo tryEvaluateConstantValue = GetBinderInstanceMethod("TryEvaluateConstantValue", typeof(BoundExpression), typeof(object).MakeByRefType());
+        Type comptimeResultType = typeof(SemanticBinder).Assembly.GetType("Blade.Semantics.ComptimeResult", throwOnError: true)!;
+        MethodInfo tryEvaluateConstantValue = GetBinderInstanceMethod("TryEvaluateConstantValue", typeof(BoundExpression), comptimeResultType.MakeByRefType());
         MethodInfo tryEvaluateConstantInt = GetBinderInstanceMethod("TryEvaluateConstantInt", typeof(BoundExpression));
-        MethodInfo tryConvertConstantToInt64 = GetBinderStaticMethod("TryConvertConstantToInt64", typeof(object), typeof(long).MakeByRefType());
+        MethodInfo tryConvertConstantToInt64 = GetBinderStaticMethod("TryConvertConstantToInt64", comptimeResultType, typeof(long).MakeByRefType());
+        MethodInfo tryGetBool = comptimeResultType.GetMethod("TryGetBool")!;
         SemanticBinder binder = CreateBinder(new DiagnosticBag());
 
         object?[] boolArgs =
@@ -336,7 +338,10 @@ public sealed class ComptimeBinderHelperTests
             null,
         ];
         Assert.That((bool)tryEvaluateConstantValue.Invoke(binder, boolArgs)!, Is.True);
-        Assert.That(boolArgs[1], Is.EqualTo(true));
+        object comptimeBool = boolArgs[1]!;
+        object?[] tryGetBoolArgs = [false];
+        Assert.That((bool)tryGetBool.Invoke(comptimeBool, tryGetBoolArgs)!, Is.True);
+        Assert.That(tryGetBoolArgs[0], Is.EqualTo(true));
 
         Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundLiteralExpression((ulong)7, Span, BuiltinTypes.U32)), Is.EqualTo(7));
         Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundLiteralExpression((short)8, Span, BuiltinTypes.I16)), Is.EqualTo(8));
@@ -368,19 +373,20 @@ public sealed class ComptimeBinderHelperTests
         Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundBinaryExpression(new BoundLiteralExpression(2, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.RotateRight)!, new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(1));
         Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundBinaryExpression(new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.EqualEqual)!, new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.Bool)), Is.Null);
 
-        object?[] nullArgs = [null, 0L];
-        object?[] intArgs = [1, 0L];
-        object?[] uintArgs = [(uint)2, 0L];
-        object?[] decimalArgs = [9m, 0L];
-        object?[] overflowArgs = [long.MaxValue, 0L];
+        object undefined = comptimeResultType.GetField("Undefined", BindingFlags.Public | BindingFlags.Static)!.GetValue(null)!;
+        object intValue = Activator.CreateInstance(comptimeResultType, 1)!;
+        object uintValue = Activator.CreateInstance(comptimeResultType, (uint)2)!;
+        object overflowValue = Activator.CreateInstance(comptimeResultType, long.MaxValue)!;
+        object?[] nullArgs = [undefined, 0L];
+        object?[] intArgs = [intValue, 0L];
+        object?[] uintArgs = [uintValue, 0L];
+        object?[] overflowArgs = [overflowValue, 0L];
 
         Assert.That((bool)tryConvertConstantToInt64.Invoke(null, nullArgs)!, Is.False);
         Assert.That((bool)tryConvertConstantToInt64.Invoke(null, intArgs)!, Is.True);
         Assert.That(intArgs[1], Is.EqualTo(1L));
         Assert.That((bool)tryConvertConstantToInt64.Invoke(null, uintArgs)!, Is.True);
         Assert.That(uintArgs[1], Is.EqualTo(2L));
-        Assert.That((bool)tryConvertConstantToInt64.Invoke(null, decimalArgs)!, Is.True);
-        Assert.That(decimalArgs[1], Is.EqualTo(9L));
         Assert.That((bool)tryConvertConstantToInt64.Invoke(null, overflowArgs)!, Is.True);
         Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundLiteralExpression((long)int.MaxValue + 1L, Span, BuiltinTypes.IntegerLiteral)), Is.Null);
     }

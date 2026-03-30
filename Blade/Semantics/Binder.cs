@@ -22,7 +22,7 @@ public sealed class Binder
     private readonly Dictionary<string, ImportedModule> _importedModules = new(StringComparer.Ordinal);
     private readonly Dictionary<FunctionSymbol, BoundBlockStatement> _boundFunctionBodies = new();
     private readonly Dictionary<FunctionSymbol, ComptimeSupportResult> _comptimeSupportCache = new();
-    private readonly Dictionary<Symbol, object?> _knownConstantValues = new();
+    private readonly Dictionary<Symbol, ComptimeResult> _knownConstantValues = new();
     private readonly Dictionary<string, ImportedModuleDefinition> _moduleDefinitionCache;
     private readonly Dictionary<string, string> _namedModuleOwners;
     private readonly HashSet<string> _moduleBindingStack;
@@ -893,7 +893,7 @@ public sealed class Binder
         if (condition is BoundErrorExpression)
             return new BoundErrorStatement(assertStatement.Span);
 
-        if (!TryEvaluateAssertCondition(condition, out object? value, out ComptimeFailure failure))
+        if (!TryEvaluateAssertCondition(condition, out ComptimeResult value, out ComptimeFailure failure))
         {
             if (!ContainsErrorExpression(condition))
             {
@@ -906,7 +906,7 @@ public sealed class Binder
             return new BoundErrorStatement(assertStatement.Span);
         }
 
-        if (value is not bool conditionValue)
+        if (!value.TryGetBool(out bool conditionValue))
         {
             _diagnostics.ReportTypeMismatch(assertStatement.Condition.Span, "bool", condition.Type.Name);
             return new BoundErrorStatement(assertStatement.Span);
@@ -2105,8 +2105,8 @@ public sealed class Binder
         if (expression is BoundErrorExpression)
             return expression;
 
-        if (TryEvaluateFoldedValue(expression, _knownConstantValues, out object? value, out ComptimeFailure foldFailure))
-            return new BoundLiteralExpression(value, expression.Span, expression.Type);
+        if (TryEvaluateFoldedValue(expression, _knownConstantValues, out ComptimeResult value, out ComptimeFailure foldFailure))
+            return CreateFoldedLiteralExpression(value, expression);
 
         if (ContainsErrorExpression(expression))
             return expression;
@@ -2126,9 +2126,9 @@ public sealed class Binder
 
     private bool TryFoldExpression(BoundExpression expression, bool reportDiagnostics, out BoundExpression folded)
     {
-        if (TryEvaluateFoldedValue(expression, _knownConstantValues, out object? value, out ComptimeFailure failure))
+        if (TryEvaluateFoldedValue(expression, _knownConstantValues, out ComptimeResult value, out ComptimeFailure failure))
         {
-            folded = new BoundLiteralExpression(value, expression.Span, expression.Type);
+            folded = CreateFoldedLiteralExpression(value, expression);
             return true;
         }
 
@@ -2141,8 +2141,8 @@ public sealed class Binder
 
     private bool TryEvaluateFoldedValue(
         BoundExpression expression,
-        IReadOnlyDictionary<Symbol, object?> initialFrame,
-        out object? value,
+        IReadOnlyDictionary<Symbol, ComptimeResult> initialFrame,
+        out ComptimeResult value,
         out ComptimeFailure failure)
     {
         ComptimeEvaluator evaluator = new(
@@ -2150,38 +2150,133 @@ public sealed class Binder
             ResolveFunctionBodyForComptime,
             GetComptimeSupportResult);
 
-        if (!evaluator.TryEvaluateExpression(expression, initialFrame, out object? rawValue, out failure))
+        ComptimeResult rawValue = evaluator.TryEvaluateExpression(expression, initialFrame);
+        if (rawValue.IsFailed)
         {
-            value = null;
+            Assert.Invariant(rawValue.TryGetFailure(out failure));
+            value = ComptimeResult.Void;
             return false;
         }
 
-        if (expression.Type.IsVoid)
+        value = NormalizeFoldedValue(rawValue, expression.Type, expression.Span);
+        if (value.IsFailed)
         {
-            value = null;
-            failure = ComptimeFailure.None;
-            return true;
+            Assert.Invariant(value.TryGetFailure(out failure));
+            value = ComptimeResult.Void;
+            return false;
         }
 
-        if (expression.Type.IsUnknown || rawValue is string)
-        {
-            value = rawValue;
-            failure = ComptimeFailure.None;
-            return true;
-        }
-
-        if (ComptimeTypeFacts.TryNormalizeValue(rawValue, expression.Type, out value))
-        {
-            failure = ComptimeFailure.None;
-            return true;
-        }
-
-        value = null;
-        failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, expression.Span, $"value cannot be normalized to '{expression.Type.Name}'.");
-        return false;
+        failure = default;
+        return true;
     }
 
-    private bool TryEvaluateAssertCondition(BoundExpression expression, out object? value, out ComptimeFailure failure)
+    private static ComptimeResult NormalizeFoldedValue(ComptimeResult value, TypeSymbol targetType, TextSpan span)
+    {
+        if (targetType.IsVoid)
+            return ComptimeResult.Void;
+
+        if (value.Type == ComptimeType.Undefined)
+            return ComptimeResult.Undefined;
+
+        if (targetType.IsUnknown)
+            return value;
+
+        if (targetType.IsUndefinedLiteral)
+        {
+            return value.Type == ComptimeType.Undefined
+                ? ComptimeResult.Undefined
+                : new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'.");
+        }
+
+        if (targetType is EnumTypeSymbol enumType)
+            return NormalizeFoldedValue(value, enumType.BackingType, span);
+
+        if (ReferenceEquals(targetType, BuiltinTypes.Bool))
+        {
+            if (value.TryGetBool(out bool boolValue))
+                return new ComptimeResult(boolValue);
+
+            if (value.TryConvertToLong(out long integerBoolValue))
+                return new ComptimeResult(integerBoolValue != 0);
+
+            return new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'.");
+        }
+
+        if (ReferenceEquals(targetType, BuiltinTypes.IntegerLiteral))
+        {
+            if (!value.TryConvertToLong(out long integerLiteral))
+                return new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'.");
+
+            return new ComptimeResult(integerLiteral);
+        }
+
+        return value.Type switch
+        {
+            ComptimeType.Int when value.TryGetInt(out int intValue) => NormalizeConcreteFoldedValue(intValue, targetType, span),
+            ComptimeType.UInt when value.TryGetUInt(out uint uintValue) => NormalizeConcreteFoldedValue(uintValue, targetType, span),
+            ComptimeType.Long when value.TryGetLong(out long longValue) => NormalizeConcreteFoldedValue(longValue, targetType, span),
+            _ => new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'."),
+        };
+    }
+
+    private static ComptimeResult NormalizeConcreteFoldedValue<T>(T rawValue, TypeSymbol targetType, TextSpan span)
+    {
+        if (!ComptimeTypeFacts.TryNormalizeValue(rawValue, targetType, out object? normalizedValue))
+            return new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'.");
+
+        return CreateComptimeResult(normalizedValue, targetType);
+    }
+
+    private static BoundLiteralExpression CreateFoldedLiteralExpression(ComptimeResult value, BoundExpression expression)
+    {
+        return new BoundLiteralExpression(MaterializeLiteralValue(value, expression.Type), expression.Span, expression.Type);
+    }
+
+    private static object? MaterializeLiteralValue(ComptimeResult value, TypeSymbol targetType)
+    {
+        if (targetType.IsVoid || value.Type == ComptimeType.Undefined)
+            return null;
+
+        if (value.TryGetBool(out bool boolValue))
+            return boolValue;
+
+        if (value.TryGetLong(out long longValue))
+            return longValue;
+
+        if (value.TryGetInt(out int intValue))
+            return intValue;
+
+        if (value.TryGetUInt(out uint uintValue))
+            return uintValue;
+
+        if (value.TryGetString(out string stringValue))
+            return stringValue;
+
+        return Assert.UnreachableValue<object?>($"Unsupported folded comptime result '{value.Type}'.");
+    }
+
+    private static ComptimeResult CreateComptimeResult(object? value, TypeSymbol type)
+    {
+        return value switch
+        {
+            null when type.IsVoid => ComptimeResult.Void,
+            null => ComptimeResult.Undefined,
+            bool boolValue => new ComptimeResult(boolValue),
+            long longValue => new ComptimeResult(longValue),
+            int intValue => new ComptimeResult(intValue),
+            uint uintValue => new ComptimeResult(uintValue),
+            sbyte sbyteValue => new ComptimeResult((int)sbyteValue),
+            byte byteValue => new ComptimeResult((uint)byteValue),
+            short shortValue => new ComptimeResult((int)shortValue),
+            ushort ushortValue => new ComptimeResult((uint)ushortValue),
+            ulong ulongValue when ulongValue <= uint.MaxValue => new ComptimeResult((uint)ulongValue),
+            ulong ulongValue when ulongValue <= long.MaxValue => new ComptimeResult((long)ulongValue),
+            string stringValue => new ComptimeResult(stringValue),
+            _ => Assert.UnreachableValue<ComptimeResult>($"Unsupported folded value '{value}'."),
+        };
+    }
+
+    private bool TryEvaluateAssertCondition(BoundExpression expression, out ComptimeResult value, out ComptimeFailure failure)
     {
         return TryEvaluateFoldedValue(expression, _knownConstantValues, out value, out failure);
     }
@@ -2191,7 +2286,7 @@ public sealed class Binder
         if (!symbol.IsConst || !symbol.IsGlobalStorage || initializer is null || initializer is BoundErrorExpression)
             return;
 
-        if (TryEvaluateConstantValue(initializer, out object? value))
+        if (TryEvaluateConstantValue(initializer, out ComptimeResult value))
             _knownConstantValues[symbol] = value;
     }
 
@@ -2201,7 +2296,7 @@ public sealed class Binder
         {
             case BoundLiteralExpression:
             case BoundEnumLiteralExpression:
-                failure = ComptimeFailure.None;
+                failure = default;
                 return true;
 
             case BoundUnaryExpression unary:
@@ -2224,7 +2319,7 @@ public sealed class Binder
                         return false;
                 }
 
-                failure = ComptimeFailure.None;
+                failure = default;
                 return true;
 
             case BoundStructLiteralExpression structLiteral:
@@ -2234,7 +2329,7 @@ public sealed class Binder
                         return false;
                 }
 
-                failure = ComptimeFailure.None;
+                failure = default;
                 return true;
 
             case BoundConversionExpression conversion:
@@ -2429,7 +2524,7 @@ public sealed class Binder
 
     private void ReportComptimeFailure(ComptimeFailure failure)
     {
-        Assert.Invariant(failure.Kind != ComptimeFailureKind.None, "ReportComptimeFailure should only be called with an actual failure.");
+        Assert.Invariant(!string.IsNullOrEmpty(failure.Detail), "ReportComptimeFailure should only be called with an actual failure.");
 
         switch (failure.Kind)
         {
@@ -3023,7 +3118,7 @@ public sealed class Binder
             || !TryGetCompileTimeIntegerWidth(targetType, out int targetWidth)
             || targetWidth < 8
             || targetWidth >= sourceWidth
-            || !TryEvaluateConstantValue(expression, out object? value)
+            || !TryEvaluateConstantValue(expression, out ComptimeResult value)
             || !TryConvertConstantToInt64(value, out long exactValue))
         {
             return;
@@ -3195,17 +3290,17 @@ public sealed class Binder
         return TryEvaluateConstantInt(bound);
     }
 
-    private bool TryEvaluateConstantValue(BoundExpression expression, out object? value)
+    private bool TryEvaluateConstantValue(BoundExpression expression, out ComptimeResult value)
     {
         return TryEvaluateFoldedValue(expression, _knownConstantValues, out value, out _);
     }
 
     private int? TryEvaluateConstantInt(BoundExpression expression)
     {
-        if (!TryEvaluateConstantValue(expression, out object? value))
+        if (!TryEvaluateConstantValue(expression, out ComptimeResult value))
             return null;
 
-        if (value is bool or string)
+        if (value.TryGetBool(out _) || value.TryGetString(out _))
             return null;
 
         if (!TryConvertConstantToInt64(value, out long constantValue))
@@ -3216,31 +3311,9 @@ public sealed class Binder
             : null;
     }
 
-    private static bool TryConvertConstantToInt64(object? value, out long converted)
+    private static bool TryConvertConstantToInt64(ComptimeResult value, out long converted)
     {
-        try
-        {
-            if (value is not IConvertible convertible)
-            {
-                converted = 0;
-                return false;
-            }
-
-            converted = Convert.ToInt64(convertible, CultureInfo.InvariantCulture);
-            return true;
-        }
-        catch (FormatException)
-        {
-        }
-        catch (InvalidCastException)
-        {
-        }
-        catch (OverflowException)
-        {
-        }
-
-        converted = 0;
-        return false;
+        return value.TryConvertToLong(out converted);
     }
 
     private static bool RequiresComptimeInitializer(VariableSymbol symbol)
