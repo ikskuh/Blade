@@ -1,0 +1,18 @@
+
+
+all: compile load
+
+compile:
+    flexspin \
+        -2 \
+        -b \
+        -Wall \
+        -Wabs-paths \
+        -o envelope.bin \
+        envelope.spin2 
+
+load:
+    loadp2 \
+        -p /dev/ttyUSB0 \
+        -v \
+        -t envelope.bin

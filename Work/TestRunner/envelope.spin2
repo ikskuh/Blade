@@ -1,0 +1,51 @@
+CON
+    F_CPU   = 200_000_000
+    BAUD    =     115_200
+
+    TXD_PIN = 62
+    RXD_PIN = 63
+
+    UART_CLOCKS = F_CPU / BAUD
+
+    UART_CFG = (F_CPU / BAUD * $1_0000) | (8-1) ' 115200 @ 8 bit
+
+DAT
+  entry
+    ''  %0000_000E_DDDD_DDMM_MMMM_MMMM_PPPP_CCSS
+    '' 0b0000_0001_0000_0000_0000_1001_1111_1011
+    ''           E                               = "PLL on"
+    ''             DDDD_DD                       = xi div:  1
+    ''                    MM_MMMM_MMMM           = vco mul: 10
+    ''                                 PPPP      = "VCO / 1"
+    ''                                      CC   = "15pF per pin"
+    ''                                        SS = clk:PLL
+    '' => "CLK = XI * 20 with PLL enabled"
+    hubset ##16779771 '' _clkmode = 0x10009FB = 200 MHz
+    
+    WRPIN #P_TT_01 | P_ASYNC_TX, #TXD_PIN
+    WRPIN #P_TT_00 | P_ASYNC_RX, #RXD_PIN
+
+    WXPIN ##UART_CFG, #TXD_PIN
+    WXPIN ##UART_CFG, #RXD_PIN
+
+    '' enable smart pin
+    DIRH #TXD_PIN
+    DIRH #RXD_PIN
+
+    WAITX ##1_000_000
+
+    WYPIN #$21, #TXD_PIN '' write '!'
+
+  main_loop
+    TESTP #RXD_PIN WC
+    IF_NC JMP #main_loop
+
+    RDPIN tmp, #RXD_PIN '' read received word
+    SHR tmp, #32-8 '' right-justify it
+
+    WYPIN  tmp, #TXD_PIN '' echo
+
+    JMP #main_loop
+
+  tmp
+    long 0
