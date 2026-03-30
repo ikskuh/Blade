@@ -212,6 +212,39 @@ public sealed class ComptimeBinderHelperTests
     }
 
     [Test]
+    public void StaticStorageConstants_AreReadableDuringFoldingAndComptimeEvaluation()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg const REG_RATE: u32 = 20_000_000;
+            lut const LUT_OFFSET: u32 = 2;
+            hub const HUB_OFFSET: u32 = 3;
+
+            comptime fn total() -> u32 {
+                return REG_RATE / 1_000_000 + LUT_OFFSET + HUB_OFFSET;
+            }
+
+            reg const DIRECT: u32 = REG_RATE / 1_000_000 + LUT_OFFSET + HUB_OFFSET;
+            reg const VIA_FN: u32 = total();
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        Assert.That(program.GlobalVariables.Select(static global => global.Initializer).OfType<BoundLiteralExpression>().Select(static literal => literal.Value), Does.Contain((uint)25));
+    }
+
+    [Test]
+    public void IntegerLiteralFolding_Keeps64BitIntermediatesUntilFinalMaterialization()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg const CLOCKS: u32 = 250 * 20_000_000 / 1000;
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        BoundLiteralExpression initializer = (BoundLiteralExpression)program.GlobalVariables.Single().Initializer!;
+        Assert.That(initializer.Value, Is.EqualTo((uint)5_000_000));
+    }
+
+    [Test]
     public void PrivateComptimeValidationHelpers_CoverRecursiveBranches()
     {
         MethodInfo method = GetBinderStaticMethod("TryValidateComptimeExpression", 2);
@@ -289,7 +322,7 @@ public sealed class ComptimeBinderHelperTests
     {
         MethodInfo tryEvaluateConstantValue = GetBinderInstanceMethod("TryEvaluateConstantValue", typeof(BoundExpression), typeof(object).MakeByRefType());
         MethodInfo tryEvaluateConstantInt = GetBinderInstanceMethod("TryEvaluateConstantInt", typeof(BoundExpression));
-        MethodInfo toInt32Unchecked = GetBinderStaticMethod("ToInt32Unchecked", typeof(object));
+        MethodInfo tryConvertConstantToInt64 = GetBinderStaticMethod("TryConvertConstantToInt64", typeof(object), typeof(long).MakeByRefType());
         SemanticBinder binder = CreateBinder(new DiagnosticBag());
 
         object?[] boolArgs =
@@ -335,16 +368,21 @@ public sealed class ComptimeBinderHelperTests
         Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundBinaryExpression(new BoundLiteralExpression(2, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.RotateRight)!, new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.EqualTo(1));
         Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundBinaryExpression(new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.EqualEqual)!, new BoundLiteralExpression(1, Span, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.Bool)), Is.Null);
 
-        Assert.That(Invoke<int>(toInt32Unchecked, null, (object?)null), Is.EqualTo(0));
-        Assert.That(Invoke<int>(toInt32Unchecked, null, 1), Is.EqualTo(1));
-        Assert.That(Invoke<int>(toInt32Unchecked, null, (uint)2), Is.EqualTo(2));
-        Assert.That(Invoke<int>(toInt32Unchecked, null, (long)3), Is.EqualTo(3));
-        Assert.That(Invoke<int>(toInt32Unchecked, null, (ulong)4), Is.EqualTo(4));
-        Assert.That(Invoke<int>(toInt32Unchecked, null, (short)5), Is.EqualTo(5));
-        Assert.That(Invoke<int>(toInt32Unchecked, null, (ushort)6), Is.EqualTo(6));
-        Assert.That(Invoke<int>(toInt32Unchecked, null, (byte)7), Is.EqualTo(7));
-        Assert.That(Invoke<int>(toInt32Unchecked, null, (sbyte)8), Is.EqualTo(8));
-        Assert.That(Invoke<int>(toInt32Unchecked, null, 9m), Is.EqualTo(9));
+        object?[] nullArgs = [null, 0L];
+        object?[] intArgs = [1, 0L];
+        object?[] uintArgs = [(uint)2, 0L];
+        object?[] decimalArgs = [9m, 0L];
+        object?[] overflowArgs = [long.MaxValue, 0L];
+
+        Assert.That((bool)tryConvertConstantToInt64.Invoke(null, nullArgs)!, Is.False);
+        Assert.That((bool)tryConvertConstantToInt64.Invoke(null, intArgs)!, Is.True);
+        Assert.That(intArgs[1], Is.EqualTo(1L));
+        Assert.That((bool)tryConvertConstantToInt64.Invoke(null, uintArgs)!, Is.True);
+        Assert.That(uintArgs[1], Is.EqualTo(2L));
+        Assert.That((bool)tryConvertConstantToInt64.Invoke(null, decimalArgs)!, Is.True);
+        Assert.That(decimalArgs[1], Is.EqualTo(9L));
+        Assert.That((bool)tryConvertConstantToInt64.Invoke(null, overflowArgs)!, Is.True);
+        Assert.That(Invoke(tryEvaluateConstantInt, binder, new BoundLiteralExpression((long)int.MaxValue + 1L, Span, BuiltinTypes.IntegerLiteral)), Is.Null);
     }
 
     [Test]

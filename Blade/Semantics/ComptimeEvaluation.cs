@@ -83,6 +83,24 @@ internal static class ComptimeTypeFacts
             return false;
         }
 
+        if (ReferenceEquals(targetType, BuiltinTypes.IntegerLiteral))
+        {
+            if (value is bool or string)
+            {
+                normalized = null;
+                return false;
+            }
+
+            if (value is IConvertible convertible && TryConvertConvertibleToInt64(convertible, out long integerValue))
+            {
+                normalized = integerValue;
+                return true;
+            }
+
+            normalized = null;
+            return false;
+        }
+
         if (targetType is EnumTypeSymbol enumType)
         {
             if (!TryNormalizeValue(value, enumType.BackingType, out object? enumValue))
@@ -423,6 +441,7 @@ internal sealed class ComptimeFunctionSupportAnalyzer
         return symbolExpression.Symbol switch
         {
             VariableSymbol variable when variable.ScopeKind == VariableScopeKind.Local => Supported(),
+            VariableSymbol variable when variable.IsGlobalStorage && variable.IsConst => Supported(),
             ParameterSymbol => Supported(),
             VariableSymbol variable => Forbidden(symbolExpression.Span, variable.Name),
             _ => Unsupported(symbolExpression.Span, $"symbol '{symbolExpression.Symbol.Name}' is not supported during comptime evaluation."),
@@ -570,7 +589,9 @@ internal sealed class ComptimeEvaluator
                     return false;
                 }
 
-                return NormalizeLiteral(-negatedValue, unary.Type, unary.Span, out value, out failure);
+                value = -negatedValue;
+                failure = ComptimeFailure.None;
+                return true;
 
             case BoundUnaryOperatorKind.BitwiseNot:
                 if (!TryConvertToInt64(operandValue, unary.Operand.Span, "unary operand is not a compile-time integer.", out long bitwiseValue, out failure))
@@ -579,7 +600,9 @@ internal sealed class ComptimeEvaluator
                     return false;
                 }
 
-                return NormalizeLiteral(~bitwiseValue, unary.Type, unary.Span, out value, out failure);
+                value = ~bitwiseValue;
+                failure = ComptimeFailure.None;
+                return true;
 
             case BoundUnaryOperatorKind.UnaryPlus:
                 if (!TryConvertToInt64(operandValue, unary.Operand.Span, "unary operand is not a compile-time integer.", out long positiveValue, out failure))
@@ -588,7 +611,9 @@ internal sealed class ComptimeEvaluator
                     return false;
                 }
 
-                return NormalizeLiteral(positiveValue, unary.Type, unary.Span, out value, out failure);
+                value = positiveValue;
+                failure = ComptimeFailure.None;
+                return true;
 
             default:
                 value = null;
@@ -716,35 +741,59 @@ internal sealed class ComptimeEvaluator
         switch (binary.Operator.Kind)
         {
             case BoundBinaryOperatorKind.Add:
-                return NormalizeLiteral(left + right, binary.Type, binary.Span, out value, out failure);
+                value = left + right;
+                failure = ComptimeFailure.None;
+                return true;
             case BoundBinaryOperatorKind.Subtract:
-                return NormalizeLiteral(left - right, binary.Type, binary.Span, out value, out failure);
+                value = left - right;
+                failure = ComptimeFailure.None;
+                return true;
             case BoundBinaryOperatorKind.Multiply:
-                return NormalizeLiteral(left * right, binary.Type, binary.Span, out value, out failure);
+                value = left * right;
+                failure = ComptimeFailure.None;
+                return true;
             case BoundBinaryOperatorKind.Divide:
                 if (right == 0)
                     return FailNotEvaluable(binary.Span, "division by zero is not evaluable at compile time.", out value, out failure);
-                return NormalizeLiteral(left / right, binary.Type, binary.Span, out value, out failure);
+                value = left / right;
+                failure = ComptimeFailure.None;
+                return true;
             case BoundBinaryOperatorKind.Modulo:
                 if (right == 0)
                     return FailNotEvaluable(binary.Span, "modulo by zero is not evaluable at compile time.", out value, out failure);
-                return NormalizeLiteral(left % right, binary.Type, binary.Span, out value, out failure);
+                value = left % right;
+                failure = ComptimeFailure.None;
+                return true;
             case BoundBinaryOperatorKind.BitwiseAnd:
-                return NormalizeLiteral(left & right, binary.Type, binary.Span, out value, out failure);
+                value = left & right;
+                failure = ComptimeFailure.None;
+                return true;
             case BoundBinaryOperatorKind.BitwiseOr:
-                return NormalizeLiteral(left | right, binary.Type, binary.Span, out value, out failure);
+                value = left | right;
+                failure = ComptimeFailure.None;
+                return true;
             case BoundBinaryOperatorKind.BitwiseXor:
-                return NormalizeLiteral(left ^ right, binary.Type, binary.Span, out value, out failure);
+                value = left ^ right;
+                failure = ComptimeFailure.None;
+                return true;
             case BoundBinaryOperatorKind.ShiftLeft:
             case BoundBinaryOperatorKind.ArithmeticShiftLeft:
-                return NormalizeLiteral(left << (int)right, binary.Type, binary.Span, out value, out failure);
+                value = left << (int)right;
+                failure = ComptimeFailure.None;
+                return true;
             case BoundBinaryOperatorKind.ShiftRight:
             case BoundBinaryOperatorKind.ArithmeticShiftRight:
-                return NormalizeLiteral(left >> (int)right, binary.Type, binary.Span, out value, out failure);
+                value = left >> (int)right;
+                failure = ComptimeFailure.None;
+                return true;
             case BoundBinaryOperatorKind.RotateLeft:
-                return NormalizeLiteral((long)(((uint)left << (int)right) | ((uint)left >> (32 - ((int)right & 31)))), binary.Type, binary.Span, out value, out failure);
+                value = (long)(((uint)left << (int)right) | ((uint)left >> (32 - ((int)right & 31))));
+                failure = ComptimeFailure.None;
+                return true;
             case BoundBinaryOperatorKind.RotateRight:
-                return NormalizeLiteral((long)(((uint)left >> (int)right) | ((uint)left << (32 - ((int)right & 31)))), binary.Type, binary.Span, out value, out failure);
+                value = (long)(((uint)left >> (int)right) | ((uint)left << (32 - ((int)right & 31))));
+                failure = ComptimeFailure.None;
+                return true;
             case BoundBinaryOperatorKind.Equals:
                 value = left == right;
                 failure = ComptimeFailure.None;

@@ -1,9 +1,9 @@
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// - RDLONG
+// ! RDLONG
 // NOTE:
-//   hub const variables emit RDLONG for reads.
+//   hub const variables may be folded directly into immediates.
 
 hub const config: u32 = 0xDEAD;
 reg var sink: u32 = 0;

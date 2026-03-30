@@ -234,7 +234,7 @@ public class IrPipelineTests
             reg var narrowed: u8 = 257 as u8;
             """);
 
-        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        Assert.That(diagnostics.Select(static diagnostic => diagnostic.Code), Is.EqualTo([DiagnosticCode.W0261_ComptimeIntegerTruncation]));
 
         IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
         {

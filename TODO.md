@@ -193,10 +193,6 @@ Acceptance criteria are:
 - Not less code coverage than before.
 - At least two new demonstrators are written, one with `fail`, one with `pass`.
 
-## implement pointer arithmetics
-
-see reference.blade
-
 ## immediate values are still going through a register often
 
 ```pasm
@@ -271,17 +267,6 @@ These two must pass:
 - `Demonstrators/Comptime/pass_eager_constant_forwarding.blade`
 - `Demonstrators/Comptime/pass_eager_const_folding.blade`
 
-## compile time arithmetic must run in 64 bits for sanity
-
-```blade
-reg const CLOCKS: u32 = 250 * 20_000_000 / 1000;
-assert CLOCKS == 5_000_000;
-```
-
-## remove top-level expressions
-
-these are useless as always removed by DCE except for calls and assignments.
-
 ## Rewrite how inline assembly works in general
 
 Right now, it is transposed into a block/IR for non-volatile asm, and volatile asm seems to be treated as a string
@@ -353,4 +338,3 @@ like proper location tracking
 
 - Source <=> Assembly mapping
 - Resolved values for all symbols
-

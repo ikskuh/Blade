@@ -493,6 +493,14 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
         Report(DiagnosticCode.E0260_RangeIterationRequiresBinding, span, "Range iteration requires an index binding '-> index'.");
     }
 
+    public void ReportComptimeIntegerTruncation(TextSpan span, string value, string targetType, string truncatedValue)
+    {
+        Report(
+            DiagnosticCode.W0261_ComptimeIntegerTruncation,
+            span,
+            $"Compile-time integer value {value} is truncated to {truncatedValue} when converted to '{targetType}'.");
+    }
+
     // Inline assembly diagnostics
 
     public void ReportInlineAsmUnknownInstruction(TextSpan span, string mnemonic)

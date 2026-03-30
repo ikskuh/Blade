@@ -84,6 +84,19 @@ public class BinderTests
     }
 
     [Test]
+    public void CompileTimeKnownNarrowing_ReportsTruncationWarning()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            reg const wide: u32 = 257;
+            reg const implicit_small: u8 = wide;
+            reg const explicit_small: u8 = 257 as u8;
+            reg const exact_small: u8 = 255;
+            """);
+
+        Assert.That(diagnostics.Count(static diagnostic => diagnostic.Code == DiagnosticCode.W0261_ComptimeIntegerTruncation), Is.EqualTo(2));
+    }
+
+    [Test]
     public void AssignmentToConst_ReportsDiagnostic()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""

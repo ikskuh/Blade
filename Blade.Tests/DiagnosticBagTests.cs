@@ -66,10 +66,11 @@ public class DiagnosticBagTests
         bag.ReportInlineAsmEmptyInstruction(Span);
         bag.ReportInlineAsmInvalidFlagOutput(Span, "Q");
         bag.ReportInlineAsmTempReadBeforeWrite(Span, "%0");
+        bag.ReportComptimeIntegerTruncation(Span, "257", "u8", "1");
         bag.ReportUnsupportedLowering(Span, "store.index");
         bag.ReportDuplicateVariableClause(Span, "@(...)");
 
-        Assert.That(bag.Count, Is.EqualTo(54));
+        Assert.That(bag.Count, Is.EqualTo(55));
         Assert.That(bag.HasErrors, Is.True);
         Assert.That(bag.Last().Code, Is.EqualTo(DiagnosticCode.E0108_DuplicateVariableClause));
     }

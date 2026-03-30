@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using Blade;
@@ -2104,7 +2105,7 @@ public sealed class Binder
         if (expression is BoundErrorExpression)
             return expression;
 
-        if (TryEvaluateFoldedValue(expression, out object? value, out ComptimeFailure foldFailure))
+        if (TryEvaluateFoldedValue(expression, _knownConstantValues, out object? value, out ComptimeFailure foldFailure))
             return new BoundLiteralExpression(value, expression.Span, expression.Type);
 
         if (ContainsErrorExpression(expression))
@@ -2125,7 +2126,7 @@ public sealed class Binder
 
     private bool TryFoldExpression(BoundExpression expression, bool reportDiagnostics, out BoundExpression folded)
     {
-        if (TryEvaluateFoldedValue(expression, out object? value, out ComptimeFailure failure))
+        if (TryEvaluateFoldedValue(expression, _knownConstantValues, out object? value, out ComptimeFailure failure))
         {
             folded = new BoundLiteralExpression(value, expression.Span, expression.Type);
             return true;
@@ -2138,27 +2139,56 @@ public sealed class Binder
         return false;
     }
 
-    private bool TryEvaluateFoldedValue(BoundExpression expression, out object? value, out ComptimeFailure failure)
+    private bool TryEvaluateFoldedValue(
+        BoundExpression expression,
+        IReadOnlyDictionary<Symbol, object?> initialFrame,
+        out object? value,
+        out ComptimeFailure failure)
     {
         ComptimeEvaluator evaluator = new(
             _comptimeFuel,
             ResolveFunctionBodyForComptime,
             GetComptimeSupportResult);
-        return evaluator.TryEvaluateExpression(expression, out value, out failure);
+
+        if (!evaluator.TryEvaluateExpression(expression, initialFrame, out object? rawValue, out failure))
+        {
+            value = null;
+            return false;
+        }
+
+        if (expression.Type.IsVoid)
+        {
+            value = null;
+            failure = ComptimeFailure.None;
+            return true;
+        }
+
+        if (expression.Type.IsUnknown || rawValue is string)
+        {
+            value = rawValue;
+            failure = ComptimeFailure.None;
+            return true;
+        }
+
+        if (ComptimeTypeFacts.TryNormalizeValue(rawValue, expression.Type, out value))
+        {
+            failure = ComptimeFailure.None;
+            return true;
+        }
+
+        value = null;
+        failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, expression.Span, $"value cannot be normalized to '{expression.Type.Name}'.");
+        return false;
     }
 
     private bool TryEvaluateAssertCondition(BoundExpression expression, out object? value, out ComptimeFailure failure)
     {
-        ComptimeEvaluator evaluator = new(
-            _comptimeFuel,
-            ResolveFunctionBodyForComptime,
-            GetComptimeSupportResult);
-        return evaluator.TryEvaluateExpression(expression, _knownConstantValues, out value, out failure);
+        return TryEvaluateFoldedValue(expression, _knownConstantValues, out value, out failure);
     }
 
     private void RememberKnownConstantValue(VariableSymbol symbol, BoundExpression? initializer)
     {
-        if (!symbol.IsConst || initializer is null || initializer is BoundErrorExpression)
+        if (!symbol.IsConst || !symbol.IsGlobalStorage || initializer is null || initializer is BoundErrorExpression)
             return;
 
         if (TryEvaluateConstantValue(initializer, out object? value))
@@ -2599,6 +2629,7 @@ public sealed class Binder
             return new BoundErrorExpression(castExpression.Span);
         }
 
+        ReportComptimeIntegerTruncationIfNeeded(expression, targetType, castExpression.Span);
         return new BoundCastExpression(expression, castExpression.Span, targetType);
     }
 
@@ -2982,7 +3013,57 @@ public sealed class Binder
             return LowerStringToArrayLiteral(stringValue, targetArray, targetLength, span, reportMismatch);
         }
 
+        ReportComptimeIntegerTruncationIfNeeded(expression, targetType, span);
         return new BoundConversionExpression(expression, span, targetType);
+    }
+
+    private void ReportComptimeIntegerTruncationIfNeeded(BoundExpression expression, TypeSymbol targetType, TextSpan span)
+    {
+        if (!TryGetCompileTimeIntegerWidth(expression.Type, out int sourceWidth)
+            || !TryGetCompileTimeIntegerWidth(targetType, out int targetWidth)
+            || targetWidth < 8
+            || targetWidth >= sourceWidth
+            || !TryEvaluateConstantValue(expression, out object? value)
+            || !TryConvertConstantToInt64(value, out long exactValue))
+        {
+            return;
+        }
+
+        ulong mask = (1UL << targetWidth) - 1UL;
+        ulong lowBits = unchecked((ulong)exactValue) & mask;
+        long zeroExtended = unchecked((long)lowBits);
+        long signExtended = SignExtend(lowBits, targetWidth);
+        if (exactValue == zeroExtended || exactValue == signExtended)
+            return;
+
+        if (!TypeFacts.TryNormalizeValue(exactValue, targetType, out object? truncatedValue))
+            return;
+
+        _diagnostics.ReportComptimeIntegerTruncation(
+            span,
+            exactValue.ToString(CultureInfo.InvariantCulture),
+            targetType.Name,
+            Convert.ToString(truncatedValue, CultureInfo.InvariantCulture) ?? "null");
+    }
+
+    private static bool TryGetCompileTimeIntegerWidth(TypeSymbol type, out int width)
+    {
+        if (ReferenceEquals(type, BuiltinTypes.IntegerLiteral))
+        {
+            width = 64;
+            return true;
+        }
+
+        return TypeFacts.TryGetIntegerWidth(type, out width);
+    }
+
+    private static long SignExtend(ulong value, int width)
+    {
+        if (width >= 64)
+            return unchecked((long)value);
+
+        int shift = 64 - width;
+        return unchecked(((long)value << shift) >> shift);
     }
 
     private BoundExpression LowerStringToArrayLiteral(
@@ -3116,7 +3197,7 @@ public sealed class Binder
 
     private bool TryEvaluateConstantValue(BoundExpression expression, out object? value)
     {
-        return TryEvaluateFoldedValue(expression, out value, out _);
+        return TryEvaluateFoldedValue(expression, _knownConstantValues, out value, out _);
     }
 
     private int? TryEvaluateConstantInt(BoundExpression expression)
@@ -3124,28 +3205,42 @@ public sealed class Binder
         if (!TryEvaluateConstantValue(expression, out object? value))
             return null;
 
-        return value switch
-        {
-            int or uint or long or ulong or short or ushort or byte or sbyte => ToInt32Unchecked(value),
-            _ => null,
-        };
+        if (value is bool or string)
+            return null;
+
+        if (!TryConvertConstantToInt64(value, out long constantValue))
+            return null;
+
+        return constantValue is >= int.MinValue and <= int.MaxValue
+            ? (int)constantValue
+            : null;
     }
 
-    private static int ToInt32Unchecked(object? value)
+    private static bool TryConvertConstantToInt64(object? value, out long converted)
     {
-        return value switch
+        try
         {
-            null => 0,
-            int i => i,
-            uint u => unchecked((int)u),
-            long l => unchecked((int)l),
-            ulong u => unchecked((int)u),
-            short s => s,
-            ushort u => u,
-            byte b => b,
-            sbyte s => s,
-            _ => unchecked((int)Convert.ToInt64(value, System.Globalization.CultureInfo.InvariantCulture)),
-        };
+            if (value is not IConvertible convertible)
+            {
+                converted = 0;
+                return false;
+            }
+
+            converted = Convert.ToInt64(convertible, CultureInfo.InvariantCulture);
+            return true;
+        }
+        catch (FormatException)
+        {
+        }
+        catch (InvalidCastException)
+        {
+        }
+        catch (OverflowException)
+        {
+        }
+
+        converted = 0;
+        return false;
     }
 
     private static bool RequiresComptimeInitializer(VariableSymbol symbol)

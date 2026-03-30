@@ -1,11 +1,11 @@
 // EXPECT: pass
 // STAGE: final-asm
 // SEQUENCE:
-// - CALLPA g_input, #f_get_pair
+// - CALLPA #42, #f_get_pair
 // - BITC _r1, #0
 // - WRLONG PA, #g_result
 // - WRBYTE _r1, #g_flag1
-// - CALLPA g_input, #f_get_triple
+// - CALLPA #42, #f_get_triple
 // - BITC PA, #0
 // - BITZ _r1, #0
 // - WRLONG PA, #g_result

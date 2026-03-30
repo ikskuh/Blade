@@ -1,4 +1,4 @@
-// EXPECT: xfail
+// EXPECT: pass
 // STAGE: bound
 // CONTAINS:
 // 2x Literal<u32> 5000
@@ -12,4 +12,3 @@ reg const ticks: u32 = 5000;
 // must directly consume the immediate instead of loading
 // the constant value first:
 @WAITX(ticks); 
-
