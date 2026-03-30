@@ -1,9 +1,9 @@
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// - CALLPB g_source, #f_general_use
 // - CALLPA PB, #f_leaf_func
 // - ADD PB, #2
+// - MOV g_sink, PB
 // - RET
 // ! g_gen_
 // NOTE:

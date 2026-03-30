@@ -105,6 +105,10 @@ public sealed class VariableSymbol : Symbol
         IsExtern = isExtern;
         FixedAddress = fixedAddress;
         Alignment = alignment;
+        CanElideTopLevelStoreLoadChains = scopeKind == VariableScopeKind.GlobalStorage
+            && storageClass == VariableStorageClass.Reg
+            && !isExtern
+            && !fixedAddress.HasValue;
     }
 
     public TypeSymbol Type { get; }
@@ -120,11 +124,19 @@ public sealed class VariableSymbol : Symbol
     public bool UsesGlobalRegisterStorage => IsGlobalStorage && StorageClass == VariableStorageClass.Reg;
     public bool UsesGlobalLutStorage => IsGlobalStorage && StorageClass == VariableStorageClass.Lut;
     public bool UsesGlobalHubStorage => IsGlobalStorage && StorageClass == VariableStorageClass.Hub;
+    public bool CanElideTopLevelStoreLoadChains { get; private set; }
 
     public void SetLayoutMetadata(int? fixedAddress, int? alignment)
     {
         FixedAddress = fixedAddress;
         Alignment = alignment;
+        if (fixedAddress.HasValue)
+            CanElideTopLevelStoreLoadChains = false;
+    }
+
+    public void DisableTopLevelStoreLoadChainElision()
+    {
+        CanElideTopLevelStoreLoadChains = false;
     }
 
 }

@@ -39,7 +39,8 @@ public sealed class AsmCallTransportFusion : PerFunctionAsmOptimization
 
                 if (callInstruction.Mnemonic is P2Mnemonic.CALLPA or P2Mnemonic.CALLPB
                     && callInstruction.Operands.Count == 2
-                    && OperandsEquivalent(previousInstruction.Operands[0], callInstruction.Operands[0]))
+                    && OperandsEquivalent(previousInstruction.Operands[0], callInstruction.Operands[0])
+                    && CanElideTransportStore(previousInstruction.Operands[0]))
                 {
                     nodes[^1] = new AsmInstructionNode(
                         callInstruction.Mnemonic,
@@ -66,6 +67,21 @@ public sealed class AsmCallTransportFusion : PerFunctionAsmOptimization
             return P2Mnemonic.CALLPB;
 
         return null;
+    }
+
+    private static bool CanElideTransportStore(AsmOperand operand)
+    {
+        if (operand is AsmSymbolOperand { Symbol: AsmSpillSlotSymbol })
+            return true;
+
+        if (operand is AsmPlaceOperand { Place.IsInternalRegisterSlot: true })
+            return true;
+
+        if (operand is AsmPlaceOperand { Place.CanElideTopLevelStoreLoadChains: true })
+            return true;
+
+        return OperandTargetsSpecialRegister(operand, P2SpecialRegister.PA)
+            || OperandTargetsSpecialRegister(operand, P2SpecialRegister.PB);
     }
 
     private static bool OperandTargetsSpecialRegister(AsmOperand operand, P2SpecialRegister register)

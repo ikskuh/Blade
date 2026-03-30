@@ -1338,6 +1338,7 @@ public sealed class Binder
         {
             if (variable.IsConst)
                 _diagnostics.ReportCannotAssignToConstant(nameExpression.Name.Span, nameExpression.Name.Text);
+            ObserveVariableForTopLevelStoreLoadElision(variable);
             return new BoundSymbolAssignmentTarget(symbol, nameExpression.Span, variable.Type);
         }
 
@@ -1468,7 +1469,10 @@ public sealed class Binder
         }
 
         if (symbol is VariableSymbol variable)
+        {
+            ObserveVariableForTopLevelStoreLoadElision(variable);
             return new BoundSymbolExpression(symbol, nameExpression.Span, variable.Type);
+        }
         if (symbol is ParameterSymbol parameter)
             return new BoundSymbolExpression(symbol, nameExpression.Span, parameter.Type);
         if (symbol is FunctionSymbol function)
@@ -1477,6 +1481,47 @@ public sealed class Binder
         Assert.Invariant(symbol is ModuleSymbol, "Name expressions should only resolve to variables, parameters, functions, or modules.");
         ModuleSymbol module = (ModuleSymbol)Requires.NotNull(symbol as ModuleSymbol);
         return new BoundSymbolExpression(module, nameExpression.Span, new ModuleTypeSymbol(module));
+    }
+
+    private void ObserveVariableForTopLevelStoreLoadElision(VariableSymbol variable)
+    {
+        if (_currentFunction is not null)
+            variable.DisableTopLevelStoreLoadChainElision();
+    }
+
+    private static void ObserveAddressTakenVariableForTopLevelStoreLoadElision(VariableSymbol variable)
+    {
+        variable.DisableTopLevelStoreLoadChainElision();
+    }
+
+    private static void ObserveAddressTakenExpressionForTopLevelStoreLoadElision(BoundExpression expression)
+    {
+        switch (expression)
+        {
+            case BoundSymbolExpression { Symbol: VariableSymbol variable }:
+                ObserveAddressTakenVariableForTopLevelStoreLoadElision(variable);
+                break;
+
+            case BoundMemberAccessExpression memberAccess:
+                ObserveAddressTakenExpressionForTopLevelStoreLoadElision(memberAccess.Receiver);
+                break;
+
+            case BoundIndexExpression indexExpression:
+                ObserveAddressTakenExpressionForTopLevelStoreLoadElision(indexExpression.Expression);
+                break;
+
+            case BoundConversionExpression conversion:
+                ObserveAddressTakenExpressionForTopLevelStoreLoadElision(conversion.Expression);
+                break;
+
+            case BoundCastExpression cast:
+                ObserveAddressTakenExpressionForTopLevelStoreLoadElision(cast.Expression);
+                break;
+
+            case BoundBitcastExpression bitcast:
+                ObserveAddressTakenExpressionForTopLevelStoreLoadElision(bitcast.Expression);
+                break;
+        }
     }
 
     private BoundExpression BindUnaryExpression(UnaryExpressionSyntax unary)
@@ -1553,6 +1598,7 @@ public sealed class Binder
         BoundExpression bound = BindIndexExpression(indexExpression);
         Assert.Invariant(bound is BoundIndexExpression, "Indexed address-of should bind through the normal index-expression path.");
         BoundIndexExpression index = Requires.NotNull(bound as BoundIndexExpression);
+        ObserveAddressTakenExpressionForTopLevelStoreLoadElision(index.Expression);
 
         if (_currentFunction?.Kind == FunctionKind.Rec && TryGetRecursiveAddressOfName(index.Expression, out string? recursiveName))
         {
@@ -1568,6 +1614,8 @@ public sealed class Binder
 
     private BoundExpression BindAddressOfVariable(UnaryExpressionSyntax unary, BoundUnaryOperator op, VariableSymbol variable)
     {
+        ObserveAddressTakenVariableForTopLevelStoreLoadElision(variable);
+
         if (_currentFunction?.Kind == FunctionKind.Rec && variable.ScopeKind == VariableScopeKind.Local)
         {
             _diagnostics.ReportAddressOfRecursiveLocal(unary.Operand.Span, variable.Name);
@@ -1886,7 +1934,10 @@ public sealed class Binder
                 return new BoundSymbolExpression(function, memberAccess.Span, new FunctionTypeSymbol(function));
 
             if (module.ExportedVariables.TryGetValue(memberAccess.Member.Text, out VariableSymbol? variable))
+            {
+                ObserveVariableForTopLevelStoreLoadElision(variable);
                 return new BoundSymbolExpression(variable, memberAccess.Span, variable.Type);
+            }
 
             if (module.ImportedModules.TryGetValue(memberAccess.Member.Text, out ImportedModule? importedModule))
                 return new BoundSymbolExpression(new ModuleSymbol(memberAccess.Member.Text, importedModule), memberAccess.Span, new ModuleTypeSymbol(new ModuleSymbol(memberAccess.Member.Text, importedModule)));

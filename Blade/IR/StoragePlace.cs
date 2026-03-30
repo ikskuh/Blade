@@ -70,6 +70,8 @@ public sealed class StoragePlace : IAsmSymbol
     public bool IsDedicatedRegisterSlot => Kind is StoragePlaceKind.AllocatableGlobalRegister
         or StoragePlaceKind.AllocatableInternalDedicatedRegister;
 
+    internal bool CanElideTopLevelStoreLoadChains => Symbol is VariableSymbol { CanElideTopLevelStoreLoadChains: true };
+
     public bool EmitsStorageLabel => Kind is StoragePlaceKind.AllocatableGlobalRegister
         or StoragePlaceKind.AllocatableLutEntry
         or StoragePlaceKind.AllocatableHubEntry
