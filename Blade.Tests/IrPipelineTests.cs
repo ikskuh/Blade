@@ -1869,6 +1869,35 @@ public class IrPipelineTests
     }
 
     [Test]
+    public void ComparisonBranches_UseCorrectMirConditionFlags()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            noinline fn compare_flags(a: u32, b: u32) -> u32 {
+                var result: u32 = 0;
+                if (a == b) { result |= 0x01; }
+                if (a != b) { result |= 0x02; }
+                if (a < b)  { result |= 0x04; }
+                if (a <= b) { result |= 0x08; }
+                if (a > b)  { result |= 0x10; }
+                if (a >= b) { result |= 0x20; }
+                return result;
+            }
+
+            reg var sink: u32 = compare_flags(1, 2);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        MirModule mirModule = MirLowerer.Lower(program);
+        string mir = MirTextWriter.Write(mirModule);
+
+        Assert.That(Regex.Matches(mir, @"\[flag:Z\]").Count, Is.EqualTo(1), mir);
+        Assert.That(Regex.Matches(mir, @"\[flag:NZ\]").Count, Is.EqualTo(1), mir);
+        Assert.That(Regex.Matches(mir, @"\[flag:C\]").Count, Is.EqualTo(2), mir);
+        Assert.That(Regex.Matches(mir, @"\[flag:NC\]").Count, Is.EqualTo(2), mir);
+    }
+
+    [Test]
     public void NonPackedStructMemberAccess_PreservesAlignedByteOffsetInMir()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""

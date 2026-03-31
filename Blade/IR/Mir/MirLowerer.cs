@@ -1381,15 +1381,16 @@ public static class MirLowerer
                 right,
                 binaryExpression.Span));
 
-            // Comparison operators produce flag values: equality tests use Z, ordering tests use C.
+            // Comparison operators produce flag values using the same polarity as the
+            // eventual branch condition: Z/NZ for equality, C/NC for ordering.
             MirFlag? flag = binaryExpression.Operator.Kind switch
             {
                 BoundBinaryOperatorKind.Equals => MirFlag.Z,
-                BoundBinaryOperatorKind.NotEquals => MirFlag.Z,
+                BoundBinaryOperatorKind.NotEquals => MirFlag.NZ,
                 BoundBinaryOperatorKind.Less => MirFlag.C,
-                BoundBinaryOperatorKind.LessOrEqual => MirFlag.C,
+                BoundBinaryOperatorKind.LessOrEqual => MirFlag.NC,
                 BoundBinaryOperatorKind.Greater => MirFlag.C,
-                BoundBinaryOperatorKind.GreaterOrEqual => MirFlag.C,
+                BoundBinaryOperatorKind.GreaterOrEqual => MirFlag.NC,
                 _ => null,
             };
 
