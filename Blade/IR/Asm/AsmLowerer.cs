@@ -1851,9 +1851,6 @@ public static class AsmLowerer
         Assert.Invariant(found, "Specialized callees must have calling-convention metadata.");
         Assert.Invariant(info!.ParameterPlaces.Count == args.Count, "Specialized call arguments must match the callee parameter ABI.");
 
-        if (op.Destination is { } destination)
-            ctx.FixRegisterToSpecialRegister(destination, info.TransportRegister);
-
         ctx.SharedRegisterPlaces.AddRange(info.ParameterPlaces);
         for (int i = 1; i < args.Count; i++)
             nodes.Add(Emit(P2Mnemonic.MOV, new AsmPlaceOperand(info.ParameterPlaces[i]), args[i]));

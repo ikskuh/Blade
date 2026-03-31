@@ -2,15 +2,17 @@
 // STAGE: final-asm
 // SEQUENCE:
 // - CALLPA #42, #f_get_pair
-// - BITC _r1, #0
-// - WRLONG PA, #g_result
-// - WRBYTE _r1, #g_flag1
+// - MOV ?1, PA
+// - BITC ?2, #0
+// - WRLONG ?1, #g_result
+// - WRBYTE ?2, #g_flag1
 // - CALLPA #42, #f_get_triple
-// - BITC PA, #0
-// - BITZ _r1, #0
-// - WRLONG PA, #g_result
-// - WRBYTE PA, #g_flag1
-// - WRBYTE _r1, #g_flag2
+// - MOV ?3, PA
+// - BITC ?4, #0
+// - BITZ ?5, #0
+// - WRLONG ?3, #g_result
+// - WRBYTE ?4, #g_flag1
+// - WRBYTE ?5, #g_flag2
 // CONTAINS:
 // ! MOV g_result,
 // ! MOV g_flag1,

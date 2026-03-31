@@ -86,5 +86,8 @@ sink <<<= amount;
   parameter 0 in `PA` / `PB` and assigns parameters `1..N` dedicated shared ABI
   slots, so specialized callers no longer drop later arguments and callees no
   longer alias all parameters onto the transport register.
+- Specialized call results are no longer pinned to `PA` / `PB` for their full
+  caller-side lifetime, so a `CALLPA` / `CALLPB` result now survives later
+  specialized calls in expressions such as `max(a, b) + min(a, b)`.
 - Arithmetic left shift lowering now emits `SAL` for `<<<` and `<<<=` instead of
   `SHL`, restoring the documented "shift in LSB" semantics on PASM2.
