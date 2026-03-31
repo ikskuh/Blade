@@ -5,8 +5,48 @@ using System.IO;
 using System.Text;
 using System.Threading;
 
-
 namespace Blade.HwTestRunner;
+
+/// <summary>
+/// A parameter that can be passed to a fixture. Allows implicit casts from
+/// several types, including `int`, `uint` and `bool`.
+/// </summary>
+public struct FixtureParameter
+{
+    private readonly uint value;
+
+    public FixtureParameter(uint value)
+    {
+        this.value = value;
+    }
+
+    public FixtureParameter(int value)
+        : this(unchecked((uint)value))
+    {
+        
+    }
+    
+    public FixtureParameter(bool value)
+        : this(value ? 1 : 0)
+    {
+
+    }
+
+    public uint UInt => this.value;
+    
+    public int Int => unchecked((int)this.value);
+}
+
+/// <summary>
+/// Configuration of a hardware fixture.
+/// </summary>
+public sealed class FixtureConfig
+{
+    /// <summary>
+    /// The maximum number of parameters this fixture supports.
+    /// </summary>
+    public int ParameterCount { get; set; } = 0;
+}
 
 public sealed class Runner
 {
@@ -27,11 +67,25 @@ public sealed class Runner
     {
 
     }
-
-    public uint Execute(string file)
+    
+    public uint Execute(string file, FixtureConfig config, FixtureParameter[] parameters)
     {
+        ArgumentNullException.ThrowIfNull(file, nameof(file));
+        ArgumentNullException.ThrowIfNull(config, nameof(config));
+        ArgumentNullException.ThrowIfNull(parameters, nameof(parameters));
+
         if (!File.Exists(file))
             throw new FileNotFoundException("File not found", file);
+        
+        if(parameters.Length > config.ParameterCount)
+            throw new ArgumentOutOfRangeException(nameof(parameters));
+        
+        var testBinary = File.ReadAllBytes(file);
+
+        PatchParameters(testBinary, parameters);
+
+        using var patchedFile = new TempFile();
+        patchedFile.WriteAllBytes(testBinary);
 
         var startInfo = new ProcessStartInfo
         {
@@ -45,7 +99,7 @@ public sealed class Runner
         startInfo.ArgumentList.Add(this.PortName);
         startInfo.ArgumentList.Add("-t"); // keep terminal connection open
         startInfo.ArgumentList.Add("-q"); // quiet mode
-        startInfo.ArgumentList.Add(file);
+        startInfo.ArgumentList.Add(patchedFile.Path);
 
         using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Failed to start process!");
 
@@ -98,6 +152,25 @@ public sealed class Runner
             Console.Error.WriteLine("stdout: {0}", Convert.ToHexString(suffix_bytes));
             Console.Error.WriteLine("stderr: {0}", Convert.ToHexString(stderr_bytes));
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Patches `input` such that it contains `parameters` starting at offset 4
+    /// </summary>
+    private void PatchParameters(byte[] input, FixtureParameter[] parameters)
+    {
+        var size = (4 * (parameters.Length + 4));
+        if(input.Length < size)
+            throw new ArgumentException($"Test binary must be at least {size} bytes large!");
+        Trace.Assert(BitConverter.IsLittleEndian);
+        for (int i = 0; i < parameters.Length; i++)
+        {
+            var bytes = BitConverter.GetBytes(parameters[i].UInt);
+            input[4 * i + 4] = bytes[0];
+            input[4 * i + 5] = bytes[1];
+            input[4 * i + 6] = bytes[2];
+            input[4 * i + 7] = bytes[3];
         }
     }
 

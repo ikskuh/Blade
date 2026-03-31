@@ -246,27 +246,6 @@ while `shared += 1` compiles to `ADD _r4, #1`.
 
 `Demonstrators/Optimizations/asmir-global_reg-operator-no-copy.blade`
 
-## Is there a way for true comptime known globals?
-
-```blade
-reg const F_CPU: u32 = 20_000_000;
-reg const DELAY_MS: u32 = 250;
-reg const CLOCKS: u32 = 1000 * F_CPU / DELAY_MS;
-```
-
-yields
-
-```plaintext
-Examples/coroutines.blade:6:32: E0243: Comptime evaluation cannot access this symbol: 'F_CPU' cannot be accessed during comptime evaluation.
-```
-
-right now.
-
-These two must pass:
-
-- `Demonstrators/Comptime/pass_eager_constant_forwarding.blade`
-- `Demonstrators/Comptime/pass_eager_const_folding.blade`
-
 ## Rewrite how inline assembly works in general
 
 Right now, it is transposed into a block/IR for non-volatile asm, and volatile asm seems to be treated as a string
@@ -276,22 +255,6 @@ This seems brittle, and i think a better solution is having a "block" of inline 
 that must never be reordered at all.
 
 This should simplify the code generation pipeline by reducing a lot of "rewriting".
-
-## Add support for temporary registers in inline assembly
-
-Right now, one needs to allocate local variables to obtain temp variables for inline assembly. This should not be
-necessary and a direct generation of values should be possible:
-
-```blade
-asm {
-    MOV %0, #10      ' move 10 into temp 1
-    ADD %0, #20      ' add 20 to same register
-    MOV %1, %0       ' allocate second register
-    MOV {output}, %1 ' reuse second register
-}
-```
-
-This is especially necessary in `asm fn` functions, which otherwise have no way of allocating registers at all.
 
 ## Clean up demonstrators
 

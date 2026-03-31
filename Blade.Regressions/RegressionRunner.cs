@@ -172,6 +172,23 @@ public sealed class SnippetItem
     }
 }
 
+public sealed class HardwareRunExpectation
+{
+    public HardwareRunExpectation(
+        IReadOnlyList<FixtureParameter> parameters,
+        IReadOnlyList<string> parameterLiterals,
+        uint expectedOutput)
+    {
+        Parameters = parameters;
+        ParameterLiterals = parameterLiterals;
+        ExpectedOutput = expectedOutput;
+    }
+
+    public IReadOnlyList<FixtureParameter> Parameters { get; }
+    public IReadOnlyList<string> ParameterLiterals { get; }
+    public uint ExpectedOutput { get; }
+}
+
 public sealed class RegressionExpectation
 {
     public RegressionExpectation(
@@ -184,7 +201,7 @@ public sealed class RegressionExpectation
         IReadOnlyList<ExpectedDiagnostic> exactDiagnostics,
         FlexspinExpectation flexspinExpectation,
         IReadOnlyList<string> compilerArgs,
-        uint? expectedHardwareOutput)
+        IReadOnlyList<HardwareRunExpectation> hardwareRuns)
     {
         ExpectationKind = expectationKind;
         Stage = stage;
@@ -195,7 +212,7 @@ public sealed class RegressionExpectation
         ExactDiagnostics = exactDiagnostics;
         FlexspinExpectation = flexspinExpectation;
         CompilerArgs = compilerArgs;
-        ExpectedHardwareOutput = expectedHardwareOutput;
+        HardwareRuns = hardwareRuns;
     }
 
     public RegressionExpectationKind ExpectationKind { get; }
@@ -207,7 +224,7 @@ public sealed class RegressionExpectation
     public IReadOnlyList<ExpectedDiagnostic> ExactDiagnostics { get; }
     public FlexspinExpectation FlexspinExpectation { get; }
     public IReadOnlyList<string> CompilerArgs { get; }
-    public uint? ExpectedHardwareOutput { get; }
+    public IReadOnlyList<HardwareRunExpectation> HardwareRuns { get; }
     public bool HasCodeAssertions => ContainsSnippets.Count > 0 || SequenceSnippets.Count > 0 || ExactText is not null;
     public bool HasDiagnosticAssertions => LooseDiagnosticCodes.Count > 0 || ExactDiagnostics.Count > 0;
 }
@@ -398,7 +415,7 @@ public static class RegressionRunner
                     [],
                     FlexspinExpectation.Forbidden,
                     [],
-                    null));
+                    []));
             string summary = "fixture evaluation crashed";
             string? artifactDirectoryPath = artifactWriter.WriteFailureArtifacts(syntheticFixture, failedFixture, summary, details);
             return new RegressionFixtureResult(relativePath, RegressionFixtureOutcome.Fail, summary, details, artifactDirectoryPath);
@@ -837,16 +854,36 @@ public static class RegressionRunner
 
         try
         {
-            uint actualOutput = HardwareFixtureRunner.Run(binaryResult.BinaryBytes, hardwarePort);
-            uint expectedOutput = fixture.Expectation.ExpectedHardwareOutput!.Value;
-            if (actualOutput != expectedOutput)
+            FixtureConfig config = new()
             {
-                return HardwareExecutionResult.Failed(
-                    [FormatHardwareOutputMismatch(expectedOutput, actualOutput)],
-                    binaryResult.BinaryBytes);
+                ParameterCount = 8,
+            };
+            List<string> issues = [];
+
+            for (int i = 0; i < fixture.Expectation.HardwareRuns.Count; i++)
+            {
+                HardwareRunExpectation run = fixture.Expectation.HardwareRuns[i];
+
+                try
+                {
+                    uint actualOutput = HardwareFixtureRunner.Run(
+                        binaryResult.BinaryBytes,
+                        hardwarePort,
+                        config,
+                        run.Parameters.ToArray());
+
+                    if (actualOutput != run.ExpectedOutput)
+                        issues.Add(FormatHardwareRunMismatch(i + 1, run, actualOutput));
+                }
+                catch (Exception ex)
+                {
+                    issues.Add($"hardware run {i + 1} {FormatHardwareRunArguments(run)} failed: {ex.Message}");
+                }
             }
 
-            return HardwareExecutionResult.Succeeded(binaryResult.BinaryBytes);
+            return issues.Count == 0
+                ? HardwareExecutionResult.Succeeded(binaryResult.BinaryBytes)
+                : HardwareExecutionResult.Failed(issues, binaryResult.BinaryBytes);
         }
         catch (Exception ex)
         {
@@ -854,6 +891,18 @@ public static class RegressionRunner
                 [$"hardware execution failed: {ex.Message}"],
                 binaryResult.BinaryBytes);
         }
+    }
+
+    private static string FormatHardwareRunMismatch(int runIndex, HardwareRunExpectation run, uint actualOutput)
+    {
+        return
+            $"hardware run {runIndex} {FormatHardwareRunArguments(run)} produced an unexpected result:{Environment.NewLine}"
+            + FormatHardwareOutputMismatch(run.ExpectedOutput, actualOutput);
+    }
+
+    private static string FormatHardwareRunArguments(HardwareRunExpectation run)
+    {
+        return $"[{string.Join(", ", run.ParameterLiterals)}]";
     }
 
     private static string FormatHardwareOutputMismatch(uint expectedOutput, uint actualOutput)
@@ -1018,11 +1067,23 @@ internal sealed class EvaluatedFixture
 internal static class RegressionFixtureParser
 {
     private static readonly Regex DirectiveRegex = new(
-        @"^(?<name>EXPECT|NOTE|DIAGNOSTICS|STAGE|CONTAINS|SEQUENCE|EXACT|FLEXSPIN|ARGS|OUTPUT):(?<value>.*)$",
+        @"^(?<name>EXPECT|NOTE|DIAGNOSTICS|STAGE|CONTAINS|SEQUENCE|EXACT|FLEXSPIN|ARGS|RUNS):(?<value>.*)$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex MarkerRegex = new(
+        @"^(?<name>[A-Z][A-Z0-9-]*):(?<value>.*)$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex ExpectDirectiveRegex = new(
+        @"^EXPECT:(?<value>.*)$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex ExactDiagnosticRegex = new(
         @"^(?:L(?<line>\d+)\s*,\s*)?(?<code>[EWI]\d{4})(?:\s*:\s*(?<message>.+))?$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex HardwareRunRegex = new(
+        @"^\[(?<parameters>[^\]]*)\]\s*=\s*(?<expected>.+)$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     public static RegressionFixture Parse(string repositoryRootPath, string fixturePath)
@@ -1048,7 +1109,7 @@ internal static class RegressionFixtureParser
                     [],
                     FlexspinExpectation.Forbidden,
                     [],
-                    null));
+                    []));
         }
 
         string text = File.ReadAllText(fixturePath);
@@ -1069,7 +1130,7 @@ internal static class RegressionFixtureParser
                 [],
                 FlexspinExpectation.Auto,
                 [],
-                null);
+                []);
 
         if (kind != RegressionFixtureKind.Blade && expectation.HasDiagnosticAssertions)
             throw new InvalidOperationException("Assembly fixtures do not support DIAGNOSTICS assertions.");
@@ -1083,14 +1144,14 @@ internal static class RegressionFixtureParser
         if (kind != RegressionFixtureKind.Blade && expectation.CompilerArgs.Count > 0)
             throw new InvalidOperationException("ARGS is only valid for .blade fixtures.");
 
-        if (kind != RegressionFixtureKind.Blade && expectation.ExpectedHardwareOutput is not null)
-            throw new InvalidOperationException("OUTPUT is only valid for .blade fixtures.");
+        if (kind != RegressionFixtureKind.Blade && expectation.HardwareRuns.Count > 0)
+            throw new InvalidOperationException("RUNS is only valid for .blade fixtures.");
 
-        if (expectation.ExpectationKind != RegressionExpectationKind.PassHw && expectation.ExpectedHardwareOutput is not null)
-            throw new InvalidOperationException("OUTPUT is only valid with EXPECT: pass-hw.");
+        if (expectation.ExpectationKind != RegressionExpectationKind.PassHw && expectation.HardwareRuns.Count > 0)
+            throw new InvalidOperationException("RUNS is only valid with EXPECT: pass-hw.");
 
-        if (expectation.ExpectationKind == RegressionExpectationKind.PassHw && expectation.ExpectedHardwareOutput is null)
-            throw new InvalidOperationException("EXPECT: pass-hw requires OUTPUT.");
+        if (expectation.ExpectationKind == RegressionExpectationKind.PassHw && expectation.HardwareRuns.Count == 0)
+            throw new InvalidOperationException("EXPECT: pass-hw requires RUNS.");
 
         if ((expectation.ExpectationKind == RegressionExpectationKind.Pass
                 || expectation.ExpectationKind == RegressionExpectationKind.PassHw)
@@ -1135,7 +1196,7 @@ internal static class RegressionFixtureParser
         List<ExpectedDiagnostic> exactDiagnostics = [];
         FlexspinExpectation flexspinExpectation = FlexspinExpectation.Auto;
         List<string> compilerArgs = [];
-        uint? expectedHardwareOutput = null;
+        List<HardwareRunExpectation> hardwareRuns = [];
         StringBuilder? exactText = null;
         HeaderBlock? activeBlock = null;
 
@@ -1169,6 +1230,7 @@ internal static class RegressionFixtureParser
                     "SEQUENCE" => HeaderBlock.Sequence,
                     "EXACT" => HeaderBlock.Exact,
                     "ARGS" => HeaderBlock.Args,
+                    "RUNS" => HeaderBlock.Runs,
                     _ => null,
                 };
 
@@ -1225,6 +1287,11 @@ internal static class RegressionFixtureParser
                             compilerArgs.AddRange(SplitHeaderArgs(directiveValue));
                         break;
 
+                    case "RUNS":
+                        if (directiveValue.Length > 0)
+                            throw new InvalidOperationException("RUNS only supports block form.");
+                        break;
+
                     case "FLEXSPIN":
                         flexspinExpectation = directiveValue switch
                         {
@@ -1233,24 +1300,19 @@ internal static class RegressionFixtureParser
                             _ => throw new InvalidOperationException($"Unsupported FLEXSPIN value '{directiveValue}'."),
                         };
                         break;
-
-                    case "OUTPUT":
-                        try
-                        {
-                            expectedHardwareOutput = UIntLiteralParser.Parse(directiveValue);
-                        }
-                        catch (Exception ex) when (ex is FormatException or OverflowException)
-                        {
-                            throw new InvalidOperationException($"Invalid OUTPUT value '{directiveValue}'.", ex);
-                        }
-                        break;
                 }
 
                 continue;
             }
 
             if (activeBlock is null)
-                continue;
+            {
+                Match markerMatch = MarkerRegex.Match(trimmed);
+                if (markerMatch.Success)
+                    throw new InvalidOperationException($"Unsupported header directive '{markerMatch.Groups["name"].Value}'.");
+
+                throw new InvalidOperationException("Header comments after EXPECT must use a supported directive or NOTE block.");
+            }
 
             switch (activeBlock.Value)
             {
@@ -1273,6 +1335,10 @@ internal static class RegressionFixtureParser
 
                 case HeaderBlock.Args:
                     compilerArgs.Add(ParseBulletItem(trimmed, "ARGS"));
+                    break;
+
+                case HeaderBlock.Runs:
+                    hardwareRuns.Add(ParseHardwareRunExpectation(ParseBulletItem(trimmed, "RUNS")));
                     break;
 
                 case HeaderBlock.ExactDiagnostics:
@@ -1298,7 +1364,7 @@ internal static class RegressionFixtureParser
             exactDiagnostics,
             flexspinExpectation,
             compilerArgs,
-            expectedHardwareOutput);
+            hardwareRuns);
     }
 
     private static string ExpectationName(RegressionExpectationKind expectationKind)
@@ -1378,6 +1444,57 @@ internal static class RegressionFixtureParser
         return new ExpectedDiagnostic(match.Groups["code"].Value, line, message);
     }
 
+    private static HardwareRunExpectation ParseHardwareRunExpectation(string text)
+    {
+        Match match = HardwareRunRegex.Match(text);
+        if (!match.Success)
+            throw new InvalidOperationException($"Invalid RUNS entry '{text}'. Expected '[ ... ] = value'.");
+
+        string parametersText = match.Groups["parameters"].Value.Trim();
+        List<string> parameterLiterals = [];
+        List<FixtureParameter> parameters = [];
+        if (parametersText.Length > 0)
+        {
+            string[] parts = parametersText.Split(',', StringSplitOptions.TrimEntries);
+            if (parts.Any(static part => part.Length == 0))
+                throw new InvalidOperationException($"Invalid RUNS entry '{text}'. Parameters must be comma-separated values.");
+
+            foreach (string part in parts)
+            {
+                parameterLiterals.Add(part);
+                parameters.Add(new FixtureParameter(ParseHardwareLiteral(part)));
+            }
+        }
+
+        if (parameters.Count > 8)
+            throw new InvalidOperationException($"Invalid RUNS entry '{text}'. Hardware fixtures support at most 8 parameters.");
+
+        string expectedLiteral = match.Groups["expected"].Value.Trim();
+        uint expectedOutput = ParseHardwareLiteral(expectedLiteral);
+        return new HardwareRunExpectation(parameters, parameterLiterals, expectedOutput);
+    }
+
+    private static uint ParseHardwareLiteral(string text)
+    {
+        try
+        {
+            if (text.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+                return Convert.ToUInt32(text[2..], 16);
+
+            if (text.Length > 0 && text[0] == '-')
+            {
+                int value = int.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture);
+                return unchecked((uint)value);
+            }
+
+            return Convert.ToUInt32(text, 10);
+        }
+        catch (Exception ex) when (ex is FormatException or OverflowException)
+        {
+            throw new InvalidOperationException($"Invalid hardware literal '{text}'.", ex);
+        }
+    }
+
     private enum HeaderBlock
     {
         Note,
@@ -1386,6 +1503,7 @@ internal static class RegressionFixtureParser
         Sequence,
         Exact,
         Args,
+        Runs,
     }
 
     private readonly record struct HeaderLine(bool IsComment, string Content);
@@ -1429,9 +1547,18 @@ internal static class RegressionFixtureParser
                 break;
             }
 
-            bool hasDirectiveHeader = headerLines.Any(line =>
+            bool hasExpectDirective = headerLines.Any(line =>
                 line.IsComment
-                && DirectiveRegex.IsMatch(line.Content.TrimStart()));
+                && ExpectDirectiveRegex.IsMatch(line.Content.TrimStart()));
+
+            bool startsWithExpectDirective = lines.Length > 0
+                && TryStripCommentPrefix(lines[0], kind, out string? firstLineContent)
+                && ExpectDirectiveRegex.IsMatch(firstLineContent.TrimStart());
+
+            if (hasExpectDirective && !startsWithExpectDirective)
+                throw new InvalidOperationException("EXPECT must be the first line of the file.");
+
+            bool hasDirectiveHeader = startsWithExpectDirective;
 
             string bodyText = hasDirectiveHeader
                 ? string.Join('\n', lines.Skip(bodyStartIndex))
@@ -1997,7 +2124,7 @@ internal sealed class HardwareExecutionResult
 
 internal static class HardwareFixtureRunner
 {
-    public static uint Run(byte[] binaryBytes, string portName)
+    public static uint Run(byte[] binaryBytes, string portName, FixtureConfig config, FixtureParameter[] parameters)
     {
         string tempDirectoryPath = Path.Combine(Path.GetTempPath(), "blade-regressions", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDirectoryPath);
@@ -2010,7 +2137,7 @@ internal static class HardwareFixtureRunner
             {
                 PortName = portName,
             };
-            return runner.Execute(binaryPath);
+            return runner.Execute(binaryPath, config, parameters);
         }
         finally
         {

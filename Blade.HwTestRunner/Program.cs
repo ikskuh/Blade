@@ -27,7 +27,12 @@ internal static class Program
 
         Console.WriteLine("Launch runner...");
 
-        uint exit_code = runner.Execute(binary);
+        var config = new FixtureConfig()
+        {
+            ParameterCount = 0,
+        };
+
+        uint exit_code = runner.Execute(binary, config, []);
 
         if (expected != exit_code)
         {

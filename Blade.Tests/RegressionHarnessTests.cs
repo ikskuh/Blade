@@ -122,12 +122,17 @@ public sealed class RegressionHarnessTests
         WriteHardwareRuntime(temp);
         temp.WriteFile("Demonstrators/hw_runtime_injected.blade", """
         // EXPECT: pass-hw
-        // OUTPUT: 0x0
+        // RUNS:
+        // - [ 0x10, -1 ] = 0xF
         // STAGE: final-asm
         // CONTAINS:
         // - rt_result LONG 0
+        // - rt_param0 LONG 0
+        // - rt_param1 LONG 0
         extern reg var rt_result: u32;
-        rt_result = 0;
+        extern reg var rt_param0: u32;
+        extern reg var rt_param1: i32;
+        rt_result = rt_param0 + bitcast(u32, rt_param1);
         """);
 
         RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
@@ -165,7 +170,8 @@ public sealed class RegressionHarnessTests
         """);
         temp.WriteFile("Demonstrators/hw_explicit_runtime.blade", """
         // EXPECT: pass-hw
-        // OUTPUT: 0x0
+        // RUNS:
+        // - [] = 0x0
         // ARGS: --runtime=custom_runtime.spin2
         // STAGE: final-asm
         // CONTAINS:
@@ -190,11 +196,11 @@ public sealed class RegressionHarnessTests
     }
 
     [Test]
-    public void PassHwFixture_RequiresOutputDirective()
+    public void PassHwFixture_RequiresRunsDirective()
     {
         using TempDirectory temp = new();
         WriteMinimalRegressionRepository(temp);
-        temp.WriteFile("Demonstrators/missing_output.blade", """
+        temp.WriteFile("Demonstrators/missing_runs.blade", """
         // EXPECT: pass-hw
         var x: u32 = 0;
         """);
@@ -206,22 +212,50 @@ public sealed class RegressionHarnessTests
         });
 
         RegressionFixtureResult fixtureResult = result.FixtureResults.Single(result =>
-            result.RelativePath == "Demonstrators/missing_output.blade");
+            result.RelativePath == "Demonstrators/missing_runs.blade");
         Assert.Multiple(() =>
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
-            Assert.That(fixtureResult.Details, Has.Some.Contains("EXPECT: pass-hw requires OUTPUT."));
+            Assert.That(fixtureResult.Details, Has.Some.Contains("EXPECT: pass-hw requires RUNS."));
         });
     }
 
     [Test]
-    public void OutputDirective_IsRejectedForPlainPassFixture()
+    public void RunsDirective_IsRejectedForPlainPassFixture()
     {
         using TempDirectory temp = new();
         WriteMinimalRegressionRepository(temp);
-        temp.WriteFile("Demonstrators/output_on_plain_pass.blade", """
+        temp.WriteFile("Demonstrators/runs_on_plain_pass.blade", """
         // EXPECT: pass
+        // RUNS:
+        // - [] = 0x0
+        var x: u32 = 0;
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(result =>
+            result.RelativePath == "Demonstrators/runs_on_plain_pass.blade");
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
+            Assert.That(fixtureResult.Details, Has.Some.Contains("RUNS is only valid with EXPECT: pass-hw."));
+        });
+    }
+
+    [Test]
+    public void OutputDirective_IsRejectedAfterHeaderStarts()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/output_header.blade", """
+        // EXPECT: pass-hw
         // OUTPUT: 0x0
         var x: u32 = 0;
         """);
@@ -233,12 +267,43 @@ public sealed class RegressionHarnessTests
         });
 
         RegressionFixtureResult fixtureResult = result.FixtureResults.Single(result =>
-            result.RelativePath == "Demonstrators/output_on_plain_pass.blade");
+            result.RelativePath == "Demonstrators/output_header.blade");
         Assert.Multiple(() =>
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
-            Assert.That(fixtureResult.Details, Has.Some.Contains("OUTPUT is only valid with EXPECT: pass-hw."));
+            Assert.That(fixtureResult.Details, Has.Some.Contains("Unsupported header directive 'OUTPUT'."));
+        });
+    }
+
+    [Test]
+    public void RunsDirective_IsRejectedForAssemblyFixture()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("RegressionTests/runs_on_assembly.spin2", """
+        ' EXPECT: pass-hw
+        ' RUNS:
+        ' - [] = 0
+        DAT
+            org 0
+        entry
+            ret
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(result =>
+            result.RelativePath == "RegressionTests/runs_on_assembly.spin2");
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
+            Assert.That(fixtureResult.Details, Has.Some.Contains("RUNS is only valid for .blade fixtures."));
         });
     }
 
@@ -282,7 +347,8 @@ public sealed class RegressionHarnessTests
         WriteHardwareRuntime(temp);
         temp.WriteFile("Demonstrators/hw_exec.blade", """
         // EXPECT: pass-hw
-        // OUTPUT: 0x0
+        // RUNS:
+        // - [] = 0x0
         extern reg var rt_result: u32;
         rt_result = 0;
         """);
@@ -303,7 +369,7 @@ public sealed class RegressionHarnessTests
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
-            Assert.That(fixtureResult.Details, Has.Some.StartsWith("hardware execution failed:"));
+            Assert.That(fixtureResult.Details, Has.Some.StartsWith("hardware run 1 [] failed:"));
         });
     }
 
@@ -325,6 +391,230 @@ public sealed class RegressionHarnessTests
                   expected  0x0000012C |        300 |         300
                   actual    0x000000C8 |        200 |         200
                 """));
+    }
+
+    [Test]
+    public void PassHwFixture_RunsDirective_ParsesMixedLiterals()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        WriteHardwareRuntime(temp);
+        temp.WriteFile("Demonstrators/hw_mixed_runs.blade", """
+        // EXPECT: pass-hw
+        // RUNS:
+        // - [] = 1234
+        // - [ 0 ] = 1234
+        // - [ 0, -10, 0x12345 ] = -1
+        extern reg var rt_result: u32;
+        rt_result = 1234;
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(result =>
+            result.RelativePath == "Demonstrators/hw_mixed_runs.blade");
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Pass));
+        });
+    }
+
+    [Test]
+    public void PassHwFixture_RunsDirective_RejectsMoreThanEightParameters()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/hw_too_many_runs.blade", """
+        // EXPECT: pass-hw
+        // RUNS:
+        // - [ 0, 1, 2, 3, 4, 5, 6, 7, 8 ] = 0
+        var x: u32 = 0;
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(result =>
+            result.RelativePath == "Demonstrators/hw_too_many_runs.blade");
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
+            Assert.That(fixtureResult.Details, Has.Some.Contains("Hardware fixtures support at most 8 parameters."));
+        });
+    }
+
+    [Test]
+    public void PassHwFixture_RunsDirective_RejectsInvalidLiteral()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/hw_invalid_literal.blade", """
+        // EXPECT: pass-hw
+        // RUNS:
+        // - [ 0b10 ] = 0
+        var x: u32 = 0;
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(result =>
+            result.RelativePath == "Demonstrators/hw_invalid_literal.blade");
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
+            Assert.That(fixtureResult.Details, Has.Some.Contains("Invalid hardware literal '0b10'."));
+        });
+    }
+
+    [Test]
+    public void PassHwFixture_RunsDirective_RejectsOverflowLiteral()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/hw_overflow_literal.blade", """
+        // EXPECT: pass-hw
+        // RUNS:
+        // - [ 4294967296 ] = 0
+        var x: u32 = 0;
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(result =>
+            result.RelativePath == "Demonstrators/hw_overflow_literal.blade");
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
+            Assert.That(fixtureResult.Details, Has.Some.Contains("Invalid hardware literal '4294967296'."));
+        });
+    }
+
+    [Test]
+    public void PassHwFixture_RunsDirective_RejectsInvalidEntryShape()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/hw_invalid_entry_shape.blade", """
+        // EXPECT: pass-hw
+        // RUNS:
+        // - 0, 1 = 2
+        var x: u32 = 0;
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(result =>
+            result.RelativePath == "Demonstrators/hw_invalid_entry_shape.blade");
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
+            Assert.That(fixtureResult.Details, Has.Some.Contains("Invalid RUNS entry '0, 1 = 2'. Expected '[ ... ] = value'."));
+        });
+    }
+
+    [Test]
+    public void HeaderValidation_RequiresExpectOnFirstLine()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/header_expect_line_two.blade", """
+
+        // EXPECT: pass
+        var x: u32 = 0;
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(result =>
+            result.RelativePath == "Demonstrators/header_expect_line_two.blade");
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
+            Assert.That(fixtureResult.Details, Has.Some.Contains("EXPECT must be the first line of the file."));
+        });
+    }
+
+    [Test]
+    public void HeaderValidation_RejectsPlainCommentOutsideNoteBlock()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/header_plain_comment.blade", """
+        // EXPECT: pass
+        // plain comment
+        var x: u32 = 0;
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(result =>
+            result.RelativePath == "Demonstrators/header_plain_comment.blade");
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
+            Assert.That(fixtureResult.Details, Has.Some.Contains("Header comments after EXPECT must use a supported directive or NOTE block."));
+        });
+    }
+
+    [Test]
+    public void HeaderValidation_RejectsUnknownDirective()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/header_unknown_directive.blade", """
+        // EXPECT: pass
+        // TODO: move this into NOTE
+        var x: u32 = 0;
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(result =>
+            result.RelativePath == "Demonstrators/header_unknown_directive.blade");
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
+            Assert.That(fixtureResult.Details, Has.Some.Contains("Unsupported header directive 'TODO'."));
+        });
     }
 
     [Test]
@@ -518,6 +808,16 @@ public sealed class RegressionHarnessTests
         CON
             ' <<BLADE_CON>>
         DAT
+            JMP #rt_start
+        rt_param0 LONG 0
+        rt_param1 LONG 0
+        rt_param2 LONG 0
+        rt_param3 LONG 0
+        rt_param4 LONG 0
+        rt_param5 LONG 0
+        rt_param6 LONG 0
+        rt_param7 LONG 0
+        rt_start
             JMP #blade_entry
         blade_halt
             REP #1, #0

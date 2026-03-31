@@ -14,7 +14,19 @@ CON
 
         ' <<BLADE_CON>>
 DAT
+        JMP #rt_start
 
+rt_params        ' export a labelled name for an array
+rt_param0 LONG 0 ' export regular runtime variable
+rt_param1 LONG 0 ' export regular runtime variable
+rt_param2 LONG 0 ' export regular runtime variable
+rt_param3 LONG 0 ' export regular runtime variable
+rt_param4 LONG 0 ' export regular runtime variable
+rt_param5 LONG 0 ' export regular runtime variable
+rt_param6 LONG 0 ' export regular runtime variable
+rt_param7 LONG 0 ' export regular runtime variable
+
+rt_start
         ''  %0000_000E_DDDD_DDMM_MMMM_MMMM_PPPP_CCSS
         '' 0b0000_0001_0000_0000_0000_1001_1111_1011
         ''           E                               = "PLL on"

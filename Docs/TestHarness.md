@@ -32,6 +32,7 @@ with an implied requirement of zero diagnostics.
 ## Header format
 
 The harness only looks at the leading contiguous comment block. Parsing stops at the first non-comment, non-blank line.
+If a fixture uses `EXPECT`, that marker must be the first line of the file.
 
 Comment prefixes:
 
@@ -39,6 +40,7 @@ Comment prefixes:
 - `.spin2` and `.pasm2`: `'` or `;`
 
 The supported directives are intentionally simple.
+Once an `EXPECT` header starts, every non-blank comment line must be either a supported directive or content inside a directive block such as `NOTE`.
 
 ### `EXPECT`
 
@@ -50,20 +52,29 @@ The supported directives are intentionally simple.
 ```
 
 - `pass` means the fixture must satisfy all assertions and, unless `DIAGNOSTICS` says otherwise, emit zero diagnostics.
-- `pass-hw` means the fixture must satisfy the normal `pass` checks and, when hardware is configured, also pass real hardware execution using the hardware test runtime and `OUTPUT`.
+- `pass-hw` means the fixture must satisfy the normal `pass` checks and, when hardware is configured, also pass real hardware execution using the hardware test runtime and `RUNS`.
 - `fail` means the fixture must fail in the way the header describes.
 - `xfail` means the current failure shape is intentional. If the fixture unexpectedly starts passing, the suite fails so the expectation can be revisited.
 
-### `OUTPUT`
+### `RUNS`
 
-`OUTPUT` is only valid for `.blade` fixtures with `EXPECT: pass-hw` and is required there.
+`RUNS` is only valid for `.blade` fixtures with `EXPECT: pass-hw` and is required there.
 
 ```blade
 // EXPECT: pass-hw
-// OUTPUT: 0xDEADBEEF
+// RUNS:
+// - [] = 1234
+// - [ 0 ] = 1234
+// - [ 0, -10, 0x12345 ] = 1234
 ```
 
-The value is parsed as an unsigned 32-bit integer. Supported prefixes are `0x` (hex), `0b` (binary), and `0o` (octal); unprefixed values are decimal.
+Each run entry supplies a parameter list followed by the expected output for that run.
+
+- `[]` means no runtime parameters
+- up to 8 parameters are allowed
+- values support unsigned decimal `0..4294967295`
+- values support signed decimal `-2147483648..-1`
+- values support unsigned hex via `0x...`
 
 ### `NOTE`
 
