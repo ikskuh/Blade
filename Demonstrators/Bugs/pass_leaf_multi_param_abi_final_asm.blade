@@ -1,0 +1,25 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - MOV ?, g_right
+// - CALLPA g_left, #f_leaf_sub
+// - MOV ?, PA
+// - MOV PA, ?
+// - SUB PA, ?
+// - MOV g_sink, PA
+// ! SUB PA, PA
+// ! g_leaf_leaf_sub_arg1
+// NOTE:
+//   Covers a two-parameter leaf function. Parameter 0 arrives in PA and is
+//   copied into internal storage before arithmetic while parameter 1 travels
+//   through a shared ABI slot.
+
+noinline leaf fn leaf_sub(a: u32, b: u32) -> u32 {
+    return a - b;
+}
+
+reg var left: u32 = 10;
+reg var right: u32 = 3;
+reg var sink: u32 = 0;
+
+sink = leaf_sub(left, right);

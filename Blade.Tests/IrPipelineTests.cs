@@ -389,7 +389,8 @@ public class IrPipelineTests
         });
 
         Assert.That(MirTextWriter.Write(build.MirModule), Does.Contain("load @g_x"));
-        Assert.That(build.AssemblyText, Does.Contain("MOV g_x, PA"));
+        Assert.That(build.AssemblyText, Does.Contain("MOV _r1, PA"));
+        Assert.That(build.AssemblyText, Does.Contain("MOV g_x, _r1"));
         Assert.That(build.AssemblyText, Does.Contain("MOV PA, g_x"));
     }
 
@@ -418,7 +419,8 @@ public class IrPipelineTests
         });
 
         Assert.That(MirTextWriter.Write(build.MirModule), Does.Contain("load @g_param"));
-        Assert.That(build.AssemblyText, Does.Contain("MOV g_param, PA"));
+        Assert.That(build.AssemblyText, Does.Contain("MOV _r1, PA"));
+        Assert.That(build.AssemblyText, Does.Contain("MOV g_param, _r1"));
         Assert.That(build.AssemblyText, Does.Contain("MOV PA, g_param"));
     }
 
@@ -1232,7 +1234,7 @@ public class IrPipelineTests
 
         Assert.That(build.AssemblyText, Does.Contain("' keep this comment"));
         Assert.That(build.AssemblyText, Does.Not.Contain("// keep this comment"));
-        Assert.That(build.AssemblyText, Does.Contain("MOV PA, PA"));
+        Assert.That(build.AssemblyText, Does.Contain("MOV _r0, _r0"));
     }
 
     [Test]

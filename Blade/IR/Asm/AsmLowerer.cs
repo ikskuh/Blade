@@ -48,6 +48,7 @@ public static class AsmLowerer
         CallGraphResult cgResult = CallGraphAnalyzer.Analyze(module);
         (
             IReadOnlyList<StoragePlace> storagePlaces,
+            Dictionary<FunctionSymbol, SpecializedCallingConventionInfo> specializedCallingConvention,
             Dictionary<FunctionSymbol, GeneralCallingConventionInfo> generalCallingConvention,
             Dictionary<FunctionSymbol, RecursiveCallingConventionInfo> recursiveCallingConvention,
             Dictionary<FunctionSymbol, CoroutineCallingConventionInfo> coroutineCallingConvention,
@@ -80,6 +81,7 @@ public static class AsmLowerer
                 tier,
                 cgResult.Tiers,
                 blockParamMap[function.Symbol],
+                specializedCallingConvention,
                 generalCallingConvention,
                 recursiveCallingConvention,
                 coroutineCallingConvention,
@@ -99,6 +101,7 @@ public static class AsmLowerer
         public CallingConventionTier Tier { get; }
         public Dictionary<FunctionSymbol, CallingConventionTier> CalleeTiers { get; }
         public Dictionary<LirBlockRef, IReadOnlyList<LirBlockParameter>> BlockParams { get; }
+        public Dictionary<FunctionSymbol, SpecializedCallingConventionInfo> SpecializedCallingConvention { get; }
         public Dictionary<FunctionSymbol, GeneralCallingConventionInfo> GeneralCallingConvention { get; }
         public Dictionary<FunctionSymbol, RecursiveCallingConventionInfo> RecursiveCallingConvention { get; }
         public Dictionary<FunctionSymbol, CoroutineCallingConventionInfo> CoroutineCallingConvention { get; }
@@ -132,6 +135,7 @@ public static class AsmLowerer
             CallingConventionTier tier,
             Dictionary<FunctionSymbol, CallingConventionTier> calleeTiers,
             Dictionary<LirBlockRef, IReadOnlyList<LirBlockParameter>> blockParams,
+            Dictionary<FunctionSymbol, SpecializedCallingConventionInfo> specializedCallingConvention,
             Dictionary<FunctionSymbol, GeneralCallingConventionInfo> generalCallingConvention,
             Dictionary<FunctionSymbol, RecursiveCallingConventionInfo> recursiveCallingConvention,
             Dictionary<FunctionSymbol, CoroutineCallingConventionInfo> coroutineCallingConvention,
@@ -144,6 +148,7 @@ public static class AsmLowerer
             Tier = tier;
             CalleeTiers = calleeTiers;
             BlockParams = blockParams;
+            SpecializedCallingConvention = specializedCallingConvention;
             GeneralCallingConvention = generalCallingConvention;
             RecursiveCallingConvention = recursiveCallingConvention;
             CoroutineCallingConvention = coroutineCallingConvention;
@@ -178,6 +183,20 @@ public static class AsmLowerer
             VirtualAsmRegister asmRegister = GetRegister(register);
             RegisterConstraints[asmRegister] = new AsmRegisterConstraint(new P2Register(specialRegister));
         }
+    }
+
+    private sealed class SpecializedCallingConventionInfo
+    {
+        public SpecializedCallingConventionInfo(
+            P2SpecialRegister transportRegister,
+            IReadOnlyList<StoragePlace> parameterPlaces)
+        {
+            TransportRegister = transportRegister;
+            ParameterPlaces = parameterPlaces;
+        }
+
+        public P2SpecialRegister TransportRegister { get; }
+        public IReadOnlyList<StoragePlace> ParameterPlaces { get; }
     }
 
     private sealed class GeneralCallingConventionInfo
@@ -234,6 +253,12 @@ public static class AsmLowerer
         {
             nodes.Add(new AsmLabelNode(ctx.GetBlockLabel(block.Ref)));
 
+            if ((ctx.Tier == CallingConventionTier.Leaf || ctx.Tier == CallingConventionTier.SecondOrder)
+                && ReferenceEquals(block, ctx.Function.Blocks[0]))
+            {
+                EmitSpecializedFunctionEntryLoads(nodes, block, ctx);
+            }
+
             ComputeFlagOnlyRegisters(ctx, block);
 
             foreach (LirInstruction instruction in block.Instructions)
@@ -247,6 +272,7 @@ public static class AsmLowerer
 
     private static (
         IReadOnlyList<StoragePlace> StoragePlaces,
+        Dictionary<FunctionSymbol, SpecializedCallingConventionInfo> SpecializedCallingConvention,
         Dictionary<FunctionSymbol, GeneralCallingConventionInfo> GeneralCallingConvention,
         Dictionary<FunctionSymbol, RecursiveCallingConventionInfo> RecursiveCallingConvention,
         Dictionary<FunctionSymbol, CoroutineCallingConventionInfo> CoroutineCallingConvention,
@@ -256,6 +282,7 @@ public static class AsmLowerer
         List<StoragePlace> storagePlaces = new(module.StoragePlaces.Count);
         storagePlaces.AddRange(module.StoragePlaces);
 
+        Dictionary<FunctionSymbol, SpecializedCallingConventionInfo> specializedCallingConvention = [];
         Dictionary<FunctionSymbol, GeneralCallingConventionInfo> generalCallingConvention = [];
         Dictionary<FunctionSymbol, RecursiveCallingConventionInfo> recursiveCallingConvention = [];
         Dictionary<FunctionSymbol, CoroutineCallingConventionInfo> coroutineCallingConvention = [];
@@ -265,7 +292,28 @@ public static class AsmLowerer
                 continue;
 
             CallingConventionTier functionTier = cgResult.Tiers.GetValueOrDefault(function.Symbol, CallingConventionTier.General);
-            if (functionTier == CallingConventionTier.General)
+            if (functionTier is CallingConventionTier.Leaf or CallingConventionTier.SecondOrder)
+            {
+                Assert.Invariant(function.Blocks.Count > 0, "Specialized functions must have an entry block.");
+                IReadOnlyList<LirBlockParameter> entryParameters = function.Blocks[0].Parameters;
+                List<StoragePlace> parameterPlaces = new(entryParameters.Count);
+                for (int i = 0; i < entryParameters.Count; i++)
+                {
+                    string abiPrefix = functionTier == CallingConventionTier.Leaf ? "leaf" : "second";
+                    StoragePlace parameterPlace = CreateInternalRegisterPlace(
+                        $"{abiPrefix}_{function.Name}_arg{i}",
+                        entryParameters[i].Type,
+                        StoragePlaceKind.AllocatableInternalSharedRegister);
+                    parameterPlaces.Add(parameterPlace);
+                    storagePlaces.Add(parameterPlace);
+                }
+
+                P2SpecialRegister transportRegister = functionTier == CallingConventionTier.Leaf
+                    ? P2SpecialRegister.PA
+                    : P2SpecialRegister.PB;
+                specializedCallingConvention[function.Symbol] = new SpecializedCallingConventionInfo(transportRegister, parameterPlaces);
+            }
+            else if (functionTier == CallingConventionTier.General)
             {
                 Assert.Invariant(function.Blocks.Count > 0, "General functions must have an entry block.");
                 IReadOnlyList<LirBlockParameter> entryParameters = function.Blocks[0].Parameters;
@@ -395,7 +443,7 @@ public static class AsmLowerer
         }
 
         BackendSymbolNaming.AssignStorageNames(storagePlaces);
-        return (storagePlaces, generalCallingConvention, recursiveCallingConvention, coroutineCallingConvention, topLevelYieldStatePlace);
+        return (storagePlaces, specializedCallingConvention, generalCallingConvention, recursiveCallingConvention, coroutineCallingConvention, topLevelYieldStatePlace);
     }
 
     private static StoragePlace CreateInternalRegisterPlace(
@@ -458,13 +506,11 @@ public static class AsmLowerer
         switch (ctx.Tier)
         {
             case CallingConventionTier.Leaf:
-                if (block.Parameters.Count > 0)
-                    ctx.FixRegisterToSpecialRegister(block.Parameters[0].Register, P2SpecialRegister.PA);
+                ConstrainSpecializedEntryBlockParameters(ctx, block);
                 break;
 
             case CallingConventionTier.SecondOrder:
-                if (block.Parameters.Count > 0)
-                    ctx.FixRegisterToSpecialRegister(block.Parameters[0].Register, P2SpecialRegister.PB);
+                ConstrainSpecializedEntryBlockParameters(ctx, block);
                 break;
 
             case CallingConventionTier.General:
@@ -509,6 +555,35 @@ public static class AsmLowerer
                     break;
                 }
         }
+    }
+
+    private static void ConstrainSpecializedEntryBlockParameters(LoweringContext ctx, LirBlock block)
+    {
+        bool found = ctx.SpecializedCallingConvention.TryGetValue(ctx.Function.Symbol, out SpecializedCallingConventionInfo? info);
+        Assert.Invariant(found, "Specialized functions must have calling-convention metadata.");
+        Assert.Invariant(info!.ParameterPlaces.Count == block.Parameters.Count, "Specialized entry ABI must match the function parameter list.");
+
+        for (int i = 0; i < block.Parameters.Count; i++)
+        {
+            StoragePlace parameterPlace = info.ParameterPlaces[i];
+            ctx.TieRegisterToPlace(block.Parameters[i].Register, parameterPlace);
+            ctx.SharedRegisterPlaces.Add(parameterPlace);
+        }
+    }
+
+    private static void EmitSpecializedFunctionEntryLoads(List<AsmNode> nodes, LirBlock block, LoweringContext ctx)
+    {
+        bool found = ctx.SpecializedCallingConvention.TryGetValue(ctx.Function.Symbol, out SpecializedCallingConventionInfo? info);
+        Assert.Invariant(found, "Specialized functions must have calling-convention metadata.");
+        Assert.Invariant(info!.ParameterPlaces.Count == block.Parameters.Count, "Specialized entry ABI must match the function parameter list.");
+
+        if (info.ParameterPlaces.Count == 0)
+            return;
+
+        nodes.Add(Emit(
+            P2Mnemonic.MOV,
+            new AsmPlaceOperand(info.ParameterPlaces[0]),
+            new AsmSymbolOperand(info.TransportRegister)));
     }
 
     /// <summary>
@@ -1703,27 +1778,11 @@ public static class AsmLowerer
         switch (calleeTier)
         {
             case CallingConventionTier.Leaf:
-                // CALLPA: param in PA, result in PA
-                if (op.Destination is { } leafDest)
-                    ctx.FixRegisterToSpecialRegister(leafDest, P2SpecialRegister.PA);
-                AsmOperand leafTransport = args.Count > 0
-                    ? args[0]
-                    : new AsmSymbolOperand(P2SpecialRegister.PA);
-                nodes.Add(Emit(P2Mnemonic.CALLPA, leafTransport, targetOp));
-                if (destReg is not null)
-                    nodes.Add(Emit(P2Mnemonic.MOV, destReg, new AsmSymbolOperand(P2SpecialRegister.PA)));
+                LowerSpecializedCall(nodes, op, args, destReg, targetOp, ctx);
                 break;
 
             case CallingConventionTier.SecondOrder:
-                // CALLPB: param in PB, result in PB
-                if (op.Destination is { } secondOrderDest)
-                    ctx.FixRegisterToSpecialRegister(secondOrderDest, P2SpecialRegister.PB);
-                AsmOperand secondOrderTransport = args.Count > 0
-                    ? args[0]
-                    : new AsmSymbolOperand(P2SpecialRegister.PB);
-                nodes.Add(Emit(P2Mnemonic.CALLPB, secondOrderTransport, targetOp));
-                if (destReg is not null)
-                    nodes.Add(Emit(P2Mnemonic.MOV, destReg, new AsmSymbolOperand(P2SpecialRegister.PB)));
+                LowerSpecializedCall(nodes, op, args, destReg, targetOp, ctx);
                 break;
 
             case CallingConventionTier.General:
@@ -1777,6 +1836,39 @@ public static class AsmLowerer
                 Assert.Unreachable($"Unexpected callee tier: {calleeTier}");
                 return;
         }
+    }
+
+    private static void LowerSpecializedCall(
+        List<AsmNode> nodes,
+        LirOpInstruction op,
+        IReadOnlyList<AsmRegisterOperand> args,
+        AsmRegisterOperand? destReg,
+        AsmSymbolOperand targetOp,
+        LoweringContext ctx)
+    {
+        LirCallOperation operation = (LirCallOperation)op.Operation;
+        bool found = ctx.SpecializedCallingConvention.TryGetValue(operation.TargetFunction, out SpecializedCallingConventionInfo? info);
+        Assert.Invariant(found, "Specialized callees must have calling-convention metadata.");
+        Assert.Invariant(info!.ParameterPlaces.Count == args.Count, "Specialized call arguments must match the callee parameter ABI.");
+
+        if (op.Destination is { } destination)
+            ctx.FixRegisterToSpecialRegister(destination, info.TransportRegister);
+
+        ctx.SharedRegisterPlaces.AddRange(info.ParameterPlaces);
+        for (int i = 1; i < args.Count; i++)
+            nodes.Add(Emit(P2Mnemonic.MOV, new AsmPlaceOperand(info.ParameterPlaces[i]), args[i]));
+
+        AsmSymbolOperand transport = new(info.TransportRegister);
+        if (args.Count > 0)
+            nodes.Add(Emit(P2Mnemonic.MOV, transport, args[0]));
+
+        P2Mnemonic callMnemonic = info.TransportRegister == P2SpecialRegister.PA
+            ? P2Mnemonic.CALLPA
+            : P2Mnemonic.CALLPB;
+        nodes.Add(Emit(callMnemonic, transport, targetOp));
+
+        if (destReg is not null)
+            nodes.Add(Emit(P2Mnemonic.MOV, destReg, new AsmSymbolOperand(info.TransportRegister)));
     }
 
     private static void LowerCallExtractFlag(List<AsmNode> nodes, LirOpInstruction op, MirFlag flag, LoweringContext ctx)
