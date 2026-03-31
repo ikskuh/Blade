@@ -3,6 +3,8 @@ reportgenerator := require('reportgenerator')
 python          := require('python')
 roslynator      := require('roslynator')
 
+BLADE_TEST_PORT := "/dev/serial/by-id/usb-FTDI_FT231X_USB_UART_DUAB9RPU-if00-port0"
+
 all: build test regressions compile-all-samples
 
 install-tools:
@@ -19,8 +21,8 @@ accept-changes:
     {{dotnet}} build --no-restore -verbosity minimal -c release
 
     # Run unit tests in debug and release mode:
-    {{dotnet}} test --no-restore -verbosity minimal -c debug
-    {{dotnet}} test --no-restore -verbosity minimal -c release
+    BLADE_TEST_PORT="{{BLADE_TEST_PORT}}" {{dotnet}} test --no-restore -verbosity minimal -c debug
+    BLADE_TEST_PORT="{{BLADE_TEST_PORT}}" {{dotnet}} test --no-restore -verbosity minimal -c release
 
     # Run static analysis
     (cd Blade && {{roslynator}} analyze)
@@ -76,9 +78,8 @@ coverage-report-regression: coverage-regressions
         "-reporttypes:Html;TextSummary;TextDeltaSummary;CsvSummary"
     @echo "$PWD/coverage/regression-results/index.html"
 
-
 regressions:
-    {{dotnet}} run --project Blade.Regressions --
+    BLADE_TEST_PORT="{{BLADE_TEST_PORT}}" {{dotnet}} run --project Blade.Regressions --
 
 # Runs the fuzzer suite
 fuzz:
