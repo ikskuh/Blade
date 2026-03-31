@@ -801,7 +801,6 @@ public static class MirLowerer
             bool isRangeIteration = forStatement.Iterable is BoundRangeExpression;
             bool isArrayIteration = forStatement.Iterable.Type is ArrayTypeSymbol;
 
-            MirValueId one = EmitConstant(1L, BuiltinTypes.U32, forStatement.Span);
             MirValueId initialIndex;
             MirValueId count;
             MirValueId iterableValue;
@@ -815,10 +814,11 @@ public static class MirLowerer
                 MirValueId endVal = LowerExpression(rangeExpr.End);
                 if (rangeExpr.IsInclusive)
                 {
+                    MirValueId rangeOne = EmitConstant(1L, BuiltinTypes.U32, forStatement.Span);
                     MirValueId adjustedEnd = NextValue();
                     _currentBlock.Instructions.Add(new MirBinaryInstruction(
                         adjustedEnd, BuiltinTypes.U32, BoundBinaryOperatorKind.Add,
-                        endVal, one, forStatement.Span));
+                        endVal, rangeOne, forStatement.Span));
                     endVal = adjustedEnd;
                 }
                 count = endVal;
@@ -907,10 +907,11 @@ public static class MirLowerer
                     _currentBlock.Instructions.Add(new MirStoreIndexInstruction(elemType, iterableValue, postIndex, updatedItem, iterStorageClass, forStatement.Body.Span));
                 }
 
+                MirValueId bodyOne = EmitConstant(1L, BuiltinTypes.U32, forStatement.Body.Span);
                 MirValueId incremented = NextValue();
                 _currentBlock.Instructions.Add(new MirBinaryInstruction(
                     incremented, BuiltinTypes.U32, BoundBinaryOperatorKind.Add,
-                    postIndex, one, forStatement.Body.Span));
+                    postIndex, bodyOne, forStatement.Body.Span));
                 WriteSymbol(forStatement.IndexVariable, incremented, forStatement.Body.Span);
 
                 _currentBlock.Terminator = new MirGotoTerminator(
