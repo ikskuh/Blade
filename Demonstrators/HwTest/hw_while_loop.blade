@@ -1,0 +1,20 @@
+// EXPECT: pass-hw
+// OUTPUT: 55
+// NOTE:
+//   Tests while loop by computing sum of 1..10.
+//   1+2+...+10 = 55 = 0x37
+
+extern reg var rt_result: u32;
+
+noinline fn sum_to(n: u32) -> u32 {
+    var result: u32 = 0;
+    var i: u32 = n;
+    while (i > 0) {
+        result = result + i;
+        i = i - 1;
+    }
+    return result;
+}
+
+reg var n: u32 = 10;
+rt_result = sum_to(n);

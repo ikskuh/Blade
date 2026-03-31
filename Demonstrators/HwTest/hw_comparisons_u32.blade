@@ -1,0 +1,33 @@
+// EXPECT: pass-hw
+// OUTPUT: 0x0029320E
+// NOTE:
+//   Tests all 6 comparison operators with 3 cases.
+//   Each case packs results into 6 bits:
+//     bit0=eq, bit1=ne, bit2=lt, bit3=le, bit4=gt, bit5=ge
+//   Case a<b  (5,10):  ne|lt|le       = 0x0E
+//   Case a>b  (10,5):  ne|gt|ge       = 0x32  -> shifted to byte 1
+//   Case a==b (7,7):   eq|le|ge       = 0x29  -> shifted to byte 2
+//   Result = 0x0029320E
+
+extern reg var rt_result: u32;
+
+noinline fn compare(a: u32, b: u32) -> u32 {
+    var result: u32 = 0;
+    if (a == b) { result = result | 0x01; }
+    if (a != b) { result = result | 0x02; }
+    if (a < b)  { result = result | 0x04; }
+    if (a <= b) { result = result | 0x08; }
+    if (a > b)  { result = result | 0x10; }
+    if (a >= b) { result = result | 0x20; }
+    return result;
+}
+
+reg var r1: u32 = 0;
+reg var r2: u32 = 0;
+reg var r3: u32 = 0;
+
+r1 = compare(5, 10);
+r2 = compare(10, 5);
+r3 = compare(7, 7);
+
+rt_result = r1 | (r2 << 8) | (r3 << 16);

@@ -1,0 +1,20 @@
+// EXPECT: pass-hw
+// OUTPUT: 54
+// NOTE:
+//   Tests u32 arithmetic operators: add, sub, mul, div, mod.
+//   a=10, b=3: (10+3)+(10-3)+(10*3)+(10/3)+(10%3) = 13+7+30+3+1 = 54 = 0x36
+
+extern reg var rt_result: u32;
+
+noinline fn arithmetic(a: u32, b: u32) -> u32 {
+    var add: u32 = a + b;
+    var sub: u32 = a - b;
+    var mul: u32 = a * b;
+    var div: u32 = a / b;
+    var mod: u32 = a % b;
+    return add + sub + mul + div + mod;
+}
+
+reg var a: u32 = 10;
+reg var b: u32 = 3;
+rt_result = arithmetic(a, b);

@@ -1,0 +1,18 @@
+// EXPECT: pass-hw
+// OUTPUT: 45
+// NOTE:
+//   Tests for(n) -> i loop with index variable.
+//   for(10) -> i: sums i from 0..9 = 0+1+2+...+9 = 45 = 0x2D
+
+extern reg var rt_result: u32;
+
+noinline fn sum_indices(n: u32) -> u32 {
+    var result: u32 = 0;
+    for (n) -> i {
+        result = result + i;
+    }
+    return result;
+}
+
+reg var n: u32 = 10;
+rt_result = sum_indices(n);

@@ -1,0 +1,26 @@
+// EXPECT: pass-hw
+// OUTPUT: 3128
+// NOTE:
+//   Tests compound assignment operators.
+//   x=0x1234:
+//     r  = 0x1234
+//     r |= 0xFF   -> 0x12FF
+//     r &= 0x0F0F -> 0x020F
+//     r ^= 0x0101 -> 0x030E
+//     r <<= 4     -> 0x30E0
+//     r >>= 2     -> 0x0C38
+
+extern reg var rt_result: u32;
+
+noinline fn compound(x: u32) -> u32 {
+    var r: u32 = x;
+    r |= 0xFF;
+    r &= 0x0F0F;
+    r ^= 0x0101;
+    r <<= 4;
+    r >>= 2;
+    return r;
+}
+
+reg var x: u32 = 0x1234;
+rt_result = compound(x);
