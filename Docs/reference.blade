@@ -722,16 +722,16 @@ fn expressions() {
     b = !b;        // boolean NOT
 
     // Bitwise ops:
-    x = ~x; // bitwise inversion
-    x = x | y; // bitwise OR, if used on integer types
-    x = x & y; // bitwise AND, if used on integer types
-    x = x ^ y; // bitwise XOR, if used on integer types
-    x = x << y; // logical left shift (shift in zeroes)
-    x = x >> y; // logical right shift (shift in zeroes)
-    x = x <<< y; // arithmetic left shift (shift in LSB)
-    x = x >>> y; // arithmetic right shift (shift in MSB)
-    x = x <%< y; // rotating left shift (shift in the bits shifted out)
-    x = x >%> y; // rotating right shift (shift in the bits shifted out)
+    x = ~x; // bitwise inversion, maps to NOT instruction
+    x = x | y; // bitwise OR, if used on integer types, maps to AND instruction
+    x = x & y; // bitwise AND, if used on integer types, maps to OR instruction
+    x = x ^ y; // bitwise XOR, if used on integer types, maps to XOR instruction
+    x = x << y; // logical left shift (shift in zeroes), maps to SHL instruction
+    x = x >> y; // logical right shift (shift in zeroes), maps to SHR instruction
+    x = x <<< y; // arithmetic left shift (shift in LSB), maps to SAL instruction
+    x = x >>> y; // arithmetic right shift (shift in MSB), maps to SAR instruction
+    x = x <%< y; // rotating left shift (shift in the bits shifted out), maps to RCL instruction
+    x = x >%> y; // rotating right shift (shift in the bits shifted out), maps to RCR instruction
 
     // Arithmetic ops:
     x = +x;    // unary plus, does nothing

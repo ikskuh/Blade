@@ -308,6 +308,26 @@ public sealed class RegressionHarnessTests
     }
 
     [Test]
+    public void HardwareOutputMismatchMessage_FormatsHexUnsignedAndSignedValues()
+    {
+        MethodInfo formatter = typeof(RegressionRunner).GetMethod(
+            "FormatHardwareOutputMismatch",
+            BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        string message = (string)formatter.Invoke(null, [0x0000012Cu, 0x000000C8u])!;
+
+        Assert.That(
+            message,
+            Is.EqualTo(
+                """
+                hardware output mismatch:
+                            hex        | unsigned   |      signed
+                  expected  0x0000012C |        300 |         300
+                  actual    0x000000C8 |        200 |         200
+                """));
+    }
+
+    [Test]
     public void BladeCrashFixture_PassesWhenCompilationProducesDiagnosticsButDoesNotThrow()
     {
         using TempDirectory temp = new();

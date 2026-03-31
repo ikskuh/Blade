@@ -1622,7 +1622,7 @@ public static class AsmLowerer
 
             case BoundBinaryOperatorKind.ArithmeticShiftLeft:
                 nodes.Add(Emit(P2Mnemonic.MOV, dest, left));
-                nodes.Add(Emit(P2Mnemonic.SHL, dest, right));
+                nodes.Add(Emit(P2Mnemonic.SAL, dest, right));
                 break;
 
             case BoundBinaryOperatorKind.ArithmeticShiftRight:
@@ -1984,7 +1984,7 @@ public static class AsmLowerer
             BoundBinaryOperatorKind.BitwiseXor => P2Mnemonic.XOR,
             BoundBinaryOperatorKind.ShiftLeft => P2Mnemonic.SHL,
             BoundBinaryOperatorKind.ShiftRight => P2Mnemonic.SHR,
-            BoundBinaryOperatorKind.ArithmeticShiftLeft => P2Mnemonic.SHL,
+            BoundBinaryOperatorKind.ArithmeticShiftLeft => P2Mnemonic.SAL,
             BoundBinaryOperatorKind.ArithmeticShiftRight => P2Mnemonic.SAR,
             _ => null,
         };

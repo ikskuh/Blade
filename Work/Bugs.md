@@ -43,6 +43,32 @@ Generated code:
     JMP #sum_indices_bb1
 ```
 
+## Open — discovered 2026-03-31 during `<<<` regression work
+
+### Documented fused arithmetic-shift assignments are rejected by the parser
+
+The language reference documents fused assignments for the extended shift and
+rotate operators:
+
+```blade
+a <<<= b;
+a >>>= b;
+a <%<= b;
+a >%>= b;
+```
+
+At least `<<<=` currently fails during parsing with `E0102: Expected
+expression.` / `E0106: Invalid assignment target.` instead of producing a
+compound-assignment node.
+
+Reproducer:
+
+```blade
+reg var sink: u32 = 0;
+reg var amount: u32 = 4;
+sink <<<= amount;
+```
+
 ## Fixed on 2026-03-30
 
 - General-call return placement was stringing values through synthetic `g_gen_*`
@@ -60,3 +86,5 @@ Generated code:
   parameter 0 in `PA` / `PB` and assigns parameters `1..N` dedicated shared ABI
   slots, so specialized callers no longer drop later arguments and callees no
   longer alias all parameters onto the transport register.
+- Arithmetic left shift lowering now emits `SAL` for `<<<` and `<<<=` instead of
+  `SHL`, restoring the documented "shift in LSB" semantics on PASM2.

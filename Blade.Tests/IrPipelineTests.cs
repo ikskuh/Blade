@@ -357,7 +357,7 @@ public class IrPipelineTests
 
         Assert.That(build.AssemblyText, Does.Contain("NOT"));
         Assert.That(build.AssemblyText, Does.Contain("GETQY"));
-        Assert.That(build.AssemblyText, Does.Contain("SHL"));
+        Assert.That(build.AssemblyText, Does.Contain("SAL"));
         Assert.That(build.AssemblyText, Does.Contain("SAR"));
         Assert.That(build.AssemblyText, Does.Contain("ROL"));
         Assert.That(build.AssemblyText, Does.Contain("ROR"));
@@ -1998,6 +1998,43 @@ public class IrPipelineTests
         string asmir = AsmTextWriter.Write(asmModule);
 
         Assert.That(asmir, Does.Contain("unhandled aligned fallback for bitfield.insert.2.5"));
+    }
+
+    [Test]
+    public void AsmLowerer_ArithmeticShiftLeftUpdatePlace_EmitsSal()
+    {
+        TextSpan span = new(0, 0);
+        LirVirtualRegister shiftAmountRegister = LirRegister(0);
+        StoragePlace accumulatorPlace = CreateStoragePlace("acc");
+        LirFunction function = CreateLirFunction(
+            "demo",
+            isEntryPoint: true,
+            FunctionKind.Default,
+            [],
+            [
+                new LirBlock(
+                    LirBlockRef("bb0"),
+                    [],
+                    [
+                        new LirOpInstruction(
+                            new LirUpdatePlaceOperation(BoundBinaryOperatorKind.ArithmeticShiftLeft),
+                            destination: null,
+                            resultType: null,
+                            [new LirPlaceOperand(accumulatorPlace), new LirRegisterOperand(shiftAmountRegister)],
+                            hasSideEffects: true,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                    ],
+                    new LirReturnTerminator([], span)),
+            ]);
+
+        AsmModule asmModule = AsmLowerer.Lower(new LirModule([accumulatorPlace], [function]));
+        string asmir = AsmTextWriter.Write(asmModule);
+
+        Assert.That(asmir, Does.Contain("SAL g_acc"));
+        Assert.That(asmir, Does.Not.Contain("SHL g_acc"));
     }
 
     [Test]

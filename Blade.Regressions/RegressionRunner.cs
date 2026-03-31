@@ -842,7 +842,7 @@ public static class RegressionRunner
             if (actualOutput != expectedOutput)
             {
                 return HardwareExecutionResult.Failed(
-                    [$"hardware output mismatch: expected 0x{expectedOutput:X8}, got 0x{actualOutput:X8}"],
+                    [FormatHardwareOutputMismatch(expectedOutput, actualOutput)],
                     binaryResult.BinaryBytes);
             }
 
@@ -854,6 +854,27 @@ public static class RegressionRunner
                 [$"hardware execution failed: {ex.Message}"],
                 binaryResult.BinaryBytes);
         }
+    }
+
+    private static string FormatHardwareOutputMismatch(uint expectedOutput, uint actualOutput)
+    {
+        int expectedSigned = unchecked((int)expectedOutput);
+        int actualSigned = unchecked((int)actualOutput);
+
+        return string.Format(
+            CultureInfo.InvariantCulture,
+            """
+            hardware output mismatch:
+                        hex        | unsigned   |      signed
+              expected  0x{0:X8} | {1,10} | {2,11}
+              actual    0x{3:X8} | {4,10} | {5,11}
+            """,
+            expectedOutput,
+            expectedOutput,
+            expectedSigned,
+            actualOutput,
+            actualOutput,
+            actualSigned);
     }
 
     private static bool ShouldRunFlexspin(RegressionFixture fixture)
