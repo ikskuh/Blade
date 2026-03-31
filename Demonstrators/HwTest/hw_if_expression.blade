@@ -1,11 +1,13 @@
 // EXPECT: pass-hw
 // RUNS:
-// - [] = 300
+// - [ 100, 200 ] = 300
 // NOTE:
 //   Tests if-else expressions (ternary select).
 //   max(100,200) + min(100,200) = 200 + 100 = 300 = 0x12C
 
 extern reg var rt_result: u32;
+extern reg var rt_param0: u32;
+extern reg var rt_param1: u32;
 
 noinline fn max(a: u32, b: u32) -> u32 {
     return if (a > b) a else b;
@@ -15,6 +17,4 @@ noinline fn min(a: u32, b: u32) -> u32 {
     return if (a < b) a else b;
 }
 
-reg var a: u32 = 100;
-reg var b: u32 = 200;
-rt_result = max(a, b) + min(a, b);
+rt_result = max(rt_param0, rt_param1) + min(rt_param0, rt_param1);

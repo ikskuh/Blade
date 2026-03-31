@@ -1,11 +1,12 @@
 // EXPECT: pass-hw
 // RUNS:
-// - [] = -43
+// - [ 42 ] = -43
 // NOTE:
 //   Tests unary operators on i32: negate, plus, bitwise not.
 //   x=42: (-42) + (+42) + (~42) = 0 + (~42) = -43 = 0xFFFFFFD5
 
 extern reg var rt_result: u32;
+extern reg var rt_param0: i32;
 
 noinline fn unary(x: i32) -> i32 {
     var neg: i32 = -x;
@@ -14,5 +15,4 @@ noinline fn unary(x: i32) -> i32 {
     return neg + plus + bitnot;
 }
 
-reg var x: i32 = 42;
-rt_result = bitcast(u32, unary(x));
+rt_result = bitcast(u32, unary(rt_param0));

@@ -2,6 +2,43 @@
 
 ## Open — discovered 2026-03-31 via hardware tests
 
+### Runtime comparison lowering inverts `!=`, `<=`, `>=` and ordering branches
+
+When comparison-heavy hardware fixtures are forced to consume runtime inputs
+instead of compile-time constants, the generated control flow for relational
+operators is wrong. `hw_comparisons_u32.blade` now expects `0x0029320E` for the
+three cases `(5,10)`, `(10,5)`, `(7,7)` but the compiler emits code that
+returns `0x00031824`.
+
+Decoded per-case results:
+
+- `(5,10)` expected `0x0E` (`ne|lt|le`), actual `0x24` (`lt|ge`)
+- `(10,5)` expected `0x32` (`ne|gt|ge`), actual `0x18` (`le|gt`)
+- `(7,7)` expected `0x29` (`eq|le|ge`), actual `0x03` (`eq|ne`)
+
+Reproducer: `Demonstrators/HwTest/hw_comparisons_u32.blade`
+
+Generated PASM shows the inversion:
+
+```pasm2
+  compare_bb2
+    CMP _r6, _r7 WZ
+    IF_NZ MOV _r8, _r6
+    IF_NZ MOV _r9, _r7
+    IF_NZ JMP #compare_bb5
+  compare_bb4
+    OR _r5, #2      ; sets != on equality
+
+  compare_bb7
+    CMP _r11, _r10 WC
+    IF_NC MOV _r13, _r10
+    IF_NC MOV _r14, _r11
+    IF_NC MOV _r15, _r12
+    IF_NC JMP #compare_bb9
+  compare_bb8
+    OR _r15, #8     ; <= branch condition is inverted / operand-swapped
+```
+
 ### Leaf / second-order multi-parameter ABI drops non-transport arguments — FIXED
 
 When a `leaf` function or an auto-tiered second-order function has more than one

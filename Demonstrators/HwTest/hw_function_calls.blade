@@ -1,11 +1,12 @@
 // EXPECT: pass-hw
 // RUNS:
-// - [] = 110
+// - [ 10 ] = 110
 // NOTE:
 //   Tests nested noinline function calls.
 //   compute(10) = add(mul(10,10), 10) = add(100, 10) = 110 = 0x6E
 
 extern reg var rt_result: u32;
+extern reg var rt_param0: u32;
 
 noinline fn add(a: u32, b: u32) -> u32 {
     return a + b;
@@ -19,5 +20,4 @@ noinline fn compute(x: u32) -> u32 {
     return add(mul(x, x), x);
 }
 
-reg var x: u32 = 10;
-rt_result = compute(x);
+rt_result = compute(rt_param0);

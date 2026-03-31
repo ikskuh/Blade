@@ -1,6 +1,6 @@
 // EXPECT: pass-hw
 // RUNS:
-// - [] = 0x00015553
+// - [ 0xAAAA, 0x5555 ] = 0x00015553
 // NOTE:
 //   Tests u32 bitwise operators: and, or, xor, not.
 //   a=0xAAAA, b=0x5555:
@@ -8,6 +8,8 @@
 //     sum = 0 + 0xFFFF + 0xFFFF + 0xFFFF5555 = 0x00015553
 
 extern reg var rt_result: u32;
+extern reg var rt_param0: u32;
+extern reg var rt_param1: u32;
 
 noinline fn bitwise(a: u32, b: u32) -> u32 {
     var and_r: u32 = a & b;
@@ -17,6 +19,4 @@ noinline fn bitwise(a: u32, b: u32) -> u32 {
     return and_r + or_r + xor_r + not_r;
 }
 
-reg var a: u32 = 0xAAAA;
-reg var b: u32 = 0x5555;
-rt_result = bitwise(a, b);
+rt_result = bitwise(rt_param0, rt_param1);

@@ -1,6 +1,6 @@
 // EXPECT: pass-hw
 // RUNS:
-// - [] = 0x0029320E
+// - [ 5, 10, 10, 5, 7, 7 ] = 0x0029320E
 // NOTE:
 //   Tests all 6 comparison operators with 3 cases.
 //   Each case packs results into 6 bits:
@@ -11,6 +11,12 @@
 //   Result = 0x0029320E
 
 extern reg var rt_result: u32;
+extern reg var rt_param0: u32;
+extern reg var rt_param1: u32;
+extern reg var rt_param2: u32;
+extern reg var rt_param3: u32;
+extern reg var rt_param4: u32;
+extern reg var rt_param5: u32;
 
 noinline fn compare(a: u32, b: u32) -> u32 {
     var result: u32 = 0;
@@ -27,8 +33,8 @@ reg var r1: u32 = 0;
 reg var r2: u32 = 0;
 reg var r3: u32 = 0;
 
-r1 = compare(5, 10);
-r2 = compare(10, 5);
-r3 = compare(7, 7);
+r1 = compare(rt_param0, rt_param1);
+r2 = compare(rt_param2, rt_param3);
+r3 = compare(rt_param4, rt_param5);
 
 rt_result = r1 | (r2 << 8) | (r3 << 16);

@@ -1,6 +1,6 @@
 // EXPECT: pass-hw
 // RUNS:
-// - [] = -50
+// - [ -50, 30 ] = -50
 // NOTE:
 //   Tests i32 signed arithmetic: add, sub, negate.
 //   a=-50, b=30:
@@ -10,6 +10,8 @@
 //     result = -20 + -80 + 50 = -50 = 0xFFFFFFCE
 
 extern reg var rt_result: u32;
+extern reg var rt_param0: i32;
+extern reg var rt_param1: i32;
 
 noinline fn signed_ops(a: i32, b: i32) -> i32 {
     var sum: i32 = a + b;
@@ -18,6 +20,4 @@ noinline fn signed_ops(a: i32, b: i32) -> i32 {
     return sum + diff + neg;
 }
 
-reg var a: i32 = -50;
-reg var b: i32 = 30;
-rt_result = bitcast(u32, signed_ops(a, b));
+rt_result = bitcast(u32, signed_ops(rt_param0, rt_param1));
