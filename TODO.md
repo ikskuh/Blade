@@ -266,16 +266,20 @@ Apply new `?` operand matching instead of hardcoding internals like generated sy
 
 ## Optimizations
 
-Implement load/store for larger types between (register|lut)<->hub with block transfers.
-
-Implement common constant multiply/divide strategies (QMUL takes 51 cycles, so we have up to 25 instructions before a blocking QMUL is good)
-
-- `* POT` == shift by log2(pot)
-- `* 3` = `a*2 + a`
-- `* 5` = `a*4 + a`
-- `* 6` = `a*4 + a*2`
-- `* 7` = `a*8 - a`
-- ...
+- Implement load/store for larger types between (register|lut)<->hub with block transfers.
+- Implement load/store for register-stored arrays with
+  - u32: `ALTS`, `ALTD`, `ALTR`
+  - u16: `ALTSW`, `ALTGW`, `SETWORD`, `GETWORD`
+  - u8: `ALTSB`, `ALTGB`, `SETBYTE`, `GETBYTE`
+  - nib: `ALTSN`, `ALTGN`, `SETNIB`, `GETNIB`
+  - bool/bit: `BITZ`, `BITNZ`, `BITC`, `BITNZ`, `BITH`, `BITL`, `BITNOT`, `TESTB`, `TESTBN`
+- Implement common constant multiply/divide strategies (QMUL takes 51 cycles, so we have up to 25 instructions before a blocking QMUL is good)
+  - `* POT` == shift by log2(pot)
+  - `* 3` = `a*2 + a`
+  - `* 5` = `a*4 + a`
+  - `* 6` = `a*4 + a*2`
+  - `* 7` = `a*8 - a`
+  - ...
 
 ## Argument/return fusion
 
@@ -308,3 +312,16 @@ like proper location tracking
 - Enable check if HW is present
 - Enable fast inspection of latest regression run results (without grepping)
 - Enable instruction set query
+
+## Properly implement intrinsics
+
+- Don't derive them in ASMIR stage, but create proper instances of "IntrinsicFunction" with
+  defined parameter lists and return values.
+- Instructions like `COGID {#}D {WC}` have a dual-use:
+  - `COGID reg` writes own cog id to `reg`, usage is `var id: u32 = @COGID();`
+  - `COGID id  WC` writes alive status of cog `id` to `C`. usage is `var status: bool = @COGID(reg);`
+  - `COGID #id WC` writes alive status of cog `id` to `C`. usage is `var status: bool = @COGID(10);`
+- Instructions like `RDFAST {#}D,{#}S` should be able to take pointers for `S`, but not for `D`.
+  - This requires maintaining an additional hand-written instruction database (yaml or json) for all instructions / mnemonics
+- Instructions like `RFBYTE D {WC/WZ/WCZ}` should return `u8`, as `D` will receive a zero-extended byte, and never 32 bit
+  - This also requires the instruction database to define properties of the consumed or returned values (here: bit count/size)
