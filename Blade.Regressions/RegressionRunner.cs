@@ -5,6 +5,8 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Blade;
 using Blade.Diagnostics;
@@ -20,6 +22,7 @@ public sealed class RegressionRunOptions
     public IReadOnlyList<string> Filters { get; init; } = [];
     public bool WriteFailureArtifacts { get; init; } = true;
     public string? HardwarePort { get; init; }
+    public bool Json { get; init; }
 }
 
 public sealed class RegressionRunResult
@@ -55,13 +58,15 @@ public sealed class RegressionFixtureResult
         RegressionFixtureOutcome outcome,
         string summary,
         IReadOnlyList<string> details,
-        string? artifactDirectoryPath)
+        string? artifactDirectoryPath,
+        bool hardwareAttempted = false)
     {
         RelativePath = relativePath;
         Outcome = outcome;
         Summary = summary;
         Details = details;
         ArtifactDirectoryPath = artifactDirectoryPath;
+        HardwareAttempted = hardwareAttempted;
     }
 
     public string RelativePath { get; }
@@ -69,6 +74,7 @@ public sealed class RegressionFixtureResult
     public string Summary { get; }
     public IReadOnlyList<string> Details { get; }
     public string? ArtifactDirectoryPath { get; }
+    public bool HardwareAttempted { get; }
 }
 
 public enum RegressionFixtureOutcome
@@ -361,6 +367,7 @@ public static class RegressionRunner
 
             EvaluatedFixture evaluatedFixture = ExecuteFixture(repositoryRootPath, fixture, irCoverageSession);
             List<string> issues = [];
+            bool hardwareAttempted = false;
 
             issues.AddRange(EvaluateDiagnostics(fixture.Expectation, evaluatedFixture.Diagnostics));
             issues.AddRange(EvaluateCodeAssertions(fixture, evaluatedFixture));
@@ -378,12 +385,20 @@ public static class RegressionRunner
             if (issues.Count == 0)
             {
                 HardwareExecutionResult hardwareExecution = EvaluateHardwareExecution(fixture, evaluatedFixture, hardwarePort);
+                hardwareAttempted = hardwareExecution.Attempted;
                 if (hardwareExecution.BinaryBytes is not null)
                     evaluatedFixture = evaluatedFixture.WithHardwareBinary(hardwareExecution.BinaryBytes);
                 if (hardwareExecution.IsHardwareFailed)
                 {
                     string hwFailedSummary = hardwareExecution.Issues.Count > 0 ? hardwareExecution.Issues[0] : "hardware runner failed";
-                    return new RegressionFixtureResult(relativePath, RegressionFixtureOutcome.HwFailed, hwFailedSummary, hardwareExecution.Issues, null);
+                    string? hwArtifactDirectoryPath = artifactWriter.WriteFailureArtifacts(fixture, evaluatedFixture, hwFailedSummary, hardwareExecution.Issues);
+                    return new RegressionFixtureResult(
+                        relativePath,
+                        RegressionFixtureOutcome.HwFailed,
+                        hwFailedSummary,
+                        hardwareExecution.Issues,
+                        hwArtifactDirectoryPath,
+                        hardwareExecution.Attempted);
                 }
                 issues.AddRange(hardwareExecution.Issues);
             }
@@ -400,7 +415,13 @@ public static class RegressionRunner
                 artifactDirectoryPath = artifactWriter.WriteFailureArtifacts(fixture, evaluatedFixture, summary, issues);
             }
 
-            return new RegressionFixtureResult(relativePath, outcome, summary, issues, artifactDirectoryPath);
+            return new RegressionFixtureResult(
+                relativePath,
+                outcome,
+                summary,
+                issues,
+                artifactDirectoryPath,
+                hardwareAttempted);
         }
         catch (Exception ex)
         {
@@ -2360,6 +2381,24 @@ public static class RegressionReportFormatter
     }
 }
 
+public static class RegressionJsonFormatter
+{
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Converters =
+        {
+            new JsonStringEnumConverter(JsonNamingPolicy.CamelCase),
+        },
+    };
+
+    public static string Format(RegressionRunResult result)
+    {
+        Requires.NotNull(result);
+        return JsonSerializer.Serialize(result, JsonOptions);
+    }
+}
+
 internal static class RegressionCommandLine
 {
     public static RegressionRunOptions Parse(string[] args)
@@ -2367,6 +2406,7 @@ internal static class RegressionCommandLine
         string? repositoryRootPath = null;
         string? hardwarePort = null;
         bool writeFailureArtifacts = true;
+        bool json = false;
         List<string> filters = [];
 
         for (int i = 0; i < args.Length; i++)
@@ -2382,6 +2422,10 @@ internal static class RegressionCommandLine
 
                 case "--no-artifacts":
                     writeFailureArtifacts = false;
+                    break;
+
+                case "--json":
+                    json = true;
                     break;
 
                 case "--hw-port":
@@ -2402,6 +2446,7 @@ internal static class RegressionCommandLine
             Filters = filters,
             WriteFailureArtifacts = writeFailureArtifacts,
             HardwarePort = HardwarePortResolver.Resolve(hardwarePort),
+            Json = json,
         };
     }
 }

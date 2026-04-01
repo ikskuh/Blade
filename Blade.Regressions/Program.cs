@@ -8,7 +8,10 @@ internal static class Program
     {
         RegressionRunOptions options = RegressionCommandLine.Parse(args);
         RegressionRunResult result = RegressionRunner.Run(options);
-        Console.Write(RegressionReportFormatter.Format(result));
+        string output = options.Json
+            ? RegressionJsonFormatter.Format(result)
+            : RegressionReportFormatter.Format(result);
+        Console.Write(output);
         return result.Succeeded ? 0 : 1;
     }
 }

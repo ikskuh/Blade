@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.Json;
@@ -371,6 +372,13 @@ public sealed class RegressionHarnessTests
     }
 
     [Test]
+    public void RegressionCommandLine_ParsesJsonFlag()
+    {
+        RegressionRunOptions options = ParseRegressionCommandLine("--json");
+        Assert.That(options.Json, Is.True);
+    }
+
+    [Test]
     public void PassHwFixture_WithConfiguredPort_HwRunFails_IsHwFailed()
     {
         using TempDirectory temp = new();
@@ -436,6 +444,83 @@ public sealed class RegressionHarnessTests
             Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.HwFailed));
             Assert.That(fixtureResult.Details, Has.Some.StartsWith("hardware run 1 [] failed:"));
         });
+    }
+
+    [Test]
+    public void HwFailedFixture_WritesArtifactsWhenEnabled()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        WriteHardwareRuntime(temp);
+        temp.WriteFile("Demonstrators/hw_artifacts.blade", """
+        // EXPECT: pass-hw
+        // RUNS:
+        // - [] = 0x0
+        extern reg var rt_result: u32;
+        rt_result = 0;
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = true,
+            HardwarePort = "/definitely/not/a/serial/port",
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(item =>
+            item.RelativePath == "Demonstrators/hw_artifacts.blade");
+        if (fixtureResult.Outcome == RegressionFixtureOutcome.Skipped)
+            Assert.Ignore("flexspin is not available in this environment");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.HwFailed));
+            Assert.That(fixtureResult.HardwareAttempted, Is.True);
+            Assert.That(fixtureResult.ArtifactDirectoryPath, Is.Not.Null);
+            Assert.That(File.Exists(Path.Combine(fixtureResult.ArtifactDirectoryPath!, "issues.txt")), Is.True);
+        });
+    }
+
+    [Test]
+    public void RegressionJsonFormatter_EmitsCamelCaseEnumStrings()
+    {
+        RegressionFixtureResult fixtureResult = new(
+            "Demonstrators/hw.blade",
+            RegressionFixtureOutcome.HwFailed,
+            "failed",
+            ["detail"],
+            artifactDirectoryPath: "/repo/.artifacts/regressions/run/fail",
+            hardwareAttempted: true);
+        RegressionRunResult result = new("/repo", [fixtureResult]);
+
+        using JsonDocument document = JsonDocument.Parse(RegressionJsonFormatter.Format(result));
+        JsonElement fixture = document.RootElement.GetProperty("fixtureResults")[0];
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(document.RootElement.GetProperty("succeeded").GetBoolean(), Is.True);
+            Assert.That(fixture.GetProperty("outcome").GetString(), Is.EqualTo("hwFailed"));
+            Assert.That(fixture.GetProperty("hardwareAttempted").GetBoolean(), Is.True);
+            Assert.That(fixture.GetProperty("artifactDirectoryPath").GetString(), Is.EqualTo("/repo/.artifacts/regressions/run/fail"));
+        });
+    }
+
+    [Test]
+    public void RegressionRunner_Filter_CanSelectSingleFixture()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/one.blade", "fn one() -> u32 { return 1; }");
+        temp.WriteFile("Demonstrators/two.blade", "fn two() -> u32 { return 2; }");
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+            Filters = ["Demonstrators/two.blade"],
+        });
+
+        Assert.That(result.FixtureResults.Select(item => item.RelativePath), Is.EqualTo(["Demonstrators/two.blade"]));
     }
 
     [Test]
