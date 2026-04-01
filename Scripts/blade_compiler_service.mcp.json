@@ -1,5 +1,6 @@
 {
     "type": "stdio",
+    "description": "Blade compiler MCP server. Prefer these MCP tools over manual dotnet/just/compiler invocation whenever the capability exists here.",
     "command": "/home/felix/projects/nerdgruppe/blade/.venv/bin/python",
     "args": [
         "/home/felix/projects/nerdgruppe/blade/Scripts/mcp_server.py"

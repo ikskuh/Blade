@@ -1,4 +1,20 @@
 #!/usr/bin/env python3
+"""
+Blade MCP server.
+
+Agent guidance:
+- Prefer these MCP tools over manual `dotnet build`, `dotnet run`, `just regressions`,
+  ad-hoc dump parsing, or direct spreadsheet scraping whenever the capability exists here.
+- Use `build_compiler()` for compiler-build diagnostics instead of shelling out and
+  guessing how much output to read.
+- Use `execute_regression_fixture()` / `execute_regression_tests()` plus
+  `get_regression_result()` / `get_regression_artifact()` instead of manually invoking
+  the regression harness and scraping stdout.
+- Use `get_instruction_forms()` / `get_instruction_form()` / `get_fuzzy_instruction()`
+  instead of re-parsing the instruction workbook or generated metadata manually.
+- Only fall back to manual shell commands when the MCP server does not expose the
+  needed operation.
+"""
 
 import base64
 import csv
@@ -50,6 +66,26 @@ ARTIFACT_NAME_TO_FILE = {
     "fixture-body": "fixture-body.txt",
 }
 ARTIFACT_FILE_TO_NAME = {value: key for key, value in ARTIFACT_NAME_TO_FILE.items()}
+MCP_SERVER_INSTRUCTIONS = """
+Use this Blade MCP server in preference to manual shell invocation whenever it exposes
+the operation you need.
+
+Preferred usage:
+- Use `build_compiler()` instead of manual `dotnet build` when you need structured
+  compiler diagnostics.
+- Use `compile_file()` instead of invoking the Blade compiler manually when you need
+  JSON compile results or dumps.
+- Use `execute_regression_fixture()` and `execute_regression_tests()` instead of
+  `just regressions` / `dotnet run --project Blade.Regressions -- ...`.
+- Use `get_regression_result()` and `get_regression_artifact()` instead of scraping
+  regression stdout or walking `.artifacts/regressions/*` manually.
+- Use `get_instruction_forms()`, `get_instruction_form()`, and
+  `get_fuzzy_instruction()` instead of manually reading the instruction workbook, CSV,
+  or generated metadata.
+
+Manual shell fallback is appropriate only when this MCP server does not expose the
+required capability.
+""".strip()
 
 
 class RequestedDump(Enum):
@@ -65,26 +101,26 @@ class RequestedDump(Enum):
 
 class CompileParameter(BaseModel):
     file_path: str = Field(
-        description="Path to the source file (relative to the repository root)",
+        description="Repo-relative Blade source path. Prefer this tool over manual compiler invocation when you need structured results.",
     )
     dumps: set[RequestedDump] | bool = Field(
-        description="Requested compiler dumps, or true for all dumps.",
+        description="Requested compiler dumps, or true for all dumps. Prefer this over manual --dump-* parsing.",
         default=False,
     )
     metrics: bool = Field(
-        description="Should the output contain compiler metrics",
+        description="Whether to include compiler metrics in the structured result.",
         default=False,
     )
     result: bool = Field(
-        description="Should the output include generated code",
+        description="Whether to include the generated assembler text in the structured result.",
         default=False,
     )
     arguments: list[str] = Field(
-        description="Additional command line arguments passed to the compiler",
+        description="Additional compiler CLI arguments. Use this only for arguments not already modeled by MCP parameters.",
         default_factory=list,
     )
     modules: dict[str, str] = Field(
-        description="A collection of module names to repo-relative module paths",
+        description="Mapping of module names to repo-relative module paths.",
         default_factory=dict,
     )
 
@@ -228,7 +264,7 @@ def fmt_diag(diag: Diagnostic) -> str:
     return f"{path}:{diag.line}: {diag.code}: {diag.message}"
 
 
-mcp = FastMCP("BladeCompilerServer")
+mcp = FastMCP("BladeCompilerServer", instructions=MCP_SERVER_INSTRUCTIONS)
 
 _latest_regression_run: LatestRegressionRun | None = None
 _instruction_index: dict[str, Any] | None = None
@@ -832,7 +868,10 @@ def parse_build_summary_counts(output: str) -> tuple[int, int]:
 @mcp.tool()
 def compile_file(params: CompileParameter) -> CompilerOutput | McpOutput:
     """
-    Compiles a file with the blade compiler (Debug build).
+    Compiles one Blade source file with the debug compiler and returns structured JSON.
+
+    Prefer this over manual compiler execution when you need diagnostics, dumps,
+    metrics, or final assembly in a stable machine-readable shape.
     """
     try:
         input_file = map_path(params.file_path)
@@ -944,7 +983,11 @@ def compile_file(params: CompileParameter) -> CompilerOutput | McpOutput:
 @mcp.tool()
 def is_hw_testrunner_available() -> bool:
     """
-    Returns true if .blade_mcp.json configures a serial port and that device path exists.
+    Returns true iff `.blade_mcp.json` configures `hardware.serial_port` and that
+    device path currently exists.
+
+    Use this before enabling hardware execution instead of probing the serial device
+    manually.
     """
     hardware_available, _ = get_hw_availability()
     return hardware_available
@@ -956,7 +999,10 @@ def execute_regression_fixture(
     with_hardware: bool = True,
 ) -> RegressionFixtureOutput | McpOutput:
     """
-    Executes a single regression fixture through Blade.Regressions.
+    Executes one regression fixture and returns a structured result.
+
+    Prefer this over manual `just regressions` / `dotnet run --project Blade.Regressions`
+    when you want one fixture, optional hardware execution, and structured outcome data.
     """
     try:
         fixture_path = map_path(file_path)
@@ -987,7 +1033,10 @@ def execute_regression_tests(
     with_hardware: bool = True,
 ) -> RegressionSuiteOutput | McpOutput:
     """
-    Executes the regression harness and returns structured failures.
+    Executes the regression harness and returns structured summary data.
+
+    Prefer this over manual regression-harness invocation when you need the failed-path
+    list or plan to inspect cached artifact data via follow-up MCP calls.
     """
     try:
         parsed = run_regressions(filters or [], with_hardware)
@@ -1005,6 +1054,8 @@ def execute_regression_tests(
 def get_regression_result(failed_path: str) -> RegressionFixtureOutput | McpOutput:
     """
     Returns the cached regression result for a path from the latest MCP-triggered run.
+
+    Prefer this over rescanning `.artifacts/regressions` manually.
     """
     try:
         latest_run = ensure_latest_regression_run()
@@ -1025,7 +1076,9 @@ def get_regression_artifact(
     artifact: str,
 ) -> RegressionArtifactContent | McpOutput:
     """
-    Returns the requested artifact contents for a failed path from the latest cached run.
+    Returns a named artifact from the latest cached regression run result.
+
+    Prefer this over manually opening `.artifacts/regressions/...` files.
     """
     try:
         latest_run = ensure_latest_regression_run()
@@ -1071,7 +1124,9 @@ def get_regression_artifact(
 @mcp.tool()
 def get_instruction_forms(mnemonic: str) -> list[str]:
     """
-    Returns the known instruction forms for a mnemonic.
+    Returns the known canonical instruction forms for a mnemonic.
+
+    Prefer this over manually grepping the workbook, CSV, or generated metadata.
     """
     index = get_instruction_index()
     return index["forms_by_mnemonic"].get(mnemonic.strip().upper(), [])
@@ -1080,7 +1135,9 @@ def get_instruction_forms(mnemonic: str) -> list[str]:
 @mcp.tool()
 def get_instruction_form(form: str) -> InstructionFormData | McpOutput:
     """
-    Returns metadata for a canonical instruction form.
+    Returns structured metadata for a canonical instruction form.
+
+    Prefer this over parsing instruction spreadsheets or generated metadata by hand.
     """
     try:
         index = get_instruction_index()
@@ -1096,7 +1153,9 @@ def get_instruction_form(form: str) -> InstructionFormData | McpOutput:
 @mcp.tool()
 def get_fuzzy_instruction(query: str) -> list[str]:
     """
-    Searches mnemonics and descriptions for relevant instruction forms.
+    Searches mnemonics, canonical syntax, and descriptions for relevant instruction forms.
+
+    Use this as the discovery entrypoint before calling `get_instruction_form()`.
     """
     normalized_query = normalize_text(query).upper()
     if not normalized_query:
@@ -1152,6 +1211,9 @@ def get_fuzzy_instruction(query: str) -> list[str]:
 def build_compiler() -> BuildCompilerOutput | McpOutput:
     """
     Runs dotnet build --no-restore for Blade/blade.csproj and returns warning/error diagnostics from SARIF.
+
+    Prefer this over manual `dotnet build` when you need structured diagnostics rather
+    than scraping console output.
     """
     sarif_path: Path | None = None
     try:

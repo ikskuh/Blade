@@ -84,6 +84,16 @@ You can use the Blade MCP server if available to get quicker results from the co
 need to roundtrip through shell commands and shell output processing. It gives you quick filtering of
 the desired outputs.
 
+Prefer the Blade MCP server over manual shell invocation whenever it exposes the operation you need.
+In particular:
+
+- use MCP `build_compiler` instead of manual `dotnet build` when you want structured diagnostics
+- use MCP `compile_file` instead of invoking `Blade/bin/Debug/net10.0/blade` manually
+- use MCP regression tools instead of `just regressions` / `dotnet run --project Blade.Regressions -- ...`
+- use MCP instruction-query tools instead of manually scraping the workbook, CSV, or generated metadata
+
+Manual shell commands are the fallback only when the MCP server does not expose the required capability.
+
 If you do so, always create a new demonstrator for that.
 
 The Blade MCP server always uses the latest compiler in `Blade/bin/Debug/net10.0/blade`, so you can
