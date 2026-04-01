@@ -1,0 +1,33 @@
+// EXPECT: pass-hw
+// RUNS:
+// - [ 1, 1 ] = 0x03
+// - [ 0, 0 ] = 0x0C
+// - [ 1, 0 ] = 0x0A
+// - [ 0, 1 ] = 0x06
+// NOTE:
+//   Tests short-circuit boolean operators: and, or, and boolean not.
+//   Takes u32 params and converts to bool inside to avoid bool parameter passing.
+//   f(a,b) packs 4 flag bits into result:
+//     bit0 = a and b  (short-circuit AND)
+//     bit1 = a or  b  (short-circuit OR)
+//     bit2 = (a == 0) i.e. !a
+//     bit3 = (b == 0) i.e. !b
+//   Run 1: (1,1): and=T,or=T,!a=F,!b=F -> 0x03
+//   Run 2: (0,0): and=F,or=F,!a=T,!b=T -> 0x0C
+//   Run 3: (1,0): and=F,or=T,!a=F,!b=T -> 0x0A
+//   Run 4: (0,1): and=F,or=T,!a=T,!b=F -> 0x06
+
+extern reg var rt_result: u32;
+extern reg var rt_param0: u32;
+extern reg var rt_param1: u32;
+
+noinline fn bool_ops(a: u32, b: u32) -> u32 {
+    var r: u32 = 0;
+    if (a != 0 and b != 0) { r = r | 0x01; }
+    if (a != 0 or  b != 0) { r = r | 0x02; }
+    if (a == 0)             { r = r | 0x04; }
+    if (b == 0)             { r = r | 0x08; }
+    return r;
+}
+
+rt_result = bool_ops(rt_param0, rt_param1);

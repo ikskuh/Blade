@@ -864,6 +864,8 @@ public static class RegressionRunner
             {
                 HardwareRunExpectation run = fixture.Expectation.HardwareRuns[i];
 
+                Console.WriteLine($"[hw] {fixture.RelativePath} run {i + 1}/{fixture.Expectation.HardwareRuns.Count} {FormatHardwareRunArguments(run)}");
+
                 try
                 {
                     uint actualOutput = HardwareFixtureRunner.Run(

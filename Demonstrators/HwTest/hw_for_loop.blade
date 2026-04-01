@@ -1,9 +1,16 @@
 // EXPECT: pass-hw
 // RUNS:
 // - [ 10 ] = 45
+// - [ 0 ] = 0
+// - [ 1 ] = 0
+// - [ 5 ] = 10
 // NOTE:
 //   Tests for(n) -> i loop with index variable.
-//   for(10) -> i: sums i from 0..9 = 0+1+2+...+9 = 45 = 0x2D
+//   sum_indices(n) = 0+1+...+(n-1) = n*(n-1)/2
+//   Run 1: n=10: 45
+//   Run 2: n=0:  0 (zero iterations)
+//   Run 3: n=1:  0 (single iteration, index=0)
+//   Run 4: n=5:  10
 
 extern reg var rt_result: u32;
 extern reg var rt_param0: u32;

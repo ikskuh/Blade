@@ -1,0 +1,25 @@
+// EXPECT: pass-hw
+// RUNS:
+// - [ 1, 2, 3 ] = 6
+// - [ 0, 0, 0 ] = 0
+// - [ 10, 20, 30 ] = 60
+// - [ 0xFFFFFFFF, 1, 0 ] = 0
+// NOTE:
+//   Tests leaf fn calling convention with 3 parameters.
+//   add_leaf(a,b,c) = a+b+c, called via CALLPA from a noinline wrapper.
+//   Run 4: 0xFFFFFFFF+1+0 = 0 (wrapping)
+
+extern reg var rt_result: u32;
+extern reg var rt_param0: u32;
+extern reg var rt_param1: u32;
+extern reg var rt_param2: u32;
+
+leaf fn add_leaf(a: u32, b: u32, c: u32) -> u32 {
+    return a + b + c;
+}
+
+noinline fn compute(a: u32, b: u32, c: u32) -> u32 {
+    return add_leaf(a, b, c);
+}
+
+rt_result = compute(rt_param0, rt_param1, rt_param2);

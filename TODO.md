@@ -301,3 +301,10 @@ like proper location tracking
 
 - Source <=> Assembly mapping
 - Resolved values for all symbols
+
+## Improve blade MCP server
+
+- Enable HW runs
+- Enable check if HW is present
+- Enable fast inspection of latest regression run results (without grepping)
+- Enable instruction set query

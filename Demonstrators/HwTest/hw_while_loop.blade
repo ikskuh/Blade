@@ -1,9 +1,16 @@
 // EXPECT: pass-hw
 // RUNS:
 // - [ 10 ] = 55
+// - [ 0 ] = 0
+// - [ 1 ] = 1
+// - [ 5 ] = 15
 // NOTE:
-//   Tests while loop by computing sum of 1..10.
-//   1+2+...+10 = 55 = 55
+//   Tests while loop by computing sum of 1..n.
+//   sum_to(n) = 1+2+...+n = n*(n+1)/2
+//   Run 1: n=10: 55
+//   Run 2: n=0:  0 (loop never entered)
+//   Run 3: n=1:  1 (single iteration)
+//   Run 4: n=5:  15
 
 extern reg var rt_result: u32;
 extern reg var rt_param0: u32;

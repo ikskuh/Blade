@@ -1,14 +1,16 @@
 // EXPECT: pass-hw
 // RUNS:
 // - [ 5, 10, 10, 5, 7, 7 ] = 0x0029320E
+// - [ 7, 7, 3, 9, 5, 2 ] = 0x00320E29
+// - [ 8, 1, 4, 4, 2, 9 ] = 0x000E2932
 // NOTE:
-//   Tests all 6 comparison operators with 3 cases.
+//   Tests all 6 comparison operators with 3 cases per run.
 //   Each case packs results into 6 bits:
 //     bit0=eq, bit1=ne, bit2=lt, bit3=le, bit4=gt, bit5=ge
-//   Case a<b  (5,10):  ne|lt|le       = 0x0E
-//   Case a>b  (10,5):  ne|gt|ge       = 0x32  -> shifted to byte 1
-//   Case a==b (7,7):   eq|le|ge       = 0x29  -> shifted to byte 2
-//   Result = 0x0029320E
+//   Possible values: a<b=0x0E, a>b=0x32, a==b=0x29
+//   Run 1: (5<10)|(10>5)<<8|(7==7)<<16 = 0x0E|(0x32<<8)|(0x29<<16) = 0x0029320E
+//   Run 2: (7==7)|(3<9)<<8|(5>2)<<16   = 0x29|(0x0E<<8)|(0x32<<16) = 0x00320E29
+//   Run 3: (8>1)|(4==4)<<8|(2<9)<<16   = 0x32|(0x29<<8)|(0x0E<<16) = 0x000E2932
 
 extern reg var rt_result: u32;
 extern reg var rt_param0: u32;

@@ -1,9 +1,16 @@
 // EXPECT: pass-hw
 // RUNS:
 // - [ 10 ] = 110
+// - [ 0 ] = 0
+// - [ 1 ] = 2
+// - [ 5 ] = 30
 // NOTE:
 //   Tests nested noinline function calls.
-//   compute(10) = add(mul(10,10), 10) = add(100, 10) = 110 = 0x6E
+//   compute(x) = add(mul(x,x), x) = x*x+x
+//   Run 1: 100+10 = 110
+//   Run 2: 0+0   = 0
+//   Run 3: 1+1   = 2
+//   Run 4: 25+5  = 30
 
 extern reg var rt_result: u32;
 extern reg var rt_param0: u32;

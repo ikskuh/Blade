@@ -1,0 +1,31 @@
+// EXPECT: pass-hw
+// RUNS:
+// - [ 20, 5 ] = 85
+// - [ 0, 0 ] = 0
+// - [ 7, 7 ] = 14
+// NOTE:
+//   Tests named-argument call syntax and local const from runtime data.
+//   sub(a,b) = a-b
+//   r1 = sub(a, b)         (positional)
+//   r2 = sub(b=b, a=a)     (named, reversed)
+//   r3 = sub(a, b=b)       (mixed)
+//   k  = a * 2             (local const from runtime)
+//   result = r1+r2+r3+k = 3*(a-b) + 2*a = 5*a - 3*b
+//   Run 1: 5*20 - 3*5 = 100-15 = 85
+//   Run 2: 0
+//   Run 3: 5*7 - 3*7 = 14
+
+extern reg var rt_result: u32;
+extern reg var rt_param0: u32;
+extern reg var rt_param1: u32;
+
+noinline fn sub(a: u32, b: u32) -> u32 {
+    return a - b;
+}
+
+var r1: u32 = sub(rt_param0, rt_param1);
+var r2: u32 = sub(b=rt_param1, a=rt_param0);
+var r3: u32 = sub(rt_param0, b=rt_param1);
+const k: u32 = rt_param0 * 2;
+
+rt_result = r1 + r2 + r3 + k;

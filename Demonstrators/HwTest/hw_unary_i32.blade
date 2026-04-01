@@ -1,9 +1,14 @@
 // EXPECT: pass-hw
 // RUNS:
 // - [ 42 ] = -43
+// - [ 0 ] = -1
+// - [ -1 ] = 0
 // NOTE:
 //   Tests unary operators on i32: negate, plus, bitwise not.
-//   x=42: (-42) + (+42) + (~42) = 0 + (~42) = -43 = 0xFFFFFFD5
+//   f(x) = (-x) + (+x) + (~x)
+//   Run 1: x=42:  -42+42+(-43) = -43
+//   Run 2: x=0:   0+0+(-1)    = -1
+//   Run 3: x=-1:  1+(-1)+0    = 0
 
 extern reg var rt_result: u32;
 extern reg var rt_param0: i32;

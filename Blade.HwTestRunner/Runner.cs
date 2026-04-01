@@ -1,5 +1,4 @@
 using System;
-using System.Buffers;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -107,20 +106,23 @@ public sealed class Runner
 
         if (!WaitForByte(stdout, STX, 1000))
         {
+            try { process.Kill(entireProcessTree: true); } catch { }
             throw new TimeoutException("No response from fixture");
         }
-        Console.Error.WriteLine("Blade code launched"); // TODO: Log outside
         if (!WaitForByte(stdout, ETX, Timeout))
         {
+            try { process.Kill(entireProcessTree: true); } catch { }
             throw new TimeoutException($"Blade code did not exit after {Timeout} ms.");
         }
-        Console.Error.WriteLine("Blade exited launched"); // TODO: Log outside
 
         // Terminate loadp2 by closing stdin:
         process.StandardInput.Close();
 
-        // Wait until loadp2 properly terminated
-        process.WaitForExit();
+        // Wait until loadp2 properly terminated (bounded to avoid hanging)
+        if (!process.WaitForExit(3000))
+        {
+            try { process.Kill(entireProcessTree: true); } catch { }
+        }
 
         var suffix_bytes = ReadToEnd(stdout);
         var stderr_bytes = ReadToEnd(process.StandardError.BaseStream);
@@ -184,20 +186,29 @@ public sealed class Runner
 
     static bool WaitForByte(Stream stream, byte marker, int timeoutMs)
     {
-        var sw = Stopwatch.StartNew();
+        using CancellationTokenSource cts = new(timeoutMs);
 
-        var any = false;
+        byte[] buffer = new byte[1];
+        bool any = false;
         try
         {
-            var buffer = new byte[1];
             while (true)
             {
-                int cnt = stream.Read(buffer);
+                int cnt;
+                try
+                {
+                    cnt = stream.ReadAsync(buffer.AsMemory(), cts.Token).AsTask().GetAwaiter().GetResult();
+                }
+                catch (OperationCanceledException)
+                {
+                    return false; // timeout
+                }
+
                 if (cnt == 0)
                     return false; // end of stream
                 Debug.Assert(cnt == 1);
                 if (buffer[0] == marker)
-                    return true; // hit
+                    return true; // found the marker
                 Console.Write(Encoding.ASCII.GetString(buffer[0..cnt]));
                 any = true;
             }
@@ -205,11 +216,8 @@ public sealed class Runner
         finally
         {
             if (any)
-            {
                 Console.WriteLine();
-            }
         }
-
     }
 }
 

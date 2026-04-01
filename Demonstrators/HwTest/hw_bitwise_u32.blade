@@ -1,11 +1,18 @@
 // EXPECT: pass-hw
 // RUNS:
 // - [ 0xAAAA, 0x5555 ] = 0x00015553
+// - [ 0, 0 ] = 0xFFFFFFFF
+// - [ 0xFFFFFFFF, 0xFFFFFFFF ] = 0xFFFFFFFE
+// - [ 0xF0F0F0F0, 0x0F0F0F0F ] = 0x0F0F0F0D
+// - [ 0xA5A5A5A5, 0xA5A5A5A5 ] = 0xA5A5A5A4
 // NOTE:
 //   Tests u32 bitwise operators: and, or, xor, not.
-//   a=0xAAAA, b=0x5555:
-//     a&b=0x0000, a|b=0xFFFF, a^b=0xFFFF, ~a=0xFFFF5555
-//     sum = 0 + 0xFFFF + 0xFFFF + 0xFFFF5555 = 0x00015553
+//   f(a,b) = (a&b)+(a|b)+(a^b)+(~a)
+//   Run 1: 0+0xFFFF+0xFFFF+0xFFFF5555 = 0x00015553
+//   Run 2: 0+0+0+0xFFFFFFFF = 0xFFFFFFFF
+//   Run 3: 0xFFFFFFFF+0xFFFFFFFF+0+0 = 0xFFFFFFFE (wrapping)
+//   Run 4: 0+0xFFFFFFFF+0xFFFFFFFF+0x0F0F0F0F = 0x0F0F0F0D (wrapping)
+//   Run 5: 0xA5A5A5A5+0xA5A5A5A5+0+0x5A5A5A5A = 0xA5A5A5A4 (wrapping)
 
 extern reg var rt_result: u32;
 extern reg var rt_param0: u32;

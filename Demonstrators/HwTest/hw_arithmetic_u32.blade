@@ -1,9 +1,18 @@
 // EXPECT: pass-hw
 // RUNS:
 // - [ 10, 3 ] = 54
+// - [ 0, 1 ] = 0
+// - [ 1, 1 ] = 4
+// - [ 100, 7 ] = 916
+// - [ 0xFFFFFFFF, 1 ] = 0xFFFFFFFC
 // NOTE:
 //   Tests u32 arithmetic operators: add, sub, mul, div, mod.
-//   a=10, b=3: (10+3)+(10-3)+(10*3)+(10/3)+(10%3) = 13+7+30+3+1 = 54 = 0x36
+//   f(a,b) = (a+b)+(a-b)+(a*b)+(a/b)+(a%b)
+//   Run 1: 13+7+30+3+1 = 54
+//   Run 2: 1+0xFFFFFFFF+0+0+0 = 0 (wrapping)
+//   Run 3: 2+0+1+1+0 = 4
+//   Run 4: 107+93+700+14+2 = 916
+//   Run 5: 0+0xFFFFFFFE+0xFFFFFFFF+0xFFFFFFFF+0 = 0xFFFFFFFC (wrapping)
 
 extern reg var rt_result: u32;
 extern reg var rt_param0: u32;
