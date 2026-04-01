@@ -815,6 +815,33 @@ fn expressions() {
     a >%>= b;
 }
 
+// Blade provides all instruction mnemonics over intrinsic functions.
+// These functions map 1:1 to the CPU instructions and can be used
+// to directly perform special instructions without dropping down to
+// inline assembly:
+fn intrinsics(a: u32, b: u32) {
+
+    // COGID writes to D, but doesn't read, so we can just call it
+    // and fetch the result:
+    var id: u32 = @COGID();
+
+    // RDFAST doesn't write to either D nor S, so we take two parameters,
+    // and have no return value:
+    @RDFAST(0, &hv_01);
+
+    // Instructions like RDLONG write their result to `D` and consume
+    // the address from `S`, so we're having one return value and one parameter:
+    var mem: u32 = @RDLONG(&hv_01);
+
+    // Instructions like FGE modify their `D`, but we can express this as
+    // consuming two parameters and receiving a return value.
+    // The compiler may:
+    // - copy `a` to `max` before invocation
+    // - use `ALTR #max` to change the resulting register of the instruction
+    // - fuse `max` and `a` into a single logical runtime register
+    var max: u32 = @FGE(a, b);
+}
+
 fn pointer_arithmetics() {
 
     // Blade supports typical pointer arithmetic operations.
