@@ -61,15 +61,15 @@ fn get_three_specific() -> u32@reg, bool@C, bit@Z {
 // by default, booleans and bit values will be returned in a flag instead of
 // a register, as the flags allow efficient processing for conditionals,
 // while a 0/1 value in a register would require unwrapping again, thus
+// `get_state_default` and `get_state_explicit` will behave equivalently
+// assuming the compiler has chosen to put the boolean into C.
 fn get_state_default() -> bool {
     return true;
 }
-// and 
 fn get_state_explicit() -> bool@C {
     return true;
 }
-// will behave equivalent assuming the compiler has chosen to put the boolean into C.
-// 
+
 // The return values will determine what flags the compiler will restore when
 // invoking the `RET` instruction:
 //
@@ -160,7 +160,7 @@ noinline rec fn cc_noinline_rec() {
 
 
 }
-// noinline works together with *all* calling conventions.
+// noinline works together with *all* runtime calling conventions (excluding e.g. `comptime`).
 // The compiler rejects duplicate calling-convention modifiers, duplicate
 // inlining modifiers, and `inline` combined with any explicit calling convention.
 
@@ -323,6 +323,8 @@ extern reg var PB: u32 @(0x1F7);
 //////////////////////////////////////////////////////////////////////////////
 
 fn control_flow_demo(count: u32, cond: bool) {
+    const start: u32 = 0;
+    const end: u32 = 7;
 
     if (cond) {
         // taken if cond is true
@@ -650,7 +652,7 @@ import builtin; // see "Module Subsystem" for explanations
 
 // All of the following types are defined in the "builtin" module, which is always
 // available and provided by the compiler.
-// Thus, they need to be addresses "builtin.MemorySpace" instead of "MemorySpace" in
+// Thus, they need to be addressed as "builtin.MemorySpace" instead of "MemorySpace" in
 // the code!
 
 // The builtin module looks like this:
@@ -685,9 +687,8 @@ fn func_2(x: u32, y: u32) -> u32  {
 }
 
 // Important note: Expressions in Blade are not statements and cannot be used
-// standalone. The only top-level constructs except for control flow are:
-// - Assignments
-// - Function Calls
+// standalone. Among expression-like constructs, only assignments and function
+// calls can stand alone as statements.
 // 
 // Also, postfix or prefix "++" and "--" operators like the C family are explicitly
 // excluded as they obscure the code readability and reasoning capabilities
@@ -723,15 +724,15 @@ fn expressions() {
 
     // Bitwise ops:
     x = ~x; // bitwise inversion, maps to NOT instruction
-    x = x | y; // bitwise OR, if used on integer types, maps to AND instruction
-    x = x & y; // bitwise AND, if used on integer types, maps to OR instruction
+    x = x | y; // bitwise OR, if used on integer types, maps to OR instruction
+    x = x & y; // bitwise AND, if used on integer types, maps to AND instruction
     x = x ^ y; // bitwise XOR, if used on integer types, maps to XOR instruction
     x = x << y; // logical left shift (shift in zeroes), maps to SHL instruction
     x = x >> y; // logical right shift (shift in zeroes), maps to SHR instruction
     x = x <<< y; // arithmetic left shift (shift in LSB), maps to SAL instruction
     x = x >>> y; // arithmetic right shift (shift in MSB), maps to SAR instruction
-    x = x <%< y; // rotating left shift (shift in the bits shifted out), maps to RCL instruction
-    x = x >%> y; // rotating right shift (shift in the bits shifted out), maps to RCR instruction
+    x = x <%< y; // rotating left shift (shift in the bits shifted out), maps to ROL instruction
+    x = x >%> y; // rotating right shift (shift in the bits shifted out), maps to ROR instruction
 
     // Arithmetic ops:
     x = +x;    // unary plus, does nothing
@@ -797,22 +798,22 @@ fn expressions() {
 
     // A lot of operators also support lhs-fused assignment operations:
 
-    a += b; // equivalent to "a + b"
-    a -= b;
-    a *= b;
-    a /= b;
-    a %= b;
+    x += y; // equivalent to "x = x + y"
+    x -= y;
+    x *= y;
+    x /= y;
+    x %= y;
     
-    a |= b;
-    a &= b;
-    a ^= b;
+    x |= y;
+    x &= y;
+    x ^= y;
 
-    a <<= b;
-    a >>= b;
-    a <<<= b;
-    a >>>= b;
-    a <%<= b;
-    a >%>= b;
+    x <<= y;
+    x >>= y;
+    x <<<= y;
+    x >>>= y;
+    x <%<= y;
+    x >%>= y;
 }
 
 // Blade provides all instruction mnemonics over intrinsic functions.
@@ -914,11 +915,14 @@ fn multi_return_demo() {
     // is being left out. It is not legal to use in other
     // places right now.
 
+    // `_` can also be used to ignore the result of an expression evaluation:
+    _ = 10; // valid, but likely optimized away
+
     // The use of `_` is very handy when a return value is
     // not required, as this allows the dead code elimination
     // to work nicely together with function inlining to remove
     // the code paths that lead to this return value, thus
-    // allowing way better optimizde code.
+    // allowing way better optimize code.
 
     // Right now, there is no variable declaration syntax usable
     // when returning into multiple values, all variables must
@@ -1017,7 +1021,7 @@ import "./path/to/file.blade" as alias;
 // Top-level locals are created anew for each call; module globals persist.
 alias();
 
-// There's nothing that forbids callign a top-level module code twice:
+// There's nothing that forbids calling a top-level module code twice:
 alias();
 
 // The compiler can also receive module definitions on the command line.
