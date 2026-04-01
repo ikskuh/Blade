@@ -46,9 +46,13 @@ rt_start
 
         WAITX ##1_000_000
 
+        ' Initialize hub stack pointer (PTRB) for rec fn (CALLB/RETB/PUSHB/POPB).
+        ' Point well above the program binary so the stack does not clobber code/data.
+        MOV PTRB, ##$10000
+
         ' First write must be without the "wait busy" logic as the pin would never trigger this!
         ' Write the "start of execution marker":
-        WYPIN #RT_START_MARKER, #RT_TXD_PIN 
+        WYPIN #RT_START_MARKER, #RT_TXD_PIN
         JMP #blade_entry
 
 blade_halt

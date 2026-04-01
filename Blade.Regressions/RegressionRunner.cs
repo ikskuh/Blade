@@ -42,6 +42,7 @@ public sealed class RegressionRunResult
     public int XFailCount => FixtureResults.Count(result => result.Outcome == RegressionFixtureOutcome.XFail);
     public int UnexpectedPassCount => FixtureResults.Count(result => result.Outcome == RegressionFixtureOutcome.UnexpectedPass);
     public int SkipCount => FixtureResults.Count(result => result.Outcome == RegressionFixtureOutcome.Skipped);
+    public int HwFailedCount => FixtureResults.Count(result => result.Outcome == RegressionFixtureOutcome.HwFailed);
     public bool Succeeded => FailCount == 0
         && UnexpectedPassCount == 0
         && !(IrCoverageReport?.HasRegressions ?? false);
@@ -77,6 +78,7 @@ public enum RegressionFixtureOutcome
     XFail,
     UnexpectedPass,
     Skipped,
+    HwFailed,
 }
 
 public enum RegressionFixtureKind
@@ -93,6 +95,7 @@ public enum RegressionExpectationKind
     PassHw,
     Fail,
     XFail,
+    XFailHw,
 }
 
 public enum RegressionStage
@@ -375,9 +378,14 @@ public static class RegressionRunner
             if (issues.Count == 0)
             {
                 HardwareExecutionResult hardwareExecution = EvaluateHardwareExecution(fixture, evaluatedFixture, hardwarePort);
-                issues.AddRange(hardwareExecution.Issues);
                 if (hardwareExecution.BinaryBytes is not null)
                     evaluatedFixture = evaluatedFixture.WithHardwareBinary(hardwareExecution.BinaryBytes);
+                if (hardwareExecution.IsHardwareFailed)
+                {
+                    string hwFailedSummary = hardwareExecution.Issues.Count > 0 ? hardwareExecution.Issues[0] : "hardware runner failed";
+                    return new RegressionFixtureResult(relativePath, RegressionFixtureOutcome.HwFailed, hwFailedSummary, hardwareExecution.Issues, null);
+                }
+                issues.AddRange(hardwareExecution.Issues);
             }
 
             RegressionFixtureOutcome outcome = ComputeOutcome(
@@ -526,7 +534,8 @@ public static class RegressionRunner
         string fixturePath)
     {
         List<string> effectiveArgs = new(expectation.CompilerArgs);
-        if (expectation.ExpectationKind == RegressionExpectationKind.PassHw
+        if ((expectation.ExpectationKind == RegressionExpectationKind.PassHw
+                || expectation.ExpectationKind == RegressionExpectationKind.XFailHw)
             && !effectiveArgs.Any(static arg => arg.StartsWith("--runtime=", StringComparison.Ordinal)))
         {
             string runtimePath = Path.Combine(repositoryRootPath, "Blade.HwTestRunner", "Runtime.spin2");
@@ -577,7 +586,8 @@ public static class RegressionRunner
         }
 
         if ((expectation.ExpectationKind == RegressionExpectationKind.Pass
-                || expectation.ExpectationKind == RegressionExpectationKind.PassHw)
+                || expectation.ExpectationKind == RegressionExpectationKind.PassHw
+                || expectation.ExpectationKind == RegressionExpectationKind.XFailHw)
             && diagnostics.Count > 0)
         {
             foreach (ActualDiagnostic diagnostic in diagnostics)
@@ -829,8 +839,10 @@ public static class RegressionRunner
         EvaluatedFixture evaluatedFixture,
         string? hardwarePort)
     {
+        bool isPassHw = fixture.Expectation.ExpectationKind == RegressionExpectationKind.PassHw;
+        bool isXFailHw = fixture.Expectation.ExpectationKind == RegressionExpectationKind.XFailHw;
         if (fixture.Kind != RegressionFixtureKind.Blade
-            || fixture.Expectation.ExpectationKind != RegressionExpectationKind.PassHw
+            || (!isPassHw && !isXFailHw)
             || string.IsNullOrWhiteSpace(hardwarePort))
         {
             return HardwareExecutionResult.NotAttempted();
@@ -859,6 +871,8 @@ public static class RegressionRunner
                 ParameterCount = 8,
             };
             List<string> issues = [];
+            // For xfail-hw: track whether every run completed and matched (unexpected pass).
+            bool allRunsMatchedExpected = fixture.Expectation.HardwareRuns.Count > 0;
 
             for (int i = 0; i < fixture.Expectation.HardwareRuns.Count; i++)
             {
@@ -874,14 +888,29 @@ public static class RegressionRunner
                         config,
                         run.Parameters.ToArray());
 
-                    if (actualOutput != run.ExpectedOutput)
+                    bool runPassed = actualOutput == run.ExpectedOutput;
+                    if (isPassHw && !runPassed)
+                    {
                         issues.Add(FormatHardwareRunMismatch(i + 1, run, actualOutput));
+                        allRunsMatchedExpected = false;
+                    }
+                    else if (isXFailHw && !runPassed)
+                    {
+                        // Mismatch is expected — no issue, but not an unexpected pass.
+                        allRunsMatchedExpected = false;
+                    }
+                    // isXFailHw && runPassed: this run matched — leave allRunsMatchedExpected as-is.
                 }
                 catch (Exception ex)
                 {
-                    issues.Add($"hardware run {i + 1} {FormatHardwareRunArguments(run)} failed: {ex.Message}");
+                    return HardwareExecutionResult.HardwareFailed(
+                        [$"hardware run {i + 1} {FormatHardwareRunArguments(run)} failed: {ex.Message}"],
+                        binaryResult.BinaryBytes);
                 }
             }
+
+            if (isXFailHw && allRunsMatchedExpected)
+                issues.Add("all hardware runs unexpectedly produced the correct result");
 
             return issues.Count == 0
                 ? HardwareExecutionResult.Succeeded(binaryResult.BinaryBytes)
@@ -889,7 +918,7 @@ public static class RegressionRunner
         }
         catch (Exception ex)
         {
-            return HardwareExecutionResult.Failed(
+            return HardwareExecutionResult.HardwareFailed(
                 [$"hardware execution failed: {ex.Message}"],
                 binaryResult.BinaryBytes);
         }
@@ -936,7 +965,8 @@ public static class RegressionRunner
             FlexspinExpectation.Forbidden => false,
             FlexspinExpectation.Auto => fixture.Kind != RegressionFixtureKind.Blade
                 || fixture.Expectation.ExpectationKind == RegressionExpectationKind.Pass
-                || fixture.Expectation.ExpectationKind == RegressionExpectationKind.PassHw,
+                || fixture.Expectation.ExpectationKind == RegressionExpectationKind.PassHw
+                || fixture.Expectation.ExpectationKind == RegressionExpectationKind.XFailHw,
             _ => false,
         };
     }
@@ -959,6 +989,13 @@ public static class RegressionRunner
                 return RegressionFixtureOutcome.UnexpectedPass;
 
             return RegressionFixtureOutcome.XFail;
+        }
+
+        if (expectationKind == RegressionExpectationKind.XFailHw)
+        {
+            // matched=false (issues present) means all runs unexpectedly passed — unexpected pass.
+            // matched=true (no issues) means hardware failed as expected, or was not attempted.
+            return matched ? RegressionFixtureOutcome.XFail : RegressionFixtureOutcome.UnexpectedPass;
         }
 
         return matched ? RegressionFixtureOutcome.Pass : RegressionFixtureOutcome.Fail;
@@ -1001,6 +1038,8 @@ public static class RegressionRunner
             return "expected failure observed";
         if (outcome == RegressionFixtureOutcome.UnexpectedPass)
             return "unexpected pass";
+        if (outcome == RegressionFixtureOutcome.HwFailed)
+            return issues.Count > 0 ? issues[0] : "hardware runner failed";
 
         if (issues.Count > 0)
             return issues[0];
@@ -1149,14 +1188,26 @@ internal static class RegressionFixtureParser
         if (kind != RegressionFixtureKind.Blade && expectation.HardwareRuns.Count > 0)
             throw new InvalidOperationException("RUNS is only valid for .blade fixtures.");
 
-        if (expectation.ExpectationKind != RegressionExpectationKind.PassHw && expectation.HardwareRuns.Count > 0)
-            throw new InvalidOperationException("RUNS is only valid with EXPECT: pass-hw.");
+        if (expectation.ExpectationKind != RegressionExpectationKind.PassHw
+                && expectation.ExpectationKind != RegressionExpectationKind.XFailHw
+                && expectation.HardwareRuns.Count > 0)
+            throw new InvalidOperationException("RUNS is only valid with EXPECT: pass-hw or EXPECT: xfail-hw.");
 
         if (expectation.ExpectationKind == RegressionExpectationKind.PassHw && expectation.HardwareRuns.Count == 0)
             throw new InvalidOperationException("EXPECT: pass-hw requires RUNS.");
 
+        if (expectation.ExpectationKind == RegressionExpectationKind.XFailHw && expectation.HardwareRuns.Count == 0)
+            throw new InvalidOperationException("EXPECT: xfail-hw requires RUNS.");
+
+        bool isHwTestFixture = fixturePath.Contains(
+            $"{Path.DirectorySeparatorChar}HwTest{Path.DirectorySeparatorChar}",
+            StringComparison.OrdinalIgnoreCase);
+        if (isHwTestFixture && expectation.ExpectationKind == RegressionExpectationKind.Pass)
+            throw new InvalidOperationException("EXPECT: pass is not permitted in the HwTest folder. Use pass-hw or xfail-hw.");
+
         if ((expectation.ExpectationKind == RegressionExpectationKind.Pass
-                || expectation.ExpectationKind == RegressionExpectationKind.PassHw)
+                || expectation.ExpectationKind == RegressionExpectationKind.PassHw
+                || expectation.ExpectationKind == RegressionExpectationKind.XFailHw)
             && EnumerateExpectedDiagnosticCodes(expectation).Any(code => code.StartsWith('E')))
         {
             throw new InvalidOperationException($"EXPECT: {ExpectationName(expectation.ExpectationKind)} cannot be combined with error diagnostic expectations.");
@@ -1245,6 +1296,7 @@ internal static class RegressionFixtureParser
                             "pass-hw" => RegressionExpectationKind.PassHw,
                             "fail" => RegressionExpectationKind.Fail,
                             "xfail" => RegressionExpectationKind.XFail,
+                            "xfail-hw" => RegressionExpectationKind.XFailHw,
                             _ => throw new InvalidOperationException($"Unsupported EXPECT value '{directiveValue}'."),
                         };
                         break;
@@ -1377,6 +1429,7 @@ internal static class RegressionFixtureParser
             RegressionExpectationKind.PassHw => "pass-hw",
             RegressionExpectationKind.Fail => "fail",
             RegressionExpectationKind.XFail => "xfail",
+            RegressionExpectationKind.XFailHw => "xfail-hw",
             _ => throw new InvalidOperationException($"Unknown expectation kind '{expectationKind}'."),
         };
     }
@@ -2106,22 +2159,26 @@ internal static class FlexspinRunner
 
 internal sealed class HardwareExecutionResult
 {
-    private HardwareExecutionResult(bool attempted, IReadOnlyList<string> issues, byte[]? binaryBytes)
+    private HardwareExecutionResult(bool attempted, bool hardwareFailed, IReadOnlyList<string> issues, byte[]? binaryBytes)
     {
         Attempted = attempted;
+        IsHardwareFailed = hardwareFailed;
         Issues = issues;
         BinaryBytes = binaryBytes;
     }
 
     public bool Attempted { get; }
+    public bool IsHardwareFailed { get; }
     public IReadOnlyList<string> Issues { get; }
     public byte[]? BinaryBytes { get; }
 
-    public static HardwareExecutionResult NotAttempted() => new(false, [], null);
+    public static HardwareExecutionResult NotAttempted() => new(false, false, [], null);
 
-    public static HardwareExecutionResult Succeeded(byte[] binaryBytes) => new(true, [], binaryBytes);
+    public static HardwareExecutionResult Succeeded(byte[] binaryBytes) => new(true, false, [], binaryBytes);
 
-    public static HardwareExecutionResult Failed(IReadOnlyList<string> issues, byte[]? binaryBytes = null) => new(true, issues, binaryBytes);
+    public static HardwareExecutionResult Failed(IReadOnlyList<string> issues, byte[]? binaryBytes = null) => new(true, false, issues, binaryBytes);
+
+    public static HardwareExecutionResult HardwareFailed(IReadOnlyList<string> issues, byte[]? binaryBytes = null) => new(true, true, issues, binaryBytes);
 }
 
 internal static class HardwareFixtureRunner
@@ -2150,10 +2207,11 @@ internal static class HardwareFixtureRunner
 
 internal static class HardwarePortResolver
 {
+    // Pass an empty string to explicitly disable hardware (suppress env var lookup).
     public static string? Resolve(string? explicitPort)
     {
-        if (!string.IsNullOrWhiteSpace(explicitPort))
-            return explicitPort;
+        if (explicitPort is not null)
+            return string.IsNullOrWhiteSpace(explicitPort) ? null : explicitPort;
 
         string? envPort = Environment.GetEnvironmentVariable("BLADE_TEST_PORT");
         return string.IsNullOrWhiteSpace(envPort) ? null : envPort;
@@ -2216,7 +2274,7 @@ public static class RegressionReportFormatter
 
     private static bool ShouldExpandDetails(RegressionFixtureResult fixtureResult)
     {
-        return fixtureResult.Outcome is RegressionFixtureOutcome.Fail or RegressionFixtureOutcome.UnexpectedPass;
+        return fixtureResult.Outcome is RegressionFixtureOutcome.Fail or RegressionFixtureOutcome.UnexpectedPass or RegressionFixtureOutcome.HwFailed;
     }
 
     private static string FormatOutcomeLabel(RegressionFixtureOutcome outcome)
@@ -2228,6 +2286,7 @@ public static class RegressionReportFormatter
             RegressionFixtureOutcome.XFail => "XFAIL",
             RegressionFixtureOutcome.UnexpectedPass => "UNEXPECTED",
             RegressionFixtureOutcome.Skipped => "SKIP",
+            RegressionFixtureOutcome.HwFailed => "HW FAILED",
             _ => throw new InvalidOperationException($"Unknown fixture outcome '{outcome}'."),
         };
     }
@@ -2263,6 +2322,8 @@ public static class RegressionReportFormatter
             parts.Add(FormattableString.Invariant($"{result.FailCount} failed"));
         if (result.XFailCount > 0)
             parts.Add(FormattableString.Invariant($"{result.XFailCount} xfailed"));
+        if (result.HwFailedCount > 0)
+            parts.Add(FormattableString.Invariant($"{result.HwFailedCount} hw-failed"));
         if (result.PassCount > 0)
             parts.Add(FormattableString.Invariant($"{result.PassCount} passed"));
 

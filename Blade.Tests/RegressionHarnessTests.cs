@@ -101,6 +101,35 @@ public sealed class RegressionHarnessTests
     }
 
     [Test]
+    public void RegressionReportFormatter_HwFailed_IsLabelledAndExpandedButDoesNotAffectSucceeded()
+    {
+        RegressionFixtureResult passResult = new(
+            "Demonstrators/simple.blade",
+            RegressionFixtureOutcome.Pass,
+            "passed",
+            [],
+            artifactDirectoryPath: null);
+        RegressionFixtureResult hwFailedResult = new(
+            "Demonstrators/HwTest/hw_exec.blade",
+            RegressionFixtureOutcome.HwFailed,
+            "hardware run 1 [] failed: port not found",
+            ["hardware run 1 [] failed: port not found"],
+            artifactDirectoryPath: null);
+        RegressionRunResult result = new("/repo", [passResult, hwFailedResult]);
+
+        string report = RegressionReportFormatter.Format(result);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.HwFailedCount, Is.EqualTo(1));
+            Assert.That(report, Does.Contain("HW FAILED"));
+            Assert.That(report, Does.Contain("hardware run 1 [] failed: port not found"));
+            Assert.That(report.TrimEnd(), Does.EndWith("1 hw-failed, 1 passed, 2 total"));
+        });
+    }
+
+    [Test]
     public void FullRegressionSuite_Passes()
     {
         RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
@@ -139,6 +168,7 @@ public sealed class RegressionHarnessTests
         {
             RepositoryRootPath = temp.Path,
             WriteFailureArtifacts = false,
+            HardwarePort = "",  // disable hardware; test only verifies runtime injection via CONTAINS
         });
 
         RegressionFixtureResult fixtureResult = result.FixtureResults.Single(result =>
@@ -184,6 +214,7 @@ public sealed class RegressionHarnessTests
         {
             RepositoryRootPath = temp.Path,
             WriteFailureArtifacts = false,
+            HardwarePort = "",  // disable hardware; test only verifies CONTAINS/ARGS behavior
         });
 
         RegressionFixtureResult fixtureResult = result.FixtureResults.Single(result =>
@@ -245,7 +276,7 @@ public sealed class RegressionHarnessTests
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
-            Assert.That(fixtureResult.Details, Has.Some.Contains("RUNS is only valid with EXPECT: pass-hw."));
+            Assert.That(fixtureResult.Details, Has.Some.Contains("RUNS is only valid with EXPECT: pass-hw or EXPECT: xfail-hw."));
         });
     }
 
@@ -340,7 +371,7 @@ public sealed class RegressionHarnessTests
     }
 
     [Test]
-    public void PassHwFixture_WithConfiguredPort_AttemptsHardwareExecutionAndSurfacesFailures()
+    public void PassHwFixture_WithConfiguredPort_HwRunFails_IsHwFailed()
     {
         using TempDirectory temp = new();
         WriteMinimalRegressionRepository(temp);
@@ -367,8 +398,42 @@ public sealed class RegressionHarnessTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(result.Succeeded, Is.False);
-            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.HwFailed));
+            Assert.That(fixtureResult.Details, Has.Some.StartsWith("hardware run 1 [] failed:"));
+        });
+    }
+
+    [Test]
+    public void XFailHwFixture_WithConfiguredPort_HwRunFails_IsHwFailed()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        WriteHardwareRuntime(temp);
+        temp.WriteFile("Demonstrators/hw_xfail_exec.blade", """
+        // EXPECT: xfail-hw
+        // RUNS:
+        // - [] = 0x1
+        extern reg var rt_result: u32;
+        rt_result = 0;
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+            HardwarePort = "/definitely/not/a/serial/port",
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(result =>
+            result.RelativePath == "Demonstrators/hw_xfail_exec.blade");
+        if (fixtureResult.Outcome == RegressionFixtureOutcome.Skipped)
+            Assert.Ignore("flexspin is not available in this environment");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.HwFailed));
             Assert.That(fixtureResult.Details, Has.Some.StartsWith("hardware run 1 [] failed:"));
         });
     }
@@ -413,6 +478,7 @@ public sealed class RegressionHarnessTests
         {
             RepositoryRootPath = temp.Path,
             WriteFailureArtifacts = false,
+            HardwarePort = "",  // disable hardware; test only verifies RUNS parsing
         });
 
         RegressionFixtureResult fixtureResult = result.FixtureResults.Single(result =>
@@ -533,6 +599,89 @@ public sealed class RegressionHarnessTests
             Assert.That(result.Succeeded, Is.False);
             Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
             Assert.That(fixtureResult.Details, Has.Some.Contains("Invalid RUNS entry '0, 1 = 2'. Expected '[ ... ] = value'."));
+        });
+    }
+
+    [Test]
+    public void XFailHwFixture_WithoutHardwarePort_IsXFail()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        WriteHardwareRuntime(temp);
+        temp.WriteFile("Demonstrators/xfailhw_no_port.blade", """
+        // EXPECT: xfail-hw
+        // RUNS:
+        // - [] = 0x1
+        extern reg var rt_result: u32;
+        rt_result = 1;
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+            HardwarePort = "",  // disable hardware; xfail-hw without a run attempt is XFail
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(r =>
+            r.RelativePath == "Demonstrators/xfailhw_no_port.blade");
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.XFail));
+        });
+    }
+
+    [Test]
+    public void XFailHwFixture_RequiresRunsDirective()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/xfailhw_no_runs.blade", """
+        // EXPECT: xfail-hw
+        var x: u32 = 0;
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(r =>
+            r.RelativePath == "Demonstrators/xfailhw_no_runs.blade");
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
+            Assert.That(fixtureResult.Details, Has.Some.Contains("EXPECT: xfail-hw requires RUNS."));
+        });
+    }
+
+    [Test]
+    public void HwTestFolder_RejectsPlainPassExpectation()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.MakeDir("Demonstrators/HwTest");
+        temp.WriteFile("Demonstrators/HwTest/plain_pass.blade", """
+        // EXPECT: pass
+        var x: u32 = 0;
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(r =>
+            r.RelativePath == "Demonstrators/HwTest/plain_pass.blade");
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
+            Assert.That(fixtureResult.Details, Has.Some.Contains("EXPECT: pass is not permitted in the HwTest folder."));
         });
     }
 

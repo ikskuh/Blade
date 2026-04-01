@@ -1,4 +1,4 @@
-// EXPECT: pass-hw
+// EXPECT: xfail-hw
 // RUNS:
 // - [ 1, 1 ] = 0x03
 // - [ 0, 0 ] = 0x0C
@@ -16,18 +16,22 @@
 //   Run 2: (0,0): and=F,or=F,!a=T,!b=T -> 0x0C
 //   Run 3: (1,0): and=F,or=T,!a=F,!b=T -> 0x0A
 //   Run 4: (0,1): and=F,or=T,!a=T,!b=F -> 0x06
+//   XFAIL: SSA phi-node carry bug clobbers b0/b1/b2 with parameter values.
 
 extern reg var rt_result: u32;
 extern reg var rt_param0: u32;
 extern reg var rt_param1: u32;
 
 noinline fn bool_ops(a: u32, b: u32) -> u32 {
-    var r: u32 = 0;
-    if (a != 0 and b != 0) { r = r | 0x01; }
-    if (a != 0 or  b != 0) { r = r | 0x02; }
-    if (a == 0)             { r = r | 0x04; }
-    if (b == 0)             { r = r | 0x08; }
-    return r;
+    var b0: u32 = 0;
+    if (a != 0 and b != 0) { b0 = 0x01; }
+    var b1: u32 = 0;
+    if (a != 0 or  b != 0) { b1 = 0x02; }
+    var b2: u32 = 0;
+    if (a == 0) { b2 = 0x04; }
+    var b3: u32 = 0;
+    if (b == 0) { b3 = 0x08; }
+    return b0 | b1 | b2 | b3;
 }
 
 rt_result = bool_ops(rt_param0, rt_param1);

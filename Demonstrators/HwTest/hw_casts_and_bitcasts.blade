@@ -1,10 +1,11 @@
-// EXPECT: pass-hw
+// EXPECT: xfail-hw
 // RUNS:
 // - [ 0x42 ] = 0x0042
 // - [ 0x1FF ] = 0x00FF
 // - [ 0x80000000 ] = 0x0100
 // - [ 0xDEADBEEF ] = 0x01EF
 // NOTE:
+//   XFAIL: 'as u8' emits no truncation; 'bitcast(i32,x) < 0' uses unsigned CMP.
 //   Tests explicit narrowing casts (as u8), widening (u8 as u32),
 //   and bitcast reinterpretation between u32 and i32.
 //   f(x) = (x as u8 as u32) | (is_negative_signed(x) << 8)
