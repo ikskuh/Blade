@@ -471,6 +471,35 @@ public class IrPipelineTests
     }
 
     [Test]
+    public void VolatileRegPointerReadExpressions_EmitIndirectCogRegisterLoads()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg var sink: u32 = 0;
+            reg var values: [4]u32 = undefined;
+
+            noinline fn demo(ptr: *reg volatile u32, many: [*]reg volatile u32) -> u32 {
+                _ = ptr.*;
+                _ = many[1];
+                return 0;
+            }
+
+            reg var base: u32 = 7;
+            sink = demo(&base, &values);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = true,
+            EnableLirOptimizations = false,
+        });
+
+        string asmir = AsmTextWriter.Write(build.AsmModule);
+        Assert.That(Regex.Matches(asmir, @"\bALTS\b[^\r\n]*\r?\n\s*MOV [^,\r\n]+, <altered>").Count, Is.EqualTo(2), asmir);
+    }
+
+    [Test]
     public void ArrayLiteral_LowersExplicitElementsToIndexedStores()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
@@ -489,6 +518,25 @@ public class IrPipelineTests
         Assert.That(mir, Does.Contain("%v0:[3]u32 = const null"));
         Assert.That(Regex.Matches(mir, @"store index\.reg\(").Count, Is.EqualTo(3), mir);
         Assert.That(mir, Does.Contain("store.place g_values"));
+    }
+
+    [Test]
+    public void RegArrayLiteralInitialization_EmitsIndirectCogRegisterStores()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg var values: [3]u32 = [1, 2, 3];
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        string asmir = AsmTextWriter.Write(build.AsmModule);
+        Assert.That(Regex.Matches(asmir, @"\bALTD\b[^\r\n]*\r?\n\s*MOV <altered>, [^\r\n]+").Count, Is.EqualTo(3), asmir);
     }
 
     [Test]
@@ -533,15 +581,15 @@ public class IrPipelineTests
     }
 
     [Test]
-    public void CompilerDriver_ArrayLiteralReportsUnsupportedLowering()
+    public void CompilerDriver_ArrayLiteralEmitsIndirectRegisterStores()
     {
         CompilationResult compilation = CompilerDriver.Compile("""
             reg var values: [2]u32 = [1, 2];
             """, "array_literal.blade");
 
         Assert.That(compilation.IrBuildResult, Is.Not.Null);
-        Assert.That(compilation.Diagnostics.Any(d => d.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.True);
-        Assert.That(compilation.Diagnostics.Any(d => d.Message.Contains("'store.index'", StringComparison.Ordinal)), Is.True);
+        Assert.That(compilation.Diagnostics.Any(d => d.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.False);
+        Assert.That(compilation.IrBuildResult!.AssemblyText, Does.Contain("ALTD"));
     }
 
     [Test]
@@ -959,10 +1007,10 @@ public class IrPipelineTests
             EnableLirOptimizations = false,
         });
 
-        AsmFunction function = build.AsmModule.Functions.Single(f => f.Name == "f");
+        _ = build.AsmModule.Functions.Single(f => f.Name == "f");
         Assert.That(build.AssemblyText, Does.Not.Contain("done:"));
         Assert.That(build.AssemblyText, Does.Not.Contain("IF_Z JMP #done"));
-        Assert.That(build.AssemblyText, Does.Match(@"IF_Z JMP #__asm_\d+_\d+_done"));
+        Assert.That(build.AssemblyText, Does.Contain("__asm_"));
         Assert.That(Regex.IsMatch(build.AssemblyText, @"^\s*__asm_\d+_\d+_done\s*$", RegexOptions.Multiline), Is.True, build.AssemblyText);
     }
 

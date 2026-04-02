@@ -1,32 +1,19 @@
 // EXPECT: pass
 // STAGE: asmir
 // ARGS:
-// - -fno-mir-opt=single-callsite-inline
 // - -fno-asmir-opt=conditional-move-fusion
 // SEQUENCE:
-// -   IF_NZ JMP #$top_bb2
-// -   MOV _r1, #2
-// - $top_bb2
+// - IF_Z JMP #__asm_0_0_done
+// - MOV g_sink, #1
+// - __asm_0_0_done
 // NOTE:
-//   Intended positive case for ASMIR conditional-move-fusion.
-//   The optimizer has unit coverage, but current .blade lowering does not expose a stable jump-over-single-instruction trigger yet.
+//   Inline asm provides a stable jump-over-single-instruction trigger for the
+//   ASMIR conditional-move-fusion pass.
 
 reg var sink: u32 = 0;
-extern reg const INA: u32 @(0x1FE);
-
-// TODO: Use this pattern for less side effects:
-// asm {
-//     IF_Z JMP #label
-//     MOV {sink}, #1
-// label
-// }
-
-fn demo(x: bool) -> u32 {
-    var y: u32 = 1;
-    if (x) {
-        y = 2;
-    }
-    return y;
-}
-
-sink = demo((INA & 1) == 0);
+asm {
+  CMP {sink}, #0 WZ
+  IF_Z JMP #done
+  MOV {sink}, #1
+done:
+};

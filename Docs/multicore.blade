@@ -1,0 +1,47 @@
+import debug;
+
+layout SharedCode
+{
+    lut var consumable: u32 = undefined;
+}
+
+hub fn producer(steps: u32) -> u32
+  : layout(SharedCode)
+  , align(64)
+{
+    rep for(100) {
+        consumable += steps;
+        @WAITX(100);
+    }
+    return consumable;
+}
+
+cog task PairProgram(stepsize: u32) : SharedCode
+{
+    fn await_change() -> u32 {
+        var current = consumable;
+        while(current == consumable) {
+            asm {
+                NOP
+            }
+        }
+        return current;
+    }
+
+    var id: u32 = @COGID();
+    if((id & 1) != 0) {
+        _ = slowcrement(stepsize);
+    }
+    else {
+        @SETLUTS(1); // enable asymmetric lut sharing
+        loop {
+            var next: u32 = await_change();
+            debug.print_u32(local);
+        }
+    }
+}
+
+cog task main
+{
+    spawnpair PairProgram(10);
+}

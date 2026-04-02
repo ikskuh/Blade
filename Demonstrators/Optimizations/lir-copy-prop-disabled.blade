@@ -4,17 +4,17 @@
 // - -fno-mir-opt=*
 // - -fno-lir-opt=*
 // CONTAINS:
-// - branch %r0 ? bb2() : bb3()
+// - %r1:u32 = mov %r0
+// - %r4:u32 = binary.Add %r1, %r3
 // NOTE:
-//   Baseline for LIR copy-prop. Current source lowering does not expose a stable LIR mov chain here.
+//   Unary plus materializes a LIR mov. With copy-prop disabled, later uses still
+//   read through the moved value.
 
 reg var sink: u32 = 0;
-reg var input: bool = false;
-reg var left: u32 = 2;
-reg var right: u32 = 3;
 
-noinline fn demo(cond: bool, a: u32, b: u32) -> u32 {
-    return if (cond) a else b;
+noinline fn demo(x: u32) -> u32 {
+    var y: u32 = +x;
+    return y + 1;
 }
 
-sink = demo(input, left, right);
+sink = demo(2);

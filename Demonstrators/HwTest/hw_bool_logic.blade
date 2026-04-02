@@ -1,4 +1,4 @@
-// EXPECT: xfail-hw
+// EXPECT: pass-hw
 // RUNS:
 // - [ 1, 1 ] = 0x03
 // - [ 0, 0 ] = 0x0C
@@ -16,7 +16,6 @@
 //   Run 2: (0,0): and=F,or=F,!a=T,!b=T -> 0x0C
 //   Run 3: (1,0): and=F,or=T,!a=F,!b=T -> 0x0A
 //   Run 4: (0,1): and=F,or=T,!a=T,!b=F -> 0x06
-//   XFAIL: SSA phi-node carry bug clobbers b0/b1/b2 with parameter values.
 
 extern reg var rt_result: u32;
 extern reg var rt_param0: u32;

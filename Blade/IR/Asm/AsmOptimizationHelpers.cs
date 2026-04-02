@@ -27,6 +27,9 @@ internal static class AsmOptimizationHelpers
             return false;
         }
 
+        if (instruction.Operands[1] is AsmAltPlaceholderOperand)
+            return false;
+
         destination = dest;
         source = instruction.Operands[1];
         return true;
@@ -46,6 +49,7 @@ internal static class AsmOptimizationHelpers
             (AsmPhysicalRegisterOperand lhs, AsmSymbolOperand rhs) => PhysicalAndSymbolEquivalent(lhs, rhs),
             (AsmSymbolOperand lhs, AsmPhysicalRegisterOperand rhs) => PhysicalAndSymbolEquivalent(rhs, lhs),
             (AsmPhysicalRegisterOperand lhs, AsmPhysicalRegisterOperand rhs) => lhs.Register == rhs.Register,
+            (AsmAltPlaceholderOperand lhs, AsmAltPlaceholderOperand rhs) => lhs.Kind == rhs.Kind,
             _ => false,
         };
     }
@@ -212,7 +216,8 @@ internal static class AsmOptimizationHelpers
                 operands,
                 instruction.Condition,
                 instruction.FlagEffect,
-                instruction.IsNonElidable)
+                instruction.IsNonElidable,
+                instruction.IsPhiMove)
             : instruction;
     }
 

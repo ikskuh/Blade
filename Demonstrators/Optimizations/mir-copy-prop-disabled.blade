@@ -3,17 +3,17 @@
 // ARGS:
 // - -fno-mir-opt=*
 // CONTAINS:
-// - branch %v0 ? bb2() : bb3()
+// - %v1:u32 = copy %v0
+// - %v4:u32 = binary.Add %v1, %v3
 // NOTE:
-//   Baseline for MIR copy-prop. Current source lowering does not materialize MIR copy nodes here.
+//   Unary plus materializes a MIR copy. With copy-prop disabled, later uses still
+//   read through the copied value.
 
 reg var sink: u32 = 0;
-reg var input: bool = false;
-reg var left: u32 = 2;
-reg var right: u32 = 3;
 
-noinline fn demo(cond: bool, a: u32, b: u32) -> u32 {
-    return if (cond) a else b;
+noinline fn demo(x: u32) -> u32 {
+    var y: u32 = +x;
+    return y + 1;
 }
 
-sink = demo(input, left, right);
+sink = demo(2);

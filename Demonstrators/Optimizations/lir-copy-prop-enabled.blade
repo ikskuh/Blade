@@ -1,23 +1,21 @@
-// EXPECT: xfail
+// EXPECT: pass
 // STAGE: lir
 // ARGS:
 // - -fno-mir-opt=*
 // - -fno-lir-opt=*
 // - -flir-opt=copy-prop
 // CONTAINS:
-// - mov
+// - %r1:u32 = mov %r0
+// - %r4:u32 = binary.Add %r0, %r3
 // NOTE:
-//   Intended positive case for LIR copy-prop.
-//   This is currently xfail because .blade sources do not expose a stable LIR mov chain for the pass,
-//   so the trigger pattern itself is missing from the stage output.
+//   Unary plus materializes a LIR mov. Copy-prop rewrites the later add to use
+//   the original value directly, but does not itself remove the now-dead mov.
 
 reg var sink: u32 = 0;
-reg var input: bool = false;
-reg var left: u32 = 2;
-reg var right: u32 = 3;
 
-noinline fn demo(cond: bool, a: u32, b: u32) -> u32 {
-    return if (cond) a else b;
+noinline fn demo(x: u32) -> u32 {
+    var y: u32 = +x;
+    return y + 1;
 }
 
-sink = demo(input, left, right);
+sink = demo(2);

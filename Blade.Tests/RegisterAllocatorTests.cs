@@ -56,6 +56,29 @@ public class RegisterAllocatorTests
         Assert.That(emit.AssemblyText, Does.Match(@"MOV\s+(_r\d+),\s+\1\b"), emit.AssemblyText);
     }
 
+    [Test]
+    public void LivenessAnalyzer_TreatsPhiMoveSourcesAsInterfering()
+    {
+        AsmRegisterOperand srcA = AsmRegister(1);
+        AsmRegisterOperand srcB = AsmRegister(2);
+        AsmRegisterOperand dstA = AsmRegister(3);
+        AsmRegisterOperand dstB = AsmRegister(4);
+        ControlFlowLabelSymbol done = new("f_done");
+
+        AsmFunction function = CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
+        [
+            new AsmInstructionNode(P2Mnemonic.MOV, [dstA, srcA], P2ConditionCode.IF_Z, isPhiMove: true),
+            new AsmInstructionNode(P2Mnemonic.MOV, [dstB, srcB], P2ConditionCode.IF_Z, isPhiMove: true),
+            new AsmInstructionNode(P2Mnemonic.JMP, [new AsmSymbolOperand(done, AsmSymbolAddressingMode.Immediate)], P2ConditionCode.IF_Z),
+            new AsmLabelNode(done),
+        ]);
+
+        FunctionLiveness liveness = LivenessAnalyzer.Analyze(function);
+
+        Assert.That(liveness.InterferenceGraph.ContainsKey(srcA.Register), Is.True);
+        Assert.That(liveness.InterferenceGraph[srcA.Register].Contains(srcB.Register), Is.True);
+    }
+
     private static IrBuildResult CreateBuildResult(AsmModule asmModule)
     {
         BoundProgram program = new([], [], [], new Dictionary<string, TypeSymbol>(), new Dictionary<string, FunctionSymbol>(), new Dictionary<string, ImportedModule>());

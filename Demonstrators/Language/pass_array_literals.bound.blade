@@ -1,8 +1,4 @@
-// EXPECT: xfail
-// DIAGNOSTICS:
-// - L16, E0401
-// - L17, E0401
-// - L18, E0401
+// EXPECT: pass
 // STAGE: bound
 // CONTAINS:
 // - ArrayLit<[3]u32>
@@ -10,8 +6,8 @@
 // - ArrayLit<[2]u32>
 // - [1]...
 // NOTE:
-//   Array literals bind with explicit element lists, trailing spread, and empty contextual forms,
-//   but final backend lowering for indexed aggregate stores is not implemented yet.
+//   Array literals bind with explicit element lists, trailing spread, and empty
+//   contextual forms.
 
 reg var explicit_values: [3]u32 = [1, 2, 3];
 reg var spread_values: [4]u32 = [1, 2...];

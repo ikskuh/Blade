@@ -1,9 +1,9 @@
-// EXPECT: xfail
+// EXPECT: pass
 // NOTE:
-//   Exercises for-loop array iteration forms. Currently xfail because
-//   load.index / store.index lowering is not yet implemented.
+//   Exercises for-loop array iteration forms over reg-backed arrays so the
+//   backend uses the supported indexed load/store lowering paths.
 
-var arr: [4]u32 = [1,2,3,4];
+reg var arr: [4]u32 = [1,2,3,4];
 reg var sink: u32 = 0;
 
 for (arr) -> x { sink = sink + x; }

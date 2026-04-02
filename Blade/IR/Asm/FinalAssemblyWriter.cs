@@ -420,6 +420,8 @@ public static class FinalAssemblyWriter
             AsmPhysicalRegisterOperand phys => phys.Name,
             AsmRegisterOperand virt => virt.Format(),
             AsmImmediateOperand imm => imm.Format(),
+            AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Immediate } => "#0",
+            AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Register } => "0",
             AsmPlaceOperand place => FormatPlaceOperand(place, functionNames),
             AsmSymbolOperand sym => FormatSymbolOperand(sym, instruction, operandIndex, functionNames),
             _ => operand.Format(),

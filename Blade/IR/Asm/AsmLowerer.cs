@@ -1099,9 +1099,12 @@ public static class AsmLowerer
         AsmRegisterOperand dest = DestReg(op, ctx);
         AsmRegisterOperand pointer = OpReg(op.Operands[0], ctx);
         VariableStorageClass storageClass = operation.StorageClass;
-
         switch (storageClass)
         {
+            case VariableStorageClass.Reg:
+                nodes.Add(WithNonElidable(Emit(P2Mnemonic.ALTS, pointer)));
+                nodes.Add(WithNonElidable(Emit(P2Mnemonic.MOV, dest, AsmAltPlaceholderOperand.Register)));
+                break;
             case VariableStorageClass.Lut:
                 nodes.Add(Emit(P2Mnemonic.RDLUT, dest, pointer));
                 break;
@@ -1144,9 +1147,13 @@ public static class AsmLowerer
         AsmOperand baseOp = LowerOperand(op.Operands[0], ctx);
         AsmRegisterOperand index = OpReg(op.Operands[1], ctx);
         VariableStorageClass storageClass = operation.StorageClass;
-
         switch (storageClass)
         {
+            case VariableStorageClass.Reg:
+                nodes.Add(Emit(P2Mnemonic.ADD, index, baseOp));
+                nodes.Add(WithNonElidable(Emit(P2Mnemonic.ALTS, index)));
+                nodes.Add(WithNonElidable(Emit(P2Mnemonic.MOV, dest, AsmAltPlaceholderOperand.Register)));
+                break;
             case VariableStorageClass.Lut:
                 nodes.Add(Emit(P2Mnemonic.ADD, index, baseOp));
                 nodes.Add(Emit(P2Mnemonic.RDLUT, dest, index));
@@ -1202,9 +1209,13 @@ public static class AsmLowerer
         AsmRegisterOperand index = OpReg(op.Operands[1], ctx);
         AsmOperand value = LowerOperand(op.Operands[^1], ctx);
         VariableStorageClass storageClass = operation.StorageClass;
-
         switch (storageClass)
         {
+            case VariableStorageClass.Reg:
+                nodes.Add(Emit(P2Mnemonic.ADD, index, baseOp));
+                nodes.Add(WithNonElidable(Emit(P2Mnemonic.ALTD, index)));
+                nodes.Add(WithNonElidable(Emit(P2Mnemonic.MOV, AsmAltPlaceholderOperand.Register, value)));
+                break;
             case VariableStorageClass.Lut:
                 nodes.Add(Emit(P2Mnemonic.ADD, index, baseOp));
                 nodes.Add(new AsmInstructionNode(P2Mnemonic.WRLUT, [value, index]));
@@ -2456,7 +2467,7 @@ public static class AsmLowerer
             if (targetParams is not null && i < targetParams.Count)
             {
                 AsmRegisterOperand paramReg = new(ctx.GetRegister(targetParams[i].Register));
-                nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [paramReg, src], predicate));
+                nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [paramReg, src], predicate, isPhiMove: true));
             }
             else
             {

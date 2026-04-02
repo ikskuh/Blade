@@ -10,7 +10,7 @@ public sealed class AsmConditionalMoveFusion : PerFunctionAsmOptimization
 {
     protected override AsmFunction? RunOnFunction(AsmFunction input)
     {
-        HashSet<ControlFlowLabelSymbol> targetedLabels = CollectJumpTargets(input.Nodes);
+        Dictionary<ControlFlowLabelSymbol, int> targetedLabelCounts = CountJumpTargets(input.Nodes);
         List<AsmNode> nodes = [];
         bool changed = false;
 
@@ -27,7 +27,7 @@ public sealed class AsmConditionalMoveFusion : PerFunctionAsmOptimization
                 && body.Condition is null
                 && input.Nodes[i + 2] is AsmLabelNode label
                 && ReferenceEquals(label.Label, target)
-                && !targetedLabels.Contains(label.Label))
+                && targetedLabelCounts.GetValueOrDefault(label.Label) == 1)
             {
                 nodes.Add(new AsmInstructionNode(
                     body.Mnemonic,
@@ -48,5 +48,26 @@ public sealed class AsmConditionalMoveFusion : PerFunctionAsmOptimization
         return changed
             ? new AsmFunction(input, nodes)
             : null;
+    }
+
+    private static Dictionary<ControlFlowLabelSymbol, int> CountJumpTargets(IReadOnlyList<AsmNode> nodes)
+    {
+        Dictionary<ControlFlowLabelSymbol, int> counts = [];
+        foreach (AsmNode node in nodes)
+        {
+            if (node is not AsmInstructionNode
+                {
+                    Mnemonic: P2Mnemonic.JMP,
+                    Operands.Count: 1,
+                    Operands: [AsmSymbolOperand { Symbol: ControlFlowLabelSymbol target }],
+                })
+            {
+                continue;
+            }
+
+            counts[target] = counts.GetValueOrDefault(target) + 1;
+        }
+
+        return counts;
     }
 }

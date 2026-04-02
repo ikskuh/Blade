@@ -136,6 +136,32 @@ public class OptimizerTests
     }
 
     [Test]
+    public void AsmOptimizer_FusesSingleTargetConditionalJumpIntoConditionalMove()
+    {
+        ControlFlowLabelSymbol bb0 = new("f_bb0");
+        ControlFlowLabelSymbol bb1 = new("f_bb1");
+        AsmRegisterOperand r1 = AsmRegister(1);
+
+        AsmModule module = new([
+            CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
+            [
+                new AsmLabelNode(bb0),
+                new AsmInstructionNode(P2Mnemonic.JMP, [new AsmSymbolOperand(bb1, AsmSymbolAddressingMode.Immediate)], P2ConditionCode.IF_Z),
+                new AsmInstructionNode(P2Mnemonic.MOV, [r1, new AsmImmediateOperand(1)]),
+                new AsmLabelNode(bb1),
+            ]),
+        ]);
+
+        AsmOptimization optimization = OptimizationRegistry.GetAsmOptimization("conditional-move-fusion")!;
+        AsmFunction function = AsmOptimizer.Optimize(module, [optimization]).Functions[0];
+        AsmInstructionNode[] instructions = function.Nodes.OfType<AsmInstructionNode>().ToArray();
+
+        Assert.That(instructions, Has.Length.EqualTo(1));
+        Assert.That(instructions[0].Opcode, Is.EqualTo("MOV"));
+        Assert.That(instructions[0].Condition, Is.EqualTo(P2ConditionCode.IF_NZ));
+    }
+
+    [Test]
     public void AsmOptimizer_PreservesNonElidableHaltSentinel()
     {
         AsmModule module = new([
@@ -288,6 +314,34 @@ public class OptimizerTests
 
         AsmFunction function = AsmOptimizer.Optimize(module, OptimizationRegistry.AllAsmOptimizations).Functions[0];
         Assert.That(function.Nodes.OfType<AsmInstructionNode>().Any(i => i.Opcode == "ADD"), Is.True);
+    }
+
+    [Test]
+    public void AsmOptimizer_FusesTopLevelRegisterAddChain()
+    {
+        StoragePlace sharedPlace = CreatePlace("shared");
+        AsmRegisterOperand r1 = AsmRegister(1);
+        AsmPlaceOperand shared = new(sharedPlace);
+
+        AsmModule module = new([sharedPlace],
+        [
+            CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
+            [
+                new AsmLabelNode("f_bb0"),
+                new AsmInstructionNode(P2Mnemonic.MOV, [r1, shared]),
+                new AsmInstructionNode(P2Mnemonic.ADD, [r1, new AsmImmediateOperand(1)]),
+                new AsmInstructionNode(P2Mnemonic.MOV, [shared, r1]),
+            ]),
+        ]);
+
+        AsmFunction function = AsmOptimizer.Optimize(module, OptimizationRegistry.AllAsmOptimizations).Functions[0];
+        AsmInstructionNode[] instructions = function.Nodes.OfType<AsmInstructionNode>().ToArray();
+
+        Assert.That(instructions, Has.Length.EqualTo(1));
+        Assert.That(instructions[0].Mnemonic, Is.EqualTo(P2Mnemonic.ADD));
+        Assert.That(instructions[0].Operands[0], Is.TypeOf<AsmPlaceOperand>());
+        Assert.That(instructions[0].Operands[1], Is.TypeOf<AsmImmediateOperand>());
+        Assert.That(((AsmImmediateOperand)instructions[0].Operands[1]).Value, Is.EqualTo(1));
     }
 
     [Test]

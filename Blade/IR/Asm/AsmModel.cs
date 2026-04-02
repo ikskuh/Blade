@@ -243,7 +243,8 @@ public sealed class AsmInstructionNode : AsmNode
         IReadOnlyList<AsmOperand> operands,
         P2ConditionCode? condition = null,
         P2FlagEffect flagEffect = P2FlagEffect.None,
-        bool isNonElidable = false)
+        bool isNonElidable = false,
+        bool isPhiMove = false)
     {
         IReadOnlyList<AsmOperand> checkedOperands = Requires.NotNull(operands);
         bool hasForm = P2InstructionMetadata.TryGetInstructionForm(mnemonic, checkedOperands.Count, out P2InstructionFormInfo form);
@@ -258,6 +259,7 @@ public sealed class AsmInstructionNode : AsmNode
         Condition = condition;
         FlagEffect = flagEffect;
         IsNonElidable = isNonElidable;
+        IsPhiMove = isPhiMove;
     }
 
     public P2Mnemonic Mnemonic { get; }
@@ -265,6 +267,7 @@ public sealed class AsmInstructionNode : AsmNode
     public P2ConditionCode? Condition { get; }
     public P2FlagEffect FlagEffect { get; }
     public bool IsNonElidable { get; }
+    public bool IsPhiMove { get; }
 
     public string Opcode => P2InstructionMetadata.GetMnemonicText(Mnemonic);
     public string? Predicate => Condition is P2ConditionCode condition
@@ -289,8 +292,12 @@ public sealed class AsmInstructionNode : AsmNode
             case AsmPlaceOperand:
             case AsmLabelRefOperand:
             case AsmPhysicalRegisterOperand:
+            case AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Register }:
                 // TODO: Extend operand-shape validation for register/place/label-ref/physical-register
                 // forms once metadata exposes all required distinctions for these operand kinds.
+                break;
+            case AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Immediate }:
+                Assert.Invariant(operandInfo.SupportsImmediateSyntax, $"Operand {operandIndex} of '{form.Mnemonic}' does not allow immediate values.");
                 break;
             default:
                 Assert.Unreachable();
@@ -428,6 +435,49 @@ public sealed class AsmPhysicalRegisterOperand : AsmOperand
     public string Name => Register.ToString();
 
     public override string Format() => Name;
+}
+
+/// <summary>
+/// An operand that is used when the actual value of the operand is provided through any <c>ALTx</c> instruction.
+/// </summary>
+public sealed class AsmAltPlaceholderOperand : AsmOperand
+{
+    /// <summary>
+    /// The placeholder value for a replaced immediate operand.
+    /// </summary>
+    public static AsmAltPlaceholderOperand Immediate { get; } = new AsmAltPlaceholderOperand(AltPlaceholderKind.Immediate);
+
+    /// <summary>
+    /// The placeholder value for a replaced register operand.
+    /// </summary>
+    public static AsmAltPlaceholderOperand Register { get; } = new AsmAltPlaceholderOperand(AltPlaceholderKind.Register);
+
+    private AsmAltPlaceholderOperand(AltPlaceholderKind kind)
+    {
+        Kind = kind;
+    }
+
+    public AltPlaceholderKind Kind { get; }
+
+    public override string Format() => Kind switch
+    {
+        AltPlaceholderKind.Immediate => "#<altered>",
+        AltPlaceholderKind.Register => "<altered>",
+        _ => Assert.UnreachableValue<string>(),
+    };
+}
+
+public enum AltPlaceholderKind
+{
+    /// <summary>
+    /// The placeholder will replace an immediate value.
+    /// </summary>
+    Immediate,
+
+    /// <summary>
+    /// The placeholder will replace a register value
+    /// </summary>
+    Register,
 }
 
 /// <summary>

@@ -1,23 +1,24 @@
-// EXPECT: xfail
-// DIAGNOSTICS:
-// - L19, E0401
-// - L20, E0401
-// STAGE: mir
+// EXPECT: pass
+// STAGE: final-asm
 // ARGS:
 // - -fmir-opt=dce
 // CONTAINS:
-// - load.deref.reg
-// - load.index.reg
+// - ALTS
+// - MOV ?, 0
+// - MOV ?, #1
+// - ADD ?, ?
+// 2x ALTS
+// 2x MOV ?, 0
 // NOTE:
-//   `*T` and `[*]T` stay separate, `&array` yields a multipointer, and volatile
-//   pointer reads survive MIR DCE, but final deref/index lowering is not implemented yet.
+//   Discarded volatile reg pointer reads survive MIR DCE and lower through
+//   indirect cog-register reads in final assembly.
 
 reg var sink: u32 = 0;
 reg var values: [4]u32 = undefined;
 
 noinline fn demo(ptr: *reg volatile u32, many: [*]reg volatile u32) -> u32 {
-    ptr.*;
-    many[1];
+    _ = ptr.*;
+    _ = many[1];
     return 0;
 }
 

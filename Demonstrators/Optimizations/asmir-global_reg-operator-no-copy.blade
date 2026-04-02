@@ -1,4 +1,4 @@
-// EXPECT: xfail
+// EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
 // - ADD g_shared, #1
@@ -8,4 +8,3 @@
 reg var shared: u32 = 0;
 
 shared = shared + 1; // Must be optimized to 'ADD g_shared, #1'
-

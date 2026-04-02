@@ -376,6 +376,22 @@ public static class LivenessAnalyzer
                             }
                         }
 
+                        // Phi moves are parallel copies at control-flow edges. Their source
+                        // registers must remain distinct from the other values already live
+                        // across the same phi-move bundle, even though they are only uses.
+                        if (instruction.IsPhiMove)
+                        {
+                            foreach (VirtualAsmRegister use in uses)
+                            {
+                                EnsureNode(interference, use);
+                                foreach (VirtualAsmRegister other in live)
+                                {
+                                    if (other != use)
+                                        AddEdge(interference, use, other);
+                                }
+                            }
+                        }
+
                         // Add uses to live set
                         foreach (VirtualAsmRegister use in uses)
                             live.Add(use);
