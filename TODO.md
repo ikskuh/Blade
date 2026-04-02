@@ -318,3 +318,20 @@ like proper location tracking
   - This requires maintaining an additional hand-written instruction database (yaml or json) for all instructions / mnemonics
 - Instructions like `RFBYTE D {WC/WZ/WCZ}` should return `u8`, as `D` will receive a zero-extended byte, and never 32 bit
   - This also requires the instruction database to define properties of the consumed or returned values (here: bit count/size)
+
+## Refactor storage organization
+
+These should not be modelled as assembly instructions, but as typed blocks.
+
+Also `object?` is a bad storage format, we already have a Comptime Value for this
+
+Also we need `ALIGNW` and `ALIGNL` for storage emission
+
+## Rework final assembly writer to use less "hacks"
+
+`functionNames.Contains(name)` is bad code. We already know everything from
+the symbol types themselves.
+
+`FormatPlaceOperand` and `FormatSymbolOperand` seem 100% redundant.
+
+Why isn't a "place" a symbol?
