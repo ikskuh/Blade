@@ -496,7 +496,9 @@ public class IrPipelineTests
         });
 
         string asmir = AsmTextWriter.Write(build.AsmModule);
-        Assert.That(Regex.Matches(asmir, @"\bALTS\b[^\r\n]*\r?\n\s*MOV [^,\r\n]+, <altered>").Count, Is.EqualTo(2), asmir);
+        Assert.That(Regex.Matches(asmir, @"\bALTS\b [^,\r\n]+\r?\n\s*MOV [^,\r\n]+, <altered>").Count, Is.EqualTo(1), asmir);
+        Assert.That(Regex.Matches(asmir, @"\bALTS\b [^,\r\n]+, [^\r\n]+\r?\n\s*MOV [^,\r\n]+, <altered>").Count, Is.EqualTo(1), asmir);
+        Assert.That(Regex.Matches(asmir, @"\bADD\b [^,\r\n]+, [^\r\n]+\r?\n\s*ALTS\b").Count, Is.EqualTo(0), asmir);
     }
 
     [Test]
@@ -536,7 +538,8 @@ public class IrPipelineTests
         });
 
         string asmir = AsmTextWriter.Write(build.AsmModule);
-        Assert.That(Regex.Matches(asmir, @"\bALTD\b[^\r\n]*\r?\n\s*MOV <altered>, [^\r\n]+").Count, Is.EqualTo(3), asmir);
+        Assert.That(Regex.Matches(asmir, @"\bALTD\b [^,\r\n]+, [^\r\n]+\r?\n\s*MOV <altered>, [^\r\n]+").Count, Is.EqualTo(3), asmir);
+        Assert.That(Regex.Matches(asmir, @"\bADD\b [^,\r\n]+, [^\r\n]+\r?\n\s*ALTD\b").Count, Is.EqualTo(0), asmir);
     }
 
     [Test]

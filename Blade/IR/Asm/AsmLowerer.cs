@@ -1150,8 +1150,7 @@ public static class AsmLowerer
         switch (storageClass)
         {
             case VariableStorageClass.Reg:
-                nodes.Add(Emit(P2Mnemonic.ADD, index, baseOp));
-                nodes.Add(WithNonElidable(Emit(P2Mnemonic.ALTS, index)));
+                nodes.Add(WithNonElidable(Emit(P2Mnemonic.ALTS, index, baseOp)));
                 nodes.Add(WithNonElidable(Emit(P2Mnemonic.MOV, dest, AsmAltPlaceholderOperand.Register)));
                 break;
             case VariableStorageClass.Lut:
@@ -1212,8 +1211,7 @@ public static class AsmLowerer
         switch (storageClass)
         {
             case VariableStorageClass.Reg:
-                nodes.Add(Emit(P2Mnemonic.ADD, index, baseOp));
-                nodes.Add(WithNonElidable(Emit(P2Mnemonic.ALTD, index)));
+                nodes.Add(WithNonElidable(Emit(P2Mnemonic.ALTD, index, baseOp)));
                 nodes.Add(WithNonElidable(Emit(P2Mnemonic.MOV, AsmAltPlaceholderOperand.Register, value)));
                 break;
             case VariableStorageClass.Lut:
