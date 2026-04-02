@@ -120,13 +120,13 @@ public abstract class MirInstruction
 
 public sealed class MirConstantInstruction : MirInstruction
 {
-    public MirConstantInstruction(MirValueId result, TypeSymbol type, object? value, TextSpan span)
+    public MirConstantInstruction(MirValueId result, TypeSymbol type, BladeValue? value, TextSpan span)
         : base(result, type, span, hasSideEffects: false)
     {
         Value = value;
     }
 
-    public object? Value { get; }
+    public BladeValue? Value { get; }
 
     public override IReadOnlyList<MirValueId> Uses => [];
 

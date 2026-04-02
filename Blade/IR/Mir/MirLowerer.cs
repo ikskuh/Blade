@@ -831,7 +831,7 @@ public static class MirLowerer
                 MirValueId endVal = LowerExpression(rangeExpr.End);
                 if (rangeExpr.IsInclusive)
                 {
-                    MirValueId rangeOne = EmitConstant(1L, BuiltinTypes.U32, forStatement.Span);
+                    MirValueId rangeOne = EmitConstant(new RuntimeBladeValue(BuiltinTypes.U32, 1u), forStatement.Span);
                     MirValueId adjustedEnd = NextValue();
                     _currentBlock.Instructions.Add(new MirBinaryInstruction(
                         adjustedEnd, BuiltinTypes.U32, BoundBinaryOperatorKind.Add,
@@ -848,13 +848,13 @@ public static class MirLowerer
                 if (isArrayIteration)
                 {
                     ArrayTypeSymbol arrayType = (ArrayTypeSymbol)forStatement.Iterable.Type;
-                    count = EmitConstant((long)(arrayType.Length ?? 0), BuiltinTypes.U32, forStatement.Span);
+                    count = EmitConstant(new RuntimeBladeValue(BuiltinTypes.U32, (uint)(arrayType.Length ?? 0)), forStatement.Span);
                 }
                 else
                 {
                     count = iterableValue;
                 }
-                initialIndex = EmitConstant(0L, BuiltinTypes.U32, forStatement.Span);
+                initialIndex = EmitConstant(new RuntimeBladeValue(BuiltinTypes.U32, 0u), forStatement.Span);
             }
 
             // Initialize index.
@@ -924,7 +924,7 @@ public static class MirLowerer
                     _currentBlock.Instructions.Add(new MirStoreIndexInstruction(elemType, iterableValue, postIndex, updatedItem, iterStorageClass, forStatement.Body.Span));
                 }
 
-                MirValueId bodyOne = EmitConstant(1L, BuiltinTypes.U32, forStatement.Body.Span);
+                MirValueId bodyOne = EmitConstant(new RuntimeBladeValue(BuiltinTypes.U32, 1u), forStatement.Body.Span);
                 MirValueId incremented = NextValue();
                 _currentBlock.Instructions.Add(new MirBinaryInstruction(
                     incremented, BuiltinTypes.U32, BoundBinaryOperatorKind.Add,
@@ -973,7 +973,7 @@ public static class MirLowerer
 
         private void LowerRepLoopStatement(BoundRepLoopStatement repLoopStatement)
         {
-            MirValueId count = EmitConstant(0L, BuiltinTypes.U32, repLoopStatement.Span);
+            MirValueId count = EmitConstant(new RuntimeBladeValue(BuiltinTypes.U32, 0u), repLoopStatement.Span);
             _currentBlock.Instructions.Add(new MirRepSetupInstruction(count, repLoopStatement.Span));
 
             Dictionary<Symbol, MirValueId> beforeEnv = SnapshotAutomaticEnvironment();
@@ -1083,13 +1083,18 @@ public static class MirLowerer
 
         private MirValueId EmitDefaultValue(TypeSymbol type, TextSpan span)
         {
-            object? value = type switch
+            if (type is not BoolTypeSymbol
+                && type is not IntegerTypeSymbol
+                && type is not EnumTypeSymbol
+                && type is not BitfieldTypeSymbol)
             {
-                BoolTypeSymbol => false,
-                IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol => 0,
-                _ => null,
-            };
-            return EmitConstant(value, type, span);
+                return EmitPlaceholderConstant(type, span);
+            }
+
+            object rawValue = type is BoolTypeSymbol ? false : 0;
+
+            Assert.Invariant(ComptimeTypeFacts.TryCreateBladeValue(rawValue, type, out BladeValue defaultValue), $"Failed to materialize default value for '{type.Name}'.");
+            return EmitConstant(defaultValue, span);
         }
 
         private MirValueId LowerExpression(BoundExpression expression)
@@ -1097,7 +1102,7 @@ public static class MirLowerer
             switch (expression)
             {
                 case BoundLiteralExpression literal:
-                    return EmitConstant(literal.Value, literal.Type, literal.Span);
+                    return EmitConstant(literal.Value, literal.Span);
 
                 case BoundSymbolExpression symbolExpression:
                     return ReadSymbol(symbolExpression.Symbol, symbolExpression.Type, symbolExpression.Span);
@@ -1114,7 +1119,7 @@ public static class MirLowerer
                 case BoundModuleCallExpression moduleCallExpression:
                     foreach (BoundStatement moduleStatement in moduleCallExpression.Module.Program.TopLevelStatements)
                         LowerStatement(moduleStatement);
-                    return EmitConstant(null, BuiltinTypes.Void, moduleCallExpression.Span);
+                    return EmitPlaceholderConstant(BuiltinTypes.Void, moduleCallExpression.Span);
 
                 case BoundIntrinsicCallExpression intrinsicCall:
                 {
@@ -1129,11 +1134,14 @@ public static class MirLowerer
                         intrinsicCall.Mnemonic,
                         arguments,
                         intrinsicCall.Span));
-                    return result ?? EmitConstant(null, BuiltinTypes.Unknown, intrinsicCall.Span);
+                    return result ?? EmitPlaceholderConstant(BuiltinTypes.Unknown, intrinsicCall.Span);
                 }
 
                 case BoundEnumLiteralExpression enumLiteral:
-                    return EmitConstant(enumLiteral.Value, enumLiteral.Type, enumLiteral.Span);
+                    Assert.Invariant(
+                        ComptimeTypeFacts.TryCreateBladeValue(enumLiteral.Value, enumLiteral.Type, out BladeValue enumValue),
+                        $"Failed to materialize enum literal '{enumLiteral.MemberName}' of type '{enumLiteral.Type.Name}'.");
+                    return EmitConstant(enumValue, enumLiteral.Span);
 
                 case BoundArrayLiteralExpression arrayLiteral:
                     return LowerArrayLiteralExpression(arrayLiteral);
@@ -1237,12 +1245,12 @@ public static class MirLowerer
                     return Assert.UnreachableValue<MirValueId>("MIR lowering must not run on bound expressions that already contain binder errors.");
             }
 
-            return EmitConstant(null, BuiltinTypes.Unknown, expression.Span);
+            return EmitPlaceholderConstant(BuiltinTypes.Unknown, expression.Span);
         }
 
         private MirValueId LowerArrayLiteralExpression(BoundArrayLiteralExpression arrayLiteral)
         {
-            MirValueId arrayValue = EmitConstant(null, arrayLiteral.Type, arrayLiteral.Span);
+            MirValueId arrayValue = EmitPlaceholderConstant(arrayLiteral.Type, arrayLiteral.Span);
             int explicitCount = arrayLiteral.Elements.Count;
             int producedLength = arrayLiteral.Type.Length ?? explicitCount;
 
@@ -1254,7 +1262,7 @@ public static class MirLowerer
             TypeSymbol arrElemType = arrayLiteral.Type.ElementType;
             for (int i = 0; i < explicitCount; i++)
             {
-                MirValueId indexValue = EmitConstant(i, BuiltinTypes.IntegerLiteral, arrayLiteral.Span);
+                MirValueId indexValue = EmitConstant(new ComptimeBladeValue((ComptimeTypeSymbol)BuiltinTypes.IntegerLiteral, i), arrayLiteral.Span);
                 _currentBlock.Instructions.Add(new MirStoreIndexInstruction(arrElemType, arrayValue, indexValue, elementValues[i], storageClass, arrayLiteral.Span));
             }
 
@@ -1263,7 +1271,7 @@ public static class MirLowerer
                 MirValueId spreadValue = elementValues[^1];
                 for (int i = explicitCount; i < producedLength; i++)
                 {
-                    MirValueId indexValue = EmitConstant(i, BuiltinTypes.IntegerLiteral, arrayLiteral.Span);
+                    MirValueId indexValue = EmitConstant(new ComptimeBladeValue((ComptimeTypeSymbol)BuiltinTypes.IntegerLiteral, i), arrayLiteral.Span);
                     _currentBlock.Instructions.Add(new MirStoreIndexInstruction(arrElemType, arrayValue, indexValue, spreadValue, storageClass, arrayLiteral.Span));
                 }
             }
@@ -1271,7 +1279,7 @@ public static class MirLowerer
             {
                 for (int i = 0; i < producedLength; i++)
                 {
-                    MirValueId indexValue = EmitConstant(i, BuiltinTypes.IntegerLiteral, arrayLiteral.Span);
+                    MirValueId indexValue = EmitConstant(new ComptimeBladeValue((ComptimeTypeSymbol)BuiltinTypes.IntegerLiteral, i), arrayLiteral.Span);
                     MirValueId defaultValue = EmitDefaultValue(arrElemType, arrayLiteral.Span);
                     _currentBlock.Instructions.Add(new MirStoreIndexInstruction(arrElemType, arrayValue, indexValue, defaultValue, storageClass, arrayLiteral.Span));
                 }
@@ -1353,7 +1361,7 @@ public static class MirLowerer
                 arguments,
                 callExpression.Span));
 
-            return result ?? EmitConstant(null, BuiltinTypes.Unknown, callExpression.Span);
+            return result ?? EmitPlaceholderConstant(BuiltinTypes.Unknown, callExpression.Span);
         }
 
         private MirValueId LowerBinaryExpression(BoundBinaryExpression binaryExpression)
@@ -1448,7 +1456,7 @@ public static class MirLowerer
 
             _currentBlock = shortCircuitBlock;
             ReplaceAutomaticEnvironment(beforeEnv);
-            MirValueId shortCircuitValue = EmitConstant(!isLogicalAnd, BuiltinTypes.Bool, binaryExpression.Span);
+            MirValueId shortCircuitValue = EmitConstant(new RuntimeBladeValue(BuiltinTypes.Bool, !isLogicalAnd), binaryExpression.Span);
             List<MirValueId> shortCircuitArguments = new() { shortCircuitValue };
             shortCircuitArguments.AddRange(BuildEnvironmentArguments(envSymbols, binaryExpression.Span));
             _currentBlock.Terminator = new MirGotoTerminator(mergeBlock.Label, shortCircuitArguments, binaryExpression.Span);
@@ -1541,7 +1549,7 @@ public static class MirLowerer
                     LowerExpression(bitfieldTarget.ReceiverValue),
                     bitfieldTarget.Member,
                     target.Span),
-                _ => EmitConstant(null, BuiltinTypes.Unknown, target.Span),
+                _ => EmitPlaceholderConstant(BuiltinTypes.Unknown, target.Span),
             };
         }
 
@@ -1779,10 +1787,17 @@ public static class MirLowerer
                 or TokenKind.GreaterGreaterEqual;
         }
 
-        private MirValueId EmitConstant(object? value, TypeSymbol type, TextSpan span)
+        private MirValueId EmitConstant(BladeValue value, TextSpan span)
         {
             MirValueId id = NextValue();
-            _currentBlock.Instructions.Add(new MirConstantInstruction(id, type, value, span));
+            _currentBlock.Instructions.Add(new MirConstantInstruction(id, value.Type, value, span));
+            return id;
+        }
+
+        private MirValueId EmitPlaceholderConstant(TypeSymbol type, TextSpan span)
+        {
+            MirValueId id = NextValue();
+            _currentBlock.Instructions.Add(new MirConstantInstruction(id, type, null, span));
             return id;
         }
 
@@ -1907,15 +1922,18 @@ public static class MirLowerer
             inner = conversion.Expression;
 
         return inner.Type is UndefinedLiteralTypeSymbol
-            || (inner is BoundLiteralExpression { Value: null } literal && literal.Type is not VoidTypeSymbol);
+            || (inner is BoundLiteralExpression { Value.Value: UndefinedValue } literal && literal.Type is not VoidTypeSymbol);
     }
 
     private static bool TryEvaluateStaticValue(BoundExpression expression, TypeSymbol targetType, out RuntimeBladeValue? value)
     {
         switch (expression)
         {
-            case BoundLiteralExpression literal when targetType is RuntimeTypeSymbol runtimeType && literal.Value is not null:
-                value = new RuntimeBladeValue(runtimeType, literal.Value);
+            case BoundLiteralExpression literal when targetType is RuntimeTypeSymbol runtimeType:
+                if (!runtimeType.IsLegalRuntimeObject(literal.Value.Value))
+                    break;
+
+                value = new RuntimeBladeValue(runtimeType, literal.Value.Value);
                 return true;
         }
 

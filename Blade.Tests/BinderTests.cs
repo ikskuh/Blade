@@ -430,7 +430,7 @@ public class BinderTests
         BoundCallExpression call = (BoundCallExpression)returnStatement.Values.Single();
 
         Assert.That(call.Arguments[0], Is.TypeOf<BoundSymbolExpression>());
-        Assert.That(((BoundLiteralExpression)call.Arguments[1]).Value, Is.EqualTo((uint)20));
+        Assert.That(((BoundLiteralExpression)call.Arguments[1]).Value.Value, Is.EqualTo((uint)20));
     }
 
     [Test]
@@ -453,7 +453,7 @@ public class BinderTests
         BoundCallExpression call = (BoundCallExpression)returnStatement.Values.Single();
 
         Assert.That(call.Arguments[0], Is.TypeOf<BoundSymbolExpression>());
-        Assert.That(((BoundLiteralExpression)call.Arguments[1]).Value, Is.EqualTo((uint)20));
+        Assert.That(((BoundLiteralExpression)call.Arguments[1]).Value.Value, Is.EqualTo((uint)20));
     }
 
     [Test]

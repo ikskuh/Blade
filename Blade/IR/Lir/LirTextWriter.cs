@@ -200,7 +200,7 @@ public static class LirTextWriter
         return operand switch
         {
             LirRegisterOperand register => formatter.Format(register.Register),
-            LirImmediateOperand immediate => $"{FormatImmediate(immediate.Value)}:{immediate.Type.Name}",
+            LirImmediateOperand immediate => $"{FormatImmediate(immediate.Value.Value)}:{immediate.Type.Name}",
             LirPlaceOperand place => $"%place({place.Place.EmittedName})",
             _ => "<op>",
         };

@@ -2567,7 +2567,7 @@ public class IrPipelineTests
             alignment: null);
         BoundProgram program = new(
             [],
-            [new BoundGlobalVariableMember(symbol, new BoundLiteralExpression(1u, new TextSpan(0, 0), BuiltinTypes.U32), new TextSpan(0, 0))],
+            [new BoundGlobalVariableMember(symbol, new BoundLiteralExpression(new RuntimeBladeValue(BuiltinTypes.U32, 1u), new TextSpan(0, 0)), new TextSpan(0, 0))],
             [],
             new Dictionary<string, TypeSymbol>(),
             new Dictionary<string, FunctionSymbol>(),

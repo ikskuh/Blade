@@ -13,6 +13,9 @@ public class OptimizerTests
 {
     private static readonly TextSpan Span = new(0, 0);
 
+    private static MirConstantInstruction Constant(MirValueId result, RuntimeTypeSymbol type, object value)
+        => new(result, type, new RuntimeBladeValue(type, value), Span);
+
     private static StoragePlace CreatePlace(string name)
     {
         VariableSymbol symbol = new(name, BuiltinTypes.U32, isConst: false, VariableStorageClass.Reg, VariableScopeKind.GlobalStorage, isExtern: false, fixedAddress: null, alignment: null);
@@ -34,7 +37,7 @@ public class OptimizerTests
         MirModule module = new([
             CreateMirFunction("f", isEntryPoint: false, FunctionKind.Default, [],
             [
-                new MirBlock(bb0, [], [new MirConstantInstruction(seed, BuiltinTypes.U32, 7, Span)],
+                new MirBlock(bb0, [], [Constant(seed, BuiltinTypes.U32, 7u)],
                     new MirGotoTerminator(bb1, [seed], Span)),
                 new MirBlock(bb1, [new MirBlockParameter(threaded, "x", BuiltinTypes.U32)], [],
                     new MirGotoTerminator(bb2, [threaded], Span)),
@@ -82,7 +85,7 @@ public class OptimizerTests
                 new LirBlock(bb0, [],
                 [
                     new LirOpInstruction(new LirConstOperation(), seed, BuiltinTypes.U32,
-                        [new LirImmediateOperand(7, BuiltinTypes.U32)],
+                        [new LirImmediateOperand(new RuntimeBladeValue(BuiltinTypes.U32, (byte)7))],
                         hasSideEffects: false, predicate: null, writesC: false, writesZ: false, Span),
                     new LirOpInstruction(new LirMovOperation(), copy, BuiltinTypes.U32,
                         [new LirRegisterOperand(seed)],
@@ -416,7 +419,7 @@ public class OptimizerTests
                 new LirBlock(LirBlockRef("bb0"), [],
                 [
                     new LirOpInstruction(new LirConstOperation(), r0, BuiltinTypes.U32,
-                        [new LirImmediateOperand(13, BuiltinTypes.U32)],
+                        [new LirImmediateOperand(new RuntimeBladeValue(BuiltinTypes.U32, (byte)13))],
                         hasSideEffects: false, predicate: null, writesC: false, writesZ: false, Span),
                     new LirInlineAsmInstruction(
                         AsmVolatility.Volatile,

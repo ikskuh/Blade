@@ -32,7 +32,7 @@ internal sealed class ComptimeResult
     private readonly BladeValue? value;
     private readonly ComptimeFailure? failure;
 
-    private ComptimeResult(BladeValue value)
+    internal ComptimeResult(BladeValue value)
     {
         this.value = Requires.NotNull(value);
     }
@@ -214,8 +214,55 @@ internal static class ComptimeTypeFacts
         return false;
     }
 
-    public static bool TryNormalizeValue(object? value, TypeSymbol targetType, out object? normalized)
+    public static bool TryCreateBladeValue(object? value, TypeSymbol targetType, out BladeValue normalized)
     {
+        if (targetType is VoidTypeSymbol)
+        {
+            if (value is null || ReferenceEquals(value, VoidValue.Instance))
+            {
+                normalized = BladeValue.Void;
+                return true;
+            }
+
+            normalized = null!;
+            return false;
+        }
+
+        if (targetType is UndefinedLiteralTypeSymbol)
+        {
+            if (value is null || ReferenceEquals(value, UndefinedValue.Instance))
+            {
+                normalized = BladeValue.Undefined;
+                return true;
+            }
+
+            normalized = null!;
+            return false;
+        }
+
+        if (!TryNormalizePayload(value, targetType, out object? normalizedPayload) || normalizedPayload is null)
+        {
+            normalized = null!;
+            return false;
+        }
+
+        normalized = targetType switch
+        {
+            RuntimeTypeSymbol runtimeType => new RuntimeBladeValue(runtimeType, normalizedPayload),
+            ComptimeTypeSymbol comptimeType => new ComptimeBladeValue(comptimeType, normalizedPayload),
+            _ => Assert.UnreachableValue<BladeValue>($"Unsupported type '{targetType.Name}'."),
+        };
+        return true;
+    }
+
+    private static bool TryNormalizePayload(object? value, TypeSymbol targetType, out object? normalized)
+    {
+        if (value is not null && targetType.IsLegalRuntimeObject(value))
+        {
+            normalized = value;
+            return true;
+        }
+
         if (ReferenceEquals(targetType, BuiltinTypes.Bool))
         {
             if (value is bool boolValue)
@@ -257,7 +304,7 @@ internal static class ComptimeTypeFacts
 
         if (targetType is EnumTypeSymbol enumType)
         {
-            if (!TryNormalizeValue(value, enumType.BackingType, out object? enumValue))
+            if (!TryNormalizePayload(value, enumType.BackingType, out object? enumValue))
             {
                 normalized = null;
                 return false;
@@ -273,11 +320,84 @@ internal static class ComptimeTypeFacts
             return false;
         }
 
-        if (targetType is RuntimeTypeSymbol runtimeType && value is not null)
-            return runtimeType.TryNormalizeRuntimeObject(value, out normalized!);
+        if (targetType is RuntimeTypeSymbol && value is not null)
+        {
+            object? normalizedRuntimeValue;
+            if (TryNormalizeRuntimeConversionValue(value, targetType, out normalizedRuntimeValue))
+            {
+                normalized = normalizedRuntimeValue;
+                return true;
+            }
+        }
 
         normalized = null;
         return false;
+    }
+
+    private static bool TryNormalizeRuntimeConversionValue(object value, TypeSymbol targetType, out object? normalized)
+    {
+        if (targetType is EnumTypeSymbol enumType)
+            return TryNormalizeRuntimeConversionValue(value, enumType.BackingType, out normalized);
+
+        if (targetType is BitfieldTypeSymbol bitfieldType)
+            return TryNormalizeRuntimeConversionValue(value, bitfieldType.BackingType, out normalized);
+
+        if (targetType is IntegerTypeSymbol integerType)
+            return TryNormalizeIntegerValue(value, integerType, out normalized);
+
+        if (targetType is PointerLikeTypeSymbol)
+            return TryNormalizePointerValue(value, out normalized);
+
+        normalized = null;
+        return false;
+    }
+
+    private static bool TryNormalizeIntegerValue(object value, IntegerTypeSymbol integerType, out object? normalized)
+    {
+        if (!TryConvertConvertibleToUInt32(value, out uint rawBits))
+        {
+            normalized = null;
+            return false;
+        }
+
+        uint maskedBits = integerType.BitWidth >= 32
+            ? rawBits
+            : rawBits & ((1u << integerType.BitWidth) - 1u);
+
+        if (integerType.IsSignedInteger)
+        {
+            int signedValue = integerType.BitWidth >= 32
+                ? unchecked((int)maskedBits)
+                : (int)(maskedBits << (32 - integerType.BitWidth)) >> (32 - integerType.BitWidth);
+
+            normalized = integerType.BitWidth switch
+            {
+                <= 8 => (sbyte)signedValue,
+                <= 16 => (short)signedValue,
+                _ => signedValue,
+            };
+            return true;
+        }
+
+        normalized = integerType.BitWidth switch
+        {
+            <= 8 => (byte)maskedBits,
+            <= 16 => (ushort)maskedBits,
+            _ => maskedBits,
+        };
+        return true;
+    }
+
+    private static bool TryNormalizePointerValue(object value, out object? normalized)
+    {
+        if (!TryConvertConvertibleToUInt32(value, out uint pointerValue))
+        {
+            normalized = null;
+            return false;
+        }
+
+        normalized = pointerValue;
+        return true;
     }
 
     private static bool TryConvertConvertibleToInt64(IConvertible convertible, out long converted)
@@ -299,6 +419,34 @@ internal static class ComptimeTypeFacts
 
         converted = 0;
         return false;
+    }
+
+    private static bool TryConvertConvertibleToUInt32(object value, out uint converted)
+    {
+        try
+        {
+            converted = value switch
+            {
+                IConvertible convertible => unchecked((uint)Convert.ToInt64(convertible, CultureInfo.InvariantCulture)),
+                _ => 0U,
+            };
+            return value is IConvertible;
+        }
+        catch (FormatException)
+        {
+            converted = 0U;
+            return false;
+        }
+        catch (InvalidCastException)
+        {
+            converted = 0U;
+            return false;
+        }
+        catch (OverflowException)
+        {
+            converted = 0U;
+            return false;
+        }
     }
 }
 
@@ -656,7 +804,7 @@ internal sealed class ComptimeEvaluator
     {
         return expression switch
         {
-            BoundLiteralExpression literal => CreateValueResult(literal.Value, literal.Type),
+            BoundLiteralExpression literal => new ComptimeResult(literal.Value),
             BoundEnumLiteralExpression enumLiteral => new ComptimeResult(enumLiteral.Value),
             BoundSymbolExpression symbolExpression => TryEvaluateSymbol(symbolExpression, frame),
             BoundUnaryExpression unary => TryEvaluateUnary(unary, frame),
@@ -1278,8 +1426,8 @@ internal sealed class ComptimeEvaluator
                 : new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'.");
         }
 
-        if (targetType is EnumTypeSymbol enumType)
-            return NormalizeLiteral(value, enumType.BackingType, span);
+        if (ReferenceEquals(value.Type, targetType))
+            return value;
 
         if (ReferenceEquals(targetType, BuiltinTypes.Bool))
         {
@@ -1300,13 +1448,7 @@ internal sealed class ComptimeEvaluator
             return new ComptimeResult(integerLiteral);
         }
 
-        if (value.TryGetInt(out int intValue))
-            return NormalizeConcreteLiteral(intValue, targetType, span);
-
-        if (value.TryGetUInt(out uint uintValue))
-            return NormalizeConcreteLiteral(uintValue, targetType, span);
-
-        if (value.TryGetLong(out long longValue))
+        if (value.TryConvertToLong(out long longValue))
             return NormalizeConcreteLiteral(longValue, targetType, span);
 
         return new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'.");
@@ -1314,31 +1456,10 @@ internal sealed class ComptimeEvaluator
 
     private static ComptimeResult NormalizeConcreteLiteral<T>(T rawValue, TypeSymbol targetType, TextSpan span)
     {
-        if (!ComptimeTypeFacts.TryNormalizeValue(rawValue, targetType, out object? normalizedValue))
+        if (!ComptimeTypeFacts.TryCreateBladeValue(rawValue, targetType, out BladeValue normalizedValue))
             return new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'.");
 
-        return CreateValueResult(normalizedValue, targetType);
-    }
-
-    private static ComptimeResult CreateValueResult(object? value, TypeSymbol type)
-    {
-        return value switch
-        {
-            null when type is VoidTypeSymbol => ComptimeResult.Void,
-            null => ComptimeResult.Undefined,
-            bool boolValue => boolValue ? ComptimeResult.True : ComptimeResult.False,
-            long longValue => new ComptimeResult(longValue),
-            int intValue => new ComptimeResult(intValue),
-            uint uintValue => new ComptimeResult(uintValue),
-            sbyte sbyteValue => new ComptimeResult((int)sbyteValue),
-            byte byteValue => new ComptimeResult((uint)byteValue),
-            short shortValue => new ComptimeResult((int)shortValue),
-            ushort ushortValue => new ComptimeResult((uint)ushortValue),
-            ulong ulongValue when ulongValue <= uint.MaxValue => new ComptimeResult((uint)ulongValue),
-            ulong ulongValue when ulongValue <= long.MaxValue => new ComptimeResult((long)ulongValue),
-            string stringValue => new ComptimeResult(stringValue),
-            _ => Assert.UnreachableValue<ComptimeResult>($"Unsupported comptime value '{value}'."),
-        };
+        return new ComptimeResult(normalizedValue);
     }
 
     private static ComptimeResult FailNotEvaluable(TextSpan span, string detail)

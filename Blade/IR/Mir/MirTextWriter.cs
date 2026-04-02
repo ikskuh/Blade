@@ -440,9 +440,9 @@ public static class MirTextWriter
         }
     }
 
-    private static string FormatConstant(object? value)
+    private static string FormatConstant(BladeValue? value)
     {
-        return value switch
+        return value?.Value switch
         {
             null => "null",
             bool b => b ? "true" : "false",

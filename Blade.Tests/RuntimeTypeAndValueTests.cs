@@ -124,7 +124,7 @@ public sealed class RuntimeTypeAndValueTests
     }
 
     [Test]
-    public void RuntimeTypeNormalization_CoversPointerEnumBitfieldAndSignedCases()
+    public void RuntimeTypeLegality_RejectsRepairStylePayloads()
     {
         PointerTypeSymbol pointerType = new(BuiltinTypes.U32, isConst: false);
         EnumTypeSymbol enumType = new("Mode", BuiltinTypes.U8, new Dictionary<string, long> { ["Idle"] = 0 }, isOpen: true);
@@ -132,22 +132,12 @@ public sealed class RuntimeTypeAndValueTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(pointerType.TryNormalizeRuntimeObject(257, out object pointerValue), Is.True);
-            Assert.That(pointerValue, Is.EqualTo(257u));
-
-            Assert.That(enumType.TryNormalizeRuntimeObject(258, out object enumValue), Is.True);
-            Assert.That(enumValue, Is.EqualTo((byte)2));
-
-            Assert.That(bitfieldType.TryNormalizeRuntimeObject(0x1_0001, out object bitfieldValue), Is.True);
-            Assert.That(bitfieldValue, Is.EqualTo((ushort)1));
-
-            Assert.That(BuiltinTypes.I8.TryNormalizeRuntimeObject(255, out object signedByteValue), Is.True);
-            Assert.That(signedByteValue, Is.EqualTo((sbyte)(-1)));
-
-            Assert.That(BuiltinTypes.I32.TryNormalizeRuntimeObject(0xFFFF_FFFFu, out object signedWordValue), Is.True);
-            Assert.That(signedWordValue, Is.EqualTo(-1));
-
-            Assert.That(BuiltinTypes.Bool.TryNormalizeRuntimeObject(1, out _), Is.False);
+            Assert.That(pointerType.IsLegalRuntimeObject(257), Is.False);
+            Assert.That(enumType.IsLegalRuntimeObject(258), Is.False);
+            Assert.That(bitfieldType.IsLegalRuntimeObject(0x1_0001), Is.False);
+            Assert.That(BuiltinTypes.I8.IsLegalRuntimeObject(255), Is.False);
+            Assert.That(BuiltinTypes.I32.IsLegalRuntimeObject(0xFFFF_FFFFu), Is.False);
+            Assert.That(BuiltinTypes.Bool.IsLegalRuntimeObject(1), Is.False);
         });
     }
 
@@ -199,8 +189,8 @@ public sealed class RuntimeTypeAndValueTests
             Assert.That(runtimeValue.Type, Is.SameAs(BuiltinTypes.I8));
             Assert.That(runtimeValue.Value, Is.EqualTo((sbyte)(-1)));
             Assert.That(widenedRuntimeValue.Type, Is.SameAs(BuiltinTypes.I16));
-            Assert.That(widenedRuntimeValue.Value, Is.TypeOf<short>());
-            Assert.That(widenedRuntimeValue.Value, Is.EqualTo((short)7));
+            Assert.That(widenedRuntimeValue.Value, Is.TypeOf<byte>());
+            Assert.That(widenedRuntimeValue.Value, Is.EqualTo((byte)7));
             Assert.That(stringValue.Type, Is.SameAs(BuiltinTypes.String));
             Assert.That(stringValue.Value, Is.EqualTo("hello"));
             Assert.That(voidValue.Value, Is.SameAs(VoidValue.Instance));

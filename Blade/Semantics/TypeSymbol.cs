@@ -10,20 +10,6 @@ public abstract class TypeSymbol(string name)
 
     public abstract bool IsLegalRuntimeObject(object value);
 
-    public object? NormalizeValue(object value)
-    {
-        Requires.NotNull(value);
-
-        if (!IsLegalRuntimeObject(value))
-            return null;
-
-        object normalized = NormalizeValueInner(value);
-        Assert.Invariant(IsLegalRuntimeObject(normalized), $"Type '{Name}' normalized legal value '{value}' to illegal payload '{normalized}'.");
-        return normalized;
-    }
-
-    protected virtual object NormalizeValueInner(object value) => value;
-
     public override string ToString() => Name;
 }
 
@@ -57,15 +43,6 @@ public abstract class RuntimeTypeSymbol(string name) : TypeSymbol(name)
         Assert.Invariant(stride > 0, $"Runtime type '{Name}' must have positive storage size.");
         return stride;
     }
-
-    public abstract bool TryNormalizeRuntimeObject(object value, out object normalized);
-
-    protected override object NormalizeValueInner(object value)
-    {
-        bool success = TryNormalizeRuntimeObject(value, out object normalized);
-        Assert.Invariant(success, $"Runtime type '{Name}' must normalize legal value '{value}'.");
-        return normalized;
-    }
 }
 
 public abstract class ComptimeTypeSymbol(string name) : TypeSymbol(name)
@@ -86,18 +63,6 @@ public sealed class BoolTypeSymbol() : ScalarTypeSymbol("bool", bitWidth: 1, siz
     public override bool IsScalarCastType => false;
 
     public override bool IsLegalRuntimeObject(object value) => value is bool;
-
-    public override bool TryNormalizeRuntimeObject(object value, out object normalized)
-    {
-        if (value is bool boolean)
-        {
-            normalized = boolean;
-            return true;
-        }
-
-        normalized = false;
-        return false;
-    }
 }
 
 public sealed class IntegerTypeSymbol(string name, int bitWidth, bool isSigned)
@@ -122,86 +87,7 @@ public sealed class IntegerTypeSymbol(string name, int bitWidth, bool isSigned)
         };
     }
 
-    public override bool TryNormalizeRuntimeObject(object value, out object normalized)
-    {
-        if (!TryConvertIntegral(value, out _, out ulong unsignedValue))
-        {
-            normalized = 0;
-            return false;
-        }
-
-        uint maskedBits = BitWidth >= 32
-            ? unchecked((uint)unsignedValue)
-            : unchecked((uint)unsignedValue) & ((1u << BitWidth) - 1u);
-
-        if (IsSignedInteger)
-        {
-            int normalizedInt = BitWidth >= 32
-                ? unchecked((int)maskedBits)
-                : (int)(maskedBits << (32 - BitWidth)) >> (32 - BitWidth);
-
-            if (BitWidth <= 8)
-                normalized = (sbyte)normalizedInt;
-            else if (BitWidth <= 16)
-                normalized = (short)normalizedInt;
-            else
-                normalized = normalizedInt;
-            return true;
-        }
-
-        if (BitWidth <= 8)
-            normalized = (byte)maskedBits;
-        else if (BitWidth <= 16)
-            normalized = (ushort)maskedBits;
-        else
-            normalized = maskedBits;
-        return true;
-    }
-
     private bool IsLegalRuntimeValue(long value) => value >= MinValue && value <= MaxValue;
-
-    private static bool TryConvertIntegral(object value, out long signedValue, out ulong unsignedValue)
-    {
-        switch (value)
-        {
-            case sbyte sbyteValue:
-                signedValue = sbyteValue;
-                unsignedValue = unchecked((ulong)(long)sbyteValue);
-                return true;
-            case byte byteValue:
-                signedValue = byteValue;
-                unsignedValue = byteValue;
-                return true;
-            case short shortValue:
-                signedValue = shortValue;
-                unsignedValue = unchecked((ulong)(long)shortValue);
-                return true;
-            case ushort ushortValue:
-                signedValue = ushortValue;
-                unsignedValue = ushortValue;
-                return true;
-            case int intValue:
-                signedValue = intValue;
-                unsignedValue = unchecked((ulong)(long)intValue);
-                return true;
-            case uint uintValue:
-                signedValue = unchecked((int)uintValue);
-                unsignedValue = uintValue;
-                return true;
-            case long longValue:
-                signedValue = longValue;
-                unsignedValue = unchecked((ulong)longValue);
-                return true;
-            case ulong ulongValue when ulongValue <= uint.MaxValue:
-                signedValue = unchecked((int)ulongValue);
-                unsignedValue = ulongValue;
-                return true;
-            default:
-                signedValue = 0;
-                unsignedValue = 0;
-                return false;
-        }
-    }
 }
 
 public abstract class PointerLikeTypeSymbol(
@@ -222,40 +108,6 @@ public abstract class PointerLikeTypeSymbol(
     public VariableStorageClass StorageClass { get; } = storageClass;
 
     public override bool IsLegalRuntimeObject(object value) => value is uint;
-
-    public override bool TryNormalizeRuntimeObject(object value, out object normalized)
-    {
-        switch (value)
-        {
-            case byte byteValue:
-                normalized = (uint)byteValue;
-                return true;
-            case ushort ushortValue:
-                normalized = (uint)ushortValue;
-                return true;
-            case uint uintValue:
-                normalized = uintValue;
-                return true;
-            case sbyte sbyteValue:
-                normalized = unchecked((uint)sbyteValue);
-                return true;
-            case short shortValue:
-                normalized = unchecked((uint)shortValue);
-                return true;
-            case int intValue:
-                normalized = unchecked((uint)intValue);
-                return true;
-            case long longValue:
-                normalized = unchecked((uint)longValue);
-                return true;
-            case ulong ulongValue when ulongValue <= uint.MaxValue:
-                normalized = (uint)ulongValue;
-                return true;
-            default:
-                normalized = 0U;
-                return false;
-        }
-    }
 
     private static string BuildName(
         string prefix,
@@ -327,18 +179,6 @@ public sealed class ArrayTypeSymbol(TypeSymbol elementType, int? length = null) 
         return true;
     }
 
-    public override bool TryNormalizeRuntimeObject(object value, out object normalized)
-    {
-        if (value is IReadOnlyList<RuntimeBladeValue> values && IsLegalRuntimeObject(values))
-        {
-            normalized = values;
-            return true;
-        }
-
-        normalized = Array.Empty<RuntimeBladeValue>();
-        return false;
-    }
-
     private static string BuildName(TypeSymbol elementType, int? length)
     {
         return length is int knownLength
@@ -392,18 +232,6 @@ public abstract class AggregateTypeSymbol(
 
         return true;
     }
-
-    public override bool TryNormalizeRuntimeObject(object value, out object normalized)
-    {
-        if (value is IReadOnlyDictionary<string, BladeValue> values && IsLegalRuntimeObject(values))
-        {
-            normalized = values;
-            return true;
-        }
-
-        normalized = new Dictionary<string, BladeValue>();
-        return false;
-    }
 }
 
 public sealed class StructTypeSymbol(
@@ -438,8 +266,6 @@ public sealed class EnumTypeSymbol(string name, TypeSymbol backingType, IReadOnl
     public override int? BitfieldFieldWidthBits => BackingType.BitfieldFieldWidthBits;
 
     public override bool IsLegalRuntimeObject(object value) => BackingType.IsLegalRuntimeObject(value);
-
-    public override bool TryNormalizeRuntimeObject(object value, out object normalized) => BackingType.TryNormalizeRuntimeObject(value, out normalized);
 }
 
 public sealed class BitfieldTypeSymbol(
@@ -470,8 +296,6 @@ public sealed class BitfieldTypeSymbol(
     };
 
     public override bool IsLegalRuntimeObject(object value) => BackingType.IsLegalRuntimeObject(value);
-
-    public override bool TryNormalizeRuntimeObject(object value, out object normalized) => BackingType.TryNormalizeRuntimeObject(value, out normalized);
 }
 
 public sealed class FunctionTypeSymbol(FunctionSymbol function) : ComptimeTypeSymbol($"fn {Requires.NotNull(function).Name}")

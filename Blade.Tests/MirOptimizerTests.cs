@@ -11,6 +11,18 @@ namespace Blade.Tests;
 [TestFixture]
 public class MirOptimizerTests
 {
+    private static BladeValue Value(TypeSymbol type, object value)
+    {
+        return type switch
+        {
+            RuntimeTypeSymbol runtimeType => new RuntimeBladeValue(runtimeType, value),
+            ComptimeTypeSymbol comptimeType => new ComptimeBladeValue(comptimeType, value),
+            _ => throw new System.InvalidOperationException($"Unsupported MIR test constant type '{type.Name}'."),
+        };
+    }
+
+    private static MirConstantInstruction Constant(MirValueId result, TypeSymbol type, object value, TextSpan span) => new(result, type, Value(type, value), span);
+
     [Test]
     public void ConstantPropagation_FoldsUnaryAndBinaryOperators()
     {
@@ -28,15 +40,15 @@ public class MirOptimizerTests
 
         List<MirInstruction> instructions =
         [
-            new MirConstantInstruction(intOne, BuiltinTypes.U32, 1L, span),
-            new MirConstantInstruction(intTwo, BuiltinTypes.U32, 2L, span),
-            new MirConstantInstruction(intSeven, BuiltinTypes.U32, 7L, span),
-            new MirConstantInstruction(intEight, BuiltinTypes.U32, 8L, span),
-            new MirConstantInstruction(zero, BuiltinTypes.U32, 0L, span),
-            new MirConstantInstruction(boolTrue, BuiltinTypes.Bool, true, span),
-            new MirConstantInstruction(boolFalse, BuiltinTypes.Bool, false, span),
-            new MirConstantInstruction(stringLeft, BuiltinTypes.String, "left", span),
-            new MirConstantInstruction(stringRight, BuiltinTypes.String, "right", span),
+            Constant(intOne, BuiltinTypes.U32, 1u, span),
+            Constant(intTwo, BuiltinTypes.U32, 2u, span),
+            Constant(intSeven, BuiltinTypes.U32, 7u, span),
+            Constant(intEight, BuiltinTypes.U32, 8u, span),
+            Constant(zero, BuiltinTypes.U32, 0u, span),
+            Constant(boolTrue, BuiltinTypes.Bool, true, span),
+            Constant(boolFalse, BuiltinTypes.Bool, false, span),
+            Constant(stringLeft, BuiltinTypes.String, "left", span),
+            Constant(stringRight, BuiltinTypes.String, "right", span),
             new MirUnaryInstruction(MirValue(10), BuiltinTypes.Bool, BoundUnaryOperatorKind.LogicalNot, boolFalse, span),
             new MirUnaryInstruction(MirValue(11), BuiltinTypes.I32, BoundUnaryOperatorKind.Negation, intOne, span),
             new MirUnaryInstruction(MirValue(12), BuiltinTypes.U32, BoundUnaryOperatorKind.BitwiseNot, intOne, span),
@@ -80,13 +92,13 @@ public class MirOptimizerTests
         IReadOnlyList<MirInstruction> rewritten = optimized.Functions[0].Blocks[0].Instructions;
         Dictionary<MirValueId, object?> constants = rewritten
             .OfType<MirConstantInstruction>()
-            .ToDictionary(instruction => instruction.Result!, instruction => instruction.Value);
+            .ToDictionary(instruction => instruction.Result!, instruction => instruction.Value?.Value);
 
         Assert.That(rewritten[13], Is.Not.TypeOf<MirConstantInstruction>());
         Assert.That(rewritten[^1], Is.Not.TypeOf<MirConstantInstruction>());
         Assert.That(constants[MirValue(10)], Is.EqualTo(true));
         Assert.That(constants[MirValue(11)], Is.EqualTo(-1L));
-        Assert.That(constants[MirValue(12)], Is.EqualTo(~1L));
+        Assert.That(constants[MirValue(12)], Is.EqualTo(unchecked((uint)~1)));
         Assert.That(constants[MirValue(13)], Is.EqualTo(2L));
         Assert.That(constants[MirValue(20)], Is.EqualTo(3L));
         Assert.That(constants[MirValue(21)], Is.EqualTo(1L));

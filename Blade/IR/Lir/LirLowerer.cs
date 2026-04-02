@@ -100,7 +100,7 @@ public static class LirLowerer
                 new LirConstOperation(),
                 destination,
                 constant.ResultType,
-                [new LirImmediateOperand(constant.Value, constant.ResultType!)],
+                LowerConstantOperands(constant),
                 hasSideEffects: false,
                 predicate: null,
                 writesC: false,
@@ -451,6 +451,14 @@ public static class LirLowerer
 
             _ => Assert.UnreachableValue<LirInstruction>(),
         };
+    }
+
+    private static IReadOnlyList<LirOperand> LowerConstantOperands(MirConstantInstruction constant)
+    {
+        if (constant.Value is null)
+            return [];
+
+        return [new LirImmediateOperand(constant.Value)];
     }
 
     private static LirTerminator LowerTerminator(

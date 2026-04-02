@@ -72,7 +72,7 @@ public class WriterAndSymbolTests
                 new LirBlock(LirBlockRef("bb0"), [],
                 [
                     new LirOpInstruction(new LirMovOperation(), LirRegister(0), BuiltinTypes.U32,
-                        [new LirImmediateOperand("hello", BuiltinTypes.String)],
+                        [new LirImmediateOperand(new ComptimeBladeValue((ComptimeTypeSymbol)BuiltinTypes.String, "hello"))],
                         hasSideEffects: false, predicate: P2ConditionCode.IF_C, writesC: true, writesZ: true, Span),
                 ], new LirUnreachableTerminator(Span)),
             ]),

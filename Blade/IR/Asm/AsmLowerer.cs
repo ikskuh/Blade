@@ -1113,26 +1113,29 @@ public static class AsmLowerer
     private static void LowerConst(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
         AsmRegisterOperand dest = DestReg(op, ctx);
-        object? rawValue = ((LirImmediateOperand)op.Operands[0]).Value;
-        object? normalizedValue = rawValue;
-        if (op.ResultType is RuntimeTypeSymbol runtimeType
-            && rawValue is not null
-            && runtimeType.TryNormalizeRuntimeObject(rawValue, out object converted))
+        if (op.Operands.Count == 0)
         {
-            normalizedValue = converted;
+            nodes.Add(Emit(P2Mnemonic.MOV, dest, new AsmImmediateOperand(0)));
+            return;
         }
 
-        long value = GetImmediateValue(new LirImmediateOperand(normalizedValue, op.ResultType ?? BuiltinTypes.Unknown));
+        BladeValue immediate = ((LirImmediateOperand)op.Operands[0]).Value;
+        object value = immediate.Value;
+        Assert.Invariant(
+            ReferenceEquals(immediate.Type, op.ResultType),
+            $"Immediate type '{immediate.Type.Name}' does not match const result type '{op.ResultType?.Name ?? "<null>"}'.");
+
+        long immediateValue = GetImmediateValue(immediate);
 
         // Bool/bit constants: use BITH (set bit 0) or BITL (clear bit 0).
         if (IsSingleBitType(op.ResultType))
         {
-            Assert.Invariant(value is 0 or 1, "Single-bit constants must normalize to 0 or 1.");
-            nodes.Add(Emit(value == 1 ? P2Mnemonic.BITH : P2Mnemonic.BITL, dest, new AsmImmediateOperand(0)));
+            Assert.Invariant(immediateValue is 0 or 1, "Single-bit constants must normalize to 0 or 1.");
+            nodes.Add(Emit(immediateValue == 1 ? P2Mnemonic.BITH : P2Mnemonic.BITL, dest, new AsmImmediateOperand(0)));
             return;
         }
 
-        nodes.Add(Emit(P2Mnemonic.MOV, dest, new AsmImmediateOperand(value)));
+        nodes.Add(Emit(P2Mnemonic.MOV, dest, new AsmImmediateOperand(immediateValue)));
     }
 
     private static void LowerMov(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
@@ -2665,7 +2668,7 @@ public static class AsmLowerer
         return operand switch
         {
             LirRegisterOperand reg => new AsmRegisterOperand(ctx.GetRegister(reg.Register)),
-            LirImmediateOperand imm => new AsmImmediateOperand(GetImmediateValue(imm)),
+            LirImmediateOperand imm => new AsmImmediateOperand(GetImmediateValue(imm.Value)),
             LirPlaceOperand place => CreatePlaceOperand(place.Place),
             _ => throw new InvalidOperationException($"Unknown operand type: {operand.GetType().Name}"),
         };
@@ -2688,11 +2691,10 @@ public static class AsmLowerer
     private static bool IsSingleBitType(TypeSymbol? type)
         => type is BoolTypeSymbol || ReferenceEquals(type, BuiltinTypes.Bit);
 
-    private static long GetImmediateValue(LirImmediateOperand imm)
+    private static long GetImmediateValue(BladeValue imm)
     {
         return imm.Value switch
         {
-            null => 0,
             bool b => b ? 1 : 0,
             int i => i,
             uint u => u,

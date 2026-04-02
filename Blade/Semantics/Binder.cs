@@ -741,7 +741,7 @@ public sealed class Binder
                         end = new BoundBinaryExpression(
                             end,
                             Requires.NotNull(BoundBinaryOperator.Bind(TokenKind.Plus)),
-                            new BoundLiteralExpression(1L, range.End.Span, BuiltinTypes.U32),
+                            new BoundLiteralExpression(new RuntimeBladeValue(BuiltinTypes.U32, 1u), range.End.Span),
                             range.End.Span,
                             end.Type);
                     }
@@ -749,7 +749,7 @@ public sealed class Binder
                 else
                 {
                     // Non-range iterable — use as count (0..<count)
-                    start = new BoundLiteralExpression(0L, repFor.Iterable.Span, BuiltinTypes.U32);
+                    start = new BoundLiteralExpression(new RuntimeBladeValue(BuiltinTypes.U32, 0u), repFor.Iterable.Span);
                     end = iterable;
                 }
 
@@ -1489,6 +1489,7 @@ public sealed class Binder
             {
                 TokenKind.TrueKeyword => true,
                 TokenKind.FalseKeyword => false,
+                TokenKind.UndefinedKeyword => UndefinedValue.Instance,
                 _ => value,
             };
         }
@@ -1497,7 +1498,10 @@ public sealed class Binder
         if (literal.Token.Kind == TokenKind.ZeroTerminatedStringLiteral && value is string zStr)
             value = zStr + "\0";
 
-        return new BoundLiteralExpression(value, literal.Span, type);
+        if (!ComptimeTypeFacts.TryCreateBladeValue(value, type, out BladeValue literalValue))
+            return Assert.UnreachableValue<BoundExpression>($"Failed to bind literal of type '{type.Name}'.");
+
+        return new BoundLiteralExpression(literalValue, literal.Span);
     }
 
     private BoundExpression BindNameExpression(NameExpressionSyntax nameExpression)
@@ -2204,8 +2208,8 @@ public sealed class Binder
                 : new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'.");
         }
 
-        if (targetType is EnumTypeSymbol enumType)
-            return NormalizeFoldedValue(value, enumType.BackingType, span);
+        if (ReferenceEquals(value.Type, targetType))
+            return value;
 
         if (ReferenceEquals(targetType, BuiltinTypes.Bool))
         {
@@ -2226,13 +2230,7 @@ public sealed class Binder
             return new ComptimeResult(integerLiteral);
         }
 
-        if (value.TryGetInt(out int intValue))
-            return NormalizeConcreteFoldedValue(intValue, targetType, span);
-
-        if (value.TryGetUInt(out uint uintValue))
-            return NormalizeConcreteFoldedValue(uintValue, targetType, span);
-
-        if (value.TryGetLong(out long longValue))
+        if (value.TryConvertToLong(out long longValue))
             return NormalizeConcreteFoldedValue(longValue, targetType, span);
 
         return new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'.");
@@ -2240,59 +2238,24 @@ public sealed class Binder
 
     private static ComptimeResult NormalizeConcreteFoldedValue<T>(T rawValue, TypeSymbol targetType, TextSpan span)
     {
-        if (!ComptimeTypeFacts.TryNormalizeValue(rawValue, targetType, out object? normalizedValue))
+        if (!ComptimeTypeFacts.TryCreateBladeValue(rawValue, targetType, out BladeValue normalizedValue))
             return new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'.");
 
-        return CreateComptimeResult(normalizedValue, targetType);
+        return new ComptimeResult(normalizedValue);
     }
 
     private static BoundLiteralExpression CreateFoldedLiteralExpression(ComptimeResult value, BoundExpression expression)
     {
-        return new BoundLiteralExpression(MaterializeLiteralValue(value, expression.Type), expression.Span, expression.Type);
-    }
+        if (value.IsUndefined)
+            return new BoundLiteralExpression(BladeValue.Undefined, expression.Span);
 
-    private static object? MaterializeLiteralValue(ComptimeResult value, TypeSymbol targetType)
-    {
-        if (targetType is VoidTypeSymbol || value.IsUndefined)
-            return null;
+        if (ReferenceEquals(value.Value.Type, expression.Type))
+            return new BoundLiteralExpression(value.Value, expression.Span);
 
-        if (value.TryGetBool(out bool boolValue))
-            return boolValue;
+        if (!ComptimeTypeFacts.TryCreateBladeValue(value.Value.Value, expression.Type, out BladeValue normalizedValue))
+            return Assert.UnreachableValue<BoundLiteralExpression>($"Failed to materialize folded value for '{expression.Type.Name}'.");
 
-        if (value.TryGetLong(out long longValue))
-            return longValue;
-
-        if (value.TryGetInt(out int intValue))
-            return intValue;
-
-        if (value.TryGetUInt(out uint uintValue))
-            return uintValue;
-
-        if (value.TryGetString(out string stringValue))
-            return stringValue;
-
-        return Assert.UnreachableValue<object?>($"Unsupported folded comptime result '{value.Type?.Name ?? "<failed>"}'.");
-    }
-
-    private static ComptimeResult CreateComptimeResult(object? value, TypeSymbol type)
-    {
-        return value switch
-        {
-            null when type is VoidTypeSymbol => ComptimeResult.Void,
-            null => ComptimeResult.Undefined,
-            bool boolValue => new ComptimeResult(boolValue),
-            long longValue => new ComptimeResult(longValue),
-            int intValue => new ComptimeResult(intValue),
-            uint uintValue => new ComptimeResult(uintValue),
-            sbyte sbyteValue => new ComptimeResult((int)sbyteValue),
-            byte byteValue => new ComptimeResult((uint)byteValue),
-            short shortValue => new ComptimeResult((int)shortValue),
-            ushort ushortValue => new ComptimeResult((uint)ushortValue),
-            ulong ulongValue when ulongValue <= uint.MaxValue => new ComptimeResult((uint)ulongValue),
-            ulong ulongValue when ulongValue <= long.MaxValue => new ComptimeResult((long)ulongValue),
-            string stringValue => new ComptimeResult(stringValue),
-            _ => Assert.UnreachableValue<ComptimeResult>($"Unsupported folded value '{value}'."),
-        };
+        return new BoundLiteralExpression(normalizedValue, expression.Span);
     }
 
     private bool TryEvaluateAssertCondition(BoundExpression expression, out ComptimeResult value, out ComptimeFailure failure)
@@ -2478,7 +2441,7 @@ public sealed class Binder
     {
         return expression switch
         {
-            BoundLiteralExpression literal => literal.Value is not string,
+            BoundLiteralExpression literal => literal.Value.Value is not string,
             BoundEnumLiteralExpression => true,
             BoundUnaryExpression => true,
             BoundBinaryExpression => true,
@@ -2809,7 +2772,7 @@ public sealed class Binder
             }
 
             int size = runtimeType.GetSizeInMemorySpace(storageClass.Value);
-            return new BoundLiteralExpression((long)size, query.Span, BuiltinTypes.IntegerLiteral);
+            return new BoundLiteralExpression(new ComptimeBladeValue((ComptimeTypeSymbol)BuiltinTypes.IntegerLiteral, (long)size), query.Span);
         }
 
         Assert.Invariant(query.Keyword.Kind == TokenKind.AlignofKeyword, "Two-arg query must be sizeof or alignof.");
@@ -2821,7 +2784,7 @@ public sealed class Binder
         }
 
         int alignment = runtimeTypeForAlignment.GetAlignmentInMemorySpace(storageClass.Value);
-        return new BoundLiteralExpression((long)alignment, query.Span, BuiltinTypes.IntegerLiteral);
+        return new BoundLiteralExpression(new ComptimeBladeValue((ComptimeTypeSymbol)BuiltinTypes.IntegerLiteral, (long)alignment), query.Span);
     }
 
     private BoundExpression BindOneArgQueryExpression(QueryExpressionSyntax query, string operatorName)
@@ -2903,7 +2866,7 @@ public sealed class Binder
             }
 
             int size = runtimeVariableType.GetSizeInMemorySpace(sc);
-            return new BoundLiteralExpression((long)size, query.Span, BuiltinTypes.IntegerLiteral);
+            return new BoundLiteralExpression(new ComptimeBladeValue((ComptimeTypeSymbol)BuiltinTypes.IntegerLiteral, (long)size), query.Span);
         }
 
         Assert.Invariant(query.Keyword.Kind == TokenKind.AlignofKeyword, "Variable query must be sizeof, alignof, or memoryof.");
@@ -2915,7 +2878,7 @@ public sealed class Binder
         }
 
         int alignment = runtimeVariableTypeForAlignment.GetAlignmentInMemorySpace(sc);
-        return new BoundLiteralExpression((long)alignment, query.Span, BuiltinTypes.IntegerLiteral);
+        return new BoundLiteralExpression(new ComptimeBladeValue((ComptimeTypeSymbol)BuiltinTypes.IntegerLiteral, (long)alignment), query.Span);
     }
 
     private VariableStorageClass? TryResolveMemorySpace(BoundExpression expression, TextSpan span)
@@ -3130,7 +3093,7 @@ public sealed class Binder
             && targetType is ArrayTypeSymbol targetArray
             && ReferenceEquals(targetArray.ElementType, BuiltinTypes.U8)
             && targetArray.Length is int targetLength
-            && expression is BoundLiteralExpression { Value: string stringValue })
+            && expression is BoundLiteralExpression { Value.Value: string stringValue })
         {
             return LowerStringToArrayLiteral(stringValue, targetArray, targetLength, span, reportMismatch);
         }
@@ -3158,8 +3121,7 @@ public sealed class Binder
         if (exactValue == zeroExtended || exactValue == signExtended)
             return;
 
-        if (targetType is not RuntimeTypeSymbol runtimeTargetType
-            || !runtimeTargetType.TryNormalizeRuntimeObject(exactValue, out object truncatedValue))
+        if (!ComptimeTypeFacts.TryCreateBladeValue(exactValue, targetType, out BladeValue truncatedValue))
         {
             return;
         }
@@ -3168,7 +3130,7 @@ public sealed class Binder
             span,
             exactValue.ToString(CultureInfo.InvariantCulture),
             targetType.Name,
-            Convert.ToString(truncatedValue, CultureInfo.InvariantCulture) ?? "null");
+            Convert.ToString(truncatedValue.Value, CultureInfo.InvariantCulture) ?? "null");
     }
 
     private static bool TryGetCompileTimeIntegerWidth(TypeSymbol type, out int width)
@@ -3214,7 +3176,7 @@ public sealed class Binder
 
         List<BoundExpression> elements = new(targetLength);
         foreach (byte b in bytes)
-            elements.Add(new BoundLiteralExpression((long)b, span, BuiltinTypes.IntegerLiteral));
+            elements.Add(new BoundLiteralExpression(new ComptimeBladeValue((ComptimeTypeSymbol)BuiltinTypes.IntegerLiteral, (long)b), span));
 
         return new BoundArrayLiteralExpression(elements, lastElementIsSpread: false, span, targetArray);
     }

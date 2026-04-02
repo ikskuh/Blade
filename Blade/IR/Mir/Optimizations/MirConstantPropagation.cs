@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Blade.Semantics;
 using Blade.Semantics.Bound;
+using Blade.Source;
 
 namespace Blade.IR.Mir.Optimizations;
 
@@ -17,50 +18,54 @@ public sealed class MirConstantPropagation : IMirOptimization
             List<MirBlock> blocks = new(function.Blocks.Count);
             foreach (MirBlock block in function.Blocks)
             {
-                Dictionary<MirValueId, object?> constants = [];
+                Dictionary<MirValueId, BladeValue?> constants = [];
                 List<MirInstruction> instructions = [];
                 foreach (MirInstruction instruction in block.Instructions)
                 {
                     MirInstruction rewritten = instruction;
-                    if (instruction is MirCopyInstruction copy && TryGetConstant(constants, copy.Source, out object? copyConstant))
+                    if (instruction is MirCopyInstruction copy && TryGetConstant(constants, copy.Source, out BladeValue? copyConstant))
                     {
                         rewritten = new MirConstantInstruction(copy.Result!, copy.ResultType!, copyConstant, copy.Span);
                     }
                     else if (instruction is MirUnaryInstruction unary
-                        && TryGetConstant(constants, unary.Operand, out object? unaryOperand)
-                        && TryFoldUnary(unary.Operator, unaryOperand, out object? unaryResult))
+                        && TryGetConstant(constants, unary.Operand, out BladeValue? unaryOperand)
+                        && TryFoldUnary(unary.Operator, unaryOperand, out object? unaryResult)
+                        && TryCreateConstantInstruction(unary.Result!, unary.ResultType!, unaryResult, unary.Span, out MirInstruction foldedUnary))
                     {
-                        rewritten = new MirConstantInstruction(unary.Result!, unary.ResultType!, unaryResult, unary.Span);
+                        rewritten = foldedUnary;
                     }
                     else if (instruction is MirBinaryInstruction binary
-                        && TryGetConstant(constants, binary.Left, out object? left)
-                        && TryGetConstant(constants, binary.Right, out object? right)
-                        && TryFoldBinary(binary.Operator, left, right, out object? binaryResult))
+                        && TryGetConstant(constants, binary.Left, out BladeValue? left)
+                        && TryGetConstant(constants, binary.Right, out BladeValue? right)
+                        && TryFoldBinary(binary.Operator, left, right, out object? binaryResult)
+                        && TryCreateConstantInstruction(binary.Result!, binary.ResultType!, binaryResult, binary.Span, out MirInstruction foldedBinary))
                     {
-                        rewritten = new MirConstantInstruction(binary.Result!, binary.ResultType!, binaryResult, binary.Span);
+                        rewritten = foldedBinary;
                     }
                     else if (instruction is MirPointerOffsetInstruction pointerOffset
-                        && TryGetConstant(constants, pointerOffset.BaseAddress, out object? pointerValue)
-                        && TryGetConstant(constants, pointerOffset.Delta, out object? deltaValue)
-                        && TryFoldPointerOffset(pointerOffset.OperatorKind, pointerValue, deltaValue, pointerOffset.Stride, out object? offsetResult))
+                        && TryGetConstant(constants, pointerOffset.BaseAddress, out BladeValue? pointerValue)
+                        && TryGetConstant(constants, pointerOffset.Delta, out BladeValue? deltaValue)
+                        && TryFoldPointerOffset(pointerOffset.OperatorKind, pointerValue, deltaValue, pointerOffset.Stride, out object? offsetResult)
+                        && TryCreateConstantInstruction(pointerOffset.Result!, pointerOffset.ResultType!, offsetResult, pointerOffset.Span, out MirInstruction foldedPointerOffset))
                     {
-                        rewritten = new MirConstantInstruction(pointerOffset.Result!, pointerOffset.ResultType!, offsetResult, pointerOffset.Span);
+                        rewritten = foldedPointerOffset;
                     }
                     else if (instruction is MirPointerDifferenceInstruction pointerDifference
-                        && TryGetConstant(constants, pointerDifference.Left, out object? leftPointer)
-                        && TryGetConstant(constants, pointerDifference.Right, out object? rightPointer)
-                        && TryFoldPointerDifference(leftPointer, rightPointer, pointerDifference.Stride, out object? differenceResult))
+                        && TryGetConstant(constants, pointerDifference.Left, out BladeValue? leftPointer)
+                        && TryGetConstant(constants, pointerDifference.Right, out BladeValue? rightPointer)
+                        && TryFoldPointerDifference(leftPointer, rightPointer, pointerDifference.Stride, out object? differenceResult)
+                        && TryCreateConstantInstruction(pointerDifference.Result!, pointerDifference.ResultType!, differenceResult, pointerDifference.Span, out MirInstruction foldedPointerDifference))
                     {
-                        rewritten = new MirConstantInstruction(pointerDifference.Result!, pointerDifference.ResultType!, differenceResult, pointerDifference.Span);
+                        rewritten = foldedPointerDifference;
                     }
                     else if (instruction is MirConvertInstruction convert
                         && convert.Result is MirValueId convertResult
-                        && TryGetConstant(constants, convert.Operand, out object? convertValue)
+                        && TryGetConstant(constants, convert.Operand, out BladeValue? convertValue)
                         && convert.ResultType is RuntimeTypeSymbol runtimeType
-                        && convertValue is not null
-                        && runtimeType.TryNormalizeRuntimeObject(convertValue, out object normalizedValue))
+                        && convertValue is not null)
                     {
-                        rewritten = new MirConstantInstruction(convertResult, convert.ResultType!, normalizedValue, convert.Span);
+                        if (TryCreateConstantInstruction(convertResult, runtimeType, convertValue.Value, convert.Span, out MirInstruction foldedConvert))
+                            rewritten = foldedConvert;
                     }
 
                     if (rewritten.Result is MirValueId result)
@@ -80,7 +85,7 @@ public sealed class MirConstantPropagation : IMirOptimization
 
                 MirTerminator terminator = block.Terminator;
                 if (terminator is MirBranchTerminator branch
-                    && TryGetConstant(constants, branch.Condition, out object? conditionValue)
+                    && TryGetConstant(constants, branch.Condition, out BladeValue? conditionValue)
                     && TryGetBool(conditionValue, out bool condition))
                 {
                     terminator = condition
@@ -104,19 +109,31 @@ public sealed class MirConstantPropagation : IMirOptimization
     }
 
     private static bool TryGetConstant(
-        IReadOnlyDictionary<MirValueId, object?> constants,
+        IReadOnlyDictionary<MirValueId, BladeValue?> constants,
         MirValueId value,
-        out object? constant)
+        out BladeValue? constant)
     {
         return constants.TryGetValue(value, out constant);
     }
 
-    private static bool TryGetBool(object? value, out bool result)
+    private static bool TryGetBool(BladeValue? value, out bool result)
     {
-        switch (value)
+        switch (value?.Value)
         {
             case bool b:
                 result = b;
+                return true;
+            case sbyte sb:
+                result = sb != 0;
+                return true;
+            case byte by:
+                result = by != 0;
+                return true;
+            case short s:
+                result = s != 0;
+                return true;
+            case ushort us:
+                result = us != 0;
                 return true;
             case long l:
                 result = l != 0;
@@ -124,13 +141,29 @@ public sealed class MirConstantPropagation : IMirOptimization
             case int i:
                 result = i != 0;
                 return true;
+            case uint u:
+                result = u != 0;
+                return true;
             default:
                 result = false;
                 return false;
         }
     }
 
-    private static bool TryFoldUnary(BoundUnaryOperatorKind kind, object? operand, out object? result)
+    private static bool TryCreateConstantInstruction(MirValueId result, TypeSymbol resultType, object? rawValue, TextSpan span, out MirInstruction instruction)
+    {
+        BladeValue? normalizedValue = null;
+        if (rawValue is not null && !ComptimeTypeFacts.TryCreateBladeValue(rawValue, resultType, out normalizedValue))
+        {
+            instruction = null!;
+            return false;
+        }
+
+        instruction = new MirConstantInstruction(result, resultType, normalizedValue, span);
+        return true;
+    }
+
+    private static bool TryFoldUnary(BoundUnaryOperatorKind kind, BladeValue? operand, out object? result)
     {
         result = null;
         switch (kind)
@@ -153,7 +186,7 @@ public sealed class MirConstantPropagation : IMirOptimization
         return false;
     }
 
-    private static bool TryFoldBinary(BoundBinaryOperatorKind kind, object? left, object? right, out object? result)
+    private static bool TryFoldBinary(BoundBinaryOperatorKind kind, BladeValue? left, BladeValue? right, out object? result)
     {
         result = null;
         if (TryGetInteger(left, out long leftInt) && TryGetInteger(right, out long rightInt))
@@ -225,7 +258,7 @@ public sealed class MirConstantPropagation : IMirOptimization
 
         if (kind is BoundBinaryOperatorKind.Equals or BoundBinaryOperatorKind.NotEquals)
         {
-            bool equals = Equals(left, right);
+            bool equals = Equals(left?.Value, right?.Value);
             result = kind == BoundBinaryOperatorKind.Equals ? equals : !equals;
             return true;
         }
@@ -260,7 +293,7 @@ public sealed class MirConstantPropagation : IMirOptimization
         return unchecked((int)((bits >> amount) | (bits << ((32 - amount) & 31))));
     }
 
-    private static bool TryFoldPointerOffset(BoundBinaryOperatorKind kind, object? pointerValue, object? deltaValue, int stride, out object? result)
+    private static bool TryFoldPointerOffset(BoundBinaryOperatorKind kind, BladeValue? pointerValue, BladeValue? deltaValue, int stride, out object? result)
     {
         result = null;
         if (!TryGetUnsigned32(pointerValue, out uint pointer) || !TryGetUnsigned32(deltaValue, out uint delta))
@@ -274,7 +307,7 @@ public sealed class MirConstantPropagation : IMirOptimization
         return true;
     }
 
-    private static bool TryFoldPointerDifference(object? leftValue, object? rightValue, int stride, out object? result)
+    private static bool TryFoldPointerDifference(BladeValue? leftValue, BladeValue? rightValue, int stride, out object? result)
     {
         result = null;
         if (!TryGetUnsigned32(leftValue, out uint left) || !TryGetUnsigned32(rightValue, out uint right))
@@ -285,10 +318,13 @@ public sealed class MirConstantPropagation : IMirOptimization
         return true;
     }
 
-    private static bool TryGetInteger(object? value, out long result)
+    private static bool TryGetInteger(BladeValue? value, out long result)
     {
-        switch (value)
+        switch (value?.Value)
         {
+            case sbyte sb:
+                result = sb;
+                return true;
             case long l:
                 result = l;
                 return true;
@@ -298,11 +334,14 @@ public sealed class MirConstantPropagation : IMirOptimization
             case short s:
                 result = s;
                 return true;
+            case ushort us:
+                result = us;
+                return true;
             case byte b:
                 result = b;
                 return true;
             case uint u:
-                result = unchecked((int)u);
+                result = u;
                 return true;
             default:
                 result = 0;
@@ -310,9 +349,9 @@ public sealed class MirConstantPropagation : IMirOptimization
         }
     }
 
-    private static bool TryGetUnsigned32(object? value, out uint result)
+    private static bool TryGetUnsigned32(BladeValue? value, out uint result)
     {
-        switch (value)
+        switch (value?.Value)
         {
             case uint u:
                 result = u;
@@ -343,4 +382,5 @@ public sealed class MirConstantPropagation : IMirOptimization
                 return false;
         }
     }
+
 }

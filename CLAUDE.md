@@ -20,6 +20,15 @@ Pipeline: Lexer → Parser (AST) → Semantic analysis (typed AST, CC tiering) �
 
 Each stage independently testable.
 
+## Task Completion
+
+Your task is completed when:
+
+- You have fulfilled the original prompt
+- `just accept-changes` passes
+- The code coverage for your new code is 100% line coverage
+- You have performed a review of your own changes through `git diff`
+
 ## Coding Style
 
 - Prefer clarity over brevity. No `var` where the type isn't obvious from the RHS.

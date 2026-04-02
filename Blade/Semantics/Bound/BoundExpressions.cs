@@ -18,13 +18,13 @@ public abstract class BoundExpression : BoundNode
 
 public sealed class BoundLiteralExpression : BoundExpression
 {
-    public BoundLiteralExpression(object? value, TextSpan span, TypeSymbol type)
-        : base(BoundNodeKind.LiteralExpression, span, type)
+    public BoundLiteralExpression(BladeValue value, TextSpan span)
+        : base(BoundNodeKind.LiteralExpression, span, Requires.NotNull(value).Type)
     {
-        Value = value;
+        Value = Requires.NotNull(value);
     }
 
-    public object? Value { get; }
+    public BladeValue Value { get; }
 }
 
 public sealed class BoundSymbolExpression : BoundExpression

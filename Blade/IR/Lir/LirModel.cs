@@ -95,16 +95,10 @@ public sealed class LirRegisterOperand : LirOperand
     public LirVirtualRegister Register { get; }
 }
 
-public sealed class LirImmediateOperand : LirOperand
+public sealed class LirImmediateOperand(BladeValue value) : LirOperand
 {
-    public LirImmediateOperand(object? value, TypeSymbol type)
-    {
-        Value = value;
-        Type = type;
-    }
-
-    public object? Value { get; }
-    public TypeSymbol Type { get; }
+    public BladeValue Value { get; } = Requires.NotNull(value);
+    public TypeSymbol Type => Value.Type;
 }
 
 public sealed class LirPlaceOperand : LirOperand

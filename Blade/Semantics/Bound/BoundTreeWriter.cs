@@ -162,7 +162,7 @@ public static class BoundTreeWriter
         switch (expression)
         {
             case BoundLiteralExpression literal:
-                AppendLine(sb, indent, $"Literal<{literal.Type.Name}> {literal.Value ?? "null"}");
+                AppendLine(sb, indent, $"Literal<{literal.Type.Name}> {FormatLiteralValue(literal.Value)}");
                 break;
 
             case BoundSymbolExpression symbol:
@@ -301,5 +301,15 @@ public static class BoundTreeWriter
     {
         sb.Append(' ', indent * 2);
         sb.AppendLine(text);
+    }
+
+    private static string FormatLiteralValue(BladeValue value)
+    {
+        return value.Value switch
+        {
+            VoidValue => "void",
+            UndefinedValue => "undefined",
+            _ => value.Value.ToString() ?? "<?>",
+        };
     }
 }

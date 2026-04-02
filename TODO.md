@@ -335,3 +335,8 @@ the symbol types themselves.
 `FormatPlaceOperand` and `FormatSymbolOperand` seem 100% redundant.
 
 Why isn't a "place" a symbol?
+
+## Refactor comptime on top of BladeValue
+
+Introduce methods for all operators on top of BladeValue, and implement the evaluation logic there.
+

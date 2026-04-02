@@ -9,8 +9,18 @@ public abstract class BladeValue(TypeSymbol type, object value)
     public static ComptimeBladeValue Undefined { get; } = new((ComptimeTypeSymbol)BuiltinTypes.UndefinedLiteral, UndefinedValue.Instance);
 
     public TypeSymbol Type { get; } = Requires.NotNull(type);
-    public object Value { get; } = Requires.NotNull(type).NormalizeValue(Requires.NotNull(value))
-        ?? throw new ArgumentException($"Value '{value}' is not legal for type '{type.Name}'.", nameof(value));
+    public object Value { get; } = ValidateValue(type, value);
+
+    private static object ValidateValue(TypeSymbol type, object value)
+    {
+        Requires.NotNull(type);
+        Requires.NotNull(value);
+
+        if (!type.IsLegalRuntimeObject(value))
+            throw new ArgumentException($"Value '{value}' is not legal for type '{type.Name}'.", nameof(value));
+
+        return value;
+    }
 }
 
 public sealed class RuntimeBladeValue(RuntimeTypeSymbol type, object value) : BladeValue(type, value)
