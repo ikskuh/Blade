@@ -17,26 +17,32 @@ public static class MirLowerer
     {
         Requires.NotNull(program);
 
-        List<StoragePlace> storagePlaces = CollectStoragePlaces(program);
+        (List<StoragePlace> storagePlaces, List<StorageDefinition> storageDefinitions) = CollectStoragePlaces(program);
         BackendSymbolNaming.AssignStorageNames(storagePlaces);
 
         List<MirFunction> functions = new();
-        functions.Add(LowerTopLevel(program, storagePlaces));
+        functions.Add(LowerTopLevel(program, storagePlaces, storageDefinitions));
 
         foreach (BoundFunctionMember functionMember in program.Functions)
-            functions.Add(LowerFunction(functionMember, storagePlaces));
+            functions.Add(LowerFunction(functionMember, storagePlaces, storageDefinitions));
 
-        return new MirModule(storagePlaces, functions);
+        return new MirModule(storagePlaces, storageDefinitions, functions);
     }
 
-    private static MirFunction LowerTopLevel(BoundProgram program, IReadOnlyList<StoragePlace> storagePlaces)
+    private static MirFunction LowerTopLevel(
+        BoundProgram program,
+        IReadOnlyList<StoragePlace> storagePlaces,
+        IReadOnlyList<StorageDefinition> storageDefinitions)
     {
-        FunctionLoweringContext context = new(new FunctionSymbol("$top", FunctionKind.Default), isEntryPoint: true, [], storagePlaces);
+        FunctionLoweringContext context = new(new FunctionSymbol("$top", FunctionKind.Default), isEntryPoint: true, [], storagePlaces, storageDefinitions);
         context.LowerTopLevel(program.GlobalVariables, program.TopLevelStatements);
         return context.Build();
     }
 
-    private static MirFunction LowerFunction(BoundFunctionMember functionMember, IReadOnlyList<StoragePlace> storagePlaces)
+    private static MirFunction LowerFunction(
+        BoundFunctionMember functionMember,
+        IReadOnlyList<StoragePlace> storagePlaces,
+        IReadOnlyList<StorageDefinition> storageDefinitions)
     {
         FunctionSymbol symbol = functionMember.Symbol;
         FunctionLoweringContext context = new(
@@ -44,34 +50,37 @@ public static class MirLowerer
             isEntryPoint: false,
             symbol.ReturnTypes,
             storagePlaces,
+            storageDefinitions,
             symbol.ReturnSlots);
         context.LowerFunctionBody(functionMember.Body, symbol.Parameters);
         return context.Build();
     }
 
-    private static List<StoragePlace> CollectStoragePlaces(BoundProgram program)
+    private static (List<StoragePlace> Places, List<StorageDefinition> Definitions) CollectStoragePlaces(BoundProgram program)
     {
         List<StoragePlace> places = new(program.GlobalVariables.Count);
+        List<StorageDefinition> definitions = [];
         HashSet<Symbol> seenSymbols = [];
         HashSet<string> visitedModules = new(StringComparer.OrdinalIgnoreCase);
-        CollectStoragePlaces(program.GlobalVariables, places, seenSymbols);
+        CollectStoragePlaces(program.GlobalVariables, places, definitions, seenSymbols);
         foreach (ImportedModule importedModule in program.ImportedModules.Values)
-            CollectStoragePlaces(importedModule, places, seenSymbols, visitedModules);
+            CollectStoragePlaces(importedModule, places, definitions, seenSymbols, visitedModules);
 
         foreach (Symbol symbol in CollectAddressTakenSymbols(program))
         {
             if (!seenSymbols.Add(symbol))
                 continue;
 
-            places.Add(new StoragePlace(symbol, StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, staticInitializer: null));
+            places.Add(new StoragePlace(symbol, StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null));
         }
 
-        return places;
+        return (places, definitions);
     }
 
     private static void CollectStoragePlaces(
         IReadOnlyList<BoundGlobalVariableMember> globals,
         ICollection<StoragePlace> places,
+        ICollection<StorageDefinition> definitions,
         ISet<Symbol> seenSymbols)
     {
         foreach (BoundGlobalVariableMember global in globals)
@@ -82,32 +91,36 @@ public static class MirLowerer
 
             StoragePlaceKind kind = MapStoragePlaceKind(symbol);
 
-            object? staticInitializer = null;
+            RuntimeBladeValue? staticInitializer = null;
             if (kind is StoragePlaceKind.AllocatableGlobalRegister
                     or StoragePlaceKind.AllocatableLutEntry
                     or StoragePlaceKind.AllocatableHubEntry
                 && global.Initializer is not null
-                && TryEvaluateStaticValue(global.Initializer, out object? value))
+                && TryEvaluateStaticValue(global.Initializer, symbol.Type, out RuntimeBladeValue? value))
             {
                 staticInitializer = value;
             }
 
-            places.Add(new StoragePlace(symbol, kind, symbol.FixedAddress, staticInitializer));
+            StoragePlace place = new(symbol, kind, symbol.FixedAddress);
+            places.Add(place);
+            if (staticInitializer is not null)
+                definitions.Add(new StorageDefinition(place, staticInitializer));
         }
     }
 
     private static void CollectStoragePlaces(
         ImportedModule module,
         ICollection<StoragePlace> places,
+        ICollection<StorageDefinition> definitions,
         ISet<Symbol> seenSymbols,
         ISet<string> visitedModules)
     {
         if (!visitedModules.Add(module.ResolvedFilePath))
             return;
 
-        CollectStoragePlaces(module.Program.GlobalVariables, places, seenSymbols);
+        CollectStoragePlaces(module.Program.GlobalVariables, places, definitions, seenSymbols);
         foreach (ImportedModule nestedModule in module.ImportedModules.Values)
-            CollectStoragePlaces(nestedModule, places, seenSymbols, visitedModules);
+            CollectStoragePlaces(nestedModule, places, definitions, seenSymbols, visitedModules);
     }
 
     private static StoragePlaceKind MapStoragePlaceKind(VariableSymbol symbol)
@@ -318,6 +331,7 @@ public static class MirLowerer
         private readonly List<BlockBuilder> _blocks = [];
         private readonly Stack<LoopContext> _loopStack = [];
         private readonly Dictionary<Symbol, StoragePlace> _storagePlacesBySymbol = [];
+        private readonly HashSet<StoragePlace> _preInitializedStoragePlaces = [];
         private readonly BlockBuilder _entryBlock;
         private readonly BlockBuilder _exitBlock;
         private readonly Dictionary<Symbol, MirValueId> _currentValues = [];
@@ -328,6 +342,7 @@ public static class MirLowerer
             bool isEntryPoint,
             IReadOnlyList<TypeSymbol> returnTypes,
             IReadOnlyList<StoragePlace> storagePlaces,
+            IReadOnlyList<StorageDefinition> storageDefinitions,
             IReadOnlyList<ReturnSlot>? returnSlots = null)
         {
             _symbol = Requires.NotNull(symbol);
@@ -336,6 +351,8 @@ public static class MirLowerer
             _returnSlots = returnSlots ?? [];
             foreach (StoragePlace place in storagePlaces)
                 _storagePlacesBySymbol[place.Symbol] = place;
+            foreach (StorageDefinition definition in storageDefinitions)
+                _preInitializedStoragePlaces.Add(definition.Place);
 
             _entryBlock = CreateBlock();
             _exitBlock = CreateBlock();
@@ -358,7 +375,7 @@ public static class MirLowerer
                 if (global.Initializer is null || !TryGetStoragePlace(global.Symbol, out StoragePlace place))
                     continue;
 
-                if (place.HasStaticInitializer
+                if (_preInitializedStoragePlaces.Contains(place)
                     && place.Kind is StoragePlaceKind.AllocatableGlobalRegister or StoragePlaceKind.AllocatableHubEntry)
                 {
                     continue;
@@ -1066,7 +1083,12 @@ public static class MirLowerer
 
         private MirValueId EmitDefaultValue(TypeSymbol type, TextSpan span)
         {
-            object? value = type.IsBool ? false : type.IsInteger ? 0 : null;
+            object? value = type switch
+            {
+                BoolTypeSymbol => false,
+                IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol => 0,
+                _ => null,
+            };
             return EmitConstant(value, type, span);
         }
 
@@ -1100,10 +1122,10 @@ public static class MirLowerer
                     foreach (BoundExpression argument in intrinsicCall.Arguments)
                         arguments.Add(LowerExpression(argument));
 
-                    MirValueId? result = intrinsicCall.Type.IsVoid ? null : NextValue();
+                    MirValueId? result = intrinsicCall.Type is VoidTypeSymbol ? null : NextValue();
                     _currentBlock.Instructions.Add(new MirIntrinsicCallInstruction(
                         result,
-                        intrinsicCall.Type.IsVoid ? null : intrinsicCall.Type,
+                        intrinsicCall.Type is VoidTypeSymbol ? null : intrinsicCall.Type,
                         intrinsicCall.Mnemonic,
                         arguments,
                         intrinsicCall.Span));
@@ -1323,10 +1345,10 @@ public static class MirLowerer
             foreach (BoundExpression argument in callExpression.Arguments)
                 arguments.Add(LowerExpression(argument));
 
-            MirValueId? result = callExpression.Type.IsVoid ? null : NextValue();
+            MirValueId? result = callExpression.Type is VoidTypeSymbol ? null : NextValue();
             _currentBlock.Instructions.Add(new MirCallInstruction(
                 result,
-                callExpression.Type.IsVoid ? null : callExpression.Type,
+                callExpression.Type is VoidTypeSymbol ? null : callExpression.Type,
                 callExpression.Function,
                 arguments,
                 callExpression.Span));
@@ -1805,9 +1827,9 @@ public static class MirLowerer
 
         private static int GetPointerElementStride(TypeSymbol pointeeType, VariableStorageClass storageClass)
         {
-            bool ok = TypeFacts.TryGetPointerElementStride(pointeeType, storageClass, out int stride);
-            Assert.Invariant(ok, $"Pointer arithmetic requires a concrete element stride for '{pointeeType.Name}' in '{storageClass}'.");
-            return stride;
+            Assert.Invariant(pointeeType is RuntimeTypeSymbol, $"Pointer arithmetic requires a concrete element stride for '{pointeeType.Name}' in '{storageClass}'.");
+            RuntimeTypeSymbol runtimeType = (RuntimeTypeSymbol)pointeeType;
+            return runtimeType.GetPointerElementStride(storageClass);
         }
 
         private MirValueId EmitBitfieldExtract(MirValueId receiver, AggregateMemberSymbol member, TextSpan span)
@@ -1884,16 +1906,16 @@ public static class MirLowerer
         while (inner is BoundConversionExpression conversion)
             inner = conversion.Expression;
 
-        return inner.Type.IsUndefinedLiteral
-            || inner is BoundLiteralExpression { Value: null, Type.IsVoid: false };
+        return inner.Type is UndefinedLiteralTypeSymbol
+            || (inner is BoundLiteralExpression { Value: null } literal && literal.Type is not VoidTypeSymbol);
     }
 
-    private static bool TryEvaluateStaticValue(BoundExpression expression, out object? value)
+    private static bool TryEvaluateStaticValue(BoundExpression expression, TypeSymbol targetType, out RuntimeBladeValue? value)
     {
         switch (expression)
         {
-            case BoundLiteralExpression literal:
-                value = literal.Value;
+            case BoundLiteralExpression literal when targetType is RuntimeTypeSymbol runtimeType && literal.Value is not null:
+                value = new RuntimeBladeValue(runtimeType, literal.Value);
                 return true;
         }
 

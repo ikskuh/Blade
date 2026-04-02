@@ -11,14 +11,6 @@ namespace Blade.IR.Asm;
 
 public static class FinalAssemblyWriter
 {
-    private static bool IsDataDirective(string text)
-    {
-        ReadOnlySpan<char> t = text.AsSpan().TrimStart();
-        return t.StartsWith("LONG", StringComparison.OrdinalIgnoreCase)
-            || t.StartsWith("WORD", StringComparison.OrdinalIgnoreCase)
-            || t.StartsWith("BYTE", StringComparison.OrdinalIgnoreCase);
-    }
-
     public static string Write(AsmModule module)
     {
         return Build(module).Text;
@@ -37,12 +29,24 @@ public static class FinalAssemblyWriter
     {
         Requires.NotNull(module);
 
-        HashSet<string> functionNames = module.Functions
-            .Select(static function => function.Name)
-            .ToHashSet(StringComparer.Ordinal);
-
         StringBuilder sb = new();
-        WriteConSectionContents(sb, module, functionNames);
+        AsmDataBlock? externalBlock = module.DataBlocks.FirstOrDefault(static block => block.Kind == AsmDataBlockKind.External);
+        if (externalBlock is null)
+            return string.Empty;
+
+        foreach (AsmExternalBindingDefinition binding in externalBlock.Definitions.OfType<AsmExternalBindingDefinition>())
+        {
+            StoragePlace place = binding.Place;
+            if (place.FixedAddress is not int fixedAddress || place.SpecialRegisterAlias is not null)
+                continue;
+
+            sb.Append("    ");
+            sb.Append(FormatSymbol(place));
+            sb.Append(" = $");
+            sb.Append(fixedAddress.ToString("X", CultureInfo.InvariantCulture));
+            sb.AppendLine();
+        }
+
         return sb.ToString();
     }
 
@@ -54,10 +58,6 @@ public static class FinalAssemblyWriter
     private static string WriteDatSectionContents(AsmModule module, bool includeDefaultBladeHalt)
     {
         Requires.NotNull(module);
-
-        HashSet<string> functionNames = module.Functions
-            .Select(static function => function.Name)
-            .ToHashSet(StringComparer.Ordinal);
 
         StringBuilder sb = new();
         sb.AppendLine("    ' --- Blade compiler output ---");
@@ -74,71 +74,19 @@ public static class FinalAssemblyWriter
                 sb.AppendLine("  blade_entry");
             sb.Append("  ");
             sb.AppendLine(FormatFunctionIdentifier(function.Name));
-            WriteFunctionNodes(sb, function.Nodes, functionNames, includeDefaultBladeHalt && function.IsEntryPoint);
+            WriteFunctionNodes(sb, function.Nodes);
+            if (includeDefaultBladeHalt && function.IsEntryPoint)
+                WriteDefaultBladeHalt(sb);
         }
 
+        WriteDataBlocks(sb, module.DataBlocks);
         return sb.ToString();
     }
 
-    private static void WriteConSectionContents(StringBuilder sb, AsmModule module, IReadOnlySet<string> functionNames)
+    private static void WriteFunctionNodes(StringBuilder sb, IReadOnlyList<AsmNode> nodes)
     {
-        foreach (StoragePlace place in module.StoragePlaces)
-        {
-            if (place.Kind is not (StoragePlaceKind.FixedRegisterAlias
-                    or StoragePlaceKind.FixedLutAlias
-                    or StoragePlaceKind.FixedHubAlias)
-                || !place.FixedAddress.HasValue)
-            {
-                continue;
-            }
-
-            if (place.SpecialRegisterAlias is not null)
-                continue;
-
-            sb.Append("    ");
-            sb.Append(FormatIdentifier(place.EmittedName, functionNames));
-            sb.Append(" = $");
-            sb.Append(place.FixedAddress.Value.ToString("X", CultureInfo.InvariantCulture));
-            sb.AppendLine();
-        }
-    }
-
-    private static void WriteFunctionNodes(
-        StringBuilder sb,
-        IReadOnlyList<AsmNode> nodes,
-        IReadOnlySet<string> functionNames,
-        bool includeDefaultBladeHalt)
-    {
-        int index = 0;
-        bool wroteDefaultBladeHalt = false;
-        while (index < nodes.Count)
-        {
-            if (includeDefaultBladeHalt
-                && !wroteDefaultBladeHalt
-                && nodes[index] is AsmSectionNode)
-            {
-                WriteDefaultBladeHalt(sb);
-                wroteDefaultBladeHalt = true;
-            }
-
-            if (TryWriteRegisterFile(sb, nodes, ref index, functionNames))
-                continue;
-
-            if (TryWriteLutFile(sb, nodes, ref index, functionNames))
-                continue;
-
-            if (TryWriteHubFile(sb, nodes, ref index, functionNames))
-                continue;
-
-            if (TryWriteConstantFile(sb, nodes, ref index, functionNames))
-                continue;
-
-            WriteNode(sb, nodes[index], functionNames);
-            index++;
-        }
-
-        if (includeDefaultBladeHalt && !wroteDefaultBladeHalt)
-            WriteDefaultBladeHalt(sb);
+        foreach (AsmNode node in nodes)
+            WriteNode(sb, node);
     }
 
     private static void WriteDefaultBladeHalt(StringBuilder sb)
@@ -150,171 +98,82 @@ public static class FinalAssemblyWriter
         sb.AppendLine("    NOP");
     }
 
-    private static bool TryWriteRegisterFile(
-        StringBuilder sb,
-        IReadOnlyList<AsmNode> nodes,
-        ref int index,
-        IReadOnlySet<string> functionNames)
+    private static void WriteDataBlocks(StringBuilder sb, IReadOnlyList<AsmDataBlock> dataBlocks)
     {
-        if (nodes[index] is not AsmSectionNode { Section: AsmStorageSection.Register })
-            return false;
-
-        List<(string Label, string Directive, string Value)> rows = [];
-        int rowIndex = index + 1;
-        while (rowIndex + 1 < nodes.Count
-            && nodes[rowIndex] is AsmLabelNode label
-            && nodes[rowIndex + 1] is AsmDataNode data)
+        foreach (AsmDataBlockKind kind in new[] { AsmDataBlockKind.Register, AsmDataBlockKind.Constant, AsmDataBlockKind.Lut, AsmDataBlockKind.External, AsmDataBlockKind.Hub })
         {
-            rows.Add((label.Name, FormatDataDirective(data.Directive), FormatDataValue(data, functionNames)));
-            rowIndex += 2;
-        }
+            AsmDataBlock? block = dataBlocks.FirstOrDefault(candidate => candidate.Kind == kind);
+            if (block is null)
+                continue;
 
-        sb.AppendLine();
-        sb.AppendLine("' --- register file ---");
-        if (rows.Count == 0)
-        {
-            index = rowIndex;
-            return true;
-        }
-
-        int maxLabelWidth = rows.Max(static row => row.Label.Length);
-        int maxDirectiveWidth = rows.Max(static row => row.Directive.Length);
-        int maxValueWidth = rows.Max(static row => row.Value.Length);
-
-        foreach ((string label, string directive, string value) in rows)
-        {
-            sb.Append(FormatIdentifier(label, functionNames).PadRight(maxLabelWidth));
-            sb.Append(' ');
-            sb.Append(directive.PadRight(maxDirectiveWidth));
-            sb.Append(' ');
-            sb.Append(value.PadLeft(maxValueWidth));
-            sb.AppendLine();
-        }
-
-        index = rowIndex;
-        return true;
-    }
-
-
-    private static bool TryWriteDataFileSection(
-        StringBuilder sb,
-        IReadOnlyList<AsmNode> nodes,
-        ref int index,
-        AsmStorageSection section,
-        string sectionHeader,
-        IReadOnlySet<string> functionNames)
-    {
-        if (nodes[index] is not AsmSectionNode sectionNode || sectionNode.Section != section)
-            return false;
-
-        List<(string Label, string Directive, string Value)> rows = [];
-        int rowIndex = index + 1;
-        while (rowIndex + 1 < nodes.Count
-            && nodes[rowIndex] is AsmLabelNode label
-            && nodes[rowIndex + 1] is AsmDataNode data)
-        {
-            rows.Add((label.Name, FormatDataDirective(data.Directive), FormatDataValue(data, functionNames)));
-            rowIndex += 2;
-        }
-
-        sb.AppendLine();
-        sb.AppendLine(sectionHeader);
-        if (rows.Count > 0)
-        {
-            int maxLabelWidth = rows.Max(static row => row.Label.Length);
-            int maxDirectiveWidth = rows.Max(static row => row.Directive.Length);
-            int maxValueWidth = rows.Max(static row => row.Value.Length);
-
-            foreach ((string label, string directive, string value) in rows)
+            switch (kind)
             {
-                sb.Append(FormatIdentifier(label, functionNames).PadRight(maxLabelWidth));
-                sb.Append(' ');
-                sb.Append(directive.PadRight(maxDirectiveWidth));
-                sb.Append(' ');
-                sb.Append(value.PadLeft(maxValueWidth));
-                sb.AppendLine();
+                case AsmDataBlockKind.Register:
+                    WriteAllocatedBlock(sb, block, "' --- register file ---");
+                    break;
+                case AsmDataBlockKind.Constant:
+                    WriteAllocatedBlock(sb, block, "' --- constant file ---");
+                    break;
+                case AsmDataBlockKind.Lut:
+                    sb.AppendLine();
+                    sb.AppendLine("    fit $200");
+                    sb.AppendLine("    org $200");
+                    WriteAllocatedBlock(sb, block, "' --- lut file ---");
+                    break;
+                case AsmDataBlockKind.External:
+                    break;
+                case AsmDataBlockKind.Hub:
+                    sb.AppendLine();
+                    sb.AppendLine("    orgh");
+                    WriteAllocatedBlock(sb, block, "' --- hub file ---", emitAlignmentDirectives: true);
+                    break;
             }
         }
-
-        index = rowIndex;
-        return true;
     }
 
-    private static bool TryWriteLutFile(
+    private static void WriteAllocatedBlock(
         StringBuilder sb,
-        IReadOnlyList<AsmNode> nodes,
-        ref int index,
-        IReadOnlySet<string> functionNames)
+        AsmDataBlock block,
+        string header,
+        bool emitAlignmentDirectives = false)
     {
-        if (nodes[index] is not AsmSectionNode { Section: AsmStorageSection.Lut })
-            return false;
-
-        // COG code/data must fit within the first 512 longs; LUT starts at $200.
-        sb.AppendLine();
-        sb.AppendLine("    fit $200");
-        sb.AppendLine("    org $200");
-
-        return TryWriteDataFileSection(sb, nodes, ref index, AsmStorageSection.Lut, "' --- lut file ---", functionNames);
-    }
-
-    private static bool TryWriteHubFile(
-        StringBuilder sb,
-        IReadOnlyList<AsmNode> nodes,
-        ref int index,
-        IReadOnlySet<string> functionNames)
-    {
-        if (nodes[index] is not AsmSectionNode { Section: AsmStorageSection.Hub })
-            return false;
-
-        // Switch from COG/LUT addressing to hub addressing.
-        sb.AppendLine();
-        sb.AppendLine("    orgh");
-
-        return TryWriteDataFileSection(sb, nodes, ref index, AsmStorageSection.Hub, "' --- hub file ---", functionNames);
-    }
-
-    private static bool TryWriteConstantFile(
-        StringBuilder sb,
-        IReadOnlyList<AsmNode> nodes,
-        ref int index,
-        IReadOnlySet<string> functionNames)
-    {
-        if (nodes[index] is not AsmSectionNode { Section: AsmStorageSection.Constant })
-            return false;
-
-        List<(string Label, string Directive, string Value)> rows = [];
-        int rowIndex = index + 1;
-        while (rowIndex + 1 < nodes.Count
-            && nodes[rowIndex] is AsmLabelNode label
-            && nodes[rowIndex + 1] is AsmDataNode data)
-        {
-            rows.Add((label.Name, FormatDataDirective(data.Directive), FormatDataValue(data, functionNames)));
-            rowIndex += 2;
-        }
+        List<AsmAllocatedStorageDefinition> definitions = block.Definitions
+            .OfType<AsmAllocatedStorageDefinition>()
+            .OrderByDescending(static definition => definition.AlignmentBytes)
+            .ThenBy(static definition => definition.Symbol.Name, StringComparer.Ordinal)
+            .ToList();
 
         sb.AppendLine();
-        sb.AppendLine("' --- constant file ---");
-        if (rows.Count == 0)
-        {
-            index = rowIndex;
-            return true;
-        }
+        sb.AppendLine(header);
+        if (definitions.Count == 0)
+            return;
 
-        int maxLabelWidth = rows.Max(static row => row.Label.Length);
-        int maxDirectiveWidth = rows.Max(static row => row.Directive.Length);
+        int maxLabelWidth = definitions.Max(static definition => FormatSymbol(definition.Symbol).Length);
+        int maxDirectiveWidth = definitions.Max(static definition => FormatDataDirective(definition.Directive).Length);
+        int currentAlignment = -1;
 
-        foreach ((string label, string directive, string value) in rows)
+        foreach (AsmAllocatedStorageDefinition definition in definitions)
         {
-            sb.Append(FormatIdentifier(label, functionNames).PadRight(maxLabelWidth));
+            if (emitAlignmentDirectives && definition.AlignmentBytes != currentAlignment)
+            {
+                currentAlignment = definition.AlignmentBytes;
+                if (currentAlignment >= 4)
+                    sb.AppendLine("    ALIGNL");
+                else if (currentAlignment == 2)
+                    sb.AppendLine("    ALIGNW");
+            }
+
+            string label = FormatSymbol(definition.Symbol);
+            string directive = FormatDataDirective(definition.Directive);
+            string value = FormatDataValue(definition);
+
+            sb.Append(label.PadRight(maxLabelWidth));
             sb.Append(' ');
             sb.Append(directive.PadRight(maxDirectiveWidth));
             sb.Append(' ');
             sb.Append(value);
             sb.AppendLine();
         }
-
-        index = rowIndex;
-        return true;
     }
 
     private static string FormatDataDirective(AsmDataDirective directive)
@@ -328,43 +187,29 @@ public static class FinalAssemblyWriter
         };
     }
 
-    private static string FormatDataValue(AsmDataNode data, IReadOnlySet<string> functionNames)
+    private static string FormatDataValue(AsmAllocatedStorageDefinition definition)
     {
-        string initializer = data.Initializer switch
+        object? initialValue = definition.InitialValue?.Value;
+        string initializer = initialValue switch
         {
             null => "0",
             bool boolean => boolean ? "1" : "0",
-            uint u32 when data.UseHexFormat => $"${u32:X8}",
-            int i32 when data.UseHexFormat => $"${unchecked((uint)i32):X8}",
-            IAsmSymbol symbol => FormatIdentifier(symbol.Name, functionNames),
+            uint u32 when definition.UseHexFormat => $"${u32:X8}",
+            int i32 when definition.UseHexFormat => $"${unchecked((uint)i32):X8}",
             IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
-            _ => data.Initializer.ToString() ?? "0",
+            _ => initialValue.ToString()!,
         };
 
-        return data.Count > 1 ? $"{initializer}[{data.Count}]" : initializer;
+        return definition.Count > 1 ? $"{initializer}[{definition.Count}]" : initializer;
     }
 
-    private static void WriteNode(StringBuilder sb, AsmNode node, IReadOnlySet<string> functionNames)
+    private static void WriteNode(StringBuilder sb, AsmNode node)
     {
         switch (node)
         {
-            case AsmDirectiveNode directive:
-                // Only emit data storage directives (LONG, WORD, BYTE).
-                // Internal metadata markers like "function $top" are silently dropped.
-                if (IsDataDirective(directive.Text))
-                {
-                    sb.Append("    ");
-                    sb.AppendLine(directive.Text);
-                }
-                break;
-
-            case AsmSectionNode:
-            case AsmDataNode:
-                break;
-
             case AsmLabelNode label:
                 sb.Append("  ");
-                sb.AppendLine(FormatIdentifier(label.Name, functionNames));
+                sb.AppendLine(FormatSymbol(label.Label));
                 break;
 
             case AsmCommentNode comment:
@@ -375,7 +220,6 @@ public static class FinalAssemblyWriter
             case AsmVolatileRegionBeginNode:
             case AsmVolatileRegionEndNode:
                 break;
-
 
             case AsmInstructionNode instruction:
                 sb.Append("    ");
@@ -393,14 +237,14 @@ public static class FinalAssemblyWriter
                     {
                         if (i > 0)
                             sb.Append(", ");
-                        sb.Append(FormatOperand(instruction, i, functionNames));
+                        sb.Append(FormatOperand(instruction, i));
                     }
                 }
 
                 if (instruction.FlagEffect != P2FlagEffect.None)
                 {
                     sb.Append(' ');
-                    sb.Append(FormatFlagEffect(instruction.FlagEffect));
+                    sb.Append(instruction.FlagEffect);
                 }
 
                 sb.AppendLine();
@@ -408,92 +252,45 @@ public static class FinalAssemblyWriter
         }
     }
 
-    private static string FormatOperand(
-        AsmInstructionNode instruction,
-        int operandIndex,
-        IReadOnlySet<string> functionNames)
+    private static string FormatOperand(AsmInstructionNode instruction, int operandIndex)
     {
         AsmOperand operand = instruction.Operands[operandIndex];
-
         return operand switch
         {
-            AsmPhysicalRegisterOperand phys => phys.Name,
-            AsmRegisterOperand virt => virt.Format(),
-            AsmImmediateOperand imm => imm.Format(),
+            AsmPhysicalRegisterOperand physical => physical.Name,
+            AsmRegisterOperand register => register.Format(),
+            AsmImmediateOperand immediate => immediate.Format(),
             AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Immediate } => "#0",
             AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Register } => "0",
-            AsmPlaceOperand place => FormatPlaceOperand(place, functionNames),
-            AsmSymbolOperand sym => FormatSymbolOperand(sym, instruction, operandIndex, functionNames),
+            AsmSymbolOperand symbol => FormatSymbolOperand(symbol),
+            AsmLabelRefOperand labelRef => labelRef.Format(),
             _ => operand.Format(),
         };
     }
 
-    private static string FormatPlaceOperand(AsmPlaceOperand place, IReadOnlySet<string> functionNames)
+    private static string FormatSymbolOperand(AsmSymbolOperand operand)
     {
-        string name = FormatIdentifier(place.Place.EmittedName, functionNames);
-
-        // LUT places live at org $200+ in the unified address space, but
-        // RDLUT/WRLUT expect a 9-bit LUT-relative index (0–511).  Emit
-        // #label - $200 so the assembler computes the correct offset.
-        if (place.Place.StorageClass == VariableStorageClass.Lut)
-            return $"#{name} - $200";
-
-        // Hub places live after orgh.  Labels in hub mode already evaluate
-        // to hub addresses, so #label gives the correct immediate value.
-        if (place.Place.StorageClass == VariableStorageClass.Hub)
-            return $"#{name}";
-
-        return name;
-    }
-
-    /// <summary>
-    /// Format a symbol operand with or without # prefix depending on the operand form.
-    /// - Immediate-form operands use #label
-    /// - Register/special-register references stay plain
-    /// </summary>
-    private static string FormatSymbolOperand(
-        AsmSymbolOperand sym,
-        AsmInstructionNode instruction,
-        int operandIndex,
-        IReadOnlySet<string> functionNames)
-    {
-        P2InstructionOperandInfo operandInfo = P2InstructionMetadata.GetOperandInfo(
-            instruction.Mnemonic,
-            instruction.Operands.Count,
-            operandIndex);
-
-        if (sym.AddressingMode == AsmSymbolAddressingMode.Immediate)
+        if (operand.Symbol is StoragePlace { StorageClass: VariableStorageClass.Lut } lutPlace
+            && operand.AddressingMode == AsmSymbolAddressingMode.Immediate)
         {
-            Assert.Invariant(
-                operandInfo.SupportsImmediateSyntax,
-                $"Instruction '{instruction.Opcode}' operand {operandIndex} does not accept immediate symbols.");
-            return $"#{FormatIdentifier(sym.Name, functionNames)}";
+            return $"#{FormatSymbol(lutPlace)} - $200";
         }
 
-        Assert.Invariant(
-            !IsImmediateOnlyOperand(operandInfo),
-            $"Instruction '{instruction.Opcode}' operand {operandIndex} requires an immediate symbol.");
-        return FormatIdentifier(sym.Name, functionNames);
+        string formatted = FormatSymbol(operand.Symbol);
+        return operand.AddressingMode == AsmSymbolAddressingMode.Immediate
+            ? $"#{formatted}"
+            : formatted;
     }
 
-    private static bool IsImmediateOnlyOperand(P2InstructionOperandInfo operandInfo)
-        => operandInfo.SupportsImmediateSyntax
-            && operandInfo.Access == P2OperandAccess.None
-            && operandInfo.Role == P2OperandRole.N;
-
-    private static string FormatFlagEffect(P2FlagEffect effect)
+    private static string FormatSymbol(IAsmSymbol symbol)
     {
-        return effect == P2FlagEffect.None ? string.Empty : effect.ToString();
-    }
-
-    private static string FormatIdentifier(string name, IReadOnlySet<string> functionNames)
-    {
-        if (P2InstructionMetadata.TryParseSpecialRegister(name, out _))
-            return name;
-
-        return functionNames.Contains(name)
-            ? FormatFunctionIdentifier(name)
-            : BackendSymbolNaming.SanitizeIdentifier(name);
+        return symbol switch
+        {
+            AsmSpecialRegisterSymbol => symbol.Name,
+            AsmFunction => FormatFunctionIdentifier(symbol.Name),
+            AsmFunctionReferenceSymbol => FormatFunctionIdentifier(symbol.Name),
+            _ => BackendSymbolNaming.SanitizeIdentifier(symbol.Name),
+        };
     }
 
     private static string FormatFunctionIdentifier(string name)

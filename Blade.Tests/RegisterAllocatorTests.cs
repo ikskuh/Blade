@@ -17,13 +17,16 @@ public class RegisterAllocatorTests
         AsmRegisterOperand source = AsmRegister(1);
         AsmRegisterOperand copy = AsmRegister(2);
 
-        AsmModule asmModule = new([
-            CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
+        AsmModule asmModule = new(
+            [],
+            [],
             [
-                new AsmInstructionNode(P2Mnemonic.MOV, [copy, source]),
-                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(P2SpecialRegister.OUTA), copy]),
-            ]),
-        ]);
+                CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
+                [
+                    new AsmInstructionNode(P2Mnemonic.MOV, [copy, source]),
+                    new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(P2SpecialRegister.OUTA), copy]),
+                ]),
+            ]);
 
         EmitResult emit = CodegenPipeline.Emit(CreateBuildResult(asmModule), new EmitOptions
         {
@@ -40,13 +43,16 @@ public class RegisterAllocatorTests
         AsmRegisterOperand source = AsmRegister(1);
         AsmRegisterOperand copy = AsmRegister(2);
 
-        AsmModule asmModule = new([
-            CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
+        AsmModule asmModule = new(
+            [],
+            [],
             [
-                new AsmInstructionNode(P2Mnemonic.MOV, [copy, source]),
-                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(P2SpecialRegister.OUTA), copy]),
-            ]),
-        ]);
+                CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
+                [
+                    new AsmInstructionNode(P2Mnemonic.MOV, [copy, source]),
+                    new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(P2SpecialRegister.OUTA), copy]),
+                ]),
+            ]);
 
         EmitResult emit = CodegenPipeline.Emit(CreateBuildResult(asmModule), new EmitOptions
         {

@@ -21,7 +21,6 @@ public sealed class AsmCopyPropagation : PerFunctionAsmOptimization
                     break;
 
                 case AsmLabelNode:
-                case AsmDirectiveNode:
                 case AsmVolatileRegionBeginNode:
                 case AsmVolatileRegionEndNode:
                     aliases.Clear();

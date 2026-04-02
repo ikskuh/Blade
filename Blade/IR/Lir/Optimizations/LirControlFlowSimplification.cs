@@ -18,7 +18,7 @@ public sealed class LirControlFlowSimplification : ILirOptimization
             functions.Add(new LirFunction(function.SourceFunction, merged));
         }
 
-        LirModule result = new(input.StoragePlaces, functions);
+        LirModule result = new(input.StoragePlaces, input.StorageDefinitions, functions);
         return LirTextWriter.Write(result) != LirTextWriter.Write(input) ? result : null;
     }
 

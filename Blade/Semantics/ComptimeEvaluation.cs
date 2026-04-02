@@ -22,74 +22,49 @@ internal readonly record struct ComptimeFailure(ComptimeFailureKind Kind, TextSp
 
 internal readonly record struct ComptimeSupportResult(bool IsSupported, ComptimeFailure Failure);
 
-internal enum ComptimeType
-{
-    Void,
-    Undefined,
-    Bool,
-    Long,
-    Int,
-    UInt,
-    String,
-
-    /// <summary>
-    /// The comptime evaluation failed due to a evaluation error.
-    /// </summary>
-    EvaluationError,
-
-    /// <summary>
-    /// The comptime evaluation failed due to an unsupported construct in comptime code.
-    /// </summary>
-    Unsupported,
-}
-
 internal sealed class ComptimeResult
 {
-    /// <summary>
-    /// The value of the "void" type.
-    /// </summary>
-    public static readonly ComptimeResult Void = new(ComptimeType.Void, null);
-
-    /// <summary>
-    /// The value "undefined"
-    /// </summary>
-    public static readonly ComptimeResult Undefined = new(ComptimeType.Undefined, null);
-
-    /// <summary>
-    /// Truthy boolean value
-    /// </summary>
+    public static readonly ComptimeResult Void = new(BladeValue.Void);
+    public static readonly ComptimeResult Undefined = new(BladeValue.Undefined);
     public static readonly ComptimeResult True = new(true);
-
-    /// <summary>
-    /// Falsy boolean value
-    /// </summary>
     public static readonly ComptimeResult False = new(false);
 
-    private readonly object? value;
+    private readonly BladeValue? value;
+    private readonly ComptimeFailure? failure;
 
-    private ComptimeResult(ComptimeType type, object? value)
+    private ComptimeResult(BladeValue value)
     {
-        this.Type = type;
-        this.value = value;
+        this.value = Requires.NotNull(value);
     }
 
-    public ComptimeResult(bool value) : this(ComptimeType.Bool, value) { }
-    public ComptimeResult(long value) : this(ComptimeType.Long, value) { }
-    public ComptimeResult(int value) : this(ComptimeType.Int, value) { }
-    public ComptimeResult(uint value) : this(ComptimeType.UInt, value) { }
-    public ComptimeResult(string value) : this(ComptimeType.String, value) { }
+    public ComptimeResult(bool value)
+        : this(new RuntimeBladeValue(BuiltinTypes.Bool, value))
+    {
+    }
+
+    public ComptimeResult(long value)
+        : this(new ComptimeBladeValue((ComptimeTypeSymbol)BuiltinTypes.IntegerLiteral, value))
+    {
+    }
+
+    public ComptimeResult(int value)
+        : this(new ComptimeBladeValue((ComptimeTypeSymbol)BuiltinTypes.IntegerLiteral, value))
+    {
+    }
+
+    public ComptimeResult(uint value)
+        : this(new ComptimeBladeValue((ComptimeTypeSymbol)BuiltinTypes.IntegerLiteral, value))
+    {
+    }
+
+    public ComptimeResult(string value)
+        : this(new ComptimeBladeValue((ComptimeTypeSymbol)BuiltinTypes.String, value))
+    {
+    }
 
     public ComptimeResult(ComptimeFailureKind kind, TextSpan span, string detail)
     {
-        this.Type = kind switch
-        {
-            ComptimeFailureKind.ForbiddenSymbolAccess => ComptimeType.Unsupported,
-            ComptimeFailureKind.UnsupportedConstruct => ComptimeType.Unsupported,
-            ComptimeFailureKind.NotEvaluable => ComptimeType.EvaluationError,
-            ComptimeFailureKind.FuelExhausted => ComptimeType.EvaluationError,
-            _ => Assert.UnreachableValue<ComptimeType>($"Unsupported ComptimeFailureKind: {kind}"),
-        };
-        this.value = new ComptimeFailure(kind, span, detail);
+        failure = new ComptimeFailure(kind, span, detail);
     }
 
     public ComptimeResult(ComptimeFailure failure)
@@ -97,75 +72,44 @@ internal sealed class ComptimeResult
     {
     }
 
-    private bool TryGetValue<T>(ComptimeType expectedType, out T? result)
+    public BladeValue Value
     {
-        if (this.Type != expectedType)
+        get
         {
-            result = default;
-            return false;
+            Assert.Invariant(value is not null, "Failed comptime results do not have a value.");
+            return value;
         }
-        result = (T?)this.value;
-        return true;
     }
 
     public bool TryGetBool(out bool result)
     {
-        result = default;
-        if (!this.TryGetValue<bool>(ComptimeType.Bool, out var erased))
-            return false;
-        result = (bool)erased;
-        return true;
+        return TryGetPayload(out result);
     }
 
     public bool TryGetLong(out long result)
     {
-        result = default;
-        if (!this.TryGetValue<long>(ComptimeType.Long, out var erased))
-            return false;
-        result = (long)erased;
-        return true;
+        return TryGetPayload(out result);
     }
 
     public bool TryGetInt(out int result)
     {
-        result = default;
-        if (!this.TryGetValue<int>(ComptimeType.Int, out var erased))
-            return false;
-        result = (int)erased;
-        return true;
+        return TryGetPayload(out result);
     }
 
     public bool TryGetUInt(out uint result)
     {
-        result = default;
-        if (!this.TryGetValue<uint>(ComptimeType.UInt, out var erased))
-            return false;
-        result = (uint)erased;
-        return true;
+        return TryGetPayload(out result);
     }
 
     public bool TryGetString(out string result)
     {
-        result = "";
-        if (!this.TryGetValue<string>(ComptimeType.String, out var erased))
-            return false;
-        Assert.Invariant(erased != null);
-        result = (string)erased;
-        return true;
+        return TryGetPayload(out result);
     }
 
     public bool TryGetFailure(out ComptimeFailure result)
     {
-        result = default;
-        if (!this.TryGetValue<ComptimeFailure>(ComptimeType.EvaluationError, out var erased))
-        {
-            if (!this.TryGetValue<ComptimeFailure>(ComptimeType.Unsupported, out erased))
-            {
-                return false;
-            }
-        }
-        result = (ComptimeFailure)erased;
-        return true;
+        result = failure ?? default;
+        return failure is not null;
     }
 
     /// <summary>
@@ -175,39 +119,61 @@ internal sealed class ComptimeResult
     /// <returns></returns>
     public bool TryConvertToLong(out long result)
     {
-        long? value = this.Type switch
+        if (IsFailed)
         {
-            ComptimeType.Bool => null,
-            ComptimeType.EvaluationError => null,
-            ComptimeType.Int => (int)this.value!,
-            ComptimeType.UInt => (uint)this.value!,
-            ComptimeType.Long => (long)this.value!,
-            ComptimeType.String => null,
-            ComptimeType.Undefined => null,
-            ComptimeType.Unsupported => null,
-            ComptimeType.Void => null,
-            _ => Assert.UnreachableValue<long?>($"Unexpected ComptimeType {this.Type}"),
-        };
-        result = value ?? 0L;
-        return value != null;
+            result = 0L;
+            return false;
+        }
+
+        object payload = Value.Value;
+        switch (payload)
+        {
+            case sbyte sbyteValue:
+                result = sbyteValue;
+                return true;
+            case byte byteValue:
+                result = byteValue;
+                return true;
+            case short shortValue:
+                result = shortValue;
+                return true;
+            case ushort ushortValue:
+                result = ushortValue;
+                return true;
+            case int intValue:
+                result = intValue;
+                return true;
+            case uint uintValue:
+                result = uintValue;
+                return true;
+            case long longValue:
+                result = longValue;
+                return true;
+            default:
+                result = 0L;
+                return false;
+        }
     }
 
-    public ComptimeType Type { get; }
+    public TypeSymbol? Type => value?.Type;
 
-    public bool IsFailed => this.Type switch
-    {
-        ComptimeType.EvaluationError => true,
-        ComptimeType.Unsupported => true,
-        _ => false,
-    };
+    public bool IsFailed => failure is not null;
+    public bool IsUndefined => !IsFailed && ReferenceEquals(Value.Type, BuiltinTypes.UndefinedLiteral);
+    public bool IsVoid => !IsFailed && ReferenceEquals(Value.Type, BuiltinTypes.Void);
 
-    public bool IsNumeric => this.Type switch
+    public bool IsNumeric => !IsFailed && Value.Value is sbyte or byte or short or ushort or int or uint or long;
+
+    private bool TryGetPayload<T>(out T result)
     {
-        ComptimeType.Int => true,
-        ComptimeType.UInt => true,
-        ComptimeType.Long => true,
-        _ => false,
-    };
+        if (IsFailed || Value.Value is not T typedValue)
+        {
+            result = default!;
+            return false;
+        }
+
+        result = typedValue;
+        return true;
+    }
 }
 
 
@@ -307,7 +273,11 @@ internal static class ComptimeTypeFacts
             return false;
         }
 
-        return TypeFacts.TryNormalizeValue(value, targetType, out normalized);
+        if (targetType is RuntimeTypeSymbol runtimeType && value is not null)
+            return runtimeType.TryNormalizeRuntimeObject(value, out normalized!);
+
+        normalized = null;
+        return false;
     }
 
     private static bool TryConvertConvertibleToInt64(IConvertible convertible, out long converted)
@@ -1292,18 +1262,18 @@ internal sealed class ComptimeEvaluator
 
     private static ComptimeResult NormalizeLiteral(ComptimeResult value, TypeSymbol targetType, TextSpan span)
     {
-        if (targetType.IsVoid)
+        if (targetType is VoidTypeSymbol)
             return ComptimeResult.Void;
 
-        if (value.Type == ComptimeType.Undefined)
+        if (value.IsUndefined)
             return ComptimeResult.Undefined;
 
-        if (targetType.IsUnknown)
+        if (targetType is UnknownTypeSymbol)
             return value;
 
-        if (targetType.IsUndefinedLiteral)
+        if (targetType is UndefinedLiteralTypeSymbol)
         {
-            return value.Type == ComptimeType.Undefined
+            return value.IsUndefined
                 ? ComptimeResult.Undefined
                 : new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'.");
         }
@@ -1330,13 +1300,16 @@ internal sealed class ComptimeEvaluator
             return new ComptimeResult(integerLiteral);
         }
 
-        return value.Type switch
-        {
-            ComptimeType.Int when value.TryGetInt(out int intValue) => NormalizeConcreteLiteral(intValue, targetType, span),
-            ComptimeType.UInt when value.TryGetUInt(out uint uintValue) => NormalizeConcreteLiteral(uintValue, targetType, span),
-            ComptimeType.Long when value.TryGetLong(out long longValue) => NormalizeConcreteLiteral(longValue, targetType, span),
-            _ => new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'."),
-        };
+        if (value.TryGetInt(out int intValue))
+            return NormalizeConcreteLiteral(intValue, targetType, span);
+
+        if (value.TryGetUInt(out uint uintValue))
+            return NormalizeConcreteLiteral(uintValue, targetType, span);
+
+        if (value.TryGetLong(out long longValue))
+            return NormalizeConcreteLiteral(longValue, targetType, span);
+
+        return new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'.");
     }
 
     private static ComptimeResult NormalizeConcreteLiteral<T>(T rawValue, TypeSymbol targetType, TextSpan span)
@@ -1351,7 +1324,7 @@ internal sealed class ComptimeEvaluator
     {
         return value switch
         {
-            null when type.IsVoid => ComptimeResult.Void,
+            null when type is VoidTypeSymbol => ComptimeResult.Void,
             null => ComptimeResult.Undefined,
             bool boolValue => boolValue ? ComptimeResult.True : ComptimeResult.False,
             long longValue => new ComptimeResult(longValue),

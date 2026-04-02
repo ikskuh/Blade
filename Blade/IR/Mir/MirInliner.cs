@@ -70,7 +70,7 @@ public static class MirInliner
                 rewrittenFunctions.Add(mutable.ToImmutable());
             }
 
-            current = new MirModule(current.StoragePlaces, rewrittenFunctions);
+            current = new MirModule(current.StoragePlaces, current.StorageDefinitions, rewrittenFunctions);
             if (!changed)
                 break;
         }

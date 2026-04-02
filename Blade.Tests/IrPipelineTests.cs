@@ -808,25 +808,30 @@ public class IrPipelineTests
     [Test]
     public void FinalAssemblyWriter_FormatsInlineAsmAndRegisterFileForReadability()
     {
-        StoragePlace r4 = new(CreateVariableSymbol("r4", scopeKind: VariableScopeKind.GlobalStorage, storageClass: VariableStorageClass.Reg), StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, staticInitializer: null, emittedName: "_r4");
-        AsmModule module = new([],
-        [
-            CreateAsmFunction("$top", isEntryPoint: true, CallingConventionTier.EntryPoint,
+        StoragePlace r4 = new(CreateVariableSymbol("r4", scopeKind: VariableScopeKind.GlobalStorage, storageClass: VariableStorageClass.Reg), StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, emittedName: "_r4");
+        StoragePlace inputWord = new(CreateVariableSymbol("input_word_7", scopeKind: VariableScopeKind.GlobalStorage, storageClass: VariableStorageClass.Reg), StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, emittedName: "g_input_word_7");
+        StoragePlace deadCodeVisible = new(CreateVariableSymbol("dead_code_visible_10", scopeKind: VariableScopeKind.GlobalStorage, storageClass: VariableStorageClass.Reg), StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, emittedName: "g_dead_code_visible_10");
+        AsmModule module = new(
+            [inputWord, deadCodeVisible, r4],
             [
-                new AsmLabelNode("$top_bb0"),
-                new AsmCommentNode("inline asm typed begin"),
-                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(r4, AsmSymbolAddressingMode.Register), new AsmImmediateOperand(42)]),
-                new AsmCommentNode("inline asm typed end"),
-                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(r4, AsmSymbolAddressingMode.Register), new AsmImmediateOperand(0)]),
-                new AsmSectionNode(AsmStorageSection.Register),
-                new AsmLabelNode("g_input_word_7"),
-                new AsmDataNode(AsmDataDirective.Long, 13),
-                new AsmLabelNode("g_dead_code_visible_10"),
-                new AsmDataNode(AsmDataDirective.Long, 0),
-                new AsmLabelNode("_r4"),
-                new AsmDataNode(AsmDataDirective.Long, 0),
-            ]),
-        ]);
+                new AsmDataBlock(
+                    AsmDataBlockKind.Register,
+                    [
+                        new AsmAllocatedStorageDefinition(inputWord, VariableStorageClass.Reg, BuiltinTypes.U32, new RuntimeBladeValue(BuiltinTypes.U32, 13)),
+                        new AsmAllocatedStorageDefinition(deadCodeVisible, VariableStorageClass.Reg, BuiltinTypes.U32, new RuntimeBladeValue(BuiltinTypes.U32, 0)),
+                        new AsmAllocatedStorageDefinition(r4, VariableStorageClass.Reg, BuiltinTypes.U32, new RuntimeBladeValue(BuiltinTypes.U32, 0)),
+                    ]),
+            ],
+            [
+                CreateAsmFunction("$top", isEntryPoint: true, CallingConventionTier.EntryPoint,
+                [
+                    new AsmLabelNode("$top_bb0"),
+                    new AsmCommentNode("inline asm typed begin"),
+                    new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(r4, AsmSymbolAddressingMode.Register), new AsmImmediateOperand(42)]),
+                    new AsmCommentNode("inline asm typed end"),
+                    new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(r4, AsmSymbolAddressingMode.Register), new AsmImmediateOperand(0)]),
+                ]),
+            ]);
 
         string assembly = FinalAssemblyWriter.Write(module);
 
@@ -835,8 +840,8 @@ public class IrPipelineTests
         Assert.That(assembly, Does.Contain("' inline asm typed end"));
         Assert.That(assembly, Does.Contain("MOV _r4, #0"));
         Assert.That(assembly, Does.Contain("g_input_word_7         LONG 13"));
-        Assert.That(assembly, Does.Contain("g_dead_code_visible_10 LONG  0"));
-        Assert.That(assembly, Does.Contain("_r4                    LONG  0"));
+        Assert.That(assembly, Does.Contain("g_dead_code_visible_10 LONG 0"));
+        Assert.That(assembly, Does.Contain("_r4                    LONG 0"));
     }
 
     [Test]
@@ -847,16 +852,18 @@ public class IrPipelineTests
                 new AsmLabelNode("step_bb0"),
                 new AsmInstructionNode(P2Mnemonic.RET, []),
             ]);
-        AsmModule module = new([],
-        [
-            step,
-            CreateAsmFunction("caller", isEntryPoint: true, CallingConventionTier.EntryPoint,
+        AsmModule module = new(
+            [],
+            [],
             [
-                new AsmLabelNode("caller_bb0"),
-                new AsmInstructionNode(P2Mnemonic.CALLB, [new AsmSymbolOperand(step, AsmSymbolAddressingMode.Immediate)]),
-                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmPhysicalRegisterOperand(new P2Register(0)), new AsmSymbolOperand(step, AsmSymbolAddressingMode.Register)]),
-            ]),
-        ]);
+                step,
+                CreateAsmFunction("caller", isEntryPoint: true, CallingConventionTier.EntryPoint,
+                [
+                    new AsmLabelNode("caller_bb0"),
+                    new AsmInstructionNode(P2Mnemonic.CALLB, [new AsmSymbolOperand(step, AsmSymbolAddressingMode.Immediate)]),
+                    new AsmInstructionNode(P2Mnemonic.MOV, [new AsmPhysicalRegisterOperand(new P2Register(0)), new AsmSymbolOperand(step, AsmSymbolAddressingMode.Register)]),
+                ]),
+            ]);
 
         string assembly = FinalAssemblyWriter.Write(module);
 
@@ -2110,7 +2117,7 @@ public class IrPipelineTests
                     new LirReturnTerminator([], span)),
             ]);
 
-        AsmModule asmModule = AsmLowerer.Lower(new LirModule([accumulatorPlace], [function]));
+        AsmModule asmModule = AsmLowerer.Lower(new LirModule([accumulatorPlace], [], [function]));
         string asmir = AsmTextWriter.Write(asmModule);
 
         Assert.That(asmir, Does.Contain("SAL g_acc"));

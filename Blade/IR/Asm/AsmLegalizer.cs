@@ -50,35 +50,38 @@ public static class AsmLegalizer
             functions.Add(legalized);
         }
 
-        // Append constant register definitions at the end of the last function
-        // (or the entry point) as labeled LONGs
-        if (constantRegisters.Count > 0 && functions.Count > 0)
+        List<AsmDataBlock> dataBlocks = [.. module.DataBlocks];
+        if (constantRegisters.Count > 0)
         {
-            int entryIndex = functions.Count - 1;
-            for (int i = 0; i < functions.Count; i++)
-            {
-                if (functions[i].IsEntryPoint)
-                {
-                    entryIndex = i;
-                    break;
-                }
-            }
-
-            AsmFunction entry = functions[entryIndex];
-            List<AsmNode> extendedNodes = new(entry.Nodes.Count + (constantRegisters.Count * 2));
-            extendedNodes.AddRange(entry.Nodes);
-
-            extendedNodes.Add(new AsmSectionNode(AsmStorageSection.Constant));
+            List<AsmDataDefinition> constantDefinitions = [];
             foreach ((uint value, AsmSharedConstantSymbol label) in constantRegisters.OrderBy(static pair => pair.Key))
             {
-                extendedNodes.Add(new AsmLabelNode(label.Name));
-                extendedNodes.Add(new AsmDataNode(AsmDataDirective.Long, value, useHexFormat: true));
+                constantDefinitions.Add(new AsmAllocatedStorageDefinition(
+                    label,
+                    VariableStorageClass.Reg,
+                    BuiltinTypes.U32,
+                    new RuntimeBladeValue(BuiltinTypes.U32, value),
+                    useHexFormat: true));
             }
 
-            functions[entryIndex] = new AsmFunction(entry, extendedNodes);
+            ReplaceDataBlock(dataBlocks, new AsmDataBlock(AsmDataBlockKind.Constant, constantDefinitions));
         }
 
-        return new AsmModule(module.StoragePlaces, functions);
+        return new AsmModule(module.StoragePlaces, dataBlocks, functions);
+    }
+
+    private static void ReplaceDataBlock(List<AsmDataBlock> dataBlocks, AsmDataBlock replacement)
+    {
+        for (int i = 0; i < dataBlocks.Count; i++)
+        {
+            if (dataBlocks[i].Kind == replacement.Kind)
+            {
+                dataBlocks[i] = replacement;
+                return;
+            }
+        }
+
+        dataBlocks.Add(replacement);
     }
 
     private static void CountLargeImmediates(

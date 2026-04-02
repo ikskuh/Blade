@@ -14,7 +14,7 @@ public class MirModelTests
     private static StoragePlace CreatePlace(string name)
     {
         VariableSymbol symbol = new(name, BuiltinTypes.U32, isConst: false, VariableStorageClass.Reg, VariableScopeKind.GlobalStorage, isExtern: false, fixedAddress: null, alignment: null);
-        return new StoragePlace(symbol, StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, staticInitializer: null, emittedName: $"g_{name}");
+        return new StoragePlace(symbol, StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, emittedName: $"g_{name}");
     }
 
     private static InlineAsmVarBindingSlot CreateBindingSlot(string name) => new(name);

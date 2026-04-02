@@ -395,7 +395,7 @@ public sealed class Binder
                 }
             }
 
-            if (returnSlots.Count == 1 && returnSlots[0].Type.IsVoid)
+            if (returnSlots.Count == 1 && returnSlots[0].Type is VoidTypeSymbol)
                 returnSlots.Clear();
 
             // Auto-assign flag placements for multi-return: slot 1 -> FlagC, slot 2 -> FlagZ
@@ -407,7 +407,7 @@ public sealed class Binder
                 {
                     ReturnSlot slot = returnSlots[i];
                     if (slot.Placement == ReturnPlacement.Register
-                        && (slot.Type.IsBool || ReferenceEquals(slot.Type, BuiltinTypes.Bit)))
+                        && (slot.Type is BoolTypeSymbol || ReferenceEquals(slot.Type, BuiltinTypes.Bit)))
                     {
                         returnSlots[i] = new ReturnSlot(slot.Type, nextFlag);
                         nextFlag = nextFlag == ReturnPlacement.FlagC ? ReturnPlacement.FlagZ : nextFlag;
@@ -731,12 +731,12 @@ public sealed class Binder
                 {
                     start = BindExpression(range.Start);
                     end = BindExpression(range.End);
-                    if (!start.Type.IsInteger)
+                    if (start.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
                         _diagnostics.ReportTypeMismatch(range.Start.Span, "integer", start.Type.Name);
-                    if (!end.Type.IsInteger)
+                    if (end.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
                         _diagnostics.ReportTypeMismatch(range.End.Span, "integer", end.Type.Name);
                     // Normalize inclusive range: end + 1 → exclusive
-                    if (range.IsInclusive && end.Type.IsInteger)
+                    if (range.IsInclusive && end.Type is IntegerLiteralTypeSymbol or IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol)
                     {
                         end = new BoundBinaryExpression(
                             end,
@@ -993,7 +993,7 @@ public sealed class Binder
         BoundExpression iterable = BindExpression(forStatement.Iterable);
         ForBindingSyntax? binding = forStatement.Binding;
         bool isArrayIteration = iterable.Type is ArrayTypeSymbol;
-        bool isIntegerIteration = iterable.Type.IsInteger || iterable.Type == BuiltinTypes.IntegerLiteral;
+        bool isIntegerIteration = iterable.Type is IntegerLiteralTypeSymbol or IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol;
         bool isRangeIteration = iterable is BoundRangeExpression;
 
         VariableSymbol? itemVariable = null;
@@ -1109,7 +1109,7 @@ public sealed class Binder
                 alignment: null);
             _currentScope.TryDeclare(indexVariable);
         }
-        else if (!iterable.Type.IsUnknown)
+        else if (iterable.Type is not UnknownTypeSymbol)
         {
             _diagnostics.ReportTypeMismatch(forStatement.Iterable.Span, "integer, array, or range", iterable.Type.Name);
         }
@@ -1337,7 +1337,7 @@ public sealed class Binder
             {
                 BoundExpression expression = BindExpression(index.Expression);
                 BoundExpression indexExpr = BindExpression(index.Index);
-                if (!indexExpr.Type.IsInteger)
+                if (indexExpr.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
                     _diagnostics.ReportTypeMismatch(index.Index.Span, "integer", indexExpr.Type.Name);
 
                 TypeSymbol type = expression.Type switch
@@ -1589,9 +1589,13 @@ public sealed class Binder
             case BoundUnaryOperatorKind.UnaryPlus:
             {
                 BoundExpression operand = BindExpression(unary.Operand);
-                if (!operand.Type.IsInteger)
+                if (operand.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
                     _diagnostics.ReportTypeMismatch(unary.Operand.Span, "integer", operand.Type.Name);
-                return new BoundUnaryExpression(unaryOperator, operand, unary.Span, operand.Type.IsInteger ? operand.Type : BuiltinTypes.Unknown);
+                return new BoundUnaryExpression(
+                    unaryOperator,
+                    operand,
+                    unary.Span,
+                    operand.Type is IntegerLiteralTypeSymbol or IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol ? operand.Type : BuiltinTypes.Unknown);
             }
 
             case BoundUnaryOperatorKind.AddressOf:
@@ -1782,7 +1786,8 @@ public sealed class Binder
             if (!IsComparable(left.Type, right.Type))
                 _diagnostics.ReportTypeMismatch(binary.Span, left.Type.Name, right.Type.Name);
 
-            if (left.Type.IsInteger && right.Type.IsInteger)
+            if (left.Type is IntegerLiteralTypeSymbol or IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol
+                && right.Type is IntegerLiteralTypeSymbol or IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol)
             {
                 TypeSymbol numericType = BestNumericType(left.Type, right.Type);
                 left = BindConversion(left, numericType, left.Span, reportMismatch: false);
@@ -1794,15 +1799,25 @@ public sealed class Binder
 
         if (binaryOperator.Kind is BoundBinaryOperatorKind.LogicalAnd or BoundBinaryOperatorKind.LogicalOr)
         {
-            if (!left.Type.IsBool || !right.Type.IsBool)
+            if (left.Type is not BoolTypeSymbol || right.Type is not BoolTypeSymbol)
                 _diagnostics.ReportTypeMismatch(binary.Span, "bool", $"{left.Type.Name}, {right.Type.Name}");
             left = BindConversion(left, BuiltinTypes.Bool, left.Span, reportMismatch: false);
             right = BindConversion(right, BuiltinTypes.Bool, right.Span, reportMismatch: false);
             return new BoundBinaryExpression(left, binaryOperator, right, binary.Span, BuiltinTypes.Bool);
         }
 
-        if (!left.Type.IsInteger || !right.Type.IsInteger)
+        if (left.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol
+            || right.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
+        {
             _diagnostics.ReportTypeMismatch(binary.Span, "integer", $"{left.Type.Name}, {right.Type.Name}");
+        }
+
+        if (left.Type is EnumTypeSymbol || right.Type is EnumTypeSymbol)
+        {
+            _diagnostics.ReportTypeMismatch(binary.Span, "integer", $"{left.Type.Name}, {right.Type.Name}");
+            TypeSymbol fallbackType = left.Type is EnumTypeSymbol ? left.Type : right.Type;
+            return new BoundBinaryExpression(left, binaryOperator, right, binary.Span, fallbackType);
+        }
 
         TypeSymbol resultType = BestNumericType(left.Type, right.Type);
         left = BindConversion(left, resultType, left.Span, reportMismatch: false);
@@ -1907,10 +1922,11 @@ public sealed class Binder
 
     private BoundExpression BindPointerDeltaExpression(BoundExpression expression, TextSpan span, string operatorText)
     {
-        if (expression.Type.IsUnknown)
+        if (expression.Type is UnknownTypeSymbol)
             return expression;
 
-        if (expression.Type is PointerLikeTypeSymbol || !expression.Type.IsInteger)
+        if (expression.Type is PointerLikeTypeSymbol
+            || expression.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
         {
             _diagnostics.ReportInvalidPointerArithmetic(span, operatorText);
             return new BoundErrorExpression(span);
@@ -1984,7 +2000,7 @@ public sealed class Binder
     {
         BoundExpression expression = BindExpression(indexExpression.Expression);
         BoundExpression index = BindExpression(indexExpression.Index);
-        if (!index.Type.IsInteger)
+        if (index.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
             _diagnostics.ReportTypeMismatch(indexExpression.Index.Span, "integer", index.Type.Name);
 
         TypeSymbol type = expression.Type switch
@@ -2172,18 +2188,18 @@ public sealed class Binder
 
     private static ComptimeResult NormalizeFoldedValue(ComptimeResult value, TypeSymbol targetType, TextSpan span)
     {
-        if (targetType.IsVoid)
+        if (targetType is VoidTypeSymbol)
             return ComptimeResult.Void;
 
-        if (value.Type == ComptimeType.Undefined)
+        if (value.IsUndefined)
             return ComptimeResult.Undefined;
 
-        if (targetType.IsUnknown)
+        if (targetType is UnknownTypeSymbol)
             return value;
 
-        if (targetType.IsUndefinedLiteral)
+        if (targetType is UndefinedLiteralTypeSymbol)
         {
-            return value.Type == ComptimeType.Undefined
+            return value.IsUndefined
                 ? ComptimeResult.Undefined
                 : new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'.");
         }
@@ -2210,13 +2226,16 @@ public sealed class Binder
             return new ComptimeResult(integerLiteral);
         }
 
-        return value.Type switch
-        {
-            ComptimeType.Int when value.TryGetInt(out int intValue) => NormalizeConcreteFoldedValue(intValue, targetType, span),
-            ComptimeType.UInt when value.TryGetUInt(out uint uintValue) => NormalizeConcreteFoldedValue(uintValue, targetType, span),
-            ComptimeType.Long when value.TryGetLong(out long longValue) => NormalizeConcreteFoldedValue(longValue, targetType, span),
-            _ => new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'."),
-        };
+        if (value.TryGetInt(out int intValue))
+            return NormalizeConcreteFoldedValue(intValue, targetType, span);
+
+        if (value.TryGetUInt(out uint uintValue))
+            return NormalizeConcreteFoldedValue(uintValue, targetType, span);
+
+        if (value.TryGetLong(out long longValue))
+            return NormalizeConcreteFoldedValue(longValue, targetType, span);
+
+        return new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'.");
     }
 
     private static ComptimeResult NormalizeConcreteFoldedValue<T>(T rawValue, TypeSymbol targetType, TextSpan span)
@@ -2234,7 +2253,7 @@ public sealed class Binder
 
     private static object? MaterializeLiteralValue(ComptimeResult value, TypeSymbol targetType)
     {
-        if (targetType.IsVoid || value.Type == ComptimeType.Undefined)
+        if (targetType is VoidTypeSymbol || value.IsUndefined)
             return null;
 
         if (value.TryGetBool(out bool boolValue))
@@ -2252,14 +2271,14 @@ public sealed class Binder
         if (value.TryGetString(out string stringValue))
             return stringValue;
 
-        return Assert.UnreachableValue<object?>($"Unsupported folded comptime result '{value.Type}'.");
+        return Assert.UnreachableValue<object?>($"Unsupported folded comptime result '{value.Type?.Name ?? "<failed>"}'.");
     }
 
     private static ComptimeResult CreateComptimeResult(object? value, TypeSymbol type)
     {
         return value switch
         {
-            null when type.IsVoid => ComptimeResult.Void,
+            null when type is VoidTypeSymbol => ComptimeResult.Void,
             null => ComptimeResult.Undefined,
             bool boolValue => new ComptimeResult(boolValue),
             long longValue => new ComptimeResult(longValue),
@@ -2568,7 +2587,7 @@ public sealed class Binder
         TypeSymbol resolvedType = ResolveTypeAlias(nameExpr.Name.Text, nameExpr.Name.Span);
         if (resolvedType is not StructTypeSymbol structType)
         {
-            if (!resolvedType.IsUnknown)
+            if (resolvedType is not UnknownTypeSymbol)
                 _diagnostics.ReportTypeMismatch(nameExpr.Name.Span, "struct", resolvedType.Name);
             return new BoundErrorExpression(syntax.Span);
         }
@@ -2705,9 +2724,9 @@ public sealed class Binder
         BoundExpression start = BindExpression(rangeExpression.Start);
         BoundExpression end = BindExpression(rangeExpression.End);
 
-        if (!start.Type.IsInteger)
+        if (start.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
             _diagnostics.ReportTypeMismatch(rangeExpression.Start.Span, "integer", start.Type.Name);
-        if (!end.Type.IsInteger)
+        if (end.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
             _diagnostics.ReportTypeMismatch(rangeExpression.End.Span, "integer", end.Type.Name);
 
         return new BoundRangeExpression(start, end, rangeExpression.IsInclusive, rangeExpression.Span);
@@ -2733,17 +2752,21 @@ public sealed class Binder
         BoundExpression expression = BindExpression(bitcastExpression.Value);
         TypeSymbol targetType = BindType(bitcastExpression.TargetType);
 
-        if (!TypeFacts.IsScalarCastType(expression.Type) || !TypeFacts.IsScalarCastType(targetType))
+        int? sourceWidth = expression.Type switch
+        {
+            RuntimeTypeSymbol { IsScalarCastType: true, ScalarWidthBits: int width } => width,
+            IntegerLiteralTypeSymbol when targetType is RuntimeTypeSymbol { IsScalarCastType: true, ScalarWidthBits: int inferredTargetWidth } => inferredTargetWidth,
+            _ => default(int?),
+        };
+
+        if (sourceWidth is not int knownSourceWidth
+            || targetType is not RuntimeTypeSymbol { IsScalarCastType: true, ScalarWidthBits: int targetWidth })
         {
             _diagnostics.ReportInvalidExplicitCast(bitcastExpression.Span, expression.Type.Name, targetType.Name);
             return new BoundErrorExpression(bitcastExpression.Span);
         }
 
-        bool gotSourceWidth = TypeFacts.TryGetScalarWidth(expression.Type, out int sourceWidth);
-        bool gotTargetWidth = TypeFacts.TryGetScalarWidth(targetType, out int targetWidth);
-        Assert.Invariant(gotSourceWidth && gotTargetWidth, "Scalar cast types must always report a scalar width.");
-
-        if (sourceWidth != targetWidth)
+        if (knownSourceWidth != targetWidth)
         {
             _diagnostics.ReportBitcastSizeMismatch(bitcastExpression.Span, expression.Type.Name, targetType.Name);
             return new BoundErrorExpression(bitcastExpression.Span);
@@ -2779,23 +2802,25 @@ public sealed class Binder
 
         if (query.Keyword.Kind == TokenKind.SizeofKeyword)
         {
-            if (!TypeFacts.TryGetSizeInMemorySpace(type, storageClass.Value, out int size))
+            if (type is not RuntimeTypeSymbol runtimeType)
             {
                 _diagnostics.ReportQueryUnsupportedType(query.Subject.Span, operatorName, type.Name);
                 return new BoundErrorExpression(query.Span);
             }
 
+            int size = runtimeType.GetSizeInMemorySpace(storageClass.Value);
             return new BoundLiteralExpression((long)size, query.Span, BuiltinTypes.IntegerLiteral);
         }
 
         Assert.Invariant(query.Keyword.Kind == TokenKind.AlignofKeyword, "Two-arg query must be sizeof or alignof.");
 
-        if (!TypeFacts.TryGetAlignmentInMemorySpace(type, storageClass.Value, out int alignment))
+        if (type is not RuntimeTypeSymbol runtimeTypeForAlignment)
         {
             _diagnostics.ReportQueryUnsupportedType(query.Subject.Span, operatorName, type.Name);
             return new BoundErrorExpression(query.Span);
         }
 
+        int alignment = runtimeTypeForAlignment.GetAlignmentInMemorySpace(storageClass.Value);
         return new BoundLiteralExpression((long)alignment, query.Span, BuiltinTypes.IntegerLiteral);
     }
 
@@ -2871,23 +2896,25 @@ public sealed class Binder
 
         if (query.Keyword.Kind == TokenKind.SizeofKeyword)
         {
-            if (!TypeFacts.TryGetSizeInMemorySpace(variable.Type, sc, out int size))
+            if (variable.Type is not RuntimeTypeSymbol runtimeVariableType)
             {
                 _diagnostics.ReportQueryUnsupportedType(query.Subject.Span, operatorName, variable.Type.Name);
                 return new BoundErrorExpression(query.Span);
             }
 
+            int size = runtimeVariableType.GetSizeInMemorySpace(sc);
             return new BoundLiteralExpression((long)size, query.Span, BuiltinTypes.IntegerLiteral);
         }
 
         Assert.Invariant(query.Keyword.Kind == TokenKind.AlignofKeyword, "Variable query must be sizeof, alignof, or memoryof.");
 
-        if (!TypeFacts.TryGetAlignmentInMemorySpace(variable.Type, sc, out int alignment))
+        if (variable.Type is not RuntimeTypeSymbol runtimeVariableTypeForAlignment)
         {
             _diagnostics.ReportQueryUnsupportedType(query.Subject.Span, operatorName, variable.Type.Name);
             return new BoundErrorExpression(query.Span);
         }
 
+        int alignment = runtimeVariableTypeForAlignment.GetAlignmentInMemorySpace(sc);
         return new BoundLiteralExpression((long)alignment, query.Span, BuiltinTypes.IntegerLiteral);
     }
 
@@ -3076,7 +3103,7 @@ public sealed class Binder
 
     private BoundExpression BindConversion(BoundExpression expression, TypeSymbol targetType, TextSpan span, bool reportMismatch)
     {
-        if (targetType.IsUnknown || expression.Type.IsUnknown)
+        if (targetType is UnknownTypeSymbol || expression.Type is UnknownTypeSymbol)
             return expression;
 
         if (targetType.Name == expression.Type.Name)
@@ -3131,8 +3158,11 @@ public sealed class Binder
         if (exactValue == zeroExtended || exactValue == signExtended)
             return;
 
-        if (!TypeFacts.TryNormalizeValue(exactValue, targetType, out object? truncatedValue))
+        if (targetType is not RuntimeTypeSymbol runtimeTargetType
+            || !runtimeTargetType.TryNormalizeRuntimeObject(exactValue, out object truncatedValue))
+        {
             return;
+        }
 
         _diagnostics.ReportComptimeIntegerTruncation(
             span,
@@ -3149,7 +3179,14 @@ public sealed class Binder
             return true;
         }
 
-        return TypeFacts.TryGetIntegerWidth(type, out width);
+        if (type is RuntimeTypeSymbol { ScalarWidthBits: int runtimeWidth })
+        {
+            width = runtimeWidth;
+            return true;
+        }
+
+        width = 0;
+        return false;
     }
 
     private static long SignExtend(ulong value, int width)
@@ -3184,7 +3221,7 @@ public sealed class Binder
 
     private static bool CanExplicitlyCast(TypeSymbol sourceType, TypeSymbol targetType)
     {
-        if (sourceType.IsUnknown || targetType.IsUnknown)
+        if (sourceType is UnknownTypeSymbol || targetType is UnknownTypeSymbol)
             return true;
 
         if (ReferenceEquals(sourceType, targetType))
@@ -3195,7 +3232,7 @@ public sealed class Binder
 
         if (sourceType is EnumTypeSymbol openEnumSource
             && openEnumSource.IsOpen
-            && targetType.IsInteger
+            && targetType is IntegerLiteralTypeSymbol or IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol
             && openEnumSource.BackingType.Name == targetType.Name)
         {
             return true;
@@ -3203,16 +3240,15 @@ public sealed class Binder
 
         if (targetType is EnumTypeSymbol openEnumTarget
             && openEnumTarget.IsOpen
-            && sourceType.IsInteger
+            && sourceType is IntegerLiteralTypeSymbol or IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol
             && openEnumTarget.BackingType.Name == sourceType.Name)
         {
             return true;
         }
 
-        if (sourceType.IsInteger
-            && targetType.IsInteger
-            && TypeFacts.TryGetIntegerWidth(sourceType, out _)
-            && TypeFacts.TryGetIntegerWidth(targetType, out _))
+        if (sourceType is IntegerLiteralTypeSymbol or IntegerTypeSymbol or BitfieldTypeSymbol
+            && targetType is RuntimeTypeSymbol { ScalarWidthBits: not null }
+            && targetType is IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol)
         {
             return true;
         }
@@ -3360,7 +3396,7 @@ public sealed class Binder
     private TypeSymbol BindGenericWidthType(GenericWidthTypeSyntax genericType)
     {
         BoundExpression width = BindExpression(genericType.Width);
-        if (!width.Type.IsInteger)
+        if (width.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
             _diagnostics.ReportTypeMismatch(genericType.Width.Span, "integer", width.Type.Name);
 
         return genericType.Keyword.Kind == TokenKind.UintKeyword ? BuiltinTypes.Uint : BuiltinTypes.Int;
@@ -3369,7 +3405,7 @@ public sealed class Binder
     private TypeSymbol BindArrayType(ArrayTypeSyntax arrayType)
     {
         BoundExpression size = BindExpression(arrayType.Size);
-        if (!size.Type.IsInteger)
+        if (size.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
             _diagnostics.ReportTypeMismatch(arrayType.Size.Span, "integer", size.Type.Name);
 
         TypeSymbol elementType = BindType(arrayType.ElementType);
@@ -3391,8 +3427,8 @@ public sealed class Binder
                 continue;
             }
 
-            int fieldSize = TypeFacts.TryGetSizeBytes(fieldType, out int computedFieldSize) ? computedFieldSize : 0;
-            int fieldAlignment = TypeFacts.TryGetAlignmentBytes(fieldType, out int computedFieldAlignment) ? computedFieldAlignment : 1;
+            int fieldSize = fieldType is RuntimeTypeSymbol runtimeFieldType ? runtimeFieldType.SizeBytes : 0;
+            int fieldAlignment = fieldType is RuntimeTypeSymbol runtimeAlignedFieldType ? runtimeAlignedFieldType.AlignmentBytes : 1;
             nextOffset = AlignTo(nextOffset, fieldAlignment);
 
             members[field.Name.Text] = new AggregateMemberSymbol(field.Name.Text, fieldType, nextOffset, bitOffset: 0, bitWidth: 0, isBitfield: false);
@@ -3420,8 +3456,8 @@ public sealed class Binder
                 continue;
             }
 
-            int fieldSize = TypeFacts.TryGetSizeBytes(fieldType, out int computedFieldSize) ? computedFieldSize : 0;
-            int fieldAlignment = TypeFacts.TryGetAlignmentBytes(fieldType, out int computedFieldAlignment) ? computedFieldAlignment : 1;
+            int fieldSize = fieldType is RuntimeTypeSymbol runtimeFieldType ? runtimeFieldType.SizeBytes : 0;
+            int fieldAlignment = fieldType is RuntimeTypeSymbol runtimeAlignedFieldType ? runtimeAlignedFieldType.AlignmentBytes : 1;
             members[field.Name.Text] = new AggregateMemberSymbol(field.Name.Text, fieldType, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false);
             maxSize = Math.Max(maxSize, fieldSize);
             maxAlignment = Math.Max(maxAlignment, fieldAlignment);
@@ -3434,7 +3470,7 @@ public sealed class Binder
     private TypeSymbol BindEnumType(EnumTypeSyntax enumTypeSyntax, string? aliasName)
     {
         TypeSymbol backingType = BindType(enumTypeSyntax.BackingType);
-        if (!backingType.IsInteger)
+        if (backingType is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
             _diagnostics.ReportTypeMismatch(enumTypeSyntax.BackingType.Span, "integer", backingType.Name);
 
         Dictionary<string, long> members = new(StringComparer.Ordinal);
@@ -3485,19 +3521,19 @@ public sealed class Binder
         }
 
         string name = aliasName ?? $"<anon-enum#{++_anonymousStructIndex}>";
-        return new EnumTypeSymbol(name, backingType, members, isOpen);
+        return new EnumTypeSymbol(name, (RuntimeTypeSymbol)backingType, members, isOpen);
     }
 
     private TypeSymbol BindBitfieldType(BitfieldTypeSyntax bitfieldTypeSyntax, string? aliasName)
     {
         TypeSymbol backingType = BindType(bitfieldTypeSyntax.BackingType);
-        if (!backingType.IsInteger)
+        if (backingType is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
             _diagnostics.ReportTypeMismatch(bitfieldTypeSyntax.BackingType.Span, "integer", backingType.Name);
 
         Dictionary<string, TypeSymbol> fields = new(StringComparer.Ordinal);
         Dictionary<string, AggregateMemberSymbol> members = new(StringComparer.Ordinal);
         int bitOffset = 0;
-        int backingWidth = TypeFacts.TryGetIntegerWidth(backingType, out int width) ? width : 0;
+        int backingWidth = backingType is RuntimeTypeSymbol { ScalarWidthBits: int width } ? width : 0;
 
         foreach (StructFieldSyntax field in bitfieldTypeSyntax.Fields)
         {
@@ -3508,7 +3544,7 @@ public sealed class Binder
                 continue;
             }
 
-            if (!TypeFacts.TryGetBitfieldFieldWidth(fieldType, out int fieldWidth))
+            if (fieldType is not RuntimeTypeSymbol { BitfieldFieldWidthBits: int fieldWidth })
             {
                 _diagnostics.ReportTypeMismatch(field.Type.Span, "bitfield scalar", fieldType.Name);
                 fieldWidth = 0;
@@ -3522,7 +3558,7 @@ public sealed class Binder
         }
 
         string name = aliasName ?? $"<anon-bitfield#{++_anonymousStructIndex}>";
-        return new BitfieldTypeSymbol(name, backingType, fields, members);
+        return new BitfieldTypeSymbol(name, (RuntimeTypeSymbol)backingType, fields, members);
     }
 
     private TypeSymbol BindNamedType(NamedTypeSyntax namedType)
@@ -3590,7 +3626,7 @@ public sealed class Binder
 
     private static TypeSymbol BestNumericType(TypeSymbol left, TypeSymbol right)
     {
-        if (left.IsUnknown || right.IsUnknown)
+        if (left is UnknownTypeSymbol || right is UnknownTypeSymbol)
             return BuiltinTypes.Unknown;
         if (left == BuiltinTypes.IntegerLiteral && right == BuiltinTypes.IntegerLiteral)
             return BuiltinTypes.IntegerLiteral;
@@ -3601,22 +3637,26 @@ public sealed class Binder
 
     private static bool IsComparable(TypeSymbol left, TypeSymbol right)
     {
-        if (left.IsUnknown || right.IsUnknown)
+        if (left is UnknownTypeSymbol || right is UnknownTypeSymbol)
             return true;
-        if (left.IsUndefinedLiteral || right.IsUndefinedLiteral)
+        if (left is UndefinedLiteralTypeSymbol || right is UndefinedLiteralTypeSymbol)
             return true;
-        if (left.IsInteger && right.IsInteger)
+        if (left is IntegerLiteralTypeSymbol or IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol
+            && right is IntegerLiteralTypeSymbol or IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol)
+        {
             return true;
-        if (left.IsBool && right.IsBool)
+        }
+
+        if (left is BoolTypeSymbol && right is BoolTypeSymbol)
             return true;
         return left.Name == right.Name;
     }
 
     private static bool IsAssignable(TypeSymbol target, TypeSymbol source)
     {
-        if (target.IsUnknown || source.IsUnknown)
+        if (target is UnknownTypeSymbol || source is UnknownTypeSymbol)
             return true;
-        if (source.IsUndefinedLiteral)
+        if (source is UndefinedLiteralTypeSymbol)
             return true;
 
         if (target is EnumTypeSymbol targetEnum && source is EnumTypeSymbol sourceEnum)
@@ -3625,9 +3665,13 @@ public sealed class Binder
         if (target is BitfieldTypeSymbol targetBitfield && source is BitfieldTypeSymbol sourceBitfield)
             return ReferenceEquals(targetBitfield, sourceBitfield);
 
-        if (target.IsInteger && source.IsInteger)
+        if (target is IntegerLiteralTypeSymbol or IntegerTypeSymbol or BitfieldTypeSymbol
+            && source is IntegerLiteralTypeSymbol or IntegerTypeSymbol or BitfieldTypeSymbol)
+        {
             return true;
-        if (target.IsBool && source.IsBool)
+        }
+
+        if (target is BoolTypeSymbol && source is BoolTypeSymbol)
             return true;
 
         // String literal → [N]u8 coercion (length check deferred to BindConversion)

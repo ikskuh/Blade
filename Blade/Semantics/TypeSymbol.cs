@@ -1,100 +1,261 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using Blade;
 
 namespace Blade.Semantics;
 
-public abstract class TypeSymbol
+public abstract class TypeSymbol(string name)
 {
-    protected TypeSymbol(string name)
+    public string Name { get; } = Requires.NotNull(name);
+
+    public abstract bool IsLegalRuntimeObject(object value);
+
+    public object? NormalizeValue(object value)
     {
-        Name = name;
+        Requires.NotNull(value);
+
+        if (!IsLegalRuntimeObject(value))
+            return null;
+
+        object normalized = NormalizeValueInner(value);
+        Assert.Invariant(IsLegalRuntimeObject(normalized), $"Type '{Name}' normalized legal value '{value}' to illegal payload '{normalized}'.");
+        return normalized;
     }
 
-    public string Name { get; }
-
-    public virtual bool IsUnknown => false;
-    public virtual bool IsUndefinedLiteral => false;
-    public virtual bool IsInteger => false;
-    public virtual bool IsBool => false;
-    public virtual bool IsVoid => false;
+    protected virtual object NormalizeValueInner(object value) => value;
 
     public override string ToString() => Name;
 }
 
-public sealed class PrimitiveTypeSymbol : TypeSymbol
+public abstract class RuntimeTypeSymbol(string name) : TypeSymbol(name)
 {
-    public PrimitiveTypeSymbol(string name, bool isInteger = false, bool isBool = false, bool isVoid = false)
-        : base(name)
+    public abstract int SizeBytes { get; }
+    public abstract int AlignmentBytes { get; }
+
+    public virtual int? ScalarWidthBits => null;
+    public virtual bool IsScalarCastType => ScalarWidthBits is not null;
+    public virtual bool IsSignedInteger => false;
+    public virtual int? BitfieldFieldWidthBits => ScalarWidthBits;
+
+    public int GetSizeInMemorySpace(VariableStorageClass storageClass)
     {
-        IsInteger = isInteger;
-        IsBool = isBool;
-        IsVoid = isVoid;
+        return storageClass is VariableStorageClass.Reg or VariableStorageClass.Lut
+            ? Math.Max(1, (SizeBytes + 3) / 4)
+            : SizeBytes;
     }
 
-    public override bool IsInteger { get; }
-    public override bool IsBool { get; }
-    public override bool IsVoid { get; }
+    public int GetAlignmentInMemorySpace(VariableStorageClass storageClass)
+    {
+        return storageClass is VariableStorageClass.Reg or VariableStorageClass.Lut
+            ? 1
+            : AlignmentBytes;
+    }
+
+    public int GetPointerElementStride(VariableStorageClass storageClass)
+    {
+        int stride = GetSizeInMemorySpace(storageClass);
+        Assert.Invariant(stride > 0, $"Runtime type '{Name}' must have positive storage size.");
+        return stride;
+    }
+
+    public abstract bool TryNormalizeRuntimeObject(object value, out object normalized);
+
+    protected override object NormalizeValueInner(object value)
+    {
+        bool success = TryNormalizeRuntimeObject(value, out object normalized);
+        Assert.Invariant(success, $"Runtime type '{Name}' must normalize legal value '{value}'.");
+        return normalized;
+    }
 }
 
-public sealed class ArrayTypeSymbol : TypeSymbol
+public abstract class ComptimeTypeSymbol(string name) : TypeSymbol(name)
 {
-    public ArrayTypeSymbol(TypeSymbol elementType, int? length = null)
-        : base(BuildName(elementType, length))
-    {
-        ElementType = Requires.NotNull(elementType);
-        Length = length;
-    }
+    public override bool IsLegalRuntimeObject(object value) => false;
+}
 
-    public TypeSymbol ElementType { get; }
-    public int? Length { get; }
+public abstract class ScalarTypeSymbol(string name, int bitWidth, int sizeBytes, int alignmentBytes) : RuntimeTypeSymbol(name)
+{
+    public int BitWidth { get; } = Requires.Positive(bitWidth);
+    public override int SizeBytes { get; } = Requires.Positive(sizeBytes);
+    public override int AlignmentBytes { get; } = Requires.Positive(alignmentBytes);
+    public override int? ScalarWidthBits => BitWidth;
+}
 
-    private static string BuildName(TypeSymbol elementType, int? length)
+public sealed class BoolTypeSymbol() : ScalarTypeSymbol("bool", bitWidth: 1, sizeBytes: 1, alignmentBytes: 1)
+{
+    public override bool IsScalarCastType => false;
+
+    public override bool IsLegalRuntimeObject(object value) => value is bool;
+
+    public override bool TryNormalizeRuntimeObject(object value, out object normalized)
     {
-        return length is int knownLength
-            ? $"[{knownLength}]{Requires.NotNull(elementType).Name}"
-            : $"[{Requires.NotNull(elementType).Name}]";
+        if (value is bool boolean)
+        {
+            normalized = boolean;
+            return true;
+        }
+
+        normalized = false;
+        return false;
     }
 }
 
-public sealed class AggregateMemberSymbol
+public sealed class IntegerTypeSymbol(string name, int bitWidth, bool isSigned)
+    : ScalarTypeSymbol(name, bitWidth, sizeBytes: Math.Max(1, (bitWidth + 7) / 8), alignmentBytes: Math.Max(1, (bitWidth + 7) / 8))
 {
-    public AggregateMemberSymbol(string name, TypeSymbol type, int byteOffset, int bitOffset, int bitWidth, bool isBitfield)
+    public override bool IsSignedInteger { get; } = isSigned;
+    public long MinValue => IsSignedInteger ? -(1L << (BitWidth - 1)) : 0L;
+    public long MaxValue => IsSignedInteger ? (1L << (BitWidth - 1)) - 1L : (1L << BitWidth) - 1L;
+
+    public override bool IsLegalRuntimeObject(object value)
     {
-        Name = Requires.NotNull(name);
-        Type = Requires.NotNull(type);
-        ByteOffset = byteOffset;
-        BitOffset = bitOffset;
-        BitWidth = bitWidth;
-        IsBitfield = isBitfield;
+        return value switch
+        {
+            sbyte signedByteValue => IsLegalRuntimeValue(signedByteValue),
+            byte byteValue => IsLegalRuntimeValue(byteValue),
+            short shortValue => IsLegalRuntimeValue(shortValue),
+            ushort ushortValue => IsLegalRuntimeValue(ushortValue),
+            int intValue => IsLegalRuntimeValue(intValue),
+            uint uintValue => IsLegalRuntimeValue(uintValue),
+            long longValue => IsLegalRuntimeValue(longValue),
+            _ => false,
+        };
     }
 
-    public string Name { get; }
-    public TypeSymbol Type { get; }
-    public int ByteOffset { get; }
-    public int BitOffset { get; }
-    public int BitWidth { get; }
-    public bool IsBitfield { get; }
+    public override bool TryNormalizeRuntimeObject(object value, out object normalized)
+    {
+        if (!TryConvertIntegral(value, out _, out ulong unsignedValue))
+        {
+            normalized = 0;
+            return false;
+        }
+
+        uint maskedBits = BitWidth >= 32
+            ? unchecked((uint)unsignedValue)
+            : unchecked((uint)unsignedValue) & ((1u << BitWidth) - 1u);
+
+        if (IsSignedInteger)
+        {
+            int normalizedInt = BitWidth >= 32
+                ? unchecked((int)maskedBits)
+                : (int)(maskedBits << (32 - BitWidth)) >> (32 - BitWidth);
+
+            if (BitWidth <= 8)
+                normalized = (sbyte)normalizedInt;
+            else if (BitWidth <= 16)
+                normalized = (short)normalizedInt;
+            else
+                normalized = normalizedInt;
+            return true;
+        }
+
+        if (BitWidth <= 8)
+            normalized = (byte)maskedBits;
+        else if (BitWidth <= 16)
+            normalized = (ushort)maskedBits;
+        else
+            normalized = maskedBits;
+        return true;
+    }
+
+    private bool IsLegalRuntimeValue(long value) => value >= MinValue && value <= MaxValue;
+
+    private static bool TryConvertIntegral(object value, out long signedValue, out ulong unsignedValue)
+    {
+        switch (value)
+        {
+            case sbyte sbyteValue:
+                signedValue = sbyteValue;
+                unsignedValue = unchecked((ulong)(long)sbyteValue);
+                return true;
+            case byte byteValue:
+                signedValue = byteValue;
+                unsignedValue = byteValue;
+                return true;
+            case short shortValue:
+                signedValue = shortValue;
+                unsignedValue = unchecked((ulong)(long)shortValue);
+                return true;
+            case ushort ushortValue:
+                signedValue = ushortValue;
+                unsignedValue = ushortValue;
+                return true;
+            case int intValue:
+                signedValue = intValue;
+                unsignedValue = unchecked((ulong)(long)intValue);
+                return true;
+            case uint uintValue:
+                signedValue = unchecked((int)uintValue);
+                unsignedValue = uintValue;
+                return true;
+            case long longValue:
+                signedValue = longValue;
+                unsignedValue = unchecked((ulong)longValue);
+                return true;
+            case ulong ulongValue when ulongValue <= uint.MaxValue:
+                signedValue = unchecked((int)ulongValue);
+                unsignedValue = ulongValue;
+                return true;
+            default:
+                signedValue = 0;
+                unsignedValue = 0;
+                return false;
+        }
+    }
 }
 
-public abstract class PointerLikeTypeSymbol : TypeSymbol
+public abstract class PointerLikeTypeSymbol(
+    string prefix,
+    TypeSymbol pointeeType,
+    bool isConst,
+    bool isVolatile,
+    int? alignment,
+    VariableStorageClass storageClass)
+    : ScalarTypeSymbol(BuildName(prefix, pointeeType, isConst, isVolatile, alignment, storageClass), bitWidth: 32, sizeBytes: 4, alignmentBytes: 4)
 {
-    protected PointerLikeTypeSymbol(string prefix, TypeSymbol pointeeType, bool isConst, bool isVolatile, int? alignment, VariableStorageClass storageClass)
-        : base(BuildName(prefix, pointeeType, isConst, isVolatile, alignment, storageClass))
-    {
-        PointeeType = Requires.NotNull(pointeeType);
-        IsConst = isConst;
-        IsVolatile = isVolatile;
-        Alignment = alignment;
-        StorageClass = storageClass;
-    }
+    public RuntimeTypeSymbol PointeeType { get; } = pointeeType as RuntimeTypeSymbol
+        ?? throw new ArgumentException("Pointer pointee type must be a runtime type.", nameof(pointeeType));
 
-    public TypeSymbol PointeeType { get; }
-    public bool IsConst { get; }
-    public bool IsVolatile { get; }
-    public int? Alignment { get; }
-    public VariableStorageClass StorageClass { get; }
+    public bool IsConst { get; } = isConst;
+    public bool IsVolatile { get; } = isVolatile;
+    public int? Alignment { get; } = alignment;
+    public VariableStorageClass StorageClass { get; } = storageClass;
+
+    public override bool IsLegalRuntimeObject(object value) => value is uint;
+
+    public override bool TryNormalizeRuntimeObject(object value, out object normalized)
+    {
+        switch (value)
+        {
+            case byte byteValue:
+                normalized = (uint)byteValue;
+                return true;
+            case ushort ushortValue:
+                normalized = (uint)ushortValue;
+                return true;
+            case uint uintValue:
+                normalized = uintValue;
+                return true;
+            case sbyte sbyteValue:
+                normalized = unchecked((uint)sbyteValue);
+                return true;
+            case short shortValue:
+                normalized = unchecked((uint)shortValue);
+                return true;
+            case int intValue:
+                normalized = unchecked((uint)intValue);
+                return true;
+            case long longValue:
+                normalized = unchecked((uint)longValue);
+                return true;
+            case ulong ulongValue when ulongValue <= uint.MaxValue:
+                normalized = (uint)ulongValue;
+                return true;
+            default:
+                normalized = 0U;
+                return false;
+        }
+    }
 
     private static string BuildName(
         string prefix,
@@ -124,189 +285,267 @@ public abstract class PointerLikeTypeSymbol : TypeSymbol
     }
 }
 
-public sealed class PointerTypeSymbol : PointerLikeTypeSymbol
+public sealed class PointerTypeSymbol(
+    TypeSymbol pointeeType,
+    bool isConst,
+    bool isVolatile = false,
+    int? alignment = null,
+    VariableStorageClass storageClass = VariableStorageClass.Automatic)
+    : PointerLikeTypeSymbol("*", pointeeType, isConst, isVolatile, alignment, storageClass);
+
+public sealed class MultiPointerTypeSymbol(
+    TypeSymbol pointeeType,
+    bool isConst,
+    bool isVolatile = false,
+    int? alignment = null,
+    VariableStorageClass storageClass = VariableStorageClass.Automatic)
+    : PointerLikeTypeSymbol("[*]", pointeeType, isConst, isVolatile, alignment, storageClass);
+
+public sealed class ArrayTypeSymbol(TypeSymbol elementType, int? length = null) : RuntimeTypeSymbol(BuildName(elementType, length))
 {
-    public PointerTypeSymbol(
-        TypeSymbol pointeeType,
-        bool isConst,
-        bool isVolatile = false,
-        int? alignment = null,
-        VariableStorageClass storageClass = VariableStorageClass.Automatic)
-        : base("*", pointeeType, isConst, isVolatile, alignment, storageClass)
+    public TypeSymbol ElementType { get; } = Requires.NotNull(elementType);
+
+    public int? Length { get; } = length;
+
+    public override int SizeBytes => GetRuntimeElementType().SizeBytes * (Length ?? 1);
+    public override int AlignmentBytes => GetRuntimeElementType().AlignmentBytes;
+
+    public override bool IsLegalRuntimeObject(object value)
     {
+        if (value is not IReadOnlyList<RuntimeBladeValue> values)
+            return false;
+
+        if (Length is int knownLength && values.Count != knownLength)
+            return false;
+
+        foreach (RuntimeBladeValue element in values)
+        {
+            if (!ReferenceEquals(element.Type, GetRuntimeElementType()))
+                return false;
+        }
+
+        return true;
+    }
+
+    public override bool TryNormalizeRuntimeObject(object value, out object normalized)
+    {
+        if (value is IReadOnlyList<RuntimeBladeValue> values && IsLegalRuntimeObject(values))
+        {
+            normalized = values;
+            return true;
+        }
+
+        normalized = Array.Empty<RuntimeBladeValue>();
+        return false;
+    }
+
+    private static string BuildName(TypeSymbol elementType, int? length)
+    {
+        return length is int knownLength
+            ? $"[{knownLength}]{Requires.NotNull(elementType).Name}"
+            : $"[{Requires.NotNull(elementType).Name}]";
+    }
+
+    private RuntimeTypeSymbol GetRuntimeElementType()
+    {
+        return ElementType as RuntimeTypeSymbol
+            ?? throw new InvalidOperationException($"Array type '{Name}' does not have a runtime element type.");
     }
 }
 
-public sealed class MultiPointerTypeSymbol : PointerLikeTypeSymbol
+public sealed class AggregateMemberSymbol(string name, TypeSymbol type, int byteOffset, int bitOffset, int bitWidth, bool isBitfield)
 {
-    public MultiPointerTypeSymbol(
-        TypeSymbol pointeeType,
-        bool isConst,
-        bool isVolatile = false,
-        int? alignment = null,
-        VariableStorageClass storageClass = VariableStorageClass.Automatic)
-        : base("[*]", pointeeType, isConst, isVolatile, alignment, storageClass)
+    public string Name { get; } = Requires.NotNull(name);
+    public TypeSymbol Type { get; } = Requires.NotNull(type);
+    public int ByteOffset { get; } = byteOffset;
+    public int BitOffset { get; } = bitOffset;
+    public int BitWidth { get; } = bitWidth;
+    public bool IsBitfield { get; } = isBitfield;
+}
+
+public abstract class AggregateTypeSymbol(
+    string name,
+    IReadOnlyDictionary<string, TypeSymbol> fields,
+    IReadOnlyDictionary<string, AggregateMemberSymbol> members,
+    int sizeBytes,
+    int alignmentBytes)
+    : RuntimeTypeSymbol(name)
+{
+    public IReadOnlyDictionary<string, TypeSymbol> Fields { get; } = Requires.NotNull(fields);
+    public IReadOnlyDictionary<string, AggregateMemberSymbol> Members { get; } = Requires.NotNull(members);
+    public override int SizeBytes { get; } = sizeBytes;
+    public override int AlignmentBytes { get; } = alignmentBytes;
+
+    public override bool IsLegalRuntimeObject(object value)
     {
+        if (value is not IReadOnlyDictionary<string, BladeValue> values)
+            return false;
+
+        foreach ((string fieldName, TypeSymbol fieldType) in Fields)
+        {
+            if (!values.TryGetValue(fieldName, out BladeValue? fieldValue))
+                return false;
+
+            if (!ReferenceEquals(fieldValue.Type, fieldType))
+                return false;
+        }
+
+        return true;
+    }
+
+    public override bool TryNormalizeRuntimeObject(object value, out object normalized)
+    {
+        if (value is IReadOnlyDictionary<string, BladeValue> values && IsLegalRuntimeObject(values))
+        {
+            normalized = values;
+            return true;
+        }
+
+        normalized = new Dictionary<string, BladeValue>();
+        return false;
     }
 }
 
-public abstract class AggregateTypeSymbol : TypeSymbol
+public sealed class StructTypeSymbol(
+    string name,
+    IReadOnlyDictionary<string, TypeSymbol> fields,
+    IReadOnlyDictionary<string, AggregateMemberSymbol> members,
+    int sizeBytes,
+    int alignmentBytes)
+    : AggregateTypeSymbol(name, fields, members, sizeBytes, alignmentBytes);
+
+public sealed class UnionTypeSymbol(
+    string name,
+    IReadOnlyDictionary<string, TypeSymbol> fields,
+    IReadOnlyDictionary<string, AggregateMemberSymbol> members,
+    int sizeBytes,
+    int alignmentBytes)
+    : AggregateTypeSymbol(name, fields, members, sizeBytes, alignmentBytes);
+
+public sealed class EnumTypeSymbol(string name, TypeSymbol backingType, IReadOnlyDictionary<string, long> members, bool isOpen) : RuntimeTypeSymbol(name)
 {
-    protected AggregateTypeSymbol(
-        string name,
-        IReadOnlyDictionary<string, TypeSymbol> fields,
-        IReadOnlyDictionary<string, AggregateMemberSymbol> members,
-        int sizeBytes,
-        int alignmentBytes)
-        : base(name)
-    {
-        Fields = Requires.NotNull(fields);
-        Members = Requires.NotNull(members);
-        SizeBytes = sizeBytes;
-        AlignmentBytes = alignmentBytes;
-    }
+    public RuntimeTypeSymbol BackingType { get; } = backingType as RuntimeTypeSymbol
+        ?? throw new ArgumentException("Enum backing type must be a runtime type.", nameof(backingType));
 
-    public IReadOnlyDictionary<string, TypeSymbol> Fields { get; }
-    public IReadOnlyDictionary<string, AggregateMemberSymbol> Members { get; }
-    public int SizeBytes { get; }
-    public int AlignmentBytes { get; }
+    public IReadOnlyDictionary<string, long> Members { get; } = Requires.NotNull(members);
+    public bool IsOpen { get; } = isOpen;
 
+    public override int SizeBytes => BackingType.SizeBytes;
+    public override int AlignmentBytes => BackingType.AlignmentBytes;
+    public override int? ScalarWidthBits => BackingType.ScalarWidthBits;
+    public override bool IsScalarCastType => BackingType.IsScalarCastType;
+    public override bool IsSignedInteger => BackingType.IsSignedInteger;
+    public override int? BitfieldFieldWidthBits => BackingType.BitfieldFieldWidthBits;
+
+    public override bool IsLegalRuntimeObject(object value) => BackingType.IsLegalRuntimeObject(value);
+
+    public override bool TryNormalizeRuntimeObject(object value, out object normalized) => BackingType.TryNormalizeRuntimeObject(value, out normalized);
 }
 
-public sealed class StructTypeSymbol : AggregateTypeSymbol
+public sealed class BitfieldTypeSymbol(
+    string name,
+    TypeSymbol backingType,
+    IReadOnlyDictionary<string, TypeSymbol> fields,
+    IReadOnlyDictionary<string, AggregateMemberSymbol> members)
+    : RuntimeTypeSymbol(name)
 {
-    public StructTypeSymbol(
-        string name,
-        IReadOnlyDictionary<string, TypeSymbol> fields,
-        IReadOnlyDictionary<string, AggregateMemberSymbol> members,
-        int sizeBytes,
-        int alignmentBytes)
-        : base(name, fields, members, sizeBytes, alignmentBytes)
+    public RuntimeTypeSymbol BackingType { get; } = backingType as RuntimeTypeSymbol
+        ?? throw new ArgumentException("Bitfield backing type must be a runtime type.", nameof(backingType));
+
+    public IReadOnlyDictionary<string, TypeSymbol> Fields { get; } = Requires.NotNull(fields);
+    public IReadOnlyDictionary<string, AggregateMemberSymbol> Members { get; } = Requires.NotNull(members);
+
+    public override int SizeBytes => BackingType.SizeBytes;
+    public override int AlignmentBytes => BackingType.AlignmentBytes;
+    public override int? ScalarWidthBits => BackingType.ScalarWidthBits;
+    public override bool IsScalarCastType => BackingType.IsScalarCastType;
+    public override bool IsSignedInteger => BackingType.IsSignedInteger;
+
+    public override int? BitfieldFieldWidthBits => BackingType switch
     {
-    }
+        BoolTypeSymbol => 1,
+        IntegerTypeSymbol integer => integer.BitWidth,
+        EnumTypeSymbol enumType => enumType.BitfieldFieldWidthBits,
+        _ => null,
+    };
+
+    public override bool IsLegalRuntimeObject(object value) => BackingType.IsLegalRuntimeObject(value);
+
+    public override bool TryNormalizeRuntimeObject(object value, out object normalized) => BackingType.TryNormalizeRuntimeObject(value, out normalized);
 }
 
-public sealed class UnionTypeSymbol : AggregateTypeSymbol
+public sealed class FunctionTypeSymbol(FunctionSymbol function) : ComptimeTypeSymbol($"fn {Requires.NotNull(function).Name}")
 {
-    public UnionTypeSymbol(
-        string name,
-        IReadOnlyDictionary<string, TypeSymbol> fields,
-        IReadOnlyDictionary<string, AggregateMemberSymbol> members,
-        int sizeBytes,
-        int alignmentBytes)
-        : base(name, fields, members, sizeBytes, alignmentBytes)
-    {
-    }
+    public FunctionSymbol Function { get; } = Requires.NotNull(function);
+
+    public override bool IsLegalRuntimeObject(object value) => ReferenceEquals(value, Function);
 }
 
-public sealed class EnumTypeSymbol : TypeSymbol
+public sealed class ModuleTypeSymbol(ModuleSymbol module) : ComptimeTypeSymbol($"module {Requires.NotNull(module).Name}")
 {
-    public EnumTypeSymbol(
-        string name,
-        TypeSymbol backingType,
-        IReadOnlyDictionary<string, long> members,
-        bool isOpen)
-        : base(name)
-    {
-        BackingType = Requires.NotNull(backingType);
-        Members = Requires.NotNull(members);
-        IsOpen = isOpen;
-    }
+    public ModuleSymbol Module { get; } = Requires.NotNull(module);
 
-    public TypeSymbol BackingType { get; }
-    public IReadOnlyDictionary<string, long> Members { get; }
-    public bool IsOpen { get; }
+    public override bool IsLegalRuntimeObject(object value) => ReferenceEquals(value, Module);
 }
 
-public sealed class BitfieldTypeSymbol : TypeSymbol
+public sealed class UnknownTypeSymbol() : ComptimeTypeSymbol("<unknown>");
+
+public sealed class UndefinedLiteralTypeSymbol : ComptimeTypeSymbol
 {
-    public BitfieldTypeSymbol(
-        string name,
-        TypeSymbol backingType,
-        IReadOnlyDictionary<string, TypeSymbol> fields,
-        IReadOnlyDictionary<string, AggregateMemberSymbol> members)
-        : base(name)
-    {
-        BackingType = Requires.NotNull(backingType);
-        Fields = Requires.NotNull(fields);
-        Members = Requires.NotNull(members);
-    }
+    public static UndefinedLiteralTypeSymbol Instance { get; } = new();
 
-    public TypeSymbol BackingType { get; }
-    public IReadOnlyDictionary<string, TypeSymbol> Fields { get; }
-    public IReadOnlyDictionary<string, AggregateMemberSymbol> Members { get; }
-}
-
-public sealed class FunctionTypeSymbol : TypeSymbol
-{
-    public FunctionTypeSymbol(FunctionSymbol function)
-        : base($"fn {Requires.NotNull(function).Name}")
-    {
-        Function = Requires.NotNull(function);
-    }
-
-    public FunctionSymbol Function { get; }
-}
-
-
-public sealed class ModuleTypeSymbol : TypeSymbol
-{
-    public ModuleTypeSymbol(ModuleSymbol module)
-        : base($"module {Requires.NotNull(module).Name}")
-    {
-        Module = Requires.NotNull(module);
-    }
-
-    public ModuleSymbol Module { get; }
-}
-
-public sealed class UnknownTypeSymbol : TypeSymbol
-{
-    public UnknownTypeSymbol() : base("<unknown>")
+    private UndefinedLiteralTypeSymbol()
+        : base("undefined")
     {
     }
 
-    public override bool IsUnknown => true;
+    public override bool IsLegalRuntimeObject(object value) => ReferenceEquals(value, UndefinedValue.Instance);
 }
 
-public sealed class UndefinedLiteralTypeSymbol : TypeSymbol
+public sealed class IntegerLiteralTypeSymbol() : ComptimeTypeSymbol("<int-literal>")
 {
-    public UndefinedLiteralTypeSymbol() : base("undefined")
+    public override bool IsLegalRuntimeObject(object value) => value is int or uint or long;
+}
+
+public sealed class VoidTypeSymbol : ComptimeTypeSymbol
+{
+    public static VoidTypeSymbol Instance { get; } = new();
+
+    private VoidTypeSymbol()
+        : base("void")
     {
     }
 
-    public override bool IsUndefinedLiteral => true;
+    public override bool IsLegalRuntimeObject(object value) => ReferenceEquals(value, VoidValue.Instance);
 }
 
-public sealed class IntegerLiteralTypeSymbol : TypeSymbol
+public sealed class StringTypeSymbol() : ComptimeTypeSymbol("string")
 {
-    public IntegerLiteralTypeSymbol() : base("<int-literal>")
-    {
-    }
-
-    public override bool IsInteger => true;
+    public override bool IsLegalRuntimeObject(object value) => value is string;
 }
+
+public sealed class RangeTypeSymbol() : ComptimeTypeSymbol("range");
 
 public static class BuiltinTypes
 {
-    public static readonly TypeSymbol Unknown = new UnknownTypeSymbol();
-    public static readonly TypeSymbol UndefinedLiteral = new UndefinedLiteralTypeSymbol();
-    public static readonly TypeSymbol IntegerLiteral = new IntegerLiteralTypeSymbol();
-    public static readonly PrimitiveTypeSymbol Bool = new("bool", isBool: true);
-    public static readonly PrimitiveTypeSymbol Bit = new("bit", isInteger: true);
-    public static readonly PrimitiveTypeSymbol Nit = new("nit", isInteger: true);
-    public static readonly PrimitiveTypeSymbol Nib = new("nib", isInteger: true);
-    public static readonly PrimitiveTypeSymbol U8 = new("u8", isInteger: true);
-    public static readonly PrimitiveTypeSymbol I8 = new("i8", isInteger: true);
-    public static readonly PrimitiveTypeSymbol U16 = new("u16", isInteger: true);
-    public static readonly PrimitiveTypeSymbol I16 = new("i16", isInteger: true);
-    public static readonly PrimitiveTypeSymbol U32 = new("u32", isInteger: true);
-    public static readonly PrimitiveTypeSymbol I32 = new("i32", isInteger: true);
-    public static readonly PrimitiveTypeSymbol Uint = new("uint", isInteger: true);
-    public static readonly PrimitiveTypeSymbol Int = new("int", isInteger: true);
-    public static readonly PrimitiveTypeSymbol Void = new("void", isVoid: true);
-    public static readonly PrimitiveTypeSymbol String = new("string");
-    public static readonly PrimitiveTypeSymbol Range = new("range");
+    public static readonly ComptimeTypeSymbol Unknown = new UnknownTypeSymbol();
+    public static readonly ComptimeTypeSymbol UndefinedLiteral = UndefinedLiteralTypeSymbol.Instance;
+    public static readonly ComptimeTypeSymbol IntegerLiteral = new IntegerLiteralTypeSymbol();
+    public static readonly BoolTypeSymbol Bool = new();
+    public static readonly IntegerTypeSymbol Bit = new("bit", bitWidth: 1, isSigned: false);
+    public static readonly IntegerTypeSymbol Nit = new("nit", bitWidth: 1, isSigned: true);
+    public static readonly IntegerTypeSymbol Nib = new("nib", bitWidth: 4, isSigned: false);
+    public static readonly IntegerTypeSymbol U8 = new("u8", bitWidth: 8, isSigned: false);
+    public static readonly IntegerTypeSymbol I8 = new("i8", bitWidth: 8, isSigned: true);
+    public static readonly IntegerTypeSymbol U16 = new("u16", bitWidth: 16, isSigned: false);
+    public static readonly IntegerTypeSymbol I16 = new("i16", bitWidth: 16, isSigned: true);
+    public static readonly IntegerTypeSymbol U32 = new("u32", bitWidth: 32, isSigned: false);
+    public static readonly IntegerTypeSymbol I32 = new("i32", bitWidth: 32, isSigned: true);
+    public static readonly IntegerTypeSymbol Uint = new("uint", bitWidth: 32, isSigned: false);
+    public static readonly IntegerTypeSymbol Int = new("int", bitWidth: 32, isSigned: true);
+    public static readonly ComptimeTypeSymbol Void = VoidTypeSymbol.Instance;
+    public static readonly ComptimeTypeSymbol String = new StringTypeSymbol();
+    public static readonly ComptimeTypeSymbol Range = new RangeTypeSymbol();
 
     private static readonly Dictionary<string, TypeSymbol> Builtins = new()
     {
@@ -323,282 +562,12 @@ public static class BuiltinTypes
         ["uint"] = Uint,
         ["int"] = Int,
         ["void"] = Void,
+        ["string"] = String,
+        ["range"] = Range,
     };
 
     public static bool TryGet(string name, out TypeSymbol type)
     {
         return Builtins.TryGetValue(name, out type!);
-    }
-}
-
-public static class TypeFacts
-{
-    public static bool TryGetIntegerWidth(TypeSymbol type, out int width)
-    {
-        if (type is EnumTypeSymbol enumType)
-            return TryGetIntegerWidth(enumType.BackingType, out width);
-
-        if (type is BitfieldTypeSymbol bitfieldType)
-            return TryGetIntegerWidth(bitfieldType.BackingType, out width);
-
-        width = 0;
-        if (ReferenceEquals(type, BuiltinTypes.IntegerLiteral))
-        {
-            width = 32;
-            return true;
-        }
-
-        if (ReferenceEquals(type, BuiltinTypes.Bit) || ReferenceEquals(type, BuiltinTypes.Nit))
-        {
-            width = 1;
-            return true;
-        }
-
-        if (ReferenceEquals(type, BuiltinTypes.Nib))
-        {
-            width = 4;
-            return true;
-        }
-
-        if (ReferenceEquals(type, BuiltinTypes.U8) || ReferenceEquals(type, BuiltinTypes.I8))
-        {
-            width = 8;
-            return true;
-        }
-
-        if (ReferenceEquals(type, BuiltinTypes.U16) || ReferenceEquals(type, BuiltinTypes.I16))
-        {
-            width = 16;
-            return true;
-        }
-
-        if (ReferenceEquals(type, BuiltinTypes.U32)
-            || ReferenceEquals(type, BuiltinTypes.I32)
-            || ReferenceEquals(type, BuiltinTypes.Uint)
-            || ReferenceEquals(type, BuiltinTypes.Int))
-        {
-            width = 32;
-            return true;
-        }
-
-        return false;
-    }
-
-    public static bool TryGetScalarWidth(TypeSymbol type, out int width)
-    {
-        if (type is PointerLikeTypeSymbol)
-        {
-            width = 32;
-            return true;
-        }
-
-        return TryGetIntegerWidth(type, out width);
-    }
-
-    public static bool TryGetBitfieldFieldWidth(TypeSymbol type, out int width)
-    {
-        if (ReferenceEquals(type, BuiltinTypes.Bool))
-        {
-            width = 1;
-            return true;
-        }
-
-        return TryGetIntegerWidth(type, out width);
-    }
-
-    public static bool TryGetAlignmentBytes(TypeSymbol type, out int alignmentBytes)
-    {
-        if (type is AggregateTypeSymbol aggregateType)
-        {
-            alignmentBytes = Math.Max(1, aggregateType.AlignmentBytes);
-            return true;
-        }
-
-        if (type is BitfieldTypeSymbol bitfieldType)
-            return TryGetAlignmentBytes(bitfieldType.BackingType, out alignmentBytes);
-
-        if (type is EnumTypeSymbol enumType)
-            return TryGetAlignmentBytes(enumType.BackingType, out alignmentBytes);
-
-        if (type is PointerLikeTypeSymbol)
-        {
-            alignmentBytes = 4;
-            return true;
-        }
-
-        if (ReferenceEquals(type, BuiltinTypes.Bool)
-            || ReferenceEquals(type, BuiltinTypes.Bit)
-            || ReferenceEquals(type, BuiltinTypes.Nit)
-            || ReferenceEquals(type, BuiltinTypes.Nib)
-            || ReferenceEquals(type, BuiltinTypes.U8)
-            || ReferenceEquals(type, BuiltinTypes.I8))
-        {
-            alignmentBytes = 1;
-            return true;
-        }
-
-        if (ReferenceEquals(type, BuiltinTypes.U16) || ReferenceEquals(type, BuiltinTypes.I16))
-        {
-            alignmentBytes = 2;
-            return true;
-        }
-
-        if (TryGetIntegerWidth(type, out int width))
-        {
-            alignmentBytes = Math.Max(1, width / 8);
-            return true;
-        }
-
-        if (type is ArrayTypeSymbol array
-            && array.Length is int knownLength
-            && TryGetAlignmentBytes(array.ElementType, out alignmentBytes)
-            && knownLength >= 0)
-        {
-            return true;
-        }
-
-        alignmentBytes = 0;
-        return false;
-    }
-
-    public static bool TryGetSizeBytes(TypeSymbol type, out int sizeBytes)
-    {
-        if (type is AggregateTypeSymbol aggregateType)
-        {
-            sizeBytes = Math.Max(0, aggregateType.SizeBytes);
-            return true;
-        }
-
-        if (type is BitfieldTypeSymbol bitfieldType)
-            return TryGetSizeBytes(bitfieldType.BackingType, out sizeBytes);
-
-        if (type is EnumTypeSymbol enumType)
-            return TryGetSizeBytes(enumType.BackingType, out sizeBytes);
-
-        if (type is PointerLikeTypeSymbol)
-        {
-            sizeBytes = 4;
-            return true;
-        }
-
-        if (type is ArrayTypeSymbol array
-            && array.Length is int knownLength
-            && TryGetSizeBytes(array.ElementType, out int elementSize))
-        {
-            sizeBytes = elementSize * knownLength;
-            return true;
-        }
-
-        if (ReferenceEquals(type, BuiltinTypes.Bool))
-        {
-            sizeBytes = 1;
-            return true;
-        }
-
-        if (TryGetIntegerWidth(type, out int width))
-        {
-            sizeBytes = Math.Max(1, (width + 7) / 8);
-            return true;
-        }
-
-        sizeBytes = 0;
-        return false;
-    }
-
-    public static bool TryGetSizeInMemorySpace(TypeSymbol type, VariableStorageClass storageClass, out int size)
-    {
-        if (storageClass is VariableStorageClass.Reg or VariableStorageClass.Lut)
-        {
-            if (!TryGetSizeBytes(type, out int sizeBytes))
-            {
-                size = 0;
-                return false;
-            }
-
-            size = Math.Max(1, (sizeBytes + 3) / 4);
-            return true;
-        }
-
-        return TryGetSizeBytes(type, out size);
-    }
-
-    public static bool TryGetPointerElementStride(TypeSymbol pointeeType, VariableStorageClass storageClass, out int stride)
-    {
-        return TryGetSizeInMemorySpace(pointeeType, storageClass, out stride) && stride > 0;
-    }
-
-    public static bool TryGetAlignmentInMemorySpace(TypeSymbol type, VariableStorageClass storageClass, out int alignment)
-    {
-        if (storageClass is VariableStorageClass.Reg or VariableStorageClass.Lut)
-        {
-            if (!TryGetSizeBytes(type, out _))
-            {
-                alignment = 0;
-                return false;
-            }
-
-            alignment = 1;
-            return true;
-        }
-
-        return TryGetAlignmentBytes(type, out alignment);
-    }
-
-    public static bool IsSignedInteger(TypeSymbol type)
-    {
-        return ReferenceEquals(type, BuiltinTypes.Nit)
-            || ReferenceEquals(type, BuiltinTypes.I8)
-            || ReferenceEquals(type, BuiltinTypes.I16)
-            || ReferenceEquals(type, BuiltinTypes.I32)
-            || ReferenceEquals(type, BuiltinTypes.Int);
-    }
-
-    public static bool IsScalarCastType(TypeSymbol type)
-    {
-        return TryGetScalarWidth(type, out _);
-    }
-
-    public static bool TryNormalizeValue(object? value, TypeSymbol targetType, out object? normalized)
-    {
-        normalized = value;
-        if (value is null)
-            return true;
-
-        if (value is string)
-            return false;
-
-        if (!TryGetScalarWidth(targetType, out int width))
-            return false;
-
-        uint rawBits = unchecked((uint)Convert.ToInt64(value, CultureInfo.InvariantCulture));
-        uint maskedBits = width >= 32 ? rawBits : rawBits & ((1u << width) - 1u);
-
-        if (targetType is PointerLikeTypeSymbol)
-        {
-            normalized = maskedBits;
-            return true;
-        }
-
-        if (targetType is EnumTypeSymbol enumType)
-            return TryNormalizeValue(value, enumType.BackingType, out normalized);
-
-        if (targetType is BitfieldTypeSymbol bitfieldType)
-            return TryNormalizeValue(value, bitfieldType.BackingType, out normalized);
-
-        if (IsSignedInteger(targetType))
-        {
-            if (width >= 32)
-            {
-                normalized = unchecked((int)maskedBits);
-                return true;
-            }
-
-            int shift = 32 - width;
-            normalized = (int)(maskedBits << shift) >> shift;
-            return true;
-        }
-
-        normalized = maskedBits;
-        return true;
     }
 }

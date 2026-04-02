@@ -28,14 +28,12 @@ public sealed class StoragePlace : IAsmSymbol
         Symbol symbol,
         StoragePlaceKind kind,
         int? fixedAddress,
-        object? staticInitializer,
         string? emittedName = null,
         IReadOnlyList<P2Register>? preferredRegisters = null)
     {
         Symbol = Requires.NotNull(symbol);
         Kind = kind;
         FixedAddress = fixedAddress;
-        StaticInitializer = staticInitializer;
         PreferredRegisters = preferredRegisters ?? [];
         if (!string.IsNullOrWhiteSpace(emittedName))
             _emittedName = emittedName;
@@ -46,11 +44,8 @@ public sealed class StoragePlace : IAsmSymbol
     public Symbol Symbol { get; }
     public StoragePlaceKind Kind { get; }
     public int? FixedAddress { get; }
-    public object? StaticInitializer { get; }
     public IReadOnlyList<P2Register> PreferredRegisters { get; }
     public P2Register? SpecialRegisterAlias { get; }
-
-    public bool HasStaticInitializer => StaticInitializer is not null;
     internal bool HasAssignedEmittedName => _emittedName is not null;
 
     public VariableStorageClass StorageClass => Kind switch

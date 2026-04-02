@@ -32,6 +32,8 @@ Each stage independently testable.
 - Argument validation via `Blade/Requires.cs` (`Requires.NotNull`, `.NonNegative`, `.Positive`, `.InRange`).
 - `Blade/.editorconfig` is the analyzer rule source of truth.
 - In-source suppressions (`#pragma`, attributes) only for single occurrences with a clear explanation.
+- Prefer primary constructors for data classes
+- Don't use trinary operators for control flow. Use local variables or switch pattern matching instead.
 
 ## Type Safety Rules
 
@@ -48,6 +50,8 @@ Each stage independently testable.
 
 ## Refactoring Policy
 
+- Leave a place better than you found it.
+- Never introduce compatibility layers. Refactor fully, never just enough to make it work.
 - Prefer deletion-first refactoring for type-safety work.
 - When a stringly-typed or int-typed compatibility path is wrong, delete it first and then fix all call sites to use the correct typed path.
 - Do not preserve obsolete constructors, overloads, helper properties, or test-only shims just to avoid fallout.
@@ -125,7 +129,8 @@ replaced with assertions.
 ### Regression Harness (`Blade.Regressions`)
 
 Main behavioral gate. Discovers fixtures under `Examples/`, `Demonstrators/`, `RegressionTests/`.
-Matches diagnostics and codegen against header expectations; validates assembly via FlexSpin.
+Matches diagnostics and codegen against header expectations; validates assembly via FlexSpin
+and semantics through a hardware test runner.
 
 - `Examples/` — pristine, no headers, zero diagnostics only.
 - `Demonstrators/` — may have expectation headers, part of regression corpus.

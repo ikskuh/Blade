@@ -23,7 +23,7 @@ public sealed class MirControlFlowSimplification : IMirOptimization
                 function.ReturnSlots));
         }
 
-        MirModule result = new(input.StoragePlaces, functions);
+        MirModule result = new(input.StoragePlaces, input.StorageDefinitions, functions);
         return MirTextWriter.Write(result) != MirTextWriter.Write(input) ? result : null;
     }
 

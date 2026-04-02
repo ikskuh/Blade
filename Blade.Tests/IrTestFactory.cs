@@ -135,8 +135,7 @@ internal static class IrTestFactory
         bool isConst = false,
         bool isExtern = false,
         int? fixedAddress = null,
-        int? alignment = null,
-        object? staticInitializer = null)
+        int? alignment = null)
     {
         VariableSymbol symbol = CreateVariableSymbol(
             name,
@@ -147,6 +146,6 @@ internal static class IrTestFactory
             isExtern,
             fixedAddress,
             alignment);
-        return new StoragePlace(symbol, kind, fixedAddress, staticInitializer, emittedName: $"g_{name}");
+        return new StoragePlace(symbol, kind, fixedAddress, emittedName: $"g_{name}");
     }
 }

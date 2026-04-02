@@ -41,7 +41,7 @@ public class WriterAndSymbolTests
         BoundProgram program = new([], [], [], new Dictionary<string, TypeSymbol>(), new Dictionary<string, FunctionSymbol>(), new Dictionary<string, ImportedModule>());
         MirModule mir = new([]);
         LirModule lir = new([]);
-        AsmModule asm = new([]);
+        AsmModule asm = new([], [], []);
         IrBuildResult build = new(program, mir, mir, lir, lir, asm, asm, "DAT\n");
 
         Dictionary<string, string> dumps = DumpContentBuilder.Build(new DumpSelection(), build);
@@ -53,7 +53,7 @@ public class WriterAndSymbolTests
     [Test]
     public void MirLirAndAsmTextWriters_FormatRepresentativeNodes()
     {
-        StoragePlace place = new(CreateVariable("mem-slot", VariableStorageClass.Reg, VariableScopeKind.GlobalStorage), StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, staticInitializer: 5, emittedName: "g_mem_slot");
+        StoragePlace place = new(CreateVariable("mem-slot", VariableStorageClass.Reg, VariableScopeKind.GlobalStorage), StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, emittedName: "g_mem_slot");
 
         MirModule mir = new([
             CreateMirFunction("mir_fn", isEntryPoint: true, FunctionKind.Leaf, [BuiltinTypes.U32],
@@ -78,16 +78,18 @@ public class WriterAndSymbolTests
             ]),
         ]);
 
-        AsmModule asm = new([
-            CreateAsmFunction("asm_fn", isEntryPoint: false, CallingConventionTier.General,
+        AsmModule asm = new(
+            [],
+            [],
             [
-                new AsmDirectiveNode("org 0"),
-                new AsmLabelNode("asm_fn_bb0"),
-                new AsmCommentNode("test"),
-                new AsmInstructionNode(P2Mnemonic.ADD, [AsmRegister(1), new AsmImmediateOperand(5)], P2ConditionCode.IF_C, flagEffect: P2FlagEffect.WCZ),
-                new AsmInstructionNode(P2Mnemonic.MOV, [AsmRegister(1), new AsmImmediateOperand(1)]),
-            ]),
-        ]);
+                CreateAsmFunction("asm_fn", isEntryPoint: false, CallingConventionTier.General,
+                [
+                    new AsmLabelNode("asm_fn_bb0"),
+                    new AsmCommentNode("test"),
+                    new AsmInstructionNode(P2Mnemonic.ADD, [AsmRegister(1), new AsmImmediateOperand(5)], P2ConditionCode.IF_C, flagEffect: P2FlagEffect.WCZ),
+                    new AsmInstructionNode(P2Mnemonic.MOV, [AsmRegister(1), new AsmImmediateOperand(1)]),
+                ]),
+            ]);
 
         string mirText = MirTextWriter.Write(mir);
         string lirText = LirTextWriter.Write(lir);
@@ -102,7 +104,6 @@ public class WriterAndSymbolTests
         Assert.That(lirText, Does.Contain("\"hello\":string"));
         Assert.That(lirText, Does.Contain("unreachable"));
 
-        Assert.That(asmText, Does.Contain(".org 0"));
         Assert.That(asmText, Does.Contain("' test"));
         Assert.That(asmText, Does.Contain("IF_C ADD %r0, #5 WCZ"));
         Assert.That(asmText, Does.Contain("MOV %r0, #1"));

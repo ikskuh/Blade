@@ -123,7 +123,7 @@ public static class RegisterAllocator
             functions.Add(new AsmFunction(function, rewrittenNodes));
         }
 
-        return new AsmModule(module.StoragePlaces, functions);
+        return new AsmModule(module.StoragePlaces, module.DataBlocks, functions);
     }
 
     private static IReadOnlyDictionary<VirtualAsmRegister, int> ComputeRegisterOrder(AsmFunction function)
@@ -751,71 +751,42 @@ public static class RegisterAllocator
 
         HashSet<int> allUsedSlots = CollectReferencedSpillSlots(functions);
 
-        // Emit register file data section in the entry point function
-        if (functions.Count == 0)
-            return new AsmModule(module.StoragePlaces, functions);
+        List<AsmDataBlock> dataBlocks = [.. module.DataBlocks];
+        List<AsmDataDefinition> registerDefinitions = dataBlocks
+            .FirstOrDefault(static block => block.Kind == AsmDataBlockKind.Register)?
+            .Definitions
+            .ToList()
+            ?? [];
 
-        int targetIdx = functions.FindIndex(f => f.IsEntryPoint);
-        if (targetIdx < 0)
-            targetIdx = functions.Count - 1;
-
-        AsmFunction target = functions[targetIdx];
-        List<AsmNode> extendedNodes = new(target.Nodes);
-        extendedNodes.Add(new AsmSectionNode(AsmStorageSection.Register));
-
-        // Emit global variable storage places
-        HashSet<IAsmSymbol> emitted = [];
-        foreach (StoragePlace place in module.StoragePlaces.Where(static p => p.Kind == StoragePlaceKind.AllocatableGlobalRegister))
-        {
-            if (!emitted.Add(place))
-                continue;
-            extendedNodes.Add(new AsmLabelNode(place.EmittedName));
-            extendedNodes.Add(new AsmDataNode(AsmDataDirective.Long, place.StaticInitializer));
-        }
-
-        // Emit shared register slots
+        HashSet<IAsmSymbol> emitted = registerDefinitions.Select(static definition => definition.Symbol).ToHashSet();
         foreach (int slot in allUsedSlots.Order())
         {
             AsmSpillSlotSymbol label = GetSlotSymbol(slot);
             if (!emitted.Add(label))
                 continue;
-            extendedNodes.Add(new AsmLabelNode(label.Name));
-            extendedNodes.Add(new AsmDataNode(AsmDataDirective.Long, 0));
+
+            registerDefinitions.Add(new AsmAllocatedStorageDefinition(
+                label,
+                VariableStorageClass.Reg,
+                BuiltinTypes.U32));
         }
 
-        // Emit LUT variable storage places
-        IReadOnlyList<StoragePlace> lutPlaces = module.StoragePlaces
-            .Where(p => p.Kind == StoragePlaceKind.AllocatableLutEntry)
-            .ToList();
-        if (lutPlaces.Count > 0)
+        ReplaceDataBlock(dataBlocks, new AsmDataBlock(AsmDataBlockKind.Register, registerDefinitions));
+        return new AsmModule(module.StoragePlaces, dataBlocks, functions);
+    }
+
+    private static void ReplaceDataBlock(List<AsmDataBlock> dataBlocks, AsmDataBlock replacement)
+    {
+        for (int i = 0; i < dataBlocks.Count; i++)
         {
-            extendedNodes.Add(new AsmSectionNode(AsmStorageSection.Lut));
-            foreach (StoragePlace place in lutPlaces)
+            if (dataBlocks[i].Kind == replacement.Kind)
             {
-                extendedNodes.Add(new AsmLabelNode(place.EmittedName));
-                int count = GetPlaceEntryCount(place);
-                extendedNodes.Add(new AsmDataNode(AsmDataDirective.Long, place.StaticInitializer, count));
+                dataBlocks[i] = replacement;
+                return;
             }
         }
 
-        // Emit Hub variable storage places
-        IReadOnlyList<StoragePlace> hubPlaces = module.StoragePlaces
-            .Where(p => p.Kind == StoragePlaceKind.AllocatableHubEntry)
-            .ToList();
-        if (hubPlaces.Count > 0)
-        {
-            extendedNodes.Add(new AsmSectionNode(AsmStorageSection.Hub));
-            foreach (StoragePlace place in hubPlaces)
-            {
-                AsmDataDirective directive = SelectDataDirective(GetPlaceElementType(place));
-                int count = GetPlaceEntryCount(place);
-                extendedNodes.Add(new AsmLabelNode(place.EmittedName));
-                extendedNodes.Add(new AsmDataNode(directive, place.StaticInitializer, count));
-            }
-        }
-
-        functions[targetIdx] = new AsmFunction(target, extendedNodes);
-        return new AsmModule(module.StoragePlaces, functions);
+        dataBlocks.Add(replacement);
     }
 
     private static HashSet<int> CollectReferencedSpillSlots(IReadOnlyList<AsmFunction> functions)
@@ -848,9 +819,9 @@ public static class RegisterAllocator
         if (operand is AsmRegisterOperand reg && regToLocation.TryGetValue(reg.Register, out AllocatedLocation registerLocation))
             return ToOperand(registerLocation, getSlotSymbol);
 
-        if (operand is AsmPlaceOperand place
-            && place.Place.IsInternalRegisterSlot
-            && placeLocationMap.TryGetValue(place.Place, out AllocatedLocation placeLocation))
+        if (operand is AsmSymbolOperand { Symbol: StoragePlace place, AddressingMode: AsmSymbolAddressingMode.Register }
+            && place.IsInternalRegisterSlot
+            && placeLocationMap.TryGetValue(place, out AllocatedLocation placeLocation))
         {
             return ToOperand(placeLocation, getSlotSymbol);
         }
@@ -877,40 +848,9 @@ public static class RegisterAllocator
         {
             AllocatedLocationKind.SpillSlot => new AsmSymbolOperand(getSlotSymbol(location.SpillSlot), AsmSymbolAddressingMode.Register),
             AllocatedLocationKind.PhysicalRegister => new AsmPhysicalRegisterOperand(location.PhysicalRegister!.Value),
-            AllocatedLocationKind.StoragePlace => new AsmPlaceOperand(location.StoragePlace!),
+            AllocatedLocationKind.StoragePlace => new AsmSymbolOperand(location.StoragePlace!, AsmSymbolAddressingMode.Register),
             _ => throw new InvalidOperationException("Unknown allocated location kind."),
         };
-    }
-
-    private static AsmDataDirective SelectDataDirective(TypeSymbol type)
-    {
-        if (TypeFacts.TryGetIntegerWidth(type, out int width))
-        {
-            if (width <= 8) return AsmDataDirective.Byte;
-            if (width <= 16) return AsmDataDirective.Word;
-        }
-
-        return AsmDataDirective.Long;
-    }
-
-    private static int GetPlaceEntryCount(StoragePlace place)
-    {
-        if (place.Symbol is VariableSymbol { Type: ArrayTypeSymbol arrayType } && arrayType.Length.HasValue)
-            return arrayType.Length.Value;
-
-        return 1;
-    }
-
-    private static TypeSymbol GetPlaceElementType(StoragePlace place)
-    {
-        if (place.Symbol is VariableSymbol variable)
-        {
-            if (variable.Type is ArrayTypeSymbol arrayType)
-                return arrayType.ElementType;
-            return variable.Type;
-        }
-
-        return BuiltinTypes.U32;
     }
 
 }

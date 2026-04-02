@@ -86,10 +86,10 @@ public sealed class RuntimeTemplateTests
                 fixedAddress: 0x1FC),
             StoragePlaceKind.FixedRegisterAlias,
             fixedAddress: 0x1FC,
-            staticInitializer: null,
             emittedName: "LED_PORT");
         AsmModule module = new(
             [ledPort],
+            [new AsmDataBlock(AsmDataBlockKind.External, [new AsmExternalBindingDefinition(ledPort)])],
             [
                 CreateAsmFunction(
                     "$top",
@@ -122,8 +122,24 @@ public sealed class RuntimeTemplateTests
     [Test]
     public void FinalAssemblyWriter_RawOutputPlacesDefaultBladeHaltBeforeConstantFile()
     {
+        StoragePlace constantOne = new(
+            IrTestFactory.CreateVariableSymbol("c_one", storageClass: VariableStorageClass.Reg, scopeKind: VariableScopeKind.GlobalStorage),
+            StoragePlaceKind.AllocatableGlobalRegister,
+            fixedAddress: null,
+            emittedName: "c_one");
         AsmModule module = new(
-            [],
+            [constantOne],
+            [
+                new AsmDataBlock(
+                    AsmDataBlockKind.Constant,
+                    [
+                        new AsmAllocatedStorageDefinition(
+                            constantOne,
+                            VariableStorageClass.Reg,
+                            BuiltinTypes.U32,
+                            new RuntimeBladeValue(BuiltinTypes.U32, 1)),
+                    ]),
+            ],
             [
                 CreateAsmFunction(
                     "$top",
@@ -134,9 +150,6 @@ public sealed class RuntimeTemplateTests
                         new AsmInstructionNode(
                             P2Mnemonic.JMP,
                             [new AsmSymbolOperand(new ControlFlowLabelSymbol(RuntimeTemplate.HaltLabel), AsmSymbolAddressingMode.Immediate)]),
-                        new AsmSectionNode(AsmStorageSection.Constant),
-                        new AsmLabelNode("c_one"),
-                        new AsmDataNode(AsmDataDirective.Long, 1),
                     ]),
             ]);
 

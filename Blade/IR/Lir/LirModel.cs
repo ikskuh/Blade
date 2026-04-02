@@ -10,17 +10,22 @@ namespace Blade.IR.Lir;
 public sealed class LirModule
 {
     public LirModule(IReadOnlyList<LirFunction> functions)
-        : this([], functions)
+        : this([], [], functions)
     {
     }
 
-    public LirModule(IReadOnlyList<StoragePlace> storagePlaces, IReadOnlyList<LirFunction> functions)
+    public LirModule(
+        IReadOnlyList<StoragePlace> storagePlaces,
+        IReadOnlyList<StorageDefinition> storageDefinitions,
+        IReadOnlyList<LirFunction> functions)
     {
         StoragePlaces = storagePlaces;
+        StorageDefinitions = storageDefinitions;
         Functions = functions;
     }
 
     public IReadOnlyList<StoragePlace> StoragePlaces { get; }
+    public IReadOnlyList<StorageDefinition> StorageDefinitions { get; }
     public IReadOnlyList<LirFunction> Functions { get; }
 }
 

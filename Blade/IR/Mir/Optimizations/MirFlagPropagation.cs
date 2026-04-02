@@ -87,6 +87,6 @@ public sealed class MirFlagPropagation : IMirOptimization
                 flagMap));
         }
 
-        return anyChanged ? new MirModule(input.StoragePlaces, functions) : null;
+        return anyChanged ? new MirModule(input.StoragePlaces, input.StorageDefinitions, functions) : null;
     }
 }

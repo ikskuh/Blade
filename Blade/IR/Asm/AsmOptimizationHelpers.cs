@@ -45,7 +45,6 @@ internal static class AsmOptimizationHelpers
             (AsmRegisterOperand lhs, AsmRegisterOperand rhs) => ReferenceEquals(lhs.Register, rhs.Register),
             (AsmImmediateOperand lhs, AsmImmediateOperand rhs) => lhs.Value == rhs.Value,
             (AsmSymbolOperand lhs, AsmSymbolOperand rhs) => SymbolOperandsEquivalent(lhs, rhs),
-            (AsmPlaceOperand lhs, AsmPlaceOperand rhs) => ReferenceEquals(lhs.Place, rhs.Place),
             (AsmPhysicalRegisterOperand lhs, AsmSymbolOperand rhs) => PhysicalAndSymbolEquivalent(lhs, rhs),
             (AsmSymbolOperand lhs, AsmPhysicalRegisterOperand rhs) => PhysicalAndSymbolEquivalent(rhs, lhs),
             (AsmPhysicalRegisterOperand lhs, AsmPhysicalRegisterOperand rhs) => lhs.Register == rhs.Register,

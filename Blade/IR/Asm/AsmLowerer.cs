@@ -91,7 +91,93 @@ public static class AsmLowerer
             functions.Add(LowerFunction(ctx));
         }
 
-        return new AsmModule(storagePlaces, functions);
+        return new AsmModule(storagePlaces, BuildDataBlocks(storagePlaces, module.StorageDefinitions), functions);
+    }
+
+    private static IReadOnlyList<AsmDataBlock> BuildDataBlocks(
+        IReadOnlyList<StoragePlace> storagePlaces,
+        IReadOnlyList<StorageDefinition> storageDefinitions)
+    {
+        Dictionary<StoragePlace, RuntimeBladeValue?> initialValues = [];
+        foreach (StorageDefinition definition in storageDefinitions)
+            initialValues[definition.Place] = definition.InitialValue;
+
+        List<AsmDataDefinition> registerDefinitions = [];
+        List<AsmDataDefinition> lutDefinitions = [];
+        List<AsmDataDefinition> hubDefinitions = [];
+        List<AsmDataDefinition> externalDefinitions = [];
+
+        foreach (StoragePlace place in storagePlaces)
+        {
+            switch (place.Kind)
+            {
+                case StoragePlaceKind.AllocatableGlobalRegister:
+                case StoragePlaceKind.AllocatableLutEntry:
+                case StoragePlaceKind.AllocatableHubEntry:
+                    RuntimeTypeSymbol elementType = GetPlaceElementType(place);
+                    int count = GetPlaceEntryCount(place);
+                    RuntimeBladeValue? initialValue = initialValues.GetValueOrDefault(place);
+                    AsmAllocatedStorageDefinition allocated = new(
+                        place,
+                        place.StorageClass,
+                        elementType,
+                        initialValue,
+                        count);
+                    switch (place.Kind)
+                    {
+                        case StoragePlaceKind.AllocatableGlobalRegister:
+                            registerDefinitions.Add(allocated);
+                            break;
+                        case StoragePlaceKind.AllocatableLutEntry:
+                            lutDefinitions.Add(allocated);
+                            break;
+                        case StoragePlaceKind.AllocatableHubEntry:
+                            hubDefinitions.Add(allocated);
+                            break;
+                    }
+
+                    break;
+
+                case StoragePlaceKind.FixedRegisterAlias:
+                case StoragePlaceKind.ExternalAlias:
+                case StoragePlaceKind.FixedLutAlias:
+                case StoragePlaceKind.ExternalLutAlias:
+                case StoragePlaceKind.FixedHubAlias:
+                case StoragePlaceKind.ExternalHubAlias:
+                    externalDefinitions.Add(new AsmExternalBindingDefinition(place));
+                    break;
+            }
+        }
+
+        return
+        [
+            new AsmDataBlock(AsmDataBlockKind.Register, registerDefinitions),
+            new AsmDataBlock(AsmDataBlockKind.Constant, []),
+            new AsmDataBlock(AsmDataBlockKind.Lut, lutDefinitions),
+            new AsmDataBlock(AsmDataBlockKind.External, externalDefinitions),
+            new AsmDataBlock(AsmDataBlockKind.Hub, hubDefinitions),
+        ];
+    }
+
+    private static RuntimeTypeSymbol GetPlaceElementType(StoragePlace place)
+    {
+        if (place.Symbol is VariableSymbol { Type: ArrayTypeSymbol arrayType })
+        {
+            return arrayType.ElementType as RuntimeTypeSymbol
+                ?? throw new InvalidOperationException($"Storage place '{place.Symbol.Name}' must not use a non-runtime array element type.");
+        }
+
+        if (place.Symbol is VariableSymbol { Type: RuntimeTypeSymbol runtimeType })
+            return runtimeType;
+
+        return BuiltinTypes.U32;
+    }
+
+    private static int GetPlaceEntryCount(StoragePlace place)
+    {
+        return place.Symbol is VariableSymbol { Type: ArrayTypeSymbol { Length: int length } }
+            ? length
+            : 1;
     }
 
     private sealed class LoweringContext
@@ -244,7 +330,6 @@ public static class AsmLowerer
     private static AsmFunction LowerFunction(LoweringContext ctx)
     {
         List<AsmNode> nodes = [];
-        nodes.Add(new AsmDirectiveNode($"function {ctx.Function.Name}"));
 
         if (ctx.Function.Blocks.Count > 0)
             ConstrainEntryBlockParameters(ctx, ctx.Function.Blocks[0]);
@@ -414,8 +499,7 @@ public static class AsmLowerer
                 StoragePlace statePlace = CreateInternalRegisterPlace(
                     $"coro_{function.Name}_state",
                     BuiltinTypes.U32,
-                    StoragePlaceKind.AllocatableInternalDedicatedRegister,
-                    entryLabel);
+                    StoragePlaceKind.AllocatableInternalDedicatedRegister);
                 storagePlaces.Add(statePlace);
 
                 coroutineCallingConvention[function.Symbol] = new CoroutineCallingConventionInfo(statePlace, parameterPlaces);
@@ -437,8 +521,7 @@ public static class AsmLowerer
             topLevelYieldStatePlace = new StoragePlace(
                 topYieldStateSymbol,
                 StoragePlaceKind.AllocatableGlobalRegister,
-                fixedAddress: null,
-                staticInitializer: null);
+                fixedAddress: null);
             storagePlaces.Add(topLevelYieldStatePlace);
         }
 
@@ -450,7 +533,6 @@ public static class AsmLowerer
         string name,
         TypeSymbol type,
         StoragePlaceKind kind,
-        object? staticInitializer = null,
         IReadOnlyList<P2Register>? preferredRegisters = null)
     {
         VariableSymbol symbol = new(
@@ -462,7 +544,7 @@ public static class AsmLowerer
                 isExtern: false,
                 fixedAddress: null,
                 alignment: null);
-        return new StoragePlace(symbol, kind, fixedAddress: null, staticInitializer: staticInitializer, preferredRegisters: preferredRegisters);
+        return new StoragePlace(symbol, kind, fixedAddress: null, preferredRegisters: preferredRegisters);
     }
 
     private static bool FunctionContainsYield(LirFunction function)
@@ -582,7 +664,7 @@ public static class AsmLowerer
 
         nodes.Add(Emit(
             P2Mnemonic.MOV,
-            new AsmPlaceOperand(info.ParameterPlaces[0]),
+            CreatePlaceRegisterOperand(info.ParameterPlaces[0]),
             new AsmSymbolOperand(info.TransportRegister)));
     }
 
@@ -1033,8 +1115,13 @@ public static class AsmLowerer
         AsmRegisterOperand dest = DestReg(op, ctx);
         object? rawValue = ((LirImmediateOperand)op.Operands[0]).Value;
         object? normalizedValue = rawValue;
-        if (op.ResultType is not null && TypeFacts.TryNormalizeValue(rawValue, op.ResultType, out object? converted))
+        if (op.ResultType is RuntimeTypeSymbol runtimeType
+            && rawValue is not null
+            && runtimeType.TryNormalizeRuntimeObject(rawValue, out object converted))
+        {
             normalizedValue = converted;
+        }
+
         long value = GetImmediateValue(new LirImmediateOperand(normalizedValue, op.ResultType ?? BuiltinTypes.Unknown));
 
         // Bool/bit constants: use BITH (set bit 0) or BITL (clear bit 0).
@@ -1058,22 +1145,25 @@ public static class AsmLowerer
     private static void LowerLoadAddress(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
         AsmRegisterOperand dest = DestReg(op, ctx);
-        AsmPlaceOperand place = (AsmPlaceOperand)LowerOperand(op.Operands[0], ctx);
+        AsmSymbolOperand place = (AsmSymbolOperand)LowerOperand(op.Operands[0], ctx);
         nodes.Add(Emit(P2Mnemonic.MOV, dest, place));
     }
 
     private static void LowerLoadPlace(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
         AsmRegisterOperand dest = DestReg(op, ctx);
-        AsmPlaceOperand place = (AsmPlaceOperand)LowerOperand(op.Operands[0], ctx);
+        AsmSymbolOperand place = (AsmSymbolOperand)LowerOperand(op.Operands[0], ctx);
 
         // For array-typed places in LUT/Hub, produce the base address (not the
         // stored value) because subsequent index operations need an address to
-        // offset from.  FormatPlaceOperand already renders #label (hub) or
-        // #label - $200 (LUT), so a plain MOV gives us the address immediate.
+        // offset from. Immediate storage-place symbol operands render as
+        // #label (hub) or #label - $200 (LUT), so a plain MOV gives us the
+        // address immediate.
         bool isArrayBase = op.ResultType is ArrayTypeSymbol;
 
-        switch (place.Place.StorageClass)
+        StoragePlace storagePlace = (StoragePlace)place.Symbol;
+
+        switch (storagePlace.StorageClass)
         {
             case VariableStorageClass.Lut:
                 nodes.Add(Emit(isArrayBase ? P2Mnemonic.MOV : P2Mnemonic.RDLUT, dest, place));
@@ -1256,7 +1346,7 @@ public static class AsmLowerer
 
     private static int GetHubElementSize(TypeSymbol? type)
     {
-        if (type is not null && TypeFacts.TryGetIntegerWidth(type, out int width))
+        if (type is RuntimeTypeSymbol { ScalarWidthBits: int width })
         {
             if (width <= 8) return 1;
             if (width <= 16) return 2;
@@ -1278,10 +1368,10 @@ public static class AsmLowerer
         AsmRegisterOperand src = OpReg(op.Operands[0], ctx);
         nodes.Add(Emit(P2Mnemonic.MOV, dest, src));
 
-        if (op.ResultType is null || !TypeFacts.TryGetIntegerWidth(op.ResultType, out int width) || width >= 32)
+        if (op.ResultType is not RuntimeTypeSymbol { ScalarWidthBits: int width } runtimeResultType || width >= 32)
             return;
 
-        nodes.Add(TypeFacts.IsSignedInteger(op.ResultType)
+        nodes.Add(runtimeResultType.IsSignedInteger
             ? Emit(P2Mnemonic.SIGNX, dest, new AsmImmediateOperand(width - 1))
             : Emit(P2Mnemonic.ZEROX, dest, new AsmImmediateOperand(width - 1)));
     }
@@ -1360,7 +1450,7 @@ public static class AsmLowerer
         if (bitWidth == 8 && bitOffset % 8 == 0)
         {
             nodes.Add(new AsmInstructionNode(P2Mnemonic.GETBYTE, [dest, src, new AsmImmediateOperand(bitOffset / 8)]));
-            if (op.ResultType is not null && TypeFacts.IsSignedInteger(op.ResultType))
+            if (op.ResultType is RuntimeTypeSymbol { IsSignedInteger: true })
                 nodes.Add(Emit(P2Mnemonic.SIGNX, dest, new AsmImmediateOperand(7)));
             return;
         }
@@ -1368,7 +1458,7 @@ public static class AsmLowerer
         if (bitWidth == 16 && bitOffset % 16 == 0)
         {
             nodes.Add(new AsmInstructionNode(P2Mnemonic.GETWORD, [dest, src, new AsmImmediateOperand(bitOffset / 16)]));
-            if (op.ResultType is not null && TypeFacts.IsSignedInteger(op.ResultType))
+            if (op.ResultType is RuntimeTypeSymbol { IsSignedInteger: true })
                 nodes.Add(Emit(P2Mnemonic.SIGNX, dest, new AsmImmediateOperand(15)));
             return;
         }
@@ -1379,7 +1469,7 @@ public static class AsmLowerer
 
         if (bitWidth < 32 && op.ResultType is not null)
         {
-            nodes.Add(TypeFacts.IsSignedInteger(op.ResultType)
+            nodes.Add(((RuntimeTypeSymbol)op.ResultType).IsSignedInteger
                 ? Emit(P2Mnemonic.SIGNX, dest, new AsmImmediateOperand(bitWidth - 1))
                 : Emit(P2Mnemonic.ZEROX, dest, new AsmImmediateOperand(bitWidth - 1)));
         }
@@ -1442,9 +1532,13 @@ public static class AsmLowerer
     {
         shape = default;
 
-        if (memberType is null
-            || !TypeFacts.TryGetSizeBytes(memberType, out int sizeBytes)
-            || sizeBytes <= 0
+        if (memberType is not RuntimeTypeSymbol runtimeMemberType)
+        {
+            return false;
+        }
+
+        int sizeBytes = runtimeMemberType.SizeBytes;
+        if (sizeBytes <= 0
             || byteOffset < 0
             || byteOffset + sizeBytes > 4)
         {
@@ -1514,9 +1608,9 @@ public static class AsmLowerer
             nodes.Add(new AsmInstructionNode(P2Mnemonic.GETWORD, [dest, receiver, new AsmImmediateOperand(shape.ByteOffset / 2)]));
         }
 
-        if (resultType is not null && TypeFacts.TryGetIntegerWidth(resultType, out int width) && width < 32)
+        if (resultType is RuntimeTypeSymbol { ScalarWidthBits: int width } runtimeResultType && width < 32)
         {
-            nodes.Add(TypeFacts.IsSignedInteger(resultType)
+            nodes.Add(runtimeResultType.IsSignedInteger
                 ? Emit(P2Mnemonic.SIGNX, dest, new AsmImmediateOperand(width - 1))
                 : Emit(P2Mnemonic.ZEROX, dest, new AsmImmediateOperand(width - 1)));
         }
@@ -1550,7 +1644,8 @@ public static class AsmLowerer
 
     private static bool TryGetSingleWordAggregateSize(TypeSymbol type, out int sizeBytes)
     {
-        var ok = TypeFacts.TryGetSizeBytes(type, out sizeBytes);
+        bool ok = type is RuntimeTypeSymbol;
+        sizeBytes = ok ? ((RuntimeTypeSymbol)type).SizeBytes : 0;
         Assert.Invariant(ok, $"Type '{type.Name}' must have a known size.");
         return sizeBytes > 0 && sizeBytes <= 4;
     }
@@ -1804,14 +1899,14 @@ public static class AsmLowerer
                         ctx.SharedRegisterPlaces.Add(generalInfo.RegisterReturnPlace);
 
                     for (int i = 0; i < args.Count; i++)
-                        nodes.Add(Emit(P2Mnemonic.MOV, new AsmPlaceOperand(generalInfo.ParameterPlaces[i]), args[i]));
+                        nodes.Add(Emit(P2Mnemonic.MOV, CreatePlaceRegisterOperand(generalInfo.ParameterPlaces[i]), args[i]));
 
                     nodes.Add(Emit(P2Mnemonic.CALL, targetOp));
 
                     if (destReg is not null && generalInfo.RegisterReturnPlace is not null)
                     {
                         ctx.TieRegisterToPlace(op.Destination!, generalInfo.RegisterReturnPlace);
-                        nodes.Add(Emit(P2Mnemonic.MOV, destReg, new AsmPlaceOperand(generalInfo.RegisterReturnPlace)));
+                        nodes.Add(Emit(P2Mnemonic.MOV, destReg, CreatePlaceRegisterOperand(generalInfo.RegisterReturnPlace)));
                     }
                     break;
                 }
@@ -1829,7 +1924,7 @@ public static class AsmLowerer
                     ctx.SharedRegisterPlaces.Add(recursiveInfo.RegisterReturnPlace);
 
                 for (int i = 0; i < args.Count; i++)
-                    nodes.Add(Emit(P2Mnemonic.MOV, new AsmPlaceOperand(recursiveInfo.ParameterPlaces[i]), args[i]));
+                    nodes.Add(Emit(P2Mnemonic.MOV, CreatePlaceRegisterOperand(recursiveInfo.ParameterPlaces[i]), args[i]));
 
                 nodes.Add(Emit(P2Mnemonic.CALLB, targetOp));
 
@@ -1837,7 +1932,7 @@ public static class AsmLowerer
                 {
                     Assert.Invariant(recursiveInfo.RegisterReturnPlace is not null, "Recursive register-return calls must have a return storage place.");
                     ctx.TieRegisterToPlace(op.Destination!, recursiveInfo.RegisterReturnPlace);
-                    nodes.Add(Emit(P2Mnemonic.MOV, destReg, new AsmPlaceOperand(recursiveInfo.RegisterReturnPlace)));
+                    nodes.Add(Emit(P2Mnemonic.MOV, destReg, CreatePlaceRegisterOperand(recursiveInfo.RegisterReturnPlace)));
                 }
                 break;
 
@@ -1862,7 +1957,7 @@ public static class AsmLowerer
 
         ctx.SharedRegisterPlaces.AddRange(info.ParameterPlaces);
         for (int i = 1; i < args.Count; i++)
-            nodes.Add(Emit(P2Mnemonic.MOV, new AsmPlaceOperand(info.ParameterPlaces[i]), args[i]));
+            nodes.Add(Emit(P2Mnemonic.MOV, CreatePlaceRegisterOperand(info.ParameterPlaces[i]), args[i]));
 
         AsmSymbolOperand transport = new(info.TransportRegister);
         if (args.Count > 0)
@@ -1933,12 +2028,13 @@ public static class AsmLowerer
 
     private static void LowerStorePlace(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
-        AsmPlaceOperand place = (AsmPlaceOperand)LowerOperand(op.Operands[0], ctx);
+        AsmSymbolOperand place = (AsmSymbolOperand)LowerOperand(op.Operands[0], ctx);
         AsmOperand valueOp = LowerOperand(op.Operands[1], ctx);
+        StoragePlace storagePlace = (StoragePlace)place.Symbol;
 
-        TypeSymbol? placeType = (place.Place.Symbol as VariableSymbol)?.Type;
+        TypeSymbol? placeType = (storagePlace.Symbol as VariableSymbol)?.Type;
 
-        switch (place.Place.StorageClass)
+        switch (storagePlace.StorageClass)
         {
             case VariableStorageClass.Lut:
                 nodes.Add(new AsmInstructionNode(P2Mnemonic.WRLUT, [valueOp, place]));
@@ -1952,7 +2048,7 @@ public static class AsmLowerer
                 nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [place, valueOp]));
                 break;
             default:
-                Assert.Unreachable($"Unexpected storage class: {place.Place.StorageClass}");
+                Assert.Unreachable($"Unexpected storage class: {storagePlace.StorageClass}");
                 break;
         }
     }
@@ -1963,7 +2059,7 @@ public static class AsmLowerer
         LirUpdatePlaceOperation operation,
         LoweringContext ctx)
     {
-        AsmPlaceOperand place = (AsmPlaceOperand)LowerOperand(op.Operands[0], ctx);
+        AsmSymbolOperand place = (AsmSymbolOperand)LowerOperand(op.Operands[0], ctx);
         AsmOperand value = LowerOperand(op.Operands[1], ctx);
 
         if (operation.PointerArithmeticStride is int pointerStride)
@@ -2066,10 +2162,10 @@ public static class AsmLowerer
 
     private static P2Mnemonic SelectHubReadOpcode(TypeSymbol type)
     {
-        if (type.IsBool)
+        if (type is BoolTypeSymbol)
             return P2Mnemonic.RDBYTE;
 
-        if (TypeFacts.TryGetIntegerWidth(type, out int width))
+        if (type is RuntimeTypeSymbol { ScalarWidthBits: int width })
         {
             Assert.Invariant(width <= 32, $"Hub read width must be <= 32 bits, got {width}.");
             if (width <= 8)
@@ -2080,7 +2176,8 @@ public static class AsmLowerer
             return P2Mnemonic.RDLONG;
         }
 
-        Assert.Invariant(TypeFacts.TryGetSizeBytes(type, out int sizeBytes), $"Hub read type must have a concrete in-memory size, got '{type}'.");
+        Assert.Invariant(type is RuntimeTypeSymbol, $"Hub read type must have a concrete in-memory size, got '{type}'.");
+        int sizeBytes = ((RuntimeTypeSymbol)type).SizeBytes;
         Assert.Invariant(sizeBytes <= 4, $"Hub read size must be <= 4 bytes, got {sizeBytes} for '{type}'.");
         if (sizeBytes <= 1)
             return P2Mnemonic.RDBYTE;
@@ -2092,10 +2189,10 @@ public static class AsmLowerer
 
     private static P2Mnemonic SelectHubWriteOpcode(TypeSymbol type)
     {
-        if (type.IsBool)
+        if (type is BoolTypeSymbol)
             return P2Mnemonic.WRBYTE;
 
-        if (TypeFacts.TryGetIntegerWidth(type, out int width))
+        if (type is RuntimeTypeSymbol { ScalarWidthBits: int width })
         {
             Assert.Invariant(width <= 32, $"Hub write width must be <= 32 bits, got {width}.");
             if (width <= 8)
@@ -2106,7 +2203,8 @@ public static class AsmLowerer
             return P2Mnemonic.WRLONG;
         }
 
-        Assert.Invariant(TypeFacts.TryGetSizeBytes(type, out int sizeBytes), $"Hub write type must have a concrete in-memory size, got '{type}'.");
+        Assert.Invariant(type is RuntimeTypeSymbol, $"Hub write type must have a concrete in-memory size, got '{type}'.");
+        int sizeBytes = ((RuntimeTypeSymbol)type).SizeBytes;
         Assert.Invariant(sizeBytes <= 4, $"Hub write size must be <= 4 bytes, got {sizeBytes} for '{type}'.");
         if (sizeBytes <= 1)
             return P2Mnemonic.WRBYTE;
@@ -2210,17 +2308,17 @@ public static class AsmLowerer
 
         Assert.Invariant(targetInfo.ParameterPlaces.Count == op.Operands.Count, "Coroutine yieldto argument count must match target parameter ABI.");
         for (int i = 0; i < op.Operands.Count; i++)
-            nodes.Add(Emit(P2Mnemonic.MOV, new AsmPlaceOperand(targetInfo.ParameterPlaces[i]), OpReg(op.Operands[i], ctx)));
+            nodes.Add(Emit(P2Mnemonic.MOV, CreatePlaceRegisterOperand(targetInfo.ParameterPlaces[i]), OpReg(op.Operands[i], ctx)));
 
         AsmOperand yieldStateDestination = ctx.Tier == CallingConventionTier.Coroutine
             && ctx.CoroutineCallingConvention.TryGetValue(ctx.Function.Symbol, out CoroutineCallingConventionInfo? sourceInfo)
             && sourceInfo is not null
-            ? new AsmPlaceOperand(sourceInfo.StatePlace)
+            ? CreatePlaceRegisterOperand(sourceInfo.StatePlace)
             : ctx.TopLevelYieldStatePlace is not null
-                ? new AsmPlaceOperand(ctx.TopLevelYieldStatePlace)
+                ? CreatePlaceRegisterOperand(ctx.TopLevelYieldStatePlace)
                 : Assert.UnreachableValue<AsmOperand>();
 
-        nodes.Add(Emit(P2Mnemonic.CALLD, yieldStateDestination, new AsmPlaceOperand(targetInfo.StatePlace)));
+        nodes.Add(Emit(P2Mnemonic.CALLD, yieldStateDestination, CreatePlaceRegisterOperand(targetInfo.StatePlace)));
     }
 
     private static void LowerTerminator(List<AsmNode> nodes, LoweringContext ctx, LirTerminator terminator)
@@ -2263,7 +2361,7 @@ public static class AsmLowerer
                     Assert.Invariant(generalInfo!.RegisterReturnPlace is not null, "General register-return functions must have a return storage place.");
                     if (resultRegister is not null)
                         ctx.TieRegisterToPlace(resultRegister.Register, generalInfo.RegisterReturnPlace);
-                    nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [new AsmPlaceOperand(generalInfo.RegisterReturnPlace), resultOp]));
+                    nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [CreatePlaceRegisterOperand(generalInfo.RegisterReturnPlace), resultOp]));
                     break;
 
                 case CallingConventionTier.Leaf:
@@ -2286,7 +2384,7 @@ public static class AsmLowerer
                     Assert.Invariant(recursiveInfo!.RegisterReturnPlace is not null, "Recursive register-return functions must have a return storage place.");
                     if (resultRegister is not null)
                         ctx.TieRegisterToPlace(resultRegister.Register, recursiveInfo.RegisterReturnPlace);
-                    nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [new AsmPlaceOperand(recursiveInfo.RegisterReturnPlace), resultOp]));
+                    nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [CreatePlaceRegisterOperand(recursiveInfo.RegisterReturnPlace), resultOp]));
                     break;
 
                 case CallingConventionTier.Coroutine:
@@ -2568,13 +2666,27 @@ public static class AsmLowerer
         {
             LirRegisterOperand reg => new AsmRegisterOperand(ctx.GetRegister(reg.Register)),
             LirImmediateOperand imm => new AsmImmediateOperand(GetImmediateValue(imm)),
-            LirPlaceOperand place => new AsmPlaceOperand(place.Place),
+            LirPlaceOperand place => CreatePlaceOperand(place.Place),
             _ => throw new InvalidOperationException($"Unknown operand type: {operand.GetType().Name}"),
         };
     }
 
+    private static AsmSymbolOperand CreatePlaceOperand(StoragePlace place)
+    {
+        Requires.NotNull(place);
+        AsmSymbolAddressingMode addressingMode = place.StorageClass is VariableStorageClass.Lut or VariableStorageClass.Hub
+            ? AsmSymbolAddressingMode.Immediate
+            : AsmSymbolAddressingMode.Register;
+        return new AsmSymbolOperand(place, addressingMode);
+    }
+
+    private static AsmSymbolOperand CreatePlaceRegisterOperand(StoragePlace place)
+    {
+        return new AsmSymbolOperand(Requires.NotNull(place), AsmSymbolAddressingMode.Register);
+    }
+
     private static bool IsSingleBitType(TypeSymbol? type)
-        => type is not null && (type.IsBool || ReferenceEquals(type, BuiltinTypes.Bit));
+        => type is BoolTypeSymbol || ReferenceEquals(type, BuiltinTypes.Bit);
 
     private static long GetImmediateValue(LirImmediateOperand imm)
     {

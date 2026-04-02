@@ -70,19 +70,86 @@ internal sealed class AsmFunctionReferenceSymbol : IAsmSymbol
 
 public sealed class AsmModule
 {
-    public AsmModule(IReadOnlyList<AsmFunction> functions)
-        : this([], functions)
-    {
-    }
-
-    public AsmModule(IReadOnlyList<StoragePlace> storagePlaces, IReadOnlyList<AsmFunction> functions)
+    public AsmModule(
+        IReadOnlyList<StoragePlace> storagePlaces,
+        IReadOnlyList<AsmDataBlock> dataBlocks,
+        IReadOnlyList<AsmFunction> functions)
     {
         StoragePlaces = storagePlaces;
+        DataBlocks = dataBlocks;
         Functions = functions;
     }
 
     public IReadOnlyList<StoragePlace> StoragePlaces { get; }
+    public IReadOnlyList<AsmDataBlock> DataBlocks { get; }
     public IReadOnlyList<AsmFunction> Functions { get; }
+}
+
+public enum AsmDataBlockKind
+{
+    Register,
+    Constant,
+    Lut,
+    External,
+    Hub,
+}
+
+public abstract class AsmDataDefinition(IAsmSymbol symbol)
+{
+    public IAsmSymbol Symbol { get; } = Requires.NotNull(symbol);
+    public abstract int AlignmentBytes { get; }
+}
+
+public sealed class AsmAllocatedStorageDefinition(
+    IAsmSymbol symbol,
+    VariableStorageClass storageClass,
+    RuntimeTypeSymbol elementType,
+    RuntimeBladeValue? initialValue = null,
+    int count = 1,
+    bool useHexFormat = false)
+    : AsmDataDefinition(symbol)
+{
+    public VariableStorageClass StorageClass { get; } = storageClass;
+    public RuntimeTypeSymbol ElementType { get; } = Requires.NotNull(elementType);
+    public RuntimeBladeValue? InitialValue { get; } = initialValue;
+    public int Count { get; } = Requires.Positive(count);
+    public bool UseHexFormat { get; } = useHexFormat;
+
+    public override int AlignmentBytes => ElementType.GetAlignmentInMemorySpace(StorageClass);
+
+    public AsmDataDirective Directive => StorageClass is VariableStorageClass.Reg or VariableStorageClass.Lut
+        ? AsmDataDirective.Long
+        : SelectDirective(ElementType);
+
+    private static AsmDataDirective SelectDirective(RuntimeTypeSymbol type)
+    {
+        if (type.ScalarWidthBits is int width)
+        {
+            if (width <= 8)
+                return AsmDataDirective.Byte;
+            if (width <= 16)
+                return AsmDataDirective.Word;
+        }
+
+        return type.SizeBytes switch
+        {
+            <= 1 => AsmDataDirective.Byte,
+            <= 2 => AsmDataDirective.Word,
+            _ => AsmDataDirective.Long,
+        };
+    }
+}
+
+public sealed class AsmExternalBindingDefinition(StoragePlace place) : AsmDataDefinition(place)
+{
+    public StoragePlace Place { get; } = Requires.NotNull(place);
+    public override int AlignmentBytes => 4;
+}
+
+public sealed class AsmDataBlock(AsmDataBlockKind kind, IReadOnlyCollection<AsmDataDefinition> definitions)
+{
+    public AsmDataBlockKind Kind { get; } = kind;
+    public IReadOnlyCollection<AsmDataDefinition> Definitions { get; } = Requires.NotNull(definitions);
 }
 
 public enum AsmRegisterConstraintKind
@@ -164,56 +231,12 @@ public sealed class AsmVolatileRegionBeginNode : AsmNode;
 /// </summary>
 public sealed class AsmVolatileRegionEndNode : AsmNode;
 
-public sealed class AsmDirectiveNode : AsmNode
-{
-    public AsmDirectiveNode(string text)
-    {
-        Text = text;
-    }
-
-    public string Text { get; }
-}
-
-public enum AsmStorageSection
-{
-    Register,
-    Lut,
-    Hub,
-    Constant,
-}
-
 public enum AsmDataDirective
 {
     Byte,
     Word,
     [SuppressMessage("Design", "CA1720:Identifier 'Long' contains type name ", Justification = "LONG is the flexspin assembly directive")]
     Long,
-}
-
-public sealed class AsmSectionNode : AsmNode
-{
-    public AsmSectionNode(AsmStorageSection section)
-    {
-        Section = section;
-    }
-
-    public AsmStorageSection Section { get; }
-}
-
-public sealed class AsmDataNode : AsmNode
-{
-    public AsmDataNode(AsmDataDirective directive, object? initializer, int count = 1, bool useHexFormat = false)
-    {
-        Directive = directive;
-        Initializer = initializer;
-        Count = Requires.Positive(count);
-        UseHexFormat = useHexFormat;
-    }
-
-    public AsmDataDirective Directive { get; }
-    public object? Initializer { get; }
-    public int Count { get; }
-    public bool UseHexFormat { get; }
 }
 
 public sealed class AsmLabelNode : AsmNode
@@ -289,11 +312,10 @@ public sealed class AsmInstructionNode : AsmNode
                 Assert.Invariant(!IsImmediateOnlyOperand(operandInfo), $"Operand {operandIndex} of '{form.Mnemonic}' requires immediate syntax.");
                 break;
             case AsmRegisterOperand:
-            case AsmPlaceOperand:
             case AsmLabelRefOperand:
             case AsmPhysicalRegisterOperand:
             case AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Register }:
-                // TODO: Extend operand-shape validation for register/place/label-ref/physical-register
+                // TODO: Extend operand-shape validation for register/label-ref/physical-register
                 // forms once metadata exposes all required distinctions for these operand kinds.
                 break;
             case AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Immediate }:
@@ -405,18 +427,6 @@ public sealed class AsmLabelRefOperand : AsmOperand
     public string Name => Label.Name;
 
     public override string Format() => $"@{Name}";
-}
-
-public sealed class AsmPlaceOperand : AsmOperand
-{
-    public AsmPlaceOperand(StoragePlace place)
-    {
-        Place = place;
-    }
-
-    public StoragePlace Place { get; }
-
-    public override string Format() => Place.EmittedName;
 }
 
 /// <summary>

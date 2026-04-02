@@ -73,7 +73,6 @@ public sealed class AsmTopLevelRegisterAddFusion : PerFunctionAsmOptimization
     {
         return operand switch
         {
-            AsmPlaceOperand { Place.CanElideTopLevelStoreLoadChains: true } => true,
             AsmSymbolOperand { AddressingMode: AsmSymbolAddressingMode.Register, Symbol: StoragePlace { CanElideTopLevelStoreLoadChains: true } } => true,
             _ => false,
         };

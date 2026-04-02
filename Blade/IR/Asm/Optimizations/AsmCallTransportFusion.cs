@@ -74,10 +74,10 @@ public sealed class AsmCallTransportFusion : PerFunctionAsmOptimization
         if (operand is AsmSymbolOperand { Symbol: AsmSpillSlotSymbol })
             return true;
 
-        if (operand is AsmPlaceOperand { Place.IsInternalRegisterSlot: true })
+        if (operand is AsmSymbolOperand { AddressingMode: AsmSymbolAddressingMode.Register, Symbol: StoragePlace { IsInternalRegisterSlot: true } })
             return true;
 
-        if (operand is AsmPlaceOperand { Place.CanElideTopLevelStoreLoadChains: true })
+        if (operand is AsmSymbolOperand { AddressingMode: AsmSymbolAddressingMode.Register, Symbol: StoragePlace { CanElideTopLevelStoreLoadChains: true } })
             return true;
 
         return OperandTargetsSpecialRegister(operand, P2SpecialRegister.PA)

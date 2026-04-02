@@ -65,6 +65,8 @@ public class AsmLegalizerTests
     private static AsmModule CreateModule(params AsmNode[] nodes)
     {
         return new AsmModule(
+            [],
+            [],
             [
                 CreateAsmFunction(
                     "test",

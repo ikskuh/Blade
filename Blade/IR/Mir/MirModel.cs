@@ -17,17 +17,22 @@ public enum MirFlag { C, Z, NC, NZ }
 public sealed class MirModule
 {
     public MirModule(IReadOnlyList<MirFunction> functions)
-        : this([], functions)
+        : this([], [], functions)
     {
     }
 
-    public MirModule(IReadOnlyList<StoragePlace> storagePlaces, IReadOnlyList<MirFunction> functions)
+    public MirModule(
+        IReadOnlyList<StoragePlace> storagePlaces,
+        IReadOnlyList<StorageDefinition> storageDefinitions,
+        IReadOnlyList<MirFunction> functions)
     {
         StoragePlaces = storagePlaces;
+        StorageDefinitions = storageDefinitions;
         Functions = functions;
     }
 
     public IReadOnlyList<StoragePlace> StoragePlaces { get; }
+    public IReadOnlyList<StorageDefinition> StorageDefinitions { get; }
     public IReadOnlyList<MirFunction> Functions { get; }
 }
 

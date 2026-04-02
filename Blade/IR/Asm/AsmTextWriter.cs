@@ -17,6 +17,9 @@ public static class AsmTextWriter
         foreach (AsmFunction function in module.Functions)
             WriteFunction(sb, function);
 
+        foreach (AsmDataBlock block in module.DataBlocks)
+            WriteDataBlock(sb, block);
+
         return sb.ToString();
     }
 
@@ -43,11 +46,6 @@ public static class AsmTextWriter
     {
         switch (node)
         {
-            case AsmDirectiveNode directive:
-                sb.Append("  .");
-                sb.AppendLine(directive.Text);
-                break;
-
             case AsmLabelNode label:
                 sb.Append("  ");
                 sb.Append(label.Name);
@@ -96,6 +94,43 @@ public static class AsmTextWriter
                 sb.AppendLine("    .volatile_end");
                 break;
         }
+    }
+
+    private static void WriteDataBlock(StringBuilder sb, AsmDataBlock block)
+    {
+        sb.Append("data ");
+        sb.Append(block.Kind);
+        sb.AppendLine();
+        sb.AppendLine("{");
+        foreach (AsmDataDefinition definition in block.Definitions)
+        {
+            switch (definition)
+            {
+                case AsmAllocatedStorageDefinition allocated:
+                    sb.Append("  ");
+                    sb.Append(allocated.Symbol.Name);
+                    sb.Append(": ");
+                    sb.Append(allocated.Directive);
+                    sb.Append(' ');
+                    sb.Append(allocated.InitialValue?.Value ?? 0);
+                    if (allocated.Count > 1)
+                    {
+                        sb.Append(" [");
+                        sb.Append(allocated.Count);
+                        sb.Append(']');
+                    }
+
+                    sb.AppendLine();
+                    break;
+                case AsmExternalBindingDefinition external:
+                    sb.Append("  extern ");
+                    sb.AppendLine(external.Symbol.Name);
+                    break;
+            }
+        }
+
+        sb.AppendLine("}");
+        sb.AppendLine();
     }
 
     private static string FormatFlagEffect(P2FlagEffect effect)

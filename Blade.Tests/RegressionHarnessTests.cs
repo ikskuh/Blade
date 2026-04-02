@@ -943,6 +943,58 @@ public sealed class RegressionHarnessTests
     }
 
     [Test]
+    public void FullRegressionSuite_WithIrGuard_PassesArrayLiteralInferenceFixture()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.MakeDir("Demonstrators/Language");
+        temp.WriteFile("Demonstrators/Language/pass_array_literal_inference.bound.blade", """
+        // EXPECT: pass
+        // STAGE: bound
+        // CONTAINS:
+        // - ArrayLit<[3]<int-literal>>
+        fn demo() void {
+            _ = [1, 2, 3];
+        }
+        """);
+        temp.WriteFile("RegressionTests/ir-regression-guard.json", """
+        {
+            "bound": {
+                "covered": [],
+                "uncovered": []
+            },
+            "mir": {
+                "covered": [],
+                "uncovered": []
+            },
+            "lir": {
+                "covered": [],
+                "uncovered": []
+            },
+            "asmir": {
+                "covered": [],
+                "uncovered": []
+            }
+        }
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(static fixture => fixture.RelativePath == "Demonstrators/Language/pass_array_literal_inference.bound.blade");
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.IrCoverageReport, Is.Not.Null);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Pass));
+            Assert.That(fixtureResult.Summary, Is.EqualTo("passed"));
+        });
+    }
+
+    [Test]
     public void FullRegressionSuite_WithIrGuard_ReportsCoverageRegressions()
     {
         using TempDirectory temp = new();

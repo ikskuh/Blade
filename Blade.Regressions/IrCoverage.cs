@@ -301,12 +301,27 @@ internal sealed class RegressionIrCoverageSession
             {
                 properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
                     .Where(property => property.CanRead && property.GetMethod is not null && property.GetIndexParameters().Length == 0)
+                    .Where(property => ShouldTraverseProperty(property.PropertyType))
                     .ToArray();
                 TraversablePropertyCache.Add(type, properties);
             }
 
             return properties;
         }
+    }
+
+    private static bool ShouldTraverseProperty(Type propertyType)
+    {
+        if (ShouldSkip(propertyType))
+            return false;
+
+        if (typeof(IDictionary).IsAssignableFrom(propertyType))
+            return true;
+
+        if (typeof(IEnumerable).IsAssignableFrom(propertyType))
+            return true;
+
+        return true;
     }
 
     private static IrRegressionGuardFile LoadGuardFile(string path)
