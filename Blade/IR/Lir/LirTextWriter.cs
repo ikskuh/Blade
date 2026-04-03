@@ -200,21 +200,9 @@ public static class LirTextWriter
         return operand switch
         {
             LirRegisterOperand register => formatter.Format(register.Register),
-            LirImmediateOperand immediate => $"{FormatImmediate(immediate.Value.Value)}:{immediate.Type.Name}",
+            LirImmediateOperand immediate => $"{immediate.Value.Format()}:{immediate.Type.Name}",
             LirPlaceOperand place => $"%place({place.Place.EmittedName})",
             _ => "<op>",
-        };
-    }
-
-    private static string FormatImmediate(object? value)
-    {
-        return value switch
-        {
-            null => "null",
-            bool b => b ? "true" : "false",
-            string s => $"\"{s}\"",
-            IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
-            _ => value.ToString() ?? "<?>",
         };
     }
 

@@ -14,7 +14,7 @@ public class OptimizerTests
     private static readonly TextSpan Span = new(0, 0);
 
     private static MirConstantInstruction Constant(MirValueId result, RuntimeTypeSymbol type, object value)
-        => new(result, type, new RuntimeBladeValue(type, value), Span);
+        => new(result, type, new RuntimeBladeValue(type, value is int intValue ? (long)intValue : value is uint uintValue ? (long)uintValue : value), Span);
 
     private static StoragePlace CreatePlace(string name)
     {
@@ -85,7 +85,7 @@ public class OptimizerTests
                 new LirBlock(bb0, [],
                 [
                     new LirOpInstruction(new LirConstOperation(), seed, BuiltinTypes.U32,
-                        [new LirImmediateOperand(new RuntimeBladeValue(BuiltinTypes.U32, (byte)7))],
+                        [new LirImmediateOperand(new RuntimeBladeValue(BuiltinTypes.U32, 7L))],
                         hasSideEffects: false, predicate: null, writesC: false, writesZ: false, Span),
                     new LirOpInstruction(new LirMovOperation(), copy, BuiltinTypes.U32,
                         [new LirRegisterOperand(seed)],
@@ -419,7 +419,7 @@ public class OptimizerTests
                 new LirBlock(LirBlockRef("bb0"), [],
                 [
                     new LirOpInstruction(new LirConstOperation(), r0, BuiltinTypes.U32,
-                        [new LirImmediateOperand(new RuntimeBladeValue(BuiltinTypes.U32, (byte)13))],
+                        [new LirImmediateOperand(new RuntimeBladeValue(BuiltinTypes.U32, 13L))],
                         hasSideEffects: false, predicate: null, writesC: false, writesZ: false, Span),
                     new LirInlineAsmInstruction(
                         AsmVolatility.Volatile,

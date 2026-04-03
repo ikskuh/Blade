@@ -146,10 +146,10 @@ public sealed class RuntimeTypeAndValueTests
     {
         Assert.Multiple(() =>
         {
-            Assert.That(BuiltinTypes.I16.IsLegalRuntimeObject((byte)255), Is.True);
-            Assert.That(BuiltinTypes.U8.IsLegalRuntimeObject(255u), Is.True);
-            Assert.That(BuiltinTypes.U8.IsLegalRuntimeObject(256u), Is.False);
-            Assert.That(BuiltinTypes.I8.IsLegalRuntimeObject((short)-129), Is.False);
+            Assert.That(BuiltinTypes.I16.IsLegalRuntimeObject(255L), Is.True);
+            Assert.That(BuiltinTypes.U8.IsLegalRuntimeObject(255L), Is.True);
+            Assert.That(BuiltinTypes.U8.IsLegalRuntimeObject(256L), Is.False);
+            Assert.That(BuiltinTypes.I8.IsLegalRuntimeObject(-129L), Is.False);
         });
     }
 
@@ -178,8 +178,8 @@ public sealed class RuntimeTypeAndValueTests
     [Test]
     public void BladeValueTypes_ValidatePayloadKinds()
     {
-        RuntimeBladeValue runtimeValue = new(BuiltinTypes.I8, (sbyte)(-1));
-        RuntimeBladeValue widenedRuntimeValue = new(BuiltinTypes.I16, (byte)7);
+        RuntimeBladeValue runtimeValue = new(BuiltinTypes.I8, -1L);
+        RuntimeBladeValue widenedRuntimeValue = new(BuiltinTypes.I16, 7L);
         ComptimeBladeValue stringValue = new((ComptimeTypeSymbol)BuiltinTypes.String, "hello");
         ComptimeBladeValue voidValue = new((ComptimeTypeSymbol)BuiltinTypes.Void, VoidValue.Instance);
         ComptimeBladeValue undefinedValue = new((ComptimeTypeSymbol)BuiltinTypes.UndefinedLiteral, UndefinedValue.Instance);
@@ -187,15 +187,15 @@ public sealed class RuntimeTypeAndValueTests
         Assert.Multiple(() =>
         {
             Assert.That(runtimeValue.Type, Is.SameAs(BuiltinTypes.I8));
-            Assert.That(runtimeValue.Value, Is.EqualTo((sbyte)(-1)));
+            Assert.That(runtimeValue.Value, Is.EqualTo(-1L));
             Assert.That(widenedRuntimeValue.Type, Is.SameAs(BuiltinTypes.I16));
-            Assert.That(widenedRuntimeValue.Value, Is.TypeOf<byte>());
-            Assert.That(widenedRuntimeValue.Value, Is.EqualTo((byte)7));
+            Assert.That(widenedRuntimeValue.Value, Is.TypeOf<long>());
+            Assert.That(widenedRuntimeValue.Value, Is.EqualTo(7L));
             Assert.That(stringValue.Type, Is.SameAs(BuiltinTypes.String));
             Assert.That(stringValue.Value, Is.EqualTo("hello"));
             Assert.That(voidValue.Value, Is.SameAs(VoidValue.Instance));
             Assert.That(undefinedValue.Value, Is.SameAs(UndefinedValue.Instance));
-            Assert.That(() => new RuntimeBladeValue(BuiltinTypes.U8, 256u), Throws.ArgumentException);
+            Assert.That(() => new RuntimeBladeValue(BuiltinTypes.U8, 256L), Throws.ArgumentException);
         });
     }
 

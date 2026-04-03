@@ -189,15 +189,14 @@ public static class FinalAssemblyWriter
 
     private static string FormatDataValue(AsmAllocatedStorageDefinition definition)
     {
-        object? initialValue = definition.InitialValue?.Value;
-        string initializer = initialValue switch
+        BladeValue? initialValue = definition.InitialValue;
+        string initializer = initialValue?.Value switch
         {
             null => "0",
             bool boolean => boolean ? "1" : "0",
             uint u32 when definition.UseHexFormat => $"${u32:X8}",
-            int i32 when definition.UseHexFormat => $"${unchecked((uint)i32):X8}",
             IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
-            _ => initialValue.ToString()!,
+            _ => initialValue!.Format(),
         };
 
         return definition.Count > 1 ? $"{initializer}[{definition.Count}]" : initializer;

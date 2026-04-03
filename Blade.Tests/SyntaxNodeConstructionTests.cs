@@ -1,3 +1,4 @@
+using Blade.Semantics;
 using Blade.Source;
 using Blade.Syntax;
 using Blade.Syntax.Nodes;
@@ -7,7 +8,7 @@ namespace Blade.Tests;
 [TestFixture]
 public class SyntaxNodeConstructionTests
 {
-    private static Token Tok(TokenKind kind, int start, int len, string text, object? value = null)
+    private static Token Tok(TokenKind kind, int start, int len, string text, BladeValue? value = null)
         => new(kind, new TextSpan(start, len), text, value);
 
     [Test]
@@ -64,7 +65,7 @@ public class SyntaxNodeConstructionTests
     [Test]
     public void ExpressionConstructors_InitializeArrayTypedStructAndEnumLiteral()
     {
-        LiteralExpressionSyntax one = new(Tok(TokenKind.IntegerLiteral, 0, 1, "1", 1));
+        LiteralExpressionSyntax one = new(Tok(TokenKind.IntegerLiteral, 0, 1, "1", BladeValue.IntegerLiteral(1)));
         ArrayElementSyntax spreadElement = new(one, Tok(TokenKind.DotDotDot, 2, 3, "..."));
         ArrayLiteralExpressionSyntax array = new(Tok(TokenKind.OpenBracket, 0, 1, "["), new SeparatedSyntaxList<ArrayElementSyntax>([spreadElement]), Tok(TokenKind.CloseBracket, 6, 1, "]"));
 
@@ -117,7 +118,7 @@ public class SyntaxNodeConstructionTests
     public void AuxiliaryNodeConstructors_ExposeAllProperties()
     {
         PrimitiveTypeSyntax u32 = new(Tok(TokenKind.U32Keyword, 0, 3, "u32"));
-        LiteralExpressionSyntax literal = new(Tok(TokenKind.IntegerLiteral, 4, 1, "1", 1));
+        LiteralExpressionSyntax literal = new(Tok(TokenKind.IntegerLiteral, 4, 1, "1", BladeValue.IntegerLiteral(1)));
 
         AlignClauseSyntax align = new(Tok(TokenKind.AlignKeyword, 6, 5, "align"), Tok(TokenKind.OpenParen, 11, 1, "("), literal, Tok(TokenKind.CloseParen, 13, 1, ")"));
         AddressClauseSyntax address = new(Tok(TokenKind.At, 14, 1, "@"), Tok(TokenKind.OpenParen, 15, 1, "("), literal, Tok(TokenKind.CloseParen, 17, 1, ")"));

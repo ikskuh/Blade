@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using Blade.Semantics.Bound;
 using Blade.Source;
 using Blade.Syntax;
@@ -43,17 +42,7 @@ internal sealed class ComptimeResult
     }
 
     public ComptimeResult(long value)
-        : this(new ComptimeBladeValue((ComptimeTypeSymbol)BuiltinTypes.IntegerLiteral, value))
-    {
-    }
-
-    public ComptimeResult(int value)
-        : this(new ComptimeBladeValue((ComptimeTypeSymbol)BuiltinTypes.IntegerLiteral, value))
-    {
-    }
-
-    public ComptimeResult(uint value)
-        : this(new ComptimeBladeValue((ComptimeTypeSymbol)BuiltinTypes.IntegerLiteral, value))
+        : this(BladeValue.IntegerLiteral(value))
     {
     }
 
@@ -88,22 +77,20 @@ internal sealed class ComptimeResult
 
     public bool TryGetLong(out long result)
     {
-        return TryGetPayload(out result);
-    }
+        if (!IsFailed && Value.TryGetInteger(out result))
+            return true;
 
-    public bool TryGetInt(out int result)
-    {
-        return TryGetPayload(out result);
-    }
-
-    public bool TryGetUInt(out uint result)
-    {
-        return TryGetPayload(out result);
+        result = 0L;
+        return false;
     }
 
     public bool TryGetString(out string result)
     {
-        return TryGetPayload(out result);
+        if (!IsFailed && Value.TryGetString(out result))
+            return true;
+
+        result = string.Empty;
+        return false;
     }
 
     public bool TryGetFailure(out ComptimeFailure result)
@@ -119,40 +106,11 @@ internal sealed class ComptimeResult
     /// <returns></returns>
     public bool TryConvertToLong(out long result)
     {
-        if (IsFailed)
-        {
-            result = 0L;
-            return false;
-        }
+        if (!IsFailed && TryGetIntegerLike(Value, out result))
+            return true;
 
-        object payload = Value.Value;
-        switch (payload)
-        {
-            case sbyte sbyteValue:
-                result = sbyteValue;
-                return true;
-            case byte byteValue:
-                result = byteValue;
-                return true;
-            case short shortValue:
-                result = shortValue;
-                return true;
-            case ushort ushortValue:
-                result = ushortValue;
-                return true;
-            case int intValue:
-                result = intValue;
-                return true;
-            case uint uintValue:
-                result = uintValue;
-                return true;
-            case long longValue:
-                result = longValue;
-                return true;
-            default:
-                result = 0L;
-                return false;
-        }
+        result = 0L;
+        return false;
     }
 
     public TypeSymbol? Type => value?.Type;
@@ -161,7 +119,7 @@ internal sealed class ComptimeResult
     public bool IsUndefined => !IsFailed && ReferenceEquals(Value.Type, BuiltinTypes.UndefinedLiteral);
     public bool IsVoid => !IsFailed && ReferenceEquals(Value.Type, BuiltinTypes.Void);
 
-    public bool IsNumeric => !IsFailed && Value.Value is sbyte or byte or short or ushort or int or uint or long;
+    public bool IsNumeric => !IsFailed && TryGetIntegerLike(Value, out _);
 
     private bool TryGetPayload<T>(out T result)
     {
@@ -173,6 +131,21 @@ internal sealed class ComptimeResult
 
         result = typedValue;
         return true;
+    }
+
+    private static bool TryGetIntegerLike(BladeValue value, out long result)
+    {
+        if (value.TryGetInteger(out result))
+            return true;
+
+        if (value.TryGetPointer(out uint pointerValue))
+        {
+            result = pointerValue;
+            return true;
+        }
+
+        result = 0L;
+        return false;
     }
 }
 
@@ -214,240 +187,6 @@ internal static class ComptimeTypeFacts
         return false;
     }
 
-    public static bool TryCreateBladeValue(object? value, TypeSymbol targetType, out BladeValue normalized)
-    {
-        if (targetType is VoidTypeSymbol)
-        {
-            if (value is null || ReferenceEquals(value, VoidValue.Instance))
-            {
-                normalized = BladeValue.Void;
-                return true;
-            }
-
-            normalized = null!;
-            return false;
-        }
-
-        if (targetType is UndefinedLiteralTypeSymbol)
-        {
-            if (value is null || ReferenceEquals(value, UndefinedValue.Instance))
-            {
-                normalized = BladeValue.Undefined;
-                return true;
-            }
-
-            normalized = null!;
-            return false;
-        }
-
-        if (!TryNormalizePayload(value, targetType, out object? normalizedPayload) || normalizedPayload is null)
-        {
-            normalized = null!;
-            return false;
-        }
-
-        normalized = targetType switch
-        {
-            RuntimeTypeSymbol runtimeType => new RuntimeBladeValue(runtimeType, normalizedPayload),
-            ComptimeTypeSymbol comptimeType => new ComptimeBladeValue(comptimeType, normalizedPayload),
-            _ => Assert.UnreachableValue<BladeValue>($"Unsupported type '{targetType.Name}'."),
-        };
-        return true;
-    }
-
-    private static bool TryNormalizePayload(object? value, TypeSymbol targetType, out object? normalized)
-    {
-        if (value is not null && targetType.IsLegalRuntimeObject(value))
-        {
-            normalized = value;
-            return true;
-        }
-
-        if (ReferenceEquals(targetType, BuiltinTypes.Bool))
-        {
-            if (value is bool boolValue)
-            {
-                normalized = boolValue;
-                return true;
-            }
-
-            if (value is IConvertible convertible)
-            {
-                if (TryConvertConvertibleToInt64(convertible, out long integerValue))
-                {
-                    normalized = integerValue != 0;
-                    return true;
-                }
-            }
-
-            normalized = null;
-            return false;
-        }
-
-        if (ReferenceEquals(targetType, BuiltinTypes.IntegerLiteral))
-        {
-            if (value is bool or string)
-            {
-                normalized = null;
-                return false;
-            }
-
-            if (value is IConvertible convertible && TryConvertConvertibleToInt64(convertible, out long integerValue))
-            {
-                normalized = integerValue;
-                return true;
-            }
-
-            normalized = null;
-            return false;
-        }
-
-        if (targetType is EnumTypeSymbol enumType)
-        {
-            if (!TryNormalizePayload(value, enumType.BackingType, out object? enumValue))
-            {
-                normalized = null;
-                return false;
-            }
-
-            normalized = enumValue;
-            return true;
-        }
-
-        if (value is bool)
-        {
-            normalized = null;
-            return false;
-        }
-
-        if (targetType is RuntimeTypeSymbol && value is not null)
-        {
-            object? normalizedRuntimeValue;
-            if (TryNormalizeRuntimeConversionValue(value, targetType, out normalizedRuntimeValue))
-            {
-                normalized = normalizedRuntimeValue;
-                return true;
-            }
-        }
-
-        normalized = null;
-        return false;
-    }
-
-    private static bool TryNormalizeRuntimeConversionValue(object value, TypeSymbol targetType, out object? normalized)
-    {
-        if (targetType is EnumTypeSymbol enumType)
-            return TryNormalizeRuntimeConversionValue(value, enumType.BackingType, out normalized);
-
-        if (targetType is BitfieldTypeSymbol bitfieldType)
-            return TryNormalizeRuntimeConversionValue(value, bitfieldType.BackingType, out normalized);
-
-        if (targetType is IntegerTypeSymbol integerType)
-            return TryNormalizeIntegerValue(value, integerType, out normalized);
-
-        if (targetType is PointerLikeTypeSymbol)
-            return TryNormalizePointerValue(value, out normalized);
-
-        normalized = null;
-        return false;
-    }
-
-    private static bool TryNormalizeIntegerValue(object value, IntegerTypeSymbol integerType, out object? normalized)
-    {
-        if (!TryConvertConvertibleToUInt32(value, out uint rawBits))
-        {
-            normalized = null;
-            return false;
-        }
-
-        uint maskedBits = integerType.BitWidth >= 32
-            ? rawBits
-            : rawBits & ((1u << integerType.BitWidth) - 1u);
-
-        if (integerType.IsSignedInteger)
-        {
-            int signedValue = integerType.BitWidth >= 32
-                ? unchecked((int)maskedBits)
-                : (int)(maskedBits << (32 - integerType.BitWidth)) >> (32 - integerType.BitWidth);
-
-            normalized = integerType.BitWidth switch
-            {
-                <= 8 => (sbyte)signedValue,
-                <= 16 => (short)signedValue,
-                _ => signedValue,
-            };
-            return true;
-        }
-
-        normalized = integerType.BitWidth switch
-        {
-            <= 8 => (byte)maskedBits,
-            <= 16 => (ushort)maskedBits,
-            _ => maskedBits,
-        };
-        return true;
-    }
-
-    private static bool TryNormalizePointerValue(object value, out object? normalized)
-    {
-        if (!TryConvertConvertibleToUInt32(value, out uint pointerValue))
-        {
-            normalized = null;
-            return false;
-        }
-
-        normalized = pointerValue;
-        return true;
-    }
-
-    private static bool TryConvertConvertibleToInt64(IConvertible convertible, out long converted)
-    {
-        try
-        {
-            converted = Convert.ToInt64(convertible, CultureInfo.InvariantCulture);
-            return true;
-        }
-        catch (FormatException)
-        {
-        }
-        catch (InvalidCastException)
-        {
-        }
-        catch (OverflowException)
-        {
-        }
-
-        converted = 0;
-        return false;
-    }
-
-    private static bool TryConvertConvertibleToUInt32(object value, out uint converted)
-    {
-        try
-        {
-            converted = value switch
-            {
-                IConvertible convertible => unchecked((uint)Convert.ToInt64(convertible, CultureInfo.InvariantCulture)),
-                _ => 0U,
-            };
-            return value is IConvertible;
-        }
-        catch (FormatException)
-        {
-            converted = 0U;
-            return false;
-        }
-        catch (InvalidCastException)
-        {
-            converted = 0U;
-            return false;
-        }
-        catch (OverflowException)
-        {
-            converted = 0U;
-            return false;
-        }
-    }
 }
 
 internal sealed class ComptimeFunctionSupportAnalyzer
@@ -811,9 +550,9 @@ internal sealed class ComptimeEvaluator
             BoundBinaryExpression binary => TryEvaluateBinary(binary, frame),
             BoundCallExpression call => TryEvaluateCall(call, frame),
             BoundIfExpression ifExpression => TryEvaluateIfExpression(ifExpression, frame),
-            BoundConversionExpression conversion => TryEvaluateConverted(conversion.Expression, conversion.Type, frame, conversion.Span),
-            BoundCastExpression cast => TryEvaluateConverted(cast.Expression, cast.Type, frame, cast.Span),
-            BoundBitcastExpression bitcast => TryEvaluateConverted(bitcast.Expression, bitcast.Type, frame, bitcast.Span),
+            BoundConversionExpression conversion => TryEvaluateConverted(conversion.Expression, conversion.Type, frame, conversion.Span, ConversionKind.Implicit),
+            BoundCastExpression cast => TryEvaluateConverted(cast.Expression, cast.Type, frame, cast.Span, ConversionKind.ExplicitCast),
+            BoundBitcastExpression bitcast => TryEvaluateConverted(bitcast.Expression, bitcast.Type, frame, bitcast.Span, ConversionKind.BitCast),
             _ => new ComptimeResult(ComptimeFailureKind.UnsupportedConstruct, expression.Span, $"expression '{expression.Kind}' is not supported during comptime evaluation."),
         };
     }
@@ -843,44 +582,15 @@ internal sealed class ComptimeEvaluator
         if (operandResult.IsFailed)
             return operandResult;
 
-        switch (unary.Operator.Kind)
+        EvaluationError error = BladeValue.TryUnary(unary.Operator.Kind, operandResult.Value, out BladeValue foldedValue);
+        return error switch
         {
-            case BoundUnaryOperatorKind.LogicalNot when operandResult.TryGetBool(out bool boolOperand):
-                return boolOperand ? ComptimeResult.False : ComptimeResult.True;
-
-            case BoundUnaryOperatorKind.Negation:
-            {
-                ComptimeResult converted = TryConvertToInt64(operandResult, unary.Operand.Span, "unary operand is not a compile-time integer.");
-                if (converted.IsFailed)
-                    return converted;
-
-                converted.TryGetLong(out long negatedValue);
-                return new ComptimeResult(-negatedValue);
-            }
-
-            case BoundUnaryOperatorKind.BitwiseNot:
-            {
-                ComptimeResult converted = TryConvertToInt64(operandResult, unary.Operand.Span, "unary operand is not a compile-time integer.");
-                if (converted.IsFailed)
-                    return converted;
-
-                converted.TryGetLong(out long bitwiseValue);
-                return new ComptimeResult(~bitwiseValue);
-            }
-
-            case BoundUnaryOperatorKind.UnaryPlus:
-            {
-                ComptimeResult converted = TryConvertToInt64(operandResult, unary.Operand.Span, "unary operand is not a compile-time integer.");
-                if (converted.IsFailed)
-                    return converted;
-
-                converted.TryGetLong(out long positiveValue);
-                return new ComptimeResult(positiveValue);
-            }
-
-            default:
-                return new ComptimeResult(ComptimeFailureKind.UnsupportedConstruct, unary.Span, $"operator '{unary.Operator.Kind}' is not supported during comptime evaluation.");
-        }
+            EvaluationError.None => new ComptimeResult(foldedValue),
+            EvaluationError.TypeMismatch => new ComptimeResult(ComptimeFailureKind.NotEvaluable, unary.Operand.Span, "unary operand is not a compile-time integer."),
+            EvaluationError.Unsupported => new ComptimeResult(ComptimeFailureKind.UnsupportedConstruct, unary.Span, $"operator '{unary.Operator.Kind}' is not supported during comptime evaluation."),
+            EvaluationError.UndefinedBehavior => new ComptimeResult(ComptimeFailureKind.NotEvaluable, unary.Span, $"operator '{unary.Operator.Kind}' is not evaluable at compile time."),
+            _ => Assert.UnreachableValue<ComptimeResult>(),
+        };
     }
 
     private ComptimeResult TryEvaluateBinary(
@@ -937,53 +647,16 @@ internal sealed class ComptimeEvaluator
         if (rightResult.IsFailed)
             return rightResult;
 
-        if (leftResult.TryGetBool(out bool leftBoolValue) && rightResult.TryGetBool(out bool rightBoolValue))
+        EvaluationError error = BladeValue.TryBinary(binary.Operator.Kind, leftResult.Value, rightResult.Value, out BladeValue foldedValue);
+        return error switch
         {
-            bool? boolResult = binary.Operator.Kind switch
-            {
-                BoundBinaryOperatorKind.Equals => leftBoolValue == rightBoolValue,
-                BoundBinaryOperatorKind.NotEquals => leftBoolValue != rightBoolValue,
-                _ => null,
-            };
-
-            if (boolResult is not null)
-                return new ComptimeResult(boolResult.Value);
-        }
-
-        ComptimeResult leftConverted = TryConvertToInt64(leftResult, binary.Left.Span, "binary operands are not compile-time integers.");
-        if (leftConverted.IsFailed)
-            return leftConverted;
-
-        ComptimeResult rightConverted = TryConvertToInt64(rightResult, binary.Right.Span, "binary operands are not compile-time integers.");
-        if (rightConverted.IsFailed)
-            return rightConverted;
-
-        leftConverted.TryGetLong(out long left);
-        rightConverted.TryGetLong(out long right);
-
-        return binary.Operator.Kind switch
-        {
-            BoundBinaryOperatorKind.Add => new ComptimeResult(left + right),
-            BoundBinaryOperatorKind.Subtract => new ComptimeResult(left - right),
-            BoundBinaryOperatorKind.Multiply => new ComptimeResult(left * right),
-            BoundBinaryOperatorKind.Divide when right == 0 => FailNotEvaluable(binary.Span, "division by zero is not evaluable at compile time."),
-            BoundBinaryOperatorKind.Divide => new ComptimeResult(left / right),
-            BoundBinaryOperatorKind.Modulo when right == 0 => FailNotEvaluable(binary.Span, "modulo by zero is not evaluable at compile time."),
-            BoundBinaryOperatorKind.Modulo => new ComptimeResult(left % right),
-            BoundBinaryOperatorKind.BitwiseAnd => new ComptimeResult(left & right),
-            BoundBinaryOperatorKind.BitwiseOr => new ComptimeResult(left | right),
-            BoundBinaryOperatorKind.BitwiseXor => new ComptimeResult(left ^ right),
-            BoundBinaryOperatorKind.ShiftLeft or BoundBinaryOperatorKind.ArithmeticShiftLeft => new ComptimeResult(left << (int)right),
-            BoundBinaryOperatorKind.ShiftRight or BoundBinaryOperatorKind.ArithmeticShiftRight => new ComptimeResult(left >> (int)right),
-            BoundBinaryOperatorKind.RotateLeft => new ComptimeResult((long)(((uint)left << (int)right) | ((uint)left >> (32 - ((int)right & 31))))),
-            BoundBinaryOperatorKind.RotateRight => new ComptimeResult((long)(((uint)left >> (int)right) | ((uint)left << (32 - ((int)right & 31))))),
-            BoundBinaryOperatorKind.Equals => new ComptimeResult(left == right),
-            BoundBinaryOperatorKind.NotEquals => new ComptimeResult(left != right),
-            BoundBinaryOperatorKind.Less => new ComptimeResult(left < right),
-            BoundBinaryOperatorKind.LessOrEqual => new ComptimeResult(left <= right),
-            BoundBinaryOperatorKind.Greater => new ComptimeResult(left > right),
-            BoundBinaryOperatorKind.GreaterOrEqual => new ComptimeResult(left >= right),
-            _ => new ComptimeResult(ComptimeFailureKind.UnsupportedConstruct, binary.Span, $"operator '{binary.Operator.Kind}' is not supported during comptime evaluation."),
+            EvaluationError.None => new ComptimeResult(foldedValue),
+            EvaluationError.TypeMismatch => new ComptimeResult(ComptimeFailureKind.NotEvaluable, binary.Span, "binary operands are not compile-time integers."),
+            EvaluationError.Unsupported => new ComptimeResult(ComptimeFailureKind.UnsupportedConstruct, binary.Span, $"operator '{binary.Operator.Kind}' is not supported during comptime evaluation."),
+            EvaluationError.UndefinedBehavior when binary.Operator.Kind == BoundBinaryOperatorKind.Divide => FailNotEvaluable(binary.Span, "division by zero is not evaluable at compile time."),
+            EvaluationError.UndefinedBehavior when binary.Operator.Kind == BoundBinaryOperatorKind.Modulo => FailNotEvaluable(binary.Span, "modulo by zero is not evaluable at compile time."),
+            EvaluationError.UndefinedBehavior => FailNotEvaluable(binary.Span, $"operator '{binary.Operator.Kind}' is not evaluable at compile time."),
+            _ => Assert.UnreachableValue<ComptimeResult>(),
         };
     }
 
@@ -1005,12 +678,26 @@ internal sealed class ComptimeEvaluator
         BoundExpression expression,
         TypeSymbol targetType,
         Dictionary<Symbol, ComptimeResult> frame,
-        TextSpan span)
+        TextSpan span,
+        ConversionKind kind)
     {
         ComptimeResult operandResult = TryEvaluateExpression(expression, frame);
-        return operandResult.IsFailed
-            ? operandResult
-            : NormalizeLiteral(operandResult, targetType, span);
+        if (operandResult.IsFailed)
+            return operandResult;
+
+        BladeValue convertedValue = BladeValue.Undefined;
+        EvaluationError error = kind switch
+        {
+            ConversionKind.Implicit => BladeValue.TryConvert(operandResult.Value, targetType, out convertedValue),
+            ConversionKind.ExplicitCast => BladeValue.TryCast(operandResult.Value, targetType, out convertedValue),
+            ConversionKind.BitCast when targetType is RuntimeTypeSymbol runtimeType => BladeValue.TryBitCast(operandResult.Value, runtimeType, out convertedValue),
+            ConversionKind.BitCast => EvaluationError.Unsupported,
+            _ => Assert.UnreachableValue<EvaluationError>(),
+        };
+
+        return error == EvaluationError.None
+            ? new ComptimeResult(convertedValue)
+            : new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'.");
     }
 
     private ComptimeResult TryEvaluateCall(
@@ -1210,34 +897,16 @@ internal sealed class ComptimeEvaluator
         TypeSymbol targetType,
         TextSpan span)
     {
-        ComptimeResult leftConverted = TryConvertToInt64(leftValue, span, "compound assignment operands are not compile-time integers.");
-        if (leftConverted.IsFailed)
-            return leftConverted;
+        EvaluationError error = BladeValue.TryBinary(operation, leftValue.Value, rightValue.Value, out BladeValue rawValue);
+        if (error == EvaluationError.None)
+            return NormalizeLiteral(new ComptimeResult(rawValue), targetType, span);
 
-        ComptimeResult rightConverted = TryConvertToInt64(rightValue, span, "compound assignment operands are not compile-time integers.");
-        if (rightConverted.IsFailed)
-            return rightConverted;
-
-        leftConverted.TryGetLong(out long left);
-        rightConverted.TryGetLong(out long right);
-
-        if (operation == BoundBinaryOperatorKind.Modulo && right == 0)
-            return new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, "modulo by zero is not evaluable at compile time.");
-
-        long raw = operation switch
+        return error switch
         {
-            BoundBinaryOperatorKind.Add => left + right,
-            BoundBinaryOperatorKind.Subtract => left - right,
-            BoundBinaryOperatorKind.Modulo => left % right,
-            BoundBinaryOperatorKind.BitwiseAnd => left & right,
-            BoundBinaryOperatorKind.BitwiseOr => left | right,
-            BoundBinaryOperatorKind.BitwiseXor => left ^ right,
-            BoundBinaryOperatorKind.ShiftLeft => left << (int)right,
-            BoundBinaryOperatorKind.ShiftRight => left >> (int)right,
-            _ => Assert.UnreachableValue<long>($"Unsupported compound operation '{operation}'."),
+            EvaluationError.TypeMismatch => new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, "compound assignment operands are not compile-time integers."),
+            EvaluationError.UndefinedBehavior => new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, "modulo by zero is not evaluable at compile time."),
+            _ => new ComptimeResult(ComptimeFailureKind.UnsupportedConstruct, span, $"compound assignment operator '{operation}' is not supported during comptime evaluation."),
         };
-
-        return NormalizeLiteral(new ComptimeResult(raw), targetType, span);
     }
 
     private EvaluationOutcome TryExecuteIfStatement(
@@ -1293,7 +962,7 @@ internal sealed class ComptimeEvaluator
         if (iterableValue.IsFailed)
             return EvaluationOutcome.Failed(iterableValue);
 
-        ComptimeResult iterableCount = TryConvertToInt64(iterableValue, forStatement.Iterable.Span, "for loop iterable must be a compile-time integer.");
+        ComptimeResult iterableCount = RequireIntegerResult(iterableValue, forStatement.Iterable.Span, "for loop iterable must be a compile-time integer.");
         if (iterableCount.IsFailed)
             return EvaluationOutcome.Failed(iterableCount);
 
@@ -1371,11 +1040,11 @@ internal sealed class ComptimeEvaluator
         if (endValue.IsFailed)
             return EvaluationOutcome.Failed(endValue);
 
-        ComptimeResult normalizedStart = TryConvertToInt64(startValue, repForStatement.Start.Span, "rep for bounds must be compile-time integers.");
+        ComptimeResult normalizedStart = RequireIntegerResult(startValue, repForStatement.Start.Span, "rep for bounds must be compile-time integers.");
         if (normalizedStart.IsFailed)
             return EvaluationOutcome.Failed(normalizedStart);
 
-        ComptimeResult normalizedEnd = TryConvertToInt64(endValue, repForStatement.End.Span, "rep for bounds must be compile-time integers.");
+        ComptimeResult normalizedEnd = RequireIntegerResult(endValue, repForStatement.End.Span, "rep for bounds must be compile-time integers.");
         if (normalizedEnd.IsFailed)
             return EvaluationOutcome.Failed(normalizedEnd);
 
@@ -1410,53 +1079,10 @@ internal sealed class ComptimeEvaluator
 
     private static ComptimeResult NormalizeLiteral(ComptimeResult value, TypeSymbol targetType, TextSpan span)
     {
-        if (targetType is VoidTypeSymbol)
-            return ComptimeResult.Void;
-
-        if (value.IsUndefined)
-            return ComptimeResult.Undefined;
-
-        if (targetType is UnknownTypeSymbol)
+        if (value.IsFailed)
             return value;
 
-        if (targetType is UndefinedLiteralTypeSymbol)
-        {
-            return value.IsUndefined
-                ? ComptimeResult.Undefined
-                : new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'.");
-        }
-
-        if (ReferenceEquals(value.Type, targetType))
-            return value;
-
-        if (ReferenceEquals(targetType, BuiltinTypes.Bool))
-        {
-            if (value.TryGetBool(out bool boolValue))
-                return boolValue ? ComptimeResult.True : ComptimeResult.False;
-
-            if (value.TryConvertToLong(out long integerBoolValue))
-                return integerBoolValue != 0 ? ComptimeResult.True : ComptimeResult.False;
-
-            return new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'.");
-        }
-
-        if (ReferenceEquals(targetType, BuiltinTypes.IntegerLiteral))
-        {
-            if (!value.TryConvertToLong(out long integerLiteral))
-                return new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'.");
-
-            return new ComptimeResult(integerLiteral);
-        }
-
-        if (value.TryConvertToLong(out long longValue))
-            return NormalizeConcreteLiteral(longValue, targetType, span);
-
-        return new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'.");
-    }
-
-    private static ComptimeResult NormalizeConcreteLiteral<T>(T rawValue, TypeSymbol targetType, TextSpan span)
-    {
-        if (!ComptimeTypeFacts.TryCreateBladeValue(rawValue, targetType, out BladeValue normalizedValue))
+        if (BladeValue.TryConvert(value.Value, targetType, out BladeValue normalizedValue) != EvaluationError.None)
             return new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"value cannot be normalized to '{targetType.Name}'.");
 
         return new ComptimeResult(normalizedValue);
@@ -1467,11 +1093,18 @@ internal sealed class ComptimeEvaluator
         return new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, detail);
     }
 
-    private static ComptimeResult TryConvertToInt64(ComptimeResult value, TextSpan span, string detail)
+    private static ComptimeResult RequireIntegerResult(ComptimeResult value, TextSpan span, string detail)
     {
         return value.TryConvertToLong(out long converted)
             ? new ComptimeResult(converted)
             : new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, detail);
+    }
+
+    private enum ConversionKind
+    {
+        Implicit,
+        ExplicitCast,
+        BitCast,
     }
 
     private enum EvaluationOutcomeKind

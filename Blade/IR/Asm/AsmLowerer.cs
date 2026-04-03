@@ -1120,7 +1120,6 @@ public static class AsmLowerer
         }
 
         BladeValue immediate = ((LirImmediateOperand)op.Operands[0]).Value;
-        object value = immediate.Value;
         Assert.Invariant(
             ReferenceEquals(immediate.Type, op.ResultType),
             $"Immediate type '{immediate.Type.Name}' does not match const result type '{op.ResultType?.Name ?? "<null>"}'.");
@@ -2696,15 +2695,9 @@ public static class AsmLowerer
         return imm.Value switch
         {
             bool b => b ? 1 : 0,
-            int i => i,
             uint u => u,
             long l => l,
-            ulong u => (long)u,
-            byte b => b,
-            sbyte s => s,
-            short s => s,
-            ushort u => u,
-            _ => Convert.ToInt64(imm.Value, CultureInfo.InvariantCulture),
+            _ => Assert.UnreachableValue<long>($"Immediate '{imm.Format()}' is not encodable as a PASM immediate."),
         };
     }
 

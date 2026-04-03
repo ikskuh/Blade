@@ -162,12 +162,33 @@ public sealed class ComptimeBinderHelperTests
 
     private static BladeValue CreateValue(TypeSymbol type, object value)
     {
+        object canonicalValue = CanonicalizeValue(type, value);
         return type switch
         {
-            RuntimeTypeSymbol runtimeType => new RuntimeBladeValue(runtimeType, value),
-            ComptimeTypeSymbol comptimeType => new ComptimeBladeValue(comptimeType, value),
+            RuntimeTypeSymbol runtimeType => new RuntimeBladeValue(runtimeType, canonicalValue),
+            ComptimeTypeSymbol comptimeType => new ComptimeBladeValue(comptimeType, canonicalValue),
             _ => throw new InvalidOperationException($"Unsupported test literal type '{type.Name}'."),
         };
+    }
+
+    private static object CanonicalizeValue(TypeSymbol type, object value)
+    {
+        if (type is IntegerLiteralTypeSymbol or IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol)
+        {
+            return value switch
+            {
+                sbyte sbyteValue => (long)sbyteValue,
+                byte byteValue => (long)byteValue,
+                short shortValue => (long)shortValue,
+                ushort ushortValue => (long)ushortValue,
+                int intValue => (long)intValue,
+                uint uintValue => (long)uintValue,
+                long longValue => longValue,
+                _ => value,
+            };
+        }
+
+        return value;
     }
 
     private static BoundLiteralExpression Literal(object value, TypeSymbol type) => new(CreateValue(type, value), Span);

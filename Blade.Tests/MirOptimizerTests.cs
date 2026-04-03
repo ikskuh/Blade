@@ -13,12 +13,33 @@ public class MirOptimizerTests
 {
     private static BladeValue Value(TypeSymbol type, object value)
     {
+        object canonicalValue = CanonicalizeValue(type, value);
         return type switch
         {
-            RuntimeTypeSymbol runtimeType => new RuntimeBladeValue(runtimeType, value),
-            ComptimeTypeSymbol comptimeType => new ComptimeBladeValue(comptimeType, value),
+            RuntimeTypeSymbol runtimeType => new RuntimeBladeValue(runtimeType, canonicalValue),
+            ComptimeTypeSymbol comptimeType => new ComptimeBladeValue(comptimeType, canonicalValue),
             _ => throw new System.InvalidOperationException($"Unsupported MIR test constant type '{type.Name}'."),
         };
+    }
+
+    private static object CanonicalizeValue(TypeSymbol type, object value)
+    {
+        if (type is IntegerLiteralTypeSymbol or IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol)
+        {
+            return value switch
+            {
+                sbyte sbyteValue => (long)sbyteValue,
+                byte byteValue => (long)byteValue,
+                short shortValue => (long)shortValue,
+                ushort ushortValue => (long)ushortValue,
+                int intValue => (long)intValue,
+                uint uintValue => (long)uintValue,
+                long longValue => longValue,
+                _ => value,
+            };
+        }
+
+        return value;
     }
 
     private static MirConstantInstruction Constant(MirValueId result, TypeSymbol type, object value, TextSpan span) => new(result, type, Value(type, value), span);
@@ -95,18 +116,20 @@ public class MirOptimizerTests
             .ToDictionary(instruction => instruction.Result!, instruction => instruction.Value?.Value);
 
         Assert.That(rewritten[13], Is.Not.TypeOf<MirConstantInstruction>());
+        Assert.That(rewritten[40], Is.Not.TypeOf<MirConstantInstruction>());
+        Assert.That(rewritten[41], Is.Not.TypeOf<MirConstantInstruction>());
         Assert.That(rewritten[^1], Is.Not.TypeOf<MirConstantInstruction>());
         Assert.That(constants[MirValue(10)], Is.EqualTo(true));
         Assert.That(constants[MirValue(11)], Is.EqualTo(-1L));
-        Assert.That(constants[MirValue(12)], Is.EqualTo(unchecked((uint)~1)));
+        Assert.That(constants[MirValue(12)], Is.EqualTo(0xFFFF_FFFEL));
         Assert.That(constants[MirValue(13)], Is.EqualTo(2L));
         Assert.That(constants[MirValue(20)], Is.EqualTo(3L));
         Assert.That(constants[MirValue(21)], Is.EqualTo(1L));
         Assert.That(constants[MirValue(22)], Is.EqualTo(4L));
         Assert.That(constants[MirValue(23)], Is.EqualTo(4L));
-        Assert.That(constants[MirValue(24)], Is.EqualTo(8L));
+        Assert.That(constants.ContainsKey(MirValue(24)), Is.False);
         Assert.That(constants[MirValue(25)], Is.EqualTo(1L));
-        Assert.That(constants[MirValue(26)], Is.EqualTo(7L));
+        Assert.That(constants.ContainsKey(MirValue(26)), Is.False);
         Assert.That(constants[MirValue(27)], Is.EqualTo(2L));
         Assert.That(constants[MirValue(28)], Is.EqualTo(3L));
         Assert.That(constants[MirValue(29)], Is.EqualTo(5L));
@@ -126,6 +149,5 @@ public class MirOptimizerTests
         Assert.That(constants[MirValue(44)], Is.EqualTo(true));
         Assert.That(constants[MirValue(45)], Is.EqualTo(false));
         Assert.That(constants[MirValue(46)], Is.EqualTo(true));
-        Assert.That(constants[MirValue(48)], Is.EqualTo(true));
     }
 }

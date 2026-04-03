@@ -442,14 +442,7 @@ public static class MirTextWriter
 
     private static string FormatConstant(BladeValue? value)
     {
-        return value?.Value switch
-        {
-            null => "null",
-            bool b => b ? "true" : "false",
-            string s => $"\"{s}\"",
-            IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
-            _ => value.ToString() ?? "<?>",
-        };
+        return value?.Format() ?? "null";
     }
 
     private static string FormatInlineAsmAccess(InlineAsmBindingAccess access)

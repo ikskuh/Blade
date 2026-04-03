@@ -1,6 +1,7 @@
 using System.Linq;
 using System.Reflection;
 using Blade.Diagnostics;
+using Blade.Semantics;
 using Blade.Source;
 using Blade;
 using Blade.Syntax;
@@ -34,6 +35,20 @@ public class ParserTests
             string errors = string.Join("\n", diagnostics.Select(d => d.ToString()));
             Assert.Fail($"Expected no diagnostics but got:\n{errors}");
         }
+    }
+
+    private static void AssertIntegerTokenValue(Token token, long expected)
+    {
+        Assert.That(token.Value, Is.Not.Null);
+        Assert.That(token.Value!.TryGetInteger(out long actual), Is.True);
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    private static void AssertStringTokenValue(Token token, string expected)
+    {
+        Assert.That(token.Value, Is.Not.Null);
+        Assert.That(token.Value!.TryGetString(out string actual), Is.True);
+        Assert.That(actual, Is.EqualTo(expected));
     }
 
     // ── Smoke tests ──
@@ -219,7 +234,8 @@ public class ParserTests
         AssertStatementSyntax assertStatement = (AssertStatementSyntax)global.Statement;
         Assert.That(assertStatement.CommaToken?.Kind, Is.EqualTo(TokenKind.Comma));
         Assert.That(assertStatement.MessageLiteral?.Kind, Is.EqualTo(TokenKind.StringLiteral));
-        Assert.That(assertStatement.MessageLiteral?.Value, Is.EqualTo("must hold"));
+        Assert.That(assertStatement.MessageLiteral.HasValue, Is.True);
+        AssertStringTokenValue(assertStatement.MessageLiteral.GetValueOrDefault(), "must hold");
     }
 
     [Test]
@@ -302,7 +318,7 @@ public class ParserTests
         Assert.That(unit.Members[0], Is.TypeOf<ImportDeclarationSyntax>());
         ImportDeclarationSyntax import = (ImportDeclarationSyntax)unit.Members[0];
         Assert.That(import.IsFileImport, Is.True);
-        Assert.That(import.Source.Value, Is.EqualTo("math"));
+        AssertStringTokenValue(import.Source, "math");
         Assert.That(import.Alias!.Value.Text, Is.EqualTo("math"));
     }
 
@@ -354,7 +370,7 @@ public class ParserTests
 
         VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
         Assert.That(diag.Select(diagnostic => diagnostic.Code), Is.EqualTo([DiagnosticCode.E0108_DuplicateVariableClause]));
-        Assert.That(((LiteralExpressionSyntax)decl.AtClause!.Address).Token.Value, Is.EqualTo(1L));
+        AssertIntegerTokenValue(((LiteralExpressionSyntax)decl.AtClause!.Address).Token, 1L);
     }
 
     [Test]
@@ -364,7 +380,7 @@ public class ParserTests
 
         VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
         Assert.That(diag.Select(diagnostic => diagnostic.Code), Is.EqualTo([DiagnosticCode.E0108_DuplicateVariableClause]));
-        Assert.That(((LiteralExpressionSyntax)decl.AlignClause!.Alignment).Token.Value, Is.EqualTo(4L));
+        AssertIntegerTokenValue(((LiteralExpressionSyntax)decl.AlignClause!.Alignment).Token, 4L);
     }
 
     [Test]
@@ -374,7 +390,7 @@ public class ParserTests
 
         VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
         Assert.That(diag.Select(diagnostic => diagnostic.Code), Is.EqualTo([DiagnosticCode.E0108_DuplicateVariableClause]));
-        Assert.That(((LiteralExpressionSyntax)decl.Initializer!).Token.Value, Is.EqualTo(1L));
+        AssertIntegerTokenValue(((LiteralExpressionSyntax)decl.Initializer!).Token, 1L);
     }
 
     [Test]
@@ -388,9 +404,9 @@ public class ParserTests
             DiagnosticCode.E0108_DuplicateVariableClause,
             DiagnosticCode.E0108_DuplicateVariableClause,
         ]));
-        Assert.That(((LiteralExpressionSyntax)decl.AtClause!.Address).Token.Value, Is.EqualTo(1L));
-        Assert.That(((LiteralExpressionSyntax)decl.AlignClause!.Alignment).Token.Value, Is.EqualTo(4L));
-        Assert.That(((LiteralExpressionSyntax)decl.Initializer!).Token.Value, Is.EqualTo(7L));
+        AssertIntegerTokenValue(((LiteralExpressionSyntax)decl.AtClause!.Address).Token, 1L);
+        AssertIntegerTokenValue(((LiteralExpressionSyntax)decl.AlignClause!.Alignment).Token, 4L);
+        AssertIntegerTokenValue(((LiteralExpressionSyntax)decl.Initializer!).Token, 7L);
     }
 
     [Test]

@@ -817,9 +817,9 @@ public class IrPipelineTests
                 new AsmDataBlock(
                     AsmDataBlockKind.Register,
                     [
-                        new AsmAllocatedStorageDefinition(inputWord, VariableStorageClass.Reg, BuiltinTypes.U32, new RuntimeBladeValue(BuiltinTypes.U32, 13)),
-                        new AsmAllocatedStorageDefinition(deadCodeVisible, VariableStorageClass.Reg, BuiltinTypes.U32, new RuntimeBladeValue(BuiltinTypes.U32, 0)),
-                        new AsmAllocatedStorageDefinition(r4, VariableStorageClass.Reg, BuiltinTypes.U32, new RuntimeBladeValue(BuiltinTypes.U32, 0)),
+                        new AsmAllocatedStorageDefinition(inputWord, VariableStorageClass.Reg, BuiltinTypes.U32, new RuntimeBladeValue(BuiltinTypes.U32, 13L)),
+                        new AsmAllocatedStorageDefinition(deadCodeVisible, VariableStorageClass.Reg, BuiltinTypes.U32, new RuntimeBladeValue(BuiltinTypes.U32, 0L)),
+                        new AsmAllocatedStorageDefinition(r4, VariableStorageClass.Reg, BuiltinTypes.U32, new RuntimeBladeValue(BuiltinTypes.U32, 0L)),
                     ]),
             ],
             [
@@ -2567,7 +2567,7 @@ public class IrPipelineTests
             alignment: null);
         BoundProgram program = new(
             [],
-            [new BoundGlobalVariableMember(symbol, new BoundLiteralExpression(new RuntimeBladeValue(BuiltinTypes.U32, 1u), new TextSpan(0, 0)), new TextSpan(0, 0))],
+            [new BoundGlobalVariableMember(symbol, new BoundLiteralExpression(new RuntimeBladeValue(BuiltinTypes.U32, 1L), new TextSpan(0, 0)), new TextSpan(0, 0))],
             [],
             new Dictionary<string, TypeSymbol>(),
             new Dictionary<string, FunctionSymbol>(),

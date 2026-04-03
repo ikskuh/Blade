@@ -69,25 +69,12 @@ public sealed class IntegerTypeSymbol(string name, int bitWidth, bool isSigned)
     : ScalarTypeSymbol(name, bitWidth, sizeBytes: Math.Max(1, (bitWidth + 7) / 8), alignmentBytes: Math.Max(1, (bitWidth + 7) / 8))
 {
     public override bool IsSignedInteger { get; } = isSigned;
-    public long MinValue => IsSignedInteger ? -(1L << (BitWidth - 1)) : 0L;
-    public long MaxValue => IsSignedInteger ? (1L << (BitWidth - 1)) - 1L : (1L << BitWidth) - 1L;
+    public long MinValue { get; } = isSigned ? -(1L << (bitWidth - 1)) : 0L;
+    public long MaxValue { get; } = isSigned ? (1L << (bitWidth - 1)) - 1L : (1L << bitWidth) - 1L;
 
-    public override bool IsLegalRuntimeObject(object value)
-    {
-        return value switch
-        {
-            sbyte signedByteValue => IsLegalRuntimeValue(signedByteValue),
-            byte byteValue => IsLegalRuntimeValue(byteValue),
-            short shortValue => IsLegalRuntimeValue(shortValue),
-            ushort ushortValue => IsLegalRuntimeValue(ushortValue),
-            int intValue => IsLegalRuntimeValue(intValue),
-            uint uintValue => IsLegalRuntimeValue(uintValue),
-            long longValue => IsLegalRuntimeValue(longValue),
-            _ => false,
-        };
-    }
+    public override bool IsLegalRuntimeObject(object value) => (value is long l) && IsLegalRuntimeObject(l);
 
-    private bool IsLegalRuntimeValue(long value) => value >= MinValue && value <= MaxValue;
+    private bool IsLegalRuntimeObject(long value) => value >= MinValue && value <= MaxValue;
 }
 
 public abstract class PointerLikeTypeSymbol(
@@ -328,7 +315,7 @@ public sealed class UndefinedLiteralTypeSymbol : ComptimeTypeSymbol
 
 public sealed class IntegerLiteralTypeSymbol() : ComptimeTypeSymbol("<int-literal>")
 {
-    public override bool IsLegalRuntimeObject(object value) => value is int or uint or long;
+    public override bool IsLegalRuntimeObject(object value) => value is long;
 }
 
 public sealed class VoidTypeSymbol : ComptimeTypeSymbol

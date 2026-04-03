@@ -1,51 +1,44 @@
-Blade/IR/Mir/MirTextWriter.cs:443:    private static string FormatConstant(object? value)
-Blade/IR/Mir/MirModel.cs:123:    public MirConstantInstruction(MirValueId result, TypeSymbol type, object? value, TextSpan span)
-Blade/IR/Mir/MirModel.cs:129:    public object? Value { get; }
-Blade/IR/Mir/MirLowerer.cs:1086:            object? value = type switch
-Blade/IR/Mir/MirLowerer.cs:1782:        private MirValueId EmitConstant(object? value, TypeSymbol type, TextSpan span)
-Blade/IR/Mir/Optimizations/MirConstantPropagation.cs:21:                Dictionary<MirValueId, object?> constants = [];
-Blade/IR/Mir/Optimizations/MirConstantPropagation.cs:26:                    if (instruction is MirCopyInstruction copy && TryGetConstant(constants, copy.Source, out object? copyConstant))
-Blade/IR/Mir/Optimizations/MirConstantPropagation.cs:31:                        && TryGetConstant(constants, unary.Operand, out object? unaryOperand)
-Blade/IR/Mir/Optimizations/MirConstantPropagation.cs:32:                        && TryFoldUnary(unary.Operator, unaryOperand, out object? unaryResult)
-Blade/IR/Mir/Optimizations/MirConstantPropagation.cs:38:                        && TryGetConstant(constants, binary.Left, out object? left)
-Blade/IR/Mir/Optimizations/MirConstantPropagation.cs:39:                        && TryGetConstant(constants, binary.Right, out object? right)
-Blade/IR/Mir/Optimizations/MirConstantPropagation.cs:40:                        && TryFoldBinary(binary.Operator, left, right, out object? binaryResult)
-Blade/IR/Mir/Optimizations/MirConstantPropagation.cs:46:                        && TryGetConstant(constants, pointerOffset.BaseAddress, out object? pointerValue)
-Blade/IR/Mir/Optimizations/MirConstantPropagation.cs:47:                        && TryGetConstant(constants, pointerOffset.Delta, out object? deltaValue)
-Blade/IR/Mir/Optimizations/MirConstantPropagation.cs:48:                        && TryFoldPointerOffset(pointerOffset.OperatorKind, pointerValue, deltaValue, pointerOffset.Stride, out object? offsetResult)
-Blade/IR/Mir/Optimizations/MirConstantPropagation.cs:54:                        && TryGetConstant(constants, pointerDifference.Left, out object? leftPointer)
-Blade/IR/Mir/Optimizations/MirConstantPropagation.cs:55:                        && TryGetConstant(constants, pointerDifference.Right, out object? rightPointer)
-Blade/IR/Mir/Optimizations/MirConstantPropagation.cs:56:                        && TryFoldPointerDifference(leftPointer, rightPointer, pointerDifference.Stride, out object? differenceResult)
-Blade/IR/Mir/Optimizations/MirConstantPropagation.cs:63:                        && TryGetConstant(constants, convert.Operand, out object? convertValue)
-Blade/IR/Mir/Optimizations/MirConstantPropagation.cs:88:                    && TryGetConstant(constants, branch.Condition, out object? conditionValue)
-Blade/IR/Mir/Optimizations/MirConstantPropagation.cs:112:        IReadOnlyDictionary<MirValueId, object?> constants,
-Blade/IR/Mir/Optimizations/MirConstantPropagation.cs:114:        out object? constant)
-Blade/IR/Mir/Optimizations/MirConstantPropagation.cs:119:    private static bool TryGetBool(object? value, out bool result)
-Blade/IR/Mir/Optimizations/MirConstantPropagation.cs:138:    private static bool TryCreateConstantInstruction(MirValueId result, TypeSymbol resultType, object? rawValue, TextSpan span, out MirInstruction instruction)
-Blade/IR/Mir/Optimizations/MirConstantPropagation.cs:140:        object? normalizedValue = rawValue;
-Blade/IR/Mir/Optimizations/MirConstantPropagation.cs:155:    private static bool TryFoldUnary(BoundUnaryOperatorKind kind, object? operand, out object? result)
-Blade/IR/Mir/Optimizations/MirConstantPropagation.cs:178:    private static bool TryFoldBinary(BoundBinaryOperatorKind kind, object? left, object? right, out object? result)
-Blade/IR/Mir/Optimizations/MirConstantPropagation.cs:285:    private static bool TryFoldPointerOffset(BoundBinaryOperatorKind kind, object? pointerValue, object? deltaValue, int stride, out object? result)
-Blade/IR/Mir/Optimizations/MirConstantPropagation.cs:299:    private static bool TryFoldPointerDifference(object? leftValue, object? rightValue, int stride, out object? result)
-Blade/IR/Mir/Optimizations/MirConstantPropagation.cs:310:    private static bool TryGetInteger(object? value, out long result)
-Blade/IR/Mir/Optimizations/MirConstantPropagation.cs:335:    private static bool TryGetUnsigned32(object? value, out uint result)
-Blade/IR/Asm/FinalAssemblyWriter.cs:192:        object? initialValue = definition.InitialValue?.Value;
-Blade/IR/Lir/LirTextWriter.cs:209:    private static string FormatImmediate(object? value)
-Blade/Semantics/Binder.cs:1485:        object? value = literal.Token.Value;
-Blade/Semantics/Binder.cs:2243:        if (!ComptimeTypeFacts.TryNormalizeValue(rawValue, targetType, out object? normalizedValue))
-Blade/Semantics/Binder.cs:2254:    private static object? MaterializeLiteralValue(ComptimeResult value, TypeSymbol targetType)
-Blade/Semantics/Binder.cs:2274:        return Assert.UnreachableValue<object?>($"Unsupported folded comptime result '{value.Type?.Name ?? "<failed>"}'.");
-Blade/Semantics/Binder.cs:2277:    private static ComptimeResult CreateComptimeResult(object? value, TypeSymbol type)
-Blade/Semantics/Binder.cs:3161:        if (!ComptimeTypeFacts.TryNormalizeValue(exactValue, targetType, out object? truncatedValue)
-Blade/Semantics/ComptimeEvaluation.cs:217:    public static bool TryNormalizeValue(object? value, TypeSymbol targetType, out object? normalized)
-Blade/Semantics/ComptimeEvaluation.cs:260:            if (!TryNormalizeValue(value, enumType.BackingType, out object? enumValue))
-Blade/Semantics/ComptimeEvaluation.cs:284:            object? normalizedRuntimeValue;
-Blade/Semantics/ComptimeEvaluation.cs:296:    private static bool TryNormalizeRuntimeConversionValue(object value, TypeSymbol targetType, out object? normalized)
-Blade/Semantics/ComptimeEvaluation.cs:314:    private static bool TryNormalizeIntegerValue(object value, IntegerTypeSymbol integerType, out object? normalized)
-Blade/Semantics/ComptimeEvaluation.cs:350:    private static bool TryNormalizePointerValue(object value, out object? normalized)
-Blade/Semantics/ComptimeEvaluation.cs:1424:        if (!ComptimeTypeFacts.TryNormalizeValue(rawValue, targetType, out object? normalizedValue))
-Blade/Semantics/ComptimeEvaluation.cs:1430:    private static ComptimeResult CreateValueResult(object? value, TypeSymbol type)
-Blade/Semantics/Bound/BoundExpressions.cs:21:    public BoundLiteralExpression(object? value, TextSpan span, TypeSymbol type)
-Blade/Semantics/Bound/BoundExpressions.cs:27:    public object? Value { get; }
-Blade/Syntax/Token.cs:8:public readonly record struct Token(TokenKind Kind, TextSpan Span, string Text, object? Value = null);
-Blade/Syntax/Lexer.cs:46:    private Token MakeToken(TokenKind kind, object? value)
+Blade/IR/Asm/LivenessAnalysis.cs:2:using System.Collections.ObjectModel;
+Blade/Semantics/Symbols.cs:288:        Justification = "Enumerating declared names is an action-oriented query, not stable object state.")]
+Blade/Semantics/TypeSymbol.cs:11:    public abstract bool IsLegalRuntimeObject(object value);
+Blade/Semantics/TypeSymbol.cs:50:    public override bool IsLegalRuntimeObject(object value) => false;
+Blade/Semantics/TypeSymbol.cs:65:    public override bool IsLegalRuntimeObject(object value) => value is bool;
+Blade/Semantics/TypeSymbol.cs:75:    public override bool IsLegalRuntimeObject(object value) => (value is long l) && IsLegalRuntimeObject(l);
+Blade/Semantics/TypeSymbol.cs:77:    private bool IsLegalRuntimeObject(long value) => value >= MinValue && value <= MaxValue;
+Blade/Semantics/TypeSymbol.cs:97:    public override bool IsLegalRuntimeObject(object value) => value is uint;
+Blade/Semantics/TypeSymbol.cs:152:    public override bool IsLegalRuntimeObject(object value)
+Blade/Semantics/TypeSymbol.cs:206:    public override bool IsLegalRuntimeObject(object value)
+Blade/Semantics/TypeSymbol.cs:255:    public override bool IsLegalRuntimeObject(object value) => BackingType.IsLegalRuntimeObject(value);
+Blade/Semantics/TypeSymbol.cs:285:    public override bool IsLegalRuntimeObject(object value) => BackingType.IsLegalRuntimeObject(value);
+Blade/Semantics/TypeSymbol.cs:292:    public override bool IsLegalRuntimeObject(object value) => ReferenceEquals(value, Function);
+Blade/Semantics/TypeSymbol.cs:299:    public override bool IsLegalRuntimeObject(object value) => ReferenceEquals(value, Module);
+Blade/Semantics/TypeSymbol.cs:313:    public override bool IsLegalRuntimeObject(object value) => ReferenceEquals(value, UndefinedValue.Instance);
+Blade/Semantics/TypeSymbol.cs:318:    public override bool IsLegalRuntimeObject(object value) => value is long;
+Blade/Semantics/TypeSymbol.cs:330:    public override bool IsLegalRuntimeObject(object value) => ReferenceEquals(value, VoidValue.Instance);
+Blade/Semantics/TypeSymbol.cs:335:    public override bool IsLegalRuntimeObject(object value) => value is string;
+Blade/Semantics/InlineAssemblyValidator.cs:3:using System.Collections.ObjectModel;
+Blade/Semantics/BladeValue.cs:6:public abstract partial class BladeValue(TypeSymbol type, object value)
+Blade/Semantics/BladeValue.cs:12:    public object Value { get; } = ValidateValue(type, value);
+Blade/Semantics/BladeValue.cs:17:    private static object ValidateValue(TypeSymbol type, object value)
+Blade/Semantics/BladeValue.cs:22:        if (!type.IsLegalRuntimeObject(value))
+Blade/Semantics/BladeValue.cs:93:public sealed class RuntimeBladeValue(RuntimeTypeSymbol type, object value) : BladeValue(type, value)
+Blade/Semantics/BladeValue.cs:98:public sealed class ComptimeBladeValue(ComptimeTypeSymbol type, object value) : BladeValue(type, value)
+Blade/Semantics/InlineAsmModel.cs:78:    /// Binding identity is the slot object itself, not this text.
+Blade/Semantics/BladeValue.Operators.cs:245:        if (type.IsLegalRuntimeObject(value.Value))
+Blade/Semantics/BladeValue.Operators.cs:278:        if (type.IsLegalRuntimeObject(value.Value))
+Blade/Semantics/BladeValue.Operators.cs:461:    private static BladeValue CreateTypedValue(TypeSymbol type, object value)
+Blade/Syntax/Nodes/SeparatedSyntaxList.cs:13:    private readonly IReadOnlyList<object> _nodesAndSeparators;
+Blade/Syntax/Nodes/SeparatedSyntaxList.cs:15:    public SeparatedSyntaxList(IReadOnlyList<object> nodesAndSeparators)
+Blade/Syntax/Parser.cs:306:        List<object> nodesAndSeparators = new();
+Blade/Syntax/Parser.cs:336:        List<object> nodesAndSeparators = new();
+Blade/Syntax/Parser.cs:794:            List<object> nodesAndSeparators = [expression];
+Blade/Syntax/Parser.cs:970:        List<object> fieldsAndSeparators = new();
+Blade/Syntax/Parser.cs:993:        List<object> fieldsAndSeparators = new();
+Blade/Syntax/Parser.cs:1019:        List<object> membersAndSeparators = new();
+Blade/Syntax/Parser.cs:1062:        List<object> fieldsAndSeparators = new();
+Blade/Syntax/Parser.cs:1188:                    List<object> initializersAndSeparators = new();
+Blade/Syntax/Parser.cs:1269:        List<object> elementsAndSeparators = new();
+Blade/Syntax/Parser.cs:1355:        List<object> nodesAndSeparators = new();
+Blade/Syntax/Parser.cs:1388:        List<object> nodesAndSeparators = new();
+Blade/obj/blade.csproj.nuget.dgspec.json:284:            "System.ObjectModel": "(,4.3.32767]",
+Blade/obj/project.assets.json:329:          "System.ObjectModel": "(,4.3.32767]",

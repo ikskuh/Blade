@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Blade.Diagnostics;
 using Blade.Source;
+using Blade.Semantics;
 using Blade.Syntax.Nodes;
 
 namespace Blade.Syntax;
@@ -1257,7 +1258,7 @@ public sealed class Parser
             default:
                 Diagnostics.ReportExpectedExpression(Current.Span);
                 return new LiteralExpressionSyntax(
-                    new Token(TokenKind.IntegerLiteral, new TextSpan(Current.Span.Start, 0), "", 0L));
+                    new Token(TokenKind.IntegerLiteral, new TextSpan(Current.Span.Start, 0), "", BladeValue.IntegerLiteral(0L)));
         }
     }
 

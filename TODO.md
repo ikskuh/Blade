@@ -340,3 +340,17 @@ Why isn't a "place" a symbol?
 
 Introduce methods for all operators on top of BladeValue, and implement the evaluation logic there.
 
+##  Rework parser to not require `IReadOnlyList<object>` at all
+
+see topic
+
+## Improve Pointer BladeValue 
+
+`PointerLikeTypeSymbol` must use a `SymbolOffset(IAsmSymbol sym, long offset)` value instead of `uint`.
+
+We don't know pointer values at comptime, but we can still perform all pointer arithmetics as long as they are
+on the same symbol.
+
+## Improve BladeValue to have default constructors for all builtin types
+
+- All builtin types must be singletons

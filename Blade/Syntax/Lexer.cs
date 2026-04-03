@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using Blade.Diagnostics;
 using Blade.Source;
+using Blade.Semantics;
 
 namespace Blade.Syntax;
 
@@ -43,7 +44,7 @@ public sealed class Lexer
         return new Token(kind, new TextSpan(_start, length), text);
     }
 
-    private Token MakeToken(TokenKind kind, object? value)
+    private Token MakeToken(TokenKind kind, BladeValue? value)
     {
         int length = _position - _start;
         string text = _source.ToString(new TextSpan(_start, length));
@@ -234,10 +235,10 @@ public sealed class Lexer
         string text = _source.ToString(span);
 
         if (TryParseIntegerLiteralText(text, prefixLength, radix, out long value))
-            return MakeToken(TokenKind.IntegerLiteral, value);
+            return MakeToken(TokenKind.IntegerLiteral, BladeValue.IntegerLiteral(value));
 
         Diagnostics.ReportInvalidNumberLiteral(span, text);
-        return MakeToken(TokenKind.IntegerLiteral, 0L);
+        return MakeToken(TokenKind.IntegerLiteral, BladeValue.IntegerLiteral(0L));
     }
 
     private Token ReadIdentifierOrKeyword()
@@ -253,8 +254,9 @@ public sealed class Lexer
 
         return kind switch
         {
-            TokenKind.TrueKeyword => MakeToken(kind, true),
-            TokenKind.FalseKeyword => MakeToken(kind, false),
+            TokenKind.TrueKeyword => MakeToken(kind, BladeValue.Bool(true)),
+            TokenKind.FalseKeyword => MakeToken(kind, BladeValue.Bool(false)),
+            TokenKind.UndefinedKeyword => MakeToken(kind, BladeValue.Undefined),
             _ => MakeToken(kind),
         };
     }
@@ -299,7 +301,7 @@ public sealed class Lexer
             TextSpan span = new(_start, _position - _start);
             Diagnostics.ReportUnterminatedString(span);
             TokenKind errorKind = zeroTerminated ? TokenKind.ZeroTerminatedStringLiteral : TokenKind.StringLiteral;
-            return MakeToken(errorKind, "");
+            return MakeToken(errorKind, BladeValue.StringLiteral(string.Empty));
         }
 
         // Skip closing quote
@@ -308,7 +310,8 @@ public sealed class Lexer
         _ = hasEscapeErrors; // diagnostic already reported in ReadEscapeSequence
 
         TokenKind kind = zeroTerminated ? TokenKind.ZeroTerminatedStringLiteral : TokenKind.StringLiteral;
-        return MakeToken(kind, sb.ToString());
+        string literalValue = zeroTerminated ? sb + "\0" : sb.ToString();
+        return MakeToken(kind, BladeValue.StringLiteral(literalValue));
     }
 
     private Token ReadCharLiteral()
@@ -328,7 +331,7 @@ public sealed class Lexer
         {
             TextSpan span = new(_start, _position - _start);
             Diagnostics.ReportUnterminatedString(span);
-            return MakeToken(TokenKind.CharLiteral, 0L);
+            return MakeToken(TokenKind.CharLiteral, BladeValue.IntegerLiteral(0L));
         }
         else
         {
@@ -347,13 +350,13 @@ public sealed class Lexer
 
             TextSpan span = new(_start, _position - _start);
             Diagnostics.ReportInvalidCharacterLiteral(span);
-            return MakeToken(TokenKind.CharLiteral, value);
+            return MakeToken(TokenKind.CharLiteral, BladeValue.IntegerLiteral(value));
         }
 
         // Skip closing quote
         Advance();
 
-        return MakeToken(TokenKind.CharLiteral, value);
+        return MakeToken(TokenKind.CharLiteral, BladeValue.IntegerLiteral(value));
     }
 
     /// <summary>
