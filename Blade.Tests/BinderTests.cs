@@ -315,8 +315,8 @@ public class BinderTests
     public void BitcastUnsupportedType_ReportsDiagnostic()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
-            fn demo(flag: bool) void {
-                var raw: u32 = bitcast(u32, flag);
+            fn demo() void {
+                var raw: u32 = bitcast(u32, [1, 2]);
             }
             """);
 

@@ -14,7 +14,7 @@ public class MirOptimizerTests
     private static BladeValue Value(TypeSymbol type, object value)
     {
         if (type is ArrayTypeSymbol arrayType
-            && ReferenceEquals(arrayType.ElementType, BuiltinTypes.U8)
+            && arrayType.ElementType == BuiltinTypes.U8
             && value is byte[] bytes)
         {
             return BladeValue.U8Array(bytes);

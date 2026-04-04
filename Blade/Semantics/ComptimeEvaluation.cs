@@ -102,8 +102,8 @@ internal sealed class ComptimeResult
     public TypeSymbol? Type => value?.Type;
 
     public bool IsFailed => failure is not null;
-    public bool IsUndefined => !IsFailed && ReferenceEquals(Value.Type, BuiltinTypes.UndefinedLiteral);
-    public bool IsVoid => !IsFailed && ReferenceEquals(Value.Type, BuiltinTypes.Void);
+    public bool IsUndefined => !IsFailed && Value.Type == BuiltinTypes.UndefinedLiteral;
+    public bool IsVoid => !IsFailed && Value.Type == BuiltinTypes.Void;
 
     public bool IsNumeric => !IsFailed && TryGetIntegerLike(Value, out _);
 

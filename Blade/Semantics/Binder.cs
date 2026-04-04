@@ -401,7 +401,7 @@ public sealed class Binder
                 {
                     ReturnSlot slot = returnSlots[i];
                     if (slot.Placement == ReturnPlacement.Register
-                        && (slot.Type is BoolTypeSymbol || ReferenceEquals(slot.Type, BuiltinTypes.Bit)))
+                        && (slot.Type is BoolTypeSymbol || slot.Type == BuiltinTypes.Bit))
                     {
                         returnSlots[i] = new ReturnSlot(slot.Type, nextFlag);
                         nextFlag = nextFlag == ReturnPlacement.FlagC ? ReturnPlacement.FlagZ : nextFlag;
@@ -2991,12 +2991,12 @@ public sealed class Binder
         if (targetType is UnknownTypeSymbol || expression.Type is UnknownTypeSymbol)
             return expression;
 
-        if (AreSameType(targetType, expression.Type))
+        if (targetType == expression.Type)
             return expression;
 
         if (TryGetLiteralU8Bytes(expression, out byte[] literalBytes)
             && targetType is MultiPointerTypeSymbol targetPointer
-            && ReferenceEquals(targetPointer.PointeeType, BuiltinTypes.U8))
+            && targetPointer.PointeeType == BuiltinTypes.U8)
         {
             if (!targetPointer.IsConst)
             {
@@ -3049,7 +3049,7 @@ public sealed class Binder
 
     private static bool TryGetCompileTimeIntegerWidth(TypeSymbol type, out int width)
     {
-        if (ReferenceEquals(type, BuiltinTypes.IntegerLiteral))
+        if (type == BuiltinTypes.IntegerLiteral)
         {
             width = 64;
             return true;
@@ -3090,16 +3090,16 @@ public sealed class Binder
         if (sourceType is UnknownTypeSymbol || targetType is UnknownTypeSymbol)
             return true;
 
-        if (ReferenceEquals(sourceType, targetType))
+        if (sourceType == targetType)
             return true;
 
         if (sourceType is EnumTypeSymbol sourceEnum && targetType is EnumTypeSymbol targetEnum)
-            return ReferenceEquals(sourceEnum, targetEnum);
+            return sourceEnum == targetEnum;
 
         if (sourceType is EnumTypeSymbol openEnumSource
             && openEnumSource.IsOpen
             && targetType is IntegerLiteralTypeSymbol or IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol
-            && AreSameType(openEnumSource.BackingType, targetType))
+            && openEnumSource.BackingType == targetType)
         {
             return true;
         }
@@ -3107,7 +3107,7 @@ public sealed class Binder
         if (targetType is EnumTypeSymbol openEnumTarget
             && openEnumTarget.IsOpen
             && sourceType is IntegerLiteralTypeSymbol or IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol
-            && AreSameType(openEnumTarget.BackingType, sourceType))
+            && openEnumTarget.BackingType == sourceType)
         {
             return true;
         }
@@ -3512,7 +3512,7 @@ public sealed class Binder
 
         if (left is BoolTypeSymbol && right is BoolTypeSymbol)
             return true;
-        return AreSameType(left, right);
+        return left == right;
     }
 
     private static bool IsAssignable(TypeSymbol target, TypeSymbol source)
@@ -3523,10 +3523,10 @@ public sealed class Binder
             return true;
 
         if (target is EnumTypeSymbol targetEnum && source is EnumTypeSymbol sourceEnum)
-            return ReferenceEquals(targetEnum, sourceEnum);
+            return targetEnum == sourceEnum;
 
         if (target is BitfieldTypeSymbol targetBitfield && source is BitfieldTypeSymbol sourceBitfield)
-            return ReferenceEquals(targetBitfield, sourceBitfield);
+            return targetBitfield == sourceBitfield;
 
         if (target is IntegerLiteralTypeSymbol or IntegerTypeSymbol or BitfieldTypeSymbol
             && source is IntegerLiteralTypeSymbol or IntegerTypeSymbol or BitfieldTypeSymbol)
@@ -3541,38 +3541,15 @@ public sealed class Binder
             return IsPointerAssignable(targetPointer, sourcePointer);
 
         if (target is StructTypeSymbol or UnionTypeSymbol)
-            return ReferenceEquals(target, source);
+            return target == source;
 
-        return AreSameType(target, source);
+        return target == source;
     }
 
     private static bool AreCompatiblePointerSubtractionOperands(MultiPointerTypeSymbol left, MultiPointerTypeSymbol right)
     {
         return left.StorageClass == right.StorageClass
-            && AreSameType(left.PointeeType, right.PointeeType);
-    }
-
-    private static bool AreSameType(TypeSymbol left, TypeSymbol right)
-    {
-        if (ReferenceEquals(left, right))
-            return true;
-
-        if (left.GetType() != right.GetType())
-            return false;
-
-        return (left, right) switch
-        {
-            (ArrayTypeSymbol leftArray, ArrayTypeSymbol rightArray) => leftArray.Length == rightArray.Length
-                && AreSameType(leftArray.ElementType, rightArray.ElementType),
-            (PointerLikeTypeSymbol leftPointer, PointerLikeTypeSymbol rightPointer) => leftPointer.IsConst == rightPointer.IsConst
-                && leftPointer.IsVolatile == rightPointer.IsVolatile
-                && leftPointer.Alignment == rightPointer.Alignment
-                && leftPointer.StorageClass == rightPointer.StorageClass
-                && AreSameType(leftPointer.PointeeType, rightPointer.PointeeType),
-            (FunctionTypeSymbol leftFunction, FunctionTypeSymbol rightFunction) => ReferenceEquals(leftFunction.Function, rightFunction.Function),
-            (ModuleTypeSymbol leftModule, ModuleTypeSymbol rightModule) => ReferenceEquals(leftModule.Module, rightModule.Module),
-            _ => false,
-        };
+            && left.PointeeType == right.PointeeType;
     }
 
     private static int AlignTo(int value, int alignment)

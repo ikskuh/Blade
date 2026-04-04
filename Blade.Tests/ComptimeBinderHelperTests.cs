@@ -163,7 +163,7 @@ public sealed class ComptimeBinderHelperTests
     private static BladeValue CreateValue(TypeSymbol type, object value)
     {
         if (type is ArrayTypeSymbol arrayType
-            && ReferenceEquals(arrayType.ElementType, BuiltinTypes.U8)
+            && arrayType.ElementType == BuiltinTypes.U8
             && value is byte[] bytes)
         {
             return BladeValue.U8Array(bytes);
@@ -226,7 +226,7 @@ public sealed class ComptimeBinderHelperTests
 
         BoundVariableDeclarationStatement statement = (BoundVariableDeclarationStatement)program.TopLevelStatements.Single();
         BoundLiteralExpression initializer = (BoundLiteralExpression)statement.Initializer!;
-        Assert.That(initializer.Value.Value, Is.EqualTo((uint)3));
+        Assert.That(initializer.Value.Value, Is.EqualTo(3L));
     }
 
     [Test]
@@ -248,7 +248,7 @@ public sealed class ComptimeBinderHelperTests
 
         BoundVariableDeclarationStatement statement = (BoundVariableDeclarationStatement)program.TopLevelStatements.Single();
         BoundLiteralExpression initializer = (BoundLiteralExpression)statement.Initializer!;
-        Assert.That(initializer.Value.Value, Is.EqualTo((uint)2));
+        Assert.That(initializer.Value.Value, Is.EqualTo(2L));
     }
 
     [Test]
@@ -281,7 +281,7 @@ public sealed class ComptimeBinderHelperTests
         Assert.That(diagnostics.Count, Is.EqualTo(0));
 
         BoundLiteralExpression initializer = (BoundLiteralExpression)program.GlobalVariables.Single().Initializer!;
-        Assert.That(initializer.Value.Value, Is.EqualTo((uint)5_000_000));
+        Assert.That(initializer.Value.Value, Is.EqualTo(5_000_000L));
     }
 
     [Test]

@@ -1,14 +1,43 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Blade;
 
 namespace Blade.Semantics;
 
-public abstract class TypeSymbol(string name)
+public abstract class TypeSymbol(string name) : IEquatable<TypeSymbol>
 {
     public string Name { get; } = Requires.NotNull(name);
 
     public abstract bool IsLegalRuntimeObject(object value);
+
+    public bool Equals(TypeSymbol? other)
+    {
+        if (other is null)
+            return false;
+
+        if (ReferenceEquals(this, other))
+            return true;
+
+        if (GetType() != other.GetType())
+            return false;
+
+        return EqualsCore(other);
+    }
+
+    public sealed override bool Equals(object? obj) => obj is TypeSymbol other && Equals(other);
+
+    public sealed override int GetHashCode() => GetHashCodeCore();
+
+    public static bool operator ==(TypeSymbol? left, TypeSymbol? right)
+    {
+        return left is null ? right is null : left.Equals(right);
+    }
+
+    public static bool operator !=(TypeSymbol? left, TypeSymbol? right) => !(left == right);
+
+    protected abstract bool EqualsCore(TypeSymbol other);
+    protected abstract int GetHashCodeCore();
 
     public override string ToString() => Name;
 }
@@ -67,9 +96,13 @@ public sealed class BoolTypeSymbol : ScalarTypeSymbol
     {
     }
 
-    public override bool IsScalarCastType => false;
+    public override bool IsScalarCastType => true;
 
     public override bool IsLegalRuntimeObject(object value) => value is bool;
+
+    protected override bool EqualsCore(TypeSymbol other) => other is BoolTypeSymbol;
+
+    protected override int GetHashCodeCore() => HashCode.Combine(typeof(BoolTypeSymbol));
 }
 
 public sealed class IntegerTypeSymbol : ScalarTypeSymbol
@@ -89,6 +122,15 @@ public sealed class IntegerTypeSymbol : ScalarTypeSymbol
     public override bool IsLegalRuntimeObject(object value) => (value is long l) && IsLegalRuntimeObject(l);
 
     private bool IsLegalRuntimeObject(long value) => value >= MinValue && value <= MaxValue;
+
+    protected override bool EqualsCore(TypeSymbol other)
+    {
+        IntegerTypeSymbol typedOther = (IntegerTypeSymbol)other;
+        return BitWidth == typedOther.BitWidth
+            && IsSignedInteger == typedOther.IsSignedInteger;
+    }
+
+    protected override int GetHashCodeCore() => HashCode.Combine(typeof(IntegerTypeSymbol), BitWidth, IsSignedInteger);
 }
 
 public abstract class PointerLikeTypeSymbol(
@@ -109,6 +151,21 @@ public abstract class PointerLikeTypeSymbol(
     public VariableStorageClass StorageClass { get; } = storageClass;
 
     public override bool IsLegalRuntimeObject(object value) => value is PointedValue;
+
+    protected override bool EqualsCore(TypeSymbol other)
+    {
+        PointerLikeTypeSymbol typedOther = (PointerLikeTypeSymbol)Requires.NotNull(other);
+        return IsConst == typedOther.IsConst
+            && IsVolatile == typedOther.IsVolatile
+            && Alignment == typedOther.Alignment
+            && StorageClass == typedOther.StorageClass
+            && PointeeType == typedOther.PointeeType;
+    }
+
+    protected override int GetHashCodeCore()
+    {
+        return HashCode.Combine(GetType(), PointeeType, IsConst, IsVolatile, Alignment, StorageClass);
+    }
 
     private static string BuildName(
         string prefix,
@@ -173,12 +230,21 @@ public sealed class ArrayTypeSymbol(TypeSymbol elementType, int? length = null) 
 
         foreach (RuntimeBladeValue element in values)
         {
-            if (!ReferenceEquals(element.Type, GetRuntimeElementType()))
+            if (element.Type != GetRuntimeElementType())
                 return false;
         }
 
         return true;
     }
+
+    protected override bool EqualsCore(TypeSymbol other)
+    {
+        ArrayTypeSymbol typedOther = (ArrayTypeSymbol)other;
+        return Length == typedOther.Length
+            && ElementType == typedOther.ElementType;
+    }
+
+    protected override int GetHashCodeCore() => HashCode.Combine(typeof(ArrayTypeSymbol), ElementType, Length);
 
     private static string BuildName(TypeSymbol elementType, int? length)
     {
@@ -227,12 +293,16 @@ public abstract class AggregateTypeSymbol(
             if (!values.TryGetValue(fieldName, out BladeValue? fieldValue))
                 return false;
 
-            if (!ReferenceEquals(fieldValue.Type, fieldType))
+            if (fieldValue.Type != fieldType)
                 return false;
         }
 
         return true;
     }
+
+    protected override bool EqualsCore(TypeSymbol other) => ReferenceEquals(this, other);
+
+    protected override int GetHashCodeCore() => RuntimeHelpers.GetHashCode(this);
 }
 
 public sealed class StructTypeSymbol(
@@ -267,6 +337,10 @@ public sealed class EnumTypeSymbol(string name, TypeSymbol backingType, IReadOnl
     public override int? BitfieldFieldWidthBits => BackingType.BitfieldFieldWidthBits;
 
     public override bool IsLegalRuntimeObject(object value) => BackingType.IsLegalRuntimeObject(value);
+
+    protected override bool EqualsCore(TypeSymbol other) => ReferenceEquals(this, other);
+
+    protected override int GetHashCodeCore() => RuntimeHelpers.GetHashCode(this);
 }
 
 public sealed class BitfieldTypeSymbol(
@@ -297,6 +371,10 @@ public sealed class BitfieldTypeSymbol(
     };
 
     public override bool IsLegalRuntimeObject(object value) => BackingType.IsLegalRuntimeObject(value);
+
+    protected override bool EqualsCore(TypeSymbol other) => ReferenceEquals(this, other);
+
+    protected override int GetHashCodeCore() => RuntimeHelpers.GetHashCode(this);
 }
 
 public sealed class FunctionTypeSymbol(FunctionSymbol function) : ComptimeTypeSymbol($"fn {Requires.NotNull(function).Name}")
@@ -304,6 +382,10 @@ public sealed class FunctionTypeSymbol(FunctionSymbol function) : ComptimeTypeSy
     public FunctionSymbol Function { get; } = Requires.NotNull(function);
 
     public override bool IsLegalRuntimeObject(object value) => ReferenceEquals(value, Function);
+
+    protected override bool EqualsCore(TypeSymbol other) => ReferenceEquals(Function, ((FunctionTypeSymbol)other).Function);
+
+    protected override int GetHashCodeCore() => HashCode.Combine(typeof(FunctionTypeSymbol), RuntimeHelpers.GetHashCode(Function));
 }
 
 public sealed class ModuleTypeSymbol(ModuleSymbol module) : ComptimeTypeSymbol($"module {Requires.NotNull(module).Name}")
@@ -311,6 +393,10 @@ public sealed class ModuleTypeSymbol(ModuleSymbol module) : ComptimeTypeSymbol($
     public ModuleSymbol Module { get; } = Requires.NotNull(module);
 
     public override bool IsLegalRuntimeObject(object value) => ReferenceEquals(value, Module);
+
+    protected override bool EqualsCore(TypeSymbol other) => ReferenceEquals(Module, ((ModuleTypeSymbol)other).Module);
+
+    protected override int GetHashCodeCore() => HashCode.Combine(typeof(ModuleTypeSymbol), RuntimeHelpers.GetHashCode(Module));
 }
 
 public sealed class UnknownTypeSymbol : ComptimeTypeSymbol
@@ -321,6 +407,10 @@ public sealed class UnknownTypeSymbol : ComptimeTypeSymbol
         : base("<unknown>")
     {
     }
+
+    protected override bool EqualsCore(TypeSymbol other) => other is UnknownTypeSymbol;
+
+    protected override int GetHashCodeCore() => HashCode.Combine(typeof(UnknownTypeSymbol));
 }
 
 public sealed class UndefinedLiteralTypeSymbol : ComptimeTypeSymbol
@@ -333,6 +423,10 @@ public sealed class UndefinedLiteralTypeSymbol : ComptimeTypeSymbol
     }
 
     public override bool IsLegalRuntimeObject(object value) => ReferenceEquals(value, UndefinedValue.Instance);
+
+    protected override bool EqualsCore(TypeSymbol other) => other is UndefinedLiteralTypeSymbol;
+
+    protected override int GetHashCodeCore() => HashCode.Combine(typeof(UndefinedLiteralTypeSymbol));
 }
 
 public sealed class IntegerLiteralTypeSymbol : ComptimeTypeSymbol
@@ -345,6 +439,10 @@ public sealed class IntegerLiteralTypeSymbol : ComptimeTypeSymbol
     }
 
     public override bool IsLegalRuntimeObject(object value) => value is long;
+
+    protected override bool EqualsCore(TypeSymbol other) => other is IntegerLiteralTypeSymbol;
+
+    protected override int GetHashCodeCore() => HashCode.Combine(typeof(IntegerLiteralTypeSymbol));
 }
 
 public sealed class VoidTypeSymbol : ComptimeTypeSymbol
@@ -357,6 +455,10 @@ public sealed class VoidTypeSymbol : ComptimeTypeSymbol
     }
 
     public override bool IsLegalRuntimeObject(object value) => ReferenceEquals(value, VoidValue.Instance);
+
+    protected override bool EqualsCore(TypeSymbol other) => other is VoidTypeSymbol;
+
+    protected override int GetHashCodeCore() => HashCode.Combine(typeof(VoidTypeSymbol));
 }
 
 public sealed class RangeTypeSymbol : ComptimeTypeSymbol
@@ -367,6 +469,10 @@ public sealed class RangeTypeSymbol : ComptimeTypeSymbol
         : base("range")
     {
     }
+
+    protected override bool EqualsCore(TypeSymbol other) => other is RangeTypeSymbol;
+
+    protected override int GetHashCodeCore() => HashCode.Combine(typeof(RangeTypeSymbol));
 }
 
 public static class BuiltinTypes

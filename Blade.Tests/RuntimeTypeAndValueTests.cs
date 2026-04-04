@@ -1,11 +1,18 @@
+using System;
 using System.Collections.Generic;
 using Blade.Semantics;
+using Blade.Semantics.Bound;
+using Blade.Source;
+using Blade.Syntax;
+using Blade.Syntax.Nodes;
 
 namespace Blade.Tests;
 
 [TestFixture]
 public sealed class RuntimeTypeAndValueTests
 {
+    private static readonly TextSpan Span = new(0, 0);
+
     [TestCase(BuiltinTypeCase.Bit, 1)]
     [TestCase(BuiltinTypeCase.Nit, 1)]
     [TestCase(BuiltinTypeCase.Nib, 4)]
@@ -168,6 +175,7 @@ public sealed class RuntimeTypeAndValueTests
             Assert.That(BuiltinTypes.Int.IsSignedInteger, Is.True);
             Assert.That(BuiltinTypes.U32.IsSignedInteger, Is.False);
 
+            Assert.That(BuiltinTypes.Bool.IsScalarCastType, Is.True);
             Assert.That(new PointerTypeSymbol(BuiltinTypes.U32, isConst: false).IsScalarCastType, Is.True);
             Assert.That(enumType.IsScalarCastType, Is.True);
             Assert.That(bitfieldType.IsScalarCastType, Is.True);
@@ -200,6 +208,196 @@ public sealed class RuntimeTypeAndValueTests
             Assert.That(undefinedValue.Value, Is.SameAs(UndefinedValue.Instance));
             Assert.That(() => new RuntimeBladeValue(BuiltinTypes.U8, 256L), Throws.ArgumentException);
         });
+    }
+
+    [Test]
+    public void TypeEquality_UsesStructuralSemanticsForRuntimeShapes()
+    {
+        ArrayTypeSymbol arrayLeft = new(BuiltinTypes.U8, 8);
+        ArrayTypeSymbol arrayRight = new(BuiltinTypes.U8, 8);
+        PointerTypeSymbol pointerLeft = new(BuiltinTypes.U16, isConst: true, isVolatile: true, alignment: 4, storageClass: VariableStorageClass.Hub);
+        PointerTypeSymbol pointerRight = new(BuiltinTypes.U16, isConst: true, isVolatile: true, alignment: 4, storageClass: VariableStorageClass.Hub);
+        MultiPointerTypeSymbol differentFamily = new(BuiltinTypes.U16, isConst: true, isVolatile: true, alignment: 4, storageClass: VariableStorageClass.Hub);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(arrayLeft == arrayRight, Is.True);
+            Assert.That(arrayLeft.Equals(arrayRight), Is.True);
+            Assert.That(arrayLeft.GetHashCode(), Is.EqualTo(arrayRight.GetHashCode()));
+
+            Assert.That(pointerLeft == pointerRight, Is.True);
+            Assert.That(pointerLeft.GetHashCode(), Is.EqualTo(pointerRight.GetHashCode()));
+            Assert.That(pointerLeft == differentFamily, Is.False);
+
+            Assert.That(BuiltinTypes.Bool == BoolTypeSymbol.Instance, Is.True);
+            Assert.That(BuiltinTypes.IntegerLiteral == IntegerLiteralTypeSymbol.Instance, Is.True);
+        });
+    }
+
+    [Test]
+    public void TypeEquality_KeepsNominalTypesIdentityBased()
+    {
+        Dictionary<string, TypeSymbol> fields = new(StringComparer.Ordinal)
+        {
+            ["value"] = BuiltinTypes.U16,
+        };
+        Dictionary<string, AggregateMemberSymbol> members = new(StringComparer.Ordinal)
+        {
+            ["value"] = new AggregateMemberSymbol("value", BuiltinTypes.U16, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false),
+        };
+        StructTypeSymbol structLeft = new("S", fields, members, sizeBytes: 2, alignmentBytes: 2);
+        StructTypeSymbol structRight = new("S", fields, members, sizeBytes: 2, alignmentBytes: 2);
+        UnionTypeSymbol unionLeft = new("U", fields, members, sizeBytes: 2, alignmentBytes: 2);
+        UnionTypeSymbol unionRight = new("U", fields, members, sizeBytes: 2, alignmentBytes: 2);
+        EnumTypeSymbol enumLeft = new("Mode", BuiltinTypes.U16, new Dictionary<string, long>(), isOpen: false);
+        EnumTypeSymbol enumRight = new("Mode", BuiltinTypes.U16, new Dictionary<string, long>(), isOpen: false);
+        BitfieldTypeSymbol bitfieldLeft = new("Flags", BuiltinTypes.U16, fields, members);
+        BitfieldTypeSymbol bitfieldRight = new("Flags", BuiltinTypes.U16, fields, members);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(structLeft == structRight, Is.False);
+            Assert.That(unionLeft == unionRight, Is.False);
+            Assert.That(enumLeft == enumRight, Is.False);
+            Assert.That(bitfieldLeft == bitfieldRight, Is.False);
+        });
+    }
+
+    [Test]
+    public void TypeEquality_UsesWrappedDeclarationIdentityForFunctionAndModuleTypes()
+    {
+        FunctionSymbol sharedFunction = new("demo", FunctionKind.Default);
+        FunctionTypeSymbol functionLeft = new(sharedFunction);
+        FunctionTypeSymbol functionRight = new(sharedFunction);
+        FunctionTypeSymbol otherFunction = new(new FunctionSymbol("demo", FunctionKind.Default));
+
+        ImportedModule sharedModule = CreateImportedModule("shared");
+        ModuleSymbol sharedModuleSymbol = new("math", sharedModule);
+        ModuleTypeSymbol moduleLeft = new(sharedModuleSymbol);
+        ModuleTypeSymbol moduleRight = new(sharedModuleSymbol);
+        ModuleTypeSymbol otherModule = new(new ModuleSymbol("math", CreateImportedModule("other")));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(functionLeft == functionRight, Is.True);
+            Assert.That(functionLeft.GetHashCode(), Is.EqualTo(functionRight.GetHashCode()));
+            Assert.That(functionLeft == otherFunction, Is.False);
+
+            Assert.That(moduleLeft == moduleRight, Is.True);
+            Assert.That(moduleLeft.GetHashCode(), Is.EqualTo(moduleRight.GetHashCode()));
+            Assert.That(moduleLeft == otherModule, Is.False);
+        });
+    }
+
+    [Test]
+    public void BladeValueEquality_UsesSemanticValueComparison()
+    {
+        BladeValue firstArray = BladeValue.U8Array([1, 2, 3]);
+        BladeValue secondArray = BladeValue.U8Array([1, 2, 3]);
+        BladeValue aggregateLeft = new RuntimeBladeValue(
+            new StructTypeSymbol(
+                "Pair",
+                new Dictionary<string, TypeSymbol>(StringComparer.Ordinal)
+                {
+                    ["lo"] = BuiltinTypes.U8,
+                    ["hi"] = BuiltinTypes.U8,
+                },
+                new Dictionary<string, AggregateMemberSymbol>(StringComparer.Ordinal)
+                {
+                    ["lo"] = new AggregateMemberSymbol("lo", BuiltinTypes.U8, 0, 0, 0, isBitfield: false),
+                    ["hi"] = new AggregateMemberSymbol("hi", BuiltinTypes.U8, 1, 0, 0, isBitfield: false),
+                },
+                sizeBytes: 2,
+                alignmentBytes: 1),
+            new Dictionary<string, BladeValue>(StringComparer.Ordinal)
+            {
+                ["lo"] = BladeValue.U8(1),
+                ["hi"] = BladeValue.U8(2),
+            });
+        BladeValue aggregateRight = new RuntimeBladeValue(
+            (RuntimeTypeSymbol)aggregateLeft.Type,
+            new Dictionary<string, BladeValue>(StringComparer.Ordinal)
+            {
+                ["lo"] = BladeValue.U8(1),
+                ["hi"] = BladeValue.U8(2),
+            });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(BladeValue.Bool(true) == BladeValue.Bool(true), Is.True);
+            Assert.That(BladeValue.I32(7) == BladeValue.U32(7), Is.True);
+            Assert.That(firstArray == secondArray, Is.True);
+            Assert.That(firstArray.GetHashCode(), Is.EqualTo(secondArray.GetHashCode()));
+            Assert.That(aggregateLeft == aggregateRight, Is.True);
+            Assert.That(aggregateLeft.GetHashCode(), Is.EqualTo(aggregateRight.GetHashCode()));
+            Assert.That(BladeValue.Void == BladeValue.Void, Is.True);
+            Assert.That(BladeValue.Undefined == BladeValue.Undefined, Is.True);
+        });
+    }
+
+    [Test]
+    public void BladeValuePointerEquality_UsesProvenanceBeforeAbsoluteAddressFallback()
+    {
+        VariableSymbol sameSymbol = new("arr", BuiltinTypes.U8, isConst: false, VariableStorageClass.Hub, VariableScopeKind.GlobalStorage, isExtern: false, fixedAddress: null, alignment: null);
+        VariableSymbol differentSymbol = new("other", BuiltinTypes.U8, isConst: false, VariableStorageClass.Hub, VariableScopeKind.GlobalStorage, isExtern: false, fixedAddress: null, alignment: null);
+        PointerTypeSymbol singlePointer = new(BuiltinTypes.U8, isConst: false, storageClass: VariableStorageClass.Hub);
+        MultiPointerTypeSymbol multiPointer = new(BuiltinTypes.U8, isConst: true, storageClass: VariableStorageClass.Hub);
+        BladeValue left = BladeValue.Pointer(singlePointer, new PointedValue(sameSymbol, 2));
+        BladeValue same = BladeValue.Pointer(multiPointer, new PointedValue(sameSymbol, 2));
+        BladeValue differentOffset = BladeValue.Pointer(singlePointer, new PointedValue(sameSymbol, 5));
+        BladeValue differentSymbolPointer = BladeValue.Pointer(singlePointer, new PointedValue(differentSymbol, 2));
+        BladeValue absoluteHub = BladeValue.Pointer(singlePointer, new PointedValue(new AbsoluteAddressSymbol(12, VariableStorageClass.Hub), 1));
+        BladeValue fixedHub = BladeValue.Pointer(multiPointer, new PointedValue(new VariableSymbol("fixed", BuiltinTypes.U8, isConst: false, VariableStorageClass.Hub, VariableScopeKind.GlobalStorage, isExtern: false, fixedAddress: 13, alignment: null), 0));
+        BladeValue absoluteReg = BladeValue.Pointer(new PointerTypeSymbol(BuiltinTypes.U8, isConst: false, storageClass: VariableStorageClass.Reg), new PointedValue(new AbsoluteAddressSymbol(13, VariableStorageClass.Reg), 0));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(left == same, Is.True);
+            Assert.That(left.GetHashCode(), Is.EqualTo(same.GetHashCode()));
+            Assert.That(left == differentOffset, Is.False);
+            Assert.That(left == differentSymbolPointer, Is.False);
+            Assert.That(absoluteHub == fixedHub, Is.True);
+            Assert.That(absoluteHub == absoluteReg, Is.False);
+        });
+    }
+
+    [Test]
+    public void BladeValueBitCast_AllowsBoolAndBitRoundTrips()
+    {
+        EvaluationError boolToBit = BladeValue.TryBitCast(BladeValue.Bool(true), BuiltinTypes.Bit, out BladeValue? bitValue);
+        EvaluationError bitToBool = BladeValue.TryBitCast(BladeValue.Bit(0), BuiltinTypes.Bool, out BladeValue? boolValue);
+        EvaluationError widthMismatch = BladeValue.TryBitCast(BladeValue.Bool(true), BuiltinTypes.U8, out BladeValue? _);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(boolToBit, Is.EqualTo(EvaluationError.None));
+            Assert.That(bitValue, Is.EqualTo(BladeValue.Bit(1)));
+            Assert.That(bitToBool, Is.EqualTo(EvaluationError.None));
+            Assert.That(boolValue, Is.EqualTo(BladeValue.Bool(false)));
+            Assert.That(widthMismatch, Is.EqualTo(EvaluationError.TypeMismatch));
+        });
+    }
+
+    private static ImportedModule CreateImportedModule(string alias)
+    {
+        CompilationUnitSyntax syntax = new([], new Token(TokenKind.EndOfFile, Span, string.Empty));
+        BoundProgram program = new(
+            [],
+            [],
+            [],
+            new Dictionary<string, TypeSymbol>(StringComparer.Ordinal),
+            new Dictionary<string, FunctionSymbol>(StringComparer.Ordinal),
+            new Dictionary<string, ImportedModule>(StringComparer.Ordinal));
+        return new ImportedModule(
+            alias,
+            $"/tmp/{alias}.blade",
+            alias,
+            syntax,
+            program,
+            new Dictionary<string, FunctionSymbol>(StringComparer.Ordinal),
+            new Dictionary<string, TypeSymbol>(StringComparer.Ordinal),
+            new Dictionary<string, VariableSymbol>(StringComparer.Ordinal),
+            new Dictionary<string, ImportedModule>(StringComparer.Ordinal));
     }
 
     private static RuntimeTypeSymbol GetBuiltinRuntimeType(BuiltinTypeCase typeCase)

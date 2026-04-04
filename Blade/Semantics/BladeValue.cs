@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Blade;
 
 namespace Blade.Semantics;
@@ -18,7 +19,7 @@ public sealed class PointedValue(Symbol symbol, int offset)
     }
 }
 
-public abstract partial class BladeValue(TypeSymbol type, object value)
+public abstract partial class BladeValue(TypeSymbol type, object value) : IEquatable<BladeValue>
 {
     public static ComptimeBladeValue Void { get; } = new((ComptimeTypeSymbol)BuiltinTypes.Void, VoidValue.Instance);
     public static ComptimeBladeValue Undefined { get; } = new((ComptimeTypeSymbol)BuiltinTypes.UndefinedLiteral, UndefinedValue.Instance);
@@ -26,8 +27,8 @@ public abstract partial class BladeValue(TypeSymbol type, object value)
     public TypeSymbol Type { get; } = Requires.NotNull(type);
     public object Value { get; } = ValidateValue(type, value);
 
-    public bool IsVoid => ReferenceEquals(Type, BuiltinTypes.Void);
-    public bool IsUndefined => ReferenceEquals(Type, BuiltinTypes.UndefinedLiteral);
+    public bool IsVoid => Type == BuiltinTypes.Void;
+    public bool IsUndefined => Type == BuiltinTypes.UndefinedLiteral;
 
     private static object ValidateValue(TypeSymbol type, object value)
     {
@@ -69,6 +70,22 @@ public abstract partial class BladeValue(TypeSymbol type, object value)
     [SuppressMessage("Design", "CA1720:Identifier contains type name", Justification = "Pointer values are modeled explicitly in BladeValue.")]
     public static RuntimeBladeValue Pointer(PointerLikeTypeSymbol type, PointedValue value) => new(Requires.NotNull(type), Requires.NotNull(value));
 
+    public bool Equals(BladeValue? other)
+    {
+        return EqualsCore(this, other);
+    }
+
+    public sealed override bool Equals(object? obj) => obj is BladeValue other && Equals(other);
+
+    public sealed override int GetHashCode() => GetHashCodeCore(this);
+
+    public static bool operator ==(BladeValue? left, BladeValue? right)
+    {
+        return left is null ? right is null : left.Equals(right);
+    }
+
+    public static bool operator !=(BladeValue? left, BladeValue? right) => !(left == right);
+
     public bool TryGetBool(out bool result)
     {
         if (Value is bool boolValue)
@@ -108,7 +125,7 @@ public abstract partial class BladeValue(TypeSymbol type, object value)
     public bool TryGetU8Array(out byte[] result)
     {
         if (Type is ArrayTypeSymbol { ElementType: IntegerTypeSymbol } arrayType
-            && ReferenceEquals(arrayType.ElementType, BuiltinTypes.U8)
+            && arrayType.ElementType == BuiltinTypes.U8
             && Value is IReadOnlyList<RuntimeBladeValue> elements)
         {
             byte[] bytes = new byte[elements.Count];
@@ -164,6 +181,68 @@ public abstract partial class BladeValue(TypeSymbol type, object value)
             return $"{baseText}+{pointedValue.Offset}";
 
         return $"{baseText}{pointedValue.Offset}";
+    }
+
+    private static int GetHashCodeCore(BladeValue value)
+    {
+        if (value.TryGetBool(out bool boolean))
+            return HashCode.Combine("bool", boolean);
+
+        if (value.TryGetInteger(out long integer))
+            return HashCode.Combine("int", integer);
+
+        if (value.TryGetPointedValue(out PointedValue pointedValue))
+            return GetPointerHashCode(value, pointedValue);
+
+        if (TryGetRuntimeArray(value, out IReadOnlyList<RuntimeBladeValue> elements))
+            return GetArrayHashCode(elements);
+
+        if (value.Value is IReadOnlyDictionary<string, BladeValue> fields)
+            return GetAggregateHashCode(fields);
+
+        if (value.IsVoid)
+            return HashCode.Combine("void");
+
+        if (value.IsUndefined)
+            return HashCode.Combine("undefined");
+
+        return HashCode.Combine(value.Type, value.Value);
+    }
+
+    private static int GetArrayHashCode(IReadOnlyList<RuntimeBladeValue> elements)
+    {
+        HashCode hash = new();
+        hash.Add("array");
+        hash.Add(elements.Count);
+        foreach (RuntimeBladeValue element in elements)
+            hash.Add(element);
+        return hash.ToHashCode();
+    }
+
+    private static int GetAggregateHashCode(IReadOnlyDictionary<string, BladeValue> fields)
+    {
+        HashCode hash = new();
+        hash.Add("aggregate");
+        foreach (string key in fields.Keys.OrderBy(static key => key, StringComparer.Ordinal))
+        {
+            hash.Add(key);
+            hash.Add(fields[key]);
+        }
+
+        return hash.ToHashCode();
+    }
+
+    private static int GetPointerHashCode(BladeValue value, PointedValue pointedValue)
+    {
+        if (TryGetAbsolutePointerIdentity(value, pointedValue, out VariableStorageClass storageClass, out int absoluteAddress))
+            return HashCode.Combine("pointer-abs", storageClass, absoluteAddress);
+
+        VariableStorageClass pointerStorageClass = ((PointerLikeTypeSymbol)value.Type).StorageClass;
+        return HashCode.Combine(
+            "pointer-symbolic",
+            pointerStorageClass,
+            RuntimeHelpers.GetHashCode(pointedValue.Symbol),
+            pointedValue.Offset);
     }
 }
 

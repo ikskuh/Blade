@@ -7,5 +7,5 @@ reg var width_u: uint(false) = 0;
 reg var width_i: int(false) = 0;
 reg var sized: [false]u32 = undefined;
 
-reg var bad_bitcast_type: u32 = bitcast(u32, false);
+reg var bad_bitcast_type: u32 = bitcast(u32, [1, 2]);
 reg var bad_bitcast_size: u16 = bitcast(u16, 1 as u32);

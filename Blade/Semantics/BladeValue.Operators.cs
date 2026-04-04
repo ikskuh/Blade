@@ -14,10 +14,12 @@ public enum EvaluationError
 
 public abstract partial class BladeValue
 {
-    public static bool AreEqual(BladeValue left, BladeValue right)
+    private static bool EqualsCore(BladeValue left, BladeValue? right)
     {
         Requires.NotNull(left);
-        Requires.NotNull(right);
+
+        if (right is null)
+            return false;
 
         if (left.TryGetBool(out bool leftBool) && right.TryGetBool(out bool rightBool))
             return leftBool == rightBool;
@@ -34,13 +36,20 @@ public abstract partial class BladeValue
             return AreEqualArrays(leftElements, rightElements);
         }
 
+        if (left.Value is IReadOnlyDictionary<string, BladeValue> leftFields
+            && right.Value is IReadOnlyDictionary<string, BladeValue> rightFields)
+        {
+            return left.Type == right.Type
+                && AreEqualAggregates(leftFields, rightFields);
+        }
+
         if (left.IsVoid && right.IsVoid)
             return true;
 
         if (left.IsUndefined && right.IsUndefined)
             return true;
 
-        return ReferenceEquals(left.Type, right.Type)
+        return left.Type == right.Type
             && Equals(left.Value, right.Value);
     }
 
@@ -118,7 +127,7 @@ public abstract partial class BladeValue
 
         if (kind is BoundBinaryOperatorKind.Equals or BoundBinaryOperatorKind.NotEquals)
         {
-            bool equals = AreEqual(left, right);
+            bool equals = left == right;
             result = Bool(kind == BoundBinaryOperatorKind.Equals ? equals : !equals);
             return EvaluationError.None;
         }
@@ -214,7 +223,7 @@ public abstract partial class BladeValue
             return EvaluationError.None;
         }
 
-        if (type is UnknownTypeSymbol || ReferenceEquals(value.Type, type))
+        if (type is UnknownTypeSymbol || value.Type == type)
         {
             result = value;
             return EvaluationError.None;
@@ -223,7 +232,7 @@ public abstract partial class BladeValue
         if (type is UndefinedLiteralTypeSymbol)
             return Fail(EvaluationError.TypeMismatch, out result);
 
-        if (ReferenceEquals(type, BuiltinTypes.Bool))
+        if (type == BuiltinTypes.Bool)
         {
             if (!value.TryGetBool(out bool boolValue))
                 return Fail(EvaluationError.TypeMismatch, out result);
@@ -232,7 +241,7 @@ public abstract partial class BladeValue
             return EvaluationError.None;
         }
 
-        if (ReferenceEquals(type, BuiltinTypes.IntegerLiteral))
+        if (type == BuiltinTypes.IntegerLiteral)
         {
             if (!value.TryGetInteger(out long integerLiteral))
                 return Fail(EvaluationError.TypeMismatch, out result);
@@ -412,6 +421,12 @@ public abstract partial class BladeValue
         if (value.Type is RuntimeTypeSymbol { IsScalarCastType: true, ScalarWidthBits: int runtimeWidth })
         {
             sourceWidth = runtimeWidth;
+            if (value.TryGetBool(out bool boolValue))
+            {
+                rawBits = boolValue ? 1u : 0u;
+                return true;
+            }
+
             if (value.TryGetInteger(out long integerValue))
             {
                 rawBits = unchecked((uint)integerValue);
@@ -430,7 +445,7 @@ public abstract partial class BladeValue
             return false;
         }
 
-        if (ReferenceEquals(value.Type, BuiltinTypes.IntegerLiteral) && value.TryGetInteger(out long literalValue))
+        if (value.Type == BuiltinTypes.IntegerLiteral && value.TryGetInteger(out long literalValue))
         {
             sourceWidth = targetWidth;
             rawBits = unchecked((uint)literalValue);
@@ -444,6 +459,12 @@ public abstract partial class BladeValue
 
     private static EvaluationError TryCreateScalarValueFromBits(RuntimeTypeSymbol type, uint rawBits, out BladeValue result)
     {
+        if (type is BoolTypeSymbol)
+        {
+            result = Bool((rawBits & 1u) != 0);
+            return EvaluationError.None;
+        }
+
         if (type is IntegerTypeSymbol integerType)
         {
             result = new RuntimeBladeValue(integerType, NormalizeIntegerBits(integerType, rawBits));
@@ -482,19 +503,24 @@ public abstract partial class BladeValue
 
     private static bool AreEqualPointers(BladeValue left, PointedValue leftPointed, BladeValue right, PointedValue rightPointed)
     {
-        if (ReferenceEquals(leftPointed.Symbol, rightPointed.Symbol))
-            return leftPointed.Offset == rightPointed.Offset;
-
         if (left.Type is not PointerLikeTypeSymbol leftPointerType
             || right.Type is not PointerLikeTypeSymbol rightPointerType
-            || leftPointerType.StorageClass != rightPointerType.StorageClass
-            || !TryGetKnownAbsoluteAddress(leftPointerType, leftPointed, out int leftAddress)
-            || !TryGetKnownAbsoluteAddress(rightPointerType, rightPointed, out int rightAddress))
+            || leftPointerType.StorageClass != rightPointerType.StorageClass)
         {
             return false;
         }
 
-        return leftAddress == rightAddress;
+        if (ReferenceEquals(leftPointed.Symbol, rightPointed.Symbol))
+            return leftPointed.Offset == rightPointed.Offset;
+
+        if (!TryGetAbsolutePointerIdentity(left, leftPointed, out VariableStorageClass leftStorageClass, out int leftAddress)
+            || !TryGetAbsolutePointerIdentity(right, rightPointed, out VariableStorageClass rightStorageClass, out int rightAddress))
+        {
+            return false;
+        }
+
+        return leftStorageClass == rightStorageClass
+            && leftAddress == rightAddress;
     }
 
     private static bool TryGetRuntimeArray(BladeValue value, out IReadOnlyList<RuntimeBladeValue> elements)
@@ -516,44 +542,73 @@ public abstract partial class BladeValue
 
         for (int i = 0; i < left.Count; i++)
         {
-            if (!AreEqual(left[i], right[i]))
+            if (left[i] != right[i])
                 return false;
         }
 
         return true;
     }
 
-    private static bool TryGetKnownAbsoluteAddress(PointerLikeTypeSymbol type, PointedValue value, out int address)
+    private static bool AreEqualAggregates(
+        IReadOnlyDictionary<string, BladeValue> left,
+        IReadOnlyDictionary<string, BladeValue> right)
     {
-        Requires.NotNull(type);
+        if (left.Count != right.Count)
+            return false;
+
+        foreach ((string fieldName, BladeValue leftValue) in left)
+        {
+            if (!right.TryGetValue(fieldName, out BladeValue? rightValue) || leftValue != rightValue)
+                return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryGetAbsolutePointerIdentity(BladeValue value, PointedValue pointedValue, out VariableStorageClass storageClass, out int address)
+    {
         Requires.NotNull(value);
+        Requires.NotNull(pointedValue);
 
-        if (value.Symbol is AbsoluteAddressSymbol absoluteSymbol)
+        PointerLikeTypeSymbol pointerType = (PointerLikeTypeSymbol)value.Type;
+
+        if (pointedValue.Symbol is AbsoluteAddressSymbol absoluteSymbol)
         {
-            if (absoluteSymbol.StorageClass != type.StorageClass)
+            if (absoluteSymbol.StorageClass != pointerType.StorageClass)
             {
+                storageClass = default;
                 address = 0;
                 return false;
             }
 
-            address = absoluteSymbol.Address + value.Offset;
+            storageClass = absoluteSymbol.StorageClass;
+            address = absoluteSymbol.Address + pointedValue.Offset;
             return true;
         }
 
-        if (value.Symbol is VariableSymbol { FixedAddress: int fixedAddress, StorageClass: var storageClass })
+        if (pointedValue.Symbol is VariableSymbol { FixedAddress: int fixedAddress, StorageClass: var fixedStorageClass })
         {
-            if (storageClass != type.StorageClass)
+            if (fixedStorageClass != pointerType.StorageClass)
             {
+                storageClass = default;
                 address = 0;
                 return false;
             }
 
-            address = fixedAddress + value.Offset;
+            storageClass = fixedStorageClass;
+            address = fixedAddress + pointedValue.Offset;
             return true;
         }
 
+        storageClass = default;
         address = 0;
         return false;
+    }
+
+    private static bool TryGetKnownAbsoluteAddress(PointerLikeTypeSymbol type, PointedValue value, out int address)
+    {
+        RuntimeBladeValue wrapper = Pointer(type, value);
+        return TryGetAbsolutePointerIdentity(wrapper, value, out _, out address);
     }
 
     private static long NormalizeIntegerBits(IntegerTypeSymbol type, uint rawBits)

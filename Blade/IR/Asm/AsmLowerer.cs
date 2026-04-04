@@ -1164,7 +1164,7 @@ public static class AsmLowerer
 
         BladeValue immediate = ((LirImmediateOperand)op.Operands[0]).Value;
         Assert.Invariant(
-            ReferenceEquals(immediate.Type, op.ResultType),
+            immediate.Type == op.ResultType,
             $"Immediate type '{immediate.Type.Name}' does not match const result type '{op.ResultType?.Name ?? "<null>"}'.");
 
         // Bool/bit constants: use BITH (set bit 0) or BITL (clear bit 0).
@@ -2723,7 +2723,7 @@ public static class AsmLowerer
     }
 
     private static bool IsSingleBitType(TypeSymbol? type)
-        => type is BoolTypeSymbol || ReferenceEquals(type, BuiltinTypes.Bit);
+        => type is BoolTypeSymbol || type == BuiltinTypes.Bit;
 
     private static AsmOperand LowerImmediateValue(BladeValue immediate, IReadOnlyDictionary<Symbol, StoragePlace> placesBySymbol)
     {
