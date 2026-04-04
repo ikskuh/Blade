@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
+using System.Linq;
 using Blade;
 
 namespace Blade.Semantics;
@@ -52,8 +55,17 @@ public abstract partial class BladeValue(TypeSymbol type, object value)
     [SuppressMessage("Design", "CA1720:Identifier contains type name", Justification = "Matches the builtin Blade type name.")]
     public static RuntimeBladeValue Int(long value) => new(BuiltinTypes.Int, value);
     public static ComptimeBladeValue IntegerLiteral(long value) => new((ComptimeTypeSymbol)BuiltinTypes.IntegerLiteral, value);
-    [SuppressMessage("Design", "CA1720:Identifier contains type name", Justification = "Matches the builtin Blade type name.")]
-    public static ComptimeBladeValue String(string value) => new((ComptimeTypeSymbol)BuiltinTypes.String, Requires.NotNull(value));
+    public static RuntimeBladeValue U8Array(byte[] value)
+    {
+        Requires.NotNull(value);
+
+        RuntimeBladeValue[] elements = new RuntimeBladeValue[value.Length];
+        for (int i = 0; i < value.Length; i++)
+            elements[i] = U8(value[i]);
+
+        return new RuntimeBladeValue(new ArrayTypeSymbol(BuiltinTypes.U8, value.Length), elements);
+    }
+
     [SuppressMessage("Design", "CA1720:Identifier contains type name", Justification = "Pointer values are modeled explicitly in BladeValue.")]
     public static RuntimeBladeValue Pointer(PointerLikeTypeSymbol type, PointedValue value) => new(Requires.NotNull(type), Requires.NotNull(value));
 
@@ -93,15 +105,29 @@ public abstract partial class BladeValue(TypeSymbol type, object value)
         return false;
     }
 
-    public bool TryGetString(out string result)
+    public bool TryGetU8Array(out byte[] result)
     {
-        if (Value is string stringValue)
+        if (Type is ArrayTypeSymbol { ElementType: IntegerTypeSymbol } arrayType
+            && ReferenceEquals(arrayType.ElementType, BuiltinTypes.U8)
+            && Value is IReadOnlyList<RuntimeBladeValue> elements)
         {
-            result = stringValue;
+            byte[] bytes = new byte[elements.Count];
+            for (int i = 0; i < elements.Count; i++)
+            {
+                if (!elements[i].TryGetInteger(out long elementValue) || elementValue is < byte.MinValue or > byte.MaxValue)
+                {
+                    result = [];
+                    return false;
+                }
+
+                bytes[i] = (byte)elementValue;
+            }
+
+            result = bytes;
             return true;
         }
 
-        result = string.Empty;
+        result = [];
         return false;
     }
 
@@ -110,11 +136,22 @@ public abstract partial class BladeValue(TypeSymbol type, object value)
         return Value switch
         {
             bool boolean => boolean ? "true" : "false",
-            string text => $"\"{text}\"",
+            IReadOnlyList<RuntimeBladeValue> elements when Type is ArrayTypeSymbol => FormatArray(elements),
+            IReadOnlyDictionary<string, BladeValue> fields => FormatAggregate(fields),
             PointedValue pointedValue => FormatPointedValue(pointedValue),
-            IFormattable formattable => formattable.ToString(null, System.Globalization.CultureInfo.InvariantCulture),
+            IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
             _ => Value.ToString() ?? "<?>",
         };
+    }
+
+    private static string FormatArray(IReadOnlyList<RuntimeBladeValue> elements)
+    {
+        return $"[{string.Join(", ", elements.Select(static element => element.Format()))}]";
+    }
+
+    private static string FormatAggregate(IReadOnlyDictionary<string, BladeValue> fields)
+    {
+        return $"{{ {string.Join(", ", fields.Select(static pair => $"{pair.Key} = {pair.Value.Format()}"))} }}";
     }
 
     private static string FormatPointedValue(PointedValue pointedValue)

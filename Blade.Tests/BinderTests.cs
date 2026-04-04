@@ -1514,7 +1514,7 @@ public class BinderTests
         (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("reg var a: [4]u8 = \"bye!\";");
         Assert.That(diagnostics.Count, Is.EqualTo(0));
         string dump = BoundTreeWriter.Write(program);
-        Assert.That(dump, Does.Contain("ArrayLit"));
+        Assert.That(dump, Does.Contain("Literal<[4]u8> [98, 121, 101, 33]"));
     }
 
     [Test]
@@ -1524,22 +1524,22 @@ public class BinderTests
         (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("reg var a: [4]u8 = z\"hi!\";");
         Assert.That(diagnostics.Count, Is.EqualTo(0));
         string dump = BoundTreeWriter.Write(program);
-        Assert.That(dump, Does.Contain("ArrayLit"));
+        Assert.That(dump, Does.Contain("Literal<[4]u8> [104, 105, 33, 0]"));
     }
 
     [Test]
-    public void StringLiteral_LengthMismatch_ReportsE0239()
+    public void StringLiteral_LengthMismatch_ReportsTypeMismatch()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("reg var a: [3]u8 = \"bye!\";");
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0239_StringLengthMismatch), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
     }
 
     [Test]
-    public void ZeroTerminatedString_LengthMismatch_ReportsE0239()
+    public void ZeroTerminatedString_LengthMismatch_ReportsTypeMismatch()
     {
         // z"hi!" is 4 bytes (3 + NUL), does not fit in [3]u8
         (_, _, DiagnosticBag diagnostics) = Bind("reg var a: [3]u8 = z\"hi!\";");
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0239_StringLengthMismatch), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
     }
 
     [Test]

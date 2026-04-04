@@ -1,7 +1,7 @@
 // EXPECT: pass
 // STAGE: bound
 // NOTE:
-//   String literals can be implicitly coerced to [N]u8 when lengths match.
+//   String literals now lex directly as [N]u8 byte-array literals.
 //   Zero-terminated strings append NUL, so z"hi!" is 4 bytes.
 
 reg var a: [4]u8 = "bye!";

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Blade.Semantics.Bound;
 
 namespace Blade.Semantics;
@@ -27,8 +28,11 @@ public abstract partial class BladeValue
         if (left.TryGetPointedValue(out PointedValue leftPointed) && right.TryGetPointedValue(out PointedValue rightPointed))
             return AreEqualPointers(left, leftPointed, right, rightPointed);
 
-        if (left.TryGetString(out string leftString) && right.TryGetString(out string rightString))
-            return string.Equals(leftString, rightString, StringComparison.Ordinal);
+        if (TryGetRuntimeArray(left, out IReadOnlyList<RuntimeBladeValue> leftElements)
+            && TryGetRuntimeArray(right, out IReadOnlyList<RuntimeBladeValue> rightElements))
+        {
+            return AreEqualArrays(leftElements, rightElements);
+        }
 
         if (left.IsVoid && right.IsVoid)
             return true;
@@ -491,6 +495,32 @@ public abstract partial class BladeValue
         }
 
         return leftAddress == rightAddress;
+    }
+
+    private static bool TryGetRuntimeArray(BladeValue value, out IReadOnlyList<RuntimeBladeValue> elements)
+    {
+        if (value.Type is ArrayTypeSymbol && value.Value is IReadOnlyList<RuntimeBladeValue> runtimeElements)
+        {
+            elements = runtimeElements;
+            return true;
+        }
+
+        elements = [];
+        return false;
+    }
+
+    private static bool AreEqualArrays(IReadOnlyList<RuntimeBladeValue> left, IReadOnlyList<RuntimeBladeValue> right)
+    {
+        if (left.Count != right.Count)
+            return false;
+
+        for (int i = 0; i < left.Count; i++)
+        {
+            if (!AreEqual(left[i], right[i]))
+                return false;
+        }
+
+        return true;
     }
 
     private static bool TryGetKnownAbsoluteAddress(PointerLikeTypeSymbol type, PointedValue value, out int address)

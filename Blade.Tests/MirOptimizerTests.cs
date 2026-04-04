@@ -13,6 +13,13 @@ public class MirOptimizerTests
 {
     private static BladeValue Value(TypeSymbol type, object value)
     {
+        if (type is ArrayTypeSymbol arrayType
+            && ReferenceEquals(arrayType.ElementType, BuiltinTypes.U8)
+            && value is byte[] bytes)
+        {
+            return BladeValue.U8Array(bytes);
+        }
+
         object canonicalValue = CanonicalizeValue(type, value);
         return type switch
         {
@@ -58,6 +65,8 @@ public class MirOptimizerTests
         MirValueId stringLeft = MirValue(7);
         MirValueId stringRight = MirValue(8);
         MirValueId zero = MirValue(30);
+        ArrayTypeSymbol leftLiteralType = new(BuiltinTypes.U8, 4);
+        ArrayTypeSymbol rightLiteralType = new(BuiltinTypes.U8, 5);
 
         List<MirInstruction> instructions =
         [
@@ -68,8 +77,8 @@ public class MirOptimizerTests
             Constant(zero, BuiltinTypes.U32, 0u, span),
             Constant(boolTrue, BuiltinTypes.Bool, true, span),
             Constant(boolFalse, BuiltinTypes.Bool, false, span),
-            Constant(stringLeft, BuiltinTypes.String, "left", span),
-            Constant(stringRight, BuiltinTypes.String, "right", span),
+            Constant(stringLeft, leftLiteralType, new byte[] { 108, 101, 102, 116 }, span),
+            Constant(stringRight, rightLiteralType, new byte[] { 114, 105, 103, 104, 116 }, span),
             new MirUnaryInstruction(MirValue(10), BuiltinTypes.Bool, BoundUnaryOperatorKind.LogicalNot, boolFalse, span),
             new MirUnaryInstruction(MirValue(11), BuiltinTypes.I32, BoundUnaryOperatorKind.Negation, intOne, span),
             new MirUnaryInstruction(MirValue(12), BuiltinTypes.U32, BoundUnaryOperatorKind.BitwiseNot, intOne, span),

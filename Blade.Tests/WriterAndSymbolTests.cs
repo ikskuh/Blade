@@ -72,7 +72,7 @@ public class WriterAndSymbolTests
                 new LirBlock(LirBlockRef("bb0"), [],
                 [
                     new LirOpInstruction(new LirMovOperation(), LirRegister(0), BuiltinTypes.U32,
-                        [new LirImmediateOperand(new ComptimeBladeValue((ComptimeTypeSymbol)BuiltinTypes.String, "hello"))],
+                        [new LirImmediateOperand(BladeValue.U8Array([104, 101, 108, 108, 111]))],
                         hasSideEffects: false, predicate: P2ConditionCode.IF_C, writesC: true, writesZ: true, Span),
                 ], new LirUnreachableTerminator(Span)),
             ]),
@@ -101,7 +101,7 @@ public class WriterAndSymbolTests
 
         Assert.That(lirText, Does.Contain("[if_c] mov"));
         Assert.That(lirText, Does.Contain("flags=CZ"));
-        Assert.That(lirText, Does.Contain("\"hello\":string"));
+        Assert.That(lirText, Does.Contain("[104, 101, 108, 108, 111]:[5]u8"));
         Assert.That(lirText, Does.Contain("unreachable"));
 
         Assert.That(asmText, Does.Contain("' test"));

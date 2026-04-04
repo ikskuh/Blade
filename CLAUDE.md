@@ -34,6 +34,8 @@ Your task is completed when:
 - Prefer clarity over brevity. No `var` where the type isn't obvious from the RHS.
 - Result types / error returns for expected failures. Exceptions only for bugs.
 - Every runtime error path handled, never swallowed.
+  - Violation of invariants is not a runtime error, it's a bug.
+    Bugs get hidden if "handled". Assert invariants instead of handling invariant violation.
 - Unreachable switch cases `throw new UnreachableException()` instead of returning wrong values
 - `Assert.Invariant(cond)` for invariants guaranteed by earlier stages — never write unreachable fallback code.
 - `Assert.Unreachable()` for statements that should never be reachable.

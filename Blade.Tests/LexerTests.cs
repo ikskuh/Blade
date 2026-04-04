@@ -71,7 +71,8 @@ public class LexerTests
     private static void AssertStringValue(Token token, string expected)
     {
         Assert.That(token.Value, Is.Not.Null);
-        Assert.That(token.Value!.TryGetString(out string actual), Is.True);
+        Assert.That(token.Value!.TryGetU8Array(out byte[] bytes), Is.True);
+        string actual = System.Text.Encoding.UTF8.GetString(bytes);
         Assert.That(actual, Is.EqualTo(expected));
     }
 

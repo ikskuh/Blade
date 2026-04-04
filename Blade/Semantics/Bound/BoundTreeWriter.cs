@@ -309,7 +309,7 @@ public static class BoundTreeWriter
         {
             VoidValue => "void",
             UndefinedValue => "undefined",
-            _ => value.Value.ToString() ?? "<?>",
+            _ => value.Format(),
         };
     }
 }

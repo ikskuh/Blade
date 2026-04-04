@@ -359,18 +359,6 @@ public sealed class VoidTypeSymbol : ComptimeTypeSymbol
     public override bool IsLegalRuntimeObject(object value) => ReferenceEquals(value, VoidValue.Instance);
 }
 
-public sealed class StringTypeSymbol : ComptimeTypeSymbol
-{
-    public static StringTypeSymbol Instance { get; } = new();
-
-    private StringTypeSymbol()
-        : base("string")
-    {
-    }
-
-    public override bool IsLegalRuntimeObject(object value) => value is string;
-}
-
 public sealed class RangeTypeSymbol : ComptimeTypeSymbol
 {
     public static RangeTypeSymbol Instance { get; } = new();
@@ -399,7 +387,6 @@ public static class BuiltinTypes
     public static readonly IntegerTypeSymbol Uint = new("uint", bitWidth: 32, isSigned: false);
     public static readonly IntegerTypeSymbol Int = new("int", bitWidth: 32, isSigned: true);
     public static readonly VoidTypeSymbol Void = VoidTypeSymbol.Instance;
-    public static readonly StringTypeSymbol String = StringTypeSymbol.Instance;
     public static readonly RangeTypeSymbol Range = RangeTypeSymbol.Instance;
 
     private static readonly Dictionary<string, TypeSymbol> Builtins = new()
@@ -417,7 +404,6 @@ public static class BuiltinTypes
         ["uint"] = Uint,
         ["int"] = Int,
         ["void"] = Void,
-        ["string"] = String,
         ["range"] = Range,
     };
 

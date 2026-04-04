@@ -153,8 +153,8 @@ public sealed class Binder
             }
 
             string alias = import.Alias?.Text ?? import.Source.Text;
-            string sourceName = import.Source.Value is { } sourceValue && sourceValue.TryGetString(out string typedSourceName)
-                ? typedSourceName
+            string sourceName = import.IsFileImport
+                ? DecodeUtf8Literal(import.Source)
                 : import.Source.Text;
             string resolvedPath;
             if (import.IsFileImport)
@@ -911,7 +911,7 @@ public sealed class Binder
 
         _diagnostics.ReportAssertionFailed(
             assertStatement.Span,
-            assertStatement.MessageLiteral is { Value: { } messageValue } && messageValue.TryGetString(out string messageText) ? messageText : null);
+            assertStatement.MessageLiteral is { } messageLiteral ? DecodeUtf8Literal(messageLiteral) : null);
         return new BoundErrorStatement(assertStatement.Span);
     }
 
@@ -2363,7 +2363,7 @@ public sealed class Binder
     {
         return expression switch
         {
-            BoundLiteralExpression literal => literal.Value.Value is not string,
+            BoundLiteralExpression => true,
             BoundEnumLiteralExpression => true,
             BoundUnaryExpression => true,
             BoundBinaryExpression => true,
@@ -2994,13 +2994,17 @@ public sealed class Binder
         if (AreSameType(targetType, expression.Type))
             return expression;
 
-        // String literal → [*]<storage> u8 (non-const) is rejected with a dedicated diagnostic
-        if (ReferenceEquals(expression.Type, BuiltinTypes.String)
-            && targetType is MultiPointerTypeSymbol { PointeeType: var pointeeType, IsConst: false }
-            && ReferenceEquals(pointeeType, BuiltinTypes.U8))
+        if (TryGetLiteralU8Bytes(expression, out byte[] literalBytes)
+            && targetType is MultiPointerTypeSymbol targetPointer
+            && ReferenceEquals(targetPointer.PointeeType, BuiltinTypes.U8))
         {
-            _diagnostics.ReportStringToNonConstPointer(span);
-            return new BoundErrorExpression(span);
+            if (!targetPointer.IsConst)
+            {
+                _diagnostics.ReportStringToNonConstPointer(span);
+                return new BoundErrorExpression(span);
+            }
+
+            return LowerByteArrayToPointerLiteral(literalBytes, targetPointer, span);
         }
 
         if (!IsAssignable(targetType, expression.Type))
@@ -3008,24 +3012,6 @@ public sealed class Binder
             if (reportMismatch)
                 _diagnostics.ReportTypeMismatch(span, targetType.Name, expression.Type.Name);
             return new BoundErrorExpression(span);
-        }
-
-        // String literal → [N]u8: synthesize an array literal from the string bytes
-        if (ReferenceEquals(expression.Type, BuiltinTypes.String)
-            && targetType is ArrayTypeSymbol targetArray
-            && ReferenceEquals(targetArray.ElementType, BuiltinTypes.U8)
-            && targetArray.Length is int targetLength
-            && expression is BoundLiteralExpression { Value.Value: string stringValue })
-        {
-            return LowerStringToArrayLiteral(stringValue, targetArray, targetLength, span, reportMismatch);
-        }
-
-        if (ReferenceEquals(expression.Type, BuiltinTypes.String)
-            && targetType is MultiPointerTypeSymbol targetPointer
-            && ReferenceEquals(targetPointer.PointeeType, BuiltinTypes.U8)
-            && expression is BoundLiteralExpression { Value.Value: string pointerStringValue })
-        {
-            return LowerStringToPointerLiteral(pointerStringValue, targetPointer, span);
         }
 
         ReportComptimeIntegerTruncationIfNeeded(expression, targetType, span);
@@ -3088,30 +3074,8 @@ public sealed class Binder
         return unchecked(((long)value << shift) >> shift);
     }
 
-    private BoundExpression LowerStringToArrayLiteral(
-        string stringValue,
-        ArrayTypeSymbol targetArray, int targetLength,
-        TextSpan span, bool reportMismatch)
+    private static BoundExpression LowerByteArrayToPointerLiteral(byte[] bytes, MultiPointerTypeSymbol targetPointer, TextSpan span)
     {
-        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(stringValue);
-
-        if (bytes.Length != targetLength)
-        {
-            if (reportMismatch)
-                _diagnostics.ReportStringLengthMismatch(span, targetLength, bytes.Length);
-            return new BoundErrorExpression(span);
-        }
-
-        List<BoundExpression> elements = new(targetLength);
-        foreach (byte b in bytes)
-            elements.Add(new BoundLiteralExpression(new ComptimeBladeValue((ComptimeTypeSymbol)BuiltinTypes.IntegerLiteral, (long)b), span));
-
-        return new BoundArrayLiteralExpression(elements, lastElementIsSpread: false, span, targetArray);
-    }
-
-    private static BoundExpression LowerStringToPointerLiteral(string stringValue, MultiPointerTypeSymbol targetPointer, TextSpan span)
-    {
-        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(stringValue);
         LiteralDataSymbol literalSymbol = new(
             FormattableString.Invariant($"lit_{targetPointer.StorageClass}_{span.Start}_{span.Length}"),
             bytes,
@@ -3236,9 +3200,6 @@ public sealed class Binder
     private int? TryEvaluateConstantInt(BoundExpression expression)
     {
         if (!TryEvaluateConstantValue(expression, out ComptimeResult value))
-            return null;
-
-        if (value.TryGetBool(out _) || value.TryGetString(out _))
             return null;
 
         if (!TryConvertConstantToInt64(value, out long constantValue))
@@ -3576,22 +3537,6 @@ public sealed class Binder
         if (target is BoolTypeSymbol && source is BoolTypeSymbol)
             return true;
 
-        // String literal → [N]u8 coercion (length check deferred to BindConversion)
-        if (ReferenceEquals(source, BuiltinTypes.String)
-            && target is ArrayTypeSymbol { ElementType: var elemType, Length: not null }
-            && ReferenceEquals(elemType, BuiltinTypes.U8))
-        {
-            return true;
-        }
-
-        // String literal → [*]<storage> const u8 coercion
-        if (ReferenceEquals(source, BuiltinTypes.String)
-            && target is MultiPointerTypeSymbol { PointeeType: var pointeeType, IsConst: true }
-            && ReferenceEquals(pointeeType, BuiltinTypes.U8))
-        {
-            return true;
-        }
-
         if (target is PointerLikeTypeSymbol targetPointer && source is PointerLikeTypeSymbol sourcePointer)
             return IsPointerAssignable(targetPointer, sourcePointer);
 
@@ -3660,6 +3605,39 @@ public sealed class Binder
         }
 
         return IsAssignable(target.PointeeType, source.PointeeType);
+    }
+
+    private static bool TryGetLiteralU8Bytes(BoundExpression expression, out byte[] bytes)
+    {
+        if (expression is BoundLiteralExpression literal
+            && literal.Value.TryGetU8Array(out bytes))
+        {
+            return true;
+        }
+
+        bytes = [];
+        return false;
+    }
+
+    private static bool TryDecodeUtf8Literal(Token token, out string text)
+    {
+        if (token.Value is BladeValue value
+            && value.TryGetU8Array(out byte[] bytes))
+        {
+            text = System.Text.Encoding.UTF8.GetString(bytes);
+            return true;
+        }
+
+        text = string.Empty;
+        return false;
+    }
+
+    private static string DecodeUtf8Literal(Token token)
+    {
+        Assert.Invariant(
+            TryDecodeUtf8Literal(token, out string text),
+            $"Token '{token.Kind}' must carry a UTF-8 byte-array literal value.");
+        return text;
     }
 
     private void PushLoop(LoopContext kind) => _loopStack.Push(kind);

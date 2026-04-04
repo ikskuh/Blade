@@ -162,6 +162,13 @@ public sealed class ComptimeBinderHelperTests
 
     private static BladeValue CreateValue(TypeSymbol type, object value)
     {
+        if (type is ArrayTypeSymbol arrayType
+            && ReferenceEquals(arrayType.ElementType, BuiltinTypes.U8)
+            && value is byte[] bytes)
+        {
+            return BladeValue.U8Array(bytes);
+        }
+
         object canonicalValue = CanonicalizeValue(type, value);
         return type switch
         {
@@ -336,7 +343,7 @@ public sealed class ComptimeBinderHelperTests
             sizeBytes: 4,
             alignmentBytes: 4);
 
-        Assert.That(Invoke<bool>(method, null, Literal("text", BuiltinTypes.String)), Is.False);
+        Assert.That(Invoke<bool>(method, null, Literal(new byte[] { 116, 101, 120, 116 }, new ArrayTypeSymbol(BuiltinTypes.U8, 4))), Is.True);
         Assert.That(Invoke<bool>(method, null, new BoundUnaryExpression(BoundUnaryOperator.Bind(TokenKind.Minus)!, Literal(1, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.True);
         Assert.That(Invoke<bool>(method, null, new BoundBinaryExpression(Literal(1, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.Plus)!, Literal(2, BuiltinTypes.IntegerLiteral), Span, BuiltinTypes.IntegerLiteral)), Is.True);
         Assert.That(Invoke<bool>(method, null, new BoundCallExpression(function, [], Span, BuiltinTypes.U32)), Is.True);

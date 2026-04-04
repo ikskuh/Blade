@@ -1,5 +1,5 @@
 // EXPECT: fail
-// DIAGNOSTICS: E0239
+// DIAGNOSTICS: E0205
 // NOTE:
-//   A string literal assigned to an array with mismatched length should report E0239.
+//   String literals now lex as byte-array literals, so mismatched target lengths fail as a normal type mismatch.
 reg var a: [3]u8 = "bye!";

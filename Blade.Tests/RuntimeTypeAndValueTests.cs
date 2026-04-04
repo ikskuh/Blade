@@ -171,7 +171,7 @@ public sealed class RuntimeTypeAndValueTests
             Assert.That(new PointerTypeSymbol(BuiltinTypes.U32, isConst: false).IsScalarCastType, Is.True);
             Assert.That(enumType.IsScalarCastType, Is.True);
             Assert.That(bitfieldType.IsScalarCastType, Is.True);
-            Assert.That(BuiltinTypes.String.IsLegalRuntimeObject("x"), Is.True);
+            Assert.That(BladeValue.U8Array([120]).Type, Is.TypeOf<ArrayTypeSymbol>());
         });
     }
 
@@ -180,7 +180,7 @@ public sealed class RuntimeTypeAndValueTests
     {
         RuntimeBladeValue runtimeValue = new(BuiltinTypes.I8, -1L);
         RuntimeBladeValue widenedRuntimeValue = new(BuiltinTypes.I16, 7L);
-        ComptimeBladeValue stringValue = new((ComptimeTypeSymbol)BuiltinTypes.String, "hello");
+        RuntimeBladeValue byteArrayValue = BladeValue.U8Array([104, 101, 108, 108, 111]);
         ComptimeBladeValue voidValue = new((ComptimeTypeSymbol)BuiltinTypes.Void, VoidValue.Instance);
         ComptimeBladeValue undefinedValue = new((ComptimeTypeSymbol)BuiltinTypes.UndefinedLiteral, UndefinedValue.Instance);
 
@@ -191,8 +191,11 @@ public sealed class RuntimeTypeAndValueTests
             Assert.That(widenedRuntimeValue.Type, Is.SameAs(BuiltinTypes.I16));
             Assert.That(widenedRuntimeValue.Value, Is.TypeOf<long>());
             Assert.That(widenedRuntimeValue.Value, Is.EqualTo(7L));
-            Assert.That(stringValue.Type, Is.SameAs(BuiltinTypes.String));
-            Assert.That(stringValue.Value, Is.EqualTo("hello"));
+            Assert.That(byteArrayValue.Type, Is.TypeOf<ArrayTypeSymbol>());
+            Assert.That(((ArrayTypeSymbol)byteArrayValue.Type).Length, Is.EqualTo(5));
+            Assert.That(((ArrayTypeSymbol)byteArrayValue.Type).ElementType, Is.SameAs(BuiltinTypes.U8));
+            Assert.That(byteArrayValue.TryGetU8Array(out byte[] bytes), Is.True);
+            Assert.That(bytes, Is.EqualTo(new byte[] { 104, 101, 108, 108, 111 }));
             Assert.That(voidValue.Value, Is.SameAs(VoidValue.Instance));
             Assert.That(undefinedValue.Value, Is.SameAs(UndefinedValue.Instance));
             Assert.That(() => new RuntimeBladeValue(BuiltinTypes.U8, 256L), Throws.ArgumentException);

@@ -46,11 +46,6 @@ internal sealed class ComptimeResult
     {
     }
 
-    public ComptimeResult(string value)
-        : this(BladeValue.String(value))
-    {
-    }
-
     public ComptimeResult(ComptimeFailureKind kind, TextSpan span, string detail)
     {
         failure = new ComptimeFailure(kind, span, detail);
@@ -81,15 +76,6 @@ internal sealed class ComptimeResult
             return true;
 
         result = 0L;
-        return false;
-    }
-
-    public bool TryGetString(out string result)
-    {
-        if (!IsFailed && Value.TryGetString(out result))
-            return true;
-
-        result = string.Empty;
         return false;
     }
 

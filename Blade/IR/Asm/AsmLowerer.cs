@@ -202,10 +202,25 @@ public static class AsmLowerer
         if (initialValues is null)
             return null;
 
-        List<AsmOperand> lowered = new(initialValues.Count);
+        List<AsmOperand> lowered = [];
         foreach (RuntimeBladeValue initialValue in initialValues)
-            lowered.Add(LowerImmediateValue(initialValue, placesBySymbol));
+            AddDataInitialValue(lowered, initialValue, placesBySymbol);
         return lowered;
+    }
+
+    private static void AddDataInitialValue(
+        List<AsmOperand> lowered,
+        RuntimeBladeValue value,
+        IReadOnlyDictionary<Symbol, StoragePlace> placesBySymbol)
+    {
+        if (value.Type is ArrayTypeSymbol && value.Value is IReadOnlyList<RuntimeBladeValue> elements)
+        {
+            foreach (RuntimeBladeValue element in elements)
+                AddDataInitialValue(lowered, element, placesBySymbol);
+            return;
+        }
+
+        lowered.Add(LowerImmediateValue(value, placesBySymbol));
     }
 
     private sealed class LoweringContext
