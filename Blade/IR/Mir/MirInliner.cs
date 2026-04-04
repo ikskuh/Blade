@@ -240,7 +240,6 @@ public static class MirInliner
             return rewritten switch
             {
                 MirConstantInstruction constant => new MirConstantInstruction(newResult!, constant.ResultType!, constant.Value, constant.Span),
-                MirLoadSymbolInstruction load => new MirLoadSymbolInstruction(newResult!, load.ResultType!, load.Symbol, load.Span),
                 MirLoadPlaceInstruction loadPlace => new MirLoadPlaceInstruction(newResult!, loadPlace.ResultType!, loadPlace.Place, loadPlace.Span),
                 MirCopyInstruction copy => new MirCopyInstruction(newResult!, copy.ResultType!, copy.Source, copy.Span),
                 MirUnaryInstruction unary => new MirUnaryInstruction(newResult!, unary.ResultType!, unary.Operator, unary.Operand, unary.Span),

@@ -388,10 +388,10 @@ public class IrPipelineTests
             EnableLirOptimizations = false,
         });
 
-        Assert.That(MirTextWriter.Write(build.MirModule), Does.Contain("load @g_x"));
+        Assert.That(MirTextWriter.Write(build.MirModule), Does.Contain("const &x"));
         Assert.That(build.AssemblyText, Does.Contain("MOV _r1, PA"));
         Assert.That(build.AssemblyText, Does.Contain("MOV g_x, _r1"));
-        Assert.That(build.AssemblyText, Does.Contain("MOV PA, g_x"));
+        Assert.That(build.AssemblyText, Does.Contain("MOV PA, #g_x"));
     }
 
     [Test]
@@ -418,10 +418,10 @@ public class IrPipelineTests
             EnableLirOptimizations = false,
         });
 
-        Assert.That(MirTextWriter.Write(build.MirModule), Does.Contain("load @g_param"));
+        Assert.That(MirTextWriter.Write(build.MirModule), Does.Contain("const &param"));
         Assert.That(build.AssemblyText, Does.Contain("MOV _r1, PA"));
         Assert.That(build.AssemblyText, Does.Contain("MOV g_param, _r1"));
-        Assert.That(build.AssemblyText, Does.Contain("MOV PA, g_param"));
+        Assert.That(build.AssemblyText, Does.Contain("MOV PA, #g_param"));
     }
 
     [Test]
@@ -769,12 +769,8 @@ public class IrPipelineTests
         });
 
         string mir = MirTextWriter.Write(build.MirModule);
-        Assert.That(mir, Does.Contain("ptr.offset.Add[3]"));
-        Assert.That(mir, Does.Contain("ptr.diff[3]"));
-        Assert.That(build.AssemblyText, Does.Contain("QMUL"));
-        Assert.That(build.AssemblyText, Does.Contain("QDIV"));
-        Assert.That(build.AssemblyText, Does.Contain("GETQX"));
-        Assert.That(build.AssemblyText, Does.Contain("NEGC"));
+        Assert.That(mir, Does.Contain("const 2"));
+        Assert.That(build.AssemblyText, Does.Contain("MOV g_diff_sink, #2"));
     }
 
     [Test]
@@ -801,8 +797,8 @@ public class IrPipelineTests
         });
 
         string mir = MirTextWriter.Write(build.MirModule);
-        Assert.That(mir, Does.Contain("ptr.diff[2]"));
-        Assert.That(build.AssemblyText, Does.Contain("SAR"));
+        Assert.That(mir, Does.Contain("const 2"));
+        Assert.That(build.AssemblyText, Does.Contain("MOV g_diff_sink, #2"));
     }
 
     [Test]
@@ -817,9 +813,9 @@ public class IrPipelineTests
                 new AsmDataBlock(
                     AsmDataBlockKind.Register,
                     [
-                        new AsmAllocatedStorageDefinition(inputWord, VariableStorageClass.Reg, BuiltinTypes.U32, new RuntimeBladeValue(BuiltinTypes.U32, 13L)),
-                        new AsmAllocatedStorageDefinition(deadCodeVisible, VariableStorageClass.Reg, BuiltinTypes.U32, new RuntimeBladeValue(BuiltinTypes.U32, 0L)),
-                        new AsmAllocatedStorageDefinition(r4, VariableStorageClass.Reg, BuiltinTypes.U32, new RuntimeBladeValue(BuiltinTypes.U32, 0L)),
+                        new AsmAllocatedStorageDefinition(inputWord, VariableStorageClass.Reg, BuiltinTypes.U32, [new AsmImmediateOperand(13L)]),
+                        new AsmAllocatedStorageDefinition(deadCodeVisible, VariableStorageClass.Reg, BuiltinTypes.U32, [new AsmImmediateOperand(0L)]),
+                        new AsmAllocatedStorageDefinition(r4, VariableStorageClass.Reg, BuiltinTypes.U32, [new AsmImmediateOperand(0L)]),
                     ]),
             ],
             [

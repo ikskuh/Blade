@@ -133,22 +133,6 @@ public sealed class MirConstantInstruction : MirInstruction
     public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping) => this;
 }
 
-public sealed class MirLoadSymbolInstruction : MirInstruction
-{
-    public MirLoadSymbolInstruction(MirValueId result, TypeSymbol type, StoragePlace symbol, TextSpan span)
-        : base(result, type, span, hasSideEffects: false)
-    {
-        Symbol = Requires.NotNull(symbol);
-    }
-
-    public StoragePlace Symbol { get; }
-    public string SymbolName => Symbol.EmittedName;
-
-    public override IReadOnlyList<MirValueId> Uses => [];
-
-    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping) => this;
-}
-
 public sealed class MirLoadPlaceInstruction : MirInstruction
 {
     public MirLoadPlaceInstruction(MirValueId result, TypeSymbol type, StoragePlace place, TextSpan span)

@@ -37,7 +37,7 @@ internal sealed class ComptimeResult
     }
 
     public ComptimeResult(bool value)
-        : this(new RuntimeBladeValue(BuiltinTypes.Bool, value))
+        : this(BladeValue.Bool(value))
     {
     }
 
@@ -47,7 +47,7 @@ internal sealed class ComptimeResult
     }
 
     public ComptimeResult(string value)
-        : this(new ComptimeBladeValue((ComptimeTypeSymbol)BuiltinTypes.String, value))
+        : this(BladeValue.String(value))
     {
     }
 
@@ -135,58 +135,8 @@ internal sealed class ComptimeResult
 
     private static bool TryGetIntegerLike(BladeValue value, out long result)
     {
-        if (value.TryGetInteger(out result))
-            return true;
-
-        if (value.TryGetPointer(out uint pointerValue))
-        {
-            result = pointerValue;
-            return true;
-        }
-
-        result = 0L;
-        return false;
+        return value.TryGetInteger(out result);
     }
-}
-
-
-internal static class ComptimeTypeFacts
-{
-    public static bool InvolvesPointers(TypeSymbol type)
-    {
-        return InvolvesPointers(type, new HashSet<TypeSymbol>());
-    }
-
-    private static bool InvolvesPointers(TypeSymbol type, HashSet<TypeSymbol> visited)
-    {
-        if (!visited.Add(type))
-            return false;
-
-        if (type is PointerLikeTypeSymbol)
-            return true;
-
-        return type switch
-        {
-            ArrayTypeSymbol array => InvolvesPointers(array.ElementType, visited),
-            StructTypeSymbol structType => InvolvesPointers(structType.Fields, visited),
-            UnionTypeSymbol unionType => InvolvesPointers(unionType.Fields, visited),
-            BitfieldTypeSymbol bitfieldType => InvolvesPointers(bitfieldType.BackingType, visited),
-            EnumTypeSymbol enumType => InvolvesPointers(enumType.BackingType, visited),
-            _ => false,
-        };
-    }
-
-    private static bool InvolvesPointers(IReadOnlyDictionary<string, TypeSymbol> fields, HashSet<TypeSymbol> visited)
-    {
-        foreach ((_, TypeSymbol fieldType) in fields)
-        {
-            if (InvolvesPointers(fieldType, visited))
-                return true;
-        }
-
-        return false;
-    }
-
 }
 
 internal sealed class ComptimeFunctionSupportAnalyzer
@@ -198,18 +148,6 @@ internal sealed class ComptimeFunctionSupportAnalyzer
 
         if (function.ReturnTypes.Count > 1)
             return Unsupported(body.Span, $"function '{function.Name}' returns multiple values.");
-
-        foreach (ParameterSymbol parameter in function.Parameters)
-        {
-            if (ComptimeTypeFacts.InvolvesPointers(parameter.Type))
-                return Unsupported(body.Span, $"function '{function.Name}' uses pointer-typed parameters.");
-        }
-
-        foreach (TypeSymbol returnType in function.ReturnTypes)
-        {
-            if (ComptimeTypeFacts.InvolvesPointers(returnType))
-                return Unsupported(body.Span, $"function '{function.Name}' returns a pointer-typed value.");
-        }
 
         return AnalyzeStatement(body);
     }
@@ -229,9 +167,6 @@ internal sealed class ComptimeFunctionSupportAnalyzer
                 return Supported();
 
             case BoundVariableDeclarationStatement declaration:
-                if (ComptimeTypeFacts.InvolvesPointers(declaration.Symbol.Type))
-                    return Unsupported(declaration.Span, $"local '{declaration.Symbol.Name}' has a pointer-involving type.");
-
                 return declaration.Initializer is null
                     ? Supported()
                     : AnalyzeExpression(declaration.Initializer);
@@ -294,9 +229,6 @@ internal sealed class ComptimeFunctionSupportAnalyzer
                     if (forStatement.Iterable.Type is ArrayTypeSymbol)
                         return Unsupported(forStatement.Iterable.Span, "array iteration is not supported during comptime evaluation.");
 
-                    if (forStatement.ItemVariable is not null && ComptimeTypeFacts.InvolvesPointers(forStatement.ItemVariable.Type))
-                        return Unsupported(forStatement.Span, $"loop item '{forStatement.ItemVariable.Name}' has a pointer-involving type.");
-
                     return AnalyzeStatement(forStatement.Body);
                 }
 
@@ -308,9 +240,6 @@ internal sealed class ComptimeFunctionSupportAnalyzer
 
             case BoundRepForStatement repForStatement:
                 {
-                    if (ComptimeTypeFacts.InvolvesPointers(repForStatement.Variable.Type))
-                        return Unsupported(repForStatement.Span, $"loop variable '{repForStatement.Variable.Name}' has a pointer-involving type.");
-
                     ComptimeSupportResult startResult = AnalyzeExpression(repForStatement.Start);
                     if (!startResult.IsSupported)
                         return startResult;
@@ -383,9 +312,6 @@ internal sealed class ComptimeFunctionSupportAnalyzer
 
     private ComptimeSupportResult AnalyzeExpression(BoundExpression expression)
     {
-        if (ComptimeTypeFacts.InvolvesPointers(expression.Type))
-            return Unsupported(expression.Span, $"expression '{expression.Kind}' involves pointer data.");
-
         switch (expression)
         {
             case BoundLiteralExpression:
@@ -398,7 +324,7 @@ internal sealed class ComptimeFunctionSupportAnalyzer
             case BoundUnaryExpression unary:
                 {
                     if (unary.Operator.Kind is BoundUnaryOperatorKind.AddressOf)
-                        return Unsupported(unary.Span, $"operator '{unary.Operator.Kind}' is not supported during comptime evaluation.");
+                        return AnalyzeAddressOfOperand(unary.Operand);
 
                     return AnalyzeExpression(unary.Operand);
                 }
@@ -495,6 +421,25 @@ internal sealed class ComptimeFunctionSupportAnalyzer
 
     private static ComptimeSupportResult Supported() => new(true, default);
 
+    private ComptimeSupportResult AnalyzeAddressOfOperand(BoundExpression operand)
+    {
+        return operand switch
+        {
+            BoundSymbolExpression symbolExpression => AnalyzeSymbolExpression(symbolExpression),
+            BoundIndexExpression indexExpression => AnalyzeIndexedAddress(indexExpression),
+            _ => Unsupported(operand.Span, "address-of requires an addressable symbol or indexed element."),
+        };
+    }
+
+    private ComptimeSupportResult AnalyzeIndexedAddress(BoundIndexExpression indexExpression)
+    {
+        ComptimeSupportResult expressionResult = AnalyzeExpression(indexExpression.Expression);
+        if (!expressionResult.IsSupported)
+            return expressionResult;
+
+        return AnalyzeExpression(indexExpression.Index);
+    }
+
     private static ComptimeSupportResult Unsupported(TextSpan span, string detail)
         => new(false, new ComptimeFailure(ComptimeFailureKind.UnsupportedConstruct, span, detail));
 
@@ -578,6 +523,9 @@ internal sealed class ComptimeEvaluator
         BoundUnaryExpression unary,
         Dictionary<Symbol, ComptimeResult> frame)
     {
+        if (unary.Operator.Kind == BoundUnaryOperatorKind.AddressOf)
+            return TryEvaluateAddressOf(unary.Operand, unary.Type, unary.Span, frame);
+
         ComptimeResult operandResult = TryEvaluateExpression(unary.Operand, frame);
         if (operandResult.IsFailed)
             return operandResult;
@@ -591,6 +539,63 @@ internal sealed class ComptimeEvaluator
             EvaluationError.UndefinedBehavior => new ComptimeResult(ComptimeFailureKind.NotEvaluable, unary.Span, $"operator '{unary.Operator.Kind}' is not evaluable at compile time."),
             _ => Assert.UnreachableValue<ComptimeResult>(),
         };
+    }
+
+    private ComptimeResult TryEvaluateAddressOf(
+        BoundExpression operand,
+        TypeSymbol pointerType,
+        TextSpan span,
+        Dictionary<Symbol, ComptimeResult> frame)
+    {
+        if (pointerType is not PointerLikeTypeSymbol runtimePointerType)
+            return new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, "address-of did not produce a pointer type.");
+
+        return operand switch
+        {
+            BoundSymbolExpression symbolExpression => new ComptimeResult(
+                BladeValue.Pointer(runtimePointerType, new PointedValue(symbolExpression.Symbol, 0))),
+            BoundIndexExpression indexExpression => TryEvaluateIndexedAddress(indexExpression, runtimePointerType, frame),
+            _ => new ComptimeResult(ComptimeFailureKind.UnsupportedConstruct, span, "address-of target is not supported during comptime evaluation."),
+        };
+    }
+
+    private ComptimeResult TryEvaluateIndexedAddress(
+        BoundIndexExpression indexExpression,
+        PointerLikeTypeSymbol pointerType,
+        Dictionary<Symbol, ComptimeResult> frame)
+    {
+        ComptimeResult indexResult = TryEvaluateExpression(indexExpression.Index, frame);
+        if (indexResult.IsFailed)
+            return indexResult;
+
+        if (!indexResult.TryGetLong(out long index))
+            return new ComptimeResult(ComptimeFailureKind.NotEvaluable, indexExpression.Index.Span, "indexed address requires an integer index.");
+
+        ComptimeResult baseAddress = TryEvaluateAddressBase(indexExpression.Expression, pointerType, frame);
+        if (baseAddress.IsFailed)
+            return baseAddress;
+
+        int stride = pointerType.PointeeType.GetPointerElementStride(GetStorageClass(indexExpression.Expression));
+        EvaluationError error = BladeValue.TryPointerOffset(
+            BoundBinaryOperatorKind.Add,
+            baseAddress.Value,
+            BladeValue.IntegerLiteral(index),
+            stride,
+            out BladeValue pointedValue);
+        return error == EvaluationError.None
+            ? new ComptimeResult(pointedValue)
+            : new ComptimeResult(ComptimeFailureKind.NotEvaluable, indexExpression.Span, "indexed address is not evaluable at compile time.");
+    }
+
+    private ComptimeResult TryEvaluateAddressBase(
+        BoundExpression expression,
+        PointerLikeTypeSymbol pointerType,
+        Dictionary<Symbol, ComptimeResult> frame)
+    {
+        if (expression is BoundSymbolExpression symbolExpression && expression.Type is ArrayTypeSymbol)
+            return new ComptimeResult(BladeValue.Pointer(pointerType, new PointedValue(symbolExpression.Symbol, 0)));
+
+        return TryEvaluateExpression(expression, frame);
     }
 
     private ComptimeResult TryEvaluateBinary(
@@ -1091,6 +1096,17 @@ internal sealed class ComptimeEvaluator
     private static ComptimeResult FailNotEvaluable(TextSpan span, string detail)
     {
         return new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, detail);
+    }
+
+    private static VariableStorageClass GetStorageClass(BoundExpression expression)
+    {
+        if (expression.Type is PointerLikeTypeSymbol pointerType)
+            return pointerType.StorageClass;
+
+        if (expression is BoundSymbolExpression { Symbol: VariableSymbol variable })
+            return variable.StorageClass;
+
+        return VariableStorageClass.Reg;
     }
 
     private static ComptimeResult RequireIntegerResult(ComptimeResult value, TextSpan span, string detail)

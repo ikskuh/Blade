@@ -274,17 +274,9 @@ public sealed class Binder
 
     private static ImportedModule CreateBuiltinModule(string alias)
     {
-        Dictionary<string, long> members = new(StringComparer.Ordinal)
-        {
-            ["reg"] = 0,
-            ["lut"] = 1,
-            ["hub"] = 2,
-        };
-
-        EnumTypeSymbol memorySpaceType = new("MemorySpace", BuiltinTypes.U32, members, isOpen: false);
         Dictionary<string, TypeSymbol> exportedTypes = new(StringComparer.Ordinal)
         {
-            ["MemorySpace"] = memorySpaceType,
+            ["MemorySpace"] = MemorySpaceType,
         };
 
         CompilationUnitSyntax emptySyntax = new([], new Token(TokenKind.EndOfFile, new TextSpan(0, 0), string.Empty));
@@ -2999,7 +2991,7 @@ public sealed class Binder
         if (targetType is UnknownTypeSymbol || expression.Type is UnknownTypeSymbol)
             return expression;
 
-        if (targetType.Name == expression.Type.Name)
+        if (AreSameType(targetType, expression.Type))
             return expression;
 
         // String literal → [*]<storage> u8 (non-const) is rejected with a dedicated diagnostic
@@ -3026,6 +3018,14 @@ public sealed class Binder
             && expression is BoundLiteralExpression { Value.Value: string stringValue })
         {
             return LowerStringToArrayLiteral(stringValue, targetArray, targetLength, span, reportMismatch);
+        }
+
+        if (ReferenceEquals(expression.Type, BuiltinTypes.String)
+            && targetType is MultiPointerTypeSymbol targetPointer
+            && ReferenceEquals(targetPointer.PointeeType, BuiltinTypes.U8)
+            && expression is BoundLiteralExpression { Value.Value: string pointerStringValue })
+        {
+            return LowerStringToPointerLiteral(pointerStringValue, targetPointer, span);
         }
 
         ReportComptimeIntegerTruncationIfNeeded(expression, targetType, span);
@@ -3109,6 +3109,18 @@ public sealed class Binder
         return new BoundArrayLiteralExpression(elements, lastElementIsSpread: false, span, targetArray);
     }
 
+    private static BoundExpression LowerStringToPointerLiteral(string stringValue, MultiPointerTypeSymbol targetPointer, TextSpan span)
+    {
+        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(stringValue);
+        LiteralDataSymbol literalSymbol = new(
+            FormattableString.Invariant($"lit_{targetPointer.StorageClass}_{span.Start}_{span.Length}"),
+            bytes,
+            targetPointer.StorageClass);
+        return new BoundLiteralExpression(
+            BladeValue.Pointer(targetPointer, new PointedValue(literalSymbol, 0)),
+            span);
+    }
+
     private static bool CanExplicitlyCast(TypeSymbol sourceType, TypeSymbol targetType)
     {
         if (sourceType is UnknownTypeSymbol || targetType is UnknownTypeSymbol)
@@ -3123,7 +3135,7 @@ public sealed class Binder
         if (sourceType is EnumTypeSymbol openEnumSource
             && openEnumSource.IsOpen
             && targetType is IntegerLiteralTypeSymbol or IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol
-            && openEnumSource.BackingType.Name == targetType.Name)
+            && AreSameType(openEnumSource.BackingType, targetType))
         {
             return true;
         }
@@ -3131,7 +3143,7 @@ public sealed class Binder
         if (targetType is EnumTypeSymbol openEnumTarget
             && openEnumTarget.IsOpen
             && sourceType is IntegerLiteralTypeSymbol or IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol
-            && openEnumTarget.BackingType.Name == sourceType.Name)
+            && AreSameType(openEnumTarget.BackingType, sourceType))
         {
             return true;
         }
@@ -3539,7 +3551,7 @@ public sealed class Binder
 
         if (left is BoolTypeSymbol && right is BoolTypeSymbol)
             return true;
-        return left.Name == right.Name;
+        return AreSameType(left, right);
     }
 
     private static bool IsAssignable(TypeSymbol target, TypeSymbol source)
@@ -3586,7 +3598,7 @@ public sealed class Binder
         if (target is StructTypeSymbol or UnionTypeSymbol)
             return ReferenceEquals(target, source);
 
-        return target.Name == source.Name;
+        return AreSameType(target, source);
     }
 
     private static bool AreCompatiblePointerSubtractionOperands(MultiPointerTypeSymbol left, MultiPointerTypeSymbol right)
@@ -3612,6 +3624,8 @@ public sealed class Binder
                 && leftPointer.Alignment == rightPointer.Alignment
                 && leftPointer.StorageClass == rightPointer.StorageClass
                 && AreSameType(leftPointer.PointeeType, rightPointer.PointeeType),
+            (FunctionTypeSymbol leftFunction, FunctionTypeSymbol rightFunction) => ReferenceEquals(leftFunction.Function, rightFunction.Function),
+            (ModuleTypeSymbol leftModule, ModuleTypeSymbol rightModule) => ReferenceEquals(leftModule.Module, rightModule.Module),
             _ => false,
         };
     }

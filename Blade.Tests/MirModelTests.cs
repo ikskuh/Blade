@@ -36,10 +36,6 @@ public class MirModelTests
             [v4] = MirValue(40),
         };
 
-        MirLoadSymbolInstruction loadSymbol = new(v0, BuiltinTypes.U32, CreatePlace("global_symbol"), Span);
-        Assert.That(loadSymbol.Uses, Is.Empty);
-        Assert.That(loadSymbol.RewriteUses(mapping), Is.SameAs(loadSymbol));
-
         MirCopyInstruction copy = new(v0, BuiltinTypes.U32, v1, Span);
         Assert.That(copy.RewriteUses(new Dictionary<MirValueId, MirValueId>()), Is.SameAs(copy));
         Assert.That(((MirCopyInstruction)copy.RewriteUses(mapping)).Source, Is.EqualTo(mapping[v1]));

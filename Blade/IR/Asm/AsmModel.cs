@@ -104,14 +104,14 @@ public sealed class AsmAllocatedStorageDefinition(
     IAsmSymbol symbol,
     VariableStorageClass storageClass,
     RuntimeTypeSymbol elementType,
-    RuntimeBladeValue? initialValue = null,
+    IReadOnlyList<AsmOperand>? initialValues = null,
     int count = 1,
     bool useHexFormat = false)
     : AsmDataDefinition(symbol)
 {
     public VariableStorageClass StorageClass { get; } = storageClass;
     public RuntimeTypeSymbol ElementType { get; } = Requires.NotNull(elementType);
-    public RuntimeBladeValue? InitialValue { get; } = initialValue;
+    public IReadOnlyList<AsmOperand>? InitialValues { get; } = initialValues;
     public int Count { get; } = Requires.Positive(count);
     public bool UseHexFormat { get; } = useHexFormat;
 
@@ -389,10 +389,11 @@ public sealed class AsmSymbolOperand : AsmOperand
     {
     }
 
-    public AsmSymbolOperand(IAsmSymbol symbol, AsmSymbolAddressingMode addressingMode)
+    public AsmSymbolOperand(IAsmSymbol symbol, AsmSymbolAddressingMode addressingMode, int offset = 0)
     {
         Symbol = Requires.NotNull(symbol);
         AddressingMode = addressingMode;
+        Offset = offset;
     }
 
     public AsmSymbolOperand(ControlFlowLabelSymbol label, AsmSymbolAddressingMode addressingMode)
@@ -403,13 +404,22 @@ public sealed class AsmSymbolOperand : AsmOperand
     public IAsmSymbol Symbol { get; }
     public string Name => Symbol.Name;
     public AsmSymbolAddressingMode AddressingMode { get; }
+    public int Offset { get; }
 
     public override string Format() => AddressingMode switch
     {
-        AsmSymbolAddressingMode.Immediate => $"#{Name}",
-        AsmSymbolAddressingMode.Register => Name,
+        AsmSymbolAddressingMode.Immediate => Offset == 0 ? $"#{Name}" : $"#{Name}{FormatOffset(Offset)}",
+        AsmSymbolAddressingMode.Register => Offset == 0 ? Name : $"{Name}{FormatOffset(Offset)}",
         _ => Assert.UnreachableValue<string>(),
     };
+
+    private static string FormatOffset(int offset)
+    {
+        if (offset > 0)
+            return $" + {offset}";
+
+        return $" - {-offset}";
+    }
 }
 
 /// <summary>

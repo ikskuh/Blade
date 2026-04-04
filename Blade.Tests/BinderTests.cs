@@ -166,10 +166,12 @@ public class BinderTests
 
         BoundFunctionMember function = program.Functions.Single();
         BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)function.Body.Statements[1];
-        BoundUnaryExpression initializer = (BoundUnaryExpression)declaration.Initializer!;
+        BoundLiteralExpression initializer = (BoundLiteralExpression)declaration.Initializer!;
 
-        Assert.That(initializer.Operator.Kind, Is.EqualTo(BoundUnaryOperatorKind.AddressOf));
         Assert.That(initializer.Type.Name, Is.EqualTo("*reg u32"));
+        Assert.That(initializer.Value.TryGetPointedValue(out PointedValue pointedValue), Is.True);
+        Assert.That(pointedValue.Symbol.Name, Is.EqualTo("x"));
+        Assert.That(pointedValue.Offset, Is.EqualTo(0));
     }
 
     [Test]
@@ -185,10 +187,12 @@ public class BinderTests
 
         BoundFunctionMember function = program.Functions.Single();
         BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)function.Body.Statements[0];
-        BoundUnaryExpression initializer = (BoundUnaryExpression)declaration.Initializer!;
+        BoundLiteralExpression initializer = (BoundLiteralExpression)declaration.Initializer!;
 
-        Assert.That(initializer.Operator.Kind, Is.EqualTo(BoundUnaryOperatorKind.AddressOf));
         Assert.That(initializer.Type.Name, Is.EqualTo("*reg u32"));
+        Assert.That(initializer.Value.TryGetPointedValue(out PointedValue pointedValue), Is.True);
+        Assert.That(pointedValue.Symbol.Name, Is.EqualTo("param"));
+        Assert.That(pointedValue.Offset, Is.EqualTo(0));
     }
 
     [Test]

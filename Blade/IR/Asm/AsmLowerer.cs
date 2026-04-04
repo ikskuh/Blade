@@ -55,6 +55,10 @@ public static class AsmLowerer
             StoragePlace? topLevelYieldStatePlace) =
             BuildCallingConventionStorage(module, cgResult);
 
+        Dictionary<Symbol, StoragePlace> placesBySymbol = [];
+        foreach (StoragePlace place in storagePlaces)
+            placesBySymbol[place.Symbol] = place;
+
         // Build a map of function name → block label → block parameter registers
         // so φ-moves can emit actual MOV instructions to the right target registers.
         Dictionary<FunctionSymbol, Dictionary<LirBlockRef, IReadOnlyList<LirBlockParameter>>> blockParamMap = [];
@@ -85,6 +89,7 @@ public static class AsmLowerer
                 generalCallingConvention,
                 recursiveCallingConvention,
                 coroutineCallingConvention,
+                placesBySymbol,
                 topLevelYieldStatePlace,
                 containsYield,
                 diagnostics);
@@ -98,9 +103,13 @@ public static class AsmLowerer
         IReadOnlyList<StoragePlace> storagePlaces,
         IReadOnlyList<StorageDefinition> storageDefinitions)
     {
-        Dictionary<StoragePlace, RuntimeBladeValue?> initialValues = [];
+        Dictionary<StoragePlace, IReadOnlyList<RuntimeBladeValue>?> initialValues = [];
         foreach (StorageDefinition definition in storageDefinitions)
-            initialValues[definition.Place] = definition.InitialValue;
+            initialValues[definition.Place] = definition.InitialValues;
+
+        Dictionary<Symbol, StoragePlace> placesBySymbol = [];
+        foreach (StoragePlace place in storagePlaces)
+            placesBySymbol[place.Symbol] = place;
 
         List<AsmDataDefinition> registerDefinitions = [];
         List<AsmDataDefinition> lutDefinitions = [];
@@ -116,12 +125,12 @@ public static class AsmLowerer
                 case StoragePlaceKind.AllocatableHubEntry:
                     RuntimeTypeSymbol elementType = GetPlaceElementType(place);
                     int count = GetPlaceEntryCount(place);
-                    RuntimeBladeValue? initialValue = initialValues.GetValueOrDefault(place);
+                    IReadOnlyList<AsmOperand>? loweredInitialValues = LowerDataInitialValues(initialValues.GetValueOrDefault(place), placesBySymbol);
                     AsmAllocatedStorageDefinition allocated = new(
                         place,
                         place.StorageClass,
                         elementType,
-                        initialValue,
+                        loweredInitialValues,
                         count);
                     switch (place.Kind)
                     {
@@ -161,6 +170,9 @@ public static class AsmLowerer
 
     private static RuntimeTypeSymbol GetPlaceElementType(StoragePlace place)
     {
+        if (place.Symbol is LiteralDataSymbol literalData)
+            return literalData.Type.ElementType as RuntimeTypeSymbol ?? Assert.UnreachableValue<RuntimeTypeSymbol>();
+
         if (place.Symbol is VariableSymbol { Type: ArrayTypeSymbol arrayType })
         {
             return arrayType.ElementType as RuntimeTypeSymbol
@@ -175,9 +187,25 @@ public static class AsmLowerer
 
     private static int GetPlaceEntryCount(StoragePlace place)
     {
+        if (place.Symbol is LiteralDataSymbol literalData)
+            return literalData.Type.Length ?? Assert.UnreachableValue<int>();
+
         return place.Symbol is VariableSymbol { Type: ArrayTypeSymbol { Length: int length } }
             ? length
             : 1;
+    }
+
+    private static IReadOnlyList<AsmOperand>? LowerDataInitialValues(
+        IReadOnlyList<RuntimeBladeValue>? initialValues,
+        IReadOnlyDictionary<Symbol, StoragePlace> placesBySymbol)
+    {
+        if (initialValues is null)
+            return null;
+
+        List<AsmOperand> lowered = new(initialValues.Count);
+        foreach (RuntimeBladeValue initialValue in initialValues)
+            lowered.Add(LowerImmediateValue(initialValue, placesBySymbol));
+        return lowered;
     }
 
     private sealed class LoweringContext
@@ -191,6 +219,7 @@ public static class AsmLowerer
         public Dictionary<FunctionSymbol, GeneralCallingConventionInfo> GeneralCallingConvention { get; }
         public Dictionary<FunctionSymbol, RecursiveCallingConventionInfo> RecursiveCallingConvention { get; }
         public Dictionary<FunctionSymbol, CoroutineCallingConventionInfo> CoroutineCallingConvention { get; }
+        public IReadOnlyDictionary<Symbol, StoragePlace> PlacesBySymbol { get; }
         public StoragePlace? TopLevelYieldStatePlace { get; }
         public bool ContainsYield { get; }
         public DiagnosticBag? Diagnostics { get; }
@@ -225,6 +254,7 @@ public static class AsmLowerer
             Dictionary<FunctionSymbol, GeneralCallingConventionInfo> generalCallingConvention,
             Dictionary<FunctionSymbol, RecursiveCallingConventionInfo> recursiveCallingConvention,
             Dictionary<FunctionSymbol, CoroutineCallingConventionInfo> coroutineCallingConvention,
+            IReadOnlyDictionary<Symbol, StoragePlace> placesBySymbol,
             StoragePlace? topLevelYieldStatePlace,
             bool containsYield,
             DiagnosticBag? diagnostics)
@@ -238,6 +268,7 @@ public static class AsmLowerer
             GeneralCallingConvention = generalCallingConvention;
             RecursiveCallingConvention = recursiveCallingConvention;
             CoroutineCallingConvention = coroutineCallingConvention;
+            PlacesBySymbol = Requires.NotNull(placesBySymbol);
             TopLevelYieldStatePlace = topLevelYieldStatePlace;
             ContainsYield = containsYield;
             Diagnostics = diagnostics;
@@ -735,9 +766,6 @@ public static class AsmLowerer
             case LirMovOperation:
                 LowerMov(nodes, op, ctx);
                 break;
-            case LirLoadAddressOperation:
-                LowerLoadAddress(nodes, op, ctx);
-                break;
             case LirLoadPlaceOperation:
                 LowerLoadPlace(nodes, op, ctx);
                 break;
@@ -1124,17 +1152,16 @@ public static class AsmLowerer
             ReferenceEquals(immediate.Type, op.ResultType),
             $"Immediate type '{immediate.Type.Name}' does not match const result type '{op.ResultType?.Name ?? "<null>"}'.");
 
-        long immediateValue = GetImmediateValue(immediate);
-
         // Bool/bit constants: use BITH (set bit 0) or BITL (clear bit 0).
         if (IsSingleBitType(op.ResultType))
         {
+            long immediateValue = GetNumericImmediateValue(immediate);
             Assert.Invariant(immediateValue is 0 or 1, "Single-bit constants must normalize to 0 or 1.");
             nodes.Add(Emit(immediateValue == 1 ? P2Mnemonic.BITH : P2Mnemonic.BITL, dest, new AsmImmediateOperand(0)));
             return;
         }
 
-        nodes.Add(Emit(P2Mnemonic.MOV, dest, new AsmImmediateOperand(immediateValue)));
+        nodes.Add(Emit(P2Mnemonic.MOV, dest, LowerImmediateValue(immediate, ctx.PlacesBySymbol)));
     }
 
     private static void LowerMov(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
@@ -1142,13 +1169,6 @@ public static class AsmLowerer
         AsmRegisterOperand dest = DestReg(op, ctx);
         AsmRegisterOperand src = OpReg(op.Operands[0], ctx);
         nodes.Add(Emit(P2Mnemonic.MOV, dest, src));
-    }
-
-    private static void LowerLoadAddress(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
-    {
-        AsmRegisterOperand dest = DestReg(op, ctx);
-        AsmSymbolOperand place = (AsmSymbolOperand)LowerOperand(op.Operands[0], ctx);
-        nodes.Add(Emit(P2Mnemonic.MOV, dest, place));
     }
 
     private static void LowerLoadPlace(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
@@ -2667,7 +2687,7 @@ public static class AsmLowerer
         return operand switch
         {
             LirRegisterOperand reg => new AsmRegisterOperand(ctx.GetRegister(reg.Register)),
-            LirImmediateOperand imm => new AsmImmediateOperand(GetImmediateValue(imm.Value)),
+            LirImmediateOperand imm => LowerImmediateValue(imm.Value, ctx.PlacesBySymbol),
             LirPlaceOperand place => CreatePlaceOperand(place.Place),
             _ => throw new InvalidOperationException($"Unknown operand type: {operand.GetType().Name}"),
         };
@@ -2690,14 +2710,29 @@ public static class AsmLowerer
     private static bool IsSingleBitType(TypeSymbol? type)
         => type is BoolTypeSymbol || ReferenceEquals(type, BuiltinTypes.Bit);
 
-    private static long GetImmediateValue(BladeValue imm)
+    private static AsmOperand LowerImmediateValue(BladeValue immediate, IReadOnlyDictionary<Symbol, StoragePlace> placesBySymbol)
+    {
+        if (immediate.TryGetPointedValue(out PointedValue pointedValue))
+        {
+            if (pointedValue.Symbol is AbsoluteAddressSymbol absoluteSymbol)
+                return new AsmImmediateOperand(absoluteSymbol.Address + pointedValue.Offset);
+
+            Assert.Invariant(
+                placesBySymbol.TryGetValue(pointedValue.Symbol, out StoragePlace? place) && place is not null,
+                $"Unable to resolve symbolic pointer '{immediate.Format()}' to an addressable storage place.");
+            return new AsmSymbolOperand(place, AsmSymbolAddressingMode.Immediate, pointedValue.Offset);
+        }
+
+        return new AsmImmediateOperand(GetNumericImmediateValue(immediate));
+    }
+
+    private static long GetNumericImmediateValue(BladeValue imm)
     {
         return imm.Value switch
         {
             bool b => b ? 1 : 0,
-            uint u => u,
             long l => l,
-            _ => Assert.UnreachableValue<long>($"Immediate '{imm.Format()}' is not encodable as a PASM immediate."),
+            _ => Assert.UnreachableValue<long>($"Immediate '{imm.Format()}' is not encodable as a numeric PASM immediate."),
         };
     }
 

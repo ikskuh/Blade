@@ -71,6 +71,14 @@ public static class MirLowerer
             if (!seenSymbols.Add(symbol))
                 continue;
 
+            if (symbol is LiteralDataSymbol literalData)
+            {
+                StoragePlace literalPlace = new(symbol, MapLiteralStoragePlaceKind(literalData.StorageClass), fixedAddress: null);
+                places.Add(literalPlace);
+                definitions.Add(new StorageDefinition(literalPlace, literalData.Elements));
+                continue;
+            }
+
             places.Add(new StoragePlace(symbol, StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null));
         }
 
@@ -104,7 +112,7 @@ public static class MirLowerer
             StoragePlace place = new(symbol, kind, symbol.FixedAddress);
             places.Add(place);
             if (staticInitializer is not null)
-                definitions.Add(new StorageDefinition(place, staticInitializer));
+                definitions.Add(new StorageDefinition(place, [staticInitializer]));
         }
     }
 
@@ -135,6 +143,16 @@ public static class MirLowerer
             VariableStorageClass.Hub => StoragePlaceKind.AllocatableHubEntry,
             _ when symbol.FixedAddress.HasValue => StoragePlaceKind.FixedRegisterAlias,
             _ when symbol.IsExtern => StoragePlaceKind.ExternalAlias,
+            _ => StoragePlaceKind.AllocatableGlobalRegister,
+        };
+    }
+
+    private static StoragePlaceKind MapLiteralStoragePlaceKind(VariableStorageClass storageClass)
+    {
+        return storageClass switch
+        {
+            VariableStorageClass.Lut => StoragePlaceKind.AllocatableLutEntry,
+            VariableStorageClass.Hub => StoragePlaceKind.AllocatableHubEntry,
             _ => StoragePlaceKind.AllocatableGlobalRegister,
         };
     }
@@ -240,6 +258,11 @@ public static class MirLowerer
     {
         switch (expression)
         {
+            case BoundLiteralExpression literal
+                when literal.Value.TryGetPointedValue(out PointedValue pointedValue)
+                && pointedValue.Symbol is not AbsoluteAddressSymbol:
+                symbols[pointedValue.Symbol] = pointedValue.Symbol;
+                break;
             case BoundUnaryExpression unary when unary.Operator.Kind == BoundUnaryOperatorKind.AddressOf:
                 CollectAddressTakenTarget(unary.Operand, symbols);
                 break;
@@ -1290,16 +1313,9 @@ public static class MirLowerer
         private MirValueId LowerUnaryExpression(BoundUnaryExpression unaryExpression)
         {
             if (unaryExpression.Operator.Kind == BoundUnaryOperatorKind.AddressOf
-                && unaryExpression.Operand is BoundSymbolExpression symbolExpression
-                && TryGetStoragePlace(symbolExpression.Symbol, out StoragePlace addressPlace))
+                && unaryExpression.Operand is BoundSymbolExpression)
             {
-                MirValueId addressResult = NextValue();
-                _currentBlock.Instructions.Add(new MirLoadSymbolInstruction(
-                    addressResult,
-                    unaryExpression.Type,
-                    addressPlace,
-                    unaryExpression.Span));
-                return addressResult;
+                Assert.Unreachable($"Direct address-of symbol expressions should fold to symbolic pointer literals before MIR lowering. Span={unaryExpression.Span}");
             }
 
             if (unaryExpression.Operator.Kind == BoundUnaryOperatorKind.AddressOf

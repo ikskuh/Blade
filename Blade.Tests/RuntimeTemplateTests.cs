@@ -137,7 +137,7 @@ public sealed class RuntimeTemplateTests
                             constantOne,
                             VariableStorageClass.Reg,
                             BuiltinTypes.U32,
-                            new RuntimeBladeValue(BuiltinTypes.U32, 1L)),
+                            [new AsmImmediateOperand(1L)]),
                     ]),
             ],
             [

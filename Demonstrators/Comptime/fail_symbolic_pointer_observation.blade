@@ -1,0 +1,14 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - E0242
+// NOTE:
+//   Symbolic pointers can fold address arithmetic, but comptime observation
+//   through dereference remains unsupported.
+
+fn read_local() -> u32 {
+    var local: u32 = 1;
+    const ptr: *reg u32 = &local;
+    return ptr.*;
+}
+
+reg const folded: u32 = read_local();

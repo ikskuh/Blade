@@ -1,0 +1,17 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - CALLPA #g_lit_Reg_
+// - g_lit_Reg_
+// - LONG 104, 101, 108, 108, 111
+// NOTE:
+//   String-to-pointer coercion now lowers through literal-backed symbolic
+//   storage instead of a raw numeric address.
+
+reg var sink: u8 = 0;
+
+noinline fn first_byte(ptr: [*]reg const u8) -> u8 {
+    return ptr[0];
+}
+
+sink = first_byte("hello");

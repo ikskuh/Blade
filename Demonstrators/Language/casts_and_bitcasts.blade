@@ -2,11 +2,12 @@
 // DIAGNOSTICS: W0261
 // STAGE: final-asm
 // CONTAINS:
-// - ZEROX
-// - SIGNX
+// - MOV g_narrowed_unsigned, #1
+// - MOV g_reinterpreted_signed, #1
+// - MOV g_roundtrip_bits, #509
 // NOTE:
-//   Shows explicit narrowing casts, reinterpretation with bitcast, and a
-//   pointer round-trip through an integer register value.
+//   Explicit casts and bitcasts now fold aggressively when every operand is a
+//   compile-time constant, including the pointer round-trip through `u32`.
 
 reg var narrowed_unsigned: u8 = 0;
 reg var reinterpreted_signed: i8 = 0;

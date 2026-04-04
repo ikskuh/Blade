@@ -94,11 +94,6 @@ public static class MirTextWriter
                 sb.Append(FormatConstant(constant.Value));
                 break;
 
-            case MirLoadSymbolInstruction load:
-                sb.Append("load @");
-                sb.Append(load.SymbolName);
-                break;
-
             case MirLoadPlaceInstruction loadPlace:
                 sb.Append("load.place ");
                 sb.Append(loadPlace.Place.EmittedName);

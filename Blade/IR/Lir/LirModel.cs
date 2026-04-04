@@ -176,11 +176,6 @@ public sealed class LirMovOperation : LirOperation
     public override string DisplayName => "mov";
 }
 
-public sealed class LirLoadAddressOperation : LirOperation
-{
-    public override string DisplayName => "load.addr";
-}
-
 public sealed class LirLoadPlaceOperation : LirOperation
 {
     public override string DisplayName => "load.place";

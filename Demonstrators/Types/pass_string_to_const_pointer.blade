@@ -1,9 +1,10 @@
 // EXPECT: pass
 // STAGE: bound
 // CONTAINS:
-// - Conversion<[*]reg const u8>
+// - Literal<[*]reg const u8>
+// - Blade.Semantics.PointedValue
 // NOTE:
-//   String literals can be implicitly coerced to [*]<storage> const u8.
+//   String literals now bind directly to literal-backed symbolic pointers.
 
 fn test_reg() {
     var s: [*]reg const u8 = "hello";

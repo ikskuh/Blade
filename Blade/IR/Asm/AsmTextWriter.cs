@@ -112,7 +112,23 @@ public static class AsmTextWriter
                     sb.Append(": ");
                     sb.Append(allocated.Directive);
                     sb.Append(' ');
-                    sb.Append(allocated.InitialValue?.Value ?? 0);
+                    if (allocated.InitialValues is null || allocated.InitialValues.Count == 0)
+                    {
+                        sb.Append('0');
+                    }
+                    else if (allocated.InitialValues.Count == 1)
+                    {
+                        sb.Append(allocated.InitialValues[0].Format());
+                    }
+                    else
+                    {
+                        for (int i = 0; i < allocated.InitialValues.Count; i++)
+                        {
+                            if (i > 0)
+                                sb.Append(", ");
+                            sb.Append(allocated.InitialValues[i].Format());
+                        }
+                    }
                     if (allocated.Count > 1)
                     {
                         sb.Append(" [");

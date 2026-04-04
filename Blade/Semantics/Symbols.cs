@@ -49,6 +49,40 @@ public abstract class Symbol
     public string Name { get; }
 }
 
+public sealed class AbsoluteAddressSymbol(int address, VariableStorageClass storageClass) : Symbol(BuildName(address, storageClass))
+{
+    public int Address { get; } = address;
+    public VariableStorageClass StorageClass { get; } = storageClass;
+
+    private static string BuildName(int address, VariableStorageClass storageClass)
+    {
+        return storageClass switch
+        {
+            VariableStorageClass.Lut => $"abs_lut_{address}",
+            VariableStorageClass.Hub => $"abs_hub_{address}",
+            _ => $"abs_reg_{address}",
+        };
+    }
+}
+
+public sealed class LiteralDataSymbol(string name, IReadOnlyList<byte> bytes, VariableStorageClass storageClass) : Symbol(name)
+{
+    private readonly RuntimeBladeValue[] elements = CreateElements(bytes);
+
+    public IReadOnlyList<byte> Bytes { get; } = Requires.NotNull(bytes);
+    public VariableStorageClass StorageClass { get; } = storageClass;
+    public ArrayTypeSymbol Type { get; } = new(BuiltinTypes.U8, Requires.NotNull(bytes).Count);
+    public IReadOnlyList<RuntimeBladeValue> Elements => elements;
+
+    private static RuntimeBladeValue[] CreateElements(IReadOnlyList<byte> bytes)
+    {
+        RuntimeBladeValue[] values = new RuntimeBladeValue[Requires.NotNull(bytes).Count];
+        for (int i = 0; i < bytes.Count; i++)
+            values[i] = BladeValue.U8(bytes[i]);
+        return values;
+    }
+}
+
 public sealed class ControlFlowLabelSymbol : IAsmSymbol
 {
     public ControlFlowLabelSymbol(string name)

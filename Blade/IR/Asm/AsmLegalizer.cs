@@ -60,7 +60,7 @@ public static class AsmLegalizer
                     label,
                     VariableStorageClass.Reg,
                     BuiltinTypes.U32,
-                    new RuntimeBladeValue(BuiltinTypes.U32, (long)value),
+                    [new AsmImmediateOperand((long)value)],
                     useHexFormat: true));
             }
 

@@ -336,10 +336,6 @@ the symbol types themselves.
 
 Why isn't a "place" a symbol?
 
-## Refactor comptime on top of BladeValue
-
-Introduce methods for all operators on top of BladeValue, and implement the evaluation logic there.
-
 ##  Rework parser to not require `IReadOnlyList<object>` at all
 
 see topic
@@ -354,3 +350,21 @@ on the same symbol.
 ## Improve BladeValue to have default constructors for all builtin types
 
 - All builtin types must be singletons
+
+
+BoolTypeSymbol.IsScalarCastType should be true, as we should be ablt to bitcast between bit and bool.
+
+- Implement `IEquatable<TypeSymbol>` on TypeSymbol through virtual dispatch and make type 
+  symbols either structural equivalent for types like arrays, integers, ... while keeping a
+  identity/declaration equality for user-defined types (union/struct/bitstruct/enum)
+  This refactor means that no `ReferenceEquals` calls are used for type comparison anymore,
+  because this will break for two distinct `[8]u8` types (which is semantically the same type).
+  Support comptime comparison for `==` and `!=` on types in the language.
+- Delete `Binder.cs` AreSameType  and implement IEquatable<BladeValue> on BladeValue overwriting the `==` and `!=` operators
+  so comparison in C# is natural. BladeValue can be made a `record struct` to simplify this.
+
+
+- BladeValue.AreEqualPointers must be the same pointer if the type differes, but the pointed
+  object is the same. Storage space must be equivalent though. Don't just compare `TryGetKnownAbsoluteAddress`
+  results.
+  

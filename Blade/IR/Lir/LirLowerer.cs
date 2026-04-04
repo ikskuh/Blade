@@ -107,17 +107,6 @@ public static class LirLowerer
                 writesZ: false,
                 constant.Span),
 
-            MirLoadSymbolInstruction load => new LirOpInstruction(
-                new LirLoadAddressOperation(),
-                destination,
-                load.ResultType,
-                [new LirPlaceOperand(load.Symbol)],
-                hasSideEffects: false,
-                predicate: null,
-                writesC: false,
-                writesZ: false,
-                load.Span),
-
             MirLoadPlaceInstruction loadPlace => new LirOpInstruction(
                 new LirLoadPlaceOperation(),
                 destination,

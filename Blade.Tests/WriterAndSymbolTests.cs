@@ -14,7 +14,7 @@ public class WriterAndSymbolTests
 {
     private static readonly TextSpan Span = new(0, 0);
 
-    private static VariableSymbol CreateVariable(string name, VariableStorageClass storageClass, VariableScopeKind scopeKind, object? initializer = null)
+    private static VariableSymbol CreateVariable(string name, VariableStorageClass storageClass, VariableScopeKind scopeKind)
     {
         return new VariableSymbol(name, BuiltinTypes.U32, isConst: false, storageClass, scopeKind, isExtern: false, fixedAddress: null, alignment: null);
     }

@@ -1,7 +1,19 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Blade;
 
 namespace Blade.Semantics;
+
+public sealed class PointedValue(Symbol symbol, int offset)
+{
+    public Symbol Symbol { get; } = Requires.NotNull(symbol);
+    public int Offset { get; } = offset;
+
+    public PointedValue WithOffset(int offset)
+    {
+        return new PointedValue(Symbol, offset);
+    }
+}
 
 public abstract partial class BladeValue(TypeSymbol type, object value)
 {
@@ -26,9 +38,24 @@ public abstract partial class BladeValue(TypeSymbol type, object value)
     }
 
     public static RuntimeBladeValue Bool(bool value) => new(BuiltinTypes.Bool, value);
+    public static RuntimeBladeValue Bit(long value) => new(BuiltinTypes.Bit, value);
+    public static RuntimeBladeValue Nit(long value) => new(BuiltinTypes.Nit, value);
+    public static RuntimeBladeValue Nib(long value) => new(BuiltinTypes.Nib, value);
+    public static RuntimeBladeValue U8(long value) => new(BuiltinTypes.U8, value);
+    public static RuntimeBladeValue I8(long value) => new(BuiltinTypes.I8, value);
+    public static RuntimeBladeValue U16(long value) => new(BuiltinTypes.U16, value);
+    public static RuntimeBladeValue I16(long value) => new(BuiltinTypes.I16, value);
+    public static RuntimeBladeValue U32(long value) => new(BuiltinTypes.U32, value);
+    public static RuntimeBladeValue I32(long value) => new(BuiltinTypes.I32, value);
+    [SuppressMessage("Design", "CA1720:Identifier contains type name", Justification = "Matches the builtin Blade type name.")]
+    public static RuntimeBladeValue Uint(long value) => new(BuiltinTypes.Uint, value);
+    [SuppressMessage("Design", "CA1720:Identifier contains type name", Justification = "Matches the builtin Blade type name.")]
+    public static RuntimeBladeValue Int(long value) => new(BuiltinTypes.Int, value);
     public static ComptimeBladeValue IntegerLiteral(long value) => new((ComptimeTypeSymbol)BuiltinTypes.IntegerLiteral, value);
-    public static ComptimeBladeValue StringLiteral(string value) => new((ComptimeTypeSymbol)BuiltinTypes.String, Requires.NotNull(value));
-    public static RuntimeBladeValue PointerValue(PointerLikeTypeSymbol type, uint value) => new(Requires.NotNull(type), value);
+    [SuppressMessage("Design", "CA1720:Identifier contains type name", Justification = "Matches the builtin Blade type name.")]
+    public static ComptimeBladeValue String(string value) => new((ComptimeTypeSymbol)BuiltinTypes.String, Requires.NotNull(value));
+    [SuppressMessage("Design", "CA1720:Identifier contains type name", Justification = "Pointer values are modeled explicitly in BladeValue.")]
+    public static RuntimeBladeValue Pointer(PointerLikeTypeSymbol type, PointedValue value) => new(Requires.NotNull(type), Requires.NotNull(value));
 
     public bool TryGetBool(out bool result)
     {
@@ -54,15 +81,15 @@ public abstract partial class BladeValue(TypeSymbol type, object value)
         return false;
     }
 
-    public bool TryGetPointer(out uint result)
+    public bool TryGetPointedValue(out PointedValue result)
     {
-        if (Value is uint pointerValue)
+        if (Value is PointedValue pointedValue)
         {
-            result = pointerValue;
+            result = pointedValue;
             return true;
         }
 
-        result = 0U;
+        result = null!;
         return false;
     }
 
@@ -84,9 +111,22 @@ public abstract partial class BladeValue(TypeSymbol type, object value)
         {
             bool boolean => boolean ? "true" : "false",
             string text => $"\"{text}\"",
+            PointedValue pointedValue => FormatPointedValue(pointedValue),
             IFormattable formattable => formattable.ToString(null, System.Globalization.CultureInfo.InvariantCulture),
             _ => Value.ToString() ?? "<?>",
         };
+    }
+
+    private static string FormatPointedValue(PointedValue pointedValue)
+    {
+        string baseText = $"&{pointedValue.Symbol.Name}";
+        if (pointedValue.Offset == 0)
+            return baseText;
+
+        if (pointedValue.Offset > 0)
+            return $"{baseText}+{pointedValue.Offset}";
+
+        return $"{baseText}{pointedValue.Offset}";
     }
 }
 

@@ -1,0 +1,17 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - g_count LONG 3
+// NOTE:
+//   Same-object symbolic pointer subtraction folds to the element distance.
+
+hub var arr: [8]u8 = undefined;
+
+fn diff() -> i32 {
+    const base: [*]hub const u8 = &arr;
+    const low: [*]hub const u8 = base + 2;
+    const high: [*]hub const u8 = base + 5;
+    return high - low;
+}
+
+reg var count: i32 = diff();

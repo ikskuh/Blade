@@ -2,14 +2,12 @@
 // STAGE: final-asm
 // CONTAINS:
 // - SHL
-// - QMUL
-// - QDIV
-// - GETQX
-// - NEGC
+// - MOV g_diff_sink, #2
 // NOTE:
 //   Pointer arithmetic stays element-based across memory spaces:
-//   hub u16 uses shift scaling, hub [3]u8 uses multiply/divide by 3,
-//   and global pointer compound assignments go through the pointer update path.
+//   hub u16 uses shift scaling, same-object pointer differences fold to a
+//   constant count, and global pointer compound assignments still go through
+//   the pointer update path.
 
 hub var words: [8]u16 = undefined;
 hub var chunks: [4][3]u8 = undefined;

@@ -1,6 +1,4 @@
 using System;
-using System.Collections.Generic;
-using System.Globalization;
 using Blade.Semantics.Bound;
 
 namespace Blade.Semantics;
@@ -26,8 +24,8 @@ public abstract partial class BladeValue
         if (left.TryGetInteger(out long leftInteger) && right.TryGetInteger(out long rightInteger))
             return leftInteger == rightInteger;
 
-        if (left.TryGetPointer(out uint leftPointer) && right.TryGetPointer(out uint rightPointer))
-            return leftPointer == rightPointer;
+        if (left.TryGetPointedValue(out PointedValue leftPointed) && right.TryGetPointedValue(out PointedValue rightPointed))
+            return AreEqualPointers(left, leftPointed, right, rightPointed);
 
         if (left.TryGetString(out string leftString) && right.TryGetString(out string rightString))
             return string.Equals(leftString, rightString, StringComparison.Ordinal);
@@ -121,6 +119,10 @@ public abstract partial class BladeValue
             return EvaluationError.None;
         }
 
+        EvaluationError pointerError = TryPointerBinary(kind, left, right, out result);
+        if (pointerError != EvaluationError.TypeMismatch)
+            return pointerError;
+
         if (!left.TryGetInteger(out long leftInteger) || !right.TryGetInteger(out long rightInteger))
             return Fail(EvaluationError.TypeMismatch, out result);
 
@@ -155,18 +157,20 @@ public abstract partial class BladeValue
         Requires.NotNull(pointerValue);
         Requires.NotNull(deltaValue);
 
-        if (!pointerValue.TryGetPointer(out uint pointer) || !TryGetPointerDelta(deltaValue, out uint delta))
-            return Fail(EvaluationError.TypeMismatch, out result);
-
-        uint scaledDelta = unchecked(delta * (uint)stride);
-        uint address = kind == BoundBinaryOperatorKind.Add
-            ? unchecked(pointer + scaledDelta)
-            : unchecked(pointer - scaledDelta);
-
         if (pointerValue.Type is not PointerLikeTypeSymbol pointerType)
             return Fail(EvaluationError.TypeMismatch, out result);
 
-        result = PointerValue(pointerType, address);
+        if (!pointerValue.TryGetPointedValue(out PointedValue pointedValue) || !deltaValue.TryGetInteger(out long delta))
+            return Fail(EvaluationError.TypeMismatch, out result);
+
+        long signedStride = checked(delta * stride);
+        long signedOffset = kind == BoundBinaryOperatorKind.Add
+            ? pointedValue.Offset + signedStride
+            : pointedValue.Offset - signedStride;
+        if (signedOffset < int.MinValue || signedOffset > int.MaxValue)
+            return Fail(EvaluationError.UndefinedBehavior, out result);
+
+        result = Pointer(pointerType, pointedValue.WithOffset((int)signedOffset));
         return EvaluationError.None;
     }
 
@@ -175,10 +179,16 @@ public abstract partial class BladeValue
         Requires.NotNull(leftValue);
         Requires.NotNull(rightValue);
 
-        if (!leftValue.TryGetPointer(out uint leftPointer) || !rightValue.TryGetPointer(out uint rightPointer))
+        if (!leftValue.TryGetPointedValue(out PointedValue leftPointed) || !rightValue.TryGetPointedValue(out PointedValue rightPointed))
             return Fail(EvaluationError.TypeMismatch, out result);
 
-        int rawDifference = unchecked((int)(leftPointer - rightPointer));
+        if (!ReferenceEquals(leftPointed.Symbol, rightPointed.Symbol))
+            return Fail(EvaluationError.Unsupported, out result);
+
+        int rawDifference = leftPointed.Offset - rightPointed.Offset;
+        if (rawDifference % stride != 0)
+            return Fail(EvaluationError.UndefinedBehavior, out result);
+
         result = IntegerLiteral(rawDifference / stride);
         return EvaluationError.None;
     }
@@ -211,22 +221,16 @@ public abstract partial class BladeValue
 
         if (ReferenceEquals(type, BuiltinTypes.Bool))
         {
-            if (value.TryGetBool(out bool boolValue))
-            {
-                result = Bool(boolValue);
-                return EvaluationError.None;
-            }
-
-            if (!TryGetIntegerLikeValue(value, out long integerBool))
+            if (!value.TryGetBool(out bool boolValue))
                 return Fail(EvaluationError.TypeMismatch, out result);
 
-            result = Bool(integerBool != 0);
+            result = Bool(boolValue);
             return EvaluationError.None;
         }
 
         if (ReferenceEquals(type, BuiltinTypes.IntegerLiteral))
         {
-            if (!TryGetIntegerLikeValue(value, out long integerLiteral))
+            if (!value.TryGetInteger(out long integerLiteral))
                 return Fail(EvaluationError.TypeMismatch, out result);
 
             result = IntegerLiteral(integerLiteral);
@@ -273,6 +277,74 @@ public abstract partial class BladeValue
         return TryCreateScalarValueFromBits(type, rawBits, out result);
     }
 
+    private static EvaluationError TryPointerBinary(BoundBinaryOperatorKind kind, BladeValue left, BladeValue right, out BladeValue result)
+    {
+        if (left.Type is not PointerLikeTypeSymbol leftPointerType)
+            return Fail(EvaluationError.TypeMismatch, out result);
+
+        if (kind is BoundBinaryOperatorKind.Add or BoundBinaryOperatorKind.Subtract
+            && right.TryGetInteger(out _)
+            && leftPointerType is MultiPointerTypeSymbol)
+        {
+            int stride = leftPointerType.PointeeType.GetPointerElementStride(leftPointerType.StorageClass);
+            return TryPointerOffset(kind, left, right, stride, out result);
+        }
+
+        if (kind == BoundBinaryOperatorKind.Subtract
+            && right.Type is MultiPointerTypeSymbol rightPointerType
+            && leftPointerType is MultiPointerTypeSymbol
+            && right.TryGetPointedValue(out _))
+        {
+            int stride = leftPointerType.PointeeType.GetPointerElementStride(leftPointerType.StorageClass);
+            return TryPointerDifference(left, right, stride, out result);
+        }
+
+        if (kind is BoundBinaryOperatorKind.Less or BoundBinaryOperatorKind.LessOrEqual or BoundBinaryOperatorKind.Greater or BoundBinaryOperatorKind.GreaterOrEqual)
+            return TryPointerComparison(kind, left, right, out result);
+
+        return Fail(EvaluationError.TypeMismatch, out result);
+    }
+
+    private static EvaluationError TryPointerComparison(BoundBinaryOperatorKind kind, BladeValue left, BladeValue right, out BladeValue result)
+    {
+        if (left.Type is not PointerLikeTypeSymbol leftPointerType
+            || right.Type is not PointerLikeTypeSymbol rightPointerType
+            || !left.TryGetPointedValue(out PointedValue leftPointed)
+            || !right.TryGetPointedValue(out PointedValue rightPointed))
+        {
+            return Fail(EvaluationError.TypeMismatch, out result);
+        }
+
+        int comparison;
+        if (ReferenceEquals(leftPointed.Symbol, rightPointed.Symbol))
+        {
+            comparison = leftPointed.Offset.CompareTo(rightPointed.Offset);
+        }
+        else
+        {
+            if (leftPointerType.StorageClass != rightPointerType.StorageClass
+                || !TryGetKnownAbsoluteAddress(leftPointerType, leftPointed, out int leftAddress)
+                || !TryGetKnownAbsoluteAddress(rightPointerType, rightPointed, out int rightAddress))
+            {
+                return Fail(EvaluationError.Unsupported, out result);
+            }
+
+            comparison = leftAddress.CompareTo(rightAddress);
+        }
+
+        bool value = kind switch
+        {
+            BoundBinaryOperatorKind.Less => comparison < 0,
+            BoundBinaryOperatorKind.LessOrEqual => comparison <= 0,
+            BoundBinaryOperatorKind.Greater => comparison > 0,
+            BoundBinaryOperatorKind.GreaterOrEqual => comparison >= 0,
+            _ => Assert.UnreachableValue<bool>(),
+        };
+
+        result = Bool(value);
+        return EvaluationError.None;
+    }
+
     private static EvaluationError TryConvertToRuntimeType(BladeValue value, RuntimeTypeSymbol type, out BladeValue result)
     {
         if (type.IsLegalRuntimeObject(value.Value))
@@ -283,20 +355,29 @@ public abstract partial class BladeValue
 
         if (type is IntegerTypeSymbol integerType)
         {
-            if (!TryConvertToUInt32Bits(value, out uint integerBits))
+            if (!value.TryGetInteger(out long integerValue))
                 return Fail(EvaluationError.TypeMismatch, out result);
 
-            result = new RuntimeBladeValue(integerType, NormalizeIntegerBits(integerType, integerBits));
+            result = new RuntimeBladeValue(integerType, NormalizeIntegerBits(integerType, unchecked((uint)integerValue)));
             return EvaluationError.None;
         }
 
         if (type is PointerLikeTypeSymbol pointerType)
         {
-            if (!TryConvertToUInt32Bits(value, out uint pointerBits))
-                return Fail(EvaluationError.TypeMismatch, out result);
+            if (value.TryGetPointedValue(out PointedValue pointedValue))
+            {
+                result = Pointer(pointerType, pointedValue);
+                return EvaluationError.None;
+            }
 
-            result = PointerValue(pointerType, pointerBits);
-            return EvaluationError.None;
+            if (value.TryGetInteger(out long absoluteAddress))
+            {
+                AbsoluteAddressSymbol absoluteSymbol = new(unchecked((int)(uint)absoluteAddress), pointerType.StorageClass);
+                result = Pointer(pointerType, new PointedValue(absoluteSymbol, 0));
+                return EvaluationError.None;
+            }
+
+            return Fail(EvaluationError.TypeMismatch, out result);
         }
 
         if (type is EnumTypeSymbol enumType)
@@ -320,54 +401,6 @@ public abstract partial class BladeValue
         return Fail(EvaluationError.TypeMismatch, out result);
     }
 
-    private static bool TryGetIntegerLikeValue(BladeValue value, out long result)
-    {
-        Requires.NotNull(value);
-
-        if (value.TryGetInteger(out result))
-            return true;
-
-        if (value.TryGetPointer(out uint pointerValue))
-        {
-            result = pointerValue;
-            return true;
-        }
-
-        result = 0L;
-        return false;
-    }
-
-    private static bool TryConvertToUInt32Bits(BladeValue value, out uint result)
-    {
-        Requires.NotNull(value);
-
-        if (value.TryGetPointer(out result))
-            return true;
-
-        if (value.TryGetInteger(out long integerValue))
-        {
-            result = unchecked((uint)integerValue);
-            return true;
-        }
-
-        result = 0U;
-        return false;
-    }
-
-    private static bool TryGetPointerDelta(BladeValue value, out uint delta)
-    {
-        Requires.NotNull(value);
-
-        if (!value.TryGetInteger(out long integerValue))
-        {
-            delta = 0U;
-            return false;
-        }
-
-        delta = unchecked((uint)integerValue);
-        return true;
-    }
-
     private static bool TryGetBitCastSourceBits(BladeValue value, int targetWidth, out int sourceWidth, out uint rawBits)
     {
         Requires.NotNull(value);
@@ -381,9 +414,11 @@ public abstract partial class BladeValue
                 return true;
             }
 
-            if (value.TryGetPointer(out uint pointerValue))
+            if (value.Type is PointerLikeTypeSymbol pointerType
+                && value.TryGetPointedValue(out PointedValue pointedValue)
+                && TryGetKnownAbsoluteAddress(pointerType, pointedValue, out int absoluteAddress))
             {
-                rawBits = pointerValue;
+                rawBits = unchecked((uint)absoluteAddress);
                 return true;
             }
 
@@ -413,7 +448,8 @@ public abstract partial class BladeValue
 
         if (type is PointerLikeTypeSymbol pointerType)
         {
-            result = PointerValue(pointerType, rawBits);
+            AbsoluteAddressSymbol absoluteSymbol = new(unchecked((int)rawBits), pointerType.StorageClass);
+            result = Pointer(pointerType, new PointedValue(absoluteSymbol, 0));
             return EvaluationError.None;
         }
 
@@ -438,6 +474,56 @@ public abstract partial class BladeValue
         }
 
         return Fail(EvaluationError.Unsupported, out result);
+    }
+
+    private static bool AreEqualPointers(BladeValue left, PointedValue leftPointed, BladeValue right, PointedValue rightPointed)
+    {
+        if (ReferenceEquals(leftPointed.Symbol, rightPointed.Symbol))
+            return leftPointed.Offset == rightPointed.Offset;
+
+        if (left.Type is not PointerLikeTypeSymbol leftPointerType
+            || right.Type is not PointerLikeTypeSymbol rightPointerType
+            || leftPointerType.StorageClass != rightPointerType.StorageClass
+            || !TryGetKnownAbsoluteAddress(leftPointerType, leftPointed, out int leftAddress)
+            || !TryGetKnownAbsoluteAddress(rightPointerType, rightPointed, out int rightAddress))
+        {
+            return false;
+        }
+
+        return leftAddress == rightAddress;
+    }
+
+    private static bool TryGetKnownAbsoluteAddress(PointerLikeTypeSymbol type, PointedValue value, out int address)
+    {
+        Requires.NotNull(type);
+        Requires.NotNull(value);
+
+        if (value.Symbol is AbsoluteAddressSymbol absoluteSymbol)
+        {
+            if (absoluteSymbol.StorageClass != type.StorageClass)
+            {
+                address = 0;
+                return false;
+            }
+
+            address = absoluteSymbol.Address + value.Offset;
+            return true;
+        }
+
+        if (value.Symbol is VariableSymbol { FixedAddress: int fixedAddress, StorageClass: var storageClass })
+        {
+            if (storageClass != type.StorageClass)
+            {
+                address = 0;
+                return false;
+            }
+
+            address = fixedAddress + value.Offset;
+            return true;
+        }
+
+        address = 0;
+        return false;
     }
 
     private static long NormalizeIntegerBits(IntegerTypeSymbol type, uint rawBits)

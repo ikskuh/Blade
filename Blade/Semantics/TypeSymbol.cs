@@ -58,19 +58,33 @@ public abstract class ScalarTypeSymbol(string name, int bitWidth, int sizeBytes,
     public override int? ScalarWidthBits => BitWidth;
 }
 
-public sealed class BoolTypeSymbol() : ScalarTypeSymbol("bool", bitWidth: 1, sizeBytes: 1, alignmentBytes: 1)
+public sealed class BoolTypeSymbol : ScalarTypeSymbol
 {
+    public static BoolTypeSymbol Instance { get; } = new();
+
+    private BoolTypeSymbol()
+        : base("bool", bitWidth: 1, sizeBytes: 1, alignmentBytes: 1)
+    {
+    }
+
     public override bool IsScalarCastType => false;
 
     public override bool IsLegalRuntimeObject(object value) => value is bool;
 }
 
-public sealed class IntegerTypeSymbol(string name, int bitWidth, bool isSigned)
-    : ScalarTypeSymbol(name, bitWidth, sizeBytes: Math.Max(1, (bitWidth + 7) / 8), alignmentBytes: Math.Max(1, (bitWidth + 7) / 8))
+public sealed class IntegerTypeSymbol : ScalarTypeSymbol
 {
-    public override bool IsSignedInteger { get; } = isSigned;
-    public long MinValue { get; } = isSigned ? -(1L << (bitWidth - 1)) : 0L;
-    public long MaxValue { get; } = isSigned ? (1L << (bitWidth - 1)) - 1L : (1L << bitWidth) - 1L;
+    internal IntegerTypeSymbol(string name, int bitWidth, bool isSigned)
+        : base(name, bitWidth, sizeBytes: Math.Max(1, (bitWidth + 7) / 8), alignmentBytes: Math.Max(1, (bitWidth + 7) / 8))
+    {
+        IsSignedInteger = isSigned;
+        MinValue = isSigned ? -(1L << (bitWidth - 1)) : 0L;
+        MaxValue = isSigned ? (1L << (bitWidth - 1)) - 1L : (1L << bitWidth) - 1L;
+    }
+
+    public override bool IsSignedInteger { get; }
+    public long MinValue { get; }
+    public long MaxValue { get; }
 
     public override bool IsLegalRuntimeObject(object value) => (value is long l) && IsLegalRuntimeObject(l);
 
@@ -94,7 +108,7 @@ public abstract class PointerLikeTypeSymbol(
     public int? Alignment { get; } = alignment;
     public VariableStorageClass StorageClass { get; } = storageClass;
 
-    public override bool IsLegalRuntimeObject(object value) => value is uint;
+    public override bool IsLegalRuntimeObject(object value) => value is PointedValue;
 
     private static string BuildName(
         string prefix,
@@ -299,7 +313,15 @@ public sealed class ModuleTypeSymbol(ModuleSymbol module) : ComptimeTypeSymbol($
     public override bool IsLegalRuntimeObject(object value) => ReferenceEquals(value, Module);
 }
 
-public sealed class UnknownTypeSymbol() : ComptimeTypeSymbol("<unknown>");
+public sealed class UnknownTypeSymbol : ComptimeTypeSymbol
+{
+    public static UnknownTypeSymbol Instance { get; } = new();
+
+    private UnknownTypeSymbol()
+        : base("<unknown>")
+    {
+    }
+}
 
 public sealed class UndefinedLiteralTypeSymbol : ComptimeTypeSymbol
 {
@@ -313,8 +335,15 @@ public sealed class UndefinedLiteralTypeSymbol : ComptimeTypeSymbol
     public override bool IsLegalRuntimeObject(object value) => ReferenceEquals(value, UndefinedValue.Instance);
 }
 
-public sealed class IntegerLiteralTypeSymbol() : ComptimeTypeSymbol("<int-literal>")
+public sealed class IntegerLiteralTypeSymbol : ComptimeTypeSymbol
 {
+    public static IntegerLiteralTypeSymbol Instance { get; } = new();
+
+    private IntegerLiteralTypeSymbol()
+        : base("<int-literal>")
+    {
+    }
+
     public override bool IsLegalRuntimeObject(object value) => value is long;
 }
 
@@ -330,19 +359,34 @@ public sealed class VoidTypeSymbol : ComptimeTypeSymbol
     public override bool IsLegalRuntimeObject(object value) => ReferenceEquals(value, VoidValue.Instance);
 }
 
-public sealed class StringTypeSymbol() : ComptimeTypeSymbol("string")
+public sealed class StringTypeSymbol : ComptimeTypeSymbol
 {
+    public static StringTypeSymbol Instance { get; } = new();
+
+    private StringTypeSymbol()
+        : base("string")
+    {
+    }
+
     public override bool IsLegalRuntimeObject(object value) => value is string;
 }
 
-public sealed class RangeTypeSymbol() : ComptimeTypeSymbol("range");
+public sealed class RangeTypeSymbol : ComptimeTypeSymbol
+{
+    public static RangeTypeSymbol Instance { get; } = new();
+
+    private RangeTypeSymbol()
+        : base("range")
+    {
+    }
+}
 
 public static class BuiltinTypes
 {
-    public static readonly ComptimeTypeSymbol Unknown = new UnknownTypeSymbol();
+    public static readonly UnknownTypeSymbol Unknown = UnknownTypeSymbol.Instance;
     public static readonly ComptimeTypeSymbol UndefinedLiteral = UndefinedLiteralTypeSymbol.Instance;
-    public static readonly ComptimeTypeSymbol IntegerLiteral = new IntegerLiteralTypeSymbol();
-    public static readonly BoolTypeSymbol Bool = new();
+    public static readonly IntegerLiteralTypeSymbol IntegerLiteral = IntegerLiteralTypeSymbol.Instance;
+    public static readonly BoolTypeSymbol Bool = BoolTypeSymbol.Instance;
     public static readonly IntegerTypeSymbol Bit = new("bit", bitWidth: 1, isSigned: false);
     public static readonly IntegerTypeSymbol Nit = new("nit", bitWidth: 1, isSigned: true);
     public static readonly IntegerTypeSymbol Nib = new("nib", bitWidth: 4, isSigned: false);
@@ -354,9 +398,9 @@ public static class BuiltinTypes
     public static readonly IntegerTypeSymbol I32 = new("i32", bitWidth: 32, isSigned: true);
     public static readonly IntegerTypeSymbol Uint = new("uint", bitWidth: 32, isSigned: false);
     public static readonly IntegerTypeSymbol Int = new("int", bitWidth: 32, isSigned: true);
-    public static readonly ComptimeTypeSymbol Void = VoidTypeSymbol.Instance;
-    public static readonly ComptimeTypeSymbol String = new StringTypeSymbol();
-    public static readonly ComptimeTypeSymbol Range = new RangeTypeSymbol();
+    public static readonly VoidTypeSymbol Void = VoidTypeSymbol.Instance;
+    public static readonly StringTypeSymbol String = StringTypeSymbol.Instance;
+    public static readonly RangeTypeSymbol Range = RangeTypeSymbol.Instance;
 
     private static readonly Dictionary<string, TypeSymbol> Builtins = new()
     {

@@ -111,43 +111,58 @@ public class MirOptimizerTests
         MirModule optimized = MirOptimizer.Optimize(new MirModule([function]), maxIterations: 1, enabledOptimizations: [OptimizationRegistry.GetMirOptimization("const-prop")!]);
 
         IReadOnlyList<MirInstruction> rewritten = optimized.Functions[0].Blocks[0].Instructions;
-        Dictionary<MirValueId, object?> constants = rewritten
+        Dictionary<MirValueId, BladeValue> constants = rewritten
             .OfType<MirConstantInstruction>()
-            .ToDictionary(instruction => instruction.Result!, instruction => instruction.Value?.Value);
+            .Where(static instruction => instruction.Value is not null)
+            .ToDictionary(instruction => instruction.Result!, instruction => instruction.Value!);
 
         Assert.That(rewritten[13], Is.Not.TypeOf<MirConstantInstruction>());
         Assert.That(rewritten[40], Is.Not.TypeOf<MirConstantInstruction>());
         Assert.That(rewritten[41], Is.Not.TypeOf<MirConstantInstruction>());
         Assert.That(rewritten[^1], Is.Not.TypeOf<MirConstantInstruction>());
-        Assert.That(constants[MirValue(10)], Is.EqualTo(true));
-        Assert.That(constants[MirValue(11)], Is.EqualTo(-1L));
-        Assert.That(constants[MirValue(12)], Is.EqualTo(0xFFFF_FFFEL));
-        Assert.That(constants[MirValue(13)], Is.EqualTo(2L));
-        Assert.That(constants[MirValue(20)], Is.EqualTo(3L));
-        Assert.That(constants[MirValue(21)], Is.EqualTo(1L));
-        Assert.That(constants[MirValue(22)], Is.EqualTo(4L));
-        Assert.That(constants[MirValue(23)], Is.EqualTo(4L));
+        AssertBoolConstant(constants, MirValue(10), true);
+        AssertIntegerConstant(constants, MirValue(11), -1L);
+        AssertIntegerConstant(constants, MirValue(12), 0xFFFF_FFFEL);
+        AssertIntegerConstant(constants, MirValue(13), 2L);
+        AssertIntegerConstant(constants, MirValue(20), 3L);
+        AssertIntegerConstant(constants, MirValue(21), 1L);
+        AssertIntegerConstant(constants, MirValue(22), 4L);
+        AssertIntegerConstant(constants, MirValue(23), 4L);
         Assert.That(constants.ContainsKey(MirValue(24)), Is.False);
-        Assert.That(constants[MirValue(25)], Is.EqualTo(1L));
+        AssertIntegerConstant(constants, MirValue(25), 1L);
         Assert.That(constants.ContainsKey(MirValue(26)), Is.False);
-        Assert.That(constants[MirValue(27)], Is.EqualTo(2L));
-        Assert.That(constants[MirValue(28)], Is.EqualTo(3L));
-        Assert.That(constants[MirValue(29)], Is.EqualTo(5L));
-        Assert.That(constants[MirValue(31)], Is.EqualTo(4L));
-        Assert.That(constants[MirValue(32)], Is.EqualTo(4L));
-        Assert.That(constants[MirValue(33)], Is.EqualTo(4L));
-        Assert.That(constants[MirValue(34)], Is.EqualTo(4L));
-        Assert.That(constants[MirValue(35)], Is.EqualTo(4L));
-        Assert.That(constants[MirValue(36)], Is.EqualTo(4L));
-        Assert.That(constants[MirValue(37)], Is.EqualTo(true));
-        Assert.That(constants[MirValue(38)], Is.EqualTo(true));
-        Assert.That(constants[MirValue(39)], Is.EqualTo(true));
-        Assert.That(constants[MirValue(40)], Is.EqualTo(true));
-        Assert.That(constants[MirValue(41)], Is.EqualTo(true));
-        Assert.That(constants[MirValue(42)], Is.EqualTo(true));
-        Assert.That(constants[MirValue(43)], Is.EqualTo(false));
-        Assert.That(constants[MirValue(44)], Is.EqualTo(true));
-        Assert.That(constants[MirValue(45)], Is.EqualTo(false));
-        Assert.That(constants[MirValue(46)], Is.EqualTo(true));
+        AssertIntegerConstant(constants, MirValue(27), 2L);
+        AssertIntegerConstant(constants, MirValue(28), 3L);
+        AssertIntegerConstant(constants, MirValue(29), 5L);
+        AssertIntegerConstant(constants, MirValue(31), 4L);
+        AssertIntegerConstant(constants, MirValue(32), 4L);
+        AssertIntegerConstant(constants, MirValue(33), 4L);
+        AssertIntegerConstant(constants, MirValue(34), 4L);
+        AssertIntegerConstant(constants, MirValue(35), 4L);
+        AssertIntegerConstant(constants, MirValue(36), 4L);
+        AssertBoolConstant(constants, MirValue(37), true);
+        AssertBoolConstant(constants, MirValue(38), true);
+        AssertBoolConstant(constants, MirValue(39), true);
+        AssertBoolConstant(constants, MirValue(40), true);
+        AssertBoolConstant(constants, MirValue(41), true);
+        AssertBoolConstant(constants, MirValue(42), true);
+        AssertBoolConstant(constants, MirValue(43), false);
+        AssertBoolConstant(constants, MirValue(44), true);
+        AssertBoolConstant(constants, MirValue(45), false);
+        AssertBoolConstant(constants, MirValue(46), true);
+    }
+
+    private static void AssertIntegerConstant(IReadOnlyDictionary<MirValueId, BladeValue> constants, MirValueId id, long expected)
+    {
+        Assert.That(constants.TryGetValue(id, out BladeValue? value), Is.True);
+        Assert.That(value!.TryGetInteger(out long actual), Is.True);
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    private static void AssertBoolConstant(IReadOnlyDictionary<MirValueId, BladeValue> constants, MirValueId id, bool expected)
+    {
+        Assert.That(constants.TryGetValue(id, out BladeValue? value), Is.True);
+        Assert.That(value!.TryGetBool(out bool actual), Is.True);
+        Assert.That(actual, Is.EqualTo(expected));
     }
 }

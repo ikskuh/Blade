@@ -189,17 +189,30 @@ public static class FinalAssemblyWriter
 
     private static string FormatDataValue(AsmAllocatedStorageDefinition definition)
     {
-        BladeValue? initialValue = definition.InitialValue;
-        string initializer = initialValue?.Value switch
-        {
-            null => "0",
-            bool boolean => boolean ? "1" : "0",
-            uint u32 when definition.UseHexFormat => $"${u32:X8}",
-            IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
-            _ => initialValue!.Format(),
-        };
+        if (definition.InitialValues is null || definition.InitialValues.Count == 0)
+            return definition.Count > 1 ? $"0[{definition.Count}]" : "0";
 
-        return definition.Count > 1 ? $"{initializer}[{definition.Count}]" : initializer;
+        if (definition.InitialValues.Count == 1)
+        {
+            string initializer = FormatDataOperand(definition.InitialValues[0], definition.UseHexFormat);
+            return definition.Count > 1 ? $"{initializer}[{definition.Count}]" : initializer;
+        }
+
+        List<string> values = new(definition.InitialValues.Count);
+        foreach (AsmOperand operand in definition.InitialValues)
+            values.Add(FormatDataOperand(operand, definition.UseHexFormat));
+        return string.Join(", ", values);
+    }
+
+    private static string FormatDataOperand(AsmOperand operand, bool useHexFormat)
+    {
+        return operand switch
+        {
+            AsmImmediateOperand { Value: >= 0 } immediate when useHexFormat => $"${immediate.Value:X8}",
+            AsmImmediateOperand immediate => immediate.Value.ToString(CultureInfo.InvariantCulture),
+            AsmSymbolOperand symbol => FormatSymbolOperand(symbol).TrimStart('#'),
+            _ => operand.Format(),
+        };
     }
 
     private static void WriteNode(StringBuilder sb, AsmNode node)
@@ -272,13 +285,16 @@ public static class FinalAssemblyWriter
         if (operand.Symbol is StoragePlace { StorageClass: VariableStorageClass.Lut } lutPlace
             && operand.AddressingMode == AsmSymbolAddressingMode.Immediate)
         {
-            return $"#{FormatSymbol(lutPlace)} - $200";
+            string lutOffset = operand.Offset == 0
+                ? string.Empty
+                : operand.Offset > 0 ? $" + {operand.Offset}" : $" - {-operand.Offset}";
+            return $"#{FormatSymbol(lutPlace)} - $200{lutOffset}";
         }
 
         string formatted = FormatSymbol(operand.Symbol);
-        return operand.AddressingMode == AsmSymbolAddressingMode.Immediate
-            ? $"#{formatted}"
-            : formatted;
+        if (operand.Offset != 0)
+            formatted = operand.Offset > 0 ? $"{formatted} + {operand.Offset}" : $"{formatted} - {-operand.Offset}";
+        return operand.AddressingMode == AsmSymbolAddressingMode.Immediate ? $"#{formatted}" : formatted;
     }
 
     private static string FormatSymbol(IAsmSymbol symbol)
