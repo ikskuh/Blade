@@ -14,21 +14,6 @@
 
 Operators  PostIncrement and PostDecrement do not exist in Blade.
 
-## ASM-3: Add `%N` temporary register support in inline asm
-
-Users currently must declare explicit local variables to use scratch registers in inline asm blocks. `%0`, `%1`, etc. should act as hidden locals — unnamed temporaries allocated by the compiler for the duration of the asm block. This is especially useful in `asm fn` functions where no surrounding variable scope is available.
-
-Syntax: `%0`–`%N` as operands inside an `asm` or `asm volatile` block. Each distinct index allocates one fresh virtual register. They do not correspond to any Blade variable and are not live outside the block.
-
-Implementation sketch:
-
-- Lexer/validator: recognise `%<decimal>` as a new operand token kind inside asm bodies.
-- Binder: collect the set of used indices per asm block, add a synthetic `{%0}` … `{%N}` binding for each with Write-only access on first write, ReadWrite thereafter.
-- Typed lowering: map each `%N` operand to the corresponding synthetic binding's virtual register operand — no name mangling needed beyond the existing binding mechanism.
-- Register allocator: treat synthetic bindings as ordinary short-lived locals; they must not escape the asm region.
-- Diagnostics: E0307 for `%N` used in a context where typed lowering cannot represent it (should be unreachable given the validator, but keep the invariant explicit).
-- Demonstrators: positive case using `%0` as a scratch register inside a non-trivial asm block; negative case (if any grammar restriction is introduced).
-
 ## Bug Fix Backlog
 
 ## BUG-1: Respect the `SETQ`/`SETQ2` + PTRx silicon hazard

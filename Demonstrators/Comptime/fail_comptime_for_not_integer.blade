@@ -1,0 +1,13 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0241
+// NOTE:
+//   Forces comptime for-statement iterable to be non-integer.
+//   Covers ComptimeEvaluator L957-958.
+
+comptime fn bad_for() -> u32 {
+    for(true) {
+    }
+    return 0;
+}
+
+reg const folded: u32 = bad_for();

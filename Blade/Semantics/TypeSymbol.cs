@@ -256,7 +256,7 @@ public sealed class ArrayTypeSymbol(TypeSymbol elementType, int? length = null) 
     private RuntimeTypeSymbol GetRuntimeElementType()
     {
         return ElementType as RuntimeTypeSymbol
-            ?? throw new InvalidOperationException($"Array type '{Name}' does not have a runtime element type.");
+            ?? Assert.UnreachableValue<RuntimeTypeSymbol>();
     }
 }
 

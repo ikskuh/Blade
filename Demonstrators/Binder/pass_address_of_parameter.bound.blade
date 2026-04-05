@@ -1,0 +1,9 @@
+// EXPECT: fail
+// STAGE: bound
+// NOTE:
+//   Taking a pointer to a parameter must not be allowed, as parameters are in the same space as
+//   local variables.
+
+fn test_addressof_array_param(arr: [4]u32) {
+    var p: *reg u32 = &arr[0];
+}

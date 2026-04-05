@@ -659,8 +659,7 @@ internal sealed class ComptimeEvaluator
         if (conditionResult.IsFailed)
             return conditionResult;
 
-        if (!conditionResult.TryGetBool(out bool conditionBool))
-            return new ComptimeResult(ComptimeFailureKind.NotEvaluable, ifExpression.Condition.Span, "if-expression conditions must be bool.");
+        Assert.Invariant(conditionResult.TryGetBool(out bool conditionBool), "binder guarantees if-expression conditions are bool");
 
         return TryEvaluateExpression(conditionBool ? ifExpression.ThenExpression : ifExpression.ElseExpression, frame);
     }
@@ -908,8 +907,7 @@ internal sealed class ComptimeEvaluator
         if (conditionValue.IsFailed)
             return EvaluationOutcome.Failed(conditionValue);
 
-        if (!conditionValue.TryGetBool(out bool conditionBool))
-            return EvaluationOutcome.Failed(new ComptimeResult(ComptimeFailureKind.NotEvaluable, ifStatement.Condition.Span, "if-statement conditions must be bool."));
+        Assert.Invariant(conditionValue.TryGetBool(out bool conditionBool), "binder guarantees if-statement conditions are bool");
 
         return TryExecuteStatement(conditionBool ? ifStatement.ThenBody : ifStatement.ElseBody ?? EmptyBlock, frame);
     }
@@ -924,8 +922,7 @@ internal sealed class ComptimeEvaluator
             if (conditionValue.IsFailed)
                 return EvaluationOutcome.Failed(conditionValue);
 
-            if (!conditionValue.TryGetBool(out bool conditionBool))
-                return EvaluationOutcome.Failed(new ComptimeResult(ComptimeFailureKind.NotEvaluable, whileStatement.Condition.Span, "while-statement conditions must be bool."));
+            Assert.Invariant(conditionValue.TryGetBool(out bool conditionBool), "binder guarantees while-statement conditions are bool");
 
             if (!conditionBool)
                 break;

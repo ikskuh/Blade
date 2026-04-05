@@ -176,7 +176,7 @@ public static class AsmLowerer
         if (place.Symbol is VariableSymbol { Type: ArrayTypeSymbol arrayType })
         {
             return arrayType.ElementType as RuntimeTypeSymbol
-                ?? throw new InvalidOperationException($"Storage place '{place.Symbol.Name}' must not use a non-runtime array element type.");
+                ?? Assert.UnreachableValue<RuntimeTypeSymbol>();
         }
 
         if (place.Symbol is VariableSymbol { Type: RuntimeTypeSymbol runtimeType })
@@ -2685,16 +2685,14 @@ public static class AsmLowerer
 
     private static AsmRegisterOperand DestReg(LirOpInstruction op, LoweringContext ctx)
     {
-        if (op.Destination is not { } dest)
-            throw new InvalidOperationException($"Instruction '{op.DisplayName}' expected a destination register");
-        return new AsmRegisterOperand(ctx.GetRegister(dest));
+        Assert.Invariant(op.Destination is not null, $"Instruction '{op.DisplayName}' expected a destination register");
+        return new AsmRegisterOperand(ctx.GetRegister(op.Destination));
     }
 
     private static AsmRegisterOperand OpReg(LirOperand operand, LoweringContext ctx)
     {
-        if (operand is LirRegisterOperand reg)
-            return new AsmRegisterOperand(ctx.GetRegister(reg.Register));
-        throw new InvalidOperationException($"Expected register operand, got {operand.GetType().Name}");
+        Assert.Invariant(operand is LirRegisterOperand, $"Expected register operand, got {operand.GetType().Name}");
+        return new AsmRegisterOperand(ctx.GetRegister(((LirRegisterOperand)operand).Register));
     }
 
     private static AsmOperand LowerOperand(LirOperand operand, LoweringContext ctx)
@@ -2704,7 +2702,7 @@ public static class AsmLowerer
             LirRegisterOperand reg => new AsmRegisterOperand(ctx.GetRegister(reg.Register)),
             LirImmediateOperand imm => LowerImmediateValue(imm.Value, ctx.PlacesBySymbol),
             LirPlaceOperand place => CreatePlaceOperand(place.Place),
-            _ => throw new InvalidOperationException($"Unknown operand type: {operand.GetType().Name}"),
+            _ => Assert.UnreachableValue<AsmOperand>(),
         };
     }
 

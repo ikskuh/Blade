@@ -204,3 +204,12 @@ sink <<<= amount;
   specialized calls in expressions such as `max(a, b) + min(a, b)`.
 - Arithmetic left shift lowering now emits `SAL` for `<<<` and `<<<=` instead of
   `SHL`, restoring the documented "shift in LSB" semantics on PASM2.
+
+## Open — discovered 2026-04-05
+
+### Compiler crash on variable declarations with empty name
+
+`CreateVariableSymbol` crashes with `ArgumentException("Value cannot be null, empty, or whitespace")`
+when the parser produces a `VariableDeclarationSyntax` with an empty `Name.Text`. This occurs when
+a `var` statement has a missing or malformed identifier. The binder should emit a diagnostic instead
+of crashing. Stack: `Binder.BindLocalVariableDeclaration → CreateVariableSymbol → Symbol..ctor`.

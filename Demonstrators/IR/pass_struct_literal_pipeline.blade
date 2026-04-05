@@ -1,0 +1,17 @@
+// EXPECT: xfail
+// NOTE:
+//   Struct literal lowering is not yet implemented (E0401).
+//   This fixture tracks the missing feature.
+
+type Pair = struct {
+    a: u32,
+    b: u32,
+};
+
+reg var pair: Pair = Pair {
+    .a = 1,
+    .b = 2,
+};
+
+reg var sink: u32 = 0;
+sink = pair.a;

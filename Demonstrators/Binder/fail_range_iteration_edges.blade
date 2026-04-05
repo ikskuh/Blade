@@ -1,0 +1,16 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0260, E0205
+// NOTE:
+//   Covers range iteration without binding (E0260) and mutable range binding (E0205).
+
+// Range iteration without a binding variable requires E0260
+fn test_range_no_binding() {
+    for(0..<10) {
+    }
+}
+
+// Mutable range binding is not allowed
+fn test_range_mutable_binding() {
+    for(0..<10) -> &index {
+    }
+}

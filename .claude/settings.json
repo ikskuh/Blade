@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__blade_compiler_service__execute_regression_fixture",
+      "mcp__blade_compiler_service__get_regression_artifact",
+      "Read(//home/felix/projects/nerdgruppe/blade/**)"
+    ]
+  }
+}

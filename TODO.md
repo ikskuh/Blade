@@ -340,31 +340,6 @@ Why isn't a "place" a symbol?
 
 see topic
 
-## Improve Pointer BladeValue 
+## Improve BladeValue/TypeSymbol
 
-`PointerLikeTypeSymbol` must use a `SymbolOffset(IAsmSymbol sym, long offset)` value instead of `uint`.
-
-We don't know pointer values at comptime, but we can still perform all pointer arithmetics as long as they are
-on the same symbol.
-
-## Improve BladeValue to have default constructors for all builtin types
-
-- All builtin types must be singletons
-
-
-BoolTypeSymbol.IsScalarCastType should be true, as we should be ablt to bitcast between bit and bool.
-
-- Implement `IEquatable<TypeSymbol>` on TypeSymbol through virtual dispatch and make type 
-  symbols either structural equivalent for types like arrays, integers, ... while keeping a
-  identity/declaration equality for user-defined types (union/struct/bitstruct/enum)
-  This refactor means that no `ReferenceEquals` calls are used for type comparison anymore,
-  because this will break for two distinct `[8]u8` types (which is semantically the same type).
-  Support comptime comparison for `==` and `!=` on types in the language.
-- Delete `Binder.cs` AreSameType  and implement IEquatable<BladeValue> on BladeValue overwriting the `==` and `!=` operators
-  so comparison in C# is natural. BladeValue can be made a `record struct` to simplify this.
-
-
-- BladeValue.AreEqualPointers must be the same pointer if the type differes, but the pointed
-  object is the same. Storage space must be equivalent though. Don't just compare `TryGetKnownAbsoluteAddress`
-  results.
-  
+- Support comptime comparison for `==` and `!=` on types in the language.

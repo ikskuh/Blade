@@ -1,0 +1,11 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0241
+// NOTE:
+//   Forces the comptime binary evaluator down the division-by-zero path.
+//   Covers ComptimeEvaluator L647 (UndefinedBehavior for Divide).
+
+comptime fn bad_div() -> u32 {
+    return 10 / 0;
+}
+
+reg const folded: u32 = bad_div();

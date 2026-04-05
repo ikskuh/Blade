@@ -1,0 +1,13 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0255, E0241
+// NOTE:
+//   Covers assert failure and non-evaluable assert paths.
+//   E0255 = static assertion that evaluates to false.
+//   E0241 = assert with runtime value that can't be evaluated at compile time.
+
+// Static assertion that fails
+assert(1 == 2);
+
+// Assert with runtime variable (non-evaluable)
+reg var runtime_val: u32 = 0;
+assert(runtime_val == 0);

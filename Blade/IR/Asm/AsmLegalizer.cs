@@ -245,7 +245,7 @@ public static class AsmLegalizer
         {
             P2AugPrefixKind.AUGD => P2Mnemonic.AUGD,
             P2AugPrefixKind.AUGS => P2Mnemonic.AUGS,
-            _ => throw new InvalidOperationException($"Unsupported AUG prefix kind '{augPrefix}'."),
+            _ => Assert.UnreachableValue<P2Mnemonic>(),
         };
     }
 }

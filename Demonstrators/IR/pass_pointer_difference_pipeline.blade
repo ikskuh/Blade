@@ -1,0 +1,11 @@
+// EXPECT: pass
+// STAGE: mir
+// CONTAINS:
+// - ptr.diff
+// NOTE:
+//   Covers pointer difference through the MIR pipeline.
+//   Exercises MirPointerDifferenceInstruction lowering.
+
+fn pointer_diff_test(p1: [*]reg u32, p2: [*]reg u32) -> i32 {
+    return p2 - p1;
+}

@@ -1,0 +1,7 @@
+// EXPECT: pass
+// DIAGNOSTICS: W0261
+// NOTE:
+//   Covers the integer truncation warning path in the Binder.
+//   Exercises ReportComptimeIntegerTruncation.
+
+reg var x: u8 = 256;
