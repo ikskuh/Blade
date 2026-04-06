@@ -1,0 +1,34 @@
+// EXPECT: pass
+// STAGE: bound
+// NOTE:
+//   Covers comptime while-loop with break and continue.
+//   Exercises ComptimeEvaluator TryExecuteWhileStatement break/continue outcomes.
+
+comptime fn while_with_break() -> u32 {
+    var result: u32 = 0;
+    var i: u32 = 0;
+    while (i < 10) {
+        if (i == 5) {
+            break;
+        }
+        result += i;
+        i += 1;
+    }
+    return result;
+}
+
+comptime fn while_with_continue() -> u32 {
+    var result: u32 = 0;
+    var i: u32 = 0;
+    while (i < 5) {
+        i += 1;
+        if (i == 3) {
+            continue;
+        }
+        result += i;
+    }
+    return result;
+}
+
+var a: u32 = while_with_break();
+var b: u32 = while_with_continue();

@@ -501,6 +501,11 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
             $"Compile-time integer value {value} is truncated to {truncatedValue} when converted to '{targetType}'.");
     }
 
+    public void ReportAddressOfParameter(TextSpan span, string name)
+    {
+        Report(DiagnosticCode.E0262_AddressOfParameter, span, $"Cannot take the address of parameter '{name}'.");
+    }
+
     // Inline assembly diagnostics
 
     public void ReportInlineAsmUnknownInstruction(TextSpan span, string mnemonic)

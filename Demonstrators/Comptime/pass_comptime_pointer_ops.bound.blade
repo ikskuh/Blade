@@ -1,8 +1,9 @@
 // EXPECT: pass
 // STAGE: bound
 // NOTE:
-//   Covers comptime pointer comparison, difference, and offset operations.
-//   Exercises BladeValue.TryPointerComparison, TryPointerDifference, TryPointerOffset.
+//   Covers comptime pointer comparison, difference, offset, and indexed address operations.
+//   Exercises BladeValue.TryPointerComparison, TryPointerDifference, TryPointerOffset,
+//   and ComptimeEvaluator.TryEvaluateIndexedAddress.
 
 hub var arr: [8]u32 = undefined;
 
@@ -18,5 +19,12 @@ comptime fn pointer_diff() -> i32 {
     return far - base;
 }
 
+comptime fn indexed_address() -> bool {
+    const p: *hub u32 = &arr[2];
+    const q: *hub u32 = &arr[3];
+    return p < q;
+}
+
 assert(pointer_compare() == true);
 assert(pointer_diff() == 5);
+assert(indexed_address() == true);

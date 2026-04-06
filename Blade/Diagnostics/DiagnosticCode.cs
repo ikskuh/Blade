@@ -87,6 +87,7 @@ public enum DiagnosticCode
     E0259_ExpressionNotAStatement = 259,
     E0260_RangeIterationRequiresBinding = 260,
     W0261_ComptimeIntegerTruncation = 261,
+    E0262_AddressOfParameter = 262,
 
     // Inline assembly errors
     E0301_InlineAsmUnknownInstruction = 301,

@@ -1,0 +1,33 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - E0242
+// - E0242
+// - E0243
+// NOTE:
+//   Covers ComptimeFunctionSupportAnalyzer rejection paths for unsupported statements:
+//   inline asm (E0242), parameter assignment (E0242), non-local variable write (E0243).
+
+reg var global_sink: u32 = 0;
+
+comptime fn use_inline_asm() -> u32 {
+    asm volatile {
+        NOP
+    };
+    return 0;
+}
+
+comptime fn assign_to_param(p: u32) -> u32 {
+    p = 42;
+    return p;
+}
+
+comptime fn write_non_local() -> u32 {
+    global_sink = 99;
+    return 0;
+}
+
+fn test() {
+    var a: u32 = use_inline_asm();
+    var b: u32 = assign_to_param(1);
+    var c: u32 = write_non_local();
+}

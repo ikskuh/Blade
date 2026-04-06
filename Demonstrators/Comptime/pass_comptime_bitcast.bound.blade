@@ -1,0 +1,21 @@
+// EXPECT: pass
+// STAGE: bound
+// NOTE:
+//   Covers comptime bitcast evaluation paths in BladeValue.Operators.
+
+reg var sink: u32 = 0;
+
+comptime fn bitcast_int_to_int() -> u32 {
+    var x: i32 = -1;
+    return bitcast(u32, x);
+}
+
+comptime fn bitcast_bool_to_int() -> u32 {
+    var b: bool = true;
+    return bitcast(nit, b) as u32;
+}
+
+fn test() {
+    sink = bitcast_int_to_int();
+    sink = bitcast_bool_to_int();
+}

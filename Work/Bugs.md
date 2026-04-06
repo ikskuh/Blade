@@ -207,6 +207,15 @@ sink <<<= amount;
 
 ## Open — discovered 2026-04-05
 
+### Compiler crash on `range` used as variable type
+
+`var r: range = 0..10;` crashes with `Assert.Invariant` failure in `BindNamedType` because `range`
+is a builtin type keyword but the parser produces a `NamedTypeSyntax` instead of `PrimitiveTypeSyntax`.
+The invariant checks `!isBuiltinTypeName` and fails. The parser should recognize `range` as a primitive
+type keyword so it produces the correct syntax node.
+
+Stack: `Binder.BindType → BindNamedType → Assert.Invariant`.
+
 ### Compiler crash on variable declarations with empty name
 
 `CreateVariableSymbol` crashes with `ArgumentException("Value cannot be null, empty, or whitespace")`

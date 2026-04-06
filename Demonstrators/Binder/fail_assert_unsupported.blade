@@ -1,0 +1,10 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - E0242
+// NOTE:
+//   Covers assert with a non-comptime-evaluable expression.
+//   Exercises the comptime failure reporting path in BindAssertStatement.
+
+fn test(x: u32) {
+    assert x != 0;
+}

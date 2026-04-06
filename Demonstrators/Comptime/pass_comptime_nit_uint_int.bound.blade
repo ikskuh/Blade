@@ -1,0 +1,12 @@
+// EXPECT: pass
+// STAGE: bound
+// NOTE:
+//   Covers comptime evaluation with nit type.
+//   Exercises BladeValue.Nit factory method and TryConvertToRuntimeType.
+
+comptime fn nit_op() -> nit {
+    var x: nit = 2;
+    return x;
+}
+
+var a: nit = nit_op();

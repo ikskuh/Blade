@@ -3,7 +3,10 @@
     "allow": [
       "mcp__blade_compiler_service__execute_regression_fixture",
       "mcp__blade_compiler_service__get_regression_artifact",
-      "Read(//home/felix/projects/nerdgruppe/blade/**)"
+      "Read(//home/felix/projects/nerdgruppe/blade/**)",
+      "mcp__blade_compiler_service__execute_regression_tests",
+      "Read(//home/felix/projects/nerdgruppe/blade/{match\\($0, /Blade\\\\.[^ ]+/**)",
+      "Bash(sort -u -t'L' -k2 -n)"
     ]
   }
 }

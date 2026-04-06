@@ -1,0 +1,44 @@
+// EXPECT: pass
+// NOTE:
+//   Exercises signed arithmetic and comparison AsmLowerer paths.
+
+reg var sink: i32 = 0;
+reg var sink_bool: bool = false;
+reg var a: i32 = -50;
+reg var b: i32 = 30;
+
+fn signed_mul(x: i32, y: i32) -> i32 {
+    return x * y;
+}
+
+fn signed_div(x: i32, y: i32) -> i32 {
+    return x / y;
+}
+
+fn signed_mod(x: i32, y: i32) -> i32 {
+    return x % y;
+}
+
+fn signed_less(x: i32, y: i32) -> bool {
+    return x < y;
+}
+
+fn signed_greater(x: i32, y: i32) -> bool {
+    return x > y;
+}
+
+fn signed_leq(x: i32, y: i32) -> bool {
+    return x <= y;
+}
+
+fn signed_geq(x: i32, y: i32) -> bool {
+    return x >= y;
+}
+
+sink = signed_mul(a, b);
+sink = signed_div(a, b);
+sink = signed_mod(a, b);
+sink_bool = signed_less(a, b);
+sink_bool = signed_greater(a, b);
+sink_bool = signed_leq(a, b);
+sink_bool = signed_geq(a, b);

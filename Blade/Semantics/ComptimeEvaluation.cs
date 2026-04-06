@@ -163,18 +163,17 @@ internal sealed class ComptimeFunctionSupportAnalyzer
                     if (!targetResult.IsSupported)
                         return targetResult;
 
-                    if (assignment.OperatorKind is not TokenKind.Equal
-                        and not TokenKind.PlusEqual
-                        and not TokenKind.MinusEqual
-                        and not TokenKind.PercentEqual
-                        and not TokenKind.AmpersandEqual
-                        and not TokenKind.PipeEqual
-                        and not TokenKind.CaretEqual
-                        and not TokenKind.LessLessEqual
-                        and not TokenKind.GreaterGreaterEqual)
-                    {
-                        return Unsupported(assignment.Span, $"assignment operator '{assignment.OperatorKind}' is not supported.");
-                    }
+                    Assert.Invariant(
+                        assignment.OperatorKind is TokenKind.Equal
+                            or TokenKind.PlusEqual
+                            or TokenKind.MinusEqual
+                            or TokenKind.PercentEqual
+                            or TokenKind.AmpersandEqual
+                            or TokenKind.PipeEqual
+                            or TokenKind.CaretEqual
+                            or TokenKind.LessLessEqual
+                            or TokenKind.GreaterGreaterEqual,
+                        "parser only produces known compound assignment operators");
 
                     return AnalyzeExpression(assignment.Value);
                 }
@@ -389,7 +388,7 @@ internal sealed class ComptimeFunctionSupportAnalyzer
                 return Unsupported(expression.Span, "error expressions are not evaluable.");
 
             default:
-                return Unsupported(expression.Span, $"expression '{expression.Kind}' is not supported during comptime evaluation.");
+                return Assert.UnreachableValue<ComptimeSupportResult>("all bound expression types are handled above");
         }
     }
 
@@ -867,7 +866,7 @@ internal sealed class ComptimeEvaluator
                 TokenKind.CaretEqual => BoundBinaryOperatorKind.BitwiseXor,
                 TokenKind.LessLessEqual => BoundBinaryOperatorKind.ShiftLeft,
                 TokenKind.GreaterGreaterEqual => BoundBinaryOperatorKind.ShiftRight,
-                _ => BoundBinaryOperatorKind.Add,
+                _ => Assert.UnreachableValue<BoundBinaryOperatorKind>("parser only produces known compound assignment operators"),
             };
 
             finalValue = TryApplyCompoundAssignment(operation, currentValue, assignedValue, variable.Type, assignment.Span);
@@ -894,7 +893,7 @@ internal sealed class ComptimeEvaluator
         return error switch
         {
             EvaluationError.TypeMismatch => new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, "compound assignment operands are not compile-time integers."),
-            EvaluationError.UndefinedBehavior => new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, "modulo by zero is not evaluable at compile time."),
+            EvaluationError.UndefinedBehavior => new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, $"compound assignment '{operation}' is not evaluable at compile time (e.g., division/modulo by zero)."),
             _ => new ComptimeResult(ComptimeFailureKind.UnsupportedConstruct, span, $"compound assignment operator '{operation}' is not supported during comptime evaluation."),
         };
     }

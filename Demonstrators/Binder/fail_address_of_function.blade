@@ -1,0 +1,12 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - E0223
+// NOTE:
+//   Covers taking address of a non-variable/non-parameter symbol (function name).
+//   The binder should report E0223 (invalid address-of target).
+
+fn dummy() {}
+
+fn test() {
+    var p: *reg u32 = &dummy;
+}

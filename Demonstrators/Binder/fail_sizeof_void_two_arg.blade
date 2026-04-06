@@ -1,0 +1,10 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - E0252
+// NOTE:
+//   Covers sizeof with void type in two-arg form.
+//   Exercises the non-RuntimeTypeSymbol path in BindTwoArgQueryExpression.
+
+fn test() {
+    var s1: u32 = sizeof(void, .hub);
+}

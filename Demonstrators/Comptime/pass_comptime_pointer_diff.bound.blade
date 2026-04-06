@@ -1,0 +1,24 @@
+// EXPECT: pass
+// STAGE: bound
+// NOTE:
+//   Covers comptime pointer difference and offset paths in BladeValue.Operators.
+
+hub var arr: [10]u32 = undefined;
+
+comptime fn pointer_offset() -> [*]hub u32 {
+    var p: [*]hub u32 = &arr;
+    return p + 3;
+}
+
+comptime fn pointer_diff() -> u32 {
+    var base: [*]hub u32 = &arr;
+    var p1: [*]hub u32 = base + 1;
+    var p2: [*]hub u32 = base + 5;
+    var diff: i32 = p2 - p1;
+    return diff as u32;
+}
+
+fn test() {
+    var p: [*]hub u32 = pointer_offset();
+    var d: u32 = pointer_diff();
+}

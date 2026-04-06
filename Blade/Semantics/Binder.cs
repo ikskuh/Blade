@@ -836,9 +836,10 @@ public sealed class Binder
 
                 return new BoundAsmStatement(asm.Volatility, asm.Body, flagOutput, validationResult.Lines, referencedSymbols, asm.Span);
             }
-        }
 
-        return new BoundErrorStatement(statement.Span);
+            default:
+                return Assert.UnreachableValue<BoundStatement>("all statement syntax types are handled above");
+        }
     }
 
     private static Dictionary<string, InlineAsmVarBindingSlot> CreateInlineAsmBindingSlots(IEnumerable<string> names)
@@ -900,11 +901,7 @@ public sealed class Binder
             return new BoundErrorStatement(assertStatement.Span);
         }
 
-        if (!value.TryGetBool(out bool conditionValue))
-        {
-            _diagnostics.ReportTypeMismatch(assertStatement.Condition.Span, "bool", condition.Type.Name);
-            return new BoundErrorStatement(assertStatement.Span);
-        }
+        Assert.Invariant(value.TryGetBool(out bool conditionValue), "binder binds assert condition as Bool, so comptime result must be bool");
 
         if (conditionValue)
             return null;
@@ -1462,9 +1459,10 @@ public sealed class Binder
 
             case QueryExpressionSyntax query:
                 return BindQueryExpression(query);
-        }
 
-        return new BoundErrorExpression(expression.Span);
+            default:
+                return Assert.UnreachableValue<BoundExpression>("all expression syntax types are handled above");
+        }
     }
 
     private BoundExpression BindLiteralExpression(LiteralExpressionSyntax literal)
@@ -1603,7 +1601,6 @@ public sealed class Binder
         if (symbol is ParameterSymbol parameter)
             return BindAddressOfParameter(unary, op, parameter);
 
-        Assert.Invariant(symbol is VariableSymbol or ParameterSymbol, "Address-of should only resolve to variables or parameters after lookup succeeds.");
         _diagnostics.ReportInvalidAddressOfTarget(unary.Operand.Span);
         return new BoundErrorExpression(unary.Span);
     }
@@ -1618,6 +1615,12 @@ public sealed class Binder
         if (_currentFunction?.Kind == FunctionKind.Rec && TryGetRecursiveAddressOfName(index.Expression, out string? recursiveName))
         {
             _diagnostics.ReportAddressOfRecursiveLocal(unary.Operand.Span, Requires.NotNull(recursiveName));
+            return new BoundErrorExpression(unary.Span);
+        }
+
+        if (index.Expression is BoundSymbolExpression { Symbol: ParameterSymbol param } && param.Type is ArrayTypeSymbol)
+        {
+            _diagnostics.ReportAddressOfParameter(unary.Operand.Span, param.Name);
             return new BoundErrorExpression(unary.Span);
         }
 
@@ -3243,7 +3246,7 @@ public sealed class Binder
             BitfieldTypeSyntax bitfieldType => BindBitfieldType(bitfieldType, aliasName),
             NamedTypeSyntax named => BindNamedType(named),
             QualifiedTypeSyntax qualified => BindQualifiedType(qualified),
-            _ => BuiltinTypes.Unknown, // blade:no-codecov
+            _ => Assert.UnreachableValue<TypeSymbol>("all type syntax nodes are handled above")
         };
     }
 

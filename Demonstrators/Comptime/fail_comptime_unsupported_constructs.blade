@@ -1,0 +1,34 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - E0242
+// - E0242
+// - E0243
+// NOTE:
+//   Covers ComptimeFunctionSupportAnalyzer rejection paths for unsupported constructs:
+//   pointer dereference (E0242), member assignment to global (E0244),
+//   and multi-return call (E0242).
+
+reg var global_sink: u32 = 0;
+
+fn multi_ret() -> u32, u32 {
+    return 1, 2;
+}
+
+comptime fn use_pointer_deref(ptr: *reg u32) -> u32 {
+    return ptr.*;
+}
+
+comptime fn call_multi_return() -> u32 {
+    return multi_ret();
+}
+
+comptime fn write_global() -> u32 {
+    global_sink = 42;
+    return 0;
+}
+
+fn test() {
+    var a: u32 = use_pointer_deref(&global_sink);
+    var b: u32 = call_multi_return();
+    var c: u32 = write_global();
+}

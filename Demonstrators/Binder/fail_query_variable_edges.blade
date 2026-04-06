@@ -1,0 +1,21 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - E0251
+// - E0251
+// - E0250
+// NOTE:
+//   Covers one-arg query edge cases: sizeof/alignof on a function name
+//   and memoryof on a type keyword.
+
+fn dummy() {}
+
+fn test() {
+    // sizeof on a function name (not a variable) — falls through to ReportQueryRequiresMemorySpace
+    var s1: u32 = sizeof(dummy);
+
+    // alignof on a function name
+    var a1: u32 = alignof(dummy);
+
+    // memoryof on a primitive type keyword
+    var m1: u32 = memoryof(u32);
+}

@@ -1,0 +1,22 @@
+// EXPECT: pass
+// STAGE: bound
+// NOTE:
+//   Covers comptime cast and conversion paths in ComptimeEvaluator.
+
+reg var sink: u32 = 0;
+
+comptime fn explicit_cast() -> u32 {
+    var x: u32 = 300;
+    var y: u8 = x as u8;
+    return y as u32;
+}
+
+comptime fn implicit_convert() -> u32 {
+    var x: u32 = 42;
+    return x;
+}
+
+fn test() {
+    sink = explicit_cast();
+    sink = implicit_convert();
+}

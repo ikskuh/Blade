@@ -1,0 +1,21 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - E0253
+// - E0253
+// - E0250
+// NOTE:
+//   Covers sizeof/alignof on parameter (automatic variable) and
+//   memoryof on a function name.
+
+fn dummy() {}
+
+fn test(p: u32) {
+    // sizeof on parameter → E0253
+    var s1: u32 = sizeof(p);
+
+    // alignof on parameter → E0253
+    var a1: u32 = alignof(p);
+
+    // memoryof on function → E0250
+    var m1: u32 = memoryof(dummy);
+}

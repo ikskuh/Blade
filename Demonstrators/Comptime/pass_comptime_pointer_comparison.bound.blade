@@ -1,0 +1,31 @@
+// EXPECT: pass
+// STAGE: bound
+// NOTE:
+//   Covers comptime pointer comparison paths in BladeValue.Operators.
+//   Pointer comparisons of same-symbol pointers with different offsets.
+
+hub var arr: [10]u32 = undefined;
+
+comptime fn compare_pointers() -> u32 {
+    var base: [*]hub u32 = &arr;
+    var p1: [*]hub u32 = base + 1;
+    var p2: [*]hub u32 = base + 5;
+    var r: u32 = 0;
+    if (p1 < p2) {
+        r = r + 1;
+    }
+    if (p2 > p1) {
+        r = r + 1;
+    }
+    if (p1 <= p1) {
+        r = r + 1;
+    }
+    if (p1 >= p1) {
+        r = r + 1;
+    }
+    return r;
+}
+
+fn test() {
+    var result: u32 = compare_pointers();
+}
