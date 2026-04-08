@@ -1213,14 +1213,9 @@ public static class MirLowerer
                 case BoundIfExpression ifExpression:
                     return LowerIfExpression(ifExpression);
 
-                case BoundRangeExpression rangeExpression:
-                {
-                    MirValueId start = LowerExpression(rangeExpression.Start);
-                    MirValueId end = LowerExpression(rangeExpression.End);
-                    MirValueId result = NextValue();
-                    _currentBlock.Instructions.Add(new MirRangeInstruction(result, rangeExpression.Type, start, end, rangeExpression.Span));
-                    return result;
-                }
+                case BoundRangeExpression:
+                    Assert.Unreachable("Range expressions must be consumed by loop lowering before MIR expression lowering.");
+                    break;
 
                 case BoundStructLiteralExpression structLiteral:
                 {

@@ -493,6 +493,14 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
         Report(DiagnosticCode.E0260_RangeIterationRequiresBinding, span, "Range iteration requires an index binding '-> index'.");
     }
 
+    public void ReportRangeExpressionOutsideForLoop(TextSpan span)
+    {
+        Report(
+            DiagnosticCode.E0263_RangeExpressionOutsideForLoop,
+            span,
+            "Range expressions are only allowed as the iterable of a for/rep for statement.");
+    }
+
     public void ReportComptimeIntegerTruncation(TextSpan span, string value, string targetType, string truncatedValue)
     {
         Report(

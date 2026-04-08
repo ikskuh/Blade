@@ -22,20 +22,10 @@ public static class AsmLowerer
 {
     private enum UnsupportedLoweringKind
     {
-        Range,
         LoadMember,
-        LoadIndex,
-        LoadDeref,
-        BitfieldExtract,
         BitfieldInsert,
         StructLiteral,
-        StoreIndex,
-        StoreDeref,
         InsertMember,
-        Yield,
-        YieldTo,
-        UpdatePlace,
-        PhiMove,
     }
 
     private readonly record struct UnsupportedLoweringKey(TextSpan Span, UnsupportedLoweringKind Kind);
@@ -865,10 +855,6 @@ public static class AsmLowerer
             case LirYieldToOperation yieldTo:
                 LowerYieldTo(nodes, op, yieldTo, ctx);
                 break;
-            case LirRangeOperation:
-                ReportUnsupportedOpcode(ctx, op);
-                nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
-                break;
         }
     }
 
@@ -1163,8 +1149,7 @@ public static class AsmLowerer
                 nodes.Add(Emit(SelectHubReadOpcode(RequireTypedResult(op, "load.deref")), dest, pointer));
                 break;
             default:
-                ReportUnsupportedOpcode(ctx, op);
-                nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
+                Assert.Unreachable($"Unexpected storage class '{storageClass}' for {op.DisplayName}.");
                 break;
         }
     }
@@ -1218,8 +1203,7 @@ public static class AsmLowerer
                     break;
                 }
             default:
-                ReportUnsupportedOpcode(ctx, op);
-                nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
+                Assert.Unreachable($"Unexpected storage class '{storageClass}' for {op.DisplayName}.");
                 break;
         }
     }
@@ -1284,8 +1268,7 @@ public static class AsmLowerer
                     break;
                 }
             default:
-                ReportUnsupportedOpcode(ctx, op);
-                nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
+                Assert.Unreachable($"Unexpected storage class '{storageClass}' for {op.DisplayName}.");
                 break;
         }
     }
@@ -1348,12 +1331,8 @@ public static class AsmLowerer
         LirStructLiteralOperation operation,
         LoweringContext ctx)
     {
-        if (op.ResultType is not StructTypeSymbol structType)
-        {
-            ReportUnsupportedOpcode(ctx, op);
-            nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
-            return;
-        }
+        Assert.Invariant(op.ResultType is StructTypeSymbol, $"Struct literal '{op.DisplayName}' must produce a struct result type.");
+        StructTypeSymbol structType = (StructTypeSymbol)op.ResultType;
 
         if (!TryGetSingleWordAggregateSize(structType, out _))
         {
@@ -1362,12 +1341,9 @@ public static class AsmLowerer
             return;
         }
 
-        if (operation.Members.Count != op.Operands.Count)
-        {
-            ReportUnsupportedOpcode(ctx, op);
-            nodes.Add(new AsmCommentNode($"invalid {op.DisplayName}"));
-            return;
-        }
+        Assert.Invariant(
+            operation.Members.Count == op.Operands.Count,
+            $"Struct literal '{op.DisplayName}' must have the same number of members and operands.");
 
         AsmRegisterOperand dest = DestReg(op, ctx);
         nodes.Add(Emit(P2Mnemonic.MOV, dest, new AsmImmediateOperand(0)));
@@ -1375,8 +1351,10 @@ public static class AsmLowerer
         for (int i = 0; i < op.Operands.Count; i++)
         {
             AggregateMemberSymbol member = operation.Members[i];
-            if (!structType.Members.TryGetValue(member.Name, out AggregateMemberSymbol? resolvedMember)
-                || !TryGetAggregateMemberShape(structType, resolvedMember.Name, resolvedMember.ByteOffset, out AggregateAccessShape shape))
+            bool found = structType.Members.TryGetValue(member.Name, out AggregateMemberSymbol? resolvedMember);
+            Assert.Invariant(found, $"Struct literal member '{member.Name}' must exist on '{structType.Name}'.");
+
+            if (!TryGetAggregateMemberShape(structType, resolvedMember!.Name, resolvedMember.ByteOffset, out AggregateAccessShape shape))
             {
                 ReportUnsupportedOpcode(ctx, op);
                 nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
@@ -2043,7 +2021,7 @@ public static class AsmLowerer
             return;
         }
 
-        P2Mnemonic? opcode = operation.OperatorKind switch
+        P2Mnemonic opcode = operation.OperatorKind switch
         {
             BoundBinaryOperatorKind.Add => P2Mnemonic.ADD,
             BoundBinaryOperatorKind.Subtract => P2Mnemonic.SUB,
@@ -2052,26 +2030,18 @@ public static class AsmLowerer
             BoundBinaryOperatorKind.BitwiseXor => P2Mnemonic.XOR,
             BoundBinaryOperatorKind.ShiftLeft => P2Mnemonic.SHL,
             BoundBinaryOperatorKind.ShiftRight => P2Mnemonic.SHR,
-            BoundBinaryOperatorKind.ArithmeticShiftLeft => P2Mnemonic.SAL,
-            BoundBinaryOperatorKind.ArithmeticShiftRight => P2Mnemonic.SAR,
-            _ => null,
+            BoundBinaryOperatorKind.Modulo => P2Mnemonic.QDIV,
+            _ => Assert.UnreachableValue<P2Mnemonic>($"Update-place operator '{operation.OperatorKind}' must be one of the binder-reachable compound assignment kinds."),
         };
 
-        if (opcode is null)
+        if (operation.OperatorKind == BoundBinaryOperatorKind.Modulo)
         {
-            if (operation.OperatorKind == BoundBinaryOperatorKind.Modulo)
-            {
-                nodes.Add(new AsmInstructionNode(P2Mnemonic.QDIV, [place, value]));
-                nodes.Add(new AsmInstructionNode(P2Mnemonic.GETQY, [place]));
-                return;
-            }
-
-            ReportUnsupportedLowering(ctx, op.Span, UnsupportedLoweringKind.UpdatePlace);
-            nodes.Add(new AsmCommentNode($"unhandled update place: {operation.OperatorKind}"));
+            nodes.Add(new AsmInstructionNode(opcode, [place, value]));
+            nodes.Add(new AsmInstructionNode(P2Mnemonic.GETQY, [place]));
             return;
         }
 
-        nodes.Add(new AsmInstructionNode(opcode.Value, [place, value]));
+        nodes.Add(new AsmInstructionNode(opcode, [place, value]));
     }
 
     private static void ScaleRegisterByStride(List<AsmNode> nodes, AsmRegisterOperand value, int stride)
@@ -2243,11 +2213,7 @@ public static class AsmLowerer
 
     private static void LowerYield(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
-        if (ctx.Tier != CallingConventionTier.Interrupt)
-        {
-            ReportUnsupportedOpcode(ctx, op);
-            return;
-        }
+        Assert.Invariant(ctx.Tier == CallingConventionTier.Interrupt, $"Yield '{op.DisplayName}' is only valid in interrupt functions.");
 
         P2Mnemonic resumeOpcode = ctx.Function.Kind switch
         {
@@ -2265,13 +2231,9 @@ public static class AsmLowerer
         LirYieldToOperation operation,
         LoweringContext ctx)
     {
-        var hasTargetInfo = ctx.CoroutineCallingConvention.TryGetValue(operation.TargetFunction, out CoroutineCallingConventionInfo? targetInfo);
-        if (!hasTargetInfo || targetInfo is null)
-        {
-            ReportUnsupportedOpcode(ctx, op);
-            return;
-        }
-
+        bool hasTargetInfo = ctx.CoroutineCallingConvention.TryGetValue(operation.TargetFunction, out CoroutineCallingConventionInfo? targetInfo);
+        Assert.Invariant(hasTargetInfo, "Yieldto targets must have coroutine calling-convention metadata.");
+        Assert.Invariant(targetInfo is not null, "Yieldto targets must resolve to coroutine calling-convention metadata.");
         Assert.Invariant(targetInfo.ParameterPlaces.Count == op.Operands.Count, "Coroutine yieldto argument count must match target parameter ABI.");
         for (int i = 0; i < op.Operands.Count; i++)
             nodes.Add(Emit(P2Mnemonic.MOV, CreatePlaceRegisterOperand(targetInfo.ParameterPlaces[i]), OpReg(op.Operands[i], ctx)));
@@ -2519,25 +2481,16 @@ public static class AsmLowerer
         if (arguments.Count == 0)
             return;
 
-        IReadOnlyList<LirBlockParameter>? targetParams = null;
-        ctx.BlockParams.TryGetValue(targetBlock, out targetParams);
+        bool found = ctx.BlockParams.TryGetValue(targetBlock, out IReadOnlyList<LirBlockParameter>? targetParams);
+        Assert.Invariant(found, "Phi target blocks must have block parameter metadata.");
+        Assert.Invariant(targetParams is not null, "Phi target blocks must have block parameter metadata.");
+        Assert.Invariant(arguments.Count == targetParams.Count, "Phi argument count must match target parameter count.");
 
         for (int i = 0; i < arguments.Count; i++)
         {
             AsmOperand src = LowerOperand(arguments[i], ctx);
-
-            if (targetParams is not null && i < targetParams.Count)
-            {
-                AsmRegisterOperand paramReg = new(ctx.GetRegister(targetParams[i].Register));
-                nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [paramReg, src], predicate, isPhiMove: true));
-            }
-            else
-            {
-                // Fallback: emit as comment if we can't resolve target param
-                ReportUnsupportedLowering(ctx, new TextSpan(0, 0), UnsupportedLoweringKind.PhiMove);
-                string prefix = predicate is not null ? $"{P2InstructionMetadata.GetConditionPrefixText(predicate.Value)} " : "";
-                nodes.Add(new AsmCommentNode($"{prefix}phi[{i}] = {src.Format()} -> {ctx.GetBlockLabel(targetBlock).Name}"));
-            }
+            AsmRegisterOperand paramReg = new(ctx.GetRegister(targetParams[i].Register));
+            nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [paramReg, src], predicate, isPhiMove: true));
         }
     }
 
@@ -2572,18 +2525,10 @@ public static class AsmLowerer
     {
         return operation switch
         {
-            LirRangeOperation => UnsupportedLoweringKind.Range,
             LirLoadMemberOperation => UnsupportedLoweringKind.LoadMember,
-            LirLoadIndexOperation => UnsupportedLoweringKind.LoadIndex,
-            LirLoadDerefOperation => UnsupportedLoweringKind.LoadDeref,
-            LirBitfieldExtractOperation => UnsupportedLoweringKind.BitfieldExtract,
             LirBitfieldInsertOperation => UnsupportedLoweringKind.BitfieldInsert,
             LirStructLiteralOperation => UnsupportedLoweringKind.StructLiteral,
-            LirStoreIndexOperation => UnsupportedLoweringKind.StoreIndex,
-            LirStoreDerefOperation => UnsupportedLoweringKind.StoreDeref,
             LirInsertMemberOperation => UnsupportedLoweringKind.InsertMember,
-            LirYieldOperation => UnsupportedLoweringKind.Yield,
-            LirYieldToOperation => UnsupportedLoweringKind.YieldTo,
             _ => Assert.UnreachableValue<UnsupportedLoweringKind>($"Unsupported lowering category must be defined for '{operation.GetType().Name}'."),
         };
     }
@@ -2592,20 +2537,10 @@ public static class AsmLowerer
     {
         return lowering switch
         {
-            UnsupportedLoweringKind.Range => "range",
             UnsupportedLoweringKind.LoadMember => "load.member",
-            UnsupportedLoweringKind.LoadIndex => "load.index",
-            UnsupportedLoweringKind.LoadDeref => "load.deref",
-            UnsupportedLoweringKind.BitfieldExtract => "bitfield.extract",
             UnsupportedLoweringKind.BitfieldInsert => "bitfield.insert",
             UnsupportedLoweringKind.StructLiteral => "structlit",
-            UnsupportedLoweringKind.StoreIndex => "store.index",
-            UnsupportedLoweringKind.StoreDeref => "store.deref",
             UnsupportedLoweringKind.InsertMember => "insert.member",
-            UnsupportedLoweringKind.Yield => "yield",
-            UnsupportedLoweringKind.YieldTo => "yieldto",
-            UnsupportedLoweringKind.UpdatePlace => "update.place",
-            UnsupportedLoweringKind.PhiMove => "phi-move",
             _ => Assert.UnreachableValue<string>(),
         };
     }

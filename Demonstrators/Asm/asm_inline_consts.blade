@@ -1,0 +1,11 @@
+// EXPECT: xfail
+// STAGE: final-asm
+// CONTAINS:
+// - MOV ?, #10
+// ! MOV ?, g_value
+
+reg const value: u32 = 10;
+
+asm volatile {
+    MOV %0, {value}
+};

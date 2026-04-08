@@ -1,5 +1,6 @@
-using System.Linq;
 using System.IO;
+using System.Diagnostics;
+using System.Linq;
 using System.Text.RegularExpressions;
 using Blade;
 using Blade.Diagnostics;
@@ -743,6 +744,33 @@ public class IrPipelineTests
         Assert.That(build.AssemblyText, Does.Contain("SHL"));
         Assert.That(build.AssemblyText, Does.Contain("ADD"));
         Assert.That(build.AssemblyText, Does.Contain("SUB"));
+    }
+
+    [Test]
+    public void RangeForLoop_DoesNotMaterializeRangeInstructions()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg var sink: u32 = 0;
+            for (1..<3) -> i {
+                sink = sink + i;
+            }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        string mir = MirTextWriter.Write(build.MirModule);
+        string lir = LirTextWriter.Write(build.LirModule);
+        string asmir = AsmTextWriter.Write(build.AsmModule);
+
+        Assert.That(mir, Does.Not.Contain("range"));
+        Assert.That(lir, Does.Not.Contain("range"));
+        Assert.That(asmir, Does.Not.Contain("range"));
     }
 
     [Test]
@@ -1630,7 +1658,7 @@ public class IrPipelineTests
     }
 
     [Test]
-    public void AdvancedSemantics_CompilerDriverReportsUnsupportedLowerings()
+    public void AdvancedSemantics_CompilerDriverBuildsIrWithoutRangeUnsupportedLowerings()
     {
         CompilationResult compilation = CompilerDriver.Compile("""
             type Pair = struct { left: u32, right: u32 };
@@ -1655,7 +1683,7 @@ public class IrPipelineTests
                 ptr.* = sink;
                 sink = if (true) pair.left else pair.right;
                 @encod(sink);
-                _ = 1..<2;
+                for (1..<2) -> i { sink = sink + i; }
                 asm {
                     MOV {sink}, {sink}
                 };
@@ -1671,7 +1699,7 @@ public class IrPipelineTests
             """, "advanced_semantics.blade");
 
         Assert.That(compilation.IrBuildResult, Is.Not.Null);
-        Assert.That(compilation.Diagnostics.Any(d => d.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.True);
+        Assert.That(compilation.Diagnostics.Count(d => d.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.EqualTo(1));
     }
 
     [Test]
@@ -2084,7 +2112,7 @@ public class IrPipelineTests
     }
 
     [Test]
-    public void AsmLowerer_ArithmeticShiftLeftUpdatePlace_EmitsSal()
+    public void AsmLowerer_UpdatePlaceWithUnreachableOperator_Throws()
     {
         TextSpan span = new(0, 0);
         LirVirtualRegister shiftAmountRegister = LirRegister(0);
@@ -2113,11 +2141,112 @@ public class IrPipelineTests
                     new LirReturnTerminator([], span)),
             ]);
 
-        AsmModule asmModule = AsmLowerer.Lower(new LirModule([accumulatorPlace], [], [function]));
-        string asmir = AsmTextWriter.Write(asmModule);
+        UnreachableException? exception = Assert.Throws<UnreachableException>(() => AsmLowerer.Lower(new LirModule([accumulatorPlace], [], [function])));
 
-        Assert.That(asmir, Does.Contain("SAL g_acc"));
-        Assert.That(asmir, Does.Not.Contain("SHL g_acc"));
+        Assert.That(exception, Is.Not.Null);
+        Assert.That(exception!.Message, Does.Contain("Update-place operator"));
+        Assert.That(exception.Message, Does.Contain(nameof(BoundBinaryOperatorKind.ArithmeticShiftLeft)));
+    }
+
+    [Test]
+    public void AsmLowerer_YieldOutsideInterrupt_Throws()
+    {
+        TextSpan span = new(0, 0);
+        LirFunction function = CreateLirFunction(
+            "demo",
+            isEntryPoint: true,
+            FunctionKind.Default,
+            [],
+            [
+                new LirBlock(
+                    LirBlockRef("bb0"),
+                    [],
+                    [
+                        new LirOpInstruction(
+                            new LirYieldOperation(),
+                            destination: null,
+                            resultType: null,
+                            [],
+                            hasSideEffects: true,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                    ],
+                    new LirReturnTerminator([], span)),
+            ]);
+
+        UnreachableException? exception = Assert.Throws<UnreachableException>(() => AsmLowerer.Lower(new LirModule([function])));
+
+        Assert.That(exception, Is.Not.Null);
+        Assert.That(exception!.Message, Does.Contain("only valid in interrupt functions"));
+    }
+
+    [Test]
+    public void AsmLowerer_YieldToWithoutCoroutineMetadata_Throws()
+    {
+        TextSpan span = new(0, 0);
+        LirVirtualRegister sourceRegister = LirRegister(0);
+        FunctionSymbol missingCoroutine = new("worker", FunctionKind.Coro);
+        LirFunction function = CreateLirFunction(
+            "$top",
+            isEntryPoint: true,
+            FunctionKind.Default,
+            [],
+            [
+                new LirBlock(
+                    LirBlockRef("bb0"),
+                    [],
+                    [
+                        new LirOpInstruction(
+                            new LirYieldToOperation(missingCoroutine),
+                            destination: null,
+                            resultType: null,
+                            [new LirRegisterOperand(sourceRegister)],
+                            hasSideEffects: true,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                    ],
+                    new LirReturnTerminator([], span)),
+            ]);
+
+        UnreachableException? exception = Assert.Throws<UnreachableException>(() => AsmLowerer.Lower(new LirModule([function])));
+
+        Assert.That(exception, Is.Not.Null);
+        Assert.That(exception!.Message, Does.Contain("Yieldto targets must have coroutine calling-convention metadata"));
+    }
+
+    [Test]
+    public void AsmLowerer_PhiMovesRequireMatchingTargetParameters()
+    {
+        TextSpan span = new(0, 0);
+        LirVirtualRegister sourceRegister = LirRegister(0);
+        LirBlockRef entryBlock = LirBlockRef("bb0");
+        LirBlockRef targetBlock = LirBlockRef("bb1");
+        LirFunction function = CreateLirFunction(
+            "demo",
+            isEntryPoint: true,
+            FunctionKind.Default,
+            [],
+            [
+                new LirBlock(
+                    entryBlock,
+                    [],
+                    [],
+                    new LirGotoTerminator(targetBlock, [new LirRegisterOperand(sourceRegister)], span)),
+                new LirBlock(
+                    targetBlock,
+                    [],
+                    [],
+                    new LirReturnTerminator([], span)),
+            ]);
+
+        UnreachableException? exception = Assert.Throws<UnreachableException>(() => AsmLowerer.Lower(new LirModule([function])));
+
+        Assert.That(exception, Is.Not.Null);
+        Assert.That(exception!.Message, Does.Contain("Phi argument count"));
     }
 
     [Test]
@@ -2290,7 +2419,7 @@ public class IrPipelineTests
     }
 
     [Test]
-    public void AsmLowerer_InvalidAggregateOpcodes_EmitComments()
+    public void AsmLowerer_AggregateFeatureGaps_EmitComments()
     {
         TextSpan span = new(0, 0);
         LirVirtualRegister sourceRegister = LirRegister(0);
@@ -2312,8 +2441,6 @@ public class IrPipelineTests
         AggregateMemberSymbol offEndMember = new("value", BuiltinTypes.U32, byteOffset: 4, bitOffset: 0, bitWidth: 0, isBitfield: false);
         AggregateMemberSymbol misalignedMember = new("value", BuiltinTypes.U16, byteOffset: 1, bitOffset: 0, bitWidth: 0, isBitfield: false);
         AggregateMemberSymbol badInsertMember = new("bad", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false);
-        AggregateMemberSymbol extraStructMember = new("extra", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false);
-        AggregateMemberSymbol missingStructMember = new("missing", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false);
         LirFunction function = CreateLirFunction(
             "demo",
             isEntryPoint: true,
@@ -2375,40 +2502,10 @@ public class IrPipelineTests
                             writesZ: false,
                             span),
                         new LirOpInstruction(
-                            new LirStructLiteralOperation([pairValueMember]),
-                            destinationRegister,
-                            BuiltinTypes.U32,
-                            [new LirRegisterOperand(sourceRegister)],
-                            hasSideEffects: false,
-                            predicate: null,
-                            writesC: false,
-                            writesZ: false,
-                            span),
-                        new LirOpInstruction(
                             new LirStructLiteralOperation([wideLeftMember, wideRightMember]),
                             destinationRegister,
                             wideType,
                             [new LirRegisterOperand(sourceRegister), new LirRegisterOperand(sourceRegister)],
-                            hasSideEffects: false,
-                            predicate: null,
-                            writesC: false,
-                            writesZ: false,
-                            span),
-                        new LirOpInstruction(
-                            new LirStructLiteralOperation([pairValueMember, extraStructMember]),
-                            destinationRegister,
-                            pairType,
-                            [new LirRegisterOperand(sourceRegister)],
-                            hasSideEffects: false,
-                            predicate: null,
-                            writesC: false,
-                            writesZ: false,
-                            span),
-                        new LirOpInstruction(
-                            new LirStructLiteralOperation([missingStructMember]),
-                            destinationRegister,
-                            pairType,
-                            [new LirRegisterOperand(sourceRegister)],
                             hasSideEffects: false,
                             predicate: null,
                             writesC: false,
@@ -2426,10 +2523,129 @@ public class IrPipelineTests
         Assert.That(asmir, Does.Contain("unhandled: insert.member.bad.0"));
         Assert.That(asmir, Does.Contain("unhandled: insert.member.value.4"));
         Assert.That(asmir, Does.Contain("unhandled: insert.member.value.0"));
-        Assert.That(asmir, Does.Contain("unhandled: structlit.value"));
         Assert.That(asmir, Does.Contain("unhandled: structlit.left.right"));
-        Assert.That(asmir, Does.Contain("invalid structlit.value.extra"));
-        Assert.That(asmir, Does.Contain("unhandled: structlit.missing"));
+    }
+
+    [Test]
+    public void AsmLowerer_StructLiteralWithNonStructResult_Throws()
+    {
+        TextSpan span = new(0, 0);
+        LirVirtualRegister sourceRegister = LirRegister(0);
+        LirVirtualRegister destinationRegister = LirRegister(1);
+        AggregateMemberSymbol pairValueMember = new("value", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false);
+        LirFunction function = CreateLirFunction(
+            "demo",
+            isEntryPoint: true,
+            FunctionKind.Default,
+            [],
+            [
+                new LirBlock(
+                    LirBlockRef("bb0"),
+                    [],
+                    [
+                        new LirOpInstruction(
+                            new LirStructLiteralOperation([pairValueMember]),
+                            destinationRegister,
+                            BuiltinTypes.U32,
+                            [new LirRegisterOperand(sourceRegister)],
+                            hasSideEffects: false,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                    ],
+                    new LirReturnTerminator([], span)),
+            ]);
+
+        UnreachableException? exception = Assert.Throws<UnreachableException>(() => AsmLowerer.Lower(new LirModule([function])));
+
+        Assert.That(exception, Is.Not.Null);
+        Assert.That(exception!.Message, Does.Contain("must produce a struct result type"));
+    }
+
+    [Test]
+    public void AsmLowerer_StructLiteralWithMismatchedOperandCount_Throws()
+    {
+        TextSpan span = new(0, 0);
+        LirVirtualRegister sourceRegister = LirRegister(0);
+        LirVirtualRegister destinationRegister = LirRegister(1);
+        StructTypeSymbol pairType = CreateStructType(
+            "Pair",
+            sizeBytes: 4,
+            alignmentBytes: 4,
+            new AggregateMemberSymbol("value", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false));
+        AggregateMemberSymbol pairValueMember = pairType.Members["value"];
+        AggregateMemberSymbol extraStructMember = new("extra", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false);
+        LirFunction function = CreateLirFunction(
+            "demo",
+            isEntryPoint: true,
+            FunctionKind.Default,
+            [],
+            [
+                new LirBlock(
+                    LirBlockRef("bb0"),
+                    [],
+                    [
+                        new LirOpInstruction(
+                            new LirStructLiteralOperation([pairValueMember, extraStructMember]),
+                            destinationRegister,
+                            pairType,
+                            [new LirRegisterOperand(sourceRegister)],
+                            hasSideEffects: false,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                    ],
+                    new LirReturnTerminator([], span)),
+            ]);
+
+        UnreachableException? exception = Assert.Throws<UnreachableException>(() => AsmLowerer.Lower(new LirModule([function])));
+
+        Assert.That(exception, Is.Not.Null);
+        Assert.That(exception!.Message, Does.Contain("same number of members and operands"));
+    }
+
+    [Test]
+    public void AsmLowerer_StructLiteralWithUnknownMember_Throws()
+    {
+        TextSpan span = new(0, 0);
+        LirVirtualRegister sourceRegister = LirRegister(0);
+        LirVirtualRegister destinationRegister = LirRegister(1);
+        StructTypeSymbol pairType = CreateStructType(
+            "Pair",
+            sizeBytes: 4,
+            alignmentBytes: 4,
+            new AggregateMemberSymbol("value", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false));
+        AggregateMemberSymbol missingStructMember = new("missing", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false);
+        LirFunction function = CreateLirFunction(
+            "demo",
+            isEntryPoint: true,
+            FunctionKind.Default,
+            [],
+            [
+                new LirBlock(
+                    LirBlockRef("bb0"),
+                    [],
+                    [
+                        new LirOpInstruction(
+                            new LirStructLiteralOperation([missingStructMember]),
+                            destinationRegister,
+                            pairType,
+                            [new LirRegisterOperand(sourceRegister)],
+                            hasSideEffects: false,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                    ],
+                    new LirReturnTerminator([], span)),
+            ]);
+
+        UnreachableException? exception = Assert.Throws<UnreachableException>(() => AsmLowerer.Lower(new LirModule([function])));
+
+        Assert.That(exception, Is.Not.Null);
+        Assert.That(exception!.Message, Does.Contain("must exist"));
     }
 
     private static IEnumerable<string> AcceptProgramsForPipeline()

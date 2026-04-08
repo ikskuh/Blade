@@ -306,30 +306,6 @@ public sealed class MirConvertInstruction : MirInstruction
     }
 }
 
-public sealed class MirRangeInstruction : MirInstruction
-{
-    public MirRangeInstruction(MirValueId result, TypeSymbol type, MirValueId start, MirValueId end, TextSpan span)
-        : base(result, type, span, hasSideEffects: false)
-    {
-        Start = start;
-        End = end;
-    }
-
-    public MirValueId Start { get; }
-    public MirValueId End { get; }
-
-    public override IReadOnlyList<MirValueId> Uses => [Start, End];
-
-    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
-    {
-        MirValueId start = mapping.TryGetValue(Start, out MirValueId mappedStart) ? mappedStart : Start;
-        MirValueId end = mapping.TryGetValue(End, out MirValueId mappedEnd) ? mappedEnd : End;
-        return start == Start && end == End
-            ? this
-            : new MirRangeInstruction(Result!, ResultType!, start, end, Span);
-    }
-}
-
 public sealed class MirStructLiteralField
 {
     public MirStructLiteralField(AggregateMemberSymbol member, MirValueId value)

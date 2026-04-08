@@ -1488,6 +1488,18 @@ public class BinderTests
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
     }
 
+    [Test]
+    public void RangeExpression_OutsideLoop_ReportsDiagnostic()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            fn demo() void {
+                _ = 1..<2;
+            }
+            """);
+
+        Assert.That(diagnostics.Select(d => d.Code), Is.EqualTo(new[] { DiagnosticCode.E0263_RangeExpressionOutsideForLoop }));
+    }
+
     // --- CS-9: Character and string literal tests ---
 
     [Test]

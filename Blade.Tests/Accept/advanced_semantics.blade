@@ -16,7 +16,7 @@ coro fn worker(seed: u32)  {
         ptr.* = sink;
         sink = if (true) pair.left else pair.right;
         @encod(sink);
-        _ = 1..<2;
+        for (1..<2) -> i { sink = sink + i; }
         yieldto worker(seed);
     }
 }

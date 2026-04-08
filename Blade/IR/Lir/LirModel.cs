@@ -236,11 +236,6 @@ public sealed class LirConvertOperation : LirOperation
     public override string DisplayName => "convert";
 }
 
-public sealed class LirRangeOperation : LirOperation
-{
-    public override string DisplayName => "range";
-}
-
 public sealed class LirStructLiteralOperation : LirOperation
 {
     public LirStructLiteralOperation(IReadOnlyList<AggregateMemberSymbol> members)

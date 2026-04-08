@@ -247,7 +247,6 @@ public static class MirInliner
                 MirPointerOffsetInstruction pointerOffset => new MirPointerOffsetInstruction(newResult!, pointerOffset.ResultType!, pointerOffset.OperatorKind, pointerOffset.BaseAddress, pointerOffset.Delta, pointerOffset.Stride, pointerOffset.Span),
                 MirPointerDifferenceInstruction pointerDifference => new MirPointerDifferenceInstruction(newResult!, pointerDifference.ResultType!, pointerDifference.Left, pointerDifference.Right, pointerDifference.Stride, pointerDifference.Span),
                 MirConvertInstruction convert => new MirConvertInstruction(newResult!, convert.ResultType!, convert.Operand, convert.Span),
-                MirRangeInstruction range => new MirRangeInstruction(newResult!, range.ResultType!, range.Start, range.End, range.Span),
                 MirStructLiteralInstruction structLiteral => new MirStructLiteralInstruction(newResult!, (StructTypeSymbol)structLiteral.ResultType!, structLiteral.Fields, structLiteral.Span),
                 MirLoadMemberInstruction loadMember => new MirLoadMemberInstruction(newResult!, loadMember.ResultType!, loadMember.Receiver, loadMember.Member, loadMember.Span),
                 MirLoadIndexInstruction loadIndex => new MirLoadIndexInstruction(newResult!, loadIndex.ResultType!, loadIndex.Indexed, loadIndex.Index, loadIndex.StorageClass, loadIndex.HasSideEffects, loadIndex.Span),

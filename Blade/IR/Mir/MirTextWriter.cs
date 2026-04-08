@@ -145,13 +145,6 @@ public static class MirTextWriter
                 sb.Append(formatter.Format(convert.Operand));
                 break;
 
-            case MirRangeInstruction range:
-                sb.Append("range ");
-                sb.Append(formatter.Format(range.Start));
-                sb.Append(", ");
-                sb.Append(formatter.Format(range.End));
-                break;
-
             case MirStructLiteralInstruction structLiteral:
                 sb.Append("structlit");
                 foreach (MirStructLiteralField field in structLiteral.Fields)

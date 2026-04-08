@@ -712,17 +712,13 @@ public sealed class Binder
             case RepForStatementSyntax repFor:
             {
                 // The iterable should be a range expression for rep for
-                BoundExpression iterable = BindExpression(repFor.Iterable);
                 BoundExpression start;
                 BoundExpression end;
                 if (repFor.Iterable is RangeExpressionSyntax range)
                 {
-                    start = BindExpression(range.Start);
-                    end = BindExpression(range.End);
-                    if (start.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
-                        _diagnostics.ReportTypeMismatch(range.Start.Span, "integer", start.Type.Name);
-                    if (end.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
-                        _diagnostics.ReportTypeMismatch(range.End.Span, "integer", end.Type.Name);
+                    BoundRangeExpression boundRange = BindLoopRangeExpression(range);
+                    start = boundRange.Start;
+                    end = boundRange.End;
                     // Normalize inclusive range: end + 1 → exclusive
                     if (range.IsInclusive && end.Type is IntegerLiteralTypeSymbol or IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol)
                     {
@@ -737,6 +733,7 @@ public sealed class Binder
                 else
                 {
                     // Non-range iterable — use as count (0..<count)
+                    BoundExpression iterable = BindExpression(repFor.Iterable);
                     start = new BoundLiteralExpression(new RuntimeBladeValue(BuiltinTypes.U32, 0L), repFor.Iterable.Span);
                     end = iterable;
                 }
@@ -1233,7 +1230,9 @@ public sealed class Binder
 
     private BoundStatement BindForStatement(ForStatementSyntax forStatement)
     {
-        BoundExpression iterable = BindExpression(forStatement.Iterable);
+        BoundExpression iterable = forStatement.Iterable is RangeExpressionSyntax range
+            ? BindLoopRangeExpression(range)
+            : BindExpression(forStatement.Iterable);
         ForBindingSyntax? binding = forStatement.Binding;
         bool isArrayIteration = iterable.Type is ArrayTypeSymbol;
         bool isIntegerIteration = iterable.Type is IntegerLiteralTypeSymbol or IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol;
@@ -2859,15 +2858,28 @@ public sealed class Binder
 
     private BoundExpression BindRangeExpression(RangeExpressionSyntax rangeExpression)
     {
+        _diagnostics.ReportRangeExpressionOutsideForLoop(rangeExpression.Span);
+        _ = BindExpression(rangeExpression.Start);
+        _ = BindExpression(rangeExpression.End);
+        return new BoundErrorExpression(rangeExpression.Span);
+    }
+
+    private BoundRangeExpression BindLoopRangeExpression(RangeExpressionSyntax rangeExpression)
+    {
         BoundExpression start = BindExpression(rangeExpression.Start);
         BoundExpression end = BindExpression(rangeExpression.End);
 
+        ValidateRangeEndpoints(rangeExpression, start, end);
+
+        return new BoundRangeExpression(start, end, rangeExpression.IsInclusive, rangeExpression.Span);
+    }
+
+    private void ValidateRangeEndpoints(RangeExpressionSyntax rangeExpression, BoundExpression start, BoundExpression end)
+    {
         if (start.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
             _diagnostics.ReportTypeMismatch(rangeExpression.Start.Span, "integer", start.Type.Name);
         if (end.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
             _diagnostics.ReportTypeMismatch(rangeExpression.End.Span, "integer", end.Type.Name);
-
-        return new BoundRangeExpression(start, end, rangeExpression.IsInclusive, rangeExpression.Span);
     }
 
     private BoundExpression BindCastExpression(CastExpressionSyntax castExpression)

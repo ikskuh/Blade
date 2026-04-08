@@ -184,17 +184,6 @@ public static class LirLowerer
                 writesZ: false,
                 convert.Span),
 
-            MirRangeInstruction range => new LirOpInstruction(
-                new LirRangeOperation(),
-                destination,
-                range.ResultType,
-                [new LirRegisterOperand(getRegister(range.Start)), new LirRegisterOperand(getRegister(range.End))],
-                hasSideEffects: false,
-                predicate: null,
-                writesC: false,
-                writesZ: false,
-                range.Span),
-
             MirStructLiteralInstruction structLiteral => new LirOpInstruction(
                 new LirStructLiteralOperation(LowerStructLiteralMembers(structLiteral.Fields)),
                 destination,
