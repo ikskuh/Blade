@@ -86,6 +86,10 @@ public class SyntaxNodeConstructionTests
         FlagAnnotationSyntax flag = new(Tok(TokenKind.At, 14, 1, "@"), Tok(TokenKind.Identifier, 15, 1, "C"));
         ReturnItemSyntax ret = new(null, null, boolType, flag);
 
+        InlineAsmBodySyntax body = new(
+            Tok(TokenKind.OpenBrace, 26, 1, "{"),
+            [],
+            Tok(TokenKind.CloseBrace, 50, 1, "}"));
         AsmFunctionDeclarationSyntax asmFunction = new(
             Tok(TokenKind.AsmKeyword, 0, 3, "asm"),
             Tok(TokenKind.VolatileKeyword, 4, 8, "volatile"),
@@ -96,9 +100,7 @@ public class SyntaxNodeConstructionTests
             Tok(TokenKind.CloseParen, 21, 1, ")"),
             Tok(TokenKind.Arrow, 23, 2, "->"),
             new SeparatedSyntaxList<ReturnItemSyntax>([ret]),
-            Tok(TokenKind.OpenBrace, 26, 1, "{"),
-            "MOV {return}, #1",
-            Tok(TokenKind.CloseBrace, 50, 1, "}"));
+            body);
 
         Assert.That(asmFunction.AsmKeyword.Kind, Is.EqualTo(TokenKind.AsmKeyword));
         Assert.That(asmFunction.VolatileKeyword?.Kind, Is.EqualTo(TokenKind.VolatileKeyword));
@@ -109,9 +111,7 @@ public class SyntaxNodeConstructionTests
         Assert.That(asmFunction.CloseParen.Kind, Is.EqualTo(TokenKind.CloseParen));
         Assert.That(asmFunction.Arrow?.Kind, Is.EqualTo(TokenKind.Arrow));
         Assert.That(asmFunction.ReturnSpec, Is.Not.Null);
-        Assert.That(asmFunction.OpenBrace.Kind, Is.EqualTo(TokenKind.OpenBrace));
-        Assert.That(asmFunction.Body, Does.Contain("MOV"));
-        Assert.That(asmFunction.CloseBrace.Kind, Is.EqualTo(TokenKind.CloseBrace));
+        Assert.That(asmFunction.Body, Is.SameAs(body));
     }
 
     [Test]

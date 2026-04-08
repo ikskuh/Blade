@@ -263,32 +263,9 @@ public sealed class Parser
             returnSpec = ParseReturnSpec();
         }
 
-        Token openBrace = MatchToken(TokenKind.OpenBrace);
-
-        // Capture raw text between braces
-        int bodyStart = openBrace.Span.End;
-        int depth = 1;
-        while (Current.Kind != TokenKind.EndOfFile && depth > 0)
-        {
-            if (Current.Kind == TokenKind.OpenBrace)
-            {
-                depth++;
-            }
-            else if (Current.Kind == TokenKind.CloseBrace)
-            {
-                depth--;
-                if (depth == 0)
-                    break;
-            }
-            NextToken();
-        }
-
-        int bodyEnd = Current.Span.Start;
-        string body = _source.ToString(TextSpan.FromBounds(bodyStart, bodyEnd));
-
-        Token closeBrace = MatchToken(TokenKind.CloseBrace);
+        InlineAsmBodySyntax body = ParseInlineAsmBody();
         return new AsmFunctionDeclarationSyntax(asmKw, volatileKw, fnKw, name, openParen, parameters, closeParen,
-                                                 arrow, returnSpec, openBrace, body, closeBrace);
+                                                 arrow, returnSpec, body);
     }
 
     private TypeAliasDeclarationSyntax ParseTypeAliasDeclaration()
@@ -735,30 +712,7 @@ public sealed class Parser
         if (Current.Kind == TokenKind.VolatileKeyword)
             volatileKw = NextToken();
 
-        Token openBrace = MatchToken(TokenKind.OpenBrace);
-
-        // Capture raw text between braces
-        int bodyStart = openBrace.Span.End;
-        int depth = 1;
-        while (Current.Kind != TokenKind.EndOfFile && depth > 0)
-        {
-            if (Current.Kind == TokenKind.OpenBrace)
-            {
-                depth++;
-            }
-            else if (Current.Kind == TokenKind.CloseBrace)
-            {
-                depth--;
-                if (depth == 0)
-                    break;
-            }
-            NextToken();
-        }
-
-        int bodyEnd = Current.Span.Start;
-        string body = _source.ToString(TextSpan.FromBounds(bodyStart, bodyEnd));
-
-        Token closeBrace = MatchToken(TokenKind.CloseBrace);
+        InlineAsmBodySyntax body = ParseInlineAsmBody();
 
         // Parse optional output binding after body: -> name: type@Flag
         AsmOutputBindingSyntax? outputBinding = null;
@@ -781,7 +735,263 @@ public sealed class Parser
         }
 
         Token semi = MatchToken(TokenKind.Semicolon);
-        return new AsmBlockStatementSyntax(asmKw, volatileKw, openBrace, body, closeBrace, outputBinding, semi);
+        return new AsmBlockStatementSyntax(asmKw, volatileKw, body, outputBinding, semi);
+    }
+
+    // ──────────────────────────────────────────
+    //  Inline assembly body
+    // ──────────────────────────────────────────
+
+    private InlineAsmBodySyntax ParseInlineAsmBody()
+    {
+        Token openBrace = MatchToken(TokenKind.OpenBrace);
+        List<InlineAsmLineSyntax> lines = [];
+
+        int cursor = openBrace.Span.End;
+
+        while (Current.Kind != TokenKind.CloseBrace && Current.Kind != TokenKind.EndOfFile)
+        {
+            int lineEnd = FindEndOfPhysicalLine(cursor);
+            // Clamp to the next token's end — if a token straddles a '\n'
+            // (never happens with the current lexer), advance lineEnd to cover it.
+            // Extract a trailing `// ...` comment from the raw source of this line.
+            (int instructionEnd, string? trailingComment, int lineAdvance) = ScanInlineAsmLineComment(cursor, lineEnd);
+
+            // Consume tokens belonging to this physical line (their starts must be within [cursor, instructionEnd)).
+            List<Token> lineTokens = [];
+            while (Current.Kind != TokenKind.EndOfFile
+                && Current.Span.Start < instructionEnd)
+            {
+                // The outer body's closing brace must not be consumed as part of an
+                // instruction line — but a `{name}` operand opens its own brace pair
+                // which we *do* want to consume. We detect the body terminator by
+                // peeking: if a CloseBrace appears with no matching OpenBrace earlier
+                // on this physical line, it terminates the body.
+                if (Current.Kind == TokenKind.CloseBrace)
+                {
+                    int openCount = 0;
+                    foreach (Token t in lineTokens)
+                    {
+                        if (t.Kind == TokenKind.OpenBrace) openCount++;
+                        else if (t.Kind == TokenKind.CloseBrace) openCount--;
+                    }
+                    if (openCount <= 0)
+                        break;
+                }
+                lineTokens.Add(NextToken());
+            }
+
+            if (lineTokens.Count == 0)
+            {
+                if (trailingComment is not null)
+                {
+                    TextSpan commentSpan = TextSpan.FromBounds(cursor, lineAdvance);
+                    lines.Add(new InlineAsmCommentLineSyntax(commentSpan, trailingComment));
+                }
+                cursor = lineAdvance;
+                continue;
+            }
+
+            InlineAsmLineSyntax? parsed = ParseInlineAsmLine(lineTokens, trailingComment);
+            if (parsed is not null)
+                lines.Add(parsed);
+
+            cursor = lineAdvance;
+        }
+
+        Token closeBrace = MatchToken(TokenKind.CloseBrace);
+        return new InlineAsmBodySyntax(openBrace, lines, closeBrace);
+    }
+
+    private int FindEndOfPhysicalLine(int start)
+    {
+        int i = start;
+        while (i < _source.Length && _source[i] != '\n')
+            i++;
+        return i;
+    }
+
+    /// <summary>
+    /// Finds a `// ...` comment inside the raw source range [start, lineEnd).
+    /// Returns the effective instruction end (where the comment starts, or lineEnd),
+    /// the trimmed comment text (or null), and the position past the newline to resume from.
+    /// </summary>
+    private (int InstructionEnd, string? Comment, int LineAdvance) ScanInlineAsmLineComment(int start, int lineEnd)
+    {
+        int commentStart = -1;
+        for (int i = start; i + 1 < lineEnd; i++)
+        {
+            if (_source[i] == '/' && _source[i + 1] == '/')
+            {
+                commentStart = i;
+                break;
+            }
+        }
+
+        int lineAdvance = lineEnd < _source.Length ? lineEnd + 1 : lineEnd;
+
+        if (commentStart < 0)
+            return (lineEnd, null, lineAdvance);
+
+        string commentText = _source.ToString(TextSpan.FromBounds(commentStart + 2, lineEnd)).TrimStart();
+        return (commentStart, commentText, lineAdvance);
+    }
+
+    private InlineAsmLineSyntax? ParseInlineAsmLine(IReadOnlyList<Token> tokens, string? trailingComment)
+    {
+        int i = 0;
+
+        // Label: Identifier ':' (exactly two tokens).
+        if (tokens.Count == 2 && tokens[0].Kind == TokenKind.Identifier && tokens[1].Kind == TokenKind.Colon)
+            return new InlineAsmLabelLineSyntax(tokens[0], tokens[1], trailingComment);
+
+        // Optional condition prefix: tokens whose text starts with "IF_" (or is "_RET_").
+        // This is a syntactic prefix rule — the binder validates the concrete condition code.
+        Token? condition = null;
+        if (i + 1 < tokens.Count
+            && tokens[i].Kind == TokenKind.Identifier
+            && tokens[i + 1].Kind == TokenKind.Identifier
+            && (tokens[i].Text.StartsWith("IF_", System.StringComparison.Ordinal)
+                || tokens[i].Text == "_RET_"))
+        {
+            condition = tokens[i];
+            i++;
+        }
+
+        if (i >= tokens.Count || tokens[i].Kind != TokenKind.Identifier)
+        {
+            TextSpan span = tokens.Count > 0
+                ? TextSpan.FromBounds(tokens[0].Span.Start, tokens[^1].Span.End)
+                : new TextSpan(0, 0);
+            Diagnostics.ReportInlineAsmEmptyInstruction(span);
+            return null;
+        }
+
+        Token mnemonic = tokens[i++];
+
+        // Parse comma-separated operands; any trailing Identifier without a preceding
+        // comma is treated as the flag-effect token (WC/WZ/WCZ — validated by the binder).
+        List<InlineAsmOperandSyntax> operands = [];
+        while (i < tokens.Count)
+        {
+            int consumed;
+            InlineAsmOperandSyntax? operand = TryParseInlineAsmOperand(tokens, i, out consumed);
+            if (operand is null)
+                return null;
+
+            operands.Add(operand);
+            i += consumed;
+
+            if (i >= tokens.Count)
+                break;
+
+            if (tokens[i].Kind != TokenKind.Comma)
+                break;
+
+            i++;
+        }
+
+        Token? flagEffect = null;
+        if (i == tokens.Count - 1 && tokens[i].Kind == TokenKind.Identifier)
+        {
+            flagEffect = tokens[i];
+            i++;
+        }
+
+        if (i != tokens.Count)
+        {
+            Diagnostics.ReportInlineAsmEmptyInstruction(tokens[i].Span);
+            return null;
+        }
+
+        return new InlineAsmInstructionLineSyntax(condition, mnemonic, operands, flagEffect, trailingComment);
+    }
+
+    private InlineAsmOperandSyntax? TryParseInlineAsmOperand(IReadOnlyList<Token> tokens, int index, out int consumed)
+    {
+        consumed = 0;
+        if (index >= tokens.Count)
+        {
+            Diagnostics.ReportInlineAsmEmptyInstruction(tokens[^1].Span);
+            return null;
+        }
+
+        Token first = tokens[index];
+        switch (first.Kind)
+        {
+            case TokenKind.OpenBrace:
+            {
+                // {ident (. ident)*}
+                int j = index + 1;
+                List<Token> path = [];
+                if (j >= tokens.Count || tokens[j].Text.Length == 0)
+                {
+                    Diagnostics.ReportInlineAsmEmptyInstruction(first.Span);
+                    return null;
+                }
+                path.Add(tokens[j++]);
+                while (j + 1 < tokens.Count && tokens[j].Kind == TokenKind.Dot)
+                {
+                    j++;
+                    path.Add(tokens[j++]);
+                }
+                if (j >= tokens.Count || tokens[j].Kind != TokenKind.CloseBrace)
+                {
+                    Diagnostics.ReportInlineAsmEmptyInstruction(first.Span);
+                    return null;
+                }
+                consumed = (j - index) + 1;
+                return new InlineAsmVarBindingOperandSyntax(first, path, tokens[j]);
+            }
+
+            case TokenKind.Percent:
+            {
+                if (index + 1 >= tokens.Count || tokens[index + 1].Kind != TokenKind.IntegerLiteral)
+                {
+                    Diagnostics.ReportInlineAsmEmptyInstruction(first.Span);
+                    return null;
+                }
+                consumed = 2;
+                return new InlineAsmTempBindingOperandSyntax(first, tokens[index + 1]);
+            }
+
+            case TokenKind.Hash:
+            {
+                int innerConsumed;
+                InlineAsmOperandSyntax? inner = TryParseInlineAsmOperand(tokens, index + 1, out innerConsumed);
+                if (inner is null)
+                    return null;
+                consumed = 1 + innerConsumed;
+                return new InlineAsmImmediateOperandSyntax(first, inner);
+            }
+
+            case TokenKind.Dollar:
+                consumed = 1;
+                return new InlineAsmCurrentAddressOperandSyntax(first);
+
+            case TokenKind.Minus:
+            {
+                if (index + 1 >= tokens.Count || tokens[index + 1].Kind != TokenKind.IntegerLiteral)
+                {
+                    Diagnostics.ReportInlineAsmEmptyInstruction(first.Span);
+                    return null;
+                }
+                consumed = 2;
+                return new InlineAsmIntegerLiteralOperandSyntax(first, tokens[index + 1]);
+            }
+
+            case TokenKind.IntegerLiteral:
+                consumed = 1;
+                return new InlineAsmIntegerLiteralOperandSyntax(null, first);
+
+            case TokenKind.Identifier:
+                consumed = 1;
+                return new InlineAsmSymbolOperandSyntax(first);
+
+            default:
+                Diagnostics.ReportInlineAsmEmptyInstruction(first.Span);
+                return null;
+        }
     }
 
     private StatementSyntax ParseExpressionOrAssignmentStatement()

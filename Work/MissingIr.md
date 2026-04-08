@@ -48,40 +48,10 @@ normal source programs.
   - MIR emits store targets like `member:<name>:<byteOffset>`; diagnostics are
     normalized to `store.member`.
 
-### Register-space indexing and dereference
-
-- `load.index.reg`
-  - Register-backed array indexing is still unsupported in ASMIR lowering.
-
-- `store.index.reg`
-  - Register-backed array stores, including array literal materialization, are
-    still unsupported in ASMIR lowering.
-
-- `load.deref.reg`
-  - Register-space single-pointer dereference loads are unsupported.
-
-- `store.deref.reg`
-  - Register-space single-pointer dereference stores are unsupported.
-
-Hub and LUT index/deref lowering do exist; the missing cases are the `reg`
-variants.
-
 ### Range values
 
 - `range`
   - Range expressions lower to a MIR op but have no ASMIR lowering.
-
-### Placeholder loop / shielding ops
-
-- `rep.setup`
-- `rep.iter`
-- `repfor.setup`
-- `repfor.iter`
-- `noirq.begin`
-- `noirq.end`
-
-These are emitted today as placeholder MIR ops for `rep`, `rep for`, and
-`noirq`.
 
 ### Coroutine / interrupt transfer placeholders
 
@@ -116,19 +86,8 @@ report them in fallback paths.
   - Reported if ASMIR lowering cannot resolve a block parameter target while
     emitting phi argument moves.
 
-- `error.statement`
-  - Emitted for bound error statements that survive far enough into the IR
-    pipeline.
-
 - arbitrary unknown opcode names
   - `AsmLowerer` has a final catch-all for unrecognized LIR opcodes.
 
 - unknown non-`LirOpInstruction` instruction kinds
   - There is also a catch-all for unexpected LIR instruction subclasses.
-
-## Currently Unused Support Path
-
-`AsmLowerer` contains `LowerPseudo(...)` support for `pseudo.*` opcodes, but the
-current MIR generator does not emit `MirPseudoInstruction`. The active
-placeholder loop/shielding ops listed above are plain MIR/LIR opcodes such as
-`rep.setup`, not `pseudo.rep.setup`.

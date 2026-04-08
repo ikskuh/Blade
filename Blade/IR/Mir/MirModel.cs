@@ -789,7 +789,6 @@ public sealed class MirInlineAsmInstruction : MirInstruction
 {
     public MirInlineAsmInstruction(
         AsmVolatility volatility,
-        string body,
         InlineAsmFlagOutput? flagOutput,
         IReadOnlyList<InlineAsmLine> parsedLines,
         IReadOnlyList<MirInlineAsmBinding> bindings,
@@ -799,14 +798,12 @@ public sealed class MirInlineAsmInstruction : MirInstruction
         : base(result: flagResult, resultType: flagResultType, span, hasSideEffects: true)
     {
         Volatility = volatility;
-        Body = body;
         FlagOutput = flagOutput;
         ParsedLines = parsedLines;
         Bindings = bindings;
     }
 
     public AsmVolatility Volatility { get; }
-    public string Body { get; }
     public InlineAsmFlagOutput? FlagOutput { get; }
     public IReadOnlyList<InlineAsmLine> ParsedLines { get; }
     public IReadOnlyList<MirInlineAsmBinding> Bindings { get; }
@@ -842,7 +839,7 @@ public sealed class MirInlineAsmInstruction : MirInstruction
             rewritten[i] = new MirInlineAsmBinding(binding.Slot, binding.Symbol, mapped, binding.Place, binding.Access);
         }
 
-        return rewritten is null ? this : new MirInlineAsmInstruction(Volatility, Body, FlagOutput, ParsedLines, rewritten, Span, Result, ResultType);
+        return rewritten is null ? this : new MirInlineAsmInstruction(Volatility, FlagOutput, ParsedLines, rewritten, Span, Result, ResultType);
     }
 }
 

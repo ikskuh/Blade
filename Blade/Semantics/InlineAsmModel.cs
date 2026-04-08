@@ -9,29 +9,24 @@ public enum InlineAsmAddressingMode
     Immediate,
 }
 
-public abstract class InlineAsmLine
+public abstract class InlineAsmLine(string? trailingComment)
 {
-    protected InlineAsmLine(string rawText)
-    {
-        RawText = Requires.NotNull(rawText);
-    }
-
     /// <summary>
-    /// Original source text for diagnostics and human-readable dumps only.
-    /// Compiler logic must use the typed fields on the parsed line instead.
+    /// Optional `// ...` comment trailing this line in the original source.
+    /// Preserved only for dump/codegen output; no semantic meaning.
     /// </summary>
-    public string RawText { get; }
+    public string? TrailingComment { get; } = trailingComment;
 }
 
-public sealed class InlineAsmLabelLine : InlineAsmLine
+public sealed class InlineAsmCommentLine(string comment) : InlineAsmLine(null)
 {
-    public InlineAsmLabelLine(ControlFlowLabelSymbol label, string rawText)
-        : base(rawText)
-    {
-        Label = Requires.NotNull(label);
-    }
+    public string Comment { get; } = Requires.NotNull(comment);
+}
 
-    public ControlFlowLabelSymbol Label { get; }
+public sealed class InlineAsmLabelLine(ControlFlowLabelSymbol label, string? trailingComment)
+    : InlineAsmLine(trailingComment)
+{
+    public ControlFlowLabelSymbol Label { get; } = Requires.NotNull(label);
 }
 
 public sealed class InlineAsmInstructionLine : InlineAsmLine
@@ -41,8 +36,8 @@ public sealed class InlineAsmInstructionLine : InlineAsmLine
         P2Mnemonic mnemonic,
         IReadOnlyList<InlineAsmOperand> operands,
         P2FlagEffect? flagEffect,
-        string rawText)
-        : base(rawText)
+        string? trailingComment)
+        : base(trailingComment)
     {
         Condition = condition;
         Mnemonic = mnemonic;

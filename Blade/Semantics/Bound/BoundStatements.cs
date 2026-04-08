@@ -231,7 +231,6 @@ public sealed class BoundAsmStatement : BoundStatement
 {
     public BoundAsmStatement(
         AsmVolatility volatility,
-        string body,
         InlineAsmFlagOutput? flagOutput,
         IReadOnlyList<InlineAsmLine> parsedLines,
         IReadOnlyDictionary<InlineAsmBindingSlot, Symbol> referencedSymbols,
@@ -239,14 +238,12 @@ public sealed class BoundAsmStatement : BoundStatement
         : base(BoundNodeKind.AsmStatement, span)
     {
         Volatility = volatility;
-        Body = body;
         FlagOutput = flagOutput;
         ParsedLines = parsedLines;
         ReferencedSymbols = referencedSymbols;
     }
 
     public AsmVolatility Volatility { get; }
-    public string Body { get; }
     public InlineAsmFlagOutput? FlagOutput { get; }
     public IReadOnlyList<InlineAsmLine> ParsedLines { get; }
     public IReadOnlyDictionary<InlineAsmBindingSlot, Symbol> ReferencedSymbols { get; }

@@ -167,17 +167,13 @@ public sealed class AsmFunctionDeclarationSyntax : MemberSyntax, IFunctionSignat
     public Token CloseParen { get; }
     public Token? Arrow { get; }
     public SeparatedSyntaxList<ReturnItemSyntax>? ReturnSpec { get; }
-    [ExcludeFromCodeCoverage]
-    public Token OpenBrace { get; }
-    public string Body { get; }
-    [ExcludeFromCodeCoverage]
-    public Token CloseBrace { get; }
+    public InlineAsmBodySyntax Body { get; }
 
     public AsmFunctionDeclarationSyntax(Token asmKeyword, Token? volatileKeyword, Token fnKeyword, Token name,
                                         Token openParen, SeparatedSyntaxList<ParameterSyntax> parameters, Token closeParen,
                                         Token? arrow, SeparatedSyntaxList<ReturnItemSyntax>? returnSpec,
-                                        Token openBrace, string body, Token closeBrace)
-        : base(TextSpan.FromBounds(asmKeyword.Span.Start, closeBrace.Span.End))
+                                        InlineAsmBodySyntax body)
+        : base(TextSpan.FromBounds(asmKeyword.Span.Start, Requires.NotNull(body).Span.End))
     {
         AsmKeyword = asmKeyword;
         VolatileKeyword = volatileKeyword;
@@ -188,9 +184,7 @@ public sealed class AsmFunctionDeclarationSyntax : MemberSyntax, IFunctionSignat
         CloseParen = closeParen;
         Arrow = arrow;
         ReturnSpec = returnSpec;
-        OpenBrace = openBrace;
         Body = body;
-        CloseBrace = closeBrace;
     }
 }
 

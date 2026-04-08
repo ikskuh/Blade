@@ -344,7 +344,6 @@ public static class LirLowerer
 
             MirInlineAsmInstruction inlineAsm => new LirInlineAsmInstruction(
                 inlineAsm.Volatility,
-                inlineAsm.Body,
                 inlineAsm.FlagOutput,
                 inlineAsm.ParsedLines,
                 LowerInlineAsmBindings(inlineAsm.Bindings, getRegister),

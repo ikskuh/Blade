@@ -551,15 +551,9 @@ public sealed class Binder
                 : InlineAsmFlagOutput.Z;
         }
 
-        Dictionary<string, Symbol> availableSymbols = CollectInlineAsmAvailableSymbols();
-        Dictionary<string, InlineAsmVarBindingSlot> availableBindings = CreateInlineAsmBindingSlots(availableSymbols.Keys);
+        InlineAsmBindingResult asmResult = BindInlineAsmBody(asmSyntax.Body);
 
-        InlineAssemblyValidator.ValidationResult validationResult =
-            InlineAssemblyValidator.Validate(asmSyntax.Body, asmSyntax.Span, availableBindings, _diagnostics);
-
-        Dictionary<InlineAsmBindingSlot, Symbol> referencedSymbols = BuildInlineAsmReferencedSymbols(validationResult, availableSymbols);
-
-        BoundAsmStatement asmStatement = new(volatility, asmSyntax.Body, flagOutput, validationResult.Lines, referencedSymbols, asmSyntax.Span);
+        BoundAsmStatement asmStatement = new(volatility, flagOutput, asmResult.Lines, asmResult.ReferencedSymbols, asmSyntax.Span);
 
         // Synthesize an implicit return after the asm body.
         // If the function has a return type, the return reads the synthetic {return} variable
@@ -823,18 +817,15 @@ public sealed class Binder
                         _diagnostics.ReportSymbolAlreadyDeclared(asm.OutputBinding.Name.Span, asm.OutputBinding.Name.Text);
                 }
 
-                Dictionary<string, Symbol> availableSymbols = CollectInlineAsmAvailableSymbols();
-                Dictionary<string, InlineAsmVarBindingSlot> availableBindings = CreateInlineAsmBindingSlots(availableSymbols.Keys);
+                InlineAsmBindingResult asmResult = BindInlineAsmBody(asm.Body);
 
-                InlineAssemblyValidator.ValidationResult validationResult =
-                    InlineAssemblyValidator.Validate(asm.Body, asm.Span, availableBindings, _diagnostics);
+                if (outputSymbol is not null
+                    && asmResult.AvailableBindings.TryGetValue(outputSymbol.Name, out InlineAsmVarBindingSlot? outputSlot))
+                {
+                    asmResult.ReferencedSymbols[outputSlot] = outputSymbol;
+                }
 
-                Dictionary<InlineAsmBindingSlot, Symbol> referencedSymbols = BuildInlineAsmReferencedSymbols(validationResult, availableSymbols);
-
-                if (outputSymbol is not null)
-                    referencedSymbols[availableBindings[outputSymbol.Name]] = outputSymbol;
-
-                return new BoundAsmStatement(asm.Volatility, asm.Body, flagOutput, validationResult.Lines, referencedSymbols, asm.Span);
+                return new BoundAsmStatement(asm.Volatility, flagOutput, asmResult.Lines, asmResult.ReferencedSymbols, asm.Span);
             }
 
             default:
@@ -842,26 +833,77 @@ public sealed class Binder
         }
     }
 
-    private static Dictionary<string, InlineAsmVarBindingSlot> CreateInlineAsmBindingSlots(IEnumerable<string> names)
+    private sealed class InlineAsmBindingResult
     {
-        Dictionary<string, InlineAsmVarBindingSlot> bindings = new(StringComparer.Ordinal);
-        foreach (string name in names)
-            bindings.Add(name, new InlineAsmVarBindingSlot(name));
-        return bindings;
+        public required IReadOnlyList<InlineAsmLine> Lines { get; init; }
+        public required Dictionary<InlineAsmBindingSlot, Symbol> ReferencedSymbols { get; init; }
+        public required Dictionary<string, InlineAsmVarBindingSlot> AvailableBindings { get; init; }
     }
 
-    private Dictionary<InlineAsmBindingSlot, Symbol> BuildInlineAsmReferencedSymbols(
-        InlineAssemblyValidator.ValidationResult validationResult,
-        IReadOnlyDictionary<string, Symbol> availableSymbols)
+    private InlineAsmBindingResult BindInlineAsmBody(InlineAsmBodySyntax bodySyntax)
     {
+        Dictionary<string, Symbol> availableSymbols = CollectInlineAsmAvailableSymbols();
+        Dictionary<string, InlineAsmVarBindingSlot> availableBindings = new(StringComparer.Ordinal);
+        foreach (string name in availableSymbols.Keys)
+            availableBindings.Add(name, new InlineAsmVarBindingSlot(name));
+
+        // First pass: collect label definitions.
+        Dictionary<string, ControlFlowLabelSymbol> labels = new(StringComparer.OrdinalIgnoreCase);
+        foreach (InlineAsmLineSyntax lineSyntax in bodySyntax.Lines)
+        {
+            if (lineSyntax is InlineAsmLabelLineSyntax labelLine)
+            {
+                string labelName = labelLine.Name.Text;
+                if (!labels.ContainsKey(labelName))
+                    labels.Add(labelName, new ControlFlowLabelSymbol(labelName));
+            }
+        }
+
+        List<InlineAsmLine> lines = [];
         Dictionary<InlineAsmBindingSlot, Symbol> referencedSymbols = [];
-        foreach (InlineAsmVarBindingSlot binding in validationResult.ReferencedBindings)
+        HashSet<InlineAsmVarBindingSlot> referencedVarBindings = [];
+        Dictionary<int, InlineAsmTempBindingSlot> tempBindings = [];
+
+        foreach (InlineAsmLineSyntax lineSyntax in bodySyntax.Lines)
+        {
+            switch (lineSyntax)
+            {
+                case InlineAsmCommentLineSyntax commentLine:
+                    lines.Add(new InlineAsmCommentLine(commentLine.Comment));
+                    break;
+
+                case InlineAsmLabelLineSyntax labelLine:
+                {
+                    ControlFlowLabelSymbol label = labels[labelLine.Name.Text];
+                    lines.Add(new InlineAsmLabelLine(label, labelLine.TrailingComment));
+                    break;
+                }
+
+                case InlineAsmInstructionLineSyntax instructionLine:
+                {
+                    InlineAsmInstructionLine? bound = BindInlineAsmInstruction(
+                        instructionLine, bodySyntax.Span, availableBindings, labels,
+                        tempBindings, referencedVarBindings);
+                    if (bound is not null)
+                        lines.Add(bound);
+                    break;
+                }
+
+                default:
+                    Assert.Unreachable();
+                    break;
+            }
+        }
+
+        AnalyzeTempReadBeforeWrite(lines, tempBindings.Values, bodySyntax.Span);
+
+        foreach (InlineAsmVarBindingSlot binding in referencedVarBindings)
         {
             if (availableSymbols.TryGetValue(binding.PlaceholderText, out Symbol? referenced))
                 referencedSymbols[binding] = referenced;
         }
 
-        foreach (InlineAsmTempBindingSlot tempBinding in validationResult.TempBindings)
+        foreach (InlineAsmTempBindingSlot tempBinding in tempBindings.Values)
         {
             VariableSymbol tempSymbol = new(
                 $"asm%{tempBinding.TempId}",
@@ -875,7 +917,215 @@ public sealed class Binder
             referencedSymbols[tempBinding] = tempSymbol;
         }
 
-        return referencedSymbols;
+        return new InlineAsmBindingResult
+        {
+            Lines = lines,
+            ReferencedSymbols = referencedSymbols,
+            AvailableBindings = availableBindings,
+        };
+    }
+
+    private InlineAsmInstructionLine? BindInlineAsmInstruction(
+        InlineAsmInstructionLineSyntax instructionLine,
+        TextSpan blockSpan,
+        IReadOnlyDictionary<string, InlineAsmVarBindingSlot> availableBindings,
+        IReadOnlyDictionary<string, ControlFlowLabelSymbol> labels,
+        Dictionary<int, InlineAsmTempBindingSlot> tempBindings,
+        HashSet<InlineAsmVarBindingSlot> referencedVarBindings)
+    {
+        P2ConditionCode? condition = null;
+        if (instructionLine.Condition is Token conditionToken)
+        {
+            if (!P2InstructionMetadata.TryParseConditionCode(conditionToken.Text, out P2ConditionCode parsedCondition))
+            {
+                _diagnostics.ReportInlineAsmUnknownInstruction(blockSpan, conditionToken.Text);
+                return null;
+            }
+            condition = parsedCondition;
+        }
+
+        if (!P2InstructionMetadata.TryParseMnemonic(instructionLine.Mnemonic.Text, out P2Mnemonic mnemonic))
+        {
+            _diagnostics.ReportInlineAsmUnknownInstruction(blockSpan, instructionLine.Mnemonic.Text);
+            return null;
+        }
+
+        List<InlineAsmOperand> operands = [];
+        foreach (InlineAsmOperandSyntax operandSyntax in instructionLine.Operands)
+        {
+            InlineAsmOperand? operand = BindInlineAsmOperand(
+                operandSyntax, blockSpan, availableBindings, labels, tempBindings, referencedVarBindings);
+            if (operand is null)
+                return null;
+            operands.Add(operand);
+        }
+
+        if (!P2InstructionMetadata.TryGetInstructionForm(mnemonic, operands.Count, out _))
+        {
+            _diagnostics.ReportInlineAsmInvalidInstructionForm(blockSpan, P2InstructionMetadata.GetMnemonicText(mnemonic), operands.Count);
+            return null;
+        }
+
+        P2FlagEffect? flagEffect = null;
+        if (instructionLine.FlagEffect is Token flagToken)
+        {
+            if (!P2InstructionMetadata.TryParseFlagEffect(flagToken.Text, out P2FlagEffect parsedFlagEffect))
+            {
+                _diagnostics.ReportInlineAsmUnknownInstruction(blockSpan, flagToken.Text);
+                return null;
+            }
+            flagEffect = parsedFlagEffect;
+        }
+
+        return new InlineAsmInstructionLine(condition, mnemonic, operands, flagEffect, instructionLine.TrailingComment);
+    }
+
+    private InlineAsmOperand? BindInlineAsmOperand(
+        InlineAsmOperandSyntax operandSyntax,
+        TextSpan blockSpan,
+        IReadOnlyDictionary<string, InlineAsmVarBindingSlot> availableBindings,
+        IReadOnlyDictionary<string, ControlFlowLabelSymbol> labels,
+        Dictionary<int, InlineAsmTempBindingSlot> tempBindings,
+        HashSet<InlineAsmVarBindingSlot> referencedVarBindings)
+    {
+        switch (operandSyntax)
+        {
+            case InlineAsmVarBindingOperandSyntax varBinding:
+            {
+                string name = string.Join(".", varBinding.Path.Select(static p => p.Text));
+                if (!availableBindings.TryGetValue(name, out InlineAsmVarBindingSlot? slot))
+                {
+                    _diagnostics.ReportInlineAsmUndefinedVariable(blockSpan, name);
+                    return null;
+                }
+                referencedVarBindings.Add(slot);
+                return new InlineAsmBindingRefOperand(slot);
+            }
+
+            case InlineAsmTempBindingOperandSyntax tempBinding:
+            {
+                int tempId = 0;
+                if (tempBinding.Number.Value is BladeValue tempValue && tempValue.TryGetInteger(out long tempLong))
+                    tempId = (int)tempLong;
+                if (!tempBindings.TryGetValue(tempId, out InlineAsmTempBindingSlot? slot))
+                {
+                    slot = new InlineAsmTempBindingSlot(tempId);
+                    tempBindings.Add(tempId, slot);
+                }
+                return new InlineAsmBindingRefOperand(slot);
+            }
+
+            case InlineAsmImmediateOperandSyntax immediate:
+                return BindInlineAsmImmediateOperand(immediate, blockSpan, labels);
+
+            case InlineAsmCurrentAddressOperandSyntax:
+                return new InlineAsmCurrentAddressOperand(InlineAsmAddressingMode.Direct);
+
+            case InlineAsmIntegerLiteralOperandSyntax:
+                _diagnostics.ReportInlineAsmUndefinedLabel(blockSpan, operandSyntax.Span.Length > 0 ? "integer" : "");
+                return null;
+
+            case InlineAsmSymbolOperandSyntax symbol:
+                return BindInlineAsmSymbolOperand(symbol.Name.Text, blockSpan, availableBindings, labels, referencedVarBindings);
+
+            default:
+                return Assert.UnreachableValue<InlineAsmOperand?>("all inline asm operand syntaxes handled");
+        }
+    }
+
+    private InlineAsmOperand? BindInlineAsmImmediateOperand(
+        InlineAsmImmediateOperandSyntax immediate,
+        TextSpan blockSpan,
+        IReadOnlyDictionary<string, ControlFlowLabelSymbol> labels)
+    {
+        switch (immediate.Inner)
+        {
+            case InlineAsmIntegerLiteralOperandSyntax intLiteral:
+            {
+                long value = 0;
+                if (intLiteral.Literal.Value is BladeValue literalValue && literalValue.TryGetInteger(out long parsed))
+                    value = parsed;
+                if (intLiteral.Sign is Token sign && sign.Kind == TokenKind.Minus)
+                    value = -value;
+                return new InlineAsmImmediateOperand(value);
+            }
+
+            case InlineAsmCurrentAddressOperandSyntax:
+                return new InlineAsmCurrentAddressOperand(InlineAsmAddressingMode.Immediate);
+
+            case InlineAsmSymbolOperandSyntax symbol:
+            {
+                string name = symbol.Name.Text;
+                if (labels.TryGetValue(name, out ControlFlowLabelSymbol? label))
+                    return new InlineAsmLabelOperand(label, InlineAsmAddressingMode.Immediate);
+
+                _diagnostics.ReportInlineAsmUndefinedLabel(blockSpan, name);
+                return null;
+            }
+
+            default:
+                _diagnostics.ReportInlineAsmUndefinedLabel(blockSpan, "#");
+                return null;
+        }
+    }
+
+    private InlineAsmOperand? BindInlineAsmSymbolOperand(
+        string name,
+        TextSpan blockSpan,
+        IReadOnlyDictionary<string, InlineAsmVarBindingSlot> availableBindings,
+        IReadOnlyDictionary<string, ControlFlowLabelSymbol> labels,
+        HashSet<InlineAsmVarBindingSlot> referencedVarBindings)
+    {
+        if (labels.TryGetValue(name, out ControlFlowLabelSymbol? label))
+            return new InlineAsmLabelOperand(label, InlineAsmAddressingMode.Direct);
+
+        if (P2InstructionMetadata.TryParseSpecialRegister(name, out P2SpecialRegister register))
+            return new InlineAsmSpecialRegisterOperand(register);
+
+        if (availableBindings.TryGetValue(name, out InlineAsmVarBindingSlot? binding))
+        {
+            referencedVarBindings.Add(binding);
+            return new InlineAsmBindingRefOperand(binding);
+        }
+
+        _diagnostics.ReportInlineAsmUndefinedLabel(blockSpan, name);
+        return null;
+    }
+
+    private void AnalyzeTempReadBeforeWrite(
+        IReadOnlyList<InlineAsmLine> parsedLines,
+        IReadOnlyCollection<InlineAsmTempBindingSlot> tempBindings,
+        TextSpan blockSpan)
+    {
+        if (tempBindings.Count == 0)
+            return;
+
+        HashSet<InlineAsmTempBindingSlot> tempBindingSet = new(tempBindings);
+        HashSet<InlineAsmTempBindingSlot> seenBindings = [];
+
+        foreach (InlineAsmLine line in parsedLines)
+        {
+            if (line is not InlineAsmInstructionLine instruction)
+                continue;
+
+            for (int operandIndex = 0; operandIndex < instruction.Operands.Count; operandIndex++)
+            {
+                if (instruction.Operands[operandIndex] is not InlineAsmBindingRefOperand binding
+                    || binding.Slot is not InlineAsmTempBindingSlot tempBinding
+                    || !tempBindingSet.Contains(tempBinding)
+                    || !seenBindings.Add(tempBinding))
+                {
+                    continue;
+                }
+
+                P2OperandAccess access = P2InstructionMetadata.GetOperandAccess(
+                    instruction.Mnemonic,
+                    instruction.Operands.Count,
+                    operandIndex);
+                if (access is P2OperandAccess.Read or P2OperandAccess.ReadWrite)
+                    _diagnostics.ReportInlineAsmTempReadBeforeWrite(blockSpan, tempBinding.PlaceholderText);
+            }
+        }
     }
 
     private BoundStatement? BindAssertStatement(AssertStatementSyntax assertStatement)

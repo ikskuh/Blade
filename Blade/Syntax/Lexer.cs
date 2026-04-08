@@ -541,6 +541,7 @@ public sealed class Lexer
                 return MakeToken(TokenKind.Percent);
             case '@': Advance(); return MakeToken(TokenKind.At);
             case '#': Advance(); return MakeToken(TokenKind.Hash);
+            case '$': Advance(); return MakeToken(TokenKind.Dollar);
             case '*': Advance(); return MakeToken(TokenKind.Star);
             case '(': Advance(); return MakeToken(TokenKind.OpenParen);
             case ')': Advance(); return MakeToken(TokenKind.CloseParen);

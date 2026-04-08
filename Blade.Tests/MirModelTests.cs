@@ -87,7 +87,6 @@ public class MirModelTests
         MirValueId value = MirValue(4);
         MirInlineAsmInstruction inlineAsm = new(
             AsmVolatility.NonVolatile,
-            "MOV {x}, {x}",
             flagOutput: null,
             parsedLines: [],
             bindings:

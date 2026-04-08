@@ -391,7 +391,6 @@ public class OptimizerTests
                         hasSideEffects: false, predicate: null, writesC: false, writesZ: false, Span),
                     new LirInlineAsmInstruction(
                         AsmVolatility.NonVolatile,
-                        "TEST {x}, #1",
                         flagOutput: null,
                         parsedLines: [],
                         bindings: [new LirInlineAsmBinding(new InlineAsmVarBindingSlot("x"), CreateVariableSymbol("x"), new LirRegisterOperand(r1), InlineAsmBindingAccess.Read)],
@@ -423,7 +422,6 @@ public class OptimizerTests
                         hasSideEffects: false, predicate: null, writesC: false, writesZ: false, Span),
                     new LirInlineAsmInstruction(
                         AsmVolatility.Volatile,
-                        "MOV INA, {x}",
                         flagOutput: null,
                         parsedLines: [],
                         bindings: [new LirInlineAsmBinding(new InlineAsmVarBindingSlot("x"), CreateVariableSymbol("x"), new LirRegisterOperand(r0), InlineAsmBindingAccess.ReadWrite)],
@@ -453,7 +451,6 @@ public class OptimizerTests
                         hasSideEffects: false, predicate: null, writesC: false, writesZ: false, Span),
                     new LirInlineAsmInstruction(
                         AsmVolatility.NonVolatile,
-                        "MOV {x}, #1",
                         flagOutput: null,
                         parsedLines: [],
                         bindings: [new LirInlineAsmBinding(new InlineAsmVarBindingSlot("x"), CreateVariableSymbol("x"), new LirRegisterOperand(r1), InlineAsmBindingAccess.Write)],

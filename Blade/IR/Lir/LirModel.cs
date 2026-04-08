@@ -509,7 +509,6 @@ public sealed class LirInlineAsmInstruction : LirInstruction
 {
     public LirInlineAsmInstruction(
         AsmVolatility volatility,
-        string body,
         InlineAsmFlagOutput? flagOutput,
         IReadOnlyList<InlineAsmLine> parsedLines,
         IReadOnlyList<LirInlineAsmBinding> bindings,
@@ -525,14 +524,12 @@ public sealed class LirInlineAsmInstruction : LirInstruction
             span)
     {
         Volatility = volatility;
-        Body = body;
         FlagOutput = flagOutput;
         ParsedLines = parsedLines;
         Bindings = bindings;
     }
 
     public AsmVolatility Volatility { get; }
-    public string Body { get; }
     public InlineAsmFlagOutput? FlagOutput { get; }
     public IReadOnlyList<InlineAsmLine> ParsedLines { get; }
     public IReadOnlyList<LirInlineAsmBinding> Bindings { get; }

@@ -624,7 +624,6 @@ public static class MirLowerer
 
             _currentBlock.Instructions.Add(new MirInlineAsmInstruction(
                 asmStatement.Volatility,
-                asmStatement.Body,
                 asmStatement.FlagOutput,
                 asmStatement.ParsedLines,
                 bindings,

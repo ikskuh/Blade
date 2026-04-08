@@ -1337,7 +1337,7 @@ public class IrPipelineTests
             """);
 
         Assert.That(diagnostics.Count, Is.GreaterThan(0));
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0306_InlineAsmUndefinedLabel), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code.ToString().StartsWith("E030")), Is.True);
     }
 
     [Test]

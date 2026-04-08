@@ -106,7 +106,6 @@ internal static class LirOptimizationHelpers
 
         return new LirInlineAsmInstruction(
             inlineAsm.Volatility,
-            inlineAsm.Body,
             inlineAsm.FlagOutput,
             inlineAsm.ParsedLines,
             rewrittenBindings,
@@ -146,7 +145,6 @@ internal static class LirOptimizationHelpers
 
                 return new LirInlineAsmInstruction(
                     inlineAsm.Volatility,
-                    inlineAsm.Body,
                     inlineAsm.FlagOutput,
                     inlineAsm.ParsedLines,
                     rewrittenBindings,

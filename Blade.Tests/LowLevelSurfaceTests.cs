@@ -30,7 +30,7 @@ public class LowLevelSurfaceTests
                         new InlineAsmBindingRefOperand(src),
                     ],
                     flagEffect: null,
-                    rawText: "add {dst}, {src}"),
+                    trailingComment: null),
                 new InlineAsmInstructionLine(
                     condition: null,
                     mnemonic: P2Mnemonic.MOV,
@@ -40,7 +40,7 @@ public class LowLevelSurfaceTests
                         new InlineAsmImmediateOperand(0x10),
                     ],
                     flagEffect: null,
-                    rawText: "mov {dst}, #0x10"),
+                    trailingComment: null),
             ],
             bindings: [dst, src, unused]);
 
@@ -68,7 +68,7 @@ public class LowLevelSurfaceTests
                         new InlineAsmBindingRefOperand(y),
                     ],
                     flagEffect: null,
-                    rawText: "mov {x}, {y}"),
+                    trailingComment: null),
             ],
             bindings: [x, y]);
 
@@ -84,7 +84,7 @@ public class LowLevelSurfaceTests
                     mnemonic: P2Mnemonic.RET,
                     operands: [new InlineAsmBindingRefOperand(x)],
                     flagEffect: null,
-                    rawText: "ret {x}"),
+                    trailingComment: null),
             ],
             bindings: [x]);
 
@@ -95,43 +95,7 @@ public class LowLevelSurfaceTests
         Assert.That(InlineAssemblyBindingAnalysis.IncludesWrite(InlineAsmBindingAccess.Read), Is.False);
     }
 
-    [Test]
-    public void InlineAssemblyValidator_CanonicalizesTempBindings()
-    {
-        DiagnosticBag diagnostics = new();
-        InlineAssemblyValidator.ValidationResult result = InlineAssemblyValidator.Validate(
-            """
-            MOV %01, #1
-            ADD %1, #2
-            """,
-            new TextSpan(0, 0),
-            new Dictionary<string, InlineAsmVarBindingSlot>(),
-            diagnostics);
-
-        Assert.That(diagnostics, Is.Empty);
-        Assert.That(result.TempBindings.Select(static binding => binding.PlaceholderText), Is.EqualTo(new[] { "%1" }));
-        Assert.That(result.ReferencedBindings, Is.Empty);
-        InlineAsmInstructionLine firstInstruction = (InlineAsmInstructionLine)result.Lines[0];
-        InlineAsmBindingRefOperand firstOperand = (InlineAsmBindingRefOperand)firstInstruction.Operands[0];
-        Assert.That(firstOperand.Slot.PlaceholderText, Is.EqualTo("%1"));
-    }
-
-    [Test]
-    public void InlineAssemblyValidator_WarnsWhenTempIsReadBeforeWrite()
-    {
-        DiagnosticBag diagnostics = new();
-
-        _ = InlineAssemblyValidator.Validate(
-            "ADD %0, #1",
-            new TextSpan(0, 0),
-            new Dictionary<string, InlineAsmVarBindingSlot>(),
-            diagnostics);
-
-        Assert.That(diagnostics.Select(static diagnostic => diagnostic.Code), Does.Contain(DiagnosticCode.W0307_InlineAsmTempReadBeforeWrite));
-        Assert.That(diagnostics.Count(static diagnostic => diagnostic.Code == DiagnosticCode.W0307_InlineAsmTempReadBeforeWrite), Is.EqualTo(1));
-    }
-
-    [Test]
+[Test]
     public void LowLevelModelTypes_ExposeExpectedSurface()
     {
         AsmPhysicalRegisterOperand physical = new(new P2Register(0x1F8));

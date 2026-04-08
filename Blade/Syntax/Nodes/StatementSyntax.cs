@@ -354,11 +354,7 @@ public sealed class AsmBlockStatementSyntax : StatementSyntax
     [ExcludeFromCodeCoverage]
     public Token AsmKeyword { get; }
     public Token? VolatileKeyword { get; }
-    [ExcludeFromCodeCoverage]
-    public Token OpenBrace { get; }
-    public string Body { get; }
-    [ExcludeFromCodeCoverage]
-    public Token CloseBrace { get; }
+    public InlineAsmBodySyntax Body { get; }
     public AsmOutputBindingSyntax? OutputBinding { get; }
     [ExcludeFromCodeCoverage]
     public Token Semicolon { get; }
@@ -367,18 +363,14 @@ public sealed class AsmBlockStatementSyntax : StatementSyntax
     public AsmBlockStatementSyntax(
         Token asmKeyword,
         Token? volatileKeyword,
-        Token openBrace,
-        string body,
-        Token closeBrace,
+        InlineAsmBodySyntax body,
         AsmOutputBindingSyntax? outputBinding,
         Token semicolon)
         : base(TextSpan.FromBounds(asmKeyword.Span.Start, semicolon.Span.End))
     {
         AsmKeyword = asmKeyword;
         VolatileKeyword = volatileKeyword;
-        OpenBrace = openBrace;
-        Body = body;
-        CloseBrace = closeBrace;
+        Body = Requires.NotNull(body);
         OutputBinding = outputBinding;
         Semicolon = semicolon;
     }

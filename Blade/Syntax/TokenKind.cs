@@ -105,6 +105,7 @@ public enum TokenKind
     Dot,
     At,
     Hash,
+    Dollar,
 
     // Multi-char operators
     Arrow,                  // ->

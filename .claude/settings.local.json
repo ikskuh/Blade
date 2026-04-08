@@ -15,7 +15,7 @@
       "Bash(flexspin:*)",
       "Bash(python Scripts/coverage_gaps.py:*)",
       "Bash(python /home/felix/projects/nerdgruppe/blade/Scripts/coverage_range.py:*)",
-      "Bash(/home/felix/projects/nerdgruppe/blade/Blade/bin/Debug/net10.0/blade --dump-all /dev/stdin)",
+      "Bash(/home/felix/projects/nerdgruppe/blade/Blade/bin/Debug/net10.0/blade:*)",
       "Bash(echo \"EXIT: $?\")",
       "Bash(python3 -c \":*)",
       "mcp__blade_compiler_service__compile_file",
@@ -25,10 +25,11 @@
       "mcp__serena__get_symbols_overview",
       "mcp__serena__find_file",
       "mcp__serena__think_about_collected_information",
-      "Bash(cat /home/felix/projects/nerdgruppe/blade/Blade.Roslyn.Analyzers/*.csproj)",
-      "Bash(ls /home/felix/projects/nerdgruppe/blade/*.sln)",
+      "Bash(cat /home/felix/projects/nerdgruppe/blade/**)",
+      "Bash(ls /home/felix/projects/nerdgruppe/blade/**)",
       "mcp__blade_compiler_service__build_compiler",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(echo \"EXIT=$?\")"
     ]
   },
   "enabledMcpjsonServers": [

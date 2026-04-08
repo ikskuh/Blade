@@ -119,7 +119,6 @@ internal static class MirOptimizationHelpers
             ? instruction
             : new MirInlineAsmInstruction(
                 inlineAsm.Volatility,
-                inlineAsm.Body,
                 inlineAsm.FlagOutput,
                 inlineAsm.ParsedLines,
                 rewritten,

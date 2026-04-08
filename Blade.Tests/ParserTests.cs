@@ -648,7 +648,7 @@ public class ParserTests
                 yieldto worker(a, b);
                 return;
                 return a, b;
-                asm { { } } -> state: bool@C;
+                asm { } -> state: bool@C;
             }
             """);
         AssertNoDiagnostics(diag);

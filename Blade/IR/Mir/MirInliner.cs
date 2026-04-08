@@ -263,7 +263,6 @@ public static class MirInliner
                 MirUpdatePlaceInstruction updatePlace => new MirUpdatePlaceInstruction(updatePlace.Place, updatePlace.OperatorKind, updatePlace.Value, updatePlace.Span, updatePlace.PointerArithmeticStride),
                 MirInlineAsmInstruction inlineAsm => new MirInlineAsmInstruction(
                     inlineAsm.Volatility,
-                    inlineAsm.Body,
                     inlineAsm.FlagOutput,
                     inlineAsm.ParsedLines,
                     inlineAsm.Bindings,

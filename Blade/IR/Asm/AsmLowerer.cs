@@ -896,31 +896,20 @@ public static class AsmLowerer
         IReadOnlyDictionary<ControlFlowLabelSymbol, ControlFlowLabelSymbol> localLabels,
         bool isVolatile)
     {
-        Queue<InlineAsmLine> parsedLines = new(inlineAsm.ParsedLines);
         List<AsmNode> lowered = [];
-        foreach (InlineAsmSourceLine sourceLine in ParseInlineAsmSourceLines(inlineAsm.Body))
+        foreach (InlineAsmLine line in inlineAsm.ParsedLines)
         {
-            if (sourceLine.IsBlank)
-                continue;
-
-            if (sourceLine.CommentText is not null && sourceLine.InstructionText is null)
+            switch (line)
             {
-                lowered.Add(new AsmCommentNode(sourceLine.CommentText));
-                continue;
-            }
+                case InlineAsmCommentLine standaloneComment:
+                    lowered.Add(new AsmCommentNode(standaloneComment.Comment));
+                    continue;
 
-            if (sourceLine.InstructionText is null)
-                continue;
-
-            if (!parsedLines.TryDequeue(out InlineAsmLine? line))
-                return false;
-
-            if (line is InlineAsmLabelLine labelLine)
-            {
-                lowered.Add(new AsmLabelNode(RewriteInlineAsmLocalLabel(labelLine.Label, localLabels)));
-                if (sourceLine.CommentText is not null)
-                    lowered.Add(new AsmCommentNode(sourceLine.CommentText));
-                continue;
+                case InlineAsmLabelLine labelLine:
+                    lowered.Add(new AsmLabelNode(RewriteInlineAsmLocalLabel(labelLine.Label, localLabels)));
+                    if (labelLine.TrailingComment is not null)
+                        lowered.Add(new AsmCommentNode(labelLine.TrailingComment));
+                    continue;
             }
 
             if (!TryLowerParsedInlineAsmLine(line, bindings, localLabels, out AsmInstructionNode? instruction))
@@ -930,12 +919,9 @@ public static class AsmLowerer
                 instruction = WithNonElidable(instruction!);
 
             lowered.Add(instruction!);
-            if (sourceLine.CommentText is not null)
-                lowered.Add(new AsmCommentNode(sourceLine.CommentText));
+            if (line.TrailingComment is not null)
+                lowered.Add(new AsmCommentNode(line.TrailingComment));
         }
-
-        if (parsedLines.Count != 0)
-            return false;
 
         if (isVolatile)
         {
@@ -968,35 +954,6 @@ public static class AsmLowerer
             isNonElidable: true);
     }
 
-
-    private static IEnumerable<string> SplitInlineAsmBody(string body)
-    {
-        string normalized = body.Replace("\r\n", "\n", StringComparison.Ordinal)
-            .Replace('\r', '\n');
-
-        if (normalized.Length == 0)
-            yield break;
-
-        int start = 0;
-        while (start <= normalized.Length)
-        {
-            int newline = normalized.IndexOf('\n', start);
-            if (newline < 0)
-            {
-                yield return normalized[start..];
-                yield break;
-            }
-
-            yield return normalized[start..newline];
-            start = newline + 1;
-
-            if (start == normalized.Length)
-            {
-                yield return string.Empty;
-                yield break;
-            }
-        }
-    }
 
     private static bool TryLowerParsedInlineAsmLine(
         InlineAsmLine line,
@@ -1073,37 +1030,6 @@ public static class AsmLowerer
         }
     }
 
-    private static IEnumerable<InlineAsmSourceLine> ParseInlineAsmSourceLines(string body)
-    {
-        foreach (string line in SplitInlineAsmBody(body))
-        {
-            string trimmed = line.Trim();
-            if (trimmed.Length == 0)
-            {
-                yield return new InlineAsmSourceLine(null, null, true);
-                continue;
-            }
-
-            int commentIdx = line.IndexOf("//", StringComparison.Ordinal);
-            if (commentIdx < 0)
-            {
-                yield return new InlineAsmSourceLine(trimmed, null, false);
-                continue;
-            }
-
-            string instructionText = line[..commentIdx].Trim();
-            string commentText = NormalizeBladeComment(line[(commentIdx + 2)..]);
-            yield return new InlineAsmSourceLine(
-                instructionText.Length == 0 ? null : instructionText,
-                commentText,
-                false);
-        }
-    }
-
-    private static string NormalizeBladeComment(string commentText)
-        => commentText.TrimStart();
-
-
     private static IReadOnlyDictionary<ControlFlowLabelSymbol, ControlFlowLabelSymbol> CreateInlineAsmLocalLabels(
         LoweringContext ctx,
         IReadOnlyList<InlineAsmLine> parsedLines)
@@ -1150,8 +1076,6 @@ public static class AsmLowerer
 
         return builder.ToString();
     }
-
-    private readonly record struct InlineAsmSourceLine(string? InstructionText, string? CommentText, bool IsBlank);
 
     private static void LowerConst(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
@@ -1318,9 +1242,14 @@ public static class AsmLowerer
             case VariableStorageClass.Hub:
                 nodes.Add(new AsmInstructionNode(SelectHubWriteOpcode(RequireTypedResult(op, "store.deref")), [value, pointer]));
                 break;
+            case VariableStorageClass.Reg:
+                Assert.Unreachable("Register variable loads/stores must never reach ASMIR lowering as such");
+                break;
+            case VariableStorageClass.Automatic:
+                Assert.Unreachable("Automatic variable loads/stores must never reach ASMIR lowering as such");
+                break;
             default:
-                ReportUnsupportedOpcode(ctx, op);
-                nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
+                Assert.Unreachable($"unhandled switch value: {op.DisplayName}");
                 break;
         }
     }
