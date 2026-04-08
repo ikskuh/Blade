@@ -88,7 +88,7 @@ public class RegisterAllocatorTests
     private static IrBuildResult CreateBuildResult(AsmModule asmModule)
     {
         BoundProgram program = new([], [], [], new Dictionary<string, TypeSymbol>(), new Dictionary<string, FunctionSymbol>(), new Dictionary<string, ImportedModule>());
-        MirModule mirModule = new([]);
+        MirModule mirModule = new([], [], []);
         LirModule lirModule = new([]);
         return new IrBuildResult(program, mirModule, mirModule, lirModule, lirModule, asmModule, asmModule, string.Empty);
     }

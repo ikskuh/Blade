@@ -101,6 +101,11 @@ public sealed class Lexer
             }
 
             Advance();
+            if (Current == '=')
+            {
+                Advance();
+                return MakeToken(TokenKind.SlashEqual);
+            }
             return MakeToken(TokenKind.Slash);
         }
 
@@ -476,11 +481,21 @@ public sealed class Lexer
                 if (Current == '<')
                 {
                     Advance();
-                    if (Current == '<') { Advance(); return MakeToken(TokenKind.LessLessLess); }
+                    if (Current == '<')
+                    {
+                        Advance();
+                        if (Current == '=') { Advance(); return MakeToken(TokenKind.LessLessLessEqual); }
+                        return MakeToken(TokenKind.LessLessLess);
+                    }
                     if (Current == '=') { Advance(); return MakeToken(TokenKind.LessLessEqual); }
                     return MakeToken(TokenKind.LessLess);
                 }
-                if (Current == '%' && Peek(1) == '<') { Advance(2); return MakeToken(TokenKind.RotateLeft); }
+                if (Current == '%' && Peek(1) == '<')
+                {
+                    Advance(2);
+                    if (Current == '=') { Advance(); return MakeToken(TokenKind.RotateLeftEqual); }
+                    return MakeToken(TokenKind.RotateLeft);
+                }
                 if (Current == '=') { Advance(); return MakeToken(TokenKind.LessEqual); }
                 return MakeToken(TokenKind.Less);
 
@@ -489,11 +504,21 @@ public sealed class Lexer
                 if (Current == '>')
                 {
                     Advance();
-                    if (Current == '>') { Advance(); return MakeToken(TokenKind.GreaterGreaterGreater); }
+                    if (Current == '>')
+                    {
+                        Advance();
+                        if (Current == '=') { Advance(); return MakeToken(TokenKind.GreaterGreaterGreaterEqual); }
+                        return MakeToken(TokenKind.GreaterGreaterGreater);
+                    }
                     if (Current == '=') { Advance(); return MakeToken(TokenKind.GreaterGreaterEqual); }
                     return MakeToken(TokenKind.GreaterGreater);
                 }
-                if (Current == '%' && Peek(1) == '>') { Advance(2); return MakeToken(TokenKind.RotateRight); }
+                if (Current == '%' && Peek(1) == '>')
+                {
+                    Advance(2);
+                    if (Current == '=') { Advance(); return MakeToken(TokenKind.RotateRightEqual); }
+                    return MakeToken(TokenKind.RotateRight);
+                }
                 if (Current == '=') { Advance(); return MakeToken(TokenKind.GreaterEqual); }
                 return MakeToken(TokenKind.Greater);
 
@@ -542,7 +567,10 @@ public sealed class Lexer
             case '@': Advance(); return MakeToken(TokenKind.At);
             case '#': Advance(); return MakeToken(TokenKind.Hash);
             case '$': Advance(); return MakeToken(TokenKind.Dollar);
-            case '*': Advance(); return MakeToken(TokenKind.Star);
+            case '*':
+                Advance();
+                if (Current == '=') { Advance(); return MakeToken(TokenKind.StarEqual); }
+                return MakeToken(TokenKind.Star);
             case '(': Advance(); return MakeToken(TokenKind.OpenParen);
             case ')': Advance(); return MakeToken(TokenKind.CloseParen);
             case '{': Advance(); return MakeToken(TokenKind.OpenBrace);

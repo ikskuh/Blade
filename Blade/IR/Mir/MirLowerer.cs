@@ -924,6 +924,7 @@ public static class MirLowerer
                 MirValueId element = EmitLoadIndex(
                     iterableValue,
                     bodyIndex,
+                    forStatement.Iterable.Type,
                     ((ArrayTypeSymbol)forStatement.Iterable.Type).ElementType,
                     iterStorageClass,
                     hasSideEffects: false,
@@ -943,7 +944,7 @@ public static class MirLowerer
                 {
                     TypeSymbol elemType = ((ArrayTypeSymbol)forStatement.Iterable.Type).ElementType;
                     MirValueId updatedItem = ReadSymbol(forStatement.ItemVariable, elemType, forStatement.Body.Span);
-                    _currentBlock.Instructions.Add(new MirStoreIndexInstruction(elemType, iterableValue, postIndex, updatedItem, iterStorageClass, forStatement.Body.Span));
+                    _currentBlock.Instructions.Add(new MirStoreIndexInstruction(elemType, forStatement.Iterable.Type, iterableValue, postIndex, updatedItem, iterStorageClass, forStatement.Body.Span));
                 }
 
                 MirValueId bodyOne = EmitConstant(new RuntimeBladeValue(BuiltinTypes.U32, 1L), forStatement.Body.Span);
@@ -1187,6 +1188,7 @@ public static class MirLowerer
                     _currentBlock.Instructions.Add(new MirLoadIndexInstruction(
                         result,
                         indexExpression.Type,
+                        indexExpression.Expression.Type,
                         indexed,
                         index,
                         GetStorageClass(indexExpression.Expression),
@@ -1203,6 +1205,7 @@ public static class MirLowerer
                     _currentBlock.Instructions.Add(new MirLoadDerefInstruction(
                         result,
                         pointerDerefExpression.Type,
+                        pointerDerefExpression.Expression.Type,
                         pointer,
                         GetStorageClass(pointerDerefExpression.Expression.Type),
                         isVolatile,
@@ -1279,7 +1282,7 @@ public static class MirLowerer
             for (int i = 0; i < explicitCount; i++)
             {
                 MirValueId indexValue = EmitConstant(BladeValue.IntegerLiteral(i), arrayLiteral.Span);
-                _currentBlock.Instructions.Add(new MirStoreIndexInstruction(arrElemType, arrayValue, indexValue, elementValues[i], storageClass, arrayLiteral.Span));
+                _currentBlock.Instructions.Add(new MirStoreIndexInstruction(arrElemType, arrayLiteral.Type, arrayValue, indexValue, elementValues[i], storageClass, arrayLiteral.Span));
             }
 
             if (arrayLiteral.LastElementIsSpread && explicitCount > 0)
@@ -1288,7 +1291,7 @@ public static class MirLowerer
                 for (int i = explicitCount; i < producedLength; i++)
                 {
                     MirValueId indexValue = EmitConstant(BladeValue.IntegerLiteral(i), arrayLiteral.Span);
-                    _currentBlock.Instructions.Add(new MirStoreIndexInstruction(arrElemType, arrayValue, indexValue, spreadValue, storageClass, arrayLiteral.Span));
+                    _currentBlock.Instructions.Add(new MirStoreIndexInstruction(arrElemType, arrayLiteral.Type, arrayValue, indexValue, spreadValue, storageClass, arrayLiteral.Span));
                 }
             }
             else if (explicitCount == 0)
@@ -1297,7 +1300,7 @@ public static class MirLowerer
                 {
                     MirValueId indexValue = EmitConstant(BladeValue.IntegerLiteral(i), arrayLiteral.Span);
                     MirValueId defaultValue = EmitDefaultValue(arrElemType, arrayLiteral.Span);
-                    _currentBlock.Instructions.Add(new MirStoreIndexInstruction(arrElemType, arrayValue, indexValue, defaultValue, storageClass, arrayLiteral.Span));
+                    _currentBlock.Instructions.Add(new MirStoreIndexInstruction(arrElemType, arrayLiteral.Type, arrayValue, indexValue, defaultValue, storageClass, arrayLiteral.Span));
                 }
             }
 
@@ -1544,12 +1547,14 @@ public static class MirLowerer
                 BoundIndexAssignmentTarget indexTarget => EmitLoadIndex(
                     LowerExpression(indexTarget.Expression),
                     LowerExpression(indexTarget.Index),
+                    indexTarget.Expression.Type,
                     indexTarget.Type,
                     GetStorageClass(indexTarget.Expression),
                     indexTarget.Expression.Type is MultiPointerTypeSymbol pointer && pointer.IsVolatile,
                     target.Span),
                 BoundPointerDerefAssignmentTarget pointerTarget => EmitLoadDeref(
                     LowerExpression(pointerTarget.Expression),
+                    pointerTarget.Expression.Type,
                     pointerTarget.Type,
                     GetStorageClass(pointerTarget.Expression.Type),
                     pointerTarget.Expression.Type is PointerTypeSymbol pointerType && pointerType.IsVolatile,
@@ -1590,14 +1595,14 @@ public static class MirLowerer
                 {
                     MirValueId indexed = LowerExpression(indexTarget.Expression);
                     MirValueId index = LowerExpression(indexTarget.Index);
-                    _currentBlock.Instructions.Add(new MirStoreIndexInstruction(indexTarget.Type, indexed, index, value, GetStorageClass(indexTarget.Expression), span));
+                    _currentBlock.Instructions.Add(new MirStoreIndexInstruction(indexTarget.Type, indexTarget.Expression.Type, indexed, index, value, GetStorageClass(indexTarget.Expression), span));
                     return;
                 }
 
                 case BoundPointerDerefAssignmentTarget pointerTarget:
                 {
                     MirValueId pointer = LowerExpression(pointerTarget.Expression);
-                    _currentBlock.Instructions.Add(new MirStoreDerefInstruction(pointerTarget.Type, pointer, value, GetStorageClass(pointerTarget.Expression), span));
+                    _currentBlock.Instructions.Add(new MirStoreDerefInstruction(pointerTarget.Type, pointerTarget.Expression.Type, pointer, value, GetStorageClass(pointerTarget.Expression), span));
                     return;
                 }
 
@@ -1633,14 +1638,14 @@ public static class MirLowerer
                 {
                     MirValueId indexed = LowerExpression(indexExpression.Expression);
                     MirValueId index = LowerExpression(indexExpression.Index);
-                    _currentBlock.Instructions.Add(new MirStoreIndexInstruction(indexExpression.Type, indexed, index, value, GetStorageClass(indexExpression.Expression), span));
+                    _currentBlock.Instructions.Add(new MirStoreIndexInstruction(indexExpression.Type, indexExpression.Expression.Type, indexed, index, value, GetStorageClass(indexExpression.Expression), span));
                     return;
                 }
 
                 case BoundPointerDerefExpression pointerDerefExpression:
                 {
                     MirValueId pointer = LowerExpression(pointerDerefExpression.Expression);
-                    _currentBlock.Instructions.Add(new MirStoreDerefInstruction(pointerDerefExpression.Type, pointer, value, GetStorageClass(pointerDerefExpression.Expression), span));
+                    _currentBlock.Instructions.Add(new MirStoreDerefInstruction(pointerDerefExpression.Type, pointerDerefExpression.Expression.Type, pointer, value, GetStorageClass(pointerDerefExpression.Expression), span));
                     return;
                 }
             }
@@ -1777,23 +1782,35 @@ public static class MirLowerer
             {
                 TokenKind.PlusEqual => BoundBinaryOperatorKind.Add,
                 TokenKind.MinusEqual => BoundBinaryOperatorKind.Subtract,
+                TokenKind.StarEqual => BoundBinaryOperatorKind.Multiply,
+                TokenKind.SlashEqual => BoundBinaryOperatorKind.Divide,
                 TokenKind.PercentEqual => BoundBinaryOperatorKind.Modulo,
                 TokenKind.AmpersandEqual => BoundBinaryOperatorKind.BitwiseAnd,
                 TokenKind.PipeEqual => BoundBinaryOperatorKind.BitwiseOr,
                 TokenKind.CaretEqual => BoundBinaryOperatorKind.BitwiseXor,
                 TokenKind.LessLessEqual => BoundBinaryOperatorKind.ShiftLeft,
                 TokenKind.GreaterGreaterEqual => BoundBinaryOperatorKind.ShiftRight,
+                TokenKind.LessLessLessEqual => BoundBinaryOperatorKind.ArithmeticShiftLeft,
+                TokenKind.GreaterGreaterGreaterEqual => BoundBinaryOperatorKind.ArithmeticShiftRight,
+                TokenKind.RotateLeftEqual => BoundBinaryOperatorKind.RotateLeft,
+                TokenKind.RotateRightEqual => BoundBinaryOperatorKind.RotateRight,
                 _ => default,
             };
 
             return operatorKind is TokenKind.PlusEqual
                 or TokenKind.MinusEqual
+                or TokenKind.StarEqual
+                or TokenKind.SlashEqual
                 or TokenKind.PercentEqual
                 or TokenKind.AmpersandEqual
                 or TokenKind.PipeEqual
                 or TokenKind.CaretEqual
                 or TokenKind.LessLessEqual
-                or TokenKind.GreaterGreaterEqual;
+                or TokenKind.GreaterGreaterEqual
+                or TokenKind.LessLessLessEqual
+                or TokenKind.GreaterGreaterGreaterEqual
+                or TokenKind.RotateLeftEqual
+                or TokenKind.RotateRightEqual;
         }
 
         private MirValueId EmitConstant(BladeValue value, TextSpan span)
@@ -1827,25 +1844,27 @@ public static class MirLowerer
         private MirValueId EmitLoadIndex(
             MirValueId indexed,
             MirValueId index,
+            TypeSymbol indexedType,
             TypeSymbol type,
             VariableStorageClass storageClass,
             bool hasSideEffects,
             TextSpan span)
         {
             MirValueId result = NextValue();
-            _currentBlock.Instructions.Add(new MirLoadIndexInstruction(result, type, indexed, index, storageClass, hasSideEffects, span));
+            _currentBlock.Instructions.Add(new MirLoadIndexInstruction(result, type, indexedType, indexed, index, storageClass, hasSideEffects, span));
             return result;
         }
 
         private MirValueId EmitLoadDeref(
             MirValueId pointer,
+            TypeSymbol pointerType,
             TypeSymbol type,
             VariableStorageClass storageClass,
             bool hasSideEffects,
             TextSpan span)
         {
             MirValueId result = NextValue();
-            _currentBlock.Instructions.Add(new MirLoadDerefInstruction(result, type, pointer, storageClass, hasSideEffects, span));
+            _currentBlock.Instructions.Add(new MirLoadDerefInstruction(result, type, pointerType, pointer, storageClass, hasSideEffects, span));
             return result;
         }
 

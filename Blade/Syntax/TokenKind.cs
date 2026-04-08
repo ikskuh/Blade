@@ -132,10 +132,16 @@ public enum TokenKind
     Equal,
     PlusEqual,
     MinusEqual,
+    StarEqual,
+    SlashEqual,
     PercentEqual,
     AmpersandEqual,
     PipeEqual,
     CaretEqual,
+    LessLessLessEqual,    // <<<=
+    GreaterGreaterGreaterEqual, // >>>=
+    RotateLeftEqual,      // <%<=
+    RotateRightEqual,     // >%>=
     LessLessEqual,    // <<=
     GreaterGreaterEqual, // >>=
 

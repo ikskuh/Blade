@@ -197,10 +197,16 @@ public static class SyntaxFacts
         TokenKind.Equal => "=",
         TokenKind.PlusEqual => "+=",
         TokenKind.MinusEqual => "-=",
+        TokenKind.StarEqual => "*=",
+        TokenKind.SlashEqual => "/=",
         TokenKind.PercentEqual => "%=",
         TokenKind.AmpersandEqual => "&=",
         TokenKind.PipeEqual => "|=",
         TokenKind.CaretEqual => "^=",
+        TokenKind.LessLessLessEqual => "<<<=",
+        TokenKind.GreaterGreaterGreaterEqual => ">>>=",
+        TokenKind.RotateLeftEqual => "<%<=",
+        TokenKind.RotateRightEqual => ">%>=",
         TokenKind.LessLessEqual => "<<=",
         TokenKind.GreaterGreaterEqual => ">>=",
 
@@ -263,8 +269,10 @@ public static class SyntaxFacts
     /// </summary>
     public static bool IsAssignmentOperator(TokenKind kind) => kind switch
     {
-        TokenKind.Equal or TokenKind.PlusEqual or TokenKind.MinusEqual or TokenKind.PercentEqual
-            or TokenKind.AmpersandEqual or TokenKind.PipeEqual or TokenKind.CaretEqual
+        TokenKind.Equal or TokenKind.PlusEqual or TokenKind.MinusEqual or TokenKind.StarEqual
+            or TokenKind.SlashEqual or TokenKind.PercentEqual or TokenKind.AmpersandEqual
+            or TokenKind.PipeEqual or TokenKind.CaretEqual or TokenKind.LessLessLessEqual
+            or TokenKind.GreaterGreaterGreaterEqual or TokenKind.RotateLeftEqual or TokenKind.RotateRightEqual
             or TokenKind.LessLessEqual or TokenKind.GreaterGreaterEqual => true,
         _ => false,
     };

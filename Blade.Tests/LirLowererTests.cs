@@ -14,10 +14,20 @@ public sealed class LirLowererTests
     [Test]
     public void Lower_CallWithMoreThanTwoExtraResults_ThrowsInsteadOfPickingAnAbiFallback()
     {
+        FunctionSymbol targetFunction = new("too_many_results", FunctionKind.Default)
+        {
+            ReturnSlots =
+            [
+                new ReturnSlot(BuiltinTypes.U32, ReturnPlacement.Register),
+                new ReturnSlot(BuiltinTypes.Bool, ReturnPlacement.FlagC),
+                new ReturnSlot(BuiltinTypes.Bool, ReturnPlacement.FlagZ),
+                new ReturnSlot(BuiltinTypes.Bool, ReturnPlacement.FlagZ),
+            ],
+        };
         MirCallInstruction call = new(
             MirValue(0),
             BuiltinTypes.U32,
-            new FunctionSymbol("too_many_results", FunctionKind.Default),
+            targetFunction,
             [],
             Span,
             [
@@ -27,7 +37,7 @@ public sealed class LirLowererTests
             ]);
         MirBlock block = new(MirBlockRef("bb0"), [], [call], new MirReturnTerminator([], Span));
         MirFunction function = CreateMirFunction("$top", isEntryPoint: true, FunctionKind.Default, [], [block]);
-        MirModule module = new([function]);
+        MirModule module = new([], [], [function]);
 
         UnreachableException? ex = Assert.Throws<UnreachableException>(() => LirLowerer.Lower(module));
 

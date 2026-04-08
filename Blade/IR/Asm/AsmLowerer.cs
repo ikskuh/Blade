@@ -2025,14 +2025,28 @@ public static class AsmLowerer
         {
             BoundBinaryOperatorKind.Add => P2Mnemonic.ADD,
             BoundBinaryOperatorKind.Subtract => P2Mnemonic.SUB,
+            BoundBinaryOperatorKind.Multiply => P2Mnemonic.QMUL,
+            BoundBinaryOperatorKind.Divide => P2Mnemonic.QDIV,
             BoundBinaryOperatorKind.BitwiseAnd => P2Mnemonic.AND,
             BoundBinaryOperatorKind.BitwiseOr => P2Mnemonic.OR,
             BoundBinaryOperatorKind.BitwiseXor => P2Mnemonic.XOR,
             BoundBinaryOperatorKind.ShiftLeft => P2Mnemonic.SHL,
             BoundBinaryOperatorKind.ShiftRight => P2Mnemonic.SHR,
+            BoundBinaryOperatorKind.ArithmeticShiftLeft => P2Mnemonic.SAL,
+            BoundBinaryOperatorKind.ArithmeticShiftRight => P2Mnemonic.SAR,
+            BoundBinaryOperatorKind.RotateLeft => P2Mnemonic.ROL,
+            BoundBinaryOperatorKind.RotateRight => P2Mnemonic.ROR,
             BoundBinaryOperatorKind.Modulo => P2Mnemonic.QDIV,
             _ => Assert.UnreachableValue<P2Mnemonic>($"Update-place operator '{operation.OperatorKind}' must be one of the binder-reachable compound assignment kinds."),
         };
+
+        if (operation.OperatorKind == BoundBinaryOperatorKind.Multiply
+            || operation.OperatorKind == BoundBinaryOperatorKind.Divide)
+        {
+            nodes.Add(new AsmInstructionNode(opcode, [place, value]));
+            nodes.Add(new AsmInstructionNode(P2Mnemonic.GETQX, [place]));
+            return;
+        }
 
         if (operation.OperatorKind == BoundBinaryOperatorKind.Modulo)
         {

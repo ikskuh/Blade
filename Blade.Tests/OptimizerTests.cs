@@ -34,7 +34,7 @@ public class OptimizerTests
         MirBlockRef bb2 = new();
         MirBlockRef dead = new();
 
-        MirModule module = new([
+        MirModule module = new([], [], [
             CreateMirFunction("f", isEntryPoint: false, FunctionKind.Default, [],
             [
                 new MirBlock(bb0, [], [Constant(seed, BuiltinTypes.U32, 7u)],

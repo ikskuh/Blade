@@ -183,15 +183,18 @@ public class ParserTests
         Assert.That(assign.Target, Is.TypeOf<NameExpressionSyntax>());
     }
 
-    [Test]
-    public void CompoundAssignment_ParsesCorrectly()
+    [TestCase("x += 1;", TokenKind.PlusEqual)]
+    [TestCase("x *= 2;", TokenKind.StarEqual)]
+    [TestCase("x <<<= 3;", TokenKind.LessLessLessEqual)]
+    [TestCase("x <%<= 4;", TokenKind.RotateLeftEqual)]
+    public void CompoundAssignment_ParsesCorrectly(string text, TokenKind expectedOperator)
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("x += 1;");
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse(text);
         AssertNoDiagnostics(diag);
 
         GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
         AssignmentStatementSyntax assign = (AssignmentStatementSyntax)global.Statement;
-        Assert.That(assign.Operator.Kind, Is.EqualTo(TokenKind.PlusEqual));
+        Assert.That(assign.Operator.Kind, Is.EqualTo(expectedOperator));
     }
 
     [Test]

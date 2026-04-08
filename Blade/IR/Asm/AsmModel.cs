@@ -8,14 +8,9 @@ using Blade.Semantics;
 
 namespace Blade.IR.Asm;
 
-internal sealed class AsmSpecialRegisterSymbol : IAsmSymbol
+internal sealed class AsmSpecialRegisterSymbol(P2Register register) : IAsmSymbol
 {
-    public AsmSpecialRegisterSymbol(P2Register register)
-    {
-        Register = register;
-    }
-
-    public P2Register Register { get; }
+    public P2Register Register { get; } = register;
     public string Name => Register.ToString();
     public SymbolType SymbolType => SymbolType.RegVariable;
 }
@@ -32,57 +27,35 @@ internal sealed class AsmCurrentAddressSymbol : IAsmSymbol
     public SymbolType SymbolType => SymbolType.ControlFlowLabel;
 }
 
-internal sealed class AsmSpillSlotSymbol : IAsmSymbol
+internal sealed class AsmSpillSlotSymbol(int slot) : IAsmSymbol
 {
-    public AsmSpillSlotSymbol(int slot)
-    {
-        Slot = Requires.NonNegative(slot);
-    }
-
-    public int Slot { get; }
+    public int Slot { get; } = Requires.NonNegative(slot);
     public string Name => $"_r{Slot}";
     public SymbolType SymbolType => SymbolType.RegVariable;
 }
 
-internal sealed class AsmSharedConstantSymbol : IAsmSymbol
+internal sealed class AsmSharedConstantSymbol(uint value) : IAsmSymbol
 {
-    public AsmSharedConstantSymbol(uint value)
-    {
-        Value = value;
-    }
-
-    public uint Value { get; }
+    public uint Value { get; } = value;
     public string Name => $"c_{Value}";
     public SymbolType SymbolType => SymbolType.RegVariable;
 }
 
-internal sealed class AsmFunctionReferenceSymbol : IAsmSymbol
+internal sealed class AsmFunctionReferenceSymbol(FunctionSymbol function) : IAsmSymbol
 {
-    public AsmFunctionReferenceSymbol(FunctionSymbol function)
-    {
-        Function = Requires.NotNull(function);
-    }
-
-    public FunctionSymbol Function { get; }
+    public FunctionSymbol Function { get; } = Requires.NotNull(function);
     public string Name => Function.Name;
     public SymbolType SymbolType => SymbolType.Function;
 }
 
-public sealed class AsmModule
+public sealed class AsmModule(
+    IReadOnlyList<StoragePlace> storagePlaces,
+    IReadOnlyList<AsmDataBlock> dataBlocks,
+    IReadOnlyList<AsmFunction> functions)
 {
-    public AsmModule(
-        IReadOnlyList<StoragePlace> storagePlaces,
-        IReadOnlyList<AsmDataBlock> dataBlocks,
-        IReadOnlyList<AsmFunction> functions)
-    {
-        StoragePlaces = storagePlaces;
-        DataBlocks = dataBlocks;
-        Functions = functions;
-    }
-
-    public IReadOnlyList<StoragePlace> StoragePlaces { get; }
-    public IReadOnlyList<AsmDataBlock> DataBlocks { get; }
-    public IReadOnlyList<AsmFunction> Functions { get; }
+    public IReadOnlyList<StoragePlace> StoragePlaces { get; } = storagePlaces;
+    public IReadOnlyList<AsmDataBlock> DataBlocks { get; } = dataBlocks;
+    public IReadOnlyList<AsmFunction> Functions { get; } = functions;
 }
 
 public enum AsmDataBlockKind
@@ -351,14 +324,9 @@ public enum AsmSymbolAddressingMode
 /// <summary>
 /// Virtual register operand (%r0, %r1, ...).
 /// </summary>
-public sealed class AsmRegisterOperand : AsmOperand
+public sealed class AsmRegisterOperand(VirtualAsmRegister register) : AsmOperand
 {
-    public AsmRegisterOperand(VirtualAsmRegister register)
-    {
-        Register = Requires.NotNull(register);
-    }
-
-    public VirtualAsmRegister Register { get; }
+    public VirtualAsmRegister Register { get; } = Requires.NotNull(register);
 
     public override string Format() => "%r?";
 }
@@ -367,14 +335,9 @@ public sealed class AsmRegisterOperand : AsmOperand
 /// Immediate value operand (#value). At ASMIR level, any value is allowed;
 /// the legalize pass handles range restrictions.
 /// </summary>
-public sealed class AsmImmediateOperand : AsmOperand
+public sealed class AsmImmediateOperand(long value) : AsmOperand
 {
-    public AsmImmediateOperand(long value)
-    {
-        Value = value;
-    }
-
-    public long Value { get; }
+    public long Value { get; } = value;
 
     public override string Format() => $"#{Value}";
 }
@@ -426,14 +389,9 @@ public sealed class AsmSymbolOperand : AsmOperand
 /// Label-relative reference operand (@label) used by FlexSpin's REP instruction
 /// to automatically calculate the instruction count to a target label.
 /// </summary>
-public sealed class AsmLabelRefOperand : AsmOperand
+public sealed class AsmLabelRefOperand(ControlFlowLabelSymbol label) : AsmOperand
 {
-    public AsmLabelRefOperand(ControlFlowLabelSymbol label)
-    {
-        Label = Requires.NotNull(label);
-    }
-
-    public ControlFlowLabelSymbol Label { get; }
+    public ControlFlowLabelSymbol Label { get; } = Requires.NotNull(label);
     public string Name => Label.Name;
 
     public override string Format() => $"@{Name}";
@@ -443,14 +401,9 @@ public sealed class AsmLabelRefOperand : AsmOperand
 /// Physical register operand for post-register-allocation output.
 /// Uses named P2 registers (e.g., "r0", "PA", "PB", "PTRA").
 /// </summary>
-public sealed class AsmPhysicalRegisterOperand : AsmOperand
+public sealed class AsmPhysicalRegisterOperand(P2Register register) : AsmOperand
 {
-    public AsmPhysicalRegisterOperand(P2Register register)
-    {
-        Register = register;
-    }
-
-    public P2Register Register { get; }
+    public P2Register Register { get; } = register;
     public int Address => Register.Address;
     public string Name => Register.ToString();
 
@@ -503,12 +456,7 @@ public enum AltPlaceholderKind
 /// <summary>
 /// Comment-only pseudo-node for debugging/readability in ASMIR output.
 /// </summary>
-public sealed class AsmCommentNode : AsmNode
+public sealed class AsmCommentNode(string text) : AsmNode
 {
-    public AsmCommentNode(string text)
-    {
-        Text = text;
-    }
-
-    public string Text { get; }
+    public string Text { get; } = text;
 }

@@ -720,6 +720,43 @@ public class IrPipelineTests
     }
 
     [Test]
+    public void ExtendedCompoundAssignments_UseReferenceDefinedUpdatePlaceLowering()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg var acc: u32 = 17;
+            acc *= 3;
+            acc /= 2;
+            acc <<<= 1;
+            acc >>>= 1;
+            acc <%<= 4;
+            acc >%>= 2;
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        string mir = MirTextWriter.Write(build.MirModule);
+        Assert.That(mir, Does.Contain("update.place g_acc Multiply"));
+        Assert.That(mir, Does.Contain("update.place g_acc Divide"));
+        Assert.That(mir, Does.Contain("update.place g_acc ArithmeticShiftLeft"));
+        Assert.That(mir, Does.Contain("update.place g_acc ArithmeticShiftRight"));
+        Assert.That(mir, Does.Contain("update.place g_acc RotateLeft"));
+        Assert.That(mir, Does.Contain("update.place g_acc RotateRight"));
+        Assert.That(build.AssemblyText, Does.Contain("QMUL"));
+        Assert.That(build.AssemblyText, Does.Contain("GETQX"));
+        Assert.That(build.AssemblyText, Does.Contain("QDIV"));
+        Assert.That(build.AssemblyText, Does.Contain("SAL"));
+        Assert.That(build.AssemblyText, Does.Contain("SAR"));
+        Assert.That(build.AssemblyText, Does.Contain("ROL"));
+        Assert.That(build.AssemblyText, Does.Contain("ROR"));
+    }
+
+    [Test]
     public void PointerCompoundAssignments_CarryStrideMetadataThroughUpdatePlace()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
@@ -2080,7 +2117,12 @@ public class IrPipelineTests
         LirVirtualRegister sourceRegister = LirRegister(0);
         LirVirtualRegister valueRegister = LirRegister(1);
         LirVirtualRegister destinationRegister = LirRegister(2);
-        AggregateMemberSymbol unsupportedInsert = new("bits", BuiltinTypes.U32, byteOffset: 0, bitOffset: 2, bitWidth: 5, isBitfield: true);
+        StructTypeSymbol bitfieldType = CreateStructType(
+            "PackedBits",
+            sizeBytes: 4,
+            alignmentBytes: 4,
+            new AggregateMemberSymbol("bits", BuiltinTypes.U32, byteOffset: 0, bitOffset: 2, bitWidth: 5, isBitfield: true));
+        AggregateMemberSymbol unsupportedInsert = bitfieldType.Members["bits"];
         LirFunction function = CreateLirFunction(
             "demo",
             isEntryPoint: true,
@@ -2094,7 +2136,7 @@ public class IrPipelineTests
                         new LirOpInstruction(
                             new LirBitfieldInsertOperation(unsupportedInsert),
                             destinationRegister,
-                            BuiltinTypes.U32,
+                            bitfieldType,
                             [new LirRegisterOperand(sourceRegister), new LirRegisterOperand(valueRegister)],
                             hasSideEffects: false,
                             predicate: null,
@@ -2128,7 +2170,7 @@ public class IrPipelineTests
                     [],
                     [
                         new LirOpInstruction(
-                            new LirUpdatePlaceOperation(BoundBinaryOperatorKind.ArithmeticShiftLeft),
+                            new LirUpdatePlaceOperation(BoundBinaryOperatorKind.Equals),
                             destination: null,
                             resultType: null,
                             [new LirPlaceOperand(accumulatorPlace), new LirRegisterOperand(shiftAmountRegister)],
@@ -2145,7 +2187,99 @@ public class IrPipelineTests
 
         Assert.That(exception, Is.Not.Null);
         Assert.That(exception!.Message, Does.Contain("Update-place operator"));
-        Assert.That(exception.Message, Does.Contain(nameof(BoundBinaryOperatorKind.ArithmeticShiftLeft)));
+        Assert.That(exception.Message, Does.Contain(nameof(BoundBinaryOperatorKind.Equals)));
+    }
+
+    [Test]
+    public void AsmLowerer_UpdatePlaceSupportsExtendedReferenceOperators()
+    {
+        TextSpan span = new(0, 0);
+        LirVirtualRegister valueRegister = LirRegister(0);
+        StoragePlace accumulatorPlace = CreateStoragePlace("acc");
+        LirFunction function = CreateLirFunction(
+            "demo",
+            isEntryPoint: true,
+            FunctionKind.Default,
+            [],
+            [
+                new LirBlock(
+                    LirBlockRef("bb0"),
+                    [],
+                    [
+                        new LirOpInstruction(
+                            new LirUpdatePlaceOperation(BoundBinaryOperatorKind.Multiply),
+                            destination: null,
+                            resultType: null,
+                            [new LirPlaceOperand(accumulatorPlace), new LirRegisterOperand(valueRegister)],
+                            hasSideEffects: true,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                        new LirOpInstruction(
+                            new LirUpdatePlaceOperation(BoundBinaryOperatorKind.Divide),
+                            destination: null,
+                            resultType: null,
+                            [new LirPlaceOperand(accumulatorPlace), new LirRegisterOperand(valueRegister)],
+                            hasSideEffects: true,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                        new LirOpInstruction(
+                            new LirUpdatePlaceOperation(BoundBinaryOperatorKind.ArithmeticShiftLeft),
+                            destination: null,
+                            resultType: null,
+                            [new LirPlaceOperand(accumulatorPlace), new LirRegisterOperand(valueRegister)],
+                            hasSideEffects: true,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                        new LirOpInstruction(
+                            new LirUpdatePlaceOperation(BoundBinaryOperatorKind.ArithmeticShiftRight),
+                            destination: null,
+                            resultType: null,
+                            [new LirPlaceOperand(accumulatorPlace), new LirRegisterOperand(valueRegister)],
+                            hasSideEffects: true,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                        new LirOpInstruction(
+                            new LirUpdatePlaceOperation(BoundBinaryOperatorKind.RotateLeft),
+                            destination: null,
+                            resultType: null,
+                            [new LirPlaceOperand(accumulatorPlace), new LirRegisterOperand(valueRegister)],
+                            hasSideEffects: true,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                        new LirOpInstruction(
+                            new LirUpdatePlaceOperation(BoundBinaryOperatorKind.RotateRight),
+                            destination: null,
+                            resultType: null,
+                            [new LirPlaceOperand(accumulatorPlace), new LirRegisterOperand(valueRegister)],
+                            hasSideEffects: true,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            span),
+                    ],
+                    new LirReturnTerminator([], span)),
+            ]);
+
+        AsmModule asmModule = AsmLowerer.Lower(new LirModule([accumulatorPlace], [], [function]));
+        string asmir = AsmTextWriter.Write(asmModule);
+
+        Assert.That(asmir, Does.Contain("QMUL"));
+        Assert.That(asmir, Does.Contain("GETQX"));
+        Assert.That(asmir, Does.Contain("QDIV"));
+        Assert.That(asmir, Does.Contain("SAL"));
+        Assert.That(asmir, Does.Contain("SAR"));
+        Assert.That(asmir, Does.Contain("ROL"));
+        Assert.That(asmir, Does.Contain("ROR"));
     }
 
     [Test]
@@ -2187,7 +2321,10 @@ public class IrPipelineTests
     {
         TextSpan span = new(0, 0);
         LirVirtualRegister sourceRegister = LirRegister(0);
-        FunctionSymbol missingCoroutine = new("worker", FunctionKind.Coro);
+        FunctionSymbol missingCoroutine = new("worker", FunctionKind.Coro)
+        {
+            Parameters = [new ParameterSymbol("value", BuiltinTypes.U32)],
+        };
         LirFunction function = CreateLirFunction(
             "$top",
             isEntryPoint: true,
@@ -2250,64 +2387,156 @@ public class IrPipelineTests
     }
 
     [Test]
-    public void AsmLowerer_BitfieldExtractWithoutResultType_SkipsExtension()
+    public void LirOpInstruction_BitfieldExtractWithoutResultType_Throws()
     {
         TextSpan span = new(0, 0);
         LirVirtualRegister sourceRegister = LirRegister(0);
         LirVirtualRegister destinationRegister = LirRegister(1);
-        AggregateMemberSymbol byteMember = new("b", BuiltinTypes.U8, byteOffset: 0, bitOffset: 8, bitWidth: 8, isBitfield: true);
-        AggregateMemberSymbol wordMember = new("w", BuiltinTypes.U16, byteOffset: 0, bitOffset: 16, bitWidth: 16, isBitfield: true);
-        AggregateMemberSymbol shiftMember = new("s", BuiltinTypes.U32, byteOffset: 0, bitOffset: 1, bitWidth: 4, isBitfield: true);
-        LirFunction function = CreateLirFunction(
-            "demo",
-            isEntryPoint: true,
-            FunctionKind.Default,
+        AggregateMemberSymbol member = new("b", BuiltinTypes.U8, byteOffset: 0, bitOffset: 8, bitWidth: 8, isBitfield: true);
+
+        UnreachableException? exception = Assert.Throws<UnreachableException>(() => new LirOpInstruction(
+            new LirBitfieldExtractOperation(member),
+            destinationRegister,
+            resultType: null,
+            [new LirRegisterOperand(sourceRegister)],
+            hasSideEffects: false,
+            predicate: null,
+            writesC: false,
+            writesZ: false,
+            span));
+
+        Assert.That(exception, Is.Not.Null);
+        Assert.That(exception!.Message, Does.Contain("must declare a result type"));
+    }
+
+    [Test]
+    public void LirOpInstruction_LoadIndexRequiresIndexableSourceType()
+    {
+        TextSpan span = new(0, 0);
+        LirVirtualRegister indexedRegister = LirRegister(0);
+        LirVirtualRegister indexRegister = LirRegister(1);
+        LirVirtualRegister destinationRegister = LirRegister(2);
+
+        UnreachableException? exception = Assert.Throws<UnreachableException>(() => new LirOpInstruction(
+            new LirLoadIndexOperation(BuiltinTypes.U32, VariableStorageClass.Reg),
+            destinationRegister,
+            BuiltinTypes.U32,
+            [new LirRegisterOperand(indexedRegister), new LirRegisterOperand(indexRegister)],
+            hasSideEffects: false,
+            predicate: null,
+            writesC: false,
+            writesZ: false,
+            span));
+
+        Assert.That(exception, Is.Not.Null);
+        Assert.That(exception!.Message, Does.Contain("load.index.reg"));
+        Assert.That(exception.Message, Does.Contain("does not accept result type"));
+    }
+
+    [Test]
+    public void LirOpInstruction_LoadDerefRequiresPointerPointeeType()
+    {
+        TextSpan span = new(0, 0);
+        LirVirtualRegister pointerRegister = LirRegister(0);
+        LirVirtualRegister destinationRegister = LirRegister(1);
+        PointerTypeSymbol pointerType = new(BuiltinTypes.U16, isConst: false, storageClass: VariableStorageClass.Hub);
+
+        UnreachableException? exception = Assert.Throws<UnreachableException>(() => new LirOpInstruction(
+            new LirLoadDerefOperation(pointerType, VariableStorageClass.Hub),
+            destinationRegister,
+            BuiltinTypes.U32,
+            [new LirRegisterOperand(pointerRegister)],
+            hasSideEffects: false,
+            predicate: null,
+            writesC: false,
+            writesZ: false,
+            span));
+
+        Assert.That(exception, Is.Not.Null);
+        Assert.That(exception!.Message, Does.Contain("load.deref.hub"));
+        Assert.That(exception.Message, Does.Contain("does not accept result type"));
+    }
+
+    [Test]
+    public void LirOpInstruction_CallRequiresArgumentCountToMatchParameters()
+    {
+        TextSpan span = new(0, 0);
+        LirVirtualRegister destinationRegister = LirRegister(0);
+        FunctionSymbol function = new("callee", FunctionKind.Default)
+        {
+            Parameters = [new ParameterSymbol("value", BuiltinTypes.U32)],
+            ReturnSlots = [new ReturnSlot(BuiltinTypes.U32, ReturnPlacement.Register)],
+        };
+
+        UnreachableException? exception = Assert.Throws<UnreachableException>(() => new LirOpInstruction(
+            new LirCallOperation(function),
+            destinationRegister,
+            BuiltinTypes.U32,
             [],
-            [
-                new LirBlock(
-                    LirBlockRef("bb0"),
-                    [],
-                    [
-                        new LirOpInstruction(
-                            new LirBitfieldExtractOperation(byteMember),
-                            destinationRegister,
-                            resultType: null,
-                            [new LirRegisterOperand(sourceRegister)],
-                            hasSideEffects: false,
-                            predicate: null,
-                            writesC: false,
-                            writesZ: false,
-                            span),
-                        new LirOpInstruction(
-                            new LirBitfieldExtractOperation(wordMember),
-                            destinationRegister,
-                            resultType: null,
-                            [new LirRegisterOperand(sourceRegister)],
-                            hasSideEffects: false,
-                            predicate: null,
-                            writesC: false,
-                            writesZ: false,
-                            span),
-                        new LirOpInstruction(
-                            new LirBitfieldExtractOperation(shiftMember),
-                            destinationRegister,
-                            resultType: null,
-                            [new LirRegisterOperand(sourceRegister)],
-                            hasSideEffects: false,
-                            predicate: null,
-                            writesC: false,
-                            writesZ: false,
-                            span),
-                    ],
-                    new LirReturnTerminator([], span)),
-            ]);
+            hasSideEffects: true,
+            predicate: null,
+            writesC: false,
+            writesZ: false,
+            span));
 
-        AsmModule asmModule = AsmLowerer.Lower(new LirModule([function]));
-        string asmir = AsmTextWriter.Write(asmModule);
+        Assert.That(exception, Is.Not.Null);
+        Assert.That(exception!.Message, Does.Contain("call"));
+        Assert.That(exception.Message, Does.Contain("operand count"));
+    }
 
-        Assert.That(asmir, Does.Contain("GETBYTE"));
-        Assert.That(asmir, Does.Contain("GETWORD"));
-        Assert.That(asmir, Does.Contain("SHR"));
+    [Test]
+    public void LirOpInstruction_YieldToRequiresArgumentCountToMatchParameters()
+    {
+        TextSpan span = new(0, 0);
+        FunctionSymbol function = new("worker", FunctionKind.Coro)
+        {
+            Parameters = [new ParameterSymbol("value", BuiltinTypes.U32)],
+        };
+
+        UnreachableException? exception = Assert.Throws<UnreachableException>(() => new LirOpInstruction(
+            new LirYieldToOperation(function),
+            destination: null,
+            resultType: null,
+            [],
+            hasSideEffects: true,
+            predicate: null,
+            writesC: false,
+            writesZ: false,
+            span));
+
+        Assert.That(exception, Is.Not.Null);
+        Assert.That(exception!.Message, Does.Contain("yieldto:worker"));
+        Assert.That(exception.Message, Does.Contain("operand count"));
+    }
+
+    [Test]
+    public void LirOpInstruction_InsertMemberRequiresMemberToExistOnAggregateType()
+    {
+        TextSpan span = new(0, 0);
+        LirVirtualRegister sourceRegister = LirRegister(0);
+        LirVirtualRegister valueRegister = LirRegister(1);
+        LirVirtualRegister destinationRegister = LirRegister(2);
+        StructTypeSymbol pairType = CreateStructType(
+            "Pair",
+            sizeBytes: 4,
+            alignmentBytes: 4,
+            new AggregateMemberSymbol("value", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false));
+        AggregateMemberSymbol missingMember = new("bad", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false);
+
+        UnreachableException? exception = Assert.Throws<UnreachableException>(() => new LirOpInstruction(
+            new LirInsertMemberOperation(missingMember),
+            destinationRegister,
+            pairType,
+            [new LirRegisterOperand(sourceRegister), new LirRegisterOperand(valueRegister)],
+            hasSideEffects: false,
+            predicate: null,
+            writesC: false,
+            writesZ: false,
+            span));
+
+        Assert.That(exception, Is.Not.Null);
+        Assert.That(exception!.Message, Does.Contain("insert.member.bad.0"));
+        Assert.That(exception.Message, Does.Contain("does not accept result type"));
     }
 
     [Test]
@@ -2424,23 +2653,21 @@ public class IrPipelineTests
         TextSpan span = new(0, 0);
         LirVirtualRegister sourceRegister = LirRegister(0);
         LirVirtualRegister destinationRegister = LirRegister(1);
-        StructTypeSymbol pairType = CreateStructType(
-            "Pair",
+        StructTypeSymbol packedType = CreateStructType(
+            "Packed",
             sizeBytes: 4,
-            alignmentBytes: 4,
-            new AggregateMemberSymbol("value", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false));
+            alignmentBytes: 1,
+            new AggregateMemberSymbol("tag", BuiltinTypes.U8, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false),
+            new AggregateMemberSymbol("value", BuiltinTypes.U16, byteOffset: 1, bitOffset: 0, bitWidth: 0, isBitfield: false));
         StructTypeSymbol wideType = CreateStructType(
             "Wide",
             sizeBytes: 8,
             alignmentBytes: 4,
             new AggregateMemberSymbol("left", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false),
             new AggregateMemberSymbol("right", BuiltinTypes.U32, byteOffset: 4, bitOffset: 0, bitWidth: 0, isBitfield: false));
-        AggregateMemberSymbol pairValueMember = pairType.Members["value"];
         AggregateMemberSymbol wideLeftMember = wideType.Members["left"];
         AggregateMemberSymbol wideRightMember = wideType.Members["right"];
-        AggregateMemberSymbol offEndMember = new("value", BuiltinTypes.U32, byteOffset: 4, bitOffset: 0, bitWidth: 0, isBitfield: false);
-        AggregateMemberSymbol misalignedMember = new("value", BuiltinTypes.U16, byteOffset: 1, bitOffset: 0, bitWidth: 0, isBitfield: false);
-        AggregateMemberSymbol badInsertMember = new("bad", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false);
+        AggregateMemberSymbol misalignedMember = packedType.Members["value"];
         LirFunction function = CreateLirFunction(
             "demo",
             isEntryPoint: true,
@@ -2452,7 +2679,7 @@ public class IrPipelineTests
                     [],
                     [
                         new LirOpInstruction(
-                            new LirLoadMemberOperation(offEndMember),
+                            new LirLoadMemberOperation(wideRightMember),
                             destinationRegister,
                             BuiltinTypes.U32,
                             [new LirRegisterOperand(sourceRegister)],
@@ -2472,29 +2699,9 @@ public class IrPipelineTests
                             writesZ: false,
                             span),
                         new LirOpInstruction(
-                            new LirInsertMemberOperation(badInsertMember),
+                            new LirInsertMemberOperation(wideRightMember),
                             destinationRegister,
-                            pairType,
-                            [new LirRegisterOperand(sourceRegister), new LirRegisterOperand(sourceRegister)],
-                            hasSideEffects: false,
-                            predicate: null,
-                            writesC: false,
-                            writesZ: false,
-                            span),
-                        new LirOpInstruction(
-                            new LirInsertMemberOperation(offEndMember),
-                            destinationRegister,
-                            pairType,
-                            [new LirRegisterOperand(sourceRegister), new LirRegisterOperand(sourceRegister)],
-                            hasSideEffects: false,
-                            predicate: null,
-                            writesC: false,
-                            writesZ: false,
-                            span),
-                        new LirOpInstruction(
-                            new LirInsertMemberOperation(pairValueMember),
-                            destinationRegister,
-                            BuiltinTypes.U32,
+                            wideType,
                             [new LirRegisterOperand(sourceRegister), new LirRegisterOperand(sourceRegister)],
                             hasSideEffects: false,
                             predicate: null,
@@ -2518,53 +2725,37 @@ public class IrPipelineTests
         AsmModule asmModule = AsmLowerer.Lower(new LirModule([function]));
         string asmir = AsmTextWriter.Write(asmModule);
 
-        Assert.That(asmir, Does.Contain("unhandled: load.member.value.4"));
+        Assert.That(asmir, Does.Contain("unhandled: load.member.right.4"));
         Assert.That(asmir, Does.Contain("unhandled: load.member.value.1"));
-        Assert.That(asmir, Does.Contain("unhandled: insert.member.bad.0"));
-        Assert.That(asmir, Does.Contain("unhandled: insert.member.value.4"));
-        Assert.That(asmir, Does.Contain("unhandled: insert.member.value.0"));
+        Assert.That(asmir, Does.Contain("unhandled: insert.member.right.4"));
         Assert.That(asmir, Does.Contain("unhandled: structlit.left.right"));
     }
 
     [Test]
-    public void AsmLowerer_StructLiteralWithNonStructResult_Throws()
+    public void LirOpInstruction_StructLiteralWithNonStructResult_Throws()
     {
         TextSpan span = new(0, 0);
         LirVirtualRegister sourceRegister = LirRegister(0);
         LirVirtualRegister destinationRegister = LirRegister(1);
         AggregateMemberSymbol pairValueMember = new("value", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false);
-        LirFunction function = CreateLirFunction(
-            "demo",
-            isEntryPoint: true,
-            FunctionKind.Default,
-            [],
-            [
-                new LirBlock(
-                    LirBlockRef("bb0"),
-                    [],
-                    [
-                        new LirOpInstruction(
-                            new LirStructLiteralOperation([pairValueMember]),
-                            destinationRegister,
-                            BuiltinTypes.U32,
-                            [new LirRegisterOperand(sourceRegister)],
-                            hasSideEffects: false,
-                            predicate: null,
-                            writesC: false,
-                            writesZ: false,
-                            span),
-                    ],
-                    new LirReturnTerminator([], span)),
-            ]);
 
-        UnreachableException? exception = Assert.Throws<UnreachableException>(() => AsmLowerer.Lower(new LirModule([function])));
+        UnreachableException? exception = Assert.Throws<UnreachableException>(() => new LirOpInstruction(
+            new LirStructLiteralOperation([pairValueMember]),
+            destinationRegister,
+            BuiltinTypes.U32,
+            [new LirRegisterOperand(sourceRegister)],
+            hasSideEffects: false,
+            predicate: null,
+            writesC: false,
+            writesZ: false,
+            span));
 
         Assert.That(exception, Is.Not.Null);
-        Assert.That(exception!.Message, Does.Contain("must produce a struct result type"));
+        Assert.That(exception!.Message, Does.Contain("does not accept result type"));
     }
 
     [Test]
-    public void AsmLowerer_StructLiteralWithMismatchedOperandCount_Throws()
+    public void LirOpInstruction_StructLiteralWithMismatchedOperandCount_Throws()
     {
         TextSpan span = new(0, 0);
         LirVirtualRegister sourceRegister = LirRegister(0);
@@ -2576,34 +2767,20 @@ public class IrPipelineTests
             new AggregateMemberSymbol("value", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false));
         AggregateMemberSymbol pairValueMember = pairType.Members["value"];
         AggregateMemberSymbol extraStructMember = new("extra", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false);
-        LirFunction function = CreateLirFunction(
-            "demo",
-            isEntryPoint: true,
-            FunctionKind.Default,
-            [],
-            [
-                new LirBlock(
-                    LirBlockRef("bb0"),
-                    [],
-                    [
-                        new LirOpInstruction(
-                            new LirStructLiteralOperation([pairValueMember, extraStructMember]),
-                            destinationRegister,
-                            pairType,
-                            [new LirRegisterOperand(sourceRegister)],
-                            hasSideEffects: false,
-                            predicate: null,
-                            writesC: false,
-                            writesZ: false,
-                            span),
-                    ],
-                    new LirReturnTerminator([], span)),
-            ]);
 
-        UnreachableException? exception = Assert.Throws<UnreachableException>(() => AsmLowerer.Lower(new LirModule([function])));
+        UnreachableException? exception = Assert.Throws<UnreachableException>(() => new LirOpInstruction(
+            new LirStructLiteralOperation([pairValueMember, extraStructMember]),
+            destinationRegister,
+            pairType,
+            [new LirRegisterOperand(sourceRegister)],
+            hasSideEffects: false,
+            predicate: null,
+            writesC: false,
+            writesZ: false,
+            span));
 
         Assert.That(exception, Is.Not.Null);
-        Assert.That(exception!.Message, Does.Contain("same number of members and operands"));
+        Assert.That(exception!.Message, Does.Contain("does not accept operand count"));
     }
 
     [Test]

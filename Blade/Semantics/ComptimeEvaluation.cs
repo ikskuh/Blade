@@ -167,12 +167,18 @@ internal sealed class ComptimeFunctionSupportAnalyzer
                         assignment.OperatorKind is TokenKind.Equal
                             or TokenKind.PlusEqual
                             or TokenKind.MinusEqual
+                            or TokenKind.StarEqual
+                            or TokenKind.SlashEqual
                             or TokenKind.PercentEqual
                             or TokenKind.AmpersandEqual
                             or TokenKind.PipeEqual
                             or TokenKind.CaretEqual
                             or TokenKind.LessLessEqual
-                            or TokenKind.GreaterGreaterEqual,
+                            or TokenKind.GreaterGreaterEqual
+                            or TokenKind.LessLessLessEqual
+                            or TokenKind.GreaterGreaterGreaterEqual
+                            or TokenKind.RotateLeftEqual
+                            or TokenKind.RotateRightEqual,
                         "parser only produces known compound assignment operators");
 
                     return AnalyzeExpression(assignment.Value);
@@ -860,12 +866,18 @@ internal sealed class ComptimeEvaluator
             {
                 TokenKind.PlusEqual => BoundBinaryOperatorKind.Add,
                 TokenKind.MinusEqual => BoundBinaryOperatorKind.Subtract,
+                TokenKind.StarEqual => BoundBinaryOperatorKind.Multiply,
+                TokenKind.SlashEqual => BoundBinaryOperatorKind.Divide,
                 TokenKind.PercentEqual => BoundBinaryOperatorKind.Modulo,
                 TokenKind.AmpersandEqual => BoundBinaryOperatorKind.BitwiseAnd,
                 TokenKind.PipeEqual => BoundBinaryOperatorKind.BitwiseOr,
                 TokenKind.CaretEqual => BoundBinaryOperatorKind.BitwiseXor,
                 TokenKind.LessLessEqual => BoundBinaryOperatorKind.ShiftLeft,
                 TokenKind.GreaterGreaterEqual => BoundBinaryOperatorKind.ShiftRight,
+                TokenKind.LessLessLessEqual => BoundBinaryOperatorKind.ArithmeticShiftLeft,
+                TokenKind.GreaterGreaterGreaterEqual => BoundBinaryOperatorKind.ArithmeticShiftRight,
+                TokenKind.RotateLeftEqual => BoundBinaryOperatorKind.RotateLeft,
+                TokenKind.RotateRightEqual => BoundBinaryOperatorKind.RotateRight,
                 _ => Assert.UnreachableValue<BoundBinaryOperatorKind>("parser only produces known compound assignment operators"),
             };
 

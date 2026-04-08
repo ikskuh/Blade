@@ -39,7 +39,7 @@ public class WriterAndSymbolTests
     public void DumpContentBuilder_ReturnsFinalAssemblyWhenNoExplicitDumpFlagsAreSet()
     {
         BoundProgram program = new([], [], [], new Dictionary<string, TypeSymbol>(), new Dictionary<string, FunctionSymbol>(), new Dictionary<string, ImportedModule>());
-        MirModule mir = new([]);
+        MirModule mir = new([], [], []);
         LirModule lir = new([]);
         AsmModule asm = new([], [], []);
         IrBuildResult build = new(program, mir, mir, lir, lir, asm, asm, "DAT\n");
@@ -55,7 +55,7 @@ public class WriterAndSymbolTests
     {
         StoragePlace place = new(CreateVariable("mem-slot", VariableStorageClass.Reg, VariableScopeKind.GlobalStorage), StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, emittedName: "g_mem_slot");
 
-        MirModule mir = new([
+        MirModule mir = new([], [], [
             CreateMirFunction("mir_fn", isEntryPoint: true, FunctionKind.Leaf, [BuiltinTypes.U32],
             [
                 new MirBlock(MirBlockRef("bb0"), [new MirBlockParameter(MirValue(0), "p", BuiltinTypes.U32)],

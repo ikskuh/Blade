@@ -1,0 +1,21 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - QMUL
+// - GETQX
+// - QDIV
+// - SAL
+// - SAR
+// - ROL
+// - ROR
+// NOTE:
+//   Exercises the full reference-defined fused assignment surface that lowers
+//   through update.place.
+
+reg var acc: u32 = 17;
+acc *= 3;
+acc /= 2;
+acc <<<= 1;
+acc >>>= 1;
+acc <%<= 4;
+acc >%>= 2;

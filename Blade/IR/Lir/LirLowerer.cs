@@ -207,7 +207,7 @@ public static class LirLowerer
                 loadMember.Span),
 
             MirLoadIndexInstruction loadIndex => new LirOpInstruction(
-                new LirLoadIndexOperation(loadIndex.StorageClass),
+                new LirLoadIndexOperation(loadIndex.IndexedType, loadIndex.StorageClass),
                 destination,
                 loadIndex.ResultType,
                 [new LirRegisterOperand(getRegister(loadIndex.Indexed)), new LirRegisterOperand(getRegister(loadIndex.Index))],
@@ -218,7 +218,7 @@ public static class LirLowerer
                 loadIndex.Span),
 
             MirLoadDerefInstruction loadDeref => new LirOpInstruction(
-                new LirLoadDerefOperation(loadDeref.StorageClass),
+                new LirLoadDerefOperation(loadDeref.PointerType, loadDeref.StorageClass),
                 destination,
                 loadDeref.ResultType,
                 [new LirRegisterOperand(getRegister(loadDeref.Address))],
@@ -284,7 +284,7 @@ public static class LirLowerer
                 intrinsic.Span),
 
             MirStoreIndexInstruction storeIndex => new LirOpInstruction(
-                new LirStoreIndexOperation(storeIndex.StorageClass),
+                new LirStoreIndexOperation(storeIndex.IndexedType, storeIndex.StorageClass),
                 destination: null,
                 resultType: storeIndex.ResultType,
                 [
@@ -299,7 +299,7 @@ public static class LirLowerer
                 storeIndex.Span),
 
             MirStoreDerefInstruction storeDeref => new LirOpInstruction(
-                new LirStoreDerefOperation(storeDeref.StorageClass),
+                new LirStoreDerefOperation(storeDeref.PointerType, storeDeref.StorageClass),
                 destination: null,
                 resultType: storeDeref.ResultType,
                 [new LirRegisterOperand(getRegister(storeDeref.Address)), new LirRegisterOperand(getRegister(storeDeref.Value))],

@@ -29,70 +29,44 @@ public sealed class LirModule
     public IReadOnlyList<LirFunction> Functions { get; }
 }
 
-public sealed class LirFunction
+public sealed class LirFunction(MirFunction sourceFunction, IReadOnlyList<LirBlock> blocks)
 {
-    public LirFunction(MirFunction sourceFunction, IReadOnlyList<LirBlock> blocks)
-    {
-        SourceFunction = Requires.NotNull(sourceFunction);
-        Blocks = blocks;
-    }
-
-    public MirFunction SourceFunction { get; }
+    public MirFunction SourceFunction { get; } = Requires.NotNull(sourceFunction);
     public FunctionSymbol Symbol => SourceFunction.Symbol;
     public string Name => SourceFunction.Name;
     public bool IsEntryPoint => SourceFunction.IsEntryPoint;
     public FunctionKind Kind => SourceFunction.Kind;
     public IReadOnlyList<TypeSymbol> ReturnTypes => SourceFunction.ReturnTypes;
     public IReadOnlyList<ReturnSlot> ReturnSlots => SourceFunction.ReturnSlots;
-    public IReadOnlyList<LirBlock> Blocks { get; }
+    public IReadOnlyList<LirBlock> Blocks { get; } = blocks;
 }
 
-public sealed class LirBlock
+public sealed class LirBlock(
+    LirBlockRef blockRef,
+    IReadOnlyList<LirBlockParameter> parameters,
+    IReadOnlyList<LirInstruction> instructions,
+    LirTerminator terminator)
 {
-    public LirBlock(
-        LirBlockRef blockRef,
-        IReadOnlyList<LirBlockParameter> parameters,
-        IReadOnlyList<LirInstruction> instructions,
-        LirTerminator terminator)
-    {
-        Ref = Requires.NotNull(blockRef);
-        Parameters = parameters;
-        Instructions = instructions;
-        Terminator = terminator;
-    }
-
-    public LirBlockRef Ref { get; }
-    public IReadOnlyList<LirBlockParameter> Parameters { get; }
-    public IReadOnlyList<LirInstruction> Instructions { get; }
-    public LirTerminator Terminator { get; }
+    public LirBlockRef Ref { get; } = Requires.NotNull(blockRef);
+    public IReadOnlyList<LirBlockParameter> Parameters { get; } = parameters;
+    public IReadOnlyList<LirInstruction> Instructions { get; } = instructions;
+    public LirTerminator Terminator { get; } = terminator;
 }
 
-public sealed class LirBlockParameter
+public sealed class LirBlockParameter(LirVirtualRegister register, string name, TypeSymbol type)
 {
-    public LirBlockParameter(LirVirtualRegister register, string name, TypeSymbol type)
-    {
-        Register = register;
-        Name = name;
-        Type = type;
-    }
-
-    public LirVirtualRegister Register { get; }
-    public string Name { get; }
-    public TypeSymbol Type { get; }
+    public LirVirtualRegister Register { get; } = register;
+    public string Name { get; } = name;
+    public TypeSymbol Type { get; } = type;
 }
 
 public abstract class LirOperand
 {
 }
 
-public sealed class LirRegisterOperand : LirOperand
+public sealed class LirRegisterOperand(LirVirtualRegister register) : LirOperand
 {
-    public LirRegisterOperand(LirVirtualRegister register)
-    {
-        Register = register;
-    }
-
-    public LirVirtualRegister Register { get; }
+    public LirVirtualRegister Register { get; } = register;
 }
 
 public sealed class LirImmediateOperand(BladeValue value) : LirOperand
@@ -101,14 +75,9 @@ public sealed class LirImmediateOperand(BladeValue value) : LirOperand
     public TypeSymbol Type => Value.Type;
 }
 
-public sealed class LirPlaceOperand : LirOperand
+public sealed class LirPlaceOperand(StoragePlace place) : LirOperand
 {
-    public LirPlaceOperand(StoragePlace place)
-    {
-        Place = place;
-    }
-
-    public StoragePlace Place { get; }
+    public StoragePlace Place { get; } = place;
 }
 
 public abstract class LirInstruction
@@ -155,6 +124,10 @@ public abstract class LirOperation
     /// </summary>
     public abstract string DisplayName { get; }
 
+    public abstract bool IsValidResultType(TypeSymbol? resultType);
+
+    public abstract bool IsValidOperandCount(int operandCount);
+
     protected static string StorageClassSuffix(VariableStorageClass storageClass)
     {
         return storageClass switch
@@ -164,86 +137,139 @@ public abstract class LirOperation
             _ => "reg",
         };
     }
+
+    protected static bool MatchesExpectedType(TypeSymbol? actualType, TypeSymbol expectedType)
+        => actualType?.Equals(expectedType) == true;
+
+    protected static bool IsSingleBitScalarType(TypeSymbol? resultType)
+        => resultType is ScalarTypeSymbol { BitWidth: 1 };
+
+    protected static bool MatchesContainerMember(TypeSymbol? containerType, AggregateMemberSymbol expectedMember)
+    {
+        AggregateMemberSymbol checkedMember = Requires.NotNull(expectedMember);
+        IReadOnlyDictionary<string, AggregateMemberSymbol>? members = containerType switch
+        {
+            AggregateTypeSymbol aggregateType => aggregateType.Members,
+            BitfieldTypeSymbol bitfieldType => bitfieldType.Members,
+            _ => null,
+        };
+
+        if (members is null || !members.TryGetValue(checkedMember.Name, out AggregateMemberSymbol? actualMember))
+            return false;
+
+        return actualMember.Type.Equals(checkedMember.Type)
+            && actualMember.ByteOffset == checkedMember.ByteOffset
+            && actualMember.BitOffset == checkedMember.BitOffset
+            && actualMember.BitWidth == checkedMember.BitWidth
+            && actualMember.IsBitfield == checkedMember.IsBitfield;
+    }
 }
 
 public sealed class LirConstOperation : LirOperation
 {
     public override string DisplayName => "const";
+
+    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is not null;
+
+    public override bool IsValidOperandCount(int operandCount) => operandCount is 0 or 1;
 }
 
 public sealed class LirMovOperation : LirOperation
 {
     public override string DisplayName => "mov";
+
+    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is not null;
+
+    public override bool IsValidOperandCount(int operandCount) => operandCount == 1;
 }
 
 public sealed class LirLoadPlaceOperation : LirOperation
 {
     public override string DisplayName => "load.place";
+
+    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is not null;
+
+    public override bool IsValidOperandCount(int operandCount) => operandCount == 1;
 }
 
-public sealed class LirUnaryOperation : LirOperation
+public sealed class LirUnaryOperation(BoundUnaryOperatorKind operatorKind) : LirOperation
 {
-    public LirUnaryOperation(BoundUnaryOperatorKind operatorKind)
-    {
-        OperatorKind = operatorKind;
-    }
-
-    public BoundUnaryOperatorKind OperatorKind { get; }
+    public BoundUnaryOperatorKind OperatorKind { get; } = operatorKind;
 
     public override string DisplayName => $"unary.{OperatorKind}";
-}
 
-public sealed class LirBinaryOperation : LirOperation
-{
-    public LirBinaryOperation(BoundBinaryOperatorKind operatorKind)
+    public override bool IsValidResultType(TypeSymbol? resultType)
     {
-        OperatorKind = operatorKind;
+        return OperatorKind switch
+        {
+            BoundUnaryOperatorKind.AddressOf => resultType is PointerLikeTypeSymbol,
+            _ => resultType is not null,
+        };
     }
 
-    public BoundBinaryOperatorKind OperatorKind { get; }
+    public override bool IsValidOperandCount(int operandCount) => operandCount == 1;
+}
+
+public sealed class LirBinaryOperation(BoundBinaryOperatorKind operatorKind) : LirOperation
+{
+    public BoundBinaryOperatorKind OperatorKind { get; } = operatorKind;
 
     public override string DisplayName => $"binary.{OperatorKind}";
-}
 
-public sealed class LirPointerOffsetOperation : LirOperation
-{
-    public LirPointerOffsetOperation(BoundBinaryOperatorKind operatorKind, int stride)
+    public override bool IsValidResultType(TypeSymbol? resultType)
     {
-        OperatorKind = operatorKind;
-        Stride = stride;
+        return OperatorKind switch
+        {
+            BoundBinaryOperatorKind.LogicalAnd
+                or BoundBinaryOperatorKind.LogicalOr
+                or BoundBinaryOperatorKind.Equals
+                or BoundBinaryOperatorKind.NotEquals
+                or BoundBinaryOperatorKind.Less
+                or BoundBinaryOperatorKind.LessOrEqual
+                or BoundBinaryOperatorKind.Greater
+                or BoundBinaryOperatorKind.GreaterOrEqual => MatchesExpectedType(resultType, BuiltinTypes.Bool),
+            _ => resultType is not null,
+        };
     }
 
-    public BoundBinaryOperatorKind OperatorKind { get; }
-    public int Stride { get; }
+    public override bool IsValidOperandCount(int operandCount) => operandCount == 2;
+}
+
+public sealed class LirPointerOffsetOperation(BoundBinaryOperatorKind operatorKind, int stride) : LirOperation
+{
+    public BoundBinaryOperatorKind OperatorKind { get; } = operatorKind;
+    public int Stride { get; } = stride;
 
     public override string DisplayName => $"ptr.offset.{OperatorKind}[{Stride}]";
+
+    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is PointerLikeTypeSymbol;
+
+    public override bool IsValidOperandCount(int operandCount) => operandCount == 2;
 }
 
-public sealed class LirPointerDifferenceOperation : LirOperation
+public sealed class LirPointerDifferenceOperation(int stride) : LirOperation
 {
-    public LirPointerDifferenceOperation(int stride)
-    {
-        Stride = stride;
-    }
-
-    public int Stride { get; }
+    public int Stride { get; } = stride;
 
     public override string DisplayName => $"ptr.diff[{Stride}]";
+
+    public override bool IsValidResultType(TypeSymbol? resultType) => MatchesExpectedType(resultType, BuiltinTypes.I32);
+
+    public override bool IsValidOperandCount(int operandCount) => operandCount == 2;
 }
 
 public sealed class LirConvertOperation : LirOperation
 {
     public override string DisplayName => "convert";
+
+    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is not null;
+
+    public override bool IsValidOperandCount(int operandCount) => operandCount == 1;
 }
 
-public sealed class LirStructLiteralOperation : LirOperation
+public sealed class LirStructLiteralOperation(IReadOnlyList<AggregateMemberSymbol> members) : LirOperation
 {
-    public LirStructLiteralOperation(IReadOnlyList<AggregateMemberSymbol> members)
-    {
-        Members = members;
-    }
-
-    public IReadOnlyList<AggregateMemberSymbol> Members { get; }
+    public IReadOnlyList<AggregateMemberSymbol> Members { get; } = members;
 
     public override string DisplayName
     {
@@ -258,207 +284,273 @@ public sealed class LirStructLiteralOperation : LirOperation
             return string.Join(".", parts);
         }
     }
+
+    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is StructTypeSymbol;
+
+    public override bool IsValidOperandCount(int operandCount) => operandCount == Members.Count;
 }
 
-public sealed class LirLoadMemberOperation : LirOperation
+public sealed class LirLoadMemberOperation(AggregateMemberSymbol member) : LirOperation
 {
-    public LirLoadMemberOperation(AggregateMemberSymbol member)
-    {
-        Member = member;
-    }
-
-    public AggregateMemberSymbol Member { get; }
+    public AggregateMemberSymbol Member { get; } = member;
 
     public override string DisplayName => $"load.member.{Member.Name}.{Member.ByteOffset}";
+
+    public override bool IsValidResultType(TypeSymbol? resultType) => MatchesExpectedType(resultType, Member.Type);
+
+    public override bool IsValidOperandCount(int operandCount) => operandCount == 1;
 }
 
-public sealed class LirLoadIndexOperation : LirOperation
+public sealed class LirLoadIndexOperation(TypeSymbol indexedType, VariableStorageClass storageClass) : LirOperation
 {
-    public LirLoadIndexOperation(VariableStorageClass storageClass)
-    {
-        StorageClass = storageClass;
-    }
-
-    public VariableStorageClass StorageClass { get; }
+    public TypeSymbol IndexedType { get; } = Requires.NotNull(indexedType);
+    public VariableStorageClass StorageClass { get; } = storageClass;
 
     public override string DisplayName => $"load.index.{StorageClassSuffix(StorageClass)}";
-}
 
-public sealed class LirLoadDerefOperation : LirOperation
-{
-    public LirLoadDerefOperation(VariableStorageClass storageClass)
+    public override bool IsValidResultType(TypeSymbol? resultType)
     {
-        StorageClass = storageClass;
+        return IndexedType switch
+        {
+            ArrayTypeSymbol arrayType => MatchesExpectedType(resultType, arrayType.ElementType),
+            MultiPointerTypeSymbol pointerType => MatchesExpectedType(resultType, pointerType.PointeeType),
+            _ => false,
+        };
     }
 
-    public VariableStorageClass StorageClass { get; }
+    public override bool IsValidOperandCount(int operandCount) => operandCount == 2;
+}
+
+public sealed class LirLoadDerefOperation(TypeSymbol pointerType, VariableStorageClass storageClass) : LirOperation
+{
+    public TypeSymbol PointerType { get; } = Requires.NotNull(pointerType);
+    public VariableStorageClass StorageClass { get; } = storageClass;
 
     public override string DisplayName => $"load.deref.{StorageClassSuffix(StorageClass)}";
-}
 
-public sealed class LirBitfieldExtractOperation : LirOperation
-{
-    public LirBitfieldExtractOperation(AggregateMemberSymbol member)
+    public override bool IsValidResultType(TypeSymbol? resultType)
     {
-        Member = member;
+        return PointerType is PointerTypeSymbol pointer
+            && MatchesExpectedType(resultType, pointer.PointeeType);
     }
 
-    public AggregateMemberSymbol Member { get; }
+    public override bool IsValidOperandCount(int operandCount) => operandCount == 1;
+}
+
+public sealed class LirBitfieldExtractOperation(AggregateMemberSymbol member) : LirOperation
+{
+    public AggregateMemberSymbol Member { get; } = member;
 
     public override string DisplayName => $"bitfield.extract.{Member.BitOffset}.{Member.BitWidth}";
+
+    public override bool IsValidResultType(TypeSymbol? resultType) => MatchesExpectedType(resultType, Member.Type);
+
+    public override bool IsValidOperandCount(int operandCount) => operandCount == 1;
 }
 
-public sealed class LirBitfieldInsertOperation : LirOperation
+public sealed class LirBitfieldInsertOperation(AggregateMemberSymbol member) : LirOperation
 {
-    public LirBitfieldInsertOperation(AggregateMemberSymbol member)
-    {
-        Member = member;
-    }
-
-    public AggregateMemberSymbol Member { get; }
+    public AggregateMemberSymbol Member { get; } = member;
 
     public override string DisplayName => $"bitfield.insert.{Member.BitOffset}.{Member.BitWidth}";
+
+    public override bool IsValidResultType(TypeSymbol? resultType)
+        => MatchesContainerMember(resultType, Member);
+
+    public override bool IsValidOperandCount(int operandCount) => operandCount == 2;
 }
 
-public sealed class LirInsertMemberOperation : LirOperation
+public sealed class LirInsertMemberOperation(AggregateMemberSymbol member) : LirOperation
 {
-    public LirInsertMemberOperation(AggregateMemberSymbol member)
-    {
-        Member = member;
-    }
-
-    public AggregateMemberSymbol Member { get; }
+    public AggregateMemberSymbol Member { get; } = member;
 
     public override string DisplayName => $"insert.member.{Member.Name}.{Member.ByteOffset}";
+
+    public override bool IsValidResultType(TypeSymbol? resultType)
+        => MatchesContainerMember(resultType, Member);
+
+    public override bool IsValidOperandCount(int operandCount) => operandCount == 2;
 }
 
-public sealed class LirCallOperation : LirOperation
+public sealed class LirCallOperation(FunctionSymbol targetFunction) : LirOperation
 {
-    public LirCallOperation(FunctionSymbol targetFunction)
-    {
-        TargetFunction = Requires.NotNull(targetFunction);
-    }
-
-    public FunctionSymbol TargetFunction { get; }
+    public FunctionSymbol TargetFunction { get; } = Requires.NotNull(targetFunction);
 
     public override string DisplayName => "call";
-}
 
-public sealed class LirCallExtractFlagOperation : LirOperation
-{
-    public LirCallExtractFlagOperation(MirFlag flag)
+    public override bool IsValidResultType(TypeSymbol? resultType)
     {
-        Flag = flag;
+        if (TargetFunction.ReturnSlots.Count == 0)
+            return resultType is null;
+
+        return MatchesExpectedType(resultType, TargetFunction.ReturnSlots[0].Type);
     }
 
-    public MirFlag Flag { get; }
+    public override bool IsValidOperandCount(int operandCount) => operandCount == TargetFunction.Parameters.Count;
+}
+
+public sealed class LirCallExtractFlagOperation(MirFlag flag) : LirOperation
+{
+    public MirFlag Flag { get; } = flag;
 
     public override string DisplayName => Flag == MirFlag.C ? "call.extractC" : "call.extractZ";
+
+    public override bool IsValidResultType(TypeSymbol? resultType)
+        => MatchesExpectedType(resultType, BuiltinTypes.Bool) || MatchesExpectedType(resultType, BuiltinTypes.Bit);
+
+    public override bool IsValidOperandCount(int operandCount) => operandCount == 0;
 }
 
-public sealed class LirIntrinsicOperation : LirOperation
+public sealed class LirIntrinsicOperation(P2Mnemonic mnemonic) : LirOperation
 {
-    public LirIntrinsicOperation(P2Mnemonic mnemonic)
-    {
-        Mnemonic = mnemonic;
-    }
-
-    public P2Mnemonic Mnemonic { get; }
+    public P2Mnemonic Mnemonic { get; } = mnemonic;
 
     public override string DisplayName => $"intrinsic.{Mnemonic}";
+
+    public override bool IsValidResultType(TypeSymbol? resultType) => true;
+
+    public override bool IsValidOperandCount(int operandCount) => P2InstructionMetadata.TryGetInstructionForm(Mnemonic, operandCount, out _)
+        || P2InstructionMetadata.TryGetInstructionForm(Mnemonic, operandCount + 1, out _);
 }
 
-public sealed class LirStoreIndexOperation : LirOperation
+public sealed class LirStoreIndexOperation(TypeSymbol indexedType, VariableStorageClass storageClass) : LirOperation
 {
-    public LirStoreIndexOperation(VariableStorageClass storageClass)
-    {
-        StorageClass = storageClass;
-    }
-
-    public VariableStorageClass StorageClass { get; }
+    public TypeSymbol IndexedType { get; } = Requires.NotNull(indexedType);
+    public VariableStorageClass StorageClass { get; } = storageClass;
 
     public override string DisplayName => $"store.index.{StorageClassSuffix(StorageClass)}";
-}
 
-public sealed class LirStoreDerefOperation : LirOperation
-{
-    public LirStoreDerefOperation(VariableStorageClass storageClass)
+    public override bool IsValidResultType(TypeSymbol? resultType)
     {
-        StorageClass = storageClass;
+        if (resultType is null)
+            return true;
+
+        return IndexedType switch
+        {
+            ArrayTypeSymbol arrayType => MatchesExpectedType(resultType, arrayType.ElementType),
+            MultiPointerTypeSymbol pointerType => MatchesExpectedType(resultType, pointerType.PointeeType),
+            _ => false,
+        };
     }
 
-    public VariableStorageClass StorageClass { get; }
+    public override bool IsValidOperandCount(int operandCount) => operandCount == 3;
+}
+
+public sealed class LirStoreDerefOperation(TypeSymbol pointerType, VariableStorageClass storageClass) : LirOperation
+{
+    public TypeSymbol PointerType { get; } = Requires.NotNull(pointerType);
+    public VariableStorageClass StorageClass { get; } = storageClass;
 
     public override string DisplayName => $"store.deref.{StorageClassSuffix(StorageClass)}";
+
+    public override bool IsValidResultType(TypeSymbol? resultType)
+    {
+        if (resultType is null)
+            return true;
+
+        return PointerType is PointerTypeSymbol pointer
+            && MatchesExpectedType(resultType, pointer.PointeeType);
+    }
+
+    public override bool IsValidOperandCount(int operandCount) => operandCount == 2;
 }
 
 public sealed class LirStorePlaceOperation : LirOperation
 {
     public override string DisplayName => "store.place";
+
+    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is null;
+
+    public override bool IsValidOperandCount(int operandCount) => operandCount == 2;
 }
 
-public sealed class LirUpdatePlaceOperation : LirOperation
+public sealed class LirUpdatePlaceOperation(BoundBinaryOperatorKind operatorKind, int? pointerArithmeticStride = null) : LirOperation
 {
-    public LirUpdatePlaceOperation(BoundBinaryOperatorKind operatorKind, int? pointerArithmeticStride = null)
-    {
-        OperatorKind = operatorKind;
-        PointerArithmeticStride = pointerArithmeticStride;
-    }
-
-    public BoundBinaryOperatorKind OperatorKind { get; }
-    public int? PointerArithmeticStride { get; }
+    public BoundBinaryOperatorKind OperatorKind { get; } = operatorKind;
+    public int? PointerArithmeticStride { get; } = pointerArithmeticStride;
     public bool IsPointerArithmetic => PointerArithmeticStride is not null;
 
     public override string DisplayName => PointerArithmeticStride is int stride
         ? $"update.place.{OperatorKind}[{stride}]"
         : $"update.place.{OperatorKind}";
+
+    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is null;
+
+    public override bool IsValidOperandCount(int operandCount) => operandCount == 2;
 }
 
 public sealed class LirYieldOperation : LirOperation
 {
     public override string DisplayName => "yield";
+
+    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is null;
+
+    public override bool IsValidOperandCount(int operandCount) => operandCount == 0;
 }
 
-public sealed class LirYieldToOperation : LirOperation
+public sealed class LirYieldToOperation(FunctionSymbol targetFunction) : LirOperation
 {
-    public LirYieldToOperation(FunctionSymbol targetFunction)
-    {
-        TargetFunction = Requires.NotNull(targetFunction);
-    }
-
-    public FunctionSymbol TargetFunction { get; }
+    public FunctionSymbol TargetFunction { get; } = Requires.NotNull(targetFunction);
 
     public override string DisplayName => $"yieldto:{TargetFunction.Name}";
+
+    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is null;
+
+    public override bool IsValidOperandCount(int operandCount) => operandCount == TargetFunction.Parameters.Count;
 }
 
 public sealed class LirRepSetupOperation : LirOperation
 {
     public override string DisplayName => "rep.setup";
+
+    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is null;
+
+    public override bool IsValidOperandCount(int operandCount) => operandCount == 1;
 }
 
 public sealed class LirRepIterOperation : LirOperation
 {
     public override string DisplayName => "rep.iter";
+
+    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is null;
+
+    public override bool IsValidOperandCount(int operandCount) => operandCount == 1;
 }
 
 public sealed class LirRepForSetupOperation : LirOperation
 {
     public override string DisplayName => "repfor.setup";
+
+    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is null;
+
+    public override bool IsValidOperandCount(int operandCount) => operandCount == 2;
 }
 
 public sealed class LirRepForIterOperation : LirOperation
 {
     public override string DisplayName => "repfor.iter";
+
+    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is null;
+
+    public override bool IsValidOperandCount(int operandCount) => operandCount == 2;
 }
 
 public sealed class LirNoIrqBeginOperation : LirOperation
 {
     public override string DisplayName => "noirq.begin";
+
+    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is null;
+
+    public override bool IsValidOperandCount(int operandCount) => operandCount == 0;
 }
 
 public sealed class LirNoIrqEndOperation : LirOperation
 {
     public override string DisplayName => "noirq.end";
+
+    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is null;
+
+    public override bool IsValidOperandCount(int operandCount) => operandCount == 0;
 }
 
 public sealed class LirOpInstruction : LirInstruction
@@ -473,61 +565,58 @@ public sealed class LirOpInstruction : LirInstruction
         bool writesC,
         bool writesZ,
         TextSpan span)
-        : base(destination, resultType, operands, hasSideEffects, predicate, writesC, writesZ, span)
+        : base(destination, resultType, CheckedOperands(operands), hasSideEffects, predicate, writesC, writesZ, span)
     {
-        Operation = operation;
+        LirOperation checkedOperation = Requires.NotNull(operation);
+        Assert.Invariant(
+            destination is null || resultType is not null,
+            "LIR instructions with destination registers must declare a result type.");
+        Assert.Invariant(
+            checkedOperation.IsValidResultType(resultType),
+            $"Operation '{checkedOperation.DisplayName}' does not accept result type '{resultType?.Name ?? "<null>"}'.");
+        Assert.Invariant(
+            checkedOperation.IsValidOperandCount(Operands.Count),
+            $"Operation '{checkedOperation.DisplayName}' does not accept operand count {Operands.Count}.");
+        Operation = checkedOperation;
     }
 
     public LirOperation Operation { get; }
 
     public override string DisplayName => Operation.DisplayName;
+
+    private static IReadOnlyList<LirOperand> CheckedOperands(IReadOnlyList<LirOperand> operands)
+        => Requires.NotNull(operands);
 }
 
-public sealed class LirInlineAsmBinding
+public sealed class LirInlineAsmBinding(InlineAsmBindingSlot slot, Symbol symbol, LirOperand operand, InlineAsmBindingAccess access)
 {
-    public LirInlineAsmBinding(InlineAsmBindingSlot slot, Symbol symbol, LirOperand operand, InlineAsmBindingAccess access)
-    {
-        Slot = Requires.NotNull(slot);
-        Symbol = Requires.NotNull(symbol);
-        Operand = operand;
-        Access = access;
-    }
-
-    public InlineAsmBindingSlot Slot { get; }
+    public InlineAsmBindingSlot Slot { get; } = Requires.NotNull(slot);
     public string PlaceholderText => Slot.PlaceholderText;
-    public Symbol Symbol { get; }
-    public LirOperand Operand { get; }
-    public InlineAsmBindingAccess Access { get; }
+    public Symbol Symbol { get; } = Requires.NotNull(symbol);
+    public LirOperand Operand { get; } = operand;
+    public InlineAsmBindingAccess Access { get; } = access;
 }
 
-public sealed class LirInlineAsmInstruction : LirInstruction
+public sealed class LirInlineAsmInstruction(
+    AsmVolatility volatility,
+    InlineAsmFlagOutput? flagOutput,
+    IReadOnlyList<InlineAsmLine> parsedLines,
+    IReadOnlyList<LirInlineAsmBinding> bindings,
+    TextSpan span)
+    : LirInstruction(
+        destination: null,
+        resultType: null,
+        operands: [],
+        hasSideEffects: true,
+        predicate: null,
+        writesC: false,
+        writesZ: false,
+        span)
 {
-    public LirInlineAsmInstruction(
-        AsmVolatility volatility,
-        InlineAsmFlagOutput? flagOutput,
-        IReadOnlyList<InlineAsmLine> parsedLines,
-        IReadOnlyList<LirInlineAsmBinding> bindings,
-        TextSpan span)
-        : base(
-            destination: null,
-            resultType: null,
-            operands: [],
-            hasSideEffects: true,
-            predicate: null,
-            writesC: false,
-            writesZ: false,
-            span)
-    {
-        Volatility = volatility;
-        FlagOutput = flagOutput;
-        ParsedLines = parsedLines;
-        Bindings = bindings;
-    }
-
-    public AsmVolatility Volatility { get; }
-    public InlineAsmFlagOutput? FlagOutput { get; }
-    public IReadOnlyList<InlineAsmLine> ParsedLines { get; }
-    public IReadOnlyList<LirInlineAsmBinding> Bindings { get; }
+    public AsmVolatility Volatility { get; } = volatility;
+    public InlineAsmFlagOutput? FlagOutput { get; } = flagOutput;
+    public IReadOnlyList<InlineAsmLine> ParsedLines { get; } = parsedLines;
+    public IReadOnlyList<LirInlineAsmBinding> Bindings { get; } = bindings;
 
     public override string DisplayName => "inlineasm";
 }
@@ -542,66 +631,37 @@ public abstract class LirTerminator
     public TextSpan Span { get; }
 }
 
-public sealed class LirGotoTerminator : LirTerminator
+public sealed class LirGotoTerminator(LirBlockRef target, IReadOnlyList<LirOperand> arguments, TextSpan span) : LirTerminator(span)
 {
-    public LirGotoTerminator(LirBlockRef target, IReadOnlyList<LirOperand> arguments, TextSpan span)
-        : base(span)
-    {
-        Target = Requires.NotNull(target);
-        Arguments = arguments;
-    }
-
-    public LirBlockRef Target { get; }
-    public IReadOnlyList<LirOperand> Arguments { get; }
+    public LirBlockRef Target { get; } = Requires.NotNull(target);
+    public IReadOnlyList<LirOperand> Arguments { get; } = arguments;
 }
 
-public sealed class LirBranchTerminator : LirTerminator
+public sealed class LirBranchTerminator(
+    LirOperand condition,
+    LirBlockRef trueTarget,
+    LirBlockRef falseTarget,
+    IReadOnlyList<LirOperand> trueArguments,
+    IReadOnlyList<LirOperand> falseArguments,
+    TextSpan span,
+    MirFlag? conditionFlag = null)
+    : LirTerminator(span)
 {
-    public LirBranchTerminator(
-        LirOperand condition,
-        LirBlockRef trueTarget,
-        LirBlockRef falseTarget,
-        IReadOnlyList<LirOperand> trueArguments,
-        IReadOnlyList<LirOperand> falseArguments,
-        TextSpan span,
-        MirFlag? conditionFlag = null)
-        : base(span)
-    {
-        Condition = condition;
-        TrueTarget = Requires.NotNull(trueTarget);
-        FalseTarget = Requires.NotNull(falseTarget);
-        TrueArguments = trueArguments;
-        FalseArguments = falseArguments;
-        ConditionFlag = conditionFlag;
-    }
-
-    public LirOperand Condition { get; }
-    public LirBlockRef TrueTarget { get; }
-    public LirBlockRef FalseTarget { get; }
-    public IReadOnlyList<LirOperand> TrueArguments { get; }
-    public IReadOnlyList<LirOperand> FalseArguments { get; }
+    public LirOperand Condition { get; } = condition;
+    public LirBlockRef TrueTarget { get; } = Requires.NotNull(trueTarget);
+    public LirBlockRef FalseTarget { get; } = Requires.NotNull(falseTarget);
+    public IReadOnlyList<LirOperand> TrueArguments { get; } = trueArguments;
+    public IReadOnlyList<LirOperand> FalseArguments { get; } = falseArguments;
 
     /// <summary>
     /// When set, the branch uses the hardware flag directly instead of testing a register.
     /// </summary>
-    public MirFlag? ConditionFlag { get; }
+    public MirFlag? ConditionFlag { get; } = conditionFlag;
 }
 
-public sealed class LirReturnTerminator : LirTerminator
+public sealed class LirReturnTerminator(IReadOnlyList<LirOperand> values, TextSpan span) : LirTerminator(span)
 {
-    public LirReturnTerminator(IReadOnlyList<LirOperand> values, TextSpan span)
-        : base(span)
-    {
-        Values = values;
-    }
-
-    public IReadOnlyList<LirOperand> Values { get; }
+    public IReadOnlyList<LirOperand> Values { get; } = values;
 }
 
-public sealed class LirUnreachableTerminator : LirTerminator
-{
-    public LirUnreachableTerminator(TextSpan span)
-        : base(span)
-    {
-    }
-}
+public sealed class LirUnreachableTerminator(TextSpan span) : LirTerminator(span);
