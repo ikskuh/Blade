@@ -153,30 +153,6 @@ Generated code:
 
 ## Open — discovered 2026-03-31 during `<<<` regression work
 
-### Documented fused arithmetic-shift assignments are rejected by the parser
-
-The language reference documents fused assignments for the extended shift and
-rotate operators:
-
-```blade
-a <<<= b;
-a >>>= b;
-a <%<= b;
-a >%>= b;
-```
-
-At least `<<<=` currently fails during parsing with `E0102: Expected
-expression.` / `E0106: Invalid assignment target.` instead of producing a
-compound-assignment node.
-
-Reproducer:
-
-```blade
-reg var sink: u32 = 0;
-reg var amount: u32 = 4;
-sink <<<= amount;
-```
-
 ## Fixed on 2026-03-30
 
 - General-call return placement was stringing values through synthetic `g_gen_*`
@@ -204,6 +180,13 @@ sink <<<= amount;
   specialized calls in expressions such as `max(a, b) + min(a, b)`.
 - Arithmetic left shift lowering now emits `SAL` for `<<<` and `<<<=` instead of
   `SHL`, restoring the documented "shift in LSB" semantics on PASM2.
+
+## Fixed on 2026-04-08
+
+- The documented fused assignment surface now lexes, parses, and lowers end to
+  end: `*=`, `/=`, `<<<=`, `>>>=`, `<%<=`, and `>%>=` are accepted as real
+  assignment operators, participate in MIR `update.place` lowering, and reach
+  the expected in-place PASM2 opcodes (`QMUL`/`QDIV`, `SAL`/`SAR`, `ROL`/`ROR`).
 
 ## Open — discovered 2026-04-05
 
