@@ -71,11 +71,14 @@ public static class MirLowerer
             if (!seenSymbols.Add(symbol))
                 continue;
 
-            if (symbol is LiteralDataSymbol literalData)
+            if (symbol is VariableSymbol variable
+                && variable.IsConst
+                && variable.IsGlobalStorage
+                && variable.ConstantValue is RuntimeBladeValue constantValue)
             {
-                StoragePlace literalPlace = new(symbol, MapLiteralStoragePlaceKind(literalData.StorageClass), fixedAddress: null);
+                StoragePlace literalPlace = new(variable, MapStoragePlaceKind(variable), fixedAddress: null);
                 places.Add(literalPlace);
-                definitions.Add(new StorageDefinition(literalPlace, literalData.Elements));
+                definitions.Add(new StorageDefinition(literalPlace, constantValue));
                 continue;
             }
 
@@ -112,7 +115,7 @@ public static class MirLowerer
             StoragePlace place = new(symbol, kind, symbol.FixedAddress);
             places.Add(place);
             if (staticInitializer is not null)
-                definitions.Add(new StorageDefinition(place, [staticInitializer]));
+                definitions.Add(new StorageDefinition(place, staticInitializer));
         }
     }
 
@@ -143,16 +146,6 @@ public static class MirLowerer
             VariableStorageClass.Hub => StoragePlaceKind.AllocatableHubEntry,
             _ when symbol.FixedAddress.HasValue => StoragePlaceKind.FixedRegisterAlias,
             _ when symbol.IsExtern => StoragePlaceKind.ExternalAlias,
-            _ => StoragePlaceKind.AllocatableGlobalRegister,
-        };
-    }
-
-    private static StoragePlaceKind MapLiteralStoragePlaceKind(VariableStorageClass storageClass)
-    {
-        return storageClass switch
-        {
-            VariableStorageClass.Lut => StoragePlaceKind.AllocatableLutEntry,
-            VariableStorageClass.Hub => StoragePlaceKind.AllocatableHubEntry,
             _ => StoragePlaceKind.AllocatableGlobalRegister,
         };
     }

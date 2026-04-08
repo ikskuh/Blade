@@ -93,9 +93,9 @@ public static class AsmLowerer
         IReadOnlyList<StoragePlace> storagePlaces,
         IReadOnlyList<StorageDefinition> storageDefinitions)
     {
-        Dictionary<StoragePlace, IReadOnlyList<RuntimeBladeValue>?> initialValues = [];
+        Dictionary<StoragePlace, RuntimeBladeValue?> initialValues = [];
         foreach (StorageDefinition definition in storageDefinitions)
-            initialValues[definition.Place] = definition.InitialValues;
+            initialValues[definition.Place] = definition.InitialValue;
 
         Dictionary<Symbol, StoragePlace> placesBySymbol = [];
         foreach (StoragePlace place in storagePlaces)
@@ -115,7 +115,7 @@ public static class AsmLowerer
                 case StoragePlaceKind.AllocatableHubEntry:
                     RuntimeTypeSymbol elementType = GetPlaceElementType(place);
                     int count = GetPlaceEntryCount(place);
-                    IReadOnlyList<AsmOperand>? loweredInitialValues = LowerDataInitialValues(initialValues.GetValueOrDefault(place), placesBySymbol);
+                    IReadOnlyList<AsmOperand>? loweredInitialValues = LowerDataInitialValue(initialValues.GetValueOrDefault(place), placesBySymbol);
                     AsmAllocatedStorageDefinition allocated = new(
                         place,
                         place.StorageClass,
@@ -160,12 +160,9 @@ public static class AsmLowerer
 
     private static RuntimeTypeSymbol GetPlaceElementType(StoragePlace place)
     {
-        if (place.Symbol is LiteralDataSymbol literalData)
-            return literalData.Type.ElementType as RuntimeTypeSymbol ?? Assert.UnreachableValue<RuntimeTypeSymbol>();
-
-        if (place.Symbol is VariableSymbol { Type: ArrayTypeSymbol arrayType })
+        if (place.Symbol is VariableSymbol { Type: ArrayTypeSymbol variableArrayType })
         {
-            return arrayType.ElementType as RuntimeTypeSymbol
+            return variableArrayType.ElementType as RuntimeTypeSymbol
                 ?? Assert.UnreachableValue<RuntimeTypeSymbol>();
         }
 
@@ -177,24 +174,20 @@ public static class AsmLowerer
 
     private static int GetPlaceEntryCount(StoragePlace place)
     {
-        if (place.Symbol is LiteralDataSymbol literalData)
-            return literalData.Type.Length ?? Assert.UnreachableValue<int>();
-
         return place.Symbol is VariableSymbol { Type: ArrayTypeSymbol { Length: int length } }
             ? length
             : 1;
     }
 
-    private static IReadOnlyList<AsmOperand>? LowerDataInitialValues(
-        IReadOnlyList<RuntimeBladeValue>? initialValues,
+    private static IReadOnlyList<AsmOperand>? LowerDataInitialValue(
+        RuntimeBladeValue? initialValue,
         IReadOnlyDictionary<Symbol, StoragePlace> placesBySymbol)
     {
-        if (initialValues is null)
+        if (initialValue is null)
             return null;
 
         List<AsmOperand> lowered = [];
-        foreach (RuntimeBladeValue initialValue in initialValues)
-            AddDataInitialValue(lowered, initialValue, placesBySymbol);
+        AddDataInitialValue(lowered, initialValue, placesBySymbol);
         return lowered;
     }
 

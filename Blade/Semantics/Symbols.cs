@@ -65,24 +65,6 @@ public sealed class AbsoluteAddressSymbol(int address, VariableStorageClass stor
     }
 }
 
-public sealed class LiteralDataSymbol(string name, IReadOnlyList<byte> bytes, VariableStorageClass storageClass) : Symbol(name)
-{
-    private readonly RuntimeBladeValue[] elements = CreateElements(bytes);
-
-    public IReadOnlyList<byte> Bytes { get; } = Requires.NotNull(bytes);
-    public VariableStorageClass StorageClass { get; } = storageClass;
-    public ArrayTypeSymbol Type { get; } = new(BuiltinTypes.U8, Requires.NotNull(bytes).Count);
-    public IReadOnlyList<RuntimeBladeValue> Elements => elements;
-
-    private static RuntimeBladeValue[] CreateElements(IReadOnlyList<byte> bytes)
-    {
-        RuntimeBladeValue[] values = new RuntimeBladeValue[Requires.NotNull(bytes).Count];
-        for (int i = 0; i < bytes.Count; i++)
-            values[i] = BladeValue.U8(bytes[i]);
-        return values;
-    }
-}
-
 public sealed class ControlFlowLabelSymbol : IAsmSymbol
 {
     public ControlFlowLabelSymbol(string name)
@@ -129,7 +111,8 @@ public sealed class VariableSymbol : Symbol
         VariableScopeKind scopeKind,
         bool isExtern,
         int? fixedAddress,
-        int? alignment)
+        int? alignment,
+        RuntimeBladeValue? constantValue = null)
         : base(name)
     {
         Type = Requires.NotNull(type);
@@ -139,6 +122,7 @@ public sealed class VariableSymbol : Symbol
         IsExtern = isExtern;
         FixedAddress = fixedAddress;
         Alignment = alignment;
+        ConstantValue = constantValue;
         CanElideTopLevelStoreLoadChains = scopeKind == VariableScopeKind.GlobalStorage
             && storageClass == VariableStorageClass.Reg
             && !isExtern
@@ -158,6 +142,7 @@ public sealed class VariableSymbol : Symbol
     public bool UsesGlobalRegisterStorage => IsGlobalStorage && StorageClass == VariableStorageClass.Reg;
     public bool UsesGlobalLutStorage => IsGlobalStorage && StorageClass == VariableStorageClass.Lut;
     public bool UsesGlobalHubStorage => IsGlobalStorage && StorageClass == VariableStorageClass.Hub;
+    public RuntimeBladeValue? ConstantValue { get; }
     public bool CanElideTopLevelStoreLoadChains { get; private set; }
 
     public void SetLayoutMetadata(int? fixedAddress, int? alignment)

@@ -343,9 +343,3 @@ see topic
 ## Improve BladeValue/TypeSymbol
 
 - Support comptime comparison for `==` and `!=` on types in the language.
-
-## Refactor LiteralDataSymbol
-
-Right now, LiteralDataSymbol requires a StorageDefinition to store more than a single value.
-
-This is bullshit and is just a dirty hack around not constructing a u8 array

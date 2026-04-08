@@ -3341,10 +3341,17 @@ public sealed class Binder
 
     private static BoundExpression LowerByteArrayToPointerLiteral(byte[] bytes, MultiPointerTypeSymbol targetPointer, TextSpan span)
     {
-        LiteralDataSymbol literalSymbol = new(
+        RuntimeBladeValue literalValue = BladeValue.U8Array(bytes);
+        VariableSymbol literalSymbol = new(
             FormattableString.Invariant($"lit_{targetPointer.StorageClass}_{span.Start}_{span.Length}"),
-            bytes,
-            targetPointer.StorageClass);
+            literalValue.Type,
+            isConst: true,
+            targetPointer.StorageClass,
+            VariableScopeKind.GlobalStorage,
+            isExtern: false,
+            fixedAddress: null,
+            alignment: null,
+            literalValue);
         return new BoundLiteralExpression(
             BladeValue.Pointer(targetPointer, new PointedValue(literalSymbol, 0)),
             span);

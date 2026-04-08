@@ -83,8 +83,6 @@ public sealed class StoragePlace : IAsmSymbol
         ParameterSymbol => SymbolType.Parameter,
         VariableSymbol { StorageClass: VariableStorageClass.Lut } => SymbolType.LutVariable,
         VariableSymbol { StorageClass: VariableStorageClass.Hub } => SymbolType.HubVariable,
-        LiteralDataSymbol { StorageClass: VariableStorageClass.Lut } => SymbolType.LutVariable,
-        LiteralDataSymbol { StorageClass: VariableStorageClass.Hub } => SymbolType.HubVariable,
         _ => SymbolType.RegVariable,
     };
 
