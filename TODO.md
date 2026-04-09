@@ -343,3 +343,20 @@ see topic
 ## Improve BladeValue/TypeSymbol
 
 - Support comptime comparison for `==` and `!=` on types in the language.
+
+
+## Compiler Bug
+
+`extern var foo: u32` is legal, but doesn't make sense (foo has no name/storage assigned!)
+
+Okay.
+
+Plan to apply the following changes:
+- fuse BoundModule [ TypeAliases, FunctionLookup, ExportedVariables, ImportedModules ] into ExportedSymbols.
+- Remove the TypeSymbol TypeAliasDeclarationSyntax constructor and keep an internal Dict<TypeSymbol, TypeAliasDeclarationSyntax> for caching unresolved TypeSymbol.
+- Erase ImportedModuleDefinition. 
+- Add Symbol
+
+- Remove all non-supported properties of "VariableSymbol" (like IsExtern). Use coercion into the right type instead.
+- Binder should yield a BoundProgram, which is a flattened version of the BoundModule that doesn't have a namespace anymore, but just fully interlinked symbols/BoundNodes
+- This should radically simplify MirLowerer

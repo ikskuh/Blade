@@ -14,9 +14,9 @@ public sealed class BoundBlockStatement(IReadOnlyList<BoundStatement> statements
     public IReadOnlyList<BoundStatement> Statements { get; } = statements;
 }
 
-public sealed class BoundVariableDeclarationStatement(VariableSymbol symbol, BoundExpression? initializer, TextSpan span) : BoundStatement(BoundNodeKind.VariableDeclarationStatement, span)
+public sealed class BoundVariableDeclarationStatement(LocalVariableSymbol symbol, BoundExpression? initializer, TextSpan span) : BoundStatement(BoundNodeKind.VariableDeclarationStatement, span)
 {
-    public VariableSymbol Symbol { get; } = symbol;
+    public LocalVariableSymbol Symbol { get; } = symbol;
     public BoundExpression? Initializer { get; } = initializer;
 }
 
@@ -53,16 +53,16 @@ public sealed class BoundWhileStatement(BoundExpression condition, BoundBlockSta
 
 public sealed class BoundForStatement(
     BoundExpression iterable,
-    VariableSymbol? itemVariable,
+    LocalVariableSymbol? itemVariable,
     bool itemIsMutable,
-    VariableSymbol? indexVariable,
+    LocalVariableSymbol? indexVariable,
     BoundBlockStatement body,
     TextSpan span) : BoundStatement(BoundNodeKind.ForStatement, span)
 {
     public BoundExpression Iterable { get; } = iterable;
-    public VariableSymbol? ItemVariable { get; } = itemVariable;
+    public LocalVariableSymbol? ItemVariable { get; } = itemVariable;
     public bool ItemIsMutable { get; } = itemIsMutable;
-    public VariableSymbol? IndexVariable { get; } = indexVariable;
+    public LocalVariableSymbol? IndexVariable { get; } = indexVariable;
     public BoundBlockStatement Body { get; } = body;
 }
 
@@ -76,9 +76,9 @@ public sealed class BoundRepLoopStatement(BoundBlockStatement body, TextSpan spa
     public BoundBlockStatement Body { get; } = body;
 }
 
-public sealed class BoundRepForStatement(VariableSymbol variable, BoundExpression start, BoundExpression end, BoundBlockStatement body, TextSpan span) : BoundStatement(BoundNodeKind.RepForStatement, span)
+public sealed class BoundRepForStatement(LocalVariableSymbol variable, BoundExpression start, BoundExpression end, BoundBlockStatement body, TextSpan span) : BoundStatement(BoundNodeKind.RepForStatement, span)
 {
-    public VariableSymbol Variable { get; } = variable;
+    public LocalVariableSymbol Variable { get; } = variable;
     public BoundExpression Start { get; } = start;
     public BoundExpression End { get; } = end;
     public BoundBlockStatement Body { get; } = body;

@@ -13,7 +13,7 @@ public class MirModelTests
 
     private static StoragePlace CreatePlace(string name)
     {
-        VariableSymbol symbol = new(name, BuiltinTypes.U32, isConst: false, VariableStorageClass.Reg, VariableScopeKind.GlobalStorage, isExtern: false, fixedAddress: null, alignment: null);
+        VariableSymbol symbol = IrTestFactory.CreateVariableSymbol(name, BuiltinTypes.U32, VariableStorageClass.Reg, VariableScopeKind.GlobalStorage);
         return new StoragePlace(symbol, StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, emittedName: $"g_{name}");
     }
 

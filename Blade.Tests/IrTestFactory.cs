@@ -1,9 +1,15 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using Blade.IR;
 using Blade.IR.Asm;
 using Blade.IR.Lir;
 using Blade.IR.Mir;
 using Blade.Semantics;
+using Blade.Semantics.Bound;
+using Blade.Source;
+using Blade.Syntax;
+using Blade.Syntax.Nodes;
 
 namespace Blade.Tests;
 
@@ -115,15 +121,15 @@ internal static class IrTestFactory
         int? fixedAddress = null,
         int? alignment = null)
     {
-        return new VariableSymbol(
-            name,
-            type ?? BuiltinTypes.U32,
-            isConst,
-            storageClass,
-            scopeKind,
-            isExtern,
-            fixedAddress,
-            alignment);
+        BladeType effectiveType = type ?? BuiltinTypes.U32;
+        return scopeKind switch
+        {
+            VariableScopeKind.Parameter => new ParameterVariableSymbol(name, effectiveType, SourceSpan.Synthetic()),
+            VariableScopeKind.InlineAsmTemporary => new LocalVariableSymbol(name, effectiveType, isConst, isInlineAsmTemporary: true, SourceSpan.Synthetic()),
+            VariableScopeKind.Local => new LocalVariableSymbol(name, effectiveType, isConst, sourceSpan: SourceSpan.Synthetic()),
+            VariableScopeKind.GlobalStorage => new GlobalVariableSymbol(name, effectiveType, isConst, storageClass, isExtern, fixedAddress, alignment, SourceSpan.Synthetic()),
+            _ => throw new InvalidOperationException($"Unsupported variable scope kind '{scopeKind}'."),
+        };
     }
 
     public static StoragePlace CreateStoragePlace(
@@ -147,5 +153,46 @@ internal static class IrTestFactory
             fixedAddress,
             alignment);
         return new StoragePlace(symbol, kind, fixedAddress, emittedName: $"g_{name}");
+    }
+
+    public static BoundModule CreateBoundModule(
+        string resolvedFilePath = "/tmp/test.blade",
+        IReadOnlyList<BoundStatement>? topLevelStatements = null,
+        IReadOnlyList<GlobalVariableSymbol>? globalVariables = null,
+        IReadOnlyList<BoundFunctionMember>? functions = null,
+        IReadOnlyDictionary<string, Symbol>? exportedSymbols = null)
+    {
+        return new BoundModule(
+            resolvedFilePath,
+            new CompilationUnitSyntax([], new Token(TokenKind.EndOfFile, new TextSpan(0, 0), string.Empty)),
+            topLevelStatements ?? [],
+            globalVariables ?? [],
+            functions ?? [],
+            exportedSymbols ?? CreateExports(globalVariables, functions));
+    }
+
+    public static IReadOnlyDictionary<string, Symbol> CreateExports(
+        IReadOnlyList<GlobalVariableSymbol>? globalVariables = null,
+        IReadOnlyList<BoundFunctionMember>? functions = null,
+        IReadOnlyDictionary<string, BoundModule>? importedModules = null,
+        IReadOnlyDictionary<string, TypeSymbol>? typeSymbols = null)
+    {
+        Dictionary<string, Symbol> exports = new(StringComparer.Ordinal);
+        if (typeSymbols is not null)
+        {
+            foreach (TypeSymbol typeSymbol in typeSymbols.Values)
+                exports[typeSymbol.Name] = typeSymbol;
+        }
+        foreach (GlobalVariableSymbol globalVariable in globalVariables ?? [])
+            exports[globalVariable.Name] = globalVariable;
+        foreach (BoundFunctionMember function in functions ?? [])
+            exports[function.Symbol.Name] = function.Symbol;
+        if (importedModules is not null)
+        {
+            foreach ((string alias, BoundModule module) in importedModules)
+                exports[alias] = new ModuleSymbol(alias, module, SourceSpan.Synthetic());
+        }
+
+        return exports;
     }
 }

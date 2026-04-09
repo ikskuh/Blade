@@ -80,7 +80,7 @@ public sealed class StoragePlace : IAsmSymbol
 
     public SymbolType SymbolType => Symbol switch
     {
-        ParameterSymbol => SymbolType.Parameter,
+        ParameterVariableSymbol => SymbolType.Parameter,
         VariableSymbol { StorageClass: VariableStorageClass.Lut } => SymbolType.LutVariable,
         VariableSymbol { StorageClass: VariableStorageClass.Hub } => SymbolType.HubVariable,
         _ => SymbolType.RegVariable,

@@ -14,14 +14,24 @@ public static class BoundTreeWriter
         StringBuilder sb = new();
         AppendLine(sb, 0, "Program");
 
-        AppendLine(sb, 1, "TypeAliases");
-        foreach ((string aliasName, TypeSymbol aliasType) in program.TypeAliases)
-            AppendLine(sb, 2, $"{aliasName}: {aliasType.Type.Name}");
+        AppendLine(sb, 1, "Exports");
+        foreach ((string name, Symbol symbol) in program.ExportedSymbols)
+        {
+            string description = symbol switch
+            {
+                TypeSymbol typeSymbol => $"type {typeSymbol.Type.Name}",
+                FunctionSymbol functionSymbol => $"function {functionSymbol.Kind}",
+                GlobalVariableSymbol globalVariable => $"global {globalVariable.Type.Name}",
+                ModuleSymbol => "module",
+                _ => symbol.GetType().Name,
+            };
+            AppendLine(sb, 2, $"{name}: {description}");
+        }
 
         AppendLine(sb, 1, "Globals");
-        foreach (BoundGlobalVariableMember global in program.GlobalVariables)
+        foreach (GlobalVariableSymbol global in program.GlobalVariables)
         {
-            AppendLine(sb, 2, $"{global.Symbol.Name}: {global.Symbol.Type.Name}");
+            AppendLine(sb, 2, $"{global.Name}: {global.Type.Name}");
             if (global.Initializer is not null)
                 WriteExpression(sb, 3, global.Initializer);
         }

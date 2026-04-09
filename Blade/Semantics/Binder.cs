@@ -17,18 +17,19 @@ public sealed class Binder
     private readonly DiagnosticBag _diagnostics;
     private readonly LoadedCompilation _compilation;
     private readonly Dictionary<string, TypeSymbol> _typeAliases = new(StringComparer.Ordinal);
+    private readonly Dictionary<TypeSymbol, TypeAliasDeclarationSyntax> _typeAliasDeclarations = [];
     private readonly HashSet<string> _typeAliasResolutionStack = new(StringComparer.Ordinal);
     private readonly Dictionary<string, FunctionSymbol> _functions = new(StringComparer.Ordinal);
     private readonly Dictionary<string, BoundModule> _importedModules = new(StringComparer.Ordinal);
     private readonly Dictionary<FunctionSymbol, BoundBlockStatement> _boundFunctionBodies = new();
     private readonly Dictionary<FunctionSymbol, ComptimeSupportResult> _comptimeSupportCache = new();
-    private readonly Dictionary<Symbol, ComptimeResult> _knownConstantValues = new();
-    private readonly Dictionary<string, ImportedModuleDefinition> _moduleDefinitionCache;
+    private readonly Dictionary<string, BoundModule> _moduleDefinitionCache;
     private readonly HashSet<string> _moduleBindingStack;
     private readonly Scope _globalScope;
     private readonly Scope _topLevelScope;
     private Scope _currentScope;
     private FunctionSymbol? _currentFunction;
+    private SourceText? _currentSource;
     private readonly Stack<LoopContext> _loopStack = new();
     private readonly int _comptimeFuel;
     private int _anonymousStructIndex;
@@ -41,7 +42,7 @@ public sealed class Binder
         DiagnosticBag diagnostics,
         LoadedCompilation compilation,
         HashSet<string> moduleBindingStack,
-        Dictionary<string, ImportedModuleDefinition> moduleDefinitionCache,
+        Dictionary<string, BoundModule> moduleDefinitionCache,
         int comptimeFuel)
     {
         _diagnostics = diagnostics;
@@ -66,7 +67,7 @@ public sealed class Binder
         {
             compilation.RootModule.FullPath,
         };
-        Dictionary<string, ImportedModuleDefinition> moduleDefinitionCache = new(PathIdentity.Comparer);
+        Dictionary<string, BoundModule> moduleDefinitionCache = new(PathIdentity.Comparer);
         Binder binder = new(diagnostics, compilation, moduleBindingStack, moduleDefinitionCache, comptimeFuel);
         return binder.BindCompilationUnit(compilation.RootModule);
     }
@@ -74,6 +75,7 @@ public sealed class Binder
     private BoundModule BindCompilationUnit(LoadedModule module)
     {
         using IDisposable _ = _diagnostics.UseSource(module.Source);
+        _currentSource = module.Source;
 
         CompilationUnitSyntax unit = module.Syntax;
 
@@ -84,7 +86,7 @@ public sealed class Binder
         DeclareTopLevelVariables(unit);
         ResolveAllTypeAliases();
 
-        List<BoundGlobalVariableMember> boundGlobals = new();
+        List<GlobalVariableSymbol> boundGlobals = new();
         List<BoundFunctionMember> boundFunctions = new();
         List<BoundStatement> boundTopLevelStatements = new();
 
@@ -128,9 +130,7 @@ public sealed class Binder
             }
         }
 
-        Dictionary<string, VariableSymbol> exportedVariables = new(StringComparer.Ordinal);
-        foreach (BoundGlobalVariableMember global in boundGlobals)
-            exportedVariables.TryAdd(global.Symbol.Name, global.Symbol);
+        Dictionary<string, Symbol> exportedSymbols = CreateExportedSymbols();
 
         return new BoundModule(
             module.FullPath,
@@ -138,10 +138,7 @@ public sealed class Binder
             boundTopLevelStatements,
             boundGlobals,
             boundFunctions,
-            _typeAliases,
-            _functions,
-            exportedVariables,
-            _importedModules);
+            exportedSymbols);
     }
 
     private void BindImports(LoadedModule module)
@@ -158,21 +155,20 @@ public sealed class Binder
             {
                 Assert.Invariant(import.Kind == LoadedImportKind.File, "Non-builtin imports must be file-backed.");
                 Assert.Invariant(import.ResolvedFullPath is not null, "Binder imports must be fully resolved and loaded before binding.");
-                imported = LoadAndBindModule(import.Alias, import.ResolvedFullPath, import.Syntax.Source.Span);
+                imported = LoadAndBindModule(import.ResolvedFullPath, import.Syntax.Source.Span);
             }
             TextSpan importSpan = import.Syntax.Alias?.Span ?? import.Syntax.Source.Span;
-            if (!TryDeclareSymbol(_globalScope, new ModuleSymbol(import.Alias, imported), importSpan))
+            if (!TryDeclareSymbol(_globalScope, new ModuleSymbol(import.Alias, imported, CreateSourceSpan(importSpan)), importSpan))
                 continue;
 
             _importedModules.Add(import.Alias, imported);
-            ImportKnownConstantValues(imported.ResolvedFilePath);
         }
     }
 
-    private BoundModule LoadAndBindModule(string alias, string resolvedFullPath, TextSpan importSiteSpan)
+    private BoundModule LoadAndBindModule(string resolvedFullPath, TextSpan importSiteSpan)
     {
-        if (_moduleDefinitionCache.TryGetValue(resolvedFullPath, out ImportedModuleDefinition? cachedDefinition))
-            return cachedDefinition.Module;
+        if (_moduleDefinitionCache.TryGetValue(resolvedFullPath, out BoundModule? cachedDefinition))
+            return cachedDefinition;
 
         Assert.Invariant(
             _compilation.ModulesByFullPath.TryGetValue(resolvedFullPath, out LoadedModule? loadedModule),
@@ -187,10 +183,9 @@ public sealed class Binder
 
         _moduleBindingStack.Add(resolvedFullPath);
         BoundModule program;
-        Binder nestedBinder;
         try
         {
-            nestedBinder = new(_diagnostics, _compilation, _moduleBindingStack, _moduleDefinitionCache, _comptimeFuel);
+            Binder nestedBinder = new(_diagnostics, _compilation, _moduleBindingStack, _moduleDefinitionCache, _comptimeFuel);
             program = nestedBinder.BindCompilationUnit(imported);
         }
         finally
@@ -198,13 +193,8 @@ public sealed class Binder
             _moduleBindingStack.Remove(resolvedFullPath);
         }
 
-        Dictionary<Symbol, ComptimeResult> knownConstants = new();
-        foreach ((Symbol symbol, ComptimeResult value) in nestedBinder._knownConstantValues)
-            knownConstants[symbol] = value;
-
-        ImportedModuleDefinition definition = new(program, knownConstants);
-        _moduleDefinitionCache[resolvedFullPath] = definition;
-        return definition.Module;
+        _moduleDefinitionCache[resolvedFullPath] = program;
+        return program;
     }
 
     private static BoundModule CreateEmptyImportedModule(string resolvedPath, CompilationUnitSyntax? syntax = null)
@@ -216,18 +206,15 @@ public sealed class Binder
             [],
             [],
             [],
-            new Dictionary<string, TypeSymbol>(),
-            new Dictionary<string, FunctionSymbol>(),
-            new Dictionary<string, VariableSymbol>(),
-            new Dictionary<string, BoundModule>());
+            new Dictionary<string, Symbol>());
     }
 
     private BoundModule GetOrCreateBuiltinModule()
     {
-        if (_moduleDefinitionCache.TryGetValue(BuiltinModulePath, out ImportedModuleDefinition? cached))
-            return cached.Module;
+        if (_moduleDefinitionCache.TryGetValue(BuiltinModulePath, out BoundModule? cached))
+            return cached;
 
-        Dictionary<string, TypeSymbol> exportedTypes = new(StringComparer.Ordinal)
+        Dictionary<string, Symbol> exportedSymbols = new(StringComparer.Ordinal)
         {
             ["MemorySpace"] = new TypeSymbol("MemorySpace", MemorySpaceType),
         };
@@ -239,28 +226,10 @@ public sealed class Binder
             [],
             [],
             [],
-            exportedTypes,
-            new Dictionary<string, FunctionSymbol>(),
-            new Dictionary<string, VariableSymbol>(),
-            new Dictionary<string, BoundModule>());
-        ImportedModuleDefinition definition = new(builtinModule, new Dictionary<Symbol, ComptimeResult>());
+            exportedSymbols);
 
-        _moduleDefinitionCache[BuiltinModulePath] = definition;
-        return definition.Module;
-    }
-
-    private void ImportKnownConstantValues(string resolvedFullPath)
-    {
-        if (!_moduleDefinitionCache.TryGetValue(resolvedFullPath, out ImportedModuleDefinition? definition))
-            return;
-
-        foreach ((Symbol symbol, ComptimeResult value) in definition.KnownConstantValues)
-        {
-            if (_knownConstantValues.ContainsKey(symbol))
-                continue;
-
-            _knownConstantValues[symbol] = value;
-        }
+        _moduleDefinitionCache[BuiltinModulePath] = builtinModule;
+        return builtinModule;
     }
 
     private bool TryDeclareSymbol(Scope scope, Symbol symbol, TextSpan span, bool preserveLocalBindingOnShadowing = false)
@@ -276,6 +245,27 @@ public sealed class Binder
         return false;
     }
 
+    private SourceSpan CreateSourceSpan(TextSpan span)
+    {
+        if (_currentSource is null)
+            return SourceSpan.Synthetic();
+
+        return new SourceSpan(_currentSource, span);
+    }
+
+    private Dictionary<string, Symbol> CreateExportedSymbols()
+    {
+        Dictionary<string, Symbol> exportedSymbols = new(StringComparer.Ordinal);
+        foreach (string name in _globalScope.GetDeclaredNames())
+        {
+            bool found = _globalScope.TryLookup(name, out Symbol? symbol);
+            Assert.Invariant(found && symbol is not null, $"Global scope symbol '{name}' must be retrievable.");
+            exportedSymbols.Add(name, symbol);
+        }
+
+        return exportedSymbols;
+    }
+
     private void CollectTopLevelTypes(CompilationUnitSyntax unit)
     {
         foreach (MemberSyntax member in unit.Members)
@@ -283,15 +273,20 @@ public sealed class Binder
             if (member is not TypeAliasDeclarationSyntax typeAlias)
                 continue;
 
-            TypeSymbol symbol = new(typeAlias.Name.Text, typeAlias);
+            TypeSymbol symbol = new(typeAlias.Name.Text, sourceSpan: CreateSourceSpan(typeAlias.Name.Span));
             if (!_typeAliases.TryAdd(symbol.Name, symbol))
             {
                 _diagnostics.ReportSymbolAlreadyDeclared(typeAlias.Name.Span, symbol.Name);
                 continue;
             }
 
+            _typeAliasDeclarations.Add(symbol, typeAlias);
+
             if (!TryDeclareSymbol(_globalScope, symbol, typeAlias.Name.Span))
+            {
                 _typeAliases.Remove(symbol.Name);
+                _typeAliasDeclarations.Remove(symbol);
+            }
         }
     }
 
@@ -323,7 +318,7 @@ public sealed class Binder
 
             Assert.Invariant(!string.IsNullOrWhiteSpace(syntax.Name.Text), "Binder requires well-formed syntax. Parser errors must short-circuit before binding.");
 
-            FunctionSymbol function = new(syntax.Name.Text, syntax, kind, inliningPolicy);
+            FunctionSymbol function = new(syntax.Name.Text, syntax, kind, inliningPolicy, CreateSourceSpan(syntax.Name.Span));
             if (!_functions.TryAdd(function.Name, function))
             {
                 _diagnostics.ReportSymbolAlreadyDeclared(syntax.Name.Span, function.Name);
@@ -339,7 +334,7 @@ public sealed class Binder
     {
         foreach ((_, FunctionSymbol function) in _functions)
         {
-            List<ParameterSymbol> parameters = new();
+            List<ParameterVariableSymbol> parameters = new();
             HashSet<string> parameterNames = new(StringComparer.Ordinal);
 
             foreach (ParameterSyntax param in function.Syntax.Parameters)
@@ -354,7 +349,7 @@ public sealed class Binder
                     continue;
                 }
 
-                parameters.Add(new ParameterSymbol(param.Name.Text, parameterType));
+                parameters.Add(new ParameterVariableSymbol(param.Name.Text, parameterType, CreateSourceSpan(param.Name.Span)));
             }
 
             List<ReturnSlot> returnSlots = new();
@@ -411,7 +406,7 @@ public sealed class Binder
                 continue;
 
             BladeType variableType = BindType(variableDecl.Type);
-            VariableSymbol symbol = CreateVariableSymbol(variableDecl, variableType, VariableScopeKind.GlobalStorage);
+            GlobalVariableSymbol symbol = CreateGlobalVariableSymbol(variableDecl, variableType);
 
             _ = TryDeclareSymbol(_globalScope, symbol, variableDecl.Name.Span);
         }
@@ -419,21 +414,21 @@ public sealed class Binder
 
     private void ResolveAllTypeAliases()
     {
-        foreach ((string aliasName, TypeSymbol aliasSymbol) in _typeAliases)
-            _ = ResolveTypeAlias(aliasName, aliasSymbol.Syntax!.Name.Span);
+        foreach ((TypeSymbol aliasSymbol, TypeAliasDeclarationSyntax aliasSyntax) in _typeAliasDeclarations)
+            _ = ResolveTypeAlias(aliasSymbol.Name, aliasSyntax.Name.Span);
     }
 
-    private BoundGlobalVariableMember BindGlobalVariable(VariableDeclarationSyntax variable)
+    private GlobalVariableSymbol BindGlobalVariable(VariableDeclarationSyntax variable)
     {
         BladeType variableType = BindType(variable.Type);
-        VariableSymbol variableSymbol;
-        if (_globalScope.TryLookup(variable.Name.Text, out Symbol? symbol) && symbol is VariableSymbol declaredVariable)
+        GlobalVariableSymbol variableSymbol;
+        if (_globalScope.TryLookup(variable.Name.Text, out Symbol? symbol) && symbol is GlobalVariableSymbol declaredVariable)
         {
             variableSymbol = declaredVariable;
         }
         else
         {
-            variableSymbol = CreateVariableSymbol(variable, variableType, VariableScopeKind.GlobalStorage);
+            variableSymbol = CreateGlobalVariableSymbol(variable, variableType);
         }
 
         ResolveLayoutMetadata(variable, variableSymbol);
@@ -453,9 +448,8 @@ public sealed class Binder
             }
         }
 
-        RememberKnownConstantValue(variableSymbol, initializer);
-
-        return new BoundGlobalVariableMember(variableSymbol, initializer, variable.Span);
+        variableSymbol.SetInitializer(initializer);
+        return variableSymbol;
     }
 
     private BoundFunctionMember BindFunction(FunctionDeclarationSyntax functionSyntax)
@@ -469,7 +463,7 @@ public sealed class Binder
         _currentScope = new Scope(_globalScope);
         _currentFunction = function;
 
-        foreach (ParameterSymbol parameter in function.Parameters)
+        foreach (ParameterVariableSymbol parameter in function.Parameters)
             _ = TryDeclareSymbol(_currentScope, parameter, function.Syntax.Name.Span, preserveLocalBindingOnShadowing: true);
 
         BoundBlockStatement body = BindBlockStatement(functionSyntax.Body, createScope: false, isTopLevel: false);
@@ -495,27 +489,23 @@ public sealed class Binder
         _currentScope = new Scope(_globalScope);
         _currentFunction = function;
 
-        foreach (ParameterSymbol parameter in function.Parameters)
+        foreach (ParameterVariableSymbol parameter in function.Parameters)
             _ = TryDeclareSymbol(_currentScope, parameter, function.Syntax.Name.Span, preserveLocalBindingOnShadowing: true);
 
         // For asm fn, the "return" keyword is a valid binding name referencing the return value.
         // Add a synthetic variable so the validator accepts {return} references.
         // For flag-only returns (e.g. -> bool@C), no {return} variable is needed because
         // the return value lives in the flag, not in a register.
-        VariableSymbol? returnSymbol = null;
+        LocalVariableSymbol? returnSymbol = null;
         bool hasRegisterReturn = function.ReturnSlots.Any(s => s.Placement == ReturnPlacement.Register);
         if (hasRegisterReturn)
         {
             BladeType firstRegisterType = function.ReturnSlots.First(s => s.Placement == ReturnPlacement.Register).Type;
-            returnSymbol = new VariableSymbol(
+            returnSymbol = new LocalVariableSymbol(
                 "return",
                 firstRegisterType,
                 isConst: false,
-                VariableStorageClass.Automatic,
-                VariableScopeKind.Local,
-                isExtern: false,
-                fixedAddress: null,
-                alignment: null);
+                sourceSpan: CreateSourceSpan(asmSyntax.Name.Span));
             _ = TryDeclareSymbol(_currentScope, returnSymbol, asmSyntax.Name.Span, preserveLocalBindingOnShadowing: true);
         }
 
@@ -763,7 +753,7 @@ public sealed class Binder
             case AsmBlockStatementSyntax asm:
                 {
                     InlineAsmFlagOutput? flagOutput = null;
-                    VariableSymbol? outputSymbol = null;
+                    LocalVariableSymbol? outputSymbol = null;
                     if (asm.OutputBinding is not null)
                     {
                         string flag = asm.OutputBinding.FlagAnnotation?.Flag.Text ?? "";
@@ -779,18 +769,11 @@ public sealed class Binder
                             _ => null,
                         };
                         BladeType outputType = BindType(asm.OutputBinding.Type);
-                        VariableScopeKind outputScopeKind = _currentFunction is null
-                            ? VariableScopeKind.TopLevelAutomatic
-                            : VariableScopeKind.Local;
-                        outputSymbol = new VariableSymbol(
+                        outputSymbol = new LocalVariableSymbol(
                             asm.OutputBinding.Name.Text,
                             outputType,
                             isConst: false,
-                            VariableStorageClass.Automatic,
-                            outputScopeKind,
-                            isExtern: false,
-                            fixedAddress: null,
-                            alignment: null);
+                            sourceSpan: CreateSourceSpan(asm.OutputBinding.Name.Span));
 
                         _ = TryDeclareSymbol(_currentScope, outputSymbol, asm.OutputBinding.Name.Span, preserveLocalBindingOnShadowing: true);
                     }
@@ -883,15 +866,12 @@ public sealed class Binder
 
         foreach (InlineAsmTempBindingSlot tempBinding in tempBindings.Values)
         {
-            VariableSymbol tempSymbol = new(
+            LocalVariableSymbol tempSymbol = new(
                 $"asm%{tempBinding.TempId}",
                 BuiltinTypes.U32,
                 isConst: false,
-                VariableStorageClass.Automatic,
-                VariableScopeKind.InlineAsmTemporary,
-                isExtern: false,
-                fixedAddress: null,
-                alignment: null);
+                isInlineAsmTemporary: true,
+                sourceSpan: CreateSourceSpan(bodySyntax.Span));
             referencedSymbols[tempBinding] = tempSymbol;
         }
 
@@ -1161,7 +1141,7 @@ public sealed class Binder
 
         if (_currentFunction is not null)
         {
-            foreach (ParameterSymbol param in _currentFunction.Parameters)
+            foreach (ParameterVariableSymbol param in _currentFunction.Parameters)
                 availableSymbols[param.Name] = param;
         }
 
@@ -1176,24 +1156,18 @@ public sealed class Binder
 
     private static void CollectImportedModuleSymbols(string prefix, BoundModule module, IDictionary<string, Symbol> symbols)
     {
-        foreach ((string name, VariableSymbol variable) in module.ExportedVariables)
-            symbols[$"{prefix}.{name}"] = variable;
-
-        foreach ((string alias, BoundModule nestedModule) in module.ImportedModules)
+        foreach ((string name, Symbol symbol) in module.ExportedSymbols)
         {
-            string nestedPrefix = $"{prefix}.{alias}";
-            symbols[nestedPrefix] = new ModuleSymbol(alias, nestedModule);
-            CollectImportedModuleSymbols(nestedPrefix, nestedModule, symbols);
+            symbols[$"{prefix}.{name}"] = symbol;
+            if (symbol is ModuleSymbol nestedModule)
+                CollectImportedModuleSymbols($"{prefix}.{name}", nestedModule.Module, symbols);
         }
     }
 
     private BoundVariableDeclarationStatement BindLocalVariableDeclaration(VariableDeclarationSyntax declaration)
     {
         BladeType variableType = BindType(declaration.Type);
-        VariableScopeKind scopeKind = _currentFunction is null
-            ? VariableScopeKind.TopLevelAutomatic
-            : VariableScopeKind.Local;
-        VariableSymbol variableSymbol = CreateVariableSymbol(declaration, variableType, scopeKind);
+        LocalVariableSymbol variableSymbol = CreateLocalVariableSymbol(declaration, variableType);
         if (!TryDeclareSymbol(_currentScope, variableSymbol, declaration.Name.Span, preserveLocalBindingOnShadowing: true))
         {
             return new BoundVariableDeclarationStatement(variableSymbol, initializer: null, declaration.Span);
@@ -1202,8 +1176,6 @@ public sealed class Binder
         BoundExpression? initializer = null;
         if (declaration.Initializer is not null)
             initializer = BindExpression(declaration.Initializer, variableType);
-
-        RememberKnownConstantValue(variableSymbol, initializer);
 
         return new BoundVariableDeclarationStatement(variableSymbol, initializer, declaration.Span);
     }
@@ -1218,9 +1190,9 @@ public sealed class Binder
         bool isIntegerIteration = iterable.Type is IntegerLiteralTypeSymbol or IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol;
         bool isRangeIteration = iterable is BoundRangeExpression;
 
-        VariableSymbol? itemVariable = null;
+        LocalVariableSymbol? itemVariable = null;
         bool itemIsMutable = false;
-        VariableSymbol? indexVariable = null;
+        LocalVariableSymbol? indexVariable = null;
 
         Scope previousScope = _currentScope;
         _currentScope = new Scope(previousScope);
@@ -1235,28 +1207,20 @@ public sealed class Binder
                 BladeType elementType = arrayType.ElementType;
 
                 // Item variable — const or mutable alias to the element
-                itemVariable = new VariableSymbol(
+                itemVariable = new LocalVariableSymbol(
                     binding.ItemName.Text,
                     elementType,
                     isConst: !itemIsMutable,
-                    VariableStorageClass.Automatic,
-                    VariableScopeKind.Local,
-                    isExtern: false,
-                    fixedAddress: null,
-                    alignment: null);
+                    sourceSpan: CreateSourceSpan(binding.ItemName.Span));
                 _ = TryDeclareSymbol(_currentScope, itemVariable, binding.ItemName.Span, preserveLocalBindingOnShadowing: true);
 
                 // Index variable — user-provided or synthetic
                 string indexName = binding.IndexName?.Text ?? "__for_index";
-                indexVariable = new VariableSymbol(
+                indexVariable = new LocalVariableSymbol(
                     indexName,
                     BuiltinTypes.U32,
                     isConst: true,
-                    VariableStorageClass.Automatic,
-                    VariableScopeKind.Local,
-                    isExtern: false,
-                    fixedAddress: null,
-                    alignment: null);
+                    sourceSpan: CreateSourceSpan(binding.IndexName?.Span ?? binding.ItemName.Span));
                 _ = TryDeclareSymbol(_currentScope, indexVariable, binding.IndexName?.Span ?? binding.ItemName.Span, preserveLocalBindingOnShadowing: true);
             }
             else if (isIntegerIteration)
@@ -1267,15 +1231,11 @@ public sealed class Binder
                     _diagnostics.ReportTypeMismatch(binding.Ampersand!.Value.Span, "array", iterable.Type.Name);
                 }
 
-                indexVariable = new VariableSymbol(
+                indexVariable = new LocalVariableSymbol(
                     binding.ItemName.Text,
                     BuiltinTypes.U32,
                     isConst: true,
-                    VariableStorageClass.Automatic,
-                    VariableScopeKind.Local,
-                    isExtern: false,
-                    fixedAddress: null,
-                    alignment: null);
+                    sourceSpan: CreateSourceSpan(binding.ItemName.Span));
                 _ = TryDeclareSymbol(_currentScope, indexVariable, binding.ItemName.Span, preserveLocalBindingOnShadowing: true);
             }
             else if (isRangeIteration)
@@ -1286,15 +1246,11 @@ public sealed class Binder
                     _diagnostics.ReportTypeMismatch(binding.Ampersand!.Value.Span, "range", iterable.Type.Name);
                 }
 
-                indexVariable = new VariableSymbol(
+                indexVariable = new LocalVariableSymbol(
                     binding.ItemName.Text,
                     BuiltinTypes.U32,
                     isConst: true,
-                    VariableStorageClass.Automatic,
-                    VariableScopeKind.Local,
-                    isExtern: false,
-                    fixedAddress: null,
-                    alignment: null);
+                    sourceSpan: CreateSourceSpan(binding.ItemName.Span));
                 _ = TryDeclareSymbol(_currentScope, indexVariable, binding.ItemName.Span, preserveLocalBindingOnShadowing: true);
             }
             else
@@ -1305,30 +1261,22 @@ public sealed class Binder
         else if (isIntegerIteration || isArrayIteration)
         {
             // No binding — create synthetic index for internal counting
-            indexVariable = new VariableSymbol(
+            indexVariable = new LocalVariableSymbol(
                 "__for_index",
                 BuiltinTypes.U32,
                 isConst: true,
-                VariableStorageClass.Automatic,
-                VariableScopeKind.Local,
-                isExtern: false,
-                fixedAddress: null,
-                alignment: null);
+                sourceSpan: CreateSourceSpan(forStatement.Iterable.Span));
             _ = TryDeclareSymbol(_currentScope, indexVariable, forStatement.Iterable.Span, preserveLocalBindingOnShadowing: true);
         }
         else if (isRangeIteration)
         {
             _diagnostics.ReportRangeIterationRequiresBinding(forStatement.Iterable.Span);
             // Create synthetic index so lowering has something to work with
-            indexVariable = new VariableSymbol(
+            indexVariable = new LocalVariableSymbol(
                 "__for_index",
                 BuiltinTypes.U32,
                 isConst: true,
-                VariableStorageClass.Automatic,
-                VariableScopeKind.Local,
-                isExtern: false,
-                fixedAddress: null,
-                alignment: null);
+                sourceSpan: CreateSourceSpan(forStatement.Iterable.Span));
             _ = TryDeclareSymbol(_currentScope, indexVariable, forStatement.Iterable.Span, preserveLocalBindingOnShadowing: true);
         }
         else if (iterable.Type is not UnknownTypeSymbol)
@@ -1350,15 +1298,11 @@ public sealed class Binder
         _currentScope = new Scope(previousScope);
 
         string variableName = repFor.Binding?.ItemName.Text ?? "__rep_index";
-        VariableSymbol variable = new(
+        LocalVariableSymbol variable = new(
             variableName,
             BuiltinTypes.IntegerLiteral,
             isConst: true,
-            VariableStorageClass.Automatic,
-            VariableScopeKind.Local,
-            isExtern: false,
-            fixedAddress: null,
-            alignment: null);
+            sourceSpan: CreateSourceSpan(repFor.Binding?.ItemName.Span ?? repFor.RepKeyword.Span));
         _ = TryDeclareSymbol(_currentScope, variable, repFor.Binding?.ItemName.Span ?? repFor.RepKeyword.Span, preserveLocalBindingOnShadowing: true);
 
         BoundBlockStatement body = BindBlockStatement(repFor.Body, createScope: false, isTopLevel: false);
@@ -1513,20 +1457,19 @@ public sealed class Binder
                     if (receiver.Type is ModuleTypeSymbol moduleType)
                     {
                         BoundModule module = moduleType.Module.Module;
-                        if (module.ExportedVariables.TryGetValue(memberAccess.Member.Text, out VariableSymbol? variable))
+                        if (module.ExportedSymbols.TryGetValue(memberAccess.Member.Text, out Symbol? exportedSymbol)
+                            && exportedSymbol is VariableSymbol variable)
+                        {
                             return new BoundSymbolAssignmentTarget(variable, target.Span, variable.Type);
+                        }
 
                         _diagnostics.ReportUndefinedName(memberAccess.Member.Span, memberAccess.Member.Text);
                         return new BoundSymbolAssignmentTarget(
-                            new VariableSymbol(
+                            new LocalVariableSymbol(
                                 memberAccess.Member.Text,
                                 BuiltinTypes.Unknown,
                                 isConst: false,
-                                VariableStorageClass.Automatic,
-                                VariableScopeKind.Local,
-                                isExtern: false,
-                                fixedAddress: null,
-                                alignment: null),
+                                sourceSpan: CreateSourceSpan(memberAccess.Member.Span)),
                             target.Span,
                             BuiltinTypes.Unknown);
                     }
@@ -1611,9 +1554,6 @@ public sealed class Binder
             ObserveVariableForTopLevelStoreLoadElision(variable);
             return new BoundSymbolAssignmentTarget(symbol, nameExpression.Span, variable.Type);
         }
-
-        if (symbol is ParameterSymbol parameter)
-            return new BoundSymbolAssignmentTarget(symbol, nameExpression.Span, parameter.Type);
 
         _diagnostics.ReportInvalidAssignmentTarget(nameExpression.Span);
         return new BoundErrorAssignmentTarget(nameExpression.Span);
@@ -1720,8 +1660,6 @@ public sealed class Binder
             ObserveVariableForTopLevelStoreLoadElision(variable);
             return new BoundSymbolExpression(symbol, nameExpression.Span, variable.Type);
         }
-        if (symbol is ParameterSymbol parameter)
-            return new BoundSymbolExpression(symbol, nameExpression.Span, parameter.Type);
         if (symbol is FunctionSymbol function)
             return new BoundSymbolExpression(symbol, nameExpression.Span, new FunctionTypeSymbol(function));
         if (symbol is TypeSymbol typeSymbol)
@@ -1739,13 +1677,14 @@ public sealed class Binder
 
     private void ObserveVariableForTopLevelStoreLoadElision(VariableSymbol variable)
     {
-        if (_currentFunction is not null)
-            variable.DisableTopLevelStoreLoadChainElision();
+        if (_currentFunction is not null && variable is GlobalVariableSymbol globalVariable)
+            globalVariable.DisableTopLevelStoreLoadChainElision();
     }
 
     private static void ObserveAddressTakenVariableForTopLevelStoreLoadElision(VariableSymbol variable)
     {
-        variable.DisableTopLevelStoreLoadChainElision();
+        if (variable is GlobalVariableSymbol globalVariable)
+            globalVariable.DisableTopLevelStoreLoadChainElision();
     }
 
     private static void ObserveAddressTakenExpressionForTopLevelStoreLoadElision(BoundExpression expression)
@@ -1833,8 +1772,6 @@ public sealed class Binder
 
         if (symbol is VariableSymbol variable)
             return BindAddressOfVariable(unary, op, variable);
-        if (symbol is ParameterSymbol parameter)
-            return BindAddressOfParameter(unary, op, parameter);
 
         _diagnostics.ReportInvalidAddressOfTarget(unary.Operand.Span);
         return new BoundErrorExpression(unary.Span);
@@ -1853,7 +1790,7 @@ public sealed class Binder
             return new BoundErrorExpression(unary.Span);
         }
 
-        if (index.Expression is BoundSymbolExpression { Symbol: ParameterSymbol param } && param.Type is ArrayTypeSymbol)
+        if (index.Expression is BoundSymbolExpression { Symbol: ParameterVariableSymbol param } && param.Type is ArrayTypeSymbol)
         {
             _diagnostics.ReportAddressOfParameter(unary.Operand.Span, param.Name);
             return new BoundErrorExpression(unary.Span);
@@ -1869,7 +1806,7 @@ public sealed class Binder
     {
         ObserveAddressTakenVariableForTopLevelStoreLoadElision(variable);
 
-        if (_currentFunction?.Kind == FunctionKind.Rec && variable.ScopeKind == VariableScopeKind.Local)
+        if (_currentFunction?.Kind == FunctionKind.Rec && variable is AutomaticVariableSymbol)
         {
             _diagnostics.ReportAddressOfRecursiveLocal(unary.Operand.Span, variable.Name);
             return new BoundErrorExpression(unary.Span);
@@ -1885,31 +1822,12 @@ public sealed class Binder
         return new BoundUnaryExpression(op, operand, unary.Span, pointerType);
     }
 
-    private BoundExpression BindAddressOfParameter(UnaryExpressionSyntax unary, BoundUnaryOperator op, ParameterSymbol parameter)
-    {
-        if (_currentFunction?.Kind == FunctionKind.Rec)
-        {
-            _diagnostics.ReportAddressOfRecursiveLocal(unary.Operand.Span, parameter.Name);
-            return new BoundErrorExpression(unary.Span);
-        }
-
-        BladeType pointerType = parameter.Type is ArrayTypeSymbol arrayType
-            ? new MultiPointerTypeSymbol(arrayType.ElementType, isConst: false, storageClass: VariableStorageClass.Reg)
-            : new PointerTypeSymbol(parameter.Type, isConst: false, storageClass: VariableStorageClass.Reg);
-        BoundSymbolExpression operand = new(parameter, unary.Operand.Span, parameter.Type);
-        return new BoundUnaryExpression(op, operand, unary.Span, pointerType);
-    }
-
     private static bool TryGetRecursiveAddressOfName(BoundExpression expression, out string? name)
     {
         switch (expression)
         {
-            case BoundSymbolExpression { Symbol: VariableSymbol { ScopeKind: VariableScopeKind.Local, Type: ArrayTypeSymbol } variable }:
+            case BoundSymbolExpression { Symbol: AutomaticVariableSymbol { Type: ArrayTypeSymbol } variable }:
                 name = variable.Name;
-                return true;
-
-            case BoundSymbolExpression { Symbol: ParameterSymbol { Type: ArrayTypeSymbol } parameter }:
-                name = parameter.Name;
                 return true;
 
             default:
@@ -1942,7 +1860,7 @@ public sealed class Binder
                     return true;
                 }
 
-            case BoundSymbolExpression { Symbol: ParameterSymbol parameter } when parameter.Type is ArrayTypeSymbol:
+            case BoundSymbolExpression { Symbol: ParameterVariableSymbol parameter } when parameter.Type is ArrayTypeSymbol:
                 pointerType = new PointerTypeSymbol(elementType, isConst: false, storageClass: VariableStorageClass.Reg);
                 return true;
 
@@ -2166,20 +2084,26 @@ public sealed class Binder
         if (receiver.Type is ModuleTypeSymbol moduleType)
         {
             BoundModule module = moduleType.Module.Module;
-            if (module.FunctionLookup.TryGetValue(memberAccess.Member.Text, out FunctionSymbol? function))
-                return new BoundSymbolExpression(function, memberAccess.Span, new FunctionTypeSymbol(function));
-
-            if (module.ExportedVariables.TryGetValue(memberAccess.Member.Text, out VariableSymbol? variable))
+            if (module.ExportedSymbols.TryGetValue(memberAccess.Member.Text, out Symbol? exportedSymbol))
             {
-                ObserveVariableForTopLevelStoreLoadElision(variable);
-                return new BoundSymbolExpression(variable, memberAccess.Span, variable.Type);
+                switch (exportedSymbol)
+                {
+                    case FunctionSymbol function:
+                        return new BoundSymbolExpression(function, memberAccess.Span, new FunctionTypeSymbol(function));
+
+                    case VariableSymbol variable:
+                        ObserveVariableForTopLevelStoreLoadElision(variable);
+                        return new BoundSymbolExpression(variable, memberAccess.Span, variable.Type);
+
+                    case TypeSymbol exportedType:
+                        if (!exportedType.IsResolved)
+                            _ = ResolveTypeAlias(exportedType.Name, memberAccess.Member.Span);
+                        return new BoundSymbolExpression(exportedType, memberAccess.Span, new TypeValueTypeSymbol(exportedType.Type));
+
+                    case ModuleSymbol nestedModule:
+                        return new BoundSymbolExpression(nestedModule, memberAccess.Span, new ModuleTypeSymbol(nestedModule));
+                }
             }
-
-            if (module.TypeAliases.TryGetValue(memberAccess.Member.Text, out TypeSymbol? exportedType))
-                return new BoundSymbolExpression(exportedType, memberAccess.Span, new TypeValueTypeSymbol(exportedType.Type));
-
-            if (module.ImportedModules.TryGetValue(memberAccess.Member.Text, out BoundModule? importedModule))
-                return new BoundSymbolExpression(new ModuleSymbol(memberAccess.Member.Text, importedModule), memberAccess.Span, new ModuleTypeSymbol(new ModuleSymbol(memberAccess.Member.Text, importedModule)));
 
             _diagnostics.ReportUndefinedName(memberAccess.Member.Span, memberAccess.Member.Text);
             return new BoundErrorExpression(memberAccess.Span);
@@ -2322,7 +2246,7 @@ public sealed class Binder
         if (expression is BoundErrorExpression)
             return expression;
 
-        if (TryEvaluateFoldedValue(expression, _knownConstantValues, out ComptimeResult value, out ComptimeFailure foldFailure))
+        if (TryEvaluateFoldedValue(expression, out ComptimeResult value, out ComptimeFailure foldFailure))
             return CreateFoldedLiteralExpression(value, expression);
 
         if (ContainsErrorExpression(expression))
@@ -2343,7 +2267,7 @@ public sealed class Binder
 
     private bool TryFoldExpression(BoundExpression expression, bool reportDiagnostics, out BoundExpression folded)
     {
-        if (TryEvaluateFoldedValue(expression, _knownConstantValues, out ComptimeResult value, out ComptimeFailure failure))
+        if (TryEvaluateFoldedValue(expression, out ComptimeResult value, out ComptimeFailure failure))
         {
             folded = CreateFoldedLiteralExpression(value, expression);
             return true;
@@ -2358,7 +2282,6 @@ public sealed class Binder
 
     private bool TryEvaluateFoldedValue(
         BoundExpression expression,
-        IReadOnlyDictionary<Symbol, ComptimeResult> initialFrame,
         out ComptimeResult value,
         out ComptimeFailure failure)
     {
@@ -2367,7 +2290,7 @@ public sealed class Binder
             ResolveFunctionBodyForComptime,
             GetComptimeSupportResult);
 
-        ComptimeResult rawValue = evaluator.TryEvaluateExpression(expression, initialFrame);
+        ComptimeResult rawValue = evaluator.TryEvaluateExpression(expression);
         if (rawValue.IsFailed)
         {
             Assert.Invariant(rawValue.TryGetFailure(out failure));
@@ -2408,16 +2331,7 @@ public sealed class Binder
 
     private bool TryEvaluateAssertCondition(BoundExpression expression, out ComptimeResult value, out ComptimeFailure failure)
     {
-        return TryEvaluateFoldedValue(expression, _knownConstantValues, out value, out failure);
-    }
-
-    private void RememberKnownConstantValue(VariableSymbol symbol, BoundExpression? initializer)
-    {
-        if (!symbol.IsConst || !symbol.IsGlobalStorage || initializer is null || initializer is BoundErrorExpression)
-            return;
-
-        if (TryEvaluateConstantValue(initializer, out ComptimeResult value))
-            _knownConstantValues[symbol] = value;
+        return TryEvaluateFoldedValue(expression, out value, out failure);
     }
 
     private static bool TryValidateComptimeExpression(BoundExpression expression, out ComptimeFailure failure)
@@ -2628,10 +2542,13 @@ public sealed class Binder
             }
         }
 
-        foreach (BoundModule nestedModule in module.ImportedModules.Values)
+        foreach (Symbol exportedSymbol in module.ExportedSymbols.Values)
         {
-            if (TryResolveImportedFunctionBody(nestedModule, function, out body))
+            if (exportedSymbol is ModuleSymbol nestedModule
+                && TryResolveImportedFunctionBody(nestedModule.Module, function, out body))
+            {
                 return true;
+            }
         }
 
         body = null;
@@ -2984,12 +2901,6 @@ public sealed class Binder
             return FoldVariableQuery(query, variable, operatorName);
         }
 
-        if (symbol is ParameterSymbol)
-        {
-            _diagnostics.ReportQueryAutomaticLocal(query.Subject.Span, operatorName, name);
-            return new BoundErrorExpression(query.Span);
-        }
-
         // Symbol is not a variable (could be a function, module, or type alias).
         if (query.Keyword.Kind == TokenKind.MemoryofKeyword)
         {
@@ -3316,16 +3227,16 @@ public sealed class Binder
     private static BoundExpression LowerByteArrayToPointerLiteral(byte[] bytes, MultiPointerTypeSymbol targetPointer, TextSpan span)
     {
         RuntimeBladeValue literalValue = BladeValue.U8Array(bytes);
-        VariableSymbol literalSymbol = new(
+        GlobalVariableSymbol literalSymbol = new(
             FormattableString.Invariant($"lit_{targetPointer.StorageClass}_{span.Start}_{span.Length}"),
             literalValue.Type,
             isConst: true,
             targetPointer.StorageClass,
-            VariableScopeKind.GlobalStorage,
             isExtern: false,
             fixedAddress: null,
             alignment: null,
-            literalValue);
+            sourceSpan: SourceSpan.Synthetic());
+        literalSymbol.SetInitializer(new BoundLiteralExpression(literalValue, span));
         return new BoundLiteralExpression(
             BladeValue.Pointer(targetPointer, new PointedValue(literalSymbol, 0)),
             span);
@@ -3368,33 +3279,37 @@ public sealed class Binder
         return sourceType is PointerLikeTypeSymbol && targetType is PointerLikeTypeSymbol;
     }
 
-    private VariableSymbol CreateVariableSymbol(
+    private LocalVariableSymbol CreateLocalVariableSymbol(
         VariableDeclarationSyntax declaration,
-        BladeType variableType,
-        VariableScopeKind scopeKind)
+        BladeType variableType)
     {
-        VariableStorageClass storageClass = MapStorageClass(declaration.StorageClassKeyword);
         bool isConst = declaration.MutabilityKeyword.Kind == TokenKind.ConstKeyword;
-        bool isGlobalStorage = scopeKind == VariableScopeKind.GlobalStorage;
+        if (declaration.ExternKeyword is Token externKeyword)
+            _diagnostics.ReportInvalidExternScope(externKeyword.Span);
 
-        if (!isGlobalStorage)
-        {
-            if (declaration.ExternKeyword is Token externKeyword)
-                _diagnostics.ReportInvalidExternScope(externKeyword.Span);
+        if (declaration.StorageClassKeyword is Token storageClassKeyword)
+            _diagnostics.ReportInvalidLocalStorageClass(storageClassKeyword.Span, storageClassKeyword.Text);
 
-            if (declaration.StorageClassKeyword is Token storageClassKeyword)
-                _diagnostics.ReportInvalidLocalStorageClass(storageClassKeyword.Span, storageClassKeyword.Text);
-        }
-
-        return new VariableSymbol(
+        return new LocalVariableSymbol(
             declaration.Name.Text,
             variableType,
             isConst,
-            storageClass,
-            scopeKind,
+            sourceSpan: CreateSourceSpan(declaration.Name.Span));
+    }
+
+    private GlobalVariableSymbol CreateGlobalVariableSymbol(
+        VariableDeclarationSyntax declaration,
+        BladeType variableType)
+    {
+        return new GlobalVariableSymbol(
+            declaration.Name.Text,
+            variableType,
+            declaration.MutabilityKeyword.Kind == TokenKind.ConstKeyword,
+            MapStorageClass(declaration.StorageClassKeyword),
             declaration.ExternKeyword is not null,
             fixedAddress: null,
-            alignment: null);
+            alignment: null,
+            sourceSpan: CreateSourceSpan(declaration.Name.Span));
     }
 
     private static VariableStorageClass MapStorageClass(Token? storageClassKeyword)
@@ -3408,7 +3323,7 @@ public sealed class Binder
         };
     }
 
-    private void ResolveLayoutMetadata(VariableDeclarationSyntax declaration, VariableSymbol variableSymbol)
+    private void ResolveLayoutMetadata(VariableDeclarationSyntax declaration, GlobalVariableSymbol variableSymbol)
     {
         int? fixedAddress = declaration.AtClause is null
             ? null
@@ -3440,7 +3355,7 @@ public sealed class Binder
 
     private bool TryEvaluateConstantValue(BoundExpression expression, out ComptimeResult value)
     {
-        return TryEvaluateFoldedValue(expression, _knownConstantValues, out value, out _);
+        return TryEvaluateFoldedValue(expression, out value, out _);
     }
 
     private int? TryEvaluateConstantInt(BoundExpression expression)
@@ -3691,21 +3606,26 @@ public sealed class Binder
         for (int i = 1; i < qualifiedType.Parts.Count - 1; i++)
         {
             Token segment = qualifiedType.Parts[i];
-            if (!module.ImportedModules.TryGetValue(segment.Text, out BoundModule? nestedModule))
+            if (!module.ExportedSymbols.TryGetValue(segment.Text, out Symbol? nestedSymbol)
+                || nestedSymbol is not ModuleSymbol nestedModule)
             {
                 _diagnostics.ReportUndefinedType(segment.Span, qualifiedName);
                 return BuiltinTypes.Unknown;
             }
 
-            module = nestedModule;
+            module = nestedModule.Module;
         }
 
         Token finalSegment = qualifiedType.Parts[^1];
-        if (!module.TypeAliases.TryGetValue(finalSegment.Text, out TypeSymbol? resolvedType))
+        if (!module.ExportedSymbols.TryGetValue(finalSegment.Text, out Symbol? resolvedSymbol)
+            || resolvedSymbol is not TypeSymbol resolvedType)
         {
             _diagnostics.ReportUndefinedType(finalSegment.Span, qualifiedName);
             return BuiltinTypes.Unknown;
         }
+
+        if (!resolvedType.IsResolved)
+            _ = ResolveTypeAlias(resolvedType.Name, finalSegment.Span);
 
         return resolvedType.Type;
     }
@@ -3727,8 +3647,8 @@ public sealed class Binder
             return BuiltinTypes.Unknown;
         }
 
-        Assert.Invariant(alias.Syntax is not null, $"Type alias '{aliasName}' must retain its declaration syntax until resolved.");
-        BladeType boundType = BindType(alias.Syntax.Type, alias.Syntax.Name.Text);
+        Assert.Invariant(_typeAliasDeclarations.TryGetValue(alias, out TypeAliasDeclarationSyntax? aliasSyntax), $"Type alias '{aliasName}' must retain its declaration syntax until resolved.");
+        BladeType boundType = BindType(aliasSyntax.Type, aliasSyntax.Name.Text);
         _typeAliasResolutionStack.Remove(aliasName);
         alias.Resolve(boundType);
         return alias.Type;

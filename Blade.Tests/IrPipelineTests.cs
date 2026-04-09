@@ -2556,25 +2556,12 @@ public class IrPipelineTests
     [Test]
     public void TopLevelAutomaticVariables_DoNotAllocateStoragePlaces()
     {
-        VariableSymbol symbol = new(
-            "local",
-            BuiltinTypes.U32,
-            isConst: false,
-            VariableStorageClass.Automatic,
-            VariableScopeKind.TopLevelAutomatic,
-            isExtern: false,
-            fixedAddress: null,
-            alignment: null);
-        BoundModule program = new(
-            "/tmp/test.blade",
-            new CompilationUnitSyntax([], new Token(TokenKind.EndOfFile, new TextSpan(0, 0), string.Empty)),
-            [],
-            [new BoundGlobalVariableMember(symbol, new BoundLiteralExpression(new RuntimeBladeValue(BuiltinTypes.U32, 1L), new TextSpan(0, 0)), new TextSpan(0, 0))],
-            [],
-            new Dictionary<string, TypeSymbol>(),
-            new Dictionary<string, FunctionSymbol>(),
-            new Dictionary<string, VariableSymbol>(),
-            new Dictionary<string, BoundModule>());
+        LocalVariableSymbol symbol = new("local", BuiltinTypes.U32, isConst: false, sourceSpan: SourceSpan.Synthetic());
+        BoundModule program = IrTestFactory.CreateBoundModule(
+            topLevelStatements:
+            [
+                new BoundVariableDeclarationStatement(symbol, new BoundLiteralExpression(new RuntimeBladeValue(BuiltinTypes.U32, 1L), new TextSpan(0, 0)), new TextSpan(0, 0)),
+            ]);
 
         MirModule mirModule = MirLowerer.Lower(program);
 

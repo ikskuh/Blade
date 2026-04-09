@@ -18,14 +18,14 @@ public class WriterAndSymbolTests
 
     private static VariableSymbol CreateVariable(string name, VariableStorageClass storageClass, VariableScopeKind scopeKind)
     {
-        return new VariableSymbol(name, BuiltinTypes.U32, isConst: false, storageClass, scopeKind, isExtern: false, fixedAddress: null, alignment: null);
+        return IrTestFactory.CreateVariableSymbol(name, BuiltinTypes.U32, storageClass, scopeKind);
     }
 
     [Test]
     public void VariableSymbol_ReportsAutomaticAndGlobalStorageProperties()
     {
         VariableSymbol local = CreateVariable("local", VariableStorageClass.Automatic, VariableScopeKind.Local);
-        VariableSymbol topLevel = CreateVariable("top", VariableStorageClass.Automatic, VariableScopeKind.TopLevelAutomatic);
+        VariableSymbol topLevel = CreateVariable("top", VariableStorageClass.Automatic, VariableScopeKind.Local);
         VariableSymbol globalReg = CreateVariable("global_reg", VariableStorageClass.Reg, VariableScopeKind.GlobalStorage);
         VariableSymbol globalHub = CreateVariable("global_hub", VariableStorageClass.Hub, VariableScopeKind.GlobalStorage);
 
@@ -41,7 +41,7 @@ public class WriterAndSymbolTests
     public void DumpContentBuilder_ReturnsFinalAssemblyWhenNoExplicitDumpFlagsAreSet()
     {
         CompilationUnitSyntax syntax = new([], new Token(TokenKind.EndOfFile, Span, string.Empty));
-        BoundModule program = new("/tmp/test.blade", syntax, [], [], [], new Dictionary<string, TypeSymbol>(), new Dictionary<string, FunctionSymbol>(), new Dictionary<string, VariableSymbol>(), new Dictionary<string, BoundModule>());
+        BoundModule program = IrTestFactory.CreateBoundModule("/tmp/test.blade");
         MirModule mir = new([], [], []);
         LirModule lir = new([]);
         AsmModule asm = new([], [], []);

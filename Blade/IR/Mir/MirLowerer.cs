@@ -63,18 +63,20 @@ public static class MirLowerer
         HashSet<Symbol> seenSymbols = [];
         HashSet<string> visitedModules = new(PathIdentity.Comparer);
         CollectStoragePlaces(module.GlobalVariables, places, definitions, seenSymbols);
-        foreach (BoundModule importedModule in module.ImportedModules.Values)
-            CollectStoragePlaces(importedModule, places, definitions, seenSymbols, visitedModules);
+        foreach (Symbol exportedSymbol in module.ExportedSymbols.Values)
+        {
+            if (exportedSymbol is ModuleSymbol importedModule)
+                CollectStoragePlaces(importedModule.Module, places, definitions, seenSymbols, visitedModules);
+        }
 
         foreach (Symbol symbol in CollectAddressTakenSymbols(module))
         {
             if (!seenSymbols.Add(symbol))
                 continue;
 
-            if (symbol is VariableSymbol variable
+            if (symbol is GlobalVariableSymbol variable
                 && variable.IsConst
-                && variable.IsGlobalStorage
-                && variable.ConstantValue is RuntimeBladeValue constantValue)
+                && variable.Initializer is BoundLiteralExpression { Value: RuntimeBladeValue constantValue })
             {
                 StoragePlace literalPlace = new(variable, MapStoragePlaceKind(variable), fixedAddress: null);
                 places.Add(literalPlace);
@@ -89,14 +91,14 @@ public static class MirLowerer
     }
 
     private static void CollectStoragePlaces(
-        IReadOnlyList<BoundGlobalVariableMember> globals,
+        IReadOnlyList<GlobalVariableSymbol> globals,
         ICollection<StoragePlace> places,
         ICollection<StorageDefinition> definitions,
         ISet<Symbol> seenSymbols)
     {
-        foreach (BoundGlobalVariableMember global in globals)
+        foreach (GlobalVariableSymbol global in globals)
         {
-            VariableSymbol symbol = global.Symbol;
+            GlobalVariableSymbol symbol = global;
             if (!symbol.IsGlobalStorage || symbol.StorageClass == VariableStorageClass.Automatic || !seenSymbols.Add(symbol))
                 continue;
 
@@ -130,8 +132,11 @@ public static class MirLowerer
             return;
 
         CollectStoragePlaces(module.GlobalVariables, places, definitions, seenSymbols);
-        foreach (BoundModule nestedModule in module.ImportedModules.Values)
-            CollectStoragePlaces(nestedModule, places, definitions, seenSymbols, visitedModules);
+        foreach (Symbol exportedSymbol in module.ExportedSymbols.Values)
+        {
+            if (exportedSymbol is ModuleSymbol nestedModule)
+                CollectStoragePlaces(nestedModule.Module, places, definitions, seenSymbols, visitedModules);
+        }
     }
 
     private static StoragePlaceKind MapStoragePlaceKind(VariableSymbol symbol)
@@ -383,12 +388,12 @@ public static class MirLowerer
         }
 
         public void LowerTopLevel(
-            IReadOnlyList<BoundGlobalVariableMember> globalVariables,
+            IReadOnlyList<GlobalVariableSymbol> globalVariables,
             IReadOnlyList<BoundStatement> statements)
         {
-            foreach (BoundGlobalVariableMember global in globalVariables)
+            foreach (GlobalVariableSymbol global in globalVariables)
             {
-                if (global.Initializer is null || !TryGetStoragePlace(global.Symbol, out StoragePlace place))
+                if (global.Initializer is null || !TryGetStoragePlace(global, out StoragePlace place))
                     continue;
 
                 if (_preInitializedStoragePlaces.Contains(place)
@@ -401,7 +406,7 @@ public static class MirLowerer
                     continue;
 
                 MirValueId initializerValue = LowerExpression(global.Initializer);
-                EmitStorePlace(place, initializerValue, global.Span);
+                EmitStorePlace(place, initializerValue, global.SourceSpan.Span);
             }
 
             foreach (BoundStatement statement in statements)
@@ -410,9 +415,9 @@ public static class MirLowerer
             EmitFallthroughReturn(new TextSpan(0, 0));
         }
 
-        public void LowerFunctionBody(BoundBlockStatement body, IReadOnlyList<ParameterSymbol> parameters)
+        public void LowerFunctionBody(BoundBlockStatement body, IReadOnlyList<ParameterVariableSymbol> parameters)
         {
-            foreach (ParameterSymbol parameter in parameters)
+            foreach (ParameterVariableSymbol parameter in parameters)
             {
                 MirValueId parameterValue = NextValue();
                 _entryBlock.Parameters.Add(new MirBlockParameter(parameterValue, parameter.Name, parameter.Type));
@@ -1712,12 +1717,7 @@ public static class MirLowerer
 
         private static bool IsAutomaticSymbol(Symbol symbol)
         {
-            return symbol switch
-            {
-                VariableSymbol variable => variable.IsAutomatic,
-                ParameterSymbol => true,
-                _ => false,
-            };
+            return symbol is AutomaticVariableSymbol;
         }
 
         private static bool IsInlineAsmTempSymbol(Symbol symbol)
@@ -1728,7 +1728,6 @@ public static class MirLowerer
             return symbol switch
             {
                 VariableSymbol variable => variable.Type,
-                ParameterSymbol parameter => parameter.Type,
                 _ => BuiltinTypes.Unknown,
             };
         }

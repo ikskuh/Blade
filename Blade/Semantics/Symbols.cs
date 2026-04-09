@@ -34,9 +34,10 @@ internal sealed class SyntheticFunctionSignatureSyntax(string name) : IFunctionS
     public SeparatedSyntaxList<ReturnItemSyntax>? ReturnSpec => null;
 }
 
-public abstract class Symbol(string name)
+public abstract class Symbol(string name, SourceSpan? sourceSpan = null)
 {
     public string Name { get; } = Requires.NotNullOrWhiteSpace(name);
+    public SourceSpan SourceSpan { get; } = sourceSpan ?? SourceSpan.Synthetic();
 }
 
 public sealed class AbsoluteAddressSymbol(int address, VariableStorageClass storageClass) : Symbol(BuildName(address, storageClass))
@@ -76,21 +77,13 @@ public sealed class ControlFlowLabelSymbol(string name, FunctionSymbol? function
 
 public sealed class TypeSymbol : Symbol
 {
-    public TypeSymbol(string name, BladeType type)
-        : base(name)
+    public TypeSymbol(string name, BladeType? type = null, SourceSpan? sourceSpan = null)
+        : base(name, sourceSpan)
     {
-        _type = Requires.NotNull(type);
-    }
-
-    public TypeSymbol(string name, TypeAliasDeclarationSyntax syntax)
-        : base(name)
-    {
-        Syntax = Requires.NotNull(syntax);
+        _type = type;
     }
 
     private BladeType? _type;
-
-    public TypeAliasDeclarationSyntax? Syntax { get; }
     public bool IsResolved => _type is not null;
 
     public BladeType Type
@@ -110,54 +103,97 @@ public sealed class TypeSymbol : Symbol
     }
 }
 
-public sealed class VariableSymbol(
+public abstract class VariableSymbol(string name, BladeType type, bool isConst, SourceSpan? sourceSpan = null)
+    : Symbol(name, sourceSpan)
+{
+    public BladeType Type { get; } = Requires.NotNull(type);
+    public bool IsConst { get; } = isConst;
+    public abstract VariableScopeKind ScopeKind { get; }
+    public virtual bool IsAutomatic => false;
+    public virtual bool IsGlobalStorage => false;
+    public virtual bool IsInlineAsmTemporary => false;
+    public virtual bool IsExtern => false;
+    public virtual VariableStorageClass StorageClass => VariableStorageClass.Automatic;
+    public virtual int? FixedAddress => null;
+    public virtual int? Alignment => null;
+    public virtual bool CanElideTopLevelStoreLoadChains => false;
+    public bool UsesGlobalRegisterStorage => IsGlobalStorage && StorageClass == VariableStorageClass.Reg;
+    public bool UsesGlobalLutStorage => IsGlobalStorage && StorageClass == VariableStorageClass.Lut;
+    public bool UsesGlobalHubStorage => IsGlobalStorage && StorageClass == VariableStorageClass.Hub;
+
+    public virtual void DisableTopLevelStoreLoadChainElision()
+    {
+    }
+}
+
+public abstract class AutomaticVariableSymbol(string name, BladeType type, bool isConst, SourceSpan? sourceSpan = null)
+    : VariableSymbol(name, type, isConst, sourceSpan)
+{
+    public override bool IsAutomatic => true;
+    public override VariableScopeKind ScopeKind => IsInlineAsmTemporary ? VariableScopeKind.InlineAsmTemporary : VariableScopeKind.Local;
+}
+
+public sealed class LocalVariableSymbol(
+    string name,
+    BladeType type,
+    bool isConst,
+    bool isInlineAsmTemporary = false,
+    SourceSpan? sourceSpan = null)
+    : AutomaticVariableSymbol(name, type, isConst, sourceSpan)
+{
+    public override bool IsInlineAsmTemporary { get; } = isInlineAsmTemporary;
+}
+
+public sealed class ParameterVariableSymbol(string name, BladeType type, SourceSpan? sourceSpan = null)
+    : AutomaticVariableSymbol(name, type, isConst: false, sourceSpan)
+{
+    public override VariableScopeKind ScopeKind => VariableScopeKind.Parameter;
+}
+
+public sealed class GlobalVariableSymbol(
     string name,
     BladeType type,
     bool isConst,
     VariableStorageClass storageClass,
-    VariableScopeKind scopeKind,
     bool isExtern,
     int? fixedAddress,
     int? alignment,
-    RuntimeBladeValue? constantValue = null) : Symbol(name)
+    SourceSpan? sourceSpan = null)
+    : VariableSymbol(name, type, isConst, sourceSpan)
 {
-    public BladeType Type { get; } = Requires.NotNull(type);
-    public bool IsConst { get; } = isConst;
-    public VariableStorageClass StorageClass { get; } = storageClass;
-    public VariableScopeKind ScopeKind { get; } = scopeKind;
-    public bool IsExtern { get; } = isExtern;
-    public int? FixedAddress { get; private set; } = fixedAddress;
-    public int? Alignment { get; private set; } = alignment;
+    private int? _fixedAddress = fixedAddress;
+    private int? _alignment = alignment;
+    private bool _canElideTopLevelStoreLoadChains = storageClass == VariableStorageClass.Reg
+        && !isExtern
+        && !fixedAddress.HasValue;
 
-    public bool IsAutomatic => ScopeKind is VariableScopeKind.Local or VariableScopeKind.TopLevelAutomatic or VariableScopeKind.InlineAsmTemporary;
-    public bool IsGlobalStorage => ScopeKind == VariableScopeKind.GlobalStorage;
-    public bool UsesGlobalRegisterStorage => IsGlobalStorage && StorageClass == VariableStorageClass.Reg;
-    public bool UsesGlobalLutStorage => IsGlobalStorage && StorageClass == VariableStorageClass.Lut;
-    public bool UsesGlobalHubStorage => IsGlobalStorage && StorageClass == VariableStorageClass.Hub;
-    public RuntimeBladeValue? ConstantValue { get; } = constantValue;
-    public bool CanElideTopLevelStoreLoadChains { get; private set; } = scopeKind == VariableScopeKind.GlobalStorage
-            && storageClass == VariableStorageClass.Reg
-            && !isExtern
-            && !fixedAddress.HasValue;
+    public override bool IsGlobalStorage => true;
+    public override VariableScopeKind ScopeKind => VariableScopeKind.GlobalStorage;
+    public override bool IsExtern { get; } = isExtern;
+    public override VariableStorageClass StorageClass { get; } = storageClass;
+    public override int? FixedAddress => _fixedAddress;
+    public override int? Alignment => _alignment;
+    public override bool CanElideTopLevelStoreLoadChains => _canElideTopLevelStoreLoadChains;
+
+    public BoundExpression? Initializer { get; private set; }
 
     public void SetLayoutMetadata(int? fixedAddress, int? alignment)
     {
-        FixedAddress = fixedAddress;
-        Alignment = alignment;
+        _fixedAddress = fixedAddress;
+        _alignment = alignment;
         if (fixedAddress.HasValue)
-            CanElideTopLevelStoreLoadChains = false;
+            _canElideTopLevelStoreLoadChains = false;
     }
 
-    public void DisableTopLevelStoreLoadChainElision()
+    public void SetInitializer(BoundExpression? initializer)
     {
-        CanElideTopLevelStoreLoadChains = false;
+        Initializer = initializer;
     }
 
-}
-
-public sealed class ParameterSymbol(string name, BladeType type) : Symbol(name)
-{
-    public BladeType Type { get; } = Requires.NotNull(type);
+    public override void DisableTopLevelStoreLoadChainElision()
+    {
+        _canElideTopLevelStoreLoadChains = false;
+    }
 }
 
 public enum VariableStorageClass
@@ -172,7 +208,6 @@ public enum VariableScopeKind
 {
     Local,
     Parameter,
-    TopLevelAutomatic,
     InlineAsmTemporary,
     GlobalStorage,
 }
@@ -212,7 +247,8 @@ public sealed class FunctionSymbol(
     string name,
     IFunctionSignatureSyntax syntax,
     FunctionKind kind,
-    FunctionInliningPolicy inliningPolicy = FunctionInliningPolicy.Default) : Symbol(name)
+    FunctionInliningPolicy inliningPolicy = FunctionInliningPolicy.Default,
+    SourceSpan? sourceSpan = null) : Symbol(name, sourceSpan)
 {
     public FunctionSymbol(
         string name,
@@ -226,7 +262,7 @@ public sealed class FunctionSymbol(
     public FunctionKind Kind { get; } = kind;
     public FunctionInliningPolicy InliningPolicy { get; } = inliningPolicy;
     public bool IsAsmFunction => Syntax is AsmFunctionDeclarationSyntax;
-    public IReadOnlyList<ParameterSymbol> Parameters { get; set; } = [];
+    public IReadOnlyList<ParameterVariableSymbol> Parameters { get; set; } = [];
     public IReadOnlyList<ReturnSlot> ReturnSlots { get; set; } = [];
     public IReadOnlyList<BladeType> ReturnTypes => System.Array.ConvertAll(
         ReturnSlots.ToArray(),
@@ -234,7 +270,7 @@ public sealed class FunctionSymbol(
     public bool HasFlagReturns => ReturnSlots.Any(s => s.IsFlagPlaced);
 }
 
-public sealed class ModuleSymbol(string name, BoundModule module) : Symbol(name)
+public sealed class ModuleSymbol(string name, BoundModule module, SourceSpan? sourceSpan = null) : Symbol(name, sourceSpan)
 {
     public BoundModule Module { get; } = Requires.NotNull(module);
 }

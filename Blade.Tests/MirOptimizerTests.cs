@@ -208,12 +208,12 @@ public class MirOptimizerTests
         {
             Parameters =
             [
-                new ParameterSymbol("many", manyType),
-                new ParameterSymbol("index", BuiltinTypes.U32),
-                new ParameterSymbol("ptr", pointerType),
-                new ParameterSymbol("flags", flagsType),
-                new ParameterSymbol("packed", packedType),
-                new ParameterSymbol("storeValue", BuiltinTypes.U32),
+                new ParameterVariableSymbol("many", manyType, SourceSpan.Synthetic()),
+                new ParameterVariableSymbol("index", BuiltinTypes.U32, SourceSpan.Synthetic()),
+                new ParameterVariableSymbol("ptr", pointerType, SourceSpan.Synthetic()),
+                new ParameterVariableSymbol("flags", flagsType, SourceSpan.Synthetic()),
+                new ParameterVariableSymbol("packed", packedType, SourceSpan.Synthetic()),
+                new ParameterVariableSymbol("storeValue", BuiltinTypes.U32, SourceSpan.Synthetic()),
             ],
             ReturnSlots = [new ReturnSlot(packedType, ReturnPlacement.Register)],
         };

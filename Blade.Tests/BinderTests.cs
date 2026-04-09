@@ -574,8 +574,10 @@ public class BinderTests
         (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""import "./math.blade" as math; var outv: u32 = math.inc(2); math();""", sourcePath);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
-        Assert.That(program.ImportedModules.ContainsKey("math"), Is.True);
-        Assert.That(program.ImportedModules["math"].FunctionLookup.ContainsKey("inc"), Is.True);
+        Assert.That(program.ExportedSymbols.TryGetValue("math", out Symbol? exportedSymbol), Is.True);
+        Assert.That(exportedSymbol, Is.TypeOf<ModuleSymbol>());
+        ModuleSymbol mathModule = (ModuleSymbol)exportedSymbol!;
+        Assert.That(mathModule.Module.ExportedSymbols.ContainsKey("inc"), Is.True);
     }
 
     [Test]
@@ -616,10 +618,11 @@ public class BinderTests
         (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""import "./types.blade" as t;""", sourcePath);
         Assert.That(diagnostics.Count, Is.EqualTo(0));
 
-        BoundModule module = program.ImportedModules["t"];
+        ModuleSymbol importedModule = (ModuleSymbol)program.ExportedSymbols["t"];
+        BoundModule module = importedModule.Module;
         Assert.That(module.ResolvedFilePath, Is.EqualTo(temp.GetFullPath("types.blade")));
         Assert.That(module.Syntax, Is.Not.Null);
-        Assert.That(module.TypeAliases.ContainsKey("Alias"), Is.True);
+        Assert.That(module.ExportedSymbols.ContainsKey("Alias"), Is.True);
     }
 
     [Test]
@@ -963,7 +966,7 @@ public class BinderTests
             reg var bad: u8 = closed as u8;
             """);
 
-        Assert.That(program.GlobalVariables.Single(global => global.Symbol.Name == "raw").Initializer, Is.TypeOf<BoundLiteralExpression>());
+        Assert.That(program.GlobalVariables.Single(global => global.Name == "raw").Initializer, Is.TypeOf<BoundLiteralExpression>());
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0224_InvalidExplicitCast), Is.True);
     }
 
@@ -1000,7 +1003,7 @@ public class BinderTests
             """);
 
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0201_SymbolAlreadyDeclared), Is.True);
-        EnumTypeSymbol mode = (EnumTypeSymbol)program.TypeAliases["Mode"].Type;
+        EnumTypeSymbol mode = (EnumTypeSymbol)((TypeSymbol)program.ExportedSymbols["Mode"]).Type;
         Assert.That(mode.Members["Idle"], Is.EqualTo(0));
         Assert.That(mode.Members["Busy"], Is.EqualTo(5));
         Assert.That(mode.Members["Done"], Is.EqualTo(6));
@@ -1064,7 +1067,7 @@ public class BinderTests
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
-        Assert.That(program.TypeAliases.Keys, Is.EquivalentTo(new[] { "EmptyStruct", "EmptyUnion", "EmptyEnum", "EmptyFlags" }));
+        Assert.That(program.ExportedSymbols.Values.OfType<TypeSymbol>().Select(symbol => symbol.Name), Is.EquivalentTo(new[] { "EmptyStruct", "EmptyUnion", "EmptyEnum", "EmptyFlags" }));
     }
 
     [Test]
@@ -1076,7 +1079,7 @@ public class BinderTests
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
 
-        StructTypeSymbol p = (StructTypeSymbol)program.TypeAliases["P"].Type;
+        StructTypeSymbol p = (StructTypeSymbol)((TypeSymbol)program.ExportedSymbols["P"]).Type;
 
         Assert.Multiple(() =>
         {
@@ -1286,7 +1289,7 @@ public class BinderTests
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
-        BoundGlobalVariableMember declaration = program.GlobalVariables.Single();
+        GlobalVariableSymbol declaration = program.GlobalVariables.Single();
         Assert.That(declaration.Initializer, Is.TypeOf<BoundArrayLiteralExpression>());
         BoundArrayLiteralExpression literal = (BoundArrayLiteralExpression)declaration.Initializer!;
         Assert.That(literal.Type.Name, Is.EqualTo("[4]u32"));

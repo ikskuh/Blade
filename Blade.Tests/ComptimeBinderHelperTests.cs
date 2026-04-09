@@ -65,9 +65,9 @@ public sealed class ComptimeBinderHelperTests
             rootModule,
             modulesByPath)!;
 
-        Type importedModuleDefinitionType = typeof(SemanticBinder).Assembly.GetType("Blade.Semantics.ImportedModuleDefinition", throwOnError: true)!;
+        Type boundModuleType = typeof(BoundModule);
         object moduleDefinitionCache = Activator.CreateInstance(
-            typeof(Dictionary<,>).MakeGenericType(typeof(string), importedModuleDefinitionType),
+            typeof(Dictionary<,>).MakeGenericType(typeof(string), boundModuleType),
             StringComparer.OrdinalIgnoreCase)!;
         return (SemanticBinder)constructor.Invoke(
         [
@@ -149,17 +149,14 @@ public sealed class ComptimeBinderHelperTests
         IReadOnlyDictionary<string, BoundModule>? importedModules = null)
     {
         IReadOnlyList<BoundFunctionMember> functionMembers = functions ?? [];
-        Dictionary<string, FunctionSymbol> functionLookup = functionMembers.ToDictionary(member => member.Symbol.Name, member => member.Symbol, StringComparer.Ordinal);
+        IReadOnlyDictionary<string, BoundModule> effectiveImportedModules = importedModules ?? new Dictionary<string, BoundModule>(StringComparer.Ordinal);
         return new BoundModule(
             "/tmp/test.blade",
             EmptyCompilationUnit(),
             [],
             [],
             functionMembers,
-            new Dictionary<string, TypeSymbol>(StringComparer.Ordinal),
-            functionLookup,
-            new Dictionary<string, VariableSymbol>(StringComparer.Ordinal),
-            importedModules ?? new Dictionary<string, BoundModule>(StringComparer.Ordinal));
+            IrTestFactory.CreateExports(functions: functionMembers, importedModules: effectiveImportedModules));
     }
 
     private static BoundModule CreateImportedModule(
@@ -167,16 +164,15 @@ public sealed class ComptimeBinderHelperTests
         IReadOnlyList<BoundFunctionMember>? functions = null,
         IReadOnlyDictionary<string, BoundModule>? importedModules = null)
     {
+        IReadOnlyList<BoundFunctionMember> functionMembers = functions ?? [];
+        IReadOnlyDictionary<string, BoundModule> effectiveImportedModules = importedModules ?? new Dictionary<string, BoundModule>(StringComparer.Ordinal);
         return new BoundModule(
             $"/tmp/{alias}.blade",
             EmptyCompilationUnit(),
             [],
             [],
-            functions ?? [],
-            new Dictionary<string, TypeSymbol>(StringComparer.Ordinal),
-            (functions ?? []).ToDictionary(member => member.Symbol.Name, member => member.Symbol, StringComparer.Ordinal),
-            new Dictionary<string, VariableSymbol>(StringComparer.Ordinal),
-            importedModules ?? new Dictionary<string, BoundModule>(StringComparer.Ordinal));
+            functionMembers,
+            IrTestFactory.CreateExports(functions: functionMembers, importedModules: effectiveImportedModules));
     }
 
     private static object CreateFailure(string kindName, string detail = "detail")
@@ -322,7 +318,7 @@ public sealed class ComptimeBinderHelperTests
     public void PrivateComptimeValidationHelpers_CoverRecursiveBranches()
     {
         MethodInfo method = GetBinderStaticMethod("TryValidateComptimeExpression", 2);
-        VariableSymbol local = new("local", BuiltinTypes.U32, isConst: false, VariableStorageClass.Automatic, VariableScopeKind.Local, isExtern: false, fixedAddress: null, alignment: null);
+        VariableSymbol local = IrTestFactory.CreateVariableSymbol("local", BuiltinTypes.U32, VariableStorageClass.Automatic, VariableScopeKind.Local);
         BoundExpression localSymbol = new BoundSymbolExpression(local, Span, BuiltinTypes.U32);
         FunctionSymbol function = CreateFunctionSymbol("callme", FunctionKind.Default, BuiltinTypes.U32);
         BoundModule module = CreateImportedModule("mod");
@@ -369,7 +365,7 @@ public sealed class ComptimeBinderHelperTests
         MethodInfo method = GetBinderStaticMethod("RequiresSuccessfulComptimeEvaluation", typeof(BoundExpression));
         EnumTypeSymbol mode = new("Mode", BuiltinTypes.U32, new Dictionary<string, long>(StringComparer.Ordinal) { ["On"] = 1 }, isOpen: false);
         FunctionSymbol function = CreateFunctionSymbol("callme", FunctionKind.Default, BuiltinTypes.U32);
-        VariableSymbol local = new("local", BuiltinTypes.U32, isConst: false, VariableStorageClass.Automatic, VariableScopeKind.Local, isExtern: false, fixedAddress: null, alignment: null);
+        VariableSymbol local = IrTestFactory.CreateVariableSymbol("local", BuiltinTypes.U32, VariableStorageClass.Automatic, VariableScopeKind.Local);
         UnionTypeSymbol unionType = new(
             "OneOf",
             new Dictionary<string, BladeType>(StringComparer.Ordinal) { ["value"] = BuiltinTypes.U32 },

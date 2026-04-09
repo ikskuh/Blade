@@ -294,8 +294,7 @@ internal sealed class ComptimeFunctionSupportAnalyzer
     {
         return symbol switch
         {
-            VariableSymbol variable when variable.ScopeKind == VariableScopeKind.Local => Supported(),
-            ParameterSymbol => Unsupported(span, "assigning to parameters is not supported during comptime evaluation."),
+            AutomaticVariableSymbol => Supported(),
             VariableSymbol variable => Forbidden(span, variable.Name),
             _ => Unsupported(span, $"assignment target '{symbol.Name}' is not supported during comptime evaluation."),
         };
@@ -402,9 +401,8 @@ internal sealed class ComptimeFunctionSupportAnalyzer
     {
         return symbolExpression.Symbol switch
         {
-            VariableSymbol variable when variable.ScopeKind == VariableScopeKind.Local => Supported(),
-            VariableSymbol variable when variable.IsGlobalStorage && variable.IsConst => Supported(),
-            ParameterSymbol => Supported(),
+            AutomaticVariableSymbol => Supported(),
+            GlobalVariableSymbol { IsConst: true } => Supported(),
             VariableSymbol variable => Forbidden(symbolExpression.Span, variable.Name),
             _ => Unsupported(symbolExpression.Span, $"symbol '{symbolExpression.Symbol.Name}' is not supported during comptime evaluation."),
         };
@@ -447,6 +445,7 @@ internal sealed class ComptimeEvaluator(
 
     private readonly Func<FunctionSymbol, BoundBlockStatement?> _functionBodyResolver = Requires.NotNull(functionBodyResolver);
     private readonly Func<FunctionSymbol, ComptimeSupportResult> _supportResolver = Requires.NotNull(supportResolver);
+    private readonly HashSet<GlobalVariableSymbol> _globalEvaluationStack = [];
 
     public int Fuel { get; private set; } = fuel;
 
@@ -494,12 +493,34 @@ internal sealed class ComptimeEvaluator(
         {
             return symbolExpression.Symbol switch
             {
+                GlobalVariableSymbol { IsConst: true, Initializer: not null } globalVariable => TryEvaluateGlobalSymbol(globalVariable, frame),
                 VariableSymbol variable => new ComptimeResult(ComptimeFailureKind.ForbiddenSymbolAccess, symbolExpression.Span, $"'{variable.Name}' cannot be accessed during comptime evaluation."),
                 _ => new ComptimeResult(ComptimeFailureKind.UnsupportedConstruct, symbolExpression.Span, $"symbol '{symbolExpression.Symbol.Name}' is not supported during comptime evaluation."),
             };
         }
 
         Assert.Invariant(value is not null);
+        return value;
+    }
+
+    private ComptimeResult TryEvaluateGlobalSymbol(
+        GlobalVariableSymbol globalVariable,
+        Dictionary<Symbol, ComptimeResult> frame)
+    {
+        if (!_globalEvaluationStack.Add(globalVariable))
+            return new ComptimeResult(ComptimeFailureKind.NotEvaluable, globalVariable.SourceSpan.Span, $"global '{globalVariable.Name}' depends on itself during comptime evaluation.");
+
+        if (globalVariable.Initializer is null)
+        {
+            _globalEvaluationStack.Remove(globalVariable);
+            return new ComptimeResult(ComptimeFailureKind.ForbiddenSymbolAccess, globalVariable.SourceSpan.Span, $"'{globalVariable.Name}' cannot be accessed during comptime evaluation.");
+        }
+
+        ComptimeResult value = TryEvaluateExpression(globalVariable.Initializer, frame);
+        _globalEvaluationStack.Remove(globalVariable);
+        if (!value.IsFailed)
+            frame[globalVariable] = value;
+
         return value;
     }
 
@@ -710,7 +731,7 @@ internal sealed class ComptimeEvaluator(
             if (argumentValue.IsFailed)
                 return argumentValue;
 
-            ParameterSymbol parameter = call.Function.Parameters[i];
+            ParameterVariableSymbol parameter = call.Function.Parameters[i];
             ComptimeResult normalizedArgument = NormalizeLiteral(argumentValue, parameter.Type, call.Arguments[i].Span);
             if (normalizedArgument.IsFailed)
                 return normalizedArgument;
@@ -832,7 +853,7 @@ internal sealed class ComptimeEvaluator(
         Dictionary<Symbol, ComptimeResult> frame)
     {
         if (assignment.Target is not BoundSymbolAssignmentTarget symbolTarget
-            || symbolTarget.Symbol is not VariableSymbol { ScopeKind: VariableScopeKind.Local } variable)
+            || symbolTarget.Symbol is not AutomaticVariableSymbol variable)
         {
             return EvaluationOutcome.Failed(new ComptimeResult(
                 ComptimeFailureKind.UnsupportedConstruct,

@@ -118,9 +118,6 @@ public static class CompilerDriver
             [],
             [],
             [],
-            new Dictionary<string, TypeSymbol>(),
-            new Dictionary<string, FunctionSymbol>(),
-            new Dictionary<string, VariableSymbol>(),
-            new Dictionary<string, BoundModule>());
+            new Dictionary<string, Symbol>());
     }
 }

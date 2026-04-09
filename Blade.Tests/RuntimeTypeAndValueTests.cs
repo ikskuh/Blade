@@ -338,8 +338,8 @@ public sealed class RuntimeTypeAndValueTests
     [Test]
     public void BladeValuePointerEquality_UsesProvenanceBeforeAbsoluteAddressFallback()
     {
-        VariableSymbol sameSymbol = new("arr", BuiltinTypes.U8, isConst: false, VariableStorageClass.Hub, VariableScopeKind.GlobalStorage, isExtern: false, fixedAddress: null, alignment: null);
-        VariableSymbol differentSymbol = new("other", BuiltinTypes.U8, isConst: false, VariableStorageClass.Hub, VariableScopeKind.GlobalStorage, isExtern: false, fixedAddress: null, alignment: null);
+        VariableSymbol sameSymbol = IrTestFactory.CreateVariableSymbol("arr", BuiltinTypes.U8, VariableStorageClass.Hub, VariableScopeKind.GlobalStorage);
+        VariableSymbol differentSymbol = IrTestFactory.CreateVariableSymbol("other", BuiltinTypes.U8, VariableStorageClass.Hub, VariableScopeKind.GlobalStorage);
         PointerTypeSymbol singlePointer = new(BuiltinTypes.U8, isConst: false, storageClass: VariableStorageClass.Hub);
         MultiPointerTypeSymbol multiPointer = new(BuiltinTypes.U8, isConst: true, storageClass: VariableStorageClass.Hub);
         BladeValue left = BladeValue.Pointer(singlePointer, new PointedValue(sameSymbol, 2));
@@ -347,7 +347,7 @@ public sealed class RuntimeTypeAndValueTests
         BladeValue differentOffset = BladeValue.Pointer(singlePointer, new PointedValue(sameSymbol, 5));
         BladeValue differentSymbolPointer = BladeValue.Pointer(singlePointer, new PointedValue(differentSymbol, 2));
         BladeValue absoluteHub = BladeValue.Pointer(singlePointer, new PointedValue(new AbsoluteAddressSymbol(12, VariableStorageClass.Hub), 1));
-        BladeValue fixedHub = BladeValue.Pointer(multiPointer, new PointedValue(new VariableSymbol("fixed", BuiltinTypes.U8, isConst: false, VariableStorageClass.Hub, VariableScopeKind.GlobalStorage, isExtern: false, fixedAddress: 13, alignment: null), 0));
+        BladeValue fixedHub = BladeValue.Pointer(multiPointer, new PointedValue(IrTestFactory.CreateVariableSymbol("fixed", BuiltinTypes.U8, VariableStorageClass.Hub, VariableScopeKind.GlobalStorage, fixedAddress: 13), 0));
         BladeValue absoluteReg = BladeValue.Pointer(new PointerTypeSymbol(BuiltinTypes.U8, isConst: false, storageClass: VariableStorageClass.Reg), new PointedValue(new AbsoluteAddressSymbol(13, VariableStorageClass.Reg), 0));
 
         Assert.Multiple(() =>
@@ -387,10 +387,7 @@ public sealed class RuntimeTypeAndValueTests
             [],
             [],
             [],
-            new Dictionary<string, TypeSymbol>(StringComparer.Ordinal),
-            new Dictionary<string, FunctionSymbol>(StringComparer.Ordinal),
-            new Dictionary<string, VariableSymbol>(StringComparer.Ordinal),
-            new Dictionary<string, BoundModule>(StringComparer.Ordinal));
+            new Dictionary<string, Symbol>(StringComparer.Ordinal));
     }
 
     private static RuntimeTypeSymbol GetBuiltinRuntimeType(BuiltinTypeCase typeCase)

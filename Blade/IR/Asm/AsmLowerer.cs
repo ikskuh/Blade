@@ -497,15 +497,15 @@ public static class AsmLowerer
         StoragePlace? topLevelYieldStatePlace = null;
         if (HasTopLevelYieldto(module))
         {
-            VariableSymbol topYieldStateSymbol = new(
+            GlobalVariableSymbol topYieldStateSymbol = new(
                 "top_yield_state",
                 BuiltinTypes.U32,
                 isConst: false,
                 VariableStorageClass.Reg,
-                VariableScopeKind.GlobalStorage,
                 isExtern: false,
                 fixedAddress: null,
-                alignment: null);
+                alignment: null,
+                sourceSpan: SourceSpan.Synthetic());
             topLevelYieldStatePlace = new StoragePlace(
                 topYieldStateSymbol,
                 StoragePlaceKind.AllocatableGlobalRegister,
@@ -523,15 +523,15 @@ public static class AsmLowerer
         StoragePlaceKind kind,
         IReadOnlyList<P2Register>? preferredRegisters = null)
     {
-        VariableSymbol symbol = new(
+        GlobalVariableSymbol symbol = new(
             name,
             type,
             isConst: false,
             VariableStorageClass.Reg,
-            VariableScopeKind.GlobalStorage,
-                isExtern: false,
-                fixedAddress: null,
-                alignment: null);
+            isExtern: false,
+            fixedAddress: null,
+            alignment: null,
+            sourceSpan: SourceSpan.Synthetic());
         return new StoragePlace(symbol, kind, fixedAddress: null, preferredRegisters: preferredRegisters);
     }
 
