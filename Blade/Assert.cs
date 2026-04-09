@@ -32,13 +32,14 @@ internal static class Assert
     /// <exception cref="UnreachableException"></exception>
     public static void Invariant([DoesNotReturnIf(false)] bool condition, string message = "", ParameterGuard _guard = ParameterGuard.DoNotWriteThis, [CallerArgumentExpression(nameof(condition))] string expression = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
     {
+        _ = _guard;
         if (!condition)
         {
             string detail = string.IsNullOrWhiteSpace(message) ? string.Empty : $": {message}";
             throw new UnreachableException($"Invariant {expression} does not hold true in {member} ({file}:{line}){detail}");
         }
     }
-    
+
     /// <summary>
     /// Checks if a value is not null.
     /// </summary>
@@ -51,6 +52,7 @@ internal static class Assert
     /// <exception cref="UnreachableException"></exception>
     public static T NotNull<T>(T? value, string message = "", ParameterGuard _guard = ParameterGuard.DoNotWriteThis, [CallerArgumentExpression(nameof(value))] string expression = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
     {
+        _ = _guard;
         if (value is null)
         {
             string detail = string.IsNullOrWhiteSpace(message) ? string.Empty : $": {message}";
