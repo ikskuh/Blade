@@ -13,20 +13,12 @@ public enum DiagnosticSeverity
 /// <summary>
 /// A single diagnostic message with code, location, and human-readable text.
 /// </summary>
-public sealed class Diagnostic
+public sealed class Diagnostic(SourceText source, DiagnosticCode code, TextSpan span, string message)
 {
-    public SourceText Source { get; }
-    public DiagnosticCode Code { get; }
-    public TextSpan Span { get; }
-    public string Message { get; }
-
-    public Diagnostic(SourceText source, DiagnosticCode code, TextSpan span, string message)
-    {
-        Source = Requires.NotNull(source);
-        Code = code;
-        Span = span;
-        Message = message;
-    }
+    public SourceText Source { get; } = Requires.NotNull(source);
+    public DiagnosticCode Code { get; } = code;
+    public TextSpan Span { get; } = span;
+    public string Message { get; } = message;
 
     public DiagnosticSeverity Severity => GetSeverity(Code);
     public bool IsError => Severity == DiagnosticSeverity.Error;

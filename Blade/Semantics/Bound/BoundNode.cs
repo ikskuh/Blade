@@ -57,14 +57,8 @@ public enum BoundNodeKind
     ErrorAssignmentTarget,
 }
 
-public abstract class BoundNode
+public abstract class BoundNode(BoundNodeKind kind, TextSpan span)
 {
-    protected BoundNode(BoundNodeKind kind, TextSpan span)
-    {
-        Kind = kind;
-        Span = span;
-    }
-
-    public BoundNodeKind Kind { get; }
-    public TextSpan Span { get; }
+    public BoundNodeKind Kind { get; } = kind;
+    public TextSpan Span { get; } = span;
 }

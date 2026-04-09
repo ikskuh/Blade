@@ -584,16 +584,10 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-    private readonly struct SourceScope : IDisposable
+    private readonly struct SourceScope(DiagnosticBag bag, SourceText? previous) : IDisposable
     {
-        private readonly DiagnosticBag _bag;
-        private readonly SourceText? _previous;
-
-        public SourceScope(DiagnosticBag bag, SourceText? previous)
-        {
-            _bag = bag;
-            _previous = previous;
-        }
+        private readonly DiagnosticBag _bag = bag;
+        private readonly SourceText? _previous = previous;
 
         public void Dispose()
         {

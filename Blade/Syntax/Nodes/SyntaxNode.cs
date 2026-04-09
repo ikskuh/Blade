@@ -5,12 +5,7 @@ namespace Blade.Syntax.Nodes;
 /// <summary>
 /// Base class for all AST nodes.
 /// </summary>
-public abstract class SyntaxNode
+public abstract class SyntaxNode(TextSpan span)
 {
-    public TextSpan Span { get; }
-
-    protected SyntaxNode(TextSpan span)
-    {
-        Span = span;
-    }
+    public TextSpan Span { get; } = span;
 }

@@ -5,46 +5,28 @@ using Blade.Semantics.Bound;
 
 namespace Blade.IR;
 
-public sealed class IrBuildResult
+public sealed class IrBuildResult(
+    BoundModule boundModule,
+    MirModule preOptimizationMirModule,
+    MirModule mirModule,
+    LirModule preOptimizationLirModule,
+    LirModule lirModule,
+    AsmModule preOptimizationAsmModule,
+    AsmModule asmModule,
+    string assemblyText)
 {
-    public IrBuildResult(
-        BoundModule boundModule,
-        MirModule preOptimizationMirModule,
-        MirModule mirModule,
-        LirModule preOptimizationLirModule,
-        LirModule lirModule,
-        AsmModule preOptimizationAsmModule,
-        AsmModule asmModule,
-        string assemblyText)
-    {
-        BoundModule = boundModule;
-        PreOptimizationMirModule = preOptimizationMirModule;
-        MirModule = mirModule;
-        PreOptimizationLirModule = preOptimizationLirModule;
-        LirModule = lirModule;
-        PreOptimizationAsmModule = preOptimizationAsmModule;
-        AsmModule = asmModule;
-        AssemblyText = assemblyText;
-    }
-
-    public BoundModule BoundModule { get; }
-    public MirModule PreOptimizationMirModule { get; }
-    public MirModule MirModule { get; }
-    public LirModule PreOptimizationLirModule { get; }
-    public LirModule LirModule { get; }
-    public AsmModule PreOptimizationAsmModule { get; }
-    public AsmModule AsmModule { get; }
-    public string AssemblyText { get; }
+    public BoundModule BoundModule { get; } = boundModule;
+    public MirModule PreOptimizationMirModule { get; } = preOptimizationMirModule;
+    public MirModule MirModule { get; } = mirModule;
+    public LirModule PreOptimizationLirModule { get; } = preOptimizationLirModule;
+    public LirModule LirModule { get; } = lirModule;
+    public AsmModule PreOptimizationAsmModule { get; } = preOptimizationAsmModule;
+    public AsmModule AsmModule { get; } = asmModule;
+    public string AssemblyText { get; } = assemblyText;
 }
 
-public sealed class EmitResult
+public sealed class EmitResult(AsmModule asmModule, string assemblyText)
 {
-    public EmitResult(AsmModule asmModule, string assemblyText)
-    {
-        AsmModule = asmModule;
-        AssemblyText = assemblyText;
-    }
-
-    public AsmModule AsmModule { get; }
-    public string AssemblyText { get; }
+    public AsmModule AsmModule { get; } = asmModule;
+    public string AssemblyText { get; } = assemblyText;
 }

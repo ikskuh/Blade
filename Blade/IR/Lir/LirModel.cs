@@ -7,26 +7,19 @@ using Blade.Source;
 
 namespace Blade.IR.Lir;
 
-public sealed class LirModule
+public sealed class LirModule(
+    IReadOnlyList<StoragePlace> storagePlaces,
+    IReadOnlyList<StorageDefinition> storageDefinitions,
+    IReadOnlyList<LirFunction> functions)
 {
     public LirModule(IReadOnlyList<LirFunction> functions)
         : this([], [], functions)
     {
     }
 
-    public LirModule(
-        IReadOnlyList<StoragePlace> storagePlaces,
-        IReadOnlyList<StorageDefinition> storageDefinitions,
-        IReadOnlyList<LirFunction> functions)
-    {
-        StoragePlaces = storagePlaces;
-        StorageDefinitions = storageDefinitions;
-        Functions = functions;
-    }
-
-    public IReadOnlyList<StoragePlace> StoragePlaces { get; }
-    public IReadOnlyList<StorageDefinition> StorageDefinitions { get; }
-    public IReadOnlyList<LirFunction> Functions { get; }
+    public IReadOnlyList<StoragePlace> StoragePlaces { get; } = storagePlaces;
+    public IReadOnlyList<StorageDefinition> StorageDefinitions { get; } = storageDefinitions;
+    public IReadOnlyList<LirFunction> Functions { get; } = functions;
 }
 
 public sealed class LirFunction(MirFunction sourceFunction, IReadOnlyList<LirBlock> blocks)
@@ -80,36 +73,24 @@ public sealed class LirPlaceOperand(StoragePlace place) : LirOperand
     public StoragePlace Place { get; } = place;
 }
 
-public abstract class LirInstruction
+public abstract class LirInstruction(
+    LirVirtualRegister? destination,
+    BladeType? resultType,
+    IReadOnlyList<LirOperand> operands,
+    bool hasSideEffects,
+    P2ConditionCode? predicate,
+    bool writesC,
+    bool writesZ,
+    TextSpan span)
 {
-    protected LirInstruction(
-        LirVirtualRegister? destination,
-        BladeType? resultType,
-        IReadOnlyList<LirOperand> operands,
-        bool hasSideEffects,
-        P2ConditionCode? predicate,
-        bool writesC,
-        bool writesZ,
-        TextSpan span)
-    {
-        Destination = destination;
-        ResultType = resultType;
-        Operands = operands;
-        HasSideEffects = hasSideEffects;
-        Predicate = predicate;
-        WritesC = writesC;
-        WritesZ = writesZ;
-        Span = span;
-    }
-
-    public LirVirtualRegister? Destination { get; }
-    public BladeType? ResultType { get; }
-    public IReadOnlyList<LirOperand> Operands { get; }
-    public bool HasSideEffects { get; }
-    public P2ConditionCode? Predicate { get; }
-    public bool WritesC { get; }
-    public bool WritesZ { get; }
-    public TextSpan Span { get; }
+    public LirVirtualRegister? Destination { get; } = destination;
+    public BladeType? ResultType { get; } = resultType;
+    public IReadOnlyList<LirOperand> Operands { get; } = operands;
+    public bool HasSideEffects { get; } = hasSideEffects;
+    public P2ConditionCode? Predicate { get; } = predicate;
+    public bool WritesC { get; } = writesC;
+    public bool WritesZ { get; } = writesZ;
+    public TextSpan Span { get; } = span;
 
     /// <summary>
     /// Human-readable dump name. Debug/output only; compiler logic must never branch on this text.
@@ -621,14 +602,9 @@ public sealed class LirInlineAsmInstruction(
     public override string DisplayName => "inlineasm";
 }
 
-public abstract class LirTerminator
+public abstract class LirTerminator(TextSpan span)
 {
-    protected LirTerminator(TextSpan span)
-    {
-        Span = span;
-    }
-
-    public TextSpan Span { get; }
+    public TextSpan Span { get; } = span;
 }
 
 public sealed class LirGotoTerminator(LirBlockRef target, IReadOnlyList<LirOperand> arguments, TextSpan span) : LirTerminator(span)

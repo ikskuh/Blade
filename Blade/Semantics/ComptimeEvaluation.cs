@@ -438,24 +438,17 @@ internal sealed class ComptimeFunctionSupportAnalyzer
         => new(false, new ComptimeFailure(ComptimeFailureKind.ForbiddenSymbolAccess, span, $"'{name}' cannot be accessed during comptime evaluation."));
 }
 
-internal sealed class ComptimeEvaluator
+internal sealed class ComptimeEvaluator(
+    int fuel,
+    Func<FunctionSymbol, BoundBlockStatement?> functionBodyResolver,
+    Func<FunctionSymbol, ComptimeSupportResult> supportResolver)
 {
     private static readonly BoundBlockStatement EmptyBlock = new([], new TextSpan(0, 0));
 
-    private readonly Func<FunctionSymbol, BoundBlockStatement?> _functionBodyResolver;
-    private readonly Func<FunctionSymbol, ComptimeSupportResult> _supportResolver;
+    private readonly Func<FunctionSymbol, BoundBlockStatement?> _functionBodyResolver = Requires.NotNull(functionBodyResolver);
+    private readonly Func<FunctionSymbol, ComptimeSupportResult> _supportResolver = Requires.NotNull(supportResolver);
 
-    public ComptimeEvaluator(
-        int fuel,
-        Func<FunctionSymbol, BoundBlockStatement?> functionBodyResolver,
-        Func<FunctionSymbol, ComptimeSupportResult> supportResolver)
-    {
-        Fuel = fuel;
-        _functionBodyResolver = Requires.NotNull(functionBodyResolver);
-        _supportResolver = Requires.NotNull(supportResolver);
-    }
-
-    public int Fuel { get; private set; }
+    public int Fuel { get; private set; } = fuel;
 
     public ComptimeResult TryEvaluateExpression(BoundExpression expression)
     {

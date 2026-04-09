@@ -12,20 +12,13 @@ namespace Blade.Syntax;
 /// Recursive descent parser for the Blade language.
 /// Operates on a pre-lexed token array.
 /// </summary>
-public sealed class Parser
+public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, DiagnosticBag diagnostics)
 {
-    private readonly SourceText _source;
-    private readonly IReadOnlyList<Token> _tokens;
+    private readonly SourceText _source = source;
+    private readonly IReadOnlyList<Token> _tokens = tokens;
     private int _position;
 
-    public Parser(SourceText source, IReadOnlyList<Token> tokens, DiagnosticBag diagnostics)
-    {
-        _source = source;
-        _tokens = tokens;
-        Diagnostics = diagnostics;
-    }
-
-    public DiagnosticBag Diagnostics {get;}
+    public DiagnosticBag Diagnostics { get; } = diagnostics;
     public int TokenCount => _tokens.Count;
 
     private Token Current => Peek(0);

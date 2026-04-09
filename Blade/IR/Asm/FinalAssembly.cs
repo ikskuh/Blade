@@ -4,18 +4,11 @@ using System.Text;
 
 namespace Blade.IR.Asm;
 
-public sealed class FinalAssembly
+public sealed class FinalAssembly(string conSectionContents, string datSectionContents, string text)
 {
-    public FinalAssembly(string conSectionContents, string datSectionContents, string text)
-    {
-        ConSectionContents = Requires.NotNull(conSectionContents);
-        DatSectionContents = Requires.NotNull(datSectionContents);
-        Text = Requires.NotNull(text);
-    }
-
-    public string ConSectionContents { get; }
-    public string DatSectionContents { get; }
-    public string Text { get; }
+    public string ConSectionContents { get; } = Requires.NotNull(conSectionContents);
+    public string DatSectionContents { get; } = Requires.NotNull(datSectionContents);
+    public string Text { get; } = Requires.NotNull(text);
 }
 
 internal static class FinalAssemblyComposer

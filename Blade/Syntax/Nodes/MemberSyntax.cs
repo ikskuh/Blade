@@ -8,9 +8,8 @@ namespace Blade.Syntax.Nodes;
 /// <summary>
 /// Base class for top-level declarations.
 /// </summary>
-public abstract class MemberSyntax : SyntaxNode
+public abstract class MemberSyntax(TextSpan span) : SyntaxNode(span)
 {
-    protected MemberSyntax(TextSpan span) : base(span) { }
 }
 
 /// <summary>
@@ -26,68 +25,44 @@ public interface IFunctionSignatureSyntax
     SeparatedSyntaxList<ReturnItemSyntax>? ReturnSpec { get; }
 }
 
-public sealed class ImportDeclarationSyntax : MemberSyntax
+public sealed class ImportDeclarationSyntax(Token importKeyword, Token source, Token? asKeyword, Token? alias, Token semicolon) : MemberSyntax(TextSpan.FromBounds(importKeyword.Span.Start, semicolon.Span.End))
 {
     [ExcludeFromCodeCoverage]
-    public Token ImportKeyword { get; }
+    public Token ImportKeyword { get; } = importKeyword;
 
     /// <summary>
     /// The import source: a string literal for file imports (<c>import "path" as alias;</c>)
     /// or an identifier for named module imports (<c>import extmod;</c>).
     /// </summary>
-    public Token Source { get; }
+    public Token Source { get; } = source;
 
     [ExcludeFromCodeCoverage]
-    public Token? AsKeyword { get; }
-    public Token? Alias { get; }
+    public Token? AsKeyword { get; } = asKeyword;
+    public Token? Alias { get; } = alias;
     [ExcludeFromCodeCoverage]
-    public Token Semicolon { get; }
-
-    public ImportDeclarationSyntax(Token importKeyword, Token source, Token? asKeyword, Token? alias, Token semicolon)
-        : base(TextSpan.FromBounds(importKeyword.Span.Start, semicolon.Span.End))
-    {
-        ImportKeyword = importKeyword;
-        Source = source;
-        AsKeyword = asKeyword;
-        Alias = alias;
-        Semicolon = semicolon;
-    }
+    public Token Semicolon { get; } = semicolon;
 
     /// <summary>True when the import source is a file path (string literal), false for named modules.</summary>
     public bool IsFileImport => Source.Kind == TokenKind.StringLiteral;
 }
 
-public sealed class FunctionDeclarationSyntax : MemberSyntax, IFunctionSignatureSyntax
+public sealed class FunctionDeclarationSyntax(IReadOnlyList<Token> modifiers, Token fnKeyword, Token name, Token openParen,
+                                  SeparatedSyntaxList<ParameterSyntax> parameters, Token closeParen,
+                                  Token? arrow, SeparatedSyntaxList<ReturnItemSyntax>? returnSpec,
+                                  BlockStatementSyntax body) : MemberSyntax(TextSpan.FromBounds(GetStart(modifiers, fnKeyword), Requires.NotNull(body).Span.End)), IFunctionSignatureSyntax
 {
-    public IReadOnlyList<Token> Modifiers { get; }
+    public IReadOnlyList<Token> Modifiers { get; } = Requires.NotNull(modifiers);
     [ExcludeFromCodeCoverage]
-    public Token FnKeyword { get; }
-    public Token Name { get; }
+    public Token FnKeyword { get; } = fnKeyword;
+    public Token Name { get; } = name;
     [ExcludeFromCodeCoverage]
-    public Token OpenParen { get; }
-    public SeparatedSyntaxList<ParameterSyntax> Parameters { get; }
+    public Token OpenParen { get; } = openParen;
+    public SeparatedSyntaxList<ParameterSyntax> Parameters { get; } = parameters;
     [ExcludeFromCodeCoverage]
-    public Token CloseParen { get; }
-    public Token? Arrow { get; }
-    public SeparatedSyntaxList<ReturnItemSyntax>? ReturnSpec { get; }
-    public BlockStatementSyntax Body { get; }
-
-    public FunctionDeclarationSyntax(IReadOnlyList<Token> modifiers, Token fnKeyword, Token name, Token openParen,
-                                      SeparatedSyntaxList<ParameterSyntax> parameters, Token closeParen,
-                                      Token? arrow, SeparatedSyntaxList<ReturnItemSyntax>? returnSpec,
-                                      BlockStatementSyntax body)
-        : base(TextSpan.FromBounds(GetStart(modifiers, fnKeyword), Requires.NotNull(body).Span.End))
-    {
-        Modifiers = Requires.NotNull(modifiers);
-        FnKeyword = fnKeyword;
-        Name = name;
-        OpenParen = openParen;
-        Parameters = parameters;
-        CloseParen = closeParen;
-        Arrow = arrow;
-        ReturnSpec = returnSpec;
-        Body = Requires.NotNull(body);
-    }
+    public Token CloseParen { get; } = closeParen;
+    public Token? Arrow { get; } = arrow;
+    public SeparatedSyntaxList<ReturnItemSyntax>? ReturnSpec { get; } = returnSpec;
+    public BlockStatementSyntax Body { get; } = Requires.NotNull(body);
 
     private static int GetStart(IReadOnlyList<Token> modifiers, Token fnKeyword)
     {
@@ -96,105 +71,58 @@ public sealed class FunctionDeclarationSyntax : MemberSyntax, IFunctionSignature
     }
 }
 
-public sealed class VariableDeclarationSyntax : MemberSyntax
+public sealed class VariableDeclarationSyntax(Token? externKeyword, Token? storageClassKeyword, Token mutabilityKeyword,
+                                  Token name, Token colon, TypeSyntax type, Token? equalsToken,
+                                  ExpressionSyntax? initializer, AddressClauseSyntax? atClause,
+                                  AlignClauseSyntax? alignClause, Token semicolon) : MemberSyntax(TextSpan.FromBounds((externKeyword ?? storageClassKeyword ?? mutabilityKeyword).Span.Start, semicolon.Span.End))
 {
-    public Token? ExternKeyword { get; }
-    public Token? StorageClassKeyword { get; }
-    public Token MutabilityKeyword { get; }
-    public Token Name { get; }
+    public Token? ExternKeyword { get; } = externKeyword;
+    public Token? StorageClassKeyword { get; } = storageClassKeyword;
+    public Token MutabilityKeyword { get; } = mutabilityKeyword;
+    public Token Name { get; } = name;
     [ExcludeFromCodeCoverage]
-    public Token Colon { get; }
-    public TypeSyntax Type { get; }
-    public Token? EqualsToken { get; }
-    public ExpressionSyntax? Initializer { get; }
-    public AddressClauseSyntax? AtClause { get; }
-    public AlignClauseSyntax? AlignClause { get; }
+    public Token Colon { get; } = colon;
+    public TypeSyntax Type { get; } = Requires.NotNull(type);
+    public Token? EqualsToken { get; } = equalsToken;
+    public ExpressionSyntax? Initializer { get; } = initializer;
+    public AddressClauseSyntax? AtClause { get; } = atClause;
+    public AlignClauseSyntax? AlignClause { get; } = alignClause;
     [ExcludeFromCodeCoverage]
-    public Token Semicolon { get; }
-
-    public VariableDeclarationSyntax(Token? externKeyword, Token? storageClassKeyword, Token mutabilityKeyword,
-                                      Token name, Token colon, TypeSyntax type, Token? equalsToken,
-                                      ExpressionSyntax? initializer, AddressClauseSyntax? atClause,
-                                      AlignClauseSyntax? alignClause, Token semicolon)
-        : base(TextSpan.FromBounds((externKeyword ?? storageClassKeyword ?? mutabilityKeyword).Span.Start, semicolon.Span.End))
-    {
-        ExternKeyword = externKeyword;
-        StorageClassKeyword = storageClassKeyword;
-        MutabilityKeyword = mutabilityKeyword;
-        Name = name;
-        Colon = colon;
-        Type = Requires.NotNull(type);
-        EqualsToken = equalsToken;
-        Initializer = initializer;
-        AtClause = atClause;
-        AlignClause = alignClause;
-        Semicolon = semicolon;
-    }
+    public Token Semicolon { get; } = semicolon;
 }
 
-public sealed class TypeAliasDeclarationSyntax : MemberSyntax
+public sealed class TypeAliasDeclarationSyntax(Token typeOrConstKeyword, Token name, Token equalsToken, TypeSyntax type, Token semicolon) : MemberSyntax(TextSpan.FromBounds(typeOrConstKeyword.Span.Start, semicolon.Span.End))
 {
-    public Token TypeOrConstKeyword { get; }
-    public Token Name { get; }
+    public Token TypeOrConstKeyword { get; } = typeOrConstKeyword;
+    public Token Name { get; } = name;
     [ExcludeFromCodeCoverage]
-    public Token EqualsToken { get; }
-    public TypeSyntax Type { get; }
+    public Token EqualsToken { get; } = equalsToken;
+    public TypeSyntax Type { get; } = Requires.NotNull(type);
     [ExcludeFromCodeCoverage]
-    public Token Semicolon { get; }
-
-    public TypeAliasDeclarationSyntax(Token typeOrConstKeyword, Token name, Token equalsToken, TypeSyntax type, Token semicolon)
-        : base(TextSpan.FromBounds(typeOrConstKeyword.Span.Start, semicolon.Span.End))
-    {
-        TypeOrConstKeyword = typeOrConstKeyword;
-        Name = name;
-        EqualsToken = equalsToken;
-        Type = Requires.NotNull(type);
-        Semicolon = semicolon;
-    }
+    public Token Semicolon { get; } = semicolon;
 }
 
-public sealed class AsmFunctionDeclarationSyntax : MemberSyntax, IFunctionSignatureSyntax
+public sealed class AsmFunctionDeclarationSyntax(Token asmKeyword, Token? volatileKeyword, Token fnKeyword, Token name,
+                                    Token openParen, SeparatedSyntaxList<ParameterSyntax> parameters, Token closeParen,
+                                    Token? arrow, SeparatedSyntaxList<ReturnItemSyntax>? returnSpec,
+                                    InlineAsmBodySyntax body) : MemberSyntax(TextSpan.FromBounds(asmKeyword.Span.Start, Requires.NotNull(body).Span.End)), IFunctionSignatureSyntax
 {
-    public Token AsmKeyword { get; }
-    public Token? VolatileKeyword { get; }
+    public Token AsmKeyword { get; } = asmKeyword;
+    public Token? VolatileKeyword { get; } = volatileKeyword;
     [ExcludeFromCodeCoverage]
-    public Token FnKeyword { get; }
-    public Token Name { get; }
+    public Token FnKeyword { get; } = fnKeyword;
+    public Token Name { get; } = name;
     [ExcludeFromCodeCoverage]
-    public Token OpenParen { get; }
-    public SeparatedSyntaxList<ParameterSyntax> Parameters { get; }
+    public Token OpenParen { get; } = openParen;
+    public SeparatedSyntaxList<ParameterSyntax> Parameters { get; } = parameters;
     [ExcludeFromCodeCoverage]
-    public Token CloseParen { get; }
-    public Token? Arrow { get; }
-    public SeparatedSyntaxList<ReturnItemSyntax>? ReturnSpec { get; }
-    public InlineAsmBodySyntax Body { get; }
-
-    public AsmFunctionDeclarationSyntax(Token asmKeyword, Token? volatileKeyword, Token fnKeyword, Token name,
-                                        Token openParen, SeparatedSyntaxList<ParameterSyntax> parameters, Token closeParen,
-                                        Token? arrow, SeparatedSyntaxList<ReturnItemSyntax>? returnSpec,
-                                        InlineAsmBodySyntax body)
-        : base(TextSpan.FromBounds(asmKeyword.Span.Start, Requires.NotNull(body).Span.End))
-    {
-        AsmKeyword = asmKeyword;
-        VolatileKeyword = volatileKeyword;
-        FnKeyword = fnKeyword;
-        Name = name;
-        OpenParen = openParen;
-        Parameters = parameters;
-        CloseParen = closeParen;
-        Arrow = arrow;
-        ReturnSpec = returnSpec;
-        Body = body;
-    }
+    public Token CloseParen { get; } = closeParen;
+    public Token? Arrow { get; } = arrow;
+    public SeparatedSyntaxList<ReturnItemSyntax>? ReturnSpec { get; } = returnSpec;
+    public InlineAsmBodySyntax Body { get; } = body;
 }
 
-public sealed class GlobalStatementSyntax : MemberSyntax
+public sealed class GlobalStatementSyntax(StatementSyntax statement) : MemberSyntax(Requires.NotNull(statement).Span)
 {
-    public StatementSyntax Statement { get; }
-
-    public GlobalStatementSyntax(StatementSyntax statement)
-        : base(Requires.NotNull(statement).Span)
-    {
-        Statement = Requires.NotNull(statement);
-    }
+    public StatementSyntax Statement { get; } = Requires.NotNull(statement);
 }

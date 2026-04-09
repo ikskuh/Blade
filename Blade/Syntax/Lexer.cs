@@ -9,19 +9,13 @@ namespace Blade.Syntax;
 /// <summary>
 /// Single-pass lexer for the Blade language.
 /// </summary>
-public sealed class Lexer
+public sealed class Lexer(SourceText source, DiagnosticBag diagnostics)
 {
-    private readonly SourceText _source;
+    private readonly SourceText _source = Requires.NotNull(source);
     private int _position;
     private int _start;
 
-    public Lexer(SourceText source, DiagnosticBag diagnostics)
-    {
-        _source = Requires.NotNull(source);
-        Diagnostics = Requires.NotNull(diagnostics);
-    }
-
-    public DiagnosticBag Diagnostics { get; }
+    public DiagnosticBag Diagnostics { get; } = Requires.NotNull(diagnostics);
 
     private char Current => Peek(0);
 

@@ -9,19 +9,14 @@ namespace Blade.IR.Asm;
 /// <summary>
 /// A basic block in the intra-function control flow graph.
 /// </summary>
-public sealed class BasicBlock
+public sealed class BasicBlock(int startIndex, int endIndex)
 {
-    public BasicBlock(int startIndex, int endIndex)
-    {
-        StartIndex = startIndex;
-        EndIndex = endIndex;
-    }
 
     /// <summary>Inclusive start index into the function's node list.</summary>
-    public int StartIndex { get; }
+    public int StartIndex { get; } = startIndex;
 
     /// <summary>Exclusive end index into the function's node list.</summary>
-    public int EndIndex { get; }
+    public int EndIndex { get; } = endIndex;
 
     public Collection<int> SuccessorBlockIndices { get; } = new();
     public HashSet<VirtualAsmRegister> Defs { get; } = [];
@@ -39,48 +34,38 @@ public sealed class BasicBlock
 /// <summary>
 /// Result of liveness analysis for a single function.
 /// </summary>
-public sealed class FunctionLiveness
+public sealed class FunctionLiveness(
+    AsmFunction function,
+    IReadOnlyList<BasicBlock> blocks,
+    IReadOnlyDictionary<VirtualAsmRegister, HashSet<VirtualAsmRegister>> interferenceGraph,
+    HashSet<VirtualAsmRegister> liveAcrossCallRegisters,
+    IReadOnlyDictionary<int, HashSet<VirtualAsmRegister>> liveRegistersByCallInstruction,
+    IReadOnlyDictionary<int, HashSet<VirtualAsmRegister>> liveRegistersAfterInstruction)
 {
-    public FunctionLiveness(
-        AsmFunction function,
-        IReadOnlyList<BasicBlock> blocks,
-        IReadOnlyDictionary<VirtualAsmRegister, HashSet<VirtualAsmRegister>> interferenceGraph,
-        HashSet<VirtualAsmRegister> liveAcrossCallRegisters,
-        IReadOnlyDictionary<int, HashSet<VirtualAsmRegister>> liveRegistersByCallInstruction,
-        IReadOnlyDictionary<int, HashSet<VirtualAsmRegister>> liveRegistersAfterInstruction)
-    {
-        Function = Requires.NotNull(function);
-        Blocks = blocks;
-        InterferenceGraph = interferenceGraph;
-        LiveAcrossCallRegisters = liveAcrossCallRegisters;
-        LiveRegistersByCallInstruction = liveRegistersByCallInstruction;
-        LiveRegistersAfterInstruction = liveRegistersAfterInstruction;
-    }
-
-    public AsmFunction Function { get; }
-    public IReadOnlyList<BasicBlock> Blocks { get; }
+    public AsmFunction Function { get; } = Requires.NotNull(function);
+    public IReadOnlyList<BasicBlock> Blocks { get; } = blocks;
 
     /// <summary>
     /// Interference graph: register ID -> set of register IDs that interfere.
     /// Two registers interfere if they are simultaneously live at any program point.
     /// </summary>
-    public IReadOnlyDictionary<VirtualAsmRegister, HashSet<VirtualAsmRegister>> InterferenceGraph { get; }
+    public IReadOnlyDictionary<VirtualAsmRegister, HashSet<VirtualAsmRegister>> InterferenceGraph { get; } = interferenceGraph;
 
     /// <summary>
     /// Set of virtual register IDs that are live across at least one call instruction.
     /// These registers must not share slots with the called function's registers.
     /// </summary>
-    public HashSet<VirtualAsmRegister> LiveAcrossCallRegisters { get; }
+    public HashSet<VirtualAsmRegister> LiveAcrossCallRegisters { get; } = liveAcrossCallRegisters;
 
     /// <summary>
     /// Per-call-site live set captured immediately before the call instruction executes.
     /// </summary>
-    public IReadOnlyDictionary<int, HashSet<VirtualAsmRegister>> LiveRegistersByCallInstruction { get; }
+    public IReadOnlyDictionary<int, HashSet<VirtualAsmRegister>> LiveRegistersByCallInstruction { get; } = liveRegistersByCallInstruction;
 
     /// <summary>
     /// Per-instruction live-out set after each instruction executes.
     /// </summary>
-    public IReadOnlyDictionary<int, HashSet<VirtualAsmRegister>> LiveRegistersAfterInstruction { get; }
+    public IReadOnlyDictionary<int, HashSet<VirtualAsmRegister>> LiveRegistersAfterInstruction { get; } = liveRegistersAfterInstruction;
 }
 
 /// <summary>

@@ -23,30 +23,20 @@ public sealed class CompilationOptions
     public RuntimeTemplate? RuntimeTemplate { get; init; }
 }
 
-public sealed class CompilationResult
+public sealed class CompilationResult(
+    SourceText source,
+    CompilationUnitSyntax syntax,
+    BoundModule boundModule,
+    IrBuildResult? irBuildResult,
+    IReadOnlyList<Diagnostic> diagnostics,
+    int tokenCount)
 {
-    public CompilationResult(
-        SourceText source,
-        CompilationUnitSyntax syntax,
-        BoundModule boundModule,
-        IrBuildResult? irBuildResult,
-        IReadOnlyList<Diagnostic> diagnostics,
-        int tokenCount)
-    {
-        Source = source;
-        Syntax = syntax;
-        BoundModule = boundModule;
-        IrBuildResult = irBuildResult;
-        Diagnostics = diagnostics;
-        TokenCount = tokenCount;
-    }
-
-    public SourceText Source { get; }
-    public CompilationUnitSyntax Syntax { get; }
-    public BoundModule BoundModule { get; }
-    public IrBuildResult? IrBuildResult { get; }
-    public IReadOnlyList<Diagnostic> Diagnostics { get; }
-    public int TokenCount { get; }
+    public SourceText Source { get; } = source;
+    public CompilationUnitSyntax Syntax { get; } = syntax;
+    public BoundModule BoundModule { get; } = boundModule;
+    public IrBuildResult? IrBuildResult { get; } = irBuildResult;
+    public IReadOnlyList<Diagnostic> Diagnostics { get; } = diagnostics;
+    public int TokenCount { get; } = tokenCount;
 }
 
 public static class CompilerDriver

@@ -3,14 +3,8 @@ using Blade.Semantics.Bound;
 
 namespace Blade.Semantics;
 
-internal sealed class ImportedModuleDefinition
+internal sealed class ImportedModuleDefinition(BoundModule module, IReadOnlyDictionary<Symbol, ComptimeResult> knownConstantValues)
 {
-    public ImportedModuleDefinition(BoundModule module, IReadOnlyDictionary<Symbol, ComptimeResult> knownConstantValues)
-    {
-        Module = Requires.NotNull(module);
-        KnownConstantValues = Requires.NotNull(knownConstantValues);
-    }
-
-    public BoundModule Module { get; }
-    public IReadOnlyDictionary<Symbol, ComptimeResult> KnownConstantValues { get; }
+    public BoundModule Module { get; } = Requires.NotNull(module);
+    public IReadOnlyDictionary<Symbol, ComptimeResult> KnownConstantValues { get; } = Requires.NotNull(knownConstantValues);
 }

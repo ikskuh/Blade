@@ -59,6 +59,9 @@ dotnet_diagnostic.RCS1226.severity = silent
 # Unnecessary braces are less hurtful than missing ones:
 dotnet_diagnostic.RCS1251.severity = silent
 
+# Force the use primary constructors where applicable:
+dotnet_diagnostic.IDE0290.severity = error
+
 [Blade/Requires.cs]
 # We explicitly mute the null check here, as it's not always applicable:
 dotnet_diagnostic.RCS1256.severity = silent

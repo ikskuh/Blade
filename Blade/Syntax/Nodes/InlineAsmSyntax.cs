@@ -8,21 +8,13 @@ namespace Blade.Syntax.Nodes;
 /// Structured inline-assembly body between `{` and `}`. Produced by the parser
 /// so that downstream stages never need to re-parse raw asm text.
 /// </summary>
-public sealed class InlineAsmBodySyntax : SyntaxNode
+public sealed class InlineAsmBodySyntax(Token openBrace, IReadOnlyList<InlineAsmLineSyntax> lines, Token closeBrace) : SyntaxNode(TextSpan.FromBounds(openBrace.Span.Start, closeBrace.Span.End))
 {
-    public InlineAsmBodySyntax(Token openBrace, IReadOnlyList<InlineAsmLineSyntax> lines, Token closeBrace)
-        : base(TextSpan.FromBounds(openBrace.Span.Start, closeBrace.Span.End))
-    {
-        OpenBrace = openBrace;
-        Lines = Requires.NotNull(lines);
-        CloseBrace = closeBrace;
-    }
-
     [ExcludeFromCodeCoverage]
-    public Token OpenBrace { get; }
-    public IReadOnlyList<InlineAsmLineSyntax> Lines { get; }
+    public Token OpenBrace { get; } = openBrace;
+    public IReadOnlyList<InlineAsmLineSyntax> Lines { get; } = Requires.NotNull(lines);
     [ExcludeFromCodeCoverage]
-    public Token CloseBrace { get; }
+    public Token CloseBrace { get; } = closeBrace;
 }
 
 public abstract class InlineAsmLineSyntax(TextSpan span, string? trailingComment) : SyntaxNode(span)
@@ -43,40 +35,24 @@ public sealed class InlineAsmCommentLineSyntax(TextSpan span, string comment)
     public string Comment { get; } = Requires.NotNull(comment);
 }
 
-public sealed class InlineAsmLabelLineSyntax : InlineAsmLineSyntax
+public sealed class InlineAsmLabelLineSyntax(Token name, Token colon, string? trailingComment) : InlineAsmLineSyntax(TextSpan.FromBounds(name.Span.Start, colon.Span.End), trailingComment)
 {
-    public InlineAsmLabelLineSyntax(Token name, Token colon, string? trailingComment)
-        : base(TextSpan.FromBounds(name.Span.Start, colon.Span.End), trailingComment)
-    {
-        Name = name;
-        Colon = colon;
-    }
-
-    public Token Name { get; }
+    public Token Name { get; } = name;
     [ExcludeFromCodeCoverage]
-    public Token Colon { get; }
+    public Token Colon { get; } = colon;
 }
 
-public sealed class InlineAsmInstructionLineSyntax : InlineAsmLineSyntax
+public sealed class InlineAsmInstructionLineSyntax(
+    Token? condition,
+    Token mnemonic,
+    IReadOnlyList<InlineAsmOperandSyntax> operands,
+    Token? flagEffect,
+    string? trailingComment) : InlineAsmLineSyntax(ComputeSpan(condition, mnemonic, Requires.NotNull(operands), flagEffect), trailingComment)
 {
-    public InlineAsmInstructionLineSyntax(
-        Token? condition,
-        Token mnemonic,
-        IReadOnlyList<InlineAsmOperandSyntax> operands,
-        Token? flagEffect,
-        string? trailingComment)
-        : base(ComputeSpan(condition, mnemonic, Requires.NotNull(operands), flagEffect), trailingComment)
-    {
-        Condition = condition;
-        Mnemonic = mnemonic;
-        Operands = Requires.NotNull(operands);
-        FlagEffect = flagEffect;
-    }
-
-    public Token? Condition { get; }
-    public Token Mnemonic { get; }
-    public IReadOnlyList<InlineAsmOperandSyntax> Operands { get; }
-    public Token? FlagEffect { get; }
+    public Token? Condition { get; } = condition;
+    public Token Mnemonic { get; } = mnemonic;
+    public IReadOnlyList<InlineAsmOperandSyntax> Operands { get; } = Requires.NotNull(operands);
+    public Token? FlagEffect { get; } = flagEffect;
 
     private static TextSpan ComputeSpan(Token? condition, Token mnemonic, IReadOnlyList<InlineAsmOperandSyntax> operands, Token? flagEffect)
     {
@@ -94,63 +70,34 @@ public abstract class InlineAsmOperandSyntax(TextSpan span) : SyntaxNode(span)
 {
 }
 
-public sealed class InlineAsmVarBindingOperandSyntax : InlineAsmOperandSyntax
+public sealed class InlineAsmVarBindingOperandSyntax(Token openBrace, IReadOnlyList<Token> path, Token closeBrace) : InlineAsmOperandSyntax(TextSpan.FromBounds(openBrace.Span.Start, closeBrace.Span.End))
 {
-    public InlineAsmVarBindingOperandSyntax(Token openBrace, IReadOnlyList<Token> path, Token closeBrace)
-        : base(TextSpan.FromBounds(openBrace.Span.Start, closeBrace.Span.End))
-    {
-        OpenBrace = openBrace;
-        Path = Requires.NotNull(path);
-        CloseBrace = closeBrace;
-    }
-
     [ExcludeFromCodeCoverage]
-    public Token OpenBrace { get; }
-    public IReadOnlyList<Token> Path { get; }
+    public Token OpenBrace { get; } = openBrace;
+    public IReadOnlyList<Token> Path { get; } = Requires.NotNull(path);
     public Token Name => Path[0];
     [ExcludeFromCodeCoverage]
-    public Token CloseBrace { get; }
+    public Token CloseBrace { get; } = closeBrace;
 }
 
-public sealed class InlineAsmTempBindingOperandSyntax : InlineAsmOperandSyntax
+public sealed class InlineAsmTempBindingOperandSyntax(Token percent, Token number) : InlineAsmOperandSyntax(TextSpan.FromBounds(percent.Span.Start, number.Span.End))
 {
-    public InlineAsmTempBindingOperandSyntax(Token percent, Token number)
-        : base(TextSpan.FromBounds(percent.Span.Start, number.Span.End))
-    {
-        Percent = percent;
-        Number = number;
-    }
-
     [ExcludeFromCodeCoverage]
-    public Token Percent { get; }
-    public Token Number { get; }
+    public Token Percent { get; } = percent;
+    public Token Number { get; } = number;
 }
 
-public sealed class InlineAsmImmediateOperandSyntax : InlineAsmOperandSyntax
+public sealed class InlineAsmImmediateOperandSyntax(Token hash, InlineAsmOperandSyntax inner) : InlineAsmOperandSyntax(TextSpan.FromBounds(hash.Span.Start, Requires.NotNull(inner).Span.End))
 {
-    public InlineAsmImmediateOperandSyntax(Token hash, InlineAsmOperandSyntax inner)
-        : base(TextSpan.FromBounds(hash.Span.Start, Requires.NotNull(inner).Span.End))
-    {
-        Hash = hash;
-        Inner = inner;
-    }
-
     [ExcludeFromCodeCoverage]
-    public Token Hash { get; }
-    public InlineAsmOperandSyntax Inner { get; }
+    public Token Hash { get; } = hash;
+    public InlineAsmOperandSyntax Inner { get; } = inner;
 }
 
-public sealed class InlineAsmIntegerLiteralOperandSyntax : InlineAsmOperandSyntax
+public sealed class InlineAsmIntegerLiteralOperandSyntax(Token? sign, Token literal) : InlineAsmOperandSyntax(TextSpan.FromBounds(sign?.Span.Start ?? literal.Span.Start, literal.Span.End))
 {
-    public InlineAsmIntegerLiteralOperandSyntax(Token? sign, Token literal)
-        : base(TextSpan.FromBounds(sign?.Span.Start ?? literal.Span.Start, literal.Span.End))
-    {
-        Sign = sign;
-        Literal = literal;
-    }
-
-    public Token? Sign { get; }
-    public Token Literal { get; }
+    public Token? Sign { get; } = sign;
+    public Token Literal { get; } = literal;
 }
 
 public sealed class InlineAsmCurrentAddressOperandSyntax(Token dollar) : InlineAsmOperandSyntax(dollar.Span)

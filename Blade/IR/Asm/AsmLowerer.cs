@@ -206,21 +206,34 @@ public static class AsmLowerer
         lowered.Add(LowerImmediateValue(value, placesBySymbol));
     }
 
-    private sealed class LoweringContext
+    private sealed class LoweringContext(
+        LirFunction function,
+        int functionOrdinal,
+        CallingConventionTier tier,
+        Dictionary<FunctionSymbol, CallingConventionTier> calleeTiers,
+        Dictionary<LirBlockRef, IReadOnlyList<LirBlockParameter>> blockParams,
+        Dictionary<FunctionSymbol, AsmLowerer.SpecializedCallingConventionInfo> specializedCallingConvention,
+        Dictionary<FunctionSymbol, AsmLowerer.GeneralCallingConventionInfo> generalCallingConvention,
+        Dictionary<FunctionSymbol, AsmLowerer.RecursiveCallingConventionInfo> recursiveCallingConvention,
+        Dictionary<FunctionSymbol, AsmLowerer.CoroutineCallingConventionInfo> coroutineCallingConvention,
+        IReadOnlyDictionary<Symbol, StoragePlace> placesBySymbol,
+        StoragePlace? topLevelYieldStatePlace,
+        bool containsYield,
+        DiagnosticBag? diagnostics)
     {
-        public LirFunction Function { get; }
-        public int FunctionOrdinal { get; }
-        public CallingConventionTier Tier { get; }
-        public Dictionary<FunctionSymbol, CallingConventionTier> CalleeTiers { get; }
-        public Dictionary<LirBlockRef, IReadOnlyList<LirBlockParameter>> BlockParams { get; }
-        public Dictionary<FunctionSymbol, SpecializedCallingConventionInfo> SpecializedCallingConvention { get; }
-        public Dictionary<FunctionSymbol, GeneralCallingConventionInfo> GeneralCallingConvention { get; }
-        public Dictionary<FunctionSymbol, RecursiveCallingConventionInfo> RecursiveCallingConvention { get; }
-        public Dictionary<FunctionSymbol, CoroutineCallingConventionInfo> CoroutineCallingConvention { get; }
-        public IReadOnlyDictionary<Symbol, StoragePlace> PlacesBySymbol { get; }
-        public StoragePlace? TopLevelYieldStatePlace { get; }
-        public bool ContainsYield { get; }
-        public DiagnosticBag? Diagnostics { get; }
+        public LirFunction Function { get; } = function;
+        public int FunctionOrdinal { get; } = functionOrdinal;
+        public CallingConventionTier Tier { get; } = tier;
+        public Dictionary<FunctionSymbol, CallingConventionTier> CalleeTiers { get; } = calleeTiers;
+        public Dictionary<LirBlockRef, IReadOnlyList<LirBlockParameter>> BlockParams { get; } = blockParams;
+        public Dictionary<FunctionSymbol, SpecializedCallingConventionInfo> SpecializedCallingConvention { get; } = specializedCallingConvention;
+        public Dictionary<FunctionSymbol, GeneralCallingConventionInfo> GeneralCallingConvention { get; } = generalCallingConvention;
+        public Dictionary<FunctionSymbol, RecursiveCallingConventionInfo> RecursiveCallingConvention { get; } = recursiveCallingConvention;
+        public Dictionary<FunctionSymbol, CoroutineCallingConventionInfo> CoroutineCallingConvention { get; } = coroutineCallingConvention;
+        public IReadOnlyDictionary<Symbol, StoragePlace> PlacesBySymbol { get; } = Requires.NotNull(placesBySymbol);
+        public StoragePlace? TopLevelYieldStatePlace { get; } = topLevelYieldStatePlace;
+        public bool ContainsYield { get; } = containsYield;
+        public DiagnosticBag? Diagnostics { get; } = diagnostics;
         public HashSet<UnsupportedLoweringKey> ReportedUnsupportedLowerings { get; } = [];
         public Dictionary<LirBlockRef, ControlFlowLabelSymbol> BlockLabels { get; } = [];
         public RegisterAssociator Registers { get; } = new();
@@ -241,36 +254,6 @@ public static class AsmLowerer
         /// Recomputed per block.
         /// </summary>
         public HashSet<LirVirtualRegister> FlagOnlyRegisters { get; } = [];
-
-        public LoweringContext(
-            LirFunction function,
-            int functionOrdinal,
-            CallingConventionTier tier,
-            Dictionary<FunctionSymbol, CallingConventionTier> calleeTiers,
-            Dictionary<LirBlockRef, IReadOnlyList<LirBlockParameter>> blockParams,
-            Dictionary<FunctionSymbol, SpecializedCallingConventionInfo> specializedCallingConvention,
-            Dictionary<FunctionSymbol, GeneralCallingConventionInfo> generalCallingConvention,
-            Dictionary<FunctionSymbol, RecursiveCallingConventionInfo> recursiveCallingConvention,
-            Dictionary<FunctionSymbol, CoroutineCallingConventionInfo> coroutineCallingConvention,
-            IReadOnlyDictionary<Symbol, StoragePlace> placesBySymbol,
-            StoragePlace? topLevelYieldStatePlace,
-            bool containsYield,
-            DiagnosticBag? diagnostics)
-        {
-            Function = function;
-            FunctionOrdinal = functionOrdinal;
-            Tier = tier;
-            CalleeTiers = calleeTiers;
-            BlockParams = blockParams;
-            SpecializedCallingConvention = specializedCallingConvention;
-            GeneralCallingConvention = generalCallingConvention;
-            RecursiveCallingConvention = recursiveCallingConvention;
-            CoroutineCallingConvention = coroutineCallingConvention;
-            PlacesBySymbol = Requires.NotNull(placesBySymbol);
-            TopLevelYieldStatePlace = topLevelYieldStatePlace;
-            ContainsYield = containsYield;
-            Diagnostics = diagnostics;
-        }
 
         public ControlFlowLabelSymbol GetBlockLabel(LirBlockRef blockRef)
         {
@@ -300,60 +283,36 @@ public static class AsmLowerer
         }
     }
 
-    private sealed class SpecializedCallingConventionInfo
+    private sealed class SpecializedCallingConventionInfo(
+        P2SpecialRegister transportRegister,
+        IReadOnlyList<StoragePlace> parameterPlaces)
     {
-        public SpecializedCallingConventionInfo(
-            P2SpecialRegister transportRegister,
-            IReadOnlyList<StoragePlace> parameterPlaces)
-        {
-            TransportRegister = transportRegister;
-            ParameterPlaces = parameterPlaces;
-        }
-
-        public P2SpecialRegister TransportRegister { get; }
-        public IReadOnlyList<StoragePlace> ParameterPlaces { get; }
+        public P2SpecialRegister TransportRegister { get; } = transportRegister;
+        public IReadOnlyList<StoragePlace> ParameterPlaces { get; } = parameterPlaces;
     }
 
-    private sealed class GeneralCallingConventionInfo
+    private sealed class GeneralCallingConventionInfo(
+        IReadOnlyList<StoragePlace> parameterPlaces,
+        StoragePlace? registerReturnPlace)
     {
-        public GeneralCallingConventionInfo(
-            IReadOnlyList<StoragePlace> parameterPlaces,
-            StoragePlace? registerReturnPlace)
-        {
-            ParameterPlaces = parameterPlaces;
-            RegisterReturnPlace = registerReturnPlace;
-        }
-
-        public IReadOnlyList<StoragePlace> ParameterPlaces { get; }
-        public StoragePlace? RegisterReturnPlace { get; }
+        public IReadOnlyList<StoragePlace> ParameterPlaces { get; } = parameterPlaces;
+        public StoragePlace? RegisterReturnPlace { get; } = registerReturnPlace;
     }
 
-    private sealed class RecursiveCallingConventionInfo
+    private sealed class RecursiveCallingConventionInfo(
+        IReadOnlyList<StoragePlace> parameterPlaces,
+        StoragePlace? registerReturnPlace)
     {
-        public RecursiveCallingConventionInfo(
-            IReadOnlyList<StoragePlace> parameterPlaces,
-            StoragePlace? registerReturnPlace)
-        {
-            ParameterPlaces = parameterPlaces;
-            RegisterReturnPlace = registerReturnPlace;
-        }
-
-        public IReadOnlyList<StoragePlace> ParameterPlaces { get; }
-        public StoragePlace? RegisterReturnPlace { get; }
+        public IReadOnlyList<StoragePlace> ParameterPlaces { get; } = parameterPlaces;
+        public StoragePlace? RegisterReturnPlace { get; } = registerReturnPlace;
     }
 
-    private sealed class CoroutineCallingConventionInfo
+    private sealed class CoroutineCallingConventionInfo(
+        StoragePlace statePlace,
+        IReadOnlyList<StoragePlace> parameterPlaces)
     {
-        public CoroutineCallingConventionInfo(
-            StoragePlace statePlace,
-            IReadOnlyList<StoragePlace> parameterPlaces)
-        {
-            StatePlace = statePlace;
-            ParameterPlaces = parameterPlaces;
-        }
-
-        public StoragePlace StatePlace { get; }
-        public IReadOnlyList<StoragePlace> ParameterPlaces { get; }
+        public StoragePlace StatePlace { get; } = statePlace;
+        public IReadOnlyList<StoragePlace> ParameterPlaces { get; } = parameterPlaces;
     }
 
     private static AsmFunction LowerFunction(LoweringContext ctx)

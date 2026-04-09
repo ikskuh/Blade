@@ -46,21 +46,16 @@ public enum CallingConventionTier
 /// <summary>
 /// Result of call graph analysis: CC tiers and dead function set.
 /// </summary>
-public sealed class CallGraphResult
+public sealed class CallGraphResult(
+    Dictionary<FunctionSymbol, CallingConventionTier> tiers,
+    HashSet<FunctionSymbol> deadFunctions)
 {
-    public CallGraphResult(
-        Dictionary<FunctionSymbol, CallingConventionTier> tiers,
-        HashSet<FunctionSymbol> deadFunctions)
-    {
-        Tiers = tiers;
-        DeadFunctions = deadFunctions;
-    }
 
     /// <summary>CC tier for each function symbol.</summary>
-    public Dictionary<FunctionSymbol, CallingConventionTier> Tiers { get; }
+    public Dictionary<FunctionSymbol, CallingConventionTier> Tiers { get; } = tiers;
 
     /// <summary>Functions that are never called and not entry points — can be eliminated.</summary>
-    public HashSet<FunctionSymbol> DeadFunctions { get; }
+    public HashSet<FunctionSymbol> DeadFunctions { get; } = deadFunctions;
 }
 
 /// <summary>

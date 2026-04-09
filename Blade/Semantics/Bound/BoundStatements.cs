@@ -5,257 +5,129 @@ using Blade.Syntax;
 
 namespace Blade.Semantics.Bound;
 
-public abstract class BoundStatement : BoundNode
+public abstract class BoundStatement(BoundNodeKind kind, TextSpan span) : BoundNode(kind, span)
 {
-    protected BoundStatement(BoundNodeKind kind, TextSpan span)
-        : base(kind, span)
-    {
-    }
 }
 
-public sealed class BoundBlockStatement : BoundStatement
+public sealed class BoundBlockStatement(IReadOnlyList<BoundStatement> statements, TextSpan span) : BoundStatement(BoundNodeKind.BlockStatement, span)
 {
-    public BoundBlockStatement(IReadOnlyList<BoundStatement> statements, TextSpan span)
-        : base(BoundNodeKind.BlockStatement, span)
-    {
-        Statements = statements;
-    }
-
-    public IReadOnlyList<BoundStatement> Statements { get; }
+    public IReadOnlyList<BoundStatement> Statements { get; } = statements;
 }
 
-public sealed class BoundVariableDeclarationStatement : BoundStatement
+public sealed class BoundVariableDeclarationStatement(VariableSymbol symbol, BoundExpression? initializer, TextSpan span) : BoundStatement(BoundNodeKind.VariableDeclarationStatement, span)
 {
-    public BoundVariableDeclarationStatement(VariableSymbol symbol, BoundExpression? initializer, TextSpan span)
-        : base(BoundNodeKind.VariableDeclarationStatement, span)
-    {
-        Symbol = symbol;
-        Initializer = initializer;
-    }
-
-    public VariableSymbol Symbol { get; }
-    public BoundExpression? Initializer { get; }
+    public VariableSymbol Symbol { get; } = symbol;
+    public BoundExpression? Initializer { get; } = initializer;
 }
 
-public sealed class BoundAssignmentStatement : BoundStatement
+public sealed class BoundAssignmentStatement(BoundAssignmentTarget target, BoundExpression value, TokenKind operatorKind, TextSpan span) : BoundStatement(BoundNodeKind.AssignmentStatement, span)
 {
-    public BoundAssignmentStatement(BoundAssignmentTarget target, BoundExpression value, TokenKind operatorKind, TextSpan span)
-        : base(BoundNodeKind.AssignmentStatement, span)
-    {
-        Target = target;
-        Value = value;
-        OperatorKind = operatorKind;
-    }
-
-    public BoundAssignmentTarget Target { get; }
-    public BoundExpression Value { get; }
-    public TokenKind OperatorKind { get; }
+    public BoundAssignmentTarget Target { get; } = target;
+    public BoundExpression Value { get; } = value;
+    public TokenKind OperatorKind { get; } = operatorKind;
 }
 
-public sealed class BoundMultiAssignmentStatement : BoundStatement
+public sealed class BoundMultiAssignmentStatement(IReadOnlyList<BoundAssignmentTarget> targets, BoundCallExpression call, TextSpan span) : BoundStatement(BoundNodeKind.MultiAssignmentStatement, span)
 {
-    public BoundMultiAssignmentStatement(IReadOnlyList<BoundAssignmentTarget> targets, BoundCallExpression call, TextSpan span)
-        : base(BoundNodeKind.MultiAssignmentStatement, span)
-    {
-        Targets = targets;
-        Call = call;
-    }
-
-    public IReadOnlyList<BoundAssignmentTarget> Targets { get; }
-    public BoundCallExpression Call { get; }
+    public IReadOnlyList<BoundAssignmentTarget> Targets { get; } = targets;
+    public BoundCallExpression Call { get; } = call;
 }
 
-public sealed class BoundExpressionStatement : BoundStatement
+public sealed class BoundExpressionStatement(BoundExpression expression, TextSpan span) : BoundStatement(BoundNodeKind.ExpressionStatement, span)
 {
-    public BoundExpressionStatement(BoundExpression expression, TextSpan span)
-        : base(BoundNodeKind.ExpressionStatement, span)
-    {
-        Expression = expression;
-    }
-
-    public BoundExpression Expression { get; }
+    public BoundExpression Expression { get; } = expression;
 }
 
-public sealed class BoundIfStatement : BoundStatement
+public sealed class BoundIfStatement(BoundExpression condition, BoundStatement thenBody, BoundStatement? elseBody, TextSpan span) : BoundStatement(BoundNodeKind.IfStatement, span)
 {
-    public BoundIfStatement(BoundExpression condition, BoundStatement thenBody, BoundStatement? elseBody, TextSpan span)
-        : base(BoundNodeKind.IfStatement, span)
-    {
-        Condition = condition;
-        ThenBody = thenBody;
-        ElseBody = elseBody;
-    }
-
-    public BoundExpression Condition { get; }
-    public BoundStatement ThenBody { get; }
-    public BoundStatement? ElseBody { get; }
+    public BoundExpression Condition { get; } = condition;
+    public BoundStatement ThenBody { get; } = thenBody;
+    public BoundStatement? ElseBody { get; } = elseBody;
 }
 
-public sealed class BoundWhileStatement : BoundStatement
+public sealed class BoundWhileStatement(BoundExpression condition, BoundBlockStatement body, TextSpan span) : BoundStatement(BoundNodeKind.WhileStatement, span)
 {
-    public BoundWhileStatement(BoundExpression condition, BoundBlockStatement body, TextSpan span)
-        : base(BoundNodeKind.WhileStatement, span)
-    {
-        Condition = condition;
-        Body = body;
-    }
-
-    public BoundExpression Condition { get; }
-    public BoundBlockStatement Body { get; }
+    public BoundExpression Condition { get; } = condition;
+    public BoundBlockStatement Body { get; } = body;
 }
 
-public sealed class BoundForStatement : BoundStatement
+public sealed class BoundForStatement(
+    BoundExpression iterable,
+    VariableSymbol? itemVariable,
+    bool itemIsMutable,
+    VariableSymbol? indexVariable,
+    BoundBlockStatement body,
+    TextSpan span) : BoundStatement(BoundNodeKind.ForStatement, span)
 {
-    public BoundForStatement(
-        BoundExpression iterable,
-        VariableSymbol? itemVariable,
-        bool itemIsMutable,
-        VariableSymbol? indexVariable,
-        BoundBlockStatement body,
-        TextSpan span)
-        : base(BoundNodeKind.ForStatement, span)
-    {
-        Iterable = iterable;
-        ItemVariable = itemVariable;
-        ItemIsMutable = itemIsMutable;
-        IndexVariable = indexVariable;
-        Body = body;
-    }
-
-    public BoundExpression Iterable { get; }
-    public VariableSymbol? ItemVariable { get; }
-    public bool ItemIsMutable { get; }
-    public VariableSymbol? IndexVariable { get; }
-    public BoundBlockStatement Body { get; }
+    public BoundExpression Iterable { get; } = iterable;
+    public VariableSymbol? ItemVariable { get; } = itemVariable;
+    public bool ItemIsMutable { get; } = itemIsMutable;
+    public VariableSymbol? IndexVariable { get; } = indexVariable;
+    public BoundBlockStatement Body { get; } = body;
 }
 
-public sealed class BoundLoopStatement : BoundStatement
+public sealed class BoundLoopStatement(BoundBlockStatement body, TextSpan span) : BoundStatement(BoundNodeKind.LoopStatement, span)
 {
-    public BoundLoopStatement(BoundBlockStatement body, TextSpan span)
-        : base(BoundNodeKind.LoopStatement, span)
-    {
-        Body = body;
-    }
-
-    public BoundBlockStatement Body { get; }
+    public BoundBlockStatement Body { get; } = body;
 }
 
-public sealed class BoundRepLoopStatement : BoundStatement
+public sealed class BoundRepLoopStatement(BoundBlockStatement body, TextSpan span) : BoundStatement(BoundNodeKind.RepLoopStatement, span)
 {
-    public BoundRepLoopStatement(BoundBlockStatement body, TextSpan span)
-        : base(BoundNodeKind.RepLoopStatement, span)
-    {
-        Body = body;
-    }
-
-    public BoundBlockStatement Body { get; }
+    public BoundBlockStatement Body { get; } = body;
 }
 
-public sealed class BoundRepForStatement : BoundStatement
+public sealed class BoundRepForStatement(VariableSymbol variable, BoundExpression start, BoundExpression end, BoundBlockStatement body, TextSpan span) : BoundStatement(BoundNodeKind.RepForStatement, span)
 {
-    public BoundRepForStatement(VariableSymbol variable, BoundExpression start, BoundExpression end, BoundBlockStatement body, TextSpan span)
-        : base(BoundNodeKind.RepForStatement, span)
-    {
-        Variable = variable;
-        Start = start;
-        End = end;
-        Body = body;
-    }
-
-    public VariableSymbol Variable { get; }
-    public BoundExpression Start { get; }
-    public BoundExpression End { get; }
-    public BoundBlockStatement Body { get; }
+    public VariableSymbol Variable { get; } = variable;
+    public BoundExpression Start { get; } = start;
+    public BoundExpression End { get; } = end;
+    public BoundBlockStatement Body { get; } = body;
 }
 
-public sealed class BoundNoirqStatement : BoundStatement
+public sealed class BoundNoirqStatement(BoundBlockStatement body, TextSpan span) : BoundStatement(BoundNodeKind.NoirqStatement, span)
 {
-    public BoundNoirqStatement(BoundBlockStatement body, TextSpan span)
-        : base(BoundNodeKind.NoirqStatement, span)
-    {
-        Body = body;
-    }
-
-    public BoundBlockStatement Body { get; }
+    public BoundBlockStatement Body { get; } = body;
 }
 
-public sealed class BoundReturnStatement : BoundStatement
+public sealed class BoundReturnStatement(IReadOnlyList<BoundExpression> values, TextSpan span) : BoundStatement(BoundNodeKind.ReturnStatement, span)
 {
-    public BoundReturnStatement(IReadOnlyList<BoundExpression> values, TextSpan span)
-        : base(BoundNodeKind.ReturnStatement, span)
-    {
-        Values = values;
-    }
-
-    public IReadOnlyList<BoundExpression> Values { get; }
+    public IReadOnlyList<BoundExpression> Values { get; } = values;
 }
 
-public sealed class BoundBreakStatement : BoundStatement
+public sealed class BoundBreakStatement(TextSpan span) : BoundStatement(BoundNodeKind.BreakStatement, span)
 {
-    public BoundBreakStatement(TextSpan span)
-        : base(BoundNodeKind.BreakStatement, span)
-    {
-    }
 }
 
-public sealed class BoundContinueStatement : BoundStatement
+public sealed class BoundContinueStatement(TextSpan span) : BoundStatement(BoundNodeKind.ContinueStatement, span)
 {
-    public BoundContinueStatement(TextSpan span)
-        : base(BoundNodeKind.ContinueStatement, span)
-    {
-    }
 }
 
-public sealed class BoundYieldStatement : BoundStatement
+public sealed class BoundYieldStatement(TextSpan span) : BoundStatement(BoundNodeKind.YieldStatement, span)
 {
-    public BoundYieldStatement(TextSpan span)
-        : base(BoundNodeKind.YieldStatement, span)
-    {
-    }
 }
 
-public sealed class BoundYieldtoStatement : BoundStatement
+public sealed class BoundYieldtoStatement(FunctionSymbol? target, IReadOnlyList<BoundExpression> arguments, TextSpan span) : BoundStatement(BoundNodeKind.YieldtoStatement, span)
 {
-    public BoundYieldtoStatement(FunctionSymbol? target, IReadOnlyList<BoundExpression> arguments, TextSpan span)
-        : base(BoundNodeKind.YieldtoStatement, span)
-    {
-        Target = target;
-        Arguments = arguments;
-    }
-
-    public FunctionSymbol? Target { get; }
-    public IReadOnlyList<BoundExpression> Arguments { get; }
+    public FunctionSymbol? Target { get; } = target;
+    public IReadOnlyList<BoundExpression> Arguments { get; } = arguments;
 }
 
-public sealed class BoundAsmStatement : BoundStatement
+public sealed class BoundAsmStatement(
+    AsmVolatility volatility,
+    InlineAsmFlagOutput? flagOutput,
+    IReadOnlyList<InlineAsmLine> parsedLines,
+    IReadOnlyDictionary<InlineAsmBindingSlot, Symbol> referencedSymbols,
+    TextSpan span) : BoundStatement(BoundNodeKind.AsmStatement, span)
 {
-    public BoundAsmStatement(
-        AsmVolatility volatility,
-        InlineAsmFlagOutput? flagOutput,
-        IReadOnlyList<InlineAsmLine> parsedLines,
-        IReadOnlyDictionary<InlineAsmBindingSlot, Symbol> referencedSymbols,
-        TextSpan span)
-        : base(BoundNodeKind.AsmStatement, span)
-    {
-        Volatility = volatility;
-        FlagOutput = flagOutput;
-        ParsedLines = parsedLines;
-        ReferencedSymbols = referencedSymbols;
-    }
-
-    public AsmVolatility Volatility { get; }
-    public InlineAsmFlagOutput? FlagOutput { get; }
-    public IReadOnlyList<InlineAsmLine> ParsedLines { get; }
-    public IReadOnlyDictionary<InlineAsmBindingSlot, Symbol> ReferencedSymbols { get; }
+    public AsmVolatility Volatility { get; } = volatility;
+    public InlineAsmFlagOutput? FlagOutput { get; } = flagOutput;
+    public IReadOnlyList<InlineAsmLine> ParsedLines { get; } = parsedLines;
+    public IReadOnlyDictionary<InlineAsmBindingSlot, Symbol> ReferencedSymbols { get; } = referencedSymbols;
 }
 
 /// <summary>
 /// Only required inside the binder as a sentinel value, not a public api.
 /// </summary>
-internal sealed class BoundErrorStatement : BoundStatement
+internal sealed class BoundErrorStatement(TextSpan span) : BoundStatement(BoundNodeKind.ErrorStatement, span)
 {
-    public BoundErrorStatement(TextSpan span)
-        : base(BoundNodeKind.ErrorStatement, span)
-    {
-    }
 }

@@ -8,14 +8,9 @@ namespace Blade.Syntax.Nodes;
 /// A comma-separated list of syntax nodes, preserving separator tokens.
 /// Internal storage is interleaved: [node, separator, node, separator, node].
 /// </summary>
-public sealed class SeparatedSyntaxList<T> : IEnumerable<T> where T : SyntaxNode
+public sealed class SeparatedSyntaxList<T>(IReadOnlyList<object> nodesAndSeparators) : IEnumerable<T> where T : SyntaxNode
 {
-    private readonly IReadOnlyList<object> _nodesAndSeparators;
-
-    public SeparatedSyntaxList(IReadOnlyList<object> nodesAndSeparators)
-    {
-        _nodesAndSeparators = nodesAndSeparators;
-    }
+    private readonly IReadOnlyList<object> _nodesAndSeparators = nodesAndSeparators;
 
     public int Count => (_nodesAndSeparators.Count + 1) / 2;
 

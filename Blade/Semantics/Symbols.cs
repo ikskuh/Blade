@@ -26,28 +26,17 @@ public interface IAsmSymbol
     SymbolType SymbolType { get; }
 }
 
-internal sealed class SyntheticFunctionSignatureSyntax : IFunctionSignatureSyntax
+internal sealed class SyntheticFunctionSignatureSyntax(string name) : IFunctionSignatureSyntax
 {
-    public SyntheticFunctionSignatureSyntax(string name)
-    {
-        Name = new Token(TokenKind.Identifier, new TextSpan(0, 0), name);
-        Parameters = new SeparatedSyntaxList<ParameterSyntax>([]);
-    }
-
-    public Token Name { get; }
-    public SeparatedSyntaxList<ParameterSyntax> Parameters { get; }
+    public Token Name { get; } = new Token(TokenKind.Identifier, new TextSpan(0, 0), name);
+    public SeparatedSyntaxList<ParameterSyntax> Parameters { get; } = new SeparatedSyntaxList<ParameterSyntax>([]);
     public Token? Arrow => null;
     public SeparatedSyntaxList<ReturnItemSyntax>? ReturnSpec => null;
 }
 
-public abstract class Symbol
+public abstract class Symbol(string name)
 {
-    protected Symbol(string name)
-    {
-        Name = Requires.NotNullOrWhiteSpace(name);
-    }
-
-    public string Name { get; }
+    public string Name { get; } = Requires.NotNullOrWhiteSpace(name);
 }
 
 public sealed class AbsoluteAddressSymbol(int address, VariableStorageClass storageClass) : Symbol(BuildName(address, storageClass))
@@ -66,20 +55,14 @@ public sealed class AbsoluteAddressSymbol(int address, VariableStorageClass stor
     }
 }
 
-public sealed class ControlFlowLabelSymbol : IAsmSymbol
+public sealed class ControlFlowLabelSymbol(string name, FunctionSymbol? function) : IAsmSymbol
 {
     public ControlFlowLabelSymbol(string name)
         : this(name, function: null)
     {
     }
 
-    public ControlFlowLabelSymbol(string name, FunctionSymbol? function)
-    {
-        _name = Requires.NotNullOrWhiteSpace(name);
-        Function = function;
-    }
-
-    private string _name;
+    private string _name = Requires.NotNullOrWhiteSpace(name);
 
     public string Name
     {
@@ -87,7 +70,7 @@ public sealed class ControlFlowLabelSymbol : IAsmSymbol
         set => _name = Requires.NotNullOrWhiteSpace(value);
     }
 
-    public FunctionSymbol? Function { get; }
+    public FunctionSymbol? Function { get; } = function;
     public SymbolType SymbolType => SymbolType.ControlFlowLabel;
 }
 
@@ -127,49 +110,35 @@ public sealed class TypeSymbol : Symbol
     }
 }
 
-public sealed class VariableSymbol : Symbol
+public sealed class VariableSymbol(
+    string name,
+    BladeType type,
+    bool isConst,
+    VariableStorageClass storageClass,
+    VariableScopeKind scopeKind,
+    bool isExtern,
+    int? fixedAddress,
+    int? alignment,
+    RuntimeBladeValue? constantValue = null) : Symbol(name)
 {
-    public VariableSymbol(
-        string name,
-        BladeType type,
-        bool isConst,
-        VariableStorageClass storageClass,
-        VariableScopeKind scopeKind,
-        bool isExtern,
-        int? fixedAddress,
-        int? alignment,
-        RuntimeBladeValue? constantValue = null)
-        : base(name)
-    {
-        Type = Requires.NotNull(type);
-        IsConst = isConst;
-        StorageClass = storageClass;
-        ScopeKind = scopeKind;
-        IsExtern = isExtern;
-        FixedAddress = fixedAddress;
-        Alignment = alignment;
-        ConstantValue = constantValue;
-        CanElideTopLevelStoreLoadChains = scopeKind == VariableScopeKind.GlobalStorage
-            && storageClass == VariableStorageClass.Reg
-            && !isExtern
-            && !fixedAddress.HasValue;
-    }
-
-    public BladeType Type { get; }
-    public bool IsConst { get; }
-    public VariableStorageClass StorageClass { get; }
-    public VariableScopeKind ScopeKind { get; }
-    public bool IsExtern { get; }
-    public int? FixedAddress { get; private set; }
-    public int? Alignment { get; private set; }
+    public BladeType Type { get; } = Requires.NotNull(type);
+    public bool IsConst { get; } = isConst;
+    public VariableStorageClass StorageClass { get; } = storageClass;
+    public VariableScopeKind ScopeKind { get; } = scopeKind;
+    public bool IsExtern { get; } = isExtern;
+    public int? FixedAddress { get; private set; } = fixedAddress;
+    public int? Alignment { get; private set; } = alignment;
 
     public bool IsAutomatic => ScopeKind is VariableScopeKind.Local or VariableScopeKind.TopLevelAutomatic or VariableScopeKind.InlineAsmTemporary;
     public bool IsGlobalStorage => ScopeKind == VariableScopeKind.GlobalStorage;
     public bool UsesGlobalRegisterStorage => IsGlobalStorage && StorageClass == VariableStorageClass.Reg;
     public bool UsesGlobalLutStorage => IsGlobalStorage && StorageClass == VariableStorageClass.Lut;
     public bool UsesGlobalHubStorage => IsGlobalStorage && StorageClass == VariableStorageClass.Hub;
-    public RuntimeBladeValue? ConstantValue { get; }
-    public bool CanElideTopLevelStoreLoadChains { get; private set; }
+    public RuntimeBladeValue? ConstantValue { get; } = constantValue;
+    public bool CanElideTopLevelStoreLoadChains { get; private set; } = scopeKind == VariableScopeKind.GlobalStorage
+            && storageClass == VariableStorageClass.Reg
+            && !isExtern
+            && !fixedAddress.HasValue;
 
     public void SetLayoutMetadata(int? fixedAddress, int? alignment)
     {
@@ -186,15 +155,9 @@ public sealed class VariableSymbol : Symbol
 
 }
 
-public sealed class ParameterSymbol : Symbol
+public sealed class ParameterSymbol(string name, BladeType type) : Symbol(name)
 {
-    public ParameterSymbol(string name, BladeType type)
-        : base(name)
-    {
-        Type = Requires.NotNull(type);
-    }
-
-    public BladeType Type { get; }
+    public BladeType Type { get; } = Requires.NotNull(type);
 }
 
 public enum VariableStorageClass
@@ -245,20 +208,12 @@ public readonly record struct ReturnSlot(BladeType Type, ReturnPlacement Placeme
     public bool IsFlagPlaced => Placement is ReturnPlacement.FlagC or ReturnPlacement.FlagZ;
 }
 
-public sealed class FunctionSymbol : Symbol
+public sealed class FunctionSymbol(
+    string name,
+    IFunctionSignatureSyntax syntax,
+    FunctionKind kind,
+    FunctionInliningPolicy inliningPolicy = FunctionInliningPolicy.Default) : Symbol(name)
 {
-    public FunctionSymbol(
-        string name,
-        IFunctionSignatureSyntax syntax,
-        FunctionKind kind,
-        FunctionInliningPolicy inliningPolicy = FunctionInliningPolicy.Default)
-        : base(name)
-    {
-        Syntax = Requires.NotNull(syntax);
-        Kind = kind;
-        InliningPolicy = inliningPolicy;
-    }
-
     public FunctionSymbol(
         string name,
         FunctionKind kind,
@@ -267,9 +222,9 @@ public sealed class FunctionSymbol : Symbol
     {
     }
 
-    public IFunctionSignatureSyntax Syntax { get; }
-    public FunctionKind Kind { get; }
-    public FunctionInliningPolicy InliningPolicy { get; }
+    public IFunctionSignatureSyntax Syntax { get; } = Requires.NotNull(syntax);
+    public FunctionKind Kind { get; } = kind;
+    public FunctionInliningPolicy InliningPolicy { get; } = inliningPolicy;
     public bool IsAsmFunction => Syntax is AsmFunctionDeclarationSyntax;
     public IReadOnlyList<ParameterSymbol> Parameters { get; set; } = [];
     public IReadOnlyList<ReturnSlot> ReturnSlots { get; set; } = [];
@@ -279,27 +234,16 @@ public sealed class FunctionSymbol : Symbol
     public bool HasFlagReturns => ReturnSlots.Any(s => s.IsFlagPlaced);
 }
 
-public sealed class ModuleSymbol : Symbol
+public sealed class ModuleSymbol(string name, BoundModule module) : Symbol(name)
 {
-    public ModuleSymbol(string name, BoundModule module)
-        : base(name)
-    {
-        Module = Requires.NotNull(module);
-    }
-
-    public BoundModule Module { get; }
+    public BoundModule Module { get; } = Requires.NotNull(module);
 }
 
-public sealed class Scope
+public sealed class Scope(Scope? parent)
 {
     private readonly Dictionary<string, Symbol> _symbols = new();
 
-    public Scope(Scope? parent)
-    {
-        Parent = parent;
-    }
-
-    public Scope? Parent { get; }
+    public Scope? Parent { get; } = parent;
 
     public bool TryDeclare(Symbol symbol)
     {

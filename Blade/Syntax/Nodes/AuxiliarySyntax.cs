@@ -4,219 +4,115 @@ using Blade.Source;
 
 namespace Blade.Syntax.Nodes;
 
-public sealed class ParameterSyntax : SyntaxNode
-{
-    public Token? StorageClassKeyword { get; }
-    public Token Name { get; }
-    [ExcludeFromCodeCoverage]
-    public Token Colon { get; }
-    public TypeSyntax Type { get; }
-
-    public ParameterSyntax(Token? storageClassKeyword, Token name, Token colon, TypeSyntax type)
-        : base(TextSpan.FromBounds(
+public sealed class ParameterSyntax(Token? storageClassKeyword, Token name, Token colon, TypeSyntax type) : SyntaxNode(TextSpan.FromBounds(
             storageClassKeyword?.Span.Start ?? name.Span.Start,
             Requires.NotNull(type).Span.End))
-    {
-        StorageClassKeyword = storageClassKeyword;
-        Name = name;
-        Colon = colon;
-        Type = Requires.NotNull(type);
-    }
+{
+    public Token? StorageClassKeyword { get; } = storageClassKeyword;
+    public Token Name { get; } = name;
+    [ExcludeFromCodeCoverage]
+    public Token Colon { get; } = colon;
+    public TypeSyntax Type { get; } = Requires.NotNull(type);
 }
 
-public sealed class ReturnItemSyntax : SyntaxNode
-{
-    public Token? Name { get; }
-    public Token? ColonToken { get; }
-    public TypeSyntax Type { get; }
-    public FlagAnnotationSyntax? FlagAnnotation { get; }
-
-    public ReturnItemSyntax(Token? name, Token? colonToken, TypeSyntax type, FlagAnnotationSyntax? flagAnnotation)
-        : base(TextSpan.FromBounds(
+public sealed class ReturnItemSyntax(Token? name, Token? colonToken, TypeSyntax type, FlagAnnotationSyntax? flagAnnotation) : SyntaxNode(TextSpan.FromBounds(
             name?.Span.Start ?? Requires.NotNull(type).Span.Start,
             flagAnnotation?.Span.End ?? Requires.NotNull(type).Span.End))
-    {
-        Name = name;
-        ColonToken = colonToken;
-        Type = Requires.NotNull(type);
-        FlagAnnotation = flagAnnotation;
-    }
+{
+    public Token? Name { get; } = name;
+    public Token? ColonToken { get; } = colonToken;
+    public TypeSyntax Type { get; } = Requires.NotNull(type);
+    public FlagAnnotationSyntax? FlagAnnotation { get; } = flagAnnotation;
 }
 
-public sealed class FlagAnnotationSyntax : SyntaxNode
+public sealed class FlagAnnotationSyntax(Token atToken, Token flag) : SyntaxNode(TextSpan.FromBounds(atToken.Span.Start, flag.Span.End))
 {
     [ExcludeFromCodeCoverage]
-    public Token AtToken { get; }
-    public Token Flag { get; }
-
-    public FlagAnnotationSyntax(Token atToken, Token flag)
-        : base(TextSpan.FromBounds(atToken.Span.Start, flag.Span.End))
-    {
-        AtToken = atToken;
-        Flag = flag;
-    }
+    public Token AtToken { get; } = atToken;
+    public Token Flag { get; } = flag;
 }
 
-public sealed class AddressClauseSyntax : SyntaxNode
+public sealed class AddressClauseSyntax(Token atToken, Token openParen, ExpressionSyntax address, Token closeParen) : SyntaxNode(TextSpan.FromBounds(atToken.Span.Start, closeParen.Span.End))
 {
     [ExcludeFromCodeCoverage]
-    public Token AtToken { get; }
+    public Token AtToken { get; } = atToken;
     [ExcludeFromCodeCoverage]
-    public Token OpenParen { get; }
-    public ExpressionSyntax Address { get; }
+    public Token OpenParen { get; } = openParen;
+    public ExpressionSyntax Address { get; } = Requires.NotNull(address);
     [ExcludeFromCodeCoverage]
-    public Token CloseParen { get; }
-
-    public AddressClauseSyntax(Token atToken, Token openParen, ExpressionSyntax address, Token closeParen)
-        : base(TextSpan.FromBounds(atToken.Span.Start, closeParen.Span.End))
-    {
-        AtToken = atToken;
-        OpenParen = openParen;
-        Address = Requires.NotNull(address);
-        CloseParen = closeParen;
-    }
+    public Token CloseParen { get; } = closeParen;
 }
 
-public sealed class AlignClauseSyntax : SyntaxNode
+public sealed class AlignClauseSyntax(Token alignKeyword, Token openParen, ExpressionSyntax alignment, Token closeParen) : SyntaxNode(TextSpan.FromBounds(alignKeyword.Span.Start, closeParen.Span.End))
 {
     [ExcludeFromCodeCoverage]
-    public Token AlignKeyword { get; }
+    public Token AlignKeyword { get; } = alignKeyword;
     [ExcludeFromCodeCoverage]
-    public Token OpenParen { get; }
-    public ExpressionSyntax Alignment { get; }
+    public Token OpenParen { get; } = openParen;
+    public ExpressionSyntax Alignment { get; } = Requires.NotNull(alignment);
     [ExcludeFromCodeCoverage]
-    public Token CloseParen { get; }
-
-    public AlignClauseSyntax(Token alignKeyword, Token openParen, ExpressionSyntax alignment, Token closeParen)
-        : base(TextSpan.FromBounds(alignKeyword.Span.Start, closeParen.Span.End))
-    {
-        AlignKeyword = alignKeyword;
-        OpenParen = openParen;
-        Alignment = Requires.NotNull(alignment);
-        CloseParen = closeParen;
-    }
+    public Token CloseParen { get; } = closeParen;
 }
 
-public sealed class ElseClauseSyntax : SyntaxNode
+public sealed class ElseClauseSyntax(Token elseKeyword, StatementSyntax body) : SyntaxNode(TextSpan.FromBounds(elseKeyword.Span.Start, Requires.NotNull(body).Span.End))
 {
     [ExcludeFromCodeCoverage]
-    public Token ElseKeyword { get; }
-    public StatementSyntax Body { get; }
-
-    public ElseClauseSyntax(Token elseKeyword, StatementSyntax body)
-        : base(TextSpan.FromBounds(elseKeyword.Span.Start, Requires.NotNull(body).Span.End))
-    {
-        ElseKeyword = elseKeyword;
-        Body = Requires.NotNull(body);
-    }
+    public Token ElseKeyword { get; } = elseKeyword;
+    public StatementSyntax Body { get; } = Requires.NotNull(body);
 }
 
-public sealed class FieldInitializerSyntax : SyntaxNode
+public sealed class FieldInitializerSyntax(Token dot, Token name, Token equalsToken, ExpressionSyntax value) : SyntaxNode(TextSpan.FromBounds(dot.Span.Start, Requires.NotNull(value).Span.End))
 {
     [ExcludeFromCodeCoverage]
-    public Token Dot { get; }
-    public Token Name { get; }
-    public Token EqualsToken { get; }
-    public ExpressionSyntax Value { get; }
-
-    public FieldInitializerSyntax(Token dot, Token name, Token equalsToken, ExpressionSyntax value)
-        : base(TextSpan.FromBounds(dot.Span.Start, Requires.NotNull(value).Span.End))
-    {
-        Dot = dot;
-        Name = name;
-        EqualsToken = equalsToken;
-        Value = Requires.NotNull(value);
-    }
+    public Token Dot { get; } = dot;
+    public Token Name { get; } = name;
+    public Token EqualsToken { get; } = equalsToken;
+    public ExpressionSyntax Value { get; } = Requires.NotNull(value);
 }
 
-public sealed class StructFieldSyntax : SyntaxNode
+public sealed class StructFieldSyntax(Token name, Token colon, TypeSyntax type) : SyntaxNode(TextSpan.FromBounds(name.Span.Start, Requires.NotNull(type).Span.End))
 {
-    public Token Name { get; }
+    public Token Name { get; } = name;
     [ExcludeFromCodeCoverage]
-    public Token Colon { get; }
-    public TypeSyntax Type { get; }
-
-    public StructFieldSyntax(Token name, Token colon, TypeSyntax type)
-        : base(TextSpan.FromBounds(name.Span.Start, Requires.NotNull(type).Span.End))
-    {
-        Name = name;
-        Colon = colon;
-        Type = Requires.NotNull(type);
-    }
+    public Token Colon { get; } = colon;
+    public TypeSyntax Type { get; } = Requires.NotNull(type);
 }
 
-public sealed class AsmOutputBindingSyntax : SyntaxNode
-{
-    [ExcludeFromCodeCoverage]
-    public Token Arrow { get; }
-    public Token Name { get; }
-    [ExcludeFromCodeCoverage]
-    public Token Colon { get; }
-    public TypeSyntax Type { get; }
-    public FlagAnnotationSyntax? FlagAnnotation { get; }
-
-    public AsmOutputBindingSyntax(Token arrow, Token name, Token colon, TypeSyntax type,
-                                  FlagAnnotationSyntax? flagAnnotation)
-        : base(TextSpan.FromBounds(arrow.Span.Start,
+public sealed class AsmOutputBindingSyntax(Token arrow, Token name, Token colon, TypeSyntax type,
+                              FlagAnnotationSyntax? flagAnnotation) : SyntaxNode(TextSpan.FromBounds(arrow.Span.Start,
             flagAnnotation?.Span.End ?? Requires.NotNull(type).Span.End))
-    {
-        Arrow = arrow;
-        Name = name;
-        Colon = colon;
-        Type = Requires.NotNull(type);
-        FlagAnnotation = flagAnnotation;
-    }
-}
-
-public sealed class EnumMemberSyntax : SyntaxNode
-{
-    public Token Name { get; }
-    public Token? EqualsToken { get; }
-    public ExpressionSyntax? Value { get; }
-    public bool IsOpenMarker { get; }
-
-    public EnumMemberSyntax(Token name, Token? equalsToken, ExpressionSyntax? value, bool isOpenMarker = false)
-        : base(TextSpan.FromBounds(name.Span.Start, value?.Span.End ?? name.Span.End))
-    {
-        Name = name;
-        EqualsToken = equalsToken;
-        Value = value;
-        IsOpenMarker = isOpenMarker;
-    }
-}
-
-public sealed class ForBindingSyntax : SyntaxNode
 {
     [ExcludeFromCodeCoverage]
-    public Token Arrow { get; }
-    public Token? Ampersand { get; }
-    public Token ItemName { get; }
-    public Token? Comma { get; }
-    public Token? IndexName { get; }
-
-    public ForBindingSyntax(Token arrow, Token? ampersand, Token itemName, Token? comma, Token? indexName)
-        : base(TextSpan.FromBounds(arrow.Span.Start, indexName?.Span.End ?? itemName.Span.End))
-    {
-        Arrow = arrow;
-        Ampersand = ampersand;
-        ItemName = itemName;
-        Comma = comma;
-        IndexName = indexName;
-    }
+    public Token Arrow { get; } = arrow;
+    public Token Name { get; } = name;
+    [ExcludeFromCodeCoverage]
+    public Token Colon { get; } = colon;
+    public TypeSyntax Type { get; } = Requires.NotNull(type);
+    public FlagAnnotationSyntax? FlagAnnotation { get; } = flagAnnotation;
 }
 
-public sealed class NamedArgumentSyntax : ExpressionSyntax
+public sealed class EnumMemberSyntax(Token name, Token? equalsToken, ExpressionSyntax? value, bool isOpenMarker = false) : SyntaxNode(TextSpan.FromBounds(name.Span.Start, value?.Span.End ?? name.Span.End))
 {
-    public Token Name { get; }
-    [ExcludeFromCodeCoverage]
-    public Token EqualsToken { get; }
-    public ExpressionSyntax Value { get; }
+    public Token Name { get; } = name;
+    public Token? EqualsToken { get; } = equalsToken;
+    public ExpressionSyntax? Value { get; } = value;
+    public bool IsOpenMarker { get; } = isOpenMarker;
+}
 
-    public NamedArgumentSyntax(Token name, Token equalsToken, ExpressionSyntax value)
-        : base(TextSpan.FromBounds(name.Span.Start, Requires.NotNull(value).Span.End))
-    {
-        Name = name;
-        EqualsToken = equalsToken;
-        Value = Requires.NotNull(value);
-    }
+public sealed class ForBindingSyntax(Token arrow, Token? ampersand, Token itemName, Token? comma, Token? indexName) : SyntaxNode(TextSpan.FromBounds(arrow.Span.Start, indexName?.Span.End ?? itemName.Span.End))
+{
+    [ExcludeFromCodeCoverage]
+    public Token Arrow { get; } = arrow;
+    public Token? Ampersand { get; } = ampersand;
+    public Token ItemName { get; } = itemName;
+    public Token? Comma { get; } = comma;
+    public Token? IndexName { get; } = indexName;
+}
+
+public sealed class NamedArgumentSyntax(Token name, Token equalsToken, ExpressionSyntax value) : ExpressionSyntax(TextSpan.FromBounds(name.Span.Start, Requires.NotNull(value).Span.End))
+{
+    public Token Name { get; } = name;
+    [ExcludeFromCodeCoverage]
+    public Token EqualsToken { get; } = equalsToken;
+    public ExpressionSyntax Value { get; } = Requires.NotNull(value);
 }

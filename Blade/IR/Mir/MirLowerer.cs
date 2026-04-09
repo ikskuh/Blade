@@ -1919,14 +1919,9 @@ public static class MirLowerer
             _currentBlock.Instructions.Add(new MirUpdatePlaceInstruction(place, operatorKind, value, span, pointerStride));
         }
 
-        private sealed class BlockBuilder
+        private sealed class BlockBuilder(MirBlockRef label)
         {
-            public BlockBuilder(MirBlockRef label)
-            {
-                Label = label;
-            }
-
-            public MirBlockRef Label { get; }
+            public MirBlockRef Label { get; } = label;
             public List<MirBlockParameter> Parameters { get; } = [];
             public List<MirInstruction> Instructions { get; } = [];
             public MirTerminator? Terminator { get; set; }

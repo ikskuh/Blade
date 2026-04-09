@@ -186,39 +186,24 @@ internal enum LoadedImportKind
     Builtin,
 }
 
-internal sealed class LoadedCompilation
+internal sealed class LoadedCompilation(LoadedModule rootModule, IReadOnlyDictionary<string, LoadedModule> modulesByFullPath)
 {
-    public LoadedCompilation(LoadedModule rootModule, IReadOnlyDictionary<string, LoadedModule> modulesByFullPath)
-    {
-        RootModule = Requires.NotNull(rootModule);
-        ModulesByFullPath = Requires.NotNull(modulesByFullPath);
-    }
-
-    public LoadedModule RootModule { get; }
-    public IReadOnlyDictionary<string, LoadedModule> ModulesByFullPath { get; }
+    public LoadedModule RootModule { get; } = Requires.NotNull(rootModule);
+    public IReadOnlyDictionary<string, LoadedModule> ModulesByFullPath { get; } = Requires.NotNull(modulesByFullPath);
 }
 
-internal sealed class LoadedModule
+internal sealed class LoadedModule(
+    string fullPath,
+    SourceText source,
+    CompilationUnitSyntax syntax,
+    int tokenCount,
+    IReadOnlyList<LoadedImport> imports)
 {
-    public LoadedModule(
-        string fullPath,
-        SourceText source,
-        CompilationUnitSyntax syntax,
-        int tokenCount,
-        IReadOnlyList<LoadedImport> imports)
-    {
-        FullPath = Requires.NotNull(fullPath);
-        Source = Requires.NotNull(source);
-        Syntax = Requires.NotNull(syntax);
-        TokenCount = Requires.NonNegative(tokenCount);
-        Imports = Requires.NotNull(imports);
-    }
-
-    public string FullPath { get; }
-    public SourceText Source { get; }
-    public CompilationUnitSyntax Syntax { get; }
-    public int TokenCount { get; }
-    public IReadOnlyList<LoadedImport> Imports { get; }
+    public string FullPath { get; } = Requires.NotNull(fullPath);
+    public SourceText Source { get; } = Requires.NotNull(source);
+    public CompilationUnitSyntax Syntax { get; } = Requires.NotNull(syntax);
+    public int TokenCount { get; } = Requires.NonNegative(tokenCount);
+    public IReadOnlyList<LoadedImport> Imports { get; } = Requires.NotNull(imports);
 }
 
 internal readonly record struct LoadedImport(

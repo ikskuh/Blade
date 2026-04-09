@@ -6,22 +6,16 @@ namespace Blade.Source;
 /// <summary>
 /// Immutable wrapper around source text with line-index support for diagnostic locations.
 /// </summary>
-public sealed class SourceText
+public sealed class SourceText(string text, string filePath = "<input>")
 {
-    private readonly string _text;
+    private readonly string _text = text;
     private int[]? _lineStarts;
-
-    public SourceText(string text, string filePath = "<input>")
-    {
-        _text = text;
-        this.FilePath = filePath;
-    }
 
     public int Length => _text.Length;
 
     public char this[int index] => _text[index];
 
-    public string FilePath {get;}
+    public string FilePath { get; } = filePath;
 
     public string ToString(TextSpan span) => _text.Substring(span.Start, span.Length);
 

@@ -419,23 +419,15 @@ public static class MirInliner
         }
     }
 
-    private sealed class MutableBlock
+    private sealed class MutableBlock(
+        MirBlockRef label,
+        IReadOnlyList<MirBlockParameter> parameters,
+        IReadOnlyList<MirInstruction> instructions,
+        MirTerminator terminator)
     {
-        public MutableBlock(
-            MirBlockRef label,
-            IReadOnlyList<MirBlockParameter> parameters,
-            IReadOnlyList<MirInstruction> instructions,
-            MirTerminator terminator)
-        {
-            Label = label;
-            Parameters = new List<MirBlockParameter>(parameters);
-            Instructions = new List<MirInstruction>(instructions);
-            Terminator = terminator;
-        }
-
-        public MirBlockRef Label { get; }
-        public List<MirBlockParameter> Parameters { get; }
-        public List<MirInstruction> Instructions { get; set; }
-        public MirTerminator Terminator { get; set; }
+        public MirBlockRef Label { get; } = label;
+        public List<MirBlockParameter> Parameters { get; } = new List<MirBlockParameter>(parameters);
+        public List<MirInstruction> Instructions { get; set; } = new List<MirInstruction>(instructions);
+        public MirTerminator Terminator { get; set; } = terminator;
     }
 }

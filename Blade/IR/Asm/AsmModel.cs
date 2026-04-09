@@ -150,7 +150,12 @@ public sealed class AsmRegisterConstraint
     public StoragePlace? TiedPlace { get; }
 }
 
-public sealed class AsmFunction : IAsmSymbol
+public sealed class AsmFunction(
+    LirFunction sourceFunction,
+    CallingConventionTier ccTier,
+    IReadOnlyList<AsmNode> nodes,
+    IReadOnlyDictionary<VirtualAsmRegister, AsmRegisterConstraint>? registerConstraints = null,
+    IReadOnlyList<StoragePlace>? sharedRegisterPlaces = null) : IAsmSymbol
 {
     public AsmFunction(AsmFunction sourceFunction, IReadOnlyList<AsmNode> nodes)
         : this(
@@ -162,28 +167,14 @@ public sealed class AsmFunction : IAsmSymbol
     {
     }
 
-    public AsmFunction(
-        LirFunction sourceFunction,
-        CallingConventionTier ccTier,
-        IReadOnlyList<AsmNode> nodes,
-        IReadOnlyDictionary<VirtualAsmRegister, AsmRegisterConstraint>? registerConstraints = null,
-        IReadOnlyList<StoragePlace>? sharedRegisterPlaces = null)
-    {
-        SourceFunction = Requires.NotNull(sourceFunction);
-        CcTier = ccTier;
-        Nodes = nodes;
-        RegisterConstraints = registerConstraints ?? new Dictionary<VirtualAsmRegister, AsmRegisterConstraint>();
-        SharedRegisterPlaces = sharedRegisterPlaces ?? [];
-    }
-
-    public LirFunction SourceFunction { get; }
+    public LirFunction SourceFunction { get; } = Requires.NotNull(sourceFunction);
     public FunctionSymbol Symbol => SourceFunction.Symbol;
     public string Name => SourceFunction.Name;
     public bool IsEntryPoint => SourceFunction.IsEntryPoint;
-    public CallingConventionTier CcTier { get; }
-    public IReadOnlyList<AsmNode> Nodes { get; }
-    public IReadOnlyDictionary<VirtualAsmRegister, AsmRegisterConstraint> RegisterConstraints { get; }
-    public IReadOnlyList<StoragePlace> SharedRegisterPlaces { get; }
+    public CallingConventionTier CcTier { get; } = ccTier;
+    public IReadOnlyList<AsmNode> Nodes { get; } = nodes;
+    public IReadOnlyDictionary<VirtualAsmRegister, AsmRegisterConstraint> RegisterConstraints { get; } = registerConstraints ?? new Dictionary<VirtualAsmRegister, AsmRegisterConstraint>();
+    public IReadOnlyList<StoragePlace> SharedRegisterPlaces { get; } = sharedRegisterPlaces ?? [];
     public SymbolType SymbolType => SymbolType.Function;
 }
 
@@ -212,19 +203,14 @@ public enum AsmDataDirective
     Long,
 }
 
-public sealed class AsmLabelNode : AsmNode
+public sealed class AsmLabelNode(ControlFlowLabelSymbol label) : AsmNode
 {
     public AsmLabelNode(string label)
         : this(new ControlFlowLabelSymbol(label))
     {
     }
 
-    public AsmLabelNode(ControlFlowLabelSymbol label)
-    {
-        Label = Requires.NotNull(label);
-    }
-
-    public ControlFlowLabelSymbol Label { get; }
+    public ControlFlowLabelSymbol Label { get; } = Requires.NotNull(label);
     public string Name => Label.Name;
 }
 
@@ -345,18 +331,11 @@ public sealed class AsmImmediateOperand(long value) : AsmOperand
 /// <summary>
 /// Symbol/label reference operand (#label or symbol name).
 /// </summary>
-public sealed class AsmSymbolOperand : AsmOperand
+public sealed class AsmSymbolOperand(IAsmSymbol symbol, AsmSymbolAddressingMode addressingMode, int offset = 0) : AsmOperand
 {
     public AsmSymbolOperand(P2SpecialRegister register)
         : this(new AsmSpecialRegisterSymbol(new P2Register(register)), AsmSymbolAddressingMode.Register)
     {
-    }
-
-    public AsmSymbolOperand(IAsmSymbol symbol, AsmSymbolAddressingMode addressingMode, int offset = 0)
-    {
-        Symbol = Requires.NotNull(symbol);
-        AddressingMode = addressingMode;
-        Offset = offset;
     }
 
     public AsmSymbolOperand(ControlFlowLabelSymbol label, AsmSymbolAddressingMode addressingMode)
@@ -364,10 +343,10 @@ public sealed class AsmSymbolOperand : AsmOperand
     {
     }
 
-    public IAsmSymbol Symbol { get; }
+    public IAsmSymbol Symbol { get; } = Requires.NotNull(symbol);
     public string Name => Symbol.Name;
-    public AsmSymbolAddressingMode AddressingMode { get; }
-    public int Offset { get; }
+    public AsmSymbolAddressingMode AddressingMode { get; } = addressingMode;
+    public int Offset { get; } = offset;
 
     public override string Format() => AddressingMode switch
     {

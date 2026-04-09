@@ -5,37 +5,19 @@ using Blade.Syntax;
 
 namespace Blade.Semantics.Bound;
 
-public abstract class BoundExpression : BoundNode
+public abstract class BoundExpression(BoundNodeKind kind, TextSpan span, BladeType type) : BoundNode(kind, span)
 {
-    protected BoundExpression(BoundNodeKind kind, TextSpan span, BladeType type)
-        : base(kind, span)
-    {
-        Type = type;
-    }
-
-    public BladeType Type { get; }
+    public BladeType Type { get; } = type;
 }
 
-public sealed class BoundLiteralExpression : BoundExpression
+public sealed class BoundLiteralExpression(BladeValue value, TextSpan span) : BoundExpression(BoundNodeKind.LiteralExpression, span, Requires.NotNull(value).Type)
 {
-    public BoundLiteralExpression(BladeValue value, TextSpan span)
-        : base(BoundNodeKind.LiteralExpression, span, Requires.NotNull(value).Type)
-    {
-        Value = Requires.NotNull(value);
-    }
-
-    public BladeValue Value { get; }
+    public BladeValue Value { get; } = Requires.NotNull(value);
 }
 
-public sealed class BoundSymbolExpression : BoundExpression
+public sealed class BoundSymbolExpression(Symbol symbol, TextSpan span, BladeType type) : BoundExpression(BoundNodeKind.SymbolExpression, span, type)
 {
-    public BoundSymbolExpression(Symbol symbol, TextSpan span, BladeType type)
-        : base(BoundNodeKind.SymbolExpression, span, type)
-    {
-        Symbol = symbol;
-    }
-
-    public Symbol Symbol { get; }
+    public Symbol Symbol { get; } = symbol;
 }
 
 public enum BoundUnaryOperatorKind
@@ -47,16 +29,10 @@ public enum BoundUnaryOperatorKind
     AddressOf,
 }
 
-public sealed class BoundUnaryOperator
+public sealed class BoundUnaryOperator(TokenKind syntaxKind, BoundUnaryOperatorKind kind)
 {
-    public BoundUnaryOperator(TokenKind syntaxKind, BoundUnaryOperatorKind kind)
-    {
-        SyntaxKind = syntaxKind;
-        Kind = kind;
-    }
-
-    public TokenKind SyntaxKind { get; }
-    public BoundUnaryOperatorKind Kind { get; }
+    public TokenKind SyntaxKind { get; } = syntaxKind;
+    public BoundUnaryOperatorKind Kind { get; } = kind;
 
     public static BoundUnaryOperator? Bind(TokenKind kind)
     {
@@ -72,17 +48,10 @@ public sealed class BoundUnaryOperator
     }
 }
 
-public sealed class BoundUnaryExpression : BoundExpression
+public sealed class BoundUnaryExpression(BoundUnaryOperator op, BoundExpression operand, TextSpan span, BladeType type) : BoundExpression(BoundNodeKind.UnaryExpression, span, type)
 {
-    public BoundUnaryExpression(BoundUnaryOperator op, BoundExpression operand, TextSpan span, BladeType type)
-        : base(BoundNodeKind.UnaryExpression, span, type)
-    {
-        Operator = op;
-        Operand = operand;
-    }
-
-    public BoundUnaryOperator Operator { get; }
-    public BoundExpression Operand { get; }
+    public BoundUnaryOperator Operator { get; } = op;
+    public BoundExpression Operand { get; } = operand;
 }
 
 public enum BoundBinaryOperatorKind
@@ -155,62 +124,34 @@ public sealed class BoundBinaryOperator
     }
 }
 
-public sealed class BoundBinaryExpression : BoundExpression
+public sealed class BoundBinaryExpression(BoundExpression left, BoundBinaryOperator op, BoundExpression right, TextSpan span, BladeType type) : BoundExpression(BoundNodeKind.BinaryExpression, span, type)
 {
-    public BoundBinaryExpression(BoundExpression left, BoundBinaryOperator op, BoundExpression right, TextSpan span, BladeType type)
-        : base(BoundNodeKind.BinaryExpression, span, type)
-    {
-        Left = left;
-        Operator = op;
-        Right = right;
-    }
-
-    public BoundExpression Left { get; }
-    public BoundBinaryOperator Operator { get; }
-    public BoundExpression Right { get; }
+    public BoundExpression Left { get; } = left;
+    public BoundBinaryOperator Operator { get; } = op;
+    public BoundExpression Right { get; } = right;
 }
 
-public sealed class BoundCallExpression : BoundExpression
+public sealed class BoundCallExpression(FunctionSymbol function, IReadOnlyList<BoundExpression> arguments, TextSpan span, BladeType type) : BoundExpression(BoundNodeKind.CallExpression, span, type)
 {
-    public BoundCallExpression(FunctionSymbol function, IReadOnlyList<BoundExpression> arguments, TextSpan span, BladeType type)
-        : base(BoundNodeKind.CallExpression, span, type)
-    {
-        Function = function;
-        Arguments = arguments;
-    }
-
-    public FunctionSymbol Function { get; }
-    public IReadOnlyList<BoundExpression> Arguments { get; }
+    public FunctionSymbol Function { get; } = function;
+    public IReadOnlyList<BoundExpression> Arguments { get; } = arguments;
 }
 
 
-public sealed class BoundModuleCallExpression : BoundExpression
+public sealed class BoundModuleCallExpression(BoundModule module, TextSpan span) : BoundExpression(BoundNodeKind.ModuleCallExpression, span, BuiltinTypes.Void)
 {
-    public BoundModuleCallExpression(BoundModule module, TextSpan span)
-        : base(BoundNodeKind.ModuleCallExpression, span, BuiltinTypes.Void)
-    {
-        Module = Requires.NotNull(module);
-    }
-
-    public BoundModule Module { get; }
+    public BoundModule Module { get; } = Requires.NotNull(module);
 }
 
-public sealed class BoundIntrinsicCallExpression : BoundExpression
+public sealed class BoundIntrinsicCallExpression(P2Mnemonic mnemonic, IReadOnlyList<BoundExpression> arguments, TextSpan span, BladeType type) : BoundExpression(BoundNodeKind.IntrinsicCallExpression, span, type)
 {
     public BoundIntrinsicCallExpression(string name, IReadOnlyList<BoundExpression> arguments, TextSpan span, BladeType type)
         : this(ParseMnemonic(name), arguments, span, type)
     {
     }
 
-    public BoundIntrinsicCallExpression(P2Mnemonic mnemonic, IReadOnlyList<BoundExpression> arguments, TextSpan span, BladeType type)
-        : base(BoundNodeKind.IntrinsicCallExpression, span, type)
-    {
-        Mnemonic = mnemonic;
-        Arguments = arguments;
-    }
-
-    public P2Mnemonic Mnemonic { get; }
-    public IReadOnlyList<BoundExpression> Arguments { get; }
+    public P2Mnemonic Mnemonic { get; } = mnemonic;
+    public IReadOnlyList<BoundExpression> Arguments { get; } = arguments;
 
     private static P2Mnemonic ParseMnemonic(string name)
     {
@@ -227,260 +168,127 @@ public sealed class BoundIntrinsicCallExpression : BoundExpression
 /// <summary>
 /// Only required inside the binder as a sentinel value, not a public api.
 /// </summary>
-internal sealed class BoundEnumLiteralExpression : BoundExpression
+internal sealed class BoundEnumLiteralExpression(EnumTypeSymbol enumType, string memberName, long value, TextSpan span) : BoundExpression(BoundNodeKind.EnumLiteralExpression, span, enumType)
 {
-    public BoundEnumLiteralExpression(EnumTypeSymbol enumType, string memberName, long value, TextSpan span)
-        : base(BoundNodeKind.EnumLiteralExpression, span, enumType)
-    {
-        EnumType = enumType;
-        MemberName = memberName;
-        Value = value;
-    }
-
-    public EnumTypeSymbol EnumType { get; }
-    public string MemberName { get; }
-    public long Value { get; }
+    public EnumTypeSymbol EnumType { get; } = enumType;
+    public string MemberName { get; } = memberName;
+    public long Value { get; } = value;
 }
 
-public sealed class BoundArrayLiteralExpression : BoundExpression
+public sealed class BoundArrayLiteralExpression(IReadOnlyList<BoundExpression> elements, bool lastElementIsSpread, TextSpan span, ArrayTypeSymbol type) : BoundExpression(BoundNodeKind.ArrayLiteralExpression, span, type)
 {
-    public BoundArrayLiteralExpression(IReadOnlyList<BoundExpression> elements, bool lastElementIsSpread, TextSpan span, ArrayTypeSymbol type)
-        : base(BoundNodeKind.ArrayLiteralExpression, span, type)
-    {
-        Elements = Requires.NotNull(elements);
-        LastElementIsSpread = lastElementIsSpread;
-    }
-
-    public IReadOnlyList<BoundExpression> Elements { get; }
-    public bool LastElementIsSpread { get; }
+    public IReadOnlyList<BoundExpression> Elements { get; } = Requires.NotNull(elements);
+    public bool LastElementIsSpread { get; } = lastElementIsSpread;
     public new ArrayTypeSymbol Type => (ArrayTypeSymbol)base.Type;
 }
 
-public sealed class BoundMemberAccessExpression : BoundExpression
+public sealed class BoundMemberAccessExpression(BoundExpression receiver, AggregateMemberSymbol member, TextSpan span) : BoundExpression(BoundNodeKind.MemberAccessExpression, span, Requires.NotNull(member).Type)
 {
-    public BoundMemberAccessExpression(BoundExpression receiver, AggregateMemberSymbol member, TextSpan span)
-        : base(BoundNodeKind.MemberAccessExpression, span, Requires.NotNull(member).Type)
-    {
-        Receiver = receiver;
-        Member = Requires.NotNull(member);
-    }
-
-    public BoundExpression Receiver { get; }
-    public AggregateMemberSymbol Member { get; }
+    public BoundExpression Receiver { get; } = receiver;
+    public AggregateMemberSymbol Member { get; } = Requires.NotNull(member);
     public string MemberName => Member.Name;
 }
 
-public sealed class BoundIndexExpression : BoundExpression
+public sealed class BoundIndexExpression(BoundExpression expression, BoundExpression index, TextSpan span, BladeType type) : BoundExpression(BoundNodeKind.IndexExpression, span, type)
 {
-    public BoundIndexExpression(BoundExpression expression, BoundExpression index, TextSpan span, BladeType type)
-        : base(BoundNodeKind.IndexExpression, span, type)
-    {
-        Expression = expression;
-        Index = index;
-    }
-
-    public BoundExpression Expression { get; }
-    public BoundExpression Index { get; }
+    public BoundExpression Expression { get; } = expression;
+    public BoundExpression Index { get; } = index;
 }
 
-public sealed class BoundPointerDerefExpression : BoundExpression
+public sealed class BoundPointerDerefExpression(BoundExpression expression, TextSpan span, BladeType type) : BoundExpression(BoundNodeKind.PointerDerefExpression, span, type)
 {
-    public BoundPointerDerefExpression(BoundExpression expression, TextSpan span, BladeType type)
-        : base(BoundNodeKind.PointerDerefExpression, span, type)
-    {
-        Expression = expression;
-    }
-
-    public BoundExpression Expression { get; }
+    public BoundExpression Expression { get; } = expression;
 }
 
-public sealed class BoundIfExpression : BoundExpression
+public sealed class BoundIfExpression(BoundExpression condition, BoundExpression thenExpression, BoundExpression elseExpression, TextSpan span, BladeType type) : BoundExpression(BoundNodeKind.IfExpression, span, type)
 {
-    public BoundIfExpression(BoundExpression condition, BoundExpression thenExpression, BoundExpression elseExpression, TextSpan span, BladeType type)
-        : base(BoundNodeKind.IfExpression, span, type)
-    {
-        Condition = condition;
-        ThenExpression = thenExpression;
-        ElseExpression = elseExpression;
-    }
-
-    public BoundExpression Condition { get; }
-    public BoundExpression ThenExpression { get; }
-    public BoundExpression ElseExpression { get; }
+    public BoundExpression Condition { get; } = condition;
+    public BoundExpression ThenExpression { get; } = thenExpression;
+    public BoundExpression ElseExpression { get; } = elseExpression;
 }
 
-public sealed class BoundRangeExpression : BoundExpression
+public sealed class BoundRangeExpression(BoundExpression start, BoundExpression end, bool isInclusive, TextSpan span) : BoundExpression(BoundNodeKind.RangeExpression, span, BuiltinTypes.Range)
 {
-    public BoundRangeExpression(BoundExpression start, BoundExpression end, bool isInclusive, TextSpan span)
-        : base(BoundNodeKind.RangeExpression, span, BuiltinTypes.Range)
-    {
-        Start = start;
-        End = end;
-        IsInclusive = isInclusive;
-    }
-
-    public BoundExpression Start { get; }
-    public BoundExpression End { get; }
-    public bool IsInclusive { get; }
+    public BoundExpression Start { get; } = start;
+    public BoundExpression End { get; } = end;
+    public bool IsInclusive { get; } = isInclusive;
 }
 
-public sealed class BoundStructFieldInitializer
+public sealed class BoundStructFieldInitializer(string name, BoundExpression value)
 {
-    public BoundStructFieldInitializer(string name, BoundExpression value)
-    {
-        Name = name;
-        Value = value;
-    }
-
-    public string Name { get; }
-    public BoundExpression Value { get; }
+    public string Name { get; } = name;
+    public BoundExpression Value { get; } = value;
 }
 
-public sealed class BoundStructLiteralExpression : BoundExpression
+public sealed class BoundStructLiteralExpression(IReadOnlyList<BoundStructFieldInitializer> fields, TextSpan span, BladeType type) : BoundExpression(BoundNodeKind.StructLiteralExpression, span, type)
 {
-    public BoundStructLiteralExpression(IReadOnlyList<BoundStructFieldInitializer> fields, TextSpan span, BladeType type)
-        : base(BoundNodeKind.StructLiteralExpression, span, type)
-    {
-        Fields = fields;
-    }
-
-    public IReadOnlyList<BoundStructFieldInitializer> Fields { get; }
+    public IReadOnlyList<BoundStructFieldInitializer> Fields { get; } = fields;
 }
 
-public sealed class BoundConversionExpression : BoundExpression
+public sealed class BoundConversionExpression(BoundExpression expression, TextSpan span, BladeType targetType) : BoundExpression(BoundNodeKind.ConversionExpression, span, targetType)
 {
-    public BoundConversionExpression(BoundExpression expression, TextSpan span, BladeType targetType)
-        : base(BoundNodeKind.ConversionExpression, span, targetType)
-    {
-        Expression = expression;
-    }
-
-    public BoundExpression Expression { get; }
+    public BoundExpression Expression { get; } = expression;
 }
 
-public sealed class BoundCastExpression : BoundExpression
+public sealed class BoundCastExpression(BoundExpression expression, TextSpan span, BladeType targetType) : BoundExpression(BoundNodeKind.CastExpression, span, targetType)
 {
-    public BoundCastExpression(BoundExpression expression, TextSpan span, BladeType targetType)
-        : base(BoundNodeKind.CastExpression, span, targetType)
-    {
-        Expression = expression;
-    }
-
-    public BoundExpression Expression { get; }
+    public BoundExpression Expression { get; } = expression;
 }
 
-public sealed class BoundBitcastExpression : BoundExpression
+public sealed class BoundBitcastExpression(BoundExpression expression, TextSpan span, BladeType targetType) : BoundExpression(BoundNodeKind.BitcastExpression, span, targetType)
 {
-    public BoundBitcastExpression(BoundExpression expression, TextSpan span, BladeType targetType)
-        : base(BoundNodeKind.BitcastExpression, span, targetType)
-    {
-        Expression = expression;
-    }
-
-    public BoundExpression Expression { get; }
+    public BoundExpression Expression { get; } = expression;
 }
 
 /// <summary>
 /// Only required inside the binder as a sentinel value, not a public api.
 /// </summary>
-internal sealed class BoundErrorExpression : BoundExpression
+internal sealed class BoundErrorExpression(TextSpan span) : BoundExpression(BoundNodeKind.ErrorExpression, span, BuiltinTypes.Unknown)
 {
-    public BoundErrorExpression(TextSpan span)
-        : base(BoundNodeKind.ErrorExpression, span, BuiltinTypes.Unknown)
-    {
-    }
 }
 
-public abstract class BoundAssignmentTarget : BoundNode
+public abstract class BoundAssignmentTarget(BoundNodeKind kind, TextSpan span, BladeType type) : BoundNode(kind, span)
 {
-    protected BoundAssignmentTarget(BoundNodeKind kind, TextSpan span, BladeType type)
-        : base(kind, span)
-    {
-        Type = type;
-    }
-
-    public BladeType Type { get; }
+    public BladeType Type { get; } = type;
 }
 
-public sealed class BoundSymbolAssignmentTarget : BoundAssignmentTarget
+public sealed class BoundSymbolAssignmentTarget(Symbol symbol, TextSpan span, BladeType type) : BoundAssignmentTarget(BoundNodeKind.SymbolAssignmentTarget, span, type)
 {
-    public BoundSymbolAssignmentTarget(Symbol symbol, TextSpan span, BladeType type)
-        : base(BoundNodeKind.SymbolAssignmentTarget, span, type)
-    {
-        Symbol = symbol;
-    }
-
-    public Symbol Symbol { get; }
+    public Symbol Symbol { get; } = symbol;
 }
 
-public sealed class BoundMemberAssignmentTarget : BoundAssignmentTarget
+public sealed class BoundMemberAssignmentTarget(BoundExpression receiver, AggregateMemberSymbol member, TextSpan span) : BoundAssignmentTarget(BoundNodeKind.MemberAssignmentTarget, span, Requires.NotNull(member).Type)
 {
-    public BoundMemberAssignmentTarget(BoundExpression receiver, AggregateMemberSymbol member, TextSpan span)
-        : base(BoundNodeKind.MemberAssignmentTarget, span, Requires.NotNull(member).Type)
-    {
-        Receiver = receiver;
-        Member = Requires.NotNull(member);
-    }
-
-    public BoundExpression Receiver { get; }
-    public AggregateMemberSymbol Member { get; }
+    public BoundExpression Receiver { get; } = receiver;
+    public AggregateMemberSymbol Member { get; } = Requires.NotNull(member);
     public string MemberName => Member.Name;
 }
 
-public sealed class BoundBitfieldAssignmentTarget : BoundAssignmentTarget
+public sealed class BoundBitfieldAssignmentTarget(BoundAssignmentTarget receiverTarget, BoundExpression receiverValue, AggregateMemberSymbol member, TextSpan span) : BoundAssignmentTarget(BoundNodeKind.BitfieldAssignmentTarget, span, Requires.NotNull(member).Type)
 {
-    public BoundBitfieldAssignmentTarget(BoundAssignmentTarget receiverTarget, BoundExpression receiverValue, AggregateMemberSymbol member, TextSpan span)
-        : base(BoundNodeKind.BitfieldAssignmentTarget, span, Requires.NotNull(member).Type)
-    {
-        ReceiverTarget = receiverTarget;
-        ReceiverValue = receiverValue;
-        Member = Requires.NotNull(member);
-    }
-
-    public BoundAssignmentTarget ReceiverTarget { get; }
-    public BoundExpression ReceiverValue { get; }
-    public AggregateMemberSymbol Member { get; }
+    public BoundAssignmentTarget ReceiverTarget { get; } = receiverTarget;
+    public BoundExpression ReceiverValue { get; } = receiverValue;
+    public AggregateMemberSymbol Member { get; } = Requires.NotNull(member);
 }
 
-public sealed class BoundIndexAssignmentTarget : BoundAssignmentTarget
+public sealed class BoundIndexAssignmentTarget(BoundExpression expression, BoundExpression index, TextSpan span, BladeType type) : BoundAssignmentTarget(BoundNodeKind.IndexAssignmentTarget, span, type)
 {
-    public BoundIndexAssignmentTarget(BoundExpression expression, BoundExpression index, TextSpan span, BladeType type)
-        : base(BoundNodeKind.IndexAssignmentTarget, span, type)
-    {
-        Expression = expression;
-        Index = index;
-    }
-
-    public BoundExpression Expression { get; }
-    public BoundExpression Index { get; }
+    public BoundExpression Expression { get; } = expression;
+    public BoundExpression Index { get; } = index;
 }
 
-public sealed class BoundPointerDerefAssignmentTarget : BoundAssignmentTarget
+public sealed class BoundPointerDerefAssignmentTarget(BoundExpression expression, TextSpan span, BladeType type) : BoundAssignmentTarget(BoundNodeKind.PointerDerefAssignmentTarget, span, type)
 {
-    public BoundPointerDerefAssignmentTarget(BoundExpression expression, TextSpan span, BladeType type)
-        : base(BoundNodeKind.PointerDerefAssignmentTarget, span, type)
-    {
-        Expression = expression;
-    }
-
-    public BoundExpression Expression { get; }
+    public BoundExpression Expression { get; } = expression;
 }
 
-public sealed class BoundDiscardAssignmentTarget : BoundAssignmentTarget
+public sealed class BoundDiscardAssignmentTarget(TextSpan span, BladeType type) : BoundAssignmentTarget(BoundNodeKind.DiscardAssignmentTarget, span, type)
 {
-    public BoundDiscardAssignmentTarget(TextSpan span, BladeType type)
-        : base(BoundNodeKind.DiscardAssignmentTarget, span, type)
-    {
-    }
 }
 
 /// <summary>
 /// Only required inside the binder as a sentinel value, not a public api.
 /// </summary>
-internal sealed class BoundErrorAssignmentTarget : BoundAssignmentTarget
+internal sealed class BoundErrorAssignmentTarget(TextSpan span) : BoundAssignmentTarget(BoundNodeKind.ErrorAssignmentTarget, span, BuiltinTypes.Unknown)
 {
-    public BoundErrorAssignmentTarget(TextSpan span)
-        : base(BoundNodeKind.ErrorAssignmentTarget, span, BuiltinTypes.Unknown)
-    {
-    }
 }
