@@ -57,6 +57,9 @@ _base_coverage_collect params:
     # move into "latest stage":
     mv coverage/current/*/coverage.cobertura.xml coverage/coverage.cobertura.xml
 
+    # apply pragma-based coverage adjustments without reformatting the XML:
+    {{dotnet}} run --project Tools/CoverageFilter -- coverage/coverage.cobertura.xml
+
     # print a short summary of the code coverage data:
     {{python}} Scripts/codecov-report.py coverage/coverage.cobertura.xml
 
