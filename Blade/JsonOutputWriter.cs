@@ -74,7 +74,7 @@ internal static class JsonReportBuilder
         List<JsonDiagnostic> diagnostics = [];
         foreach (Diagnostic diagnostic in compilation.Diagnostics)
         {
-            SourceLocation location = compilation.Source.GetLocation(diagnostic.Span.Start);
+            SourceLocation location = diagnostic.GetLocation();
             diagnostics.Add(new JsonDiagnostic
             {
                 File = location.FilePath,

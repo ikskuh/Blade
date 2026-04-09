@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using System.Text;
 using Blade.Diagnostics;
@@ -22,6 +23,7 @@ public static class SourceFileLoader
         catch (DecoderFallbackException)
         {
             source = new SourceText(string.Empty, filePath);
+            using IDisposable _ = diagnostics.UseSource(source);
             diagnostics.ReportInvalidUtf8(new TextSpan(0, 0));
             return false;
         }
@@ -39,6 +41,7 @@ public static class SourceFileLoader
         Requires.NotNull(diagnostics);
 
         bool isValid = true;
+        using IDisposable _ = diagnostics.UseSource(source);
         for (int i = 0; i < source.Length; i++)
         {
             char current = source[i];

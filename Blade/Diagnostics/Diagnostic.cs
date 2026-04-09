@@ -1,3 +1,4 @@
+using Blade;
 using Blade.Source;
 
 namespace Blade.Diagnostics;
@@ -14,12 +15,14 @@ public enum DiagnosticSeverity
 /// </summary>
 public sealed class Diagnostic
 {
+    public SourceText Source { get; }
     public DiagnosticCode Code { get; }
     public TextSpan Span { get; }
     public string Message { get; }
 
-    public Diagnostic(DiagnosticCode code, TextSpan span, string message)
+    public Diagnostic(SourceText source, DiagnosticCode code, TextSpan span, string message)
     {
+        Source = Requires.NotNull(source);
         Code = code;
         Span = span;
         Message = message;
@@ -27,6 +30,8 @@ public sealed class Diagnostic
 
     public DiagnosticSeverity Severity => GetSeverity(Code);
     public bool IsError => Severity == DiagnosticSeverity.Error;
+
+    public SourceLocation GetLocation() => Source.GetLocation(Span.Start);
 
     public string FormatCode()
     {

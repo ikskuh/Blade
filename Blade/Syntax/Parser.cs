@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Blade;
 using Blade.Diagnostics;
 using Blade.Source;
 using Blade.Semantics;
@@ -60,6 +61,7 @@ public sealed class Parser
 
     public CompilationUnitSyntax ParseCompilationUnit()
     {
+        using IDisposable _ = Diagnostics.UseSource(_source);
         List<MemberSyntax> members = new();
 
         while (Current.Kind != TokenKind.EndOfFile)
@@ -1294,6 +1296,7 @@ public sealed class Parser
 
     public ExpressionSyntax ParseExpression()
     {
+        using IDisposable _ = Diagnostics.UseSource(_source);
         return ParseBinaryExpression(0);
     }
 
@@ -1627,6 +1630,9 @@ public sealed class Parser
     /// </summary>
     public static Parser Create(SourceText source, DiagnosticBag diagnostics)
     {
+        Requires.NotNull(source);
+        Requires.NotNull(diagnostics);
+        using IDisposable _ = diagnostics.UseSource(source);
         Lexer lexer = new(source, diagnostics);
         List<Token> tokens = new();
         Token token;

@@ -1,0 +1,229 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using Blade.Diagnostics;
+using Blade.Semantics;
+using Blade.Source;
+using Blade.Syntax;
+using Blade.Syntax.Nodes;
+
+namespace Blade;
+
+internal static class CompilationModuleLoader
+{
+    public static LoadedCompilation Load(
+        SourceText rootSource,
+        DiagnosticBag diagnostics,
+        IReadOnlyDictionary<string, string> namedModuleRoots)
+    {
+        Requires.NotNull(rootSource);
+        Requires.NotNull(diagnostics);
+        Requires.NotNull(namedModuleRoots);
+
+        Dictionary<string, LoadedModule> modulesByFullPath = new(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, string> namedModuleOwners = new(StringComparer.OrdinalIgnoreCase);
+        Queue<string> work = new();
+
+        LoadedModule root = LoadModuleFromSource(
+            rootSource,
+            diagnostics,
+            namedModuleRoots,
+            namedModuleOwners,
+            out List<string> newlyDiscoveredModules);
+        modulesByFullPath[root.FullPath] = root;
+
+        foreach (string modulePath in newlyDiscoveredModules)
+            work.Enqueue(modulePath);
+
+        while (work.Count > 0)
+        {
+            string modulePath = work.Dequeue();
+            if (modulesByFullPath.ContainsKey(modulePath))
+                continue;
+
+            bool loaded = SourceFileLoader.TryLoad(modulePath, diagnostics, out SourceText source);
+            _ = loaded; // Diagnostics were already reported; we still attempt to parse the file to surface syntax issues.
+
+            LoadedModule module = LoadModuleFromSource(
+                source,
+                diagnostics,
+                namedModuleRoots,
+                namedModuleOwners,
+                out newlyDiscoveredModules);
+            modulesByFullPath[module.FullPath] = module;
+
+            foreach (string discovered in newlyDiscoveredModules)
+                work.Enqueue(discovered);
+        }
+
+        return new LoadedCompilation(root, modulesByFullPath);
+    }
+
+    private static LoadedModule LoadModuleFromSource(
+        SourceText source,
+        DiagnosticBag diagnostics,
+        IReadOnlyDictionary<string, string> namedModuleRoots,
+        Dictionary<string, string> namedModuleOwners,
+        out List<string> newlyDiscoveredModules)
+    {
+        Requires.NotNull(source);
+        Requires.NotNull(diagnostics);
+        Requires.NotNull(namedModuleRoots);
+        Requires.NotNull(namedModuleOwners);
+
+        string fullPath = Path.GetFullPath(source.FilePath);
+
+        Parser parser = Parser.Create(source, diagnostics);
+        CompilationUnitSyntax unit = parser.ParseCompilationUnit();
+
+        List<LoadedImport> imports = [];
+        newlyDiscoveredModules = [];
+
+        foreach (ImportDeclarationSyntax import in unit.Members.OfType<ImportDeclarationSyntax>())
+        {
+            using IDisposable _ = diagnostics.UseSource(source);
+
+            if (import.IsFileImport && import.Alias is null)
+                diagnostics.ReportFileImportAliasRequired(import.Source.Span);
+
+            string alias = import.Alias?.Text ?? import.Source.Text;
+            string sourceName = import.IsFileImport
+                ? DecodeUtf8Literal(import.Source)
+                : import.Source.Text;
+
+            if (!import.IsFileImport && string.Equals(sourceName, "builtin", StringComparison.Ordinal))
+            {
+                imports.Add(new LoadedImport(import, alias, LoadedImportKind.Builtin, sourceName, ResolvedFullPath: null));
+                continue;
+            }
+
+            string? resolvedFullPath = TryResolveImportPath(
+                import,
+                fullPath,
+                sourceName,
+                namedModuleRoots,
+                namedModuleOwners,
+                diagnostics);
+            imports.Add(new LoadedImport(import, alias, LoadedImportKind.File, sourceName, resolvedFullPath));
+
+            if (resolvedFullPath is not null)
+                newlyDiscoveredModules.Add(resolvedFullPath);
+        }
+
+        return new LoadedModule(fullPath, source, unit, parser.TokenCount, imports);
+    }
+
+    private static string? TryResolveImportPath(
+        ImportDeclarationSyntax import,
+        string importerFullPath,
+        string sourceName,
+        IReadOnlyDictionary<string, string> namedModuleRoots,
+        Dictionary<string, string> namedModuleOwners,
+        DiagnosticBag diagnostics)
+    {
+        Requires.NotNull(import);
+        Requires.NotNull(importerFullPath);
+        Requires.NotNull(sourceName);
+        Requires.NotNull(namedModuleRoots);
+        Requires.NotNull(namedModuleOwners);
+        Requires.NotNull(diagnostics);
+
+        string resolvedFullPath;
+        if (import.IsFileImport)
+        {
+            string importerDir = Path.GetDirectoryName(importerFullPath) ?? string.Empty;
+            resolvedFullPath = Path.GetFullPath(Path.Combine(importerDir, sourceName));
+        }
+        else
+        {
+            if (!namedModuleRoots.TryGetValue(sourceName, out string? namedModulePath))
+            {
+                diagnostics.ReportUnknownNamedModule(import.Source.Span, sourceName);
+                return null;
+            }
+
+            resolvedFullPath = Path.GetFullPath(namedModulePath);
+            if (namedModuleOwners.TryGetValue(resolvedFullPath, out string? ownerName))
+            {
+                if (!string.Equals(ownerName, sourceName, StringComparison.Ordinal))
+                {
+                    diagnostics.ReportDuplicateNamedModuleRoot(import.Source.Span, ownerName, sourceName, resolvedFullPath);
+                    return null;
+                }
+            }
+            else
+            {
+                namedModuleOwners[resolvedFullPath] = sourceName;
+            }
+        }
+
+        if (!File.Exists(resolvedFullPath))
+        {
+            diagnostics.ReportImportFileNotFound(import.Source.Span, resolvedFullPath);
+            return null;
+        }
+
+        return resolvedFullPath;
+    }
+
+    private static string DecodeUtf8Literal(Token token)
+    {
+        if (token.Value is BladeValue value
+            && value.TryGetU8Array(out byte[] bytes))
+        {
+            return System.Text.Encoding.UTF8.GetString(bytes);
+        }
+
+        Assert.Invariant(false, $"Token '{token.Kind}' must carry a UTF-8 byte-array literal value.");
+        return string.Empty;
+    }
+}
+
+internal enum LoadedImportKind
+{
+    File,
+    Builtin,
+}
+
+internal sealed class LoadedCompilation
+{
+    public LoadedCompilation(LoadedModule rootModule, IReadOnlyDictionary<string, LoadedModule> modulesByFullPath)
+    {
+        RootModule = Requires.NotNull(rootModule);
+        ModulesByFullPath = Requires.NotNull(modulesByFullPath);
+    }
+
+    public LoadedModule RootModule { get; }
+    public IReadOnlyDictionary<string, LoadedModule> ModulesByFullPath { get; }
+}
+
+internal sealed class LoadedModule
+{
+    public LoadedModule(
+        string fullPath,
+        SourceText source,
+        CompilationUnitSyntax syntax,
+        int tokenCount,
+        IReadOnlyList<LoadedImport> imports)
+    {
+        FullPath = Requires.NotNull(fullPath);
+        Source = Requires.NotNull(source);
+        Syntax = Requires.NotNull(syntax);
+        TokenCount = Requires.NonNegative(tokenCount);
+        Imports = Requires.NotNull(imports);
+    }
+
+    public string FullPath { get; }
+    public SourceText Source { get; }
+    public CompilationUnitSyntax Syntax { get; }
+    public int TokenCount { get; }
+    public IReadOnlyList<LoadedImport> Imports { get; }
+}
+
+internal readonly record struct LoadedImport(
+    ImportDeclarationSyntax Syntax,
+    string Alias,
+    LoadedImportKind Kind,
+    string SourceName,
+    string? ResolvedFullPath);

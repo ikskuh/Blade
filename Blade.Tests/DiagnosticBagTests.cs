@@ -13,6 +13,7 @@ public class DiagnosticBagTests
     public void ReportMethods_EmitExpectedDiagnosticCodes()
     {
         DiagnosticBag bag = new();
+        using IDisposable _ = bag.UseSource(new SourceText(string.Empty, "<input>"));
 
         bag.Report(DiagnosticCode.E0001_UnexpectedCharacter, Span, "x");
         bag.ReportUnexpectedCharacter(Span, '$');
@@ -79,6 +80,7 @@ public class DiagnosticBagTests
     public void WarningOnlyBag_DoesNotReportErrors()
     {
         DiagnosticBag bag = new();
+        using IDisposable _ = bag.UseSource(new SourceText(string.Empty, "<input>"));
 
         bag.ReportInlineAsmTempReadBeforeWrite(Span, "%0");
 

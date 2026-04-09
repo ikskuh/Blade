@@ -14,6 +14,7 @@ namespace Blade;
 public sealed class CompilationOptions
 {
     public bool EnableSingleCallsiteInlining { get; init; } = true;
+    public bool EmitIr { get; init; } = true;
     public IReadOnlyList<MirOptimization> EnabledMirOptimizations { get; init; } = OptimizationRegistry.AllMirOptimizations;
     public IReadOnlyList<LirOptimization> EnabledLirOptimizations { get; init; } = OptimizationRegistry.AllLirOptimizations;
     public IReadOnlyList<AsmOptimization> EnabledAsmirOptimizations { get; init; } = OptimizationRegistry.AllAsmOptimizations;
@@ -72,13 +73,17 @@ public static class CompilerDriver
 
     private static CompilationResult CompileCore(SourceText source, DiagnosticBag diagnostics, CompilationOptions effectiveOptions)
     {
-        Parser parser = Parser.Create(source, diagnostics);
-        CompilationUnitSyntax unit = parser.ParseCompilationUnit();
-        BoundProgram boundProgram = Binder.Bind(unit, diagnostics, source.FilePath, effectiveOptions.NamedModuleRoots, effectiveOptions.ComptimeFuel);
+        LoadedCompilation loadedCompilation = CompilationModuleLoader.Load(source, diagnostics, effectiveOptions.NamedModuleRoots);
+        CompilationUnitSyntax unit = loadedCompilation.RootModule.Syntax;
+
+        BoundProgram boundProgram = CreateEmptyBoundProgram();
+        if (!diagnostics.HasErrors)
+            boundProgram = Binder.Bind(loadedCompilation, diagnostics, effectiveOptions.ComptimeFuel);
 
         IrBuildResult? irBuildResult = null;
-        if (!diagnostics.HasErrors)
+        if (!diagnostics.HasErrors && effectiveOptions.EmitIr)
         {
+            using IDisposable _ = diagnostics.UseSource(source);
             IrPipelineOptions pipelineOptions = new()
             {
                 EnableSingleCallsiteInlining = effectiveOptions.EnableSingleCallsiteInlining,
@@ -91,7 +96,7 @@ public static class CompilerDriver
         }
 
         List<Diagnostic> diagnosticList = diagnostics.ToList();
-        return new CompilationResult(source, unit, boundProgram, irBuildResult, diagnosticList, parser.TokenCount);
+        return new CompilationResult(source, unit, boundProgram, irBuildResult, diagnosticList, loadedCompilation.RootModule.TokenCount);
     }
 
     private static IReadOnlyList<T> SortOptimizations<T>(IReadOnlyList<T> optimizations) where T : Optimization
@@ -109,7 +114,18 @@ public static class CompilerDriver
     {
         Token eof = new(TokenKind.EndOfFile, new TextSpan(0, 0), string.Empty);
         CompilationUnitSyntax syntax = new([], eof);
-        BoundProgram boundProgram = new([], [], [], new Dictionary<string, TypeSymbol>(), new Dictionary<string, FunctionSymbol>(), new Dictionary<string, ImportedModule>());
+        BoundProgram boundProgram = CreateEmptyBoundProgram();
         return new CompilationResult(source, syntax, boundProgram, null, diagnostics.ToList(), 0);
+    }
+
+    private static BoundProgram CreateEmptyBoundProgram()
+    {
+        return new BoundProgram(
+            [],
+            [],
+            [],
+            new Dictionary<string, TypeSymbol>(),
+            new Dictionary<string, FunctionSymbol>(),
+            new Dictionary<string, ImportedModule>());
     }
 }

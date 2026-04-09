@@ -53,6 +53,7 @@ public sealed class Lexer
 
     public Token NextToken()
     {
+        using IDisposable _ = Diagnostics.UseSource(_source);
         SkipWhitespace();
 
         _start = _position;

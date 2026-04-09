@@ -1,6 +1,8 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
+using Blade;
 using Blade.Source;
 
 namespace Blade.Diagnostics;
@@ -11,6 +13,7 @@ namespace Blade.Diagnostics;
 public sealed class DiagnosticBag : IEnumerable<Diagnostic>
 {
     private readonly List<Diagnostic> _diagnostics = new();
+    private SourceText? _currentSource;
 
     public int Count => _diagnostics.Count;
 
@@ -31,9 +34,18 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
 
     public bool HasErrors => ErrorCount > 0;
 
+    public IDisposable UseSource(SourceText source)
+    {
+        Requires.NotNull(source);
+        SourceText? previous = _currentSource;
+        _currentSource = source;
+        return new SourceScope(this, previous);
+    }
+
     public void Report(DiagnosticCode code, TextSpan span, string message)
     {
-        _diagnostics.Add(new Diagnostic(code, span, message));
+        Assert.Invariant(_currentSource is not null, "Diagnostics require a current source context. Use DiagnosticBag.UseSource(source) when reporting.");
+        _diagnostics.Add(new Diagnostic(_currentSource, code, span, message));
     }
 
     public void ReportUnexpectedCharacter(TextSpan span, char character)
@@ -571,4 +583,21 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
     public IEnumerator<Diagnostic> GetEnumerator() => _diagnostics.GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+    private readonly struct SourceScope : IDisposable
+    {
+        private readonly DiagnosticBag _bag;
+        private readonly SourceText? _previous;
+
+        public SourceScope(DiagnosticBag bag, SourceText? previous)
+        {
+            _bag = bag;
+            _previous = previous;
+        }
+
+        public void Dispose()
+        {
+            _bag._currentSource = _previous;
+        }
+    }
 }

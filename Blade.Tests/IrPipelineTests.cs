@@ -11,22 +11,20 @@ using Blade.IR.Mir;
 using Blade.Semantics;
 using Blade.Semantics.Bound;
 using Blade.Source;
-using Blade.Syntax;
-using Blade.Syntax.Nodes;
+using DiagnosticBag = System.Collections.Generic.IReadOnlyList<Blade.Diagnostics.Diagnostic>;
 
 namespace Blade.Tests;
 
 [TestFixture]
 public class IrPipelineTests
 {
-    private static (BoundProgram Program, DiagnosticBag Diagnostics) Bind(string text)
+    private static (BoundProgram Program, IReadOnlyList<Diagnostic> Diagnostics) Bind(string text)
     {
-        SourceText source = new(text);
-        DiagnosticBag diagnostics = new();
-        Parser parser = Parser.Create(source, diagnostics);
-        CompilationUnitSyntax unit = parser.ParseCompilationUnit();
-        BoundProgram program = Binder.Bind(unit, diagnostics, source.FilePath, null);
-        return (program, diagnostics);
+        CompilationResult result = CompilerDriver.Compile(text, filePath: "<input>", new CompilationOptions
+        {
+            EmitIr = false,
+        });
+        return (result.BoundProgram, result.Diagnostics);
     }
 
     [Test]

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
 using System.Linq;
 using Blade;
 using Blade.Diagnostics;
@@ -15,6 +14,7 @@ namespace Blade.Semantics;
 public sealed class Binder
 {
     private readonly DiagnosticBag _diagnostics;
+    private readonly LoadedCompilation _compilation;
     private readonly Dictionary<string, TypeAliasSymbol> _typeAliases = new(StringComparer.Ordinal);
     private readonly Dictionary<string, TypeSymbol> _resolvedTypeAliases = new(StringComparer.Ordinal);
     private readonly HashSet<string> _typeAliasResolutionStack = new(StringComparer.Ordinal);
@@ -24,7 +24,6 @@ public sealed class Binder
     private readonly Dictionary<FunctionSymbol, ComptimeSupportResult> _comptimeSupportCache = new();
     private readonly Dictionary<Symbol, ComptimeResult> _knownConstantValues = new();
     private readonly Dictionary<string, ImportedModuleDefinition> _moduleDefinitionCache;
-    private readonly Dictionary<string, string> _namedModuleOwners;
     private readonly HashSet<string> _moduleBindingStack;
     private readonly Scope _globalScope;
     private readonly Scope _topLevelScope;
@@ -40,45 +39,45 @@ public sealed class Binder
 
     private Binder(
         DiagnosticBag diagnostics,
+        LoadedCompilation compilation,
         HashSet<string> moduleBindingStack,
         Dictionary<string, ImportedModuleDefinition> moduleDefinitionCache,
-        Dictionary<string, string> namedModuleOwners,
         int comptimeFuel)
     {
         _diagnostics = diagnostics;
+        _compilation = Requires.NotNull(compilation);
         _moduleBindingStack = Requires.NotNull(moduleBindingStack);
         _moduleDefinitionCache = Requires.NotNull(moduleDefinitionCache);
-        _namedModuleOwners = Requires.NotNull(namedModuleOwners);
         _comptimeFuel = Requires.Positive(comptimeFuel);
         _globalScope = new Scope(parent: null);
         _topLevelScope = new Scope(_globalScope);
         _currentScope = _globalScope;
     }
 
-    public static BoundProgram Bind(
-        CompilationUnitSyntax unit,
+    internal static BoundProgram Bind(
+        LoadedCompilation compilation,
         DiagnosticBag diagnostics,
-        string rootFilePath,
-        IReadOnlyDictionary<string, string>? namedModuleRoots,
         int comptimeFuel = 250)
     {
-        Requires.NotNull(unit);
+        Requires.NotNull(compilation);
         Requires.NotNull(diagnostics);
-        Requires.NotNull(rootFilePath);
 
         HashSet<string> moduleBindingStack = new(StringComparer.OrdinalIgnoreCase)
         {
-            Path.GetFullPath(rootFilePath),
+            compilation.RootModule.FullPath,
         };
         Dictionary<string, ImportedModuleDefinition> moduleDefinitionCache = new(StringComparer.OrdinalIgnoreCase);
-        Dictionary<string, string> namedModuleOwners = new(StringComparer.OrdinalIgnoreCase);
-        Binder binder = new(diagnostics, moduleBindingStack, moduleDefinitionCache, namedModuleOwners, comptimeFuel);
-        return binder.BindCompilationUnit(unit, Path.GetFullPath(rootFilePath), namedModuleRoots ?? new Dictionary<string, string>(StringComparer.Ordinal));
+        Binder binder = new(diagnostics, compilation, moduleBindingStack, moduleDefinitionCache, comptimeFuel);
+        return binder.BindCompilationUnit(compilation.RootModule);
     }
 
-    private BoundProgram BindCompilationUnit(CompilationUnitSyntax unit, string rootFilePath, IReadOnlyDictionary<string, string> namedModuleRoots)
+    private BoundProgram BindCompilationUnit(LoadedModule module)
     {
-        BindImports(unit, rootFilePath, namedModuleRoots);
+        using IDisposable _ = _diagnostics.UseSource(module.Source);
+
+        CompilationUnitSyntax unit = module.Syntax;
+
+        BindImports(module);
         CollectTopLevelTypes(unit);
         CollectTopLevelFunctions(unit);
         ResolveFunctionSignatures();
@@ -138,101 +137,54 @@ public sealed class Binder
             _importedModules);
     }
 
-
-    private void BindImports(CompilationUnitSyntax unit, string importerFilePath, IReadOnlyDictionary<string, string> namedModuleRoots)
+    private void BindImports(LoadedModule module)
     {
-        foreach (MemberSyntax member in unit.Members)
+        foreach (LoadedImport import in module.Imports)
         {
-            if (member is not ImportDeclarationSyntax import)
-                continue;
-
-            if (import.IsFileImport && import.Alias is null)
+            if (import.Kind == LoadedImportKind.Builtin)
             {
-                _diagnostics.ReportFileImportAliasRequired(import.Source.Span);
-                continue;
-            }
-
-            string alias = import.Alias?.Text ?? import.Source.Text;
-            string sourceName = import.IsFileImport
-                ? DecodeUtf8Literal(import.Source)
-                : import.Source.Text;
-            string resolvedPath;
-            if (import.IsFileImport)
-            {
-                string importerDir = Path.GetDirectoryName(importerFilePath) ?? string.Empty;
-                resolvedPath = Path.GetFullPath(Path.Combine(importerDir, sourceName));
-            }
-            else if (string.Equals(sourceName, "builtin", StringComparison.Ordinal))
-            {
-                ImportedModule builtinModule = CreateBuiltinModule(alias);
-                _importedModules[alias] = builtinModule;
-                if (!_globalScope.TryDeclare(new ModuleSymbol(alias, builtinModule)))
-                    _diagnostics.ReportSymbolAlreadyDeclared(import.Alias?.Span ?? import.Source.Span, alias);
+                ImportedModule builtinModule = CreateBuiltinModule(import.Alias);
+                _importedModules[import.Alias] = builtinModule;
+                if (!_globalScope.TryDeclare(new ModuleSymbol(import.Alias, builtinModule)))
+                    _diagnostics.ReportSymbolAlreadyDeclared(import.Syntax.Alias?.Span ?? import.Syntax.Source.Span, import.Alias);
                 continue;
             }
-            else
-            {
-                if (!namedModuleRoots.TryGetValue(sourceName, out string? namedModulePath))
-                {
-                    _diagnostics.ReportUnknownNamedModule(import.Source.Span, sourceName);
-                    continue;
-                }
 
-                resolvedPath = Path.GetFullPath(namedModulePath);
-                if (_namedModuleOwners.TryGetValue(resolvedPath, out string? ownerName))
-                {
-                    if (!string.Equals(ownerName, sourceName, StringComparison.Ordinal))
-                    {
-                        _diagnostics.ReportDuplicateNamedModuleRoot(import.Source.Span, ownerName, sourceName, resolvedPath);
-                        continue;
-                    }
-                }
-                else
-                {
-                    _namedModuleOwners[resolvedPath] = sourceName;
-                }
-            }
-
-            ImportedModule imported = LoadAndBindModule(sourceName, alias, resolvedPath, namedModuleRoots);
-            _importedModules[alias] = imported;
-            if (!_globalScope.TryDeclare(new ModuleSymbol(alias, imported)))
-                _diagnostics.ReportSymbolAlreadyDeclared(import.Alias?.Span ?? import.Source.Span, alias);
+            Assert.Invariant(import.Kind == LoadedImportKind.File, "Non-builtin imports must be file-backed.");
+            Assert.Invariant(import.ResolvedFullPath is not null, "Binder imports must be fully resolved and loaded before binding.");
+            ImportedModule imported = LoadAndBindModule(import.SourceName, import.Alias, import.ResolvedFullPath, import.Syntax.Source.Span);
+            _importedModules[import.Alias] = imported;
+            if (!_globalScope.TryDeclare(new ModuleSymbol(import.Alias, imported)))
+                _diagnostics.ReportSymbolAlreadyDeclared(import.Syntax.Alias?.Span ?? import.Syntax.Source.Span, import.Alias);
         }
     }
 
-    private ImportedModule LoadAndBindModule(string sourceName, string alias, string resolvedPath, IReadOnlyDictionary<string, string> namedModuleRoots)
+    private ImportedModule LoadAndBindModule(string sourceName, string alias, string resolvedFullPath, TextSpan importSiteSpan)
     {
-        if (!File.Exists(resolvedPath))
-        {
-            _diagnostics.ReportImportFileNotFound(new TextSpan(0, 0), resolvedPath);
-            return CreateEmptyImportedModule(sourceName, alias, resolvedPath);
-        }
-
-        if (_moduleDefinitionCache.TryGetValue(resolvedPath, out ImportedModuleDefinition? cachedDefinition))
+        if (_moduleDefinitionCache.TryGetValue(resolvedFullPath, out ImportedModuleDefinition? cachedDefinition))
             return cachedDefinition.CreateImport(sourceName, alias);
 
-        bool sourceIsValid = SourceFileLoader.TryLoad(resolvedPath, _diagnostics, out SourceText source);
-        if (!sourceIsValid)
-            return CreateEmptyImportedModule(sourceName, alias, resolvedPath);
+        Assert.Invariant(
+            _compilation.ModulesByFullPath.TryGetValue(resolvedFullPath, out LoadedModule? loadedModule),
+            $"Imported module '{resolvedFullPath}' must be loaded before binding.");
+        LoadedModule imported = Requires.NotNull(loadedModule);
 
-        Parser parser = Parser.Create(source, _diagnostics);
-        CompilationUnitSyntax syntax = parser.ParseCompilationUnit();
-        if (_moduleBindingStack.Contains(resolvedPath))
+        if (_moduleBindingStack.Contains(resolvedFullPath))
         {
-            _diagnostics.ReportCircularImport(new TextSpan(0, 0), resolvedPath);
-            return CreateEmptyImportedModule(sourceName, alias, resolvedPath, syntax);
+            _diagnostics.ReportCircularImport(importSiteSpan, resolvedFullPath);
+            return CreateEmptyImportedModule(sourceName, alias, resolvedFullPath, imported.Syntax);
         }
 
-        _moduleBindingStack.Add(resolvedPath);
+        _moduleBindingStack.Add(resolvedFullPath);
         BoundProgram program;
         try
         {
-            Binder nestedBinder = new(_diagnostics, _moduleBindingStack, _moduleDefinitionCache, _namedModuleOwners, _comptimeFuel);
-            program = nestedBinder.BindCompilationUnit(syntax, resolvedPath, namedModuleRoots);
+            Binder nestedBinder = new(_diagnostics, _compilation, _moduleBindingStack, _moduleDefinitionCache, _comptimeFuel);
+            program = nestedBinder.BindCompilationUnit(imported);
         }
         finally
         {
-            _moduleBindingStack.Remove(resolvedPath);
+            _moduleBindingStack.Remove(resolvedFullPath);
         }
 
         Dictionary<string, FunctionSymbol> functions = new(StringComparer.Ordinal);
@@ -251,8 +203,8 @@ public sealed class Binder
         foreach ((string name, ImportedModule importedModule) in program.ImportedModules)
             importedModules[name] = importedModule;
 
-        ImportedModuleDefinition definition = new(resolvedPath, syntax, program, functions, types, variables, importedModules);
-        _moduleDefinitionCache[resolvedPath] = definition;
+        ImportedModuleDefinition definition = new(resolvedFullPath, imported.Syntax, program, functions, types, variables, importedModules);
+        _moduleDefinitionCache[resolvedFullPath] = definition;
         return definition.CreateImport(sourceName, alias);
     }
 
@@ -332,8 +284,7 @@ public sealed class Binder
                     continue;
             }
 
-            if (string.IsNullOrWhiteSpace(syntax.Name.Text))
-                continue;
+            Assert.Invariant(!string.IsNullOrWhiteSpace(syntax.Name.Text), "Binder requires well-formed syntax. Parser errors must short-circuit before binding.");
 
             FunctionSymbol function = new(syntax.Name.Text, syntax, kind, inliningPolicy);
             if (!_functions.TryAdd(function.Name, function))

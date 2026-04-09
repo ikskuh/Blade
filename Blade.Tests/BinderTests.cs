@@ -1,41 +1,41 @@
 using System.Linq;
+using Blade;
 using Blade.Diagnostics;
 using Blade.Semantics;
 using Blade.Semantics.Bound;
-using Blade.Source;
 using Blade.Syntax;
 using Blade.Syntax.Nodes;
+using DiagnosticBag = System.Collections.Generic.IReadOnlyList<Blade.Diagnostics.Diagnostic>;
 
 namespace Blade.Tests;
 
 [TestFixture]
 public class BinderTests
 {
-    private static (CompilationUnitSyntax Unit, BoundProgram Program, DiagnosticBag Diagnostics) Bind(string text)
+    private static (CompilationUnitSyntax Unit, BoundProgram Program, IReadOnlyList<Diagnostic> Diagnostics) Bind(string text)
     {
-        SourceText source = new(text);
-        DiagnosticBag diagnostics = new();
-        Parser parser = Parser.Create(source, diagnostics);
-        CompilationUnitSyntax unit = parser.ParseCompilationUnit();
-        BoundProgram program = Binder.Bind(unit, diagnostics, source.FilePath, null);
-        return (unit, program, diagnostics);
+        CompilationResult result = CompilerDriver.Compile(text, filePath: "<input>", new CompilationOptions
+        {
+            EmitIr = false,
+        });
+        return (result.Syntax, result.BoundProgram, result.Diagnostics);
     }
 
 
-    private static (CompilationUnitSyntax Unit, BoundProgram Program, DiagnosticBag Diagnostics) Bind(string text, string filePath, IReadOnlyDictionary<string, string>? namedModuleRoots = null)
+    private static (CompilationUnitSyntax Unit, BoundProgram Program, IReadOnlyList<Diagnostic> Diagnostics) Bind(string text, string filePath, IReadOnlyDictionary<string, string>? namedModuleRoots = null)
     {
-        SourceText source = new(text, filePath);
-        DiagnosticBag diagnostics = new();
-        Parser parser = Parser.Create(source, diagnostics);
-        CompilationUnitSyntax unit = parser.ParseCompilationUnit();
-        BoundProgram program = Binder.Bind(unit, diagnostics, filePath, namedModuleRoots);
-        return (unit, program, diagnostics);
+        CompilationResult result = CompilerDriver.Compile(text, filePath, new CompilationOptions
+        {
+            NamedModuleRoots = namedModuleRoots ?? new Dictionary<string, string>(StringComparer.Ordinal),
+            EmitIr = false,
+        });
+        return (result.Syntax, result.BoundProgram, result.Diagnostics);
     }
 
     [Test]
     public void TypedAssignment_InsertsImplicitConversionForIntegerLiteral()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("reg var x: u32 = 0; x = 1;");
+        (_, BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("reg var x: u32 = 0; x = 1;");
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
         string dump = BoundTreeWriter.Write(program);
@@ -45,7 +45,7 @@ public class BinderTests
     [Test]
     public void TypedCallArgument_InsertsImplicitConversionForIntegerLiteral()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
             fn add(a: u32, b: u32) -> u32 {
                 return a + b;
             }
@@ -60,14 +60,14 @@ public class BinderTests
     [Test]
     public void UndefinedName_ReportsDiagnostic()
     {
-        (_, _, DiagnosticBag diagnostics) = Bind("x = 1;");
+        (_, _, IReadOnlyList<Diagnostic> diagnostics) = Bind("x = 1;");
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0202_UndefinedName), Is.True);
     }
 
     [Test]
     public void AssertFalse_ReportsAssertionFailedDiagnostic()
     {
-        (_, _, DiagnosticBag diagnostics) = Bind("assert false;");
+        (_, _, IReadOnlyList<Diagnostic> diagnostics) = Bind("assert false;");
 
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0255_AssertionFailed), Is.True);
     }
@@ -75,7 +75,7 @@ public class BinderTests
     [Test]
     public void AssertNonComptimeCondition_ReportsComptimeValueRequired()
     {
-        (_, _, DiagnosticBag diagnostics) = Bind("""
+        (_, _, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
             var x: u32 = 1;
             assert x == 1;
             """);
@@ -86,7 +86,7 @@ public class BinderTests
     [Test]
     public void CompileTimeKnownNarrowing_ReportsTruncationWarning()
     {
-        (_, _, DiagnosticBag diagnostics) = Bind("""
+        (_, _, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
             reg const wide: u32 = 257;
             reg const implicit_small: u8 = wide;
             reg const explicit_small: u8 = 257 as u8;
@@ -99,7 +99,7 @@ public class BinderTests
     [Test]
     public void AssignmentToConst_ReportsDiagnostic()
     {
-        (_, _, DiagnosticBag diagnostics) = Bind("""
+        (_, _, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
             reg const x: u32 = 1;
             x = 2;
             """);
@@ -110,7 +110,7 @@ public class BinderTests
     [Test]
     public void LocalConst_RuntimeInitializer_BindsAsConstVariable()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
             fn demo(param: u32) void {
                 const x: u32 = param * 2;
             }
@@ -200,7 +200,7 @@ public class BinderTests
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
             fn demo() void {
-                &(1 + 2);
+                var p: *reg u32 = &(1 + 2);
             }
             """);
 
@@ -225,8 +225,8 @@ public class BinderTests
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
             fn demo(flag: bool) void {
-                +flag;
-                ~flag;
+                var a: u32 = +flag;
+                var b: u32 = ~flag;
             }
             """);
 
@@ -705,7 +705,7 @@ public class BinderTests
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
             fn demo() void {
-                &missing;
+                var p: *reg u32 = &missing;
             }
             """);
 
@@ -887,7 +887,7 @@ public class BinderTests
                 Idle = 0,
             };
 
-            .Idle;
+            reg var x: u32 = .Idle;
             """);
 
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0232_EnumLiteralRequiresContext), Is.True);
@@ -1277,11 +1277,7 @@ public class BinderTests
             """);
 
         Assert.That(diagnostics.Select(d => d.Code), Is.EqualTo(new[] { DiagnosticCode.E0259_ExpressionNotAStatement }));
-        BoundFunctionMember function = program.Functions.Single();
-        BoundExpressionStatement statement = (BoundExpressionStatement)function.Body.Statements[0];
-        BoundArrayLiteralExpression literal = (BoundArrayLiteralExpression)statement.Expression;
-        Assert.That(literal.Type.Name, Is.EqualTo("[3]<int-literal>"));
-        Assert.That(literal.Elements.Count, Is.EqualTo(3));
+        Assert.That(program.Functions, Is.Empty);
     }
 
     [Test]
@@ -1371,7 +1367,11 @@ public class BinderTests
             [1...];
             """);
 
-        Assert.That(diagnostics.Count(d => d.Code == DiagnosticCode.E0234_ArrayLiteralRequiresContext), Is.EqualTo(2));
+        Assert.That(diagnostics.Select(d => d.Code), Is.EqualTo(new[]
+        {
+            DiagnosticCode.E0259_ExpressionNotAStatement,
+            DiagnosticCode.E0259_ExpressionNotAStatement,
+        }));
     }
 
     [Test]

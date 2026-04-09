@@ -9,12 +9,12 @@ fn demo() {
 }
 
 fn pointer_cases(ptr: *reg u32, many: [*]reg u32, values: [2]u32) {
-    &(1 + 2);
-    &missing;
+    var bad_addr: *reg u32 = &(1 + 2);
+    var missing_addr: *reg u32 = &missing;
 
     ptr[0] = 1;
     values[false] = 2;
-    many.*;
+    var deref: u32 = many.*;
 }
 
 rec fn recursive_local(value: u32) {

@@ -476,7 +476,7 @@ public static class RegressionRunner
         List<ActualDiagnostic> diagnostics = compilation.Diagnostics
             .Select(diag =>
             {
-                SourceLocation location = compilation.Source.GetLocation(diag.Span.Start);
+                SourceLocation location = diag.GetLocation();
                 return new ActualDiagnostic(diag.FormatCode(), location.Line, diag.Message);
             })
             .ToList();

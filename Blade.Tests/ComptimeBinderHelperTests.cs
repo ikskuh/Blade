@@ -1,7 +1,10 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
+using Blade;
 using Blade.Diagnostics;
 using Blade.Semantics;
 using Blade.Semantics.Bound;
@@ -17,14 +20,15 @@ public sealed class ComptimeBinderHelperTests
 {
     private static readonly TextSpan Span = new(0, 0);
 
-    private static (BoundProgram Program, DiagnosticBag Diagnostics) Bind(string text, string? filePath = null, IReadOnlyDictionary<string, string>? namedModuleRoots = null)
+    private static (BoundProgram Program, IReadOnlyList<Diagnostic> Diagnostics) Bind(string text, string? filePath = null, IReadOnlyDictionary<string, string>? namedModuleRoots = null)
     {
-        SourceText source = filePath is null ? new SourceText(text) : new SourceText(text, filePath);
-        DiagnosticBag diagnostics = new();
-        Parser parser = Parser.Create(source, diagnostics);
-        CompilationUnitSyntax unit = parser.ParseCompilationUnit();
-        BoundProgram program = SemanticBinder.Bind(unit, diagnostics, source.FilePath, namedModuleRoots);
-        return (program, diagnostics);
+        string effectivePath = filePath ?? "<input>";
+        CompilationResult result = CompilerDriver.Compile(text, effectivePath, new CompilationOptions
+        {
+            NamedModuleRoots = namedModuleRoots ?? new Dictionary<string, string>(StringComparer.Ordinal),
+            EmitIr = false,
+        });
+        return (result.BoundProgram, result.Diagnostics);
     }
 
     private static SemanticBinder CreateBinder(DiagnosticBag diagnostics)
@@ -32,6 +36,35 @@ public sealed class ComptimeBinderHelperTests
         ConstructorInfo constructor = typeof(SemanticBinder)
             .GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic)
             .Single();
+        Assembly asm = typeof(SemanticBinder).Assembly;
+
+        Type loadedCompilationType = asm.GetType("Blade.LoadedCompilation", throwOnError: true)!;
+        Type loadedModuleType = asm.GetType("Blade.LoadedModule", throwOnError: true)!;
+        Type loadedImportType = asm.GetType("Blade.LoadedImport", throwOnError: true)!;
+
+        SourceText rootSource = new(string.Empty, "<input>");
+        CompilationUnitSyntax rootSyntax = EmptyCompilationUnit();
+        string rootFullPath = Path.GetFullPath(rootSource.FilePath);
+
+        Array emptyImports = Array.CreateInstance(loadedImportType, 0);
+        object rootModule = Activator.CreateInstance(
+            loadedModuleType,
+            rootFullPath,
+            rootSource,
+            rootSyntax,
+            0,
+            emptyImports)!;
+
+        object modulesByPath = Activator.CreateInstance(
+            typeof(Dictionary<,>).MakeGenericType(typeof(string), loadedModuleType),
+            StringComparer.OrdinalIgnoreCase)!;
+        ((IDictionary)modulesByPath).Add(rootFullPath, rootModule);
+
+        object loadedCompilation = Activator.CreateInstance(
+            loadedCompilationType,
+            rootModule,
+            modulesByPath)!;
+
         Type importedModuleDefinitionType = typeof(SemanticBinder).Assembly.GetType("Blade.Semantics.ImportedModuleDefinition", throwOnError: true)!;
         object moduleDefinitionCache = Activator.CreateInstance(
             typeof(Dictionary<,>).MakeGenericType(typeof(string), importedModuleDefinitionType),
@@ -39,9 +72,9 @@ public sealed class ComptimeBinderHelperTests
         return (SemanticBinder)constructor.Invoke(
         [
             diagnostics,
+            loadedCompilation,
             new HashSet<string>(StringComparer.OrdinalIgnoreCase),
             moduleDefinitionCache,
-            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
             250,
         ]);
     }
@@ -208,7 +241,7 @@ public sealed class ComptimeBinderHelperTests
     [Test]
     public void StorageLayoutMetadata_RequiresComptimeInteger()
     {
-        (_, DiagnosticBag diagnostics) = Bind("extern reg var DIRA: u32 @(true);");
+        (_, IReadOnlyList<Diagnostic> diagnostics) = Bind("extern reg var DIRA: u32 @(true);");
 
         Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
     }
@@ -220,7 +253,7 @@ public sealed class ComptimeBinderHelperTests
         temp.WriteFile("math.blade", "fn inc(x: u32) -> u32 { return x + 1; }");
 
         string sourcePath = temp.GetFullPath("main.blade");
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""import "./math.blade" as math; var outv: u32 = math.inc(2);""", sourcePath);
+        (BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""import "./math.blade" as math; var outv: u32 = math.inc(2);""", sourcePath);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
 
@@ -232,7 +265,7 @@ public sealed class ComptimeBinderHelperTests
     [Test]
     public void ComptimeBareIfWithoutElse_FoldsBoolLiteralCondition()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
             comptime fn choose() -> u32 {
                 var value: u32 = 1;
                 if (true) {
@@ -254,7 +287,7 @@ public sealed class ComptimeBinderHelperTests
     [Test]
     public void StaticStorageConstants_AreReadableDuringFoldingAndComptimeEvaluation()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
             reg const REG_RATE: u32 = 20_000_000;
             lut const LUT_OFFSET: u32 = 2;
             hub const HUB_OFFSET: u32 = 3;
@@ -274,7 +307,7 @@ public sealed class ComptimeBinderHelperTests
     [Test]
     public void IntegerLiteralFolding_Keeps64BitIntermediatesUntilFinalMaterialization()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
             reg const CLOCKS: u32 = 250 * 20_000_000 / 1000;
             """);
 
@@ -459,10 +492,13 @@ public sealed class ComptimeBinderHelperTests
 
         Assert.That(Invoke(resolveBody, binder, importedFunction), Is.SameAs(importedBody));
 
-        Invoke(reportFailure, binder, CreateFailure("NotEvaluable"));
-        Invoke(reportFailure, binder, CreateFailure("UnsupportedConstruct", "unsupported"));
-        Invoke(reportFailure, binder, CreateFailure("ForbiddenSymbolAccess", "forbidden"));
-        Invoke(reportFailure, binder, CreateFailure("FuelExhausted"));
+        using (diagnostics.UseSource(new SourceText(string.Empty, "<input>")))
+        {
+            Invoke(reportFailure, binder, CreateFailure("NotEvaluable"));
+            Invoke(reportFailure, binder, CreateFailure("UnsupportedConstruct", "unsupported"));
+            Invoke(reportFailure, binder, CreateFailure("ForbiddenSymbolAccess", "forbidden"));
+            Invoke(reportFailure, binder, CreateFailure("FuelExhausted"));
+        }
 
         Assert.That(diagnostics.Select(diagnostic => diagnostic.Code), Is.EqualTo(
         [
