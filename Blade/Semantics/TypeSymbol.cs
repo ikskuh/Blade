@@ -510,7 +510,6 @@ public static class BuiltinTypes
         ["uint"] = Uint,
         ["int"] = Int,
         ["void"] = Void,
-        ["range"] = Range,
     };
 
     public static bool TryGet(string name, out TypeSymbol type)

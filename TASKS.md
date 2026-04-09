@@ -114,23 +114,6 @@ Reproducer: `Demonstrators/HwTest/hw_recursive_fn.blade` (`// EXPECT: xfail-hw`)
 - Update the repro header from `xfail-hw` only when the hardware runner validates the expected runs.
 - Acceptance: `Demonstrators/HwTest/hw_recursive_fn.blade` becomes `pass-hw` and matches all expected runs.
 
-## BUG-8: Parse `range` as a type keyword (avoid binder crash on `var r: range = ...`)
-
-Reproducer: `var r: range = 0..10;` (currently crashes in `Binder.BindNamedType` invariant).
-
-- Add `TokenKind.RangeKeyword` in `Blade/Syntax/TokenKind.cs` under type keywords.
-- Add `"range" => TokenKind.RangeKeyword` in `Blade/Syntax/SyntaxFacts.cs` keyword table and include it in `GetText`.
-- Update `Blade/Syntax/Parser.cs` `ParseType` to treat `RangeKeyword` as a `PrimitiveTypeSyntax`.
-- Add a parser-level unit test that `range` in type position produces `PrimitiveTypeSyntax` (not `NamedTypeSyntax`).
-- Add a binder/regression demonstrator that exercises `var r: range = 0..10;` and asserts the compiler reports a diagnostic instead of crashing.
-- Ensure binder still rejects standalone range expressions outside loops (but via diagnostics, not asserts/exceptions).
-- Confirm `BuiltinTypes.TryGet("range", ...)` remains consistent with the lexer/parser treatment.
-- Ensure qualified types `module.range` remain parsed as named/qualified types, not primitive keywords.
-- Ensure `range` used as identifier where permitted still behaves as a keyword (or document the restriction).
-- Run the full parser/binder regression harness to ensure no keyword-table regressions.
-- Add coverage so the old crash path is provably unreachable (assert remains valid).
-- Acceptance: no crash; `range` as a type keyword is parsed correctly and diagnostics are emitted as needed.
-
 ## BUG-9: Do not crash on variable declarations with a missing/empty identifier
 
 Reproducer: malformed `var` statement where `VariableDeclarationSyntax.Name.Text` is empty (binder currently throws).
