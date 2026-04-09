@@ -45,6 +45,7 @@ Your task is completed when:
 - In-source suppressions (`#pragma`, attributes) only for single occurrences with a clear explanation.
 - Prefer primary constructors for data classes
 - Don't use trinary operators for control flow. Use local variables or switch pattern matching instead.
+- We prefer "one file per responsibility" over split functionality. Some files or classes like `Binder` or `AsmLowerer` have a really large surface, but still only have a single task. These tasks are complex and it's better to keep code that belongs together in a single file.
 
 ## Type Safety Rules
 
@@ -56,6 +57,8 @@ Your task is completed when:
 - `int` is only legal for arithmetic, sizes, widths, offsets, counts, indices, and validated physical register addresses. It must not be used as an identifier or as a stand-in for a distinct domain type.
 - Do not introduce `string`-based or `int`-based "typing". If a value has a domain meaning, introduce a dedicated type, enum, interface, or stage object instead.
 - Do not compare names or ids when object identity, provenance, or a dedicated enum can be used instead.
+- Do not use bare `object` or `object?` types, unless there's a really good reason for it.
+  - If you need a "union type", use a custom class with invariants (example: `BladeValue`) instead of a broadband type like `object`.
 - Frontend semantic symbols, MIR/LIR control-flow identities, and ASM-visible symbols are different domains and must not be collapsed into a shared weak representation.
 - Compatibility shims that accept raw `string` or `int` in typed compiler-internal APIs are forbidden unless the API is explicitly a parse/emission boundary.
 

@@ -215,22 +215,6 @@ Return-item flags already accept `SyntaxFacts.IsIdentifierLike(...)`; asm output
 - Audit the existing call sites so each one admits only the intended keyword subset.
 - Add parser coverage for accepted and rejected contextual names.
 
-## REVIEW-X2: Split `AsmLowerer` and remove placeholder lowering paths
-
-`Blade/IR/Asm/AsmLowerer.cs` remains very large and still contains placeholder comment-emission paths such as `TODO: CALLD`.
-
-- Partition `AsmLowerer` by lowering concern so invariants become easier to reason about.
-- Replace placeholder comment emission for unsupported operations with explicit diagnostics or assertions.
-- Add demonstrators/tests that lock in the intended behavior.
-
-## REVIEW-X3: Break up binder responsibilities
-
-`Blade/Semantics/Binder.cs` still concentrates imports, declarations, statements, expressions, conversions, comptime, and diagnostics in one class.
-
-- Extract focused binder helpers or sub-binders for imports, declarations, statements, expressions, and conversion/type-policy logic.
-- Preserve existing diagnostics and behavior during the split.
-- Keep the decomposition incremental and covered by regressions.
-
 ## REVIEW-X4: Refactor compilation option parsing boilerplate
 
 `CompilationOptionsCommandLine.TryParse` still repeats the same parse/error/continue gate for each option family.
@@ -239,14 +223,6 @@ Return-item flags already accept `SyntaxFacts.IsIdentifierLike(...)`; asm output
 - Centralize error propagation instead of repeating the same control flow after each parse attempt.
 - Preserve current CLI surface and diagnostics.
 
-## REVIEW-X5: Split parser responsibilities into smaller units
-
-`Blade/Syntax/Parser.cs` still centralizes large branch-heavy declaration, statement, expression, and recovery logic.
-
-- Extract focused parsing helpers or partial parsers for declarations, statements, expressions, and types.
-- Keep error recovery behavior stable while reducing branching concentration.
-- Add or retain regression coverage around the extracted grammar surfaces.
-
 ## REVIEW-X6: Reduce `DiagnosticBag` boilerplate with descriptor-driven reporting
 
 `DiagnosticBag` still exposes a large repetitive surface of near-identical reporting helpers.
@@ -254,11 +230,3 @@ Return-item flags already accept `SyntaxFacts.IsIdentifierLike(...)`; asm output
 - Centralize diagnostic descriptors and format templates.
 - Keep typed wrappers only where they add real readability or type safety.
 - Preserve existing diagnostic codes and message text.
-
-## REVIEW-X8: Remove dead `hasEscapeErrors` state from `Lexer.ReadString`
-
-`Lexer.ReadString` still tracks `hasEscapeErrors` only to discard it immediately afterward.
-
-- Remove the dead local state or wire it into real control flow if behavior is actually missing.
-- Keep escape-sequence diagnostics unchanged.
-- Add coverage if needed to lock in the intended string-literal behavior.

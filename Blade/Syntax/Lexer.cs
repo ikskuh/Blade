@@ -272,7 +272,6 @@ public sealed class Lexer
         Advance();
 
         System.Text.StringBuilder sb = new();
-        bool hasEscapeErrors = false;
 
         while (_position < _source.Length && Current != '"')
         {
@@ -288,10 +287,6 @@ public sealed class Lexer
                         sb.Append((char)codepoint);
                     else
                         sb.Append(char.ConvertFromUtf32((int)codepoint));
-                }
-                else
-                {
-                    hasEscapeErrors = true;
                 }
             }
             else
@@ -312,7 +307,6 @@ public sealed class Lexer
         // Skip closing quote
         Advance();
 
-        _ = hasEscapeErrors; // diagnostic already reported in ReadEscapeSequence
 
         TokenKind kind = zeroTerminated ? TokenKind.ZeroTerminatedStringLiteral : TokenKind.StringLiteral;
         string decodedText = sb.ToString();
