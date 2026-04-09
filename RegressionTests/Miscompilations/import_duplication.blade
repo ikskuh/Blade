@@ -10,4 +10,4 @@ import builtin;
 
 assert (forward.space == ._hub); // implicit use must work even if "builtin" would be duplicated
 
-assert (forward.space == builtin.MemorySpace._hub); // This will only work if "builtin" is not duplicated internally
+assert forward.space == builtin.MemorySpace._hub; // This will only work if "builtin" is not duplicated internally

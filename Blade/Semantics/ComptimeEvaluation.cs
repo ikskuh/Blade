@@ -99,7 +99,7 @@ internal sealed class ComptimeResult
         return false;
     }
 
-    public TypeSymbol? Type => value?.Type;
+    public BladeType? Type => value?.Type;
 
     public bool IsFailed => failure is not null;
     public bool IsUndefined => !IsFailed && Value.Type == BuiltinTypes.UndefinedLiteral;
@@ -534,7 +534,7 @@ internal sealed class ComptimeEvaluator
 
     private ComptimeResult TryEvaluateAddressOf(
         BoundExpression operand,
-        TypeSymbol pointerType,
+        BladeType pointerType,
         TextSpan span,
         Dictionary<Symbol, ComptimeResult> frame)
     {
@@ -671,7 +671,7 @@ internal sealed class ComptimeEvaluator
 
     private ComptimeResult TryEvaluateConverted(
         BoundExpression expression,
-        TypeSymbol targetType,
+        BladeType targetType,
         Dictionary<Symbol, ComptimeResult> frame,
         TextSpan span,
         ConversionKind kind)
@@ -895,7 +895,7 @@ internal sealed class ComptimeEvaluator
         BoundBinaryOperatorKind operation,
         ComptimeResult leftValue,
         ComptimeResult rightValue,
-        TypeSymbol targetType,
+        BladeType targetType,
         TextSpan span)
     {
         EvaluationError error = BladeValue.TryBinary(operation, leftValue.Value, rightValue.Value, out BladeValue rawValue);
@@ -1076,7 +1076,7 @@ internal sealed class ComptimeEvaluator
             : new ComptimeResult(ComptimeFailureKind.FuelExhausted, span, "comptime evaluation ran out of fuel.");
     }
 
-    private static ComptimeResult NormalizeLiteral(ComptimeResult value, TypeSymbol targetType, TextSpan span)
+    private static ComptimeResult NormalizeLiteral(ComptimeResult value, BladeType targetType, TextSpan span)
     {
         if (value.IsFailed)
             return value;

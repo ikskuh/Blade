@@ -343,13 +343,13 @@ public static class MirInliner
             List<MirBlockParameter> parameters = [];
             if (call.Result is MirValueId callResult)
             {
-                TypeSymbol type = call.ResultType ?? BuiltinTypes.Unknown;
+                BladeType type = call.ResultType ?? BuiltinTypes.Unknown;
                 parameters.Add(new MirBlockParameter(callResult, "ret0", type));
             }
 
             for (int i = 0; i < call.ExtraResults.Count; i++)
             {
-                (MirValueId value, TypeSymbol type) = call.ExtraResults[i];
+                (MirValueId value, BladeType type) = call.ExtraResults[i];
                 parameters.Add(new MirBlockParameter(value, $"ret{i + 1}", type));
             }
 
@@ -388,11 +388,11 @@ public static class MirInliner
             MirValueId? newResult,
             IDictionary<MirValueId, MirValueId> valueMap)
         {
-            List<(MirValueId, TypeSymbol)>? clonedExtra = null;
+            List<(MirValueId, BladeType)>? clonedExtra = null;
             if (call.ExtraResults.Count > 0)
             {
                 clonedExtra = new(call.ExtraResults.Count);
-                foreach ((MirValueId extraVal, TypeSymbol extraType) in call.ExtraResults)
+                foreach ((MirValueId extraVal, BladeType extraType) in call.ExtraResults)
                 {
                     MirValueId newExtra = NextValue();
                     valueMap[extraVal] = newExtra;

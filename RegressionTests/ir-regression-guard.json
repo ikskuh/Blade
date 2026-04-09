@@ -27,6 +27,7 @@
       "BoundLoopStatement",
       "BoundMemberAccessExpression",
       "BoundMemberAssignmentTarget",
+      "BoundModule",
       "BoundModuleCallExpression",
       "BoundMultiAssignmentStatement",
       "BoundNoirqStatement",

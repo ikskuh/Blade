@@ -21,8 +21,8 @@ internal static class CompilationModuleLoader
         Requires.NotNull(diagnostics);
         Requires.NotNull(namedModuleRoots);
 
-        Dictionary<string, LoadedModule> modulesByFullPath = new(StringComparer.OrdinalIgnoreCase);
-        Dictionary<string, string> namedModuleOwners = new(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, LoadedModule> modulesByFullPath = new(PathIdentity.Comparer);
+        Dictionary<string, string> namedModuleOwners = new(PathIdentity.Comparer);
         Queue<string> work = new();
 
         LoadedModule root = LoadModuleFromSource(

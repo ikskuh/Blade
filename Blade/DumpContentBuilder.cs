@@ -41,7 +41,7 @@ public static class DumpContentBuilder
         }
 
         if (selection.DumpBound)
-            dumps["00_bound.ir"] = BoundTreeWriter.Write(buildResult.BoundProgram);
+            dumps["00_bound.ir"] = BoundTreeWriter.Write(buildResult.BoundModule);
         if (selection.DumpMirPreOptimization)
             dumps["05_mir_preopt.ir"] = MirTextWriter.Write(buildResult.PreOptimizationMirModule);
         if (selection.DumpMir)

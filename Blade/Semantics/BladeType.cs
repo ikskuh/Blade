@@ -1,17 +1,18 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Blade;
 
 namespace Blade.Semantics;
 
-public abstract class TypeSymbol(string name) : IEquatable<TypeSymbol>
+public abstract class BladeType(string name) : IEquatable<BladeType>
 {
     public string Name { get; } = Requires.NotNull(name);
 
     public abstract bool IsLegalRuntimeObject(object value);
 
-    public bool Equals(TypeSymbol? other)
+    public bool Equals(BladeType? other)
     {
         if (other is null)
             return false;
@@ -25,24 +26,24 @@ public abstract class TypeSymbol(string name) : IEquatable<TypeSymbol>
         return EqualsCore(other);
     }
 
-    public sealed override bool Equals(object? obj) => obj is TypeSymbol other && Equals(other);
+    public sealed override bool Equals(object? obj) => obj is BladeType other && Equals(other);
 
     public sealed override int GetHashCode() => GetHashCodeCore();
 
-    public static bool operator ==(TypeSymbol? left, TypeSymbol? right)
+    public static bool operator ==(BladeType? left, BladeType? right)
     {
         return left is null ? right is null : left.Equals(right);
     }
 
-    public static bool operator !=(TypeSymbol? left, TypeSymbol? right) => !(left == right);
+    public static bool operator !=(BladeType? left, BladeType? right) => !(left == right);
 
-    protected abstract bool EqualsCore(TypeSymbol other);
+    protected abstract bool EqualsCore(BladeType other);
     protected abstract int GetHashCodeCore();
 
     public override string ToString() => Name;
 }
 
-public abstract class RuntimeTypeSymbol(string name) : TypeSymbol(name)
+public abstract class RuntimeTypeSymbol(string name) : BladeType(name)
 {
     public abstract int SizeBytes { get; }
     public abstract int AlignmentBytes { get; }
@@ -74,9 +75,18 @@ public abstract class RuntimeTypeSymbol(string name) : TypeSymbol(name)
     }
 }
 
-public abstract class ComptimeTypeSymbol(string name) : TypeSymbol(name)
+public abstract class ComptimeTypeSymbol(string name) : BladeType(name)
 {
     public override bool IsLegalRuntimeObject(object value) => false;
+}
+
+public sealed class TypeValueTypeSymbol(BladeType referencedType) : ComptimeTypeSymbol($"type {Requires.NotNull(referencedType).Name}")
+{
+    public BladeType ReferencedType { get; } = referencedType;
+
+    protected override bool EqualsCore(BladeType other) => ReferenceEquals(ReferencedType, ((TypeValueTypeSymbol)other).ReferencedType);
+
+    protected override int GetHashCodeCore() => HashCode.Combine(typeof(TypeValueTypeSymbol), RuntimeHelpers.GetHashCode(ReferencedType));
 }
 
 public abstract class ScalarTypeSymbol(string name, int bitWidth, int sizeBytes, int alignmentBytes) : RuntimeTypeSymbol(name)
@@ -100,7 +110,7 @@ public sealed class BoolTypeSymbol : ScalarTypeSymbol
 
     public override bool IsLegalRuntimeObject(object value) => value is bool;
 
-    protected override bool EqualsCore(TypeSymbol other) => other is BoolTypeSymbol;
+    protected override bool EqualsCore(BladeType other) => other is BoolTypeSymbol;
 
     protected override int GetHashCodeCore() => HashCode.Combine(typeof(BoolTypeSymbol));
 }
@@ -123,7 +133,7 @@ public sealed class IntegerTypeSymbol : ScalarTypeSymbol
 
     private bool IsLegalRuntimeObject(long value) => value >= MinValue && value <= MaxValue;
 
-    protected override bool EqualsCore(TypeSymbol other)
+    protected override bool EqualsCore(BladeType other)
     {
         IntegerTypeSymbol typedOther = (IntegerTypeSymbol)other;
         return BitWidth == typedOther.BitWidth
@@ -135,7 +145,7 @@ public sealed class IntegerTypeSymbol : ScalarTypeSymbol
 
 public abstract class PointerLikeTypeSymbol(
     string prefix,
-    TypeSymbol pointeeType,
+    BladeType pointeeType,
     bool isConst,
     bool isVolatile,
     int? alignment,
@@ -152,7 +162,7 @@ public abstract class PointerLikeTypeSymbol(
 
     public override bool IsLegalRuntimeObject(object value) => value is PointedValue;
 
-    protected override bool EqualsCore(TypeSymbol other)
+    protected override bool EqualsCore(BladeType other)
     {
         PointerLikeTypeSymbol typedOther = (PointerLikeTypeSymbol)Requires.NotNull(other);
         return IsConst == typedOther.IsConst
@@ -169,7 +179,7 @@ public abstract class PointerLikeTypeSymbol(
 
     private static string BuildName(
         string prefix,
-        TypeSymbol pointeeType,
+        BladeType pointeeType,
         bool isConst,
         bool isVolatile,
         int? alignment,
@@ -196,7 +206,7 @@ public abstract class PointerLikeTypeSymbol(
 }
 
 public sealed class PointerTypeSymbol(
-    TypeSymbol pointeeType,
+    BladeType pointeeType,
     bool isConst,
     bool isVolatile = false,
     int? alignment = null,
@@ -204,16 +214,16 @@ public sealed class PointerTypeSymbol(
     : PointerLikeTypeSymbol("*", pointeeType, isConst, isVolatile, alignment, storageClass);
 
 public sealed class MultiPointerTypeSymbol(
-    TypeSymbol pointeeType,
+    BladeType pointeeType,
     bool isConst,
     bool isVolatile = false,
     int? alignment = null,
     VariableStorageClass storageClass = VariableStorageClass.Automatic)
     : PointerLikeTypeSymbol("[*]", pointeeType, isConst, isVolatile, alignment, storageClass);
 
-public sealed class ArrayTypeSymbol(TypeSymbol elementType, int? length = null) : RuntimeTypeSymbol(BuildName(elementType, length))
+public sealed class ArrayTypeSymbol(BladeType elementType, int? length = null) : RuntimeTypeSymbol(BuildName(elementType, length))
 {
-    public TypeSymbol ElementType { get; } = Requires.NotNull(elementType);
+    public BladeType ElementType { get; } = Requires.NotNull(elementType);
 
     public int? Length { get; } = length;
 
@@ -237,7 +247,7 @@ public sealed class ArrayTypeSymbol(TypeSymbol elementType, int? length = null) 
         return true;
     }
 
-    protected override bool EqualsCore(TypeSymbol other)
+    protected override bool EqualsCore(BladeType other)
     {
         ArrayTypeSymbol typedOther = (ArrayTypeSymbol)other;
         return Length == typedOther.Length
@@ -246,7 +256,7 @@ public sealed class ArrayTypeSymbol(TypeSymbol elementType, int? length = null) 
 
     protected override int GetHashCodeCore() => HashCode.Combine(typeof(ArrayTypeSymbol), ElementType, Length);
 
-    private static string BuildName(TypeSymbol elementType, int? length)
+    private static string BuildName(BladeType elementType, int? length)
     {
         return length is int knownLength
             ? $"[{knownLength}]{Requires.NotNull(elementType).Name}"
@@ -256,10 +266,10 @@ public sealed class ArrayTypeSymbol(TypeSymbol elementType, int? length = null) 
     private RuntimeTypeSymbol GetRuntimeElementType() => Assert.NotNull(ElementType as RuntimeTypeSymbol);
 }
 
-public sealed class AggregateMemberSymbol(string name, TypeSymbol type, int byteOffset, int bitOffset, int bitWidth, bool isBitfield)
+public sealed class AggregateMemberSymbol(string name, BladeType type, int byteOffset, int bitOffset, int bitWidth, bool isBitfield)
 {
     public string Name { get; } = Requires.NotNull(name);
-    public TypeSymbol Type { get; } = Requires.NotNull(type);
+    public BladeType Type { get; } = Requires.NotNull(type);
     public int ByteOffset { get; } = byteOffset;
     public int BitOffset { get; } = bitOffset;
     public int BitWidth { get; } = bitWidth;
@@ -268,13 +278,13 @@ public sealed class AggregateMemberSymbol(string name, TypeSymbol type, int byte
 
 public abstract class AggregateTypeSymbol(
     string name,
-    IReadOnlyDictionary<string, TypeSymbol> fields,
+    IReadOnlyDictionary<string, BladeType> fields,
     IReadOnlyDictionary<string, AggregateMemberSymbol> members,
     int sizeBytes,
     int alignmentBytes)
     : RuntimeTypeSymbol(name)
 {
-    public IReadOnlyDictionary<string, TypeSymbol> Fields { get; } = Requires.NotNull(fields);
+    public IReadOnlyDictionary<string, BladeType> Fields { get; } = Requires.NotNull(fields);
     public IReadOnlyDictionary<string, AggregateMemberSymbol> Members { get; } = Requires.NotNull(members);
     public override int SizeBytes { get; } = sizeBytes;
     public override int AlignmentBytes { get; } = alignmentBytes;
@@ -284,7 +294,7 @@ public abstract class AggregateTypeSymbol(
         if (value is not IReadOnlyDictionary<string, BladeValue> values)
             return false;
 
-        foreach ((string fieldName, TypeSymbol fieldType) in Fields)
+        foreach ((string fieldName, BladeType fieldType) in Fields)
         {
             if (!values.TryGetValue(fieldName, out BladeValue? fieldValue))
                 return false;
@@ -296,14 +306,14 @@ public abstract class AggregateTypeSymbol(
         return true;
     }
 
-    protected override bool EqualsCore(TypeSymbol other) => ReferenceEquals(this, other);
+    protected override bool EqualsCore(BladeType other) => ReferenceEquals(this, other);
 
     protected override int GetHashCodeCore() => RuntimeHelpers.GetHashCode(this);
 }
 
 public sealed class StructTypeSymbol(
     string name,
-    IReadOnlyDictionary<string, TypeSymbol> fields,
+    IReadOnlyDictionary<string, BladeType> fields,
     IReadOnlyDictionary<string, AggregateMemberSymbol> members,
     int sizeBytes,
     int alignmentBytes)
@@ -311,13 +321,13 @@ public sealed class StructTypeSymbol(
 
 public sealed class UnionTypeSymbol(
     string name,
-    IReadOnlyDictionary<string, TypeSymbol> fields,
+    IReadOnlyDictionary<string, BladeType> fields,
     IReadOnlyDictionary<string, AggregateMemberSymbol> members,
     int sizeBytes,
     int alignmentBytes)
     : AggregateTypeSymbol(name, fields, members, sizeBytes, alignmentBytes);
 
-public sealed class EnumTypeSymbol(string name, TypeSymbol backingType, IReadOnlyDictionary<string, long> members, bool isOpen) : RuntimeTypeSymbol(name)
+public sealed class EnumTypeSymbol(string name, BladeType backingType, IReadOnlyDictionary<string, long> members, bool isOpen) : RuntimeTypeSymbol(name)
 {
     public RuntimeTypeSymbol BackingType { get; } = backingType as RuntimeTypeSymbol
         ?? throw new ArgumentException("Enum backing type must be a runtime type.", nameof(backingType));
@@ -334,22 +344,22 @@ public sealed class EnumTypeSymbol(string name, TypeSymbol backingType, IReadOnl
 
     public override bool IsLegalRuntimeObject(object value) => BackingType.IsLegalRuntimeObject(value);
 
-    protected override bool EqualsCore(TypeSymbol other) => ReferenceEquals(this, other);
+    protected override bool EqualsCore(BladeType other) => ReferenceEquals(this, other);
 
     protected override int GetHashCodeCore() => RuntimeHelpers.GetHashCode(this);
 }
 
 public sealed class BitfieldTypeSymbol(
     string name,
-    TypeSymbol backingType,
-    IReadOnlyDictionary<string, TypeSymbol> fields,
+    BladeType backingType,
+    IReadOnlyDictionary<string, BladeType> fields,
     IReadOnlyDictionary<string, AggregateMemberSymbol> members)
     : RuntimeTypeSymbol(name)
 {
     public RuntimeTypeSymbol BackingType { get; } = backingType as RuntimeTypeSymbol
         ?? throw new ArgumentException("Bitfield backing type must be a runtime type.", nameof(backingType));
 
-    public IReadOnlyDictionary<string, TypeSymbol> Fields { get; } = Requires.NotNull(fields);
+    public IReadOnlyDictionary<string, BladeType> Fields { get; } = Requires.NotNull(fields);
     public IReadOnlyDictionary<string, AggregateMemberSymbol> Members { get; } = Requires.NotNull(members);
 
     public override int SizeBytes => BackingType.SizeBytes;
@@ -368,7 +378,7 @@ public sealed class BitfieldTypeSymbol(
 
     public override bool IsLegalRuntimeObject(object value) => BackingType.IsLegalRuntimeObject(value);
 
-    protected override bool EqualsCore(TypeSymbol other) => ReferenceEquals(this, other);
+    protected override bool EqualsCore(BladeType other) => ReferenceEquals(this, other);
 
     protected override int GetHashCodeCore() => RuntimeHelpers.GetHashCode(this);
 }
@@ -379,7 +389,7 @@ public sealed class FunctionTypeSymbol(FunctionSymbol function) : ComptimeTypeSy
 
     public override bool IsLegalRuntimeObject(object value) => ReferenceEquals(value, Function);
 
-    protected override bool EqualsCore(TypeSymbol other) => ReferenceEquals(Function, ((FunctionTypeSymbol)other).Function);
+    protected override bool EqualsCore(BladeType other) => ReferenceEquals(Function, ((FunctionTypeSymbol)other).Function);
 
     protected override int GetHashCodeCore() => HashCode.Combine(typeof(FunctionTypeSymbol), RuntimeHelpers.GetHashCode(Function));
 }
@@ -390,7 +400,7 @@ public sealed class ModuleTypeSymbol(ModuleSymbol module) : ComptimeTypeSymbol($
 
     public override bool IsLegalRuntimeObject(object value) => ReferenceEquals(value, Module);
 
-    protected override bool EqualsCore(TypeSymbol other) => ReferenceEquals(Module, ((ModuleTypeSymbol)other).Module);
+    protected override bool EqualsCore(BladeType other) => ReferenceEquals(Module, ((ModuleTypeSymbol)other).Module);
 
     protected override int GetHashCodeCore() => HashCode.Combine(typeof(ModuleTypeSymbol), RuntimeHelpers.GetHashCode(Module));
 }
@@ -404,7 +414,7 @@ public sealed class UnknownTypeSymbol : ComptimeTypeSymbol
     {
     }
 
-    protected override bool EqualsCore(TypeSymbol other) => other is UnknownTypeSymbol;
+    protected override bool EqualsCore(BladeType other) => other is UnknownTypeSymbol;
 
     protected override int GetHashCodeCore() => HashCode.Combine(typeof(UnknownTypeSymbol));
 }
@@ -420,7 +430,7 @@ public sealed class UndefinedLiteralTypeSymbol : ComptimeTypeSymbol
 
     public override bool IsLegalRuntimeObject(object value) => ReferenceEquals(value, UndefinedValue.Instance);
 
-    protected override bool EqualsCore(TypeSymbol other) => other is UndefinedLiteralTypeSymbol;
+    protected override bool EqualsCore(BladeType other) => other is UndefinedLiteralTypeSymbol;
 
     protected override int GetHashCodeCore() => HashCode.Combine(typeof(UndefinedLiteralTypeSymbol));
 }
@@ -436,7 +446,7 @@ public sealed class IntegerLiteralTypeSymbol : ComptimeTypeSymbol
 
     public override bool IsLegalRuntimeObject(object value) => value is long;
 
-    protected override bool EqualsCore(TypeSymbol other) => other is IntegerLiteralTypeSymbol;
+    protected override bool EqualsCore(BladeType other) => other is IntegerLiteralTypeSymbol;
 
     protected override int GetHashCodeCore() => HashCode.Combine(typeof(IntegerLiteralTypeSymbol));
 }
@@ -452,7 +462,7 @@ public sealed class VoidTypeSymbol : ComptimeTypeSymbol
 
     public override bool IsLegalRuntimeObject(object value) => ReferenceEquals(value, VoidValue.Instance);
 
-    protected override bool EqualsCore(TypeSymbol other) => other is VoidTypeSymbol;
+    protected override bool EqualsCore(BladeType other) => other is VoidTypeSymbol;
 
     protected override int GetHashCodeCore() => HashCode.Combine(typeof(VoidTypeSymbol));
 }
@@ -466,7 +476,7 @@ public sealed class RangeTypeSymbol : ComptimeTypeSymbol
     {
     }
 
-    protected override bool EqualsCore(TypeSymbol other) => other is RangeTypeSymbol;
+    protected override bool EqualsCore(BladeType other) => other is RangeTypeSymbol;
 
     protected override int GetHashCodeCore() => HashCode.Combine(typeof(RangeTypeSymbol));
 }
@@ -486,12 +496,14 @@ public static class BuiltinTypes
     public static readonly IntegerTypeSymbol I16 = new("i16", bitWidth: 16, isSigned: true);
     public static readonly IntegerTypeSymbol U32 = new("u32", bitWidth: 32, isSigned: false);
     public static readonly IntegerTypeSymbol I32 = new("i32", bitWidth: 32, isSigned: true);
+    [SuppressMessage("Design", "CA1720:Identifier contains type name", Justification = "Matches the builtin Blade type name.")]
     public static readonly IntegerTypeSymbol Uint = new("uint", bitWidth: 32, isSigned: false);
+    [SuppressMessage("Design", "CA1720:Identifier contains type name", Justification = "Matches the builtin Blade type name.")]
     public static readonly IntegerTypeSymbol Int = new("int", bitWidth: 32, isSigned: true);
     public static readonly VoidTypeSymbol Void = VoidTypeSymbol.Instance;
     public static readonly RangeTypeSymbol Range = RangeTypeSymbol.Instance;
 
-    private static readonly Dictionary<string, TypeSymbol> Builtins = new()
+    private static readonly Dictionary<string, BladeType> Builtins = new()
     {
         ["bool"] = Bool,
         ["bit"] = Bit,
@@ -508,7 +520,7 @@ public static class BuiltinTypes
         ["void"] = Void,
     };
 
-    public static bool TryGet(string name, out TypeSymbol type)
+    public static bool TryGet(string name, out BladeType type)
     {
         return Builtins.TryGetValue(name, out type!);
     }

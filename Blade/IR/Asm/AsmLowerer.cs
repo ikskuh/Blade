@@ -560,7 +560,7 @@ public static class AsmLowerer
 
     private static StoragePlace CreateInternalRegisterPlace(
         string name,
-        TypeSymbol type,
+        BladeType type,
         StoragePlaceKind kind,
         IReadOnlyList<P2Register>? preferredRegisters = null)
     {
@@ -1286,7 +1286,7 @@ public static class AsmLowerer
         EmitAggregateInsert(nodes, dest, receiver, value, shape);
     }
 
-    private static int GetHubElementSize(TypeSymbol? type)
+    private static int GetHubElementSize(BladeType? type)
     {
         if (type is RuntimeTypeSymbol { ScalarWidthBits: int width })
         {
@@ -1464,7 +1464,7 @@ public static class AsmLowerer
 
     private static bool TryGetAggregateValueShape(
         int byteOffset,
-        TypeSymbol? memberType,
+        BladeType? memberType,
         out AggregateAccessShape shape)
     {
         shape = default;
@@ -1498,7 +1498,7 @@ public static class AsmLowerer
     }
 
     private static bool TryGetAggregateMemberShape(
-        TypeSymbol? aggregateType,
+        BladeType? aggregateType,
         string memberName,
         int byteOffset,
         out AggregateAccessShape shape)
@@ -1527,7 +1527,7 @@ public static class AsmLowerer
         AsmRegisterOperand dest,
         AsmRegisterOperand receiver,
         AggregateAccessShape shape,
-        TypeSymbol? resultType)
+        BladeType? resultType)
     {
         if (shape.Kind == AggregateAccessKind.Long)
         {
@@ -1579,7 +1579,7 @@ public static class AsmLowerer
         }
     }
 
-    private static bool TryGetSingleWordAggregateSize(TypeSymbol type, out int sizeBytes)
+    private static bool TryGetSingleWordAggregateSize(BladeType type, out int sizeBytes)
     {
         bool ok = type is RuntimeTypeSymbol;
         sizeBytes = ok ? ((RuntimeTypeSymbol)type).SizeBytes : 0;
@@ -1969,7 +1969,7 @@ public static class AsmLowerer
         AsmOperand valueOp = LowerOperand(op.Operands[1], ctx);
         StoragePlace storagePlace = (StoragePlace)place.Symbol;
 
-        TypeSymbol? placeType = (storagePlace.Symbol as VariableSymbol)?.Type;
+        BladeType? placeType = (storagePlace.Symbol as VariableSymbol)?.Type;
 
         switch (storagePlace.StorageClass)
         {
@@ -2103,7 +2103,7 @@ public static class AsmLowerer
         return shift;
     }
 
-    private static P2Mnemonic SelectHubReadOpcode(TypeSymbol type)
+    private static P2Mnemonic SelectHubReadOpcode(BladeType type)
     {
         if (type is BoolTypeSymbol)
             return P2Mnemonic.RDBYTE;
@@ -2130,7 +2130,7 @@ public static class AsmLowerer
         return P2Mnemonic.RDLONG;
     }
 
-    private static P2Mnemonic SelectHubWriteOpcode(TypeSymbol type)
+    private static P2Mnemonic SelectHubWriteOpcode(BladeType type)
     {
         if (type is BoolTypeSymbol)
             return P2Mnemonic.WRBYTE;
@@ -2157,7 +2157,7 @@ public static class AsmLowerer
         return P2Mnemonic.WRLONG;
     }
 
-    private static TypeSymbol RequireTypedResult(LirOpInstruction op, string lowering)
+    private static BladeType RequireTypedResult(LirOpInstruction op, string lowering)
     {
         Assert.Invariant(op.ResultType is not null, $"Operation '{lowering}' must have a result type in ASM lowering.");
         return op.ResultType!;
@@ -2591,7 +2591,7 @@ public static class AsmLowerer
         return new AsmSymbolOperand(Requires.NotNull(place), AsmSymbolAddressingMode.Register);
     }
 
-    private static bool IsSingleBitType(TypeSymbol? type)
+    private static bool IsSingleBitType(BladeType? type)
         => type is BoolTypeSymbol || type == BuiltinTypes.Bit;
 
     private static AsmOperand LowerImmediateValue(BladeValue immediate, IReadOnlyDictionary<Symbol, StoragePlace> placesBySymbol)

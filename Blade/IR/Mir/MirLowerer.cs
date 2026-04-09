@@ -13,29 +13,29 @@ namespace Blade.IR.Mir;
 
 public static class MirLowerer
 {
-    public static MirModule Lower(BoundProgram program)
+    public static MirModule Lower(BoundModule module)
     {
-        Requires.NotNull(program);
+        Requires.NotNull(module);
 
-        (List<StoragePlace> storagePlaces, List<StorageDefinition> storageDefinitions) = CollectStoragePlaces(program);
+        (List<StoragePlace> storagePlaces, List<StorageDefinition> storageDefinitions) = CollectStoragePlaces(module);
         BackendSymbolNaming.AssignStorageNames(storagePlaces);
 
         List<MirFunction> functions = new();
-        functions.Add(LowerTopLevel(program, storagePlaces, storageDefinitions));
+        functions.Add(LowerTopLevel(module, storagePlaces, storageDefinitions));
 
-        foreach (BoundFunctionMember functionMember in program.Functions)
+        foreach (BoundFunctionMember functionMember in module.Functions)
             functions.Add(LowerFunction(functionMember, storagePlaces, storageDefinitions));
 
         return new MirModule(storagePlaces, storageDefinitions, functions);
     }
 
     private static MirFunction LowerTopLevel(
-        BoundProgram program,
+        BoundModule module,
         IReadOnlyList<StoragePlace> storagePlaces,
         IReadOnlyList<StorageDefinition> storageDefinitions)
     {
         FunctionLoweringContext context = new(new FunctionSymbol("$top", FunctionKind.Default), isEntryPoint: true, [], storagePlaces, storageDefinitions);
-        context.LowerTopLevel(program.GlobalVariables, program.TopLevelStatements);
+        context.LowerTopLevel(module.GlobalVariables, module.TopLevelStatements);
         return context.Build();
     }
 
@@ -56,17 +56,17 @@ public static class MirLowerer
         return context.Build();
     }
 
-    private static (List<StoragePlace> Places, List<StorageDefinition> Definitions) CollectStoragePlaces(BoundProgram program)
+    private static (List<StoragePlace> Places, List<StorageDefinition> Definitions) CollectStoragePlaces(BoundModule module)
     {
-        List<StoragePlace> places = new(program.GlobalVariables.Count);
+        List<StoragePlace> places = new(module.GlobalVariables.Count);
         List<StorageDefinition> definitions = [];
         HashSet<Symbol> seenSymbols = [];
-        HashSet<string> visitedModules = new(StringComparer.OrdinalIgnoreCase);
-        CollectStoragePlaces(program.GlobalVariables, places, definitions, seenSymbols);
-        foreach (ImportedModule importedModule in program.ImportedModules.Values)
+        HashSet<string> visitedModules = new(PathIdentity.Comparer);
+        CollectStoragePlaces(module.GlobalVariables, places, definitions, seenSymbols);
+        foreach (BoundModule importedModule in module.ImportedModules.Values)
             CollectStoragePlaces(importedModule, places, definitions, seenSymbols, visitedModules);
 
-        foreach (Symbol symbol in CollectAddressTakenSymbols(program))
+        foreach (Symbol symbol in CollectAddressTakenSymbols(module))
         {
             if (!seenSymbols.Add(symbol))
                 continue;
@@ -120,7 +120,7 @@ public static class MirLowerer
     }
 
     private static void CollectStoragePlaces(
-        ImportedModule module,
+        BoundModule module,
         ICollection<StoragePlace> places,
         ICollection<StorageDefinition> definitions,
         ISet<Symbol> seenSymbols,
@@ -129,8 +129,8 @@ public static class MirLowerer
         if (!visitedModules.Add(module.ResolvedFilePath))
             return;
 
-        CollectStoragePlaces(module.Program.GlobalVariables, places, definitions, seenSymbols);
-        foreach (ImportedModule nestedModule in module.ImportedModules.Values)
+        CollectStoragePlaces(module.GlobalVariables, places, definitions, seenSymbols);
+        foreach (BoundModule nestedModule in module.ImportedModules.Values)
             CollectStoragePlaces(nestedModule, places, definitions, seenSymbols, visitedModules);
     }
 
@@ -150,7 +150,7 @@ public static class MirLowerer
         };
     }
 
-    private static VariableStorageClass GetStorageClass(TypeSymbol type)
+    private static VariableStorageClass GetStorageClass(BladeType type)
     {
         return type switch
         {
@@ -173,14 +173,14 @@ public static class MirLowerer
         return VariableStorageClass.Reg;
     }
 
-    private static IReadOnlyList<Symbol> CollectAddressTakenSymbols(BoundProgram program)
+    private static IReadOnlyList<Symbol> CollectAddressTakenSymbols(BoundModule module)
     {
         Dictionary<Symbol, Symbol> symbols = [];
 
-        foreach (BoundStatement statement in program.TopLevelStatements)
+        foreach (BoundStatement statement in module.TopLevelStatements)
             CollectAddressTakenSymbols(statement, symbols);
 
-        foreach (BoundFunctionMember function in program.Functions)
+        foreach (BoundFunctionMember function in module.Functions)
             CollectAddressTakenSymbols(function.Body, symbols);
 
         return [.. symbols.Values];
@@ -271,7 +271,7 @@ public static class MirLowerer
                     CollectAddressTakenSymbols(argument, symbols);
                 break;
             case BoundModuleCallExpression moduleCall:
-                foreach (BoundStatement statement in moduleCall.Module.Program.TopLevelStatements)
+                foreach (BoundStatement statement in moduleCall.Module.TopLevelStatements)
                     CollectAddressTakenSymbols(statement, symbols);
                 break;
             case BoundIntrinsicCallExpression intrinsic:
@@ -336,11 +336,11 @@ public static class MirLowerer
         }
     }
 
-    private sealed class FunctionLoweringContext
-    {
-        private readonly FunctionSymbol _symbol;
-        private readonly bool _isEntryPoint;
-        private readonly IReadOnlyList<TypeSymbol> _returnTypes;
+        private sealed class FunctionLoweringContext
+        {
+            private readonly FunctionSymbol _symbol;
+            private readonly bool _isEntryPoint;
+        private readonly IReadOnlyList<BladeType> _returnTypes;
         private readonly IReadOnlyList<ReturnSlot> _returnSlots;
         private readonly Dictionary<MirValueId, MirFlag> _flagValues = [];
         private readonly List<MirValueId> _pendingFlagReturns = [];
@@ -356,7 +356,7 @@ public static class MirLowerer
         public FunctionLoweringContext(
             FunctionSymbol symbol,
             bool isEntryPoint,
-            IReadOnlyList<TypeSymbol> returnTypes,
+            IReadOnlyList<BladeType> returnTypes,
             IReadOnlyList<StoragePlace> storagePlaces,
             IReadOnlyList<StorageDefinition> storageDefinitions,
             IReadOnlyList<ReturnSlot>? returnSlots = null)
@@ -376,7 +376,7 @@ public static class MirLowerer
 
             for (int i = 0; i < _returnTypes.Count; i++)
             {
-                TypeSymbol returnType = _returnTypes[i];
+                BladeType returnType = _returnTypes[i];
                 MirValueId value = NextValue();
                 _exitBlock.Parameters.Add(new MirBlockParameter(value, $"ret{i}", returnType));
             }
@@ -499,7 +499,7 @@ public static class MirLowerer
                 case BoundExpressionStatement expressionStatement:
                     if (expressionStatement.Expression is BoundModuleCallExpression moduleCallExpression)
                     {
-                        foreach (BoundStatement moduleStatement in moduleCallExpression.Module.Program.TopLevelStatements)
+                        foreach (BoundStatement moduleStatement in moduleCallExpression.Module.TopLevelStatements)
                             LowerStatement(moduleStatement);
                     }
                     else
@@ -594,7 +594,7 @@ public static class MirLowerer
                 }
                 else
                 {
-                    TypeSymbol type = GetSymbolType(symbol);
+                    BladeType type = GetSymbolType(symbol);
                     MirValueId value = IsInlineAsmTempSymbol(symbol) && !_currentValues.ContainsKey(symbol)
                         ? NextValue()
                         : ReadSymbol(symbol, type, asmStatement.Span);
@@ -606,7 +606,7 @@ public static class MirLowerer
             // This value represents the flag state after the asm executes and can be used
             // directly by branches or materialized to a register when needed.
             MirValueId? flagResult = null;
-            TypeSymbol? flagResultType = null;
+            BladeType? flagResultType = null;
             if (asmStatement.FlagOutput is not null)
             {
                 flagResult = NextValue();
@@ -690,7 +690,7 @@ public static class MirLowerer
 
             // First result goes into the primary Result slot
             MirValueId? primaryResult = null;
-            TypeSymbol? primaryType = null;
+            BladeType? primaryType = null;
             if (targets.Count > 0 && targets[0] is not BoundDiscardAssignmentTarget)
             {
                 primaryResult = NextValue();
@@ -704,11 +704,11 @@ public static class MirLowerer
             }
 
             // Extra results for positions 1+
-            List<(MirValueId Value, TypeSymbol Type)> extraResults = [];
+            List<(MirValueId Value, BladeType Type)> extraResults = [];
             for (int i = 1; i < targets.Count && i < callExpression.Function.ReturnTypes.Count; i++)
             {
                 MirValueId extraValue = NextValue();
-                TypeSymbol extraType = callExpression.Function.ReturnTypes[i];
+                BladeType extraType = callExpression.Function.ReturnTypes[i];
                 extraResults.Add((extraValue, extraType));
             }
 
@@ -935,7 +935,7 @@ public static class MirLowerer
                 // Write back mutable item if needed.
                 if (isArrayIteration && forStatement.ItemVariable is not null && forStatement.ItemIsMutable)
                 {
-                    TypeSymbol elemType = ((ArrayTypeSymbol)forStatement.Iterable.Type).ElementType;
+                    BladeType elemType = ((ArrayTypeSymbol)forStatement.Iterable.Type).ElementType;
                     MirValueId updatedItem = ReadSymbol(forStatement.ItemVariable, elemType, forStatement.Body.Span);
                     _currentBlock.Instructions.Add(new MirStoreIndexInstruction(elemType, forStatement.Iterable.Type, iterableValue, postIndex, updatedItem, iterStorageClass, forStatement.Body.Span));
                 }
@@ -1089,7 +1089,7 @@ public static class MirLowerer
                 }
                 else
                 {
-                    TypeSymbol expectedType = _exitBlock.Parameters[i].Type;
+                    BladeType expectedType = _exitBlock.Parameters[i].Type;
                     arguments.Add(EmitDefaultValue(expectedType, span));
                 }
             }
@@ -1097,7 +1097,7 @@ public static class MirLowerer
             return arguments;
         }
 
-        private MirValueId EmitDefaultValue(TypeSymbol type, TextSpan span)
+        private MirValueId EmitDefaultValue(BladeType type, TextSpan span)
         {
             if (type is not BoolTypeSymbol
                 && type is not IntegerTypeSymbol
@@ -1132,7 +1132,7 @@ public static class MirLowerer
                     return LowerCallExpression(callExpression);
 
                 case BoundModuleCallExpression moduleCallExpression:
-                    foreach (BoundStatement moduleStatement in moduleCallExpression.Module.Program.TopLevelStatements)
+                    foreach (BoundStatement moduleStatement in moduleCallExpression.Module.TopLevelStatements)
                         LowerStatement(moduleStatement);
                     return EmitPlaceholderConstant(BuiltinTypes.Void, moduleCallExpression.Span);
 
@@ -1271,7 +1271,7 @@ public static class MirLowerer
                 elementValues.Add(LowerExpression(element));
 
             VariableStorageClass storageClass = GetStorageClass(arrayLiteral.Type);
-            TypeSymbol arrElemType = arrayLiteral.Type.ElementType;
+            BladeType arrElemType = arrayLiteral.Type.ElementType;
             for (int i = 0; i < explicitCount; i++)
             {
                 MirValueId indexValue = EmitConstant(BladeValue.IntegerLiteral(i), arrayLiteral.Span);
@@ -1333,7 +1333,7 @@ public static class MirLowerer
             return result;
         }
 
-        private MirValueId LowerIndexedAddress(BoundIndexExpression indexExpression, TypeSymbol pointerType, TextSpan span)
+        private MirValueId LowerIndexedAddress(BoundIndexExpression indexExpression, BladeType pointerType, TextSpan span)
         {
             MirValueId baseAddress = LowerExpression(indexExpression.Expression);
             MirValueId offset = LowerExpression(indexExpression.Index);
@@ -1657,7 +1657,7 @@ public static class MirLowerer
             _currentValues[symbol] = value;
         }
 
-        private MirValueId ReadSymbol(Symbol symbol, TypeSymbol type, TextSpan span)
+        private MirValueId ReadSymbol(Symbol symbol, BladeType type, TextSpan span)
         {
             if (TryGetStoragePlace(symbol, out StoragePlace place))
                 return EmitLoadPlace(place, type, span);
@@ -1723,7 +1723,7 @@ public static class MirLowerer
         private static bool IsInlineAsmTempSymbol(Symbol symbol)
             => symbol is VariableSymbol { ScopeKind: VariableScopeKind.InlineAsmTemporary };
 
-        private static TypeSymbol GetSymbolType(Symbol symbol)
+        private static BladeType GetSymbolType(Symbol symbol)
         {
             return symbol switch
             {
@@ -1813,21 +1813,21 @@ public static class MirLowerer
             return id;
         }
 
-        private MirValueId EmitPlaceholderConstant(TypeSymbol type, TextSpan span)
+        private MirValueId EmitPlaceholderConstant(BladeType type, TextSpan span)
         {
             MirValueId id = NextValue();
             _currentBlock.Instructions.Add(new MirConstantInstruction(id, type, null, span));
             return id;
         }
 
-        private MirValueId EmitLoadPlace(StoragePlace place, TypeSymbol type, TextSpan span)
+        private MirValueId EmitLoadPlace(StoragePlace place, BladeType type, TextSpan span)
         {
             MirValueId id = NextValue();
             _currentBlock.Instructions.Add(new MirLoadPlaceInstruction(id, type, place, span));
             return id;
         }
 
-        private MirValueId EmitLoadMember(MirValueId receiver, TypeSymbol type, AggregateMemberSymbol member, TextSpan span)
+        private MirValueId EmitLoadMember(MirValueId receiver, BladeType type, AggregateMemberSymbol member, TextSpan span)
         {
             MirValueId result = NextValue();
             _currentBlock.Instructions.Add(new MirLoadMemberInstruction(result, type, receiver, member, span));
@@ -1837,8 +1837,8 @@ public static class MirLowerer
         private MirValueId EmitLoadIndex(
             MirValueId indexed,
             MirValueId index,
-            TypeSymbol indexedType,
-            TypeSymbol type,
+            BladeType indexedType,
+            BladeType type,
             VariableStorageClass storageClass,
             bool hasSideEffects,
             TextSpan span)
@@ -1850,8 +1850,8 @@ public static class MirLowerer
 
         private MirValueId EmitLoadDeref(
             MirValueId pointer,
-            TypeSymbol pointerType,
-            TypeSymbol type,
+            BladeType pointerType,
+            BladeType type,
             VariableStorageClass storageClass,
             bool hasSideEffects,
             TextSpan span)
@@ -1861,7 +1861,7 @@ public static class MirLowerer
             return result;
         }
 
-        private static int GetPointerElementStride(TypeSymbol pointeeType, VariableStorageClass storageClass)
+        private static int GetPointerElementStride(BladeType pointeeType, VariableStorageClass storageClass)
         {
             Assert.Invariant(pointeeType is RuntimeTypeSymbol, $"Pointer arithmetic requires a concrete element stride for '{pointeeType.Name}' in '{storageClass}'.");
             RuntimeTypeSymbol runtimeType = (RuntimeTypeSymbol)pointeeType;
@@ -1875,14 +1875,14 @@ public static class MirLowerer
             return result;
         }
 
-        private MirValueId EmitBitfieldInsert(MirValueId receiver, MirValueId value, TypeSymbol aggregateType, AggregateMemberSymbol member, TextSpan span)
+        private MirValueId EmitBitfieldInsert(MirValueId receiver, MirValueId value, BladeType aggregateType, AggregateMemberSymbol member, TextSpan span)
         {
             MirValueId result = NextValue();
             _currentBlock.Instructions.Add(new MirBitfieldInsertInstruction(result, aggregateType, receiver, value, member, span));
             return result;
         }
 
-        private MirValueId EmitAggregateMemberInsert(MirValueId receiver, MirValueId value, TypeSymbol aggregateType, AggregateMemberSymbol member, TextSpan span)
+        private MirValueId EmitAggregateMemberInsert(MirValueId receiver, MirValueId value, BladeType aggregateType, AggregateMemberSymbol member, TextSpan span)
         {
             MirValueId result = NextValue();
             _currentBlock.Instructions.Add(new MirInsertMemberInstruction(result, aggregateType, receiver, value, member, span));
@@ -1898,7 +1898,7 @@ public static class MirLowerer
         {
             if (place.StorageClass is VariableStorageClass.Lut or VariableStorageClass.Hub)
             {
-                TypeSymbol placeType = GetSymbolType(place.Symbol);
+                BladeType placeType = GetSymbolType(place.Symbol);
                 if (placeType is not MultiPointerTypeSymbol)
                 {
                     MirValueId loaded = NextValue();
@@ -1946,7 +1946,7 @@ public static class MirLowerer
             || (inner is BoundLiteralExpression { Value.Value: UndefinedValue } literal && literal.Type is not VoidTypeSymbol);
     }
 
-    private static bool TryEvaluateStaticValue(BoundExpression expression, TypeSymbol targetType, out RuntimeBladeValue? value)
+    private static bool TryEvaluateStaticValue(BoundExpression expression, BladeType targetType, out RuntimeBladeValue? value)
     {
         switch (expression)
         {

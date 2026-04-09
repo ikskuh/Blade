@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Blade;
+using Blade.Semantics.Bound;
 using Blade.Source;
 using Blade.Syntax;
 using Blade.Syntax.Nodes;
@@ -90,22 +91,47 @@ public sealed class ControlFlowLabelSymbol : IAsmSymbol
     public SymbolType SymbolType => SymbolType.ControlFlowLabel;
 }
 
-public sealed class TypeAliasSymbol : Symbol
+public sealed class TypeSymbol : Symbol
 {
-    public TypeAliasSymbol(string name, TypeAliasDeclarationSyntax syntax)
+    public TypeSymbol(string name, BladeType type)
+        : base(name)
+    {
+        _type = Requires.NotNull(type);
+    }
+
+    public TypeSymbol(string name, TypeAliasDeclarationSyntax syntax)
         : base(name)
     {
         Syntax = Requires.NotNull(syntax);
     }
 
-    public TypeAliasDeclarationSyntax Syntax { get; }
+    private BladeType? _type;
+
+    public TypeAliasDeclarationSyntax? Syntax { get; }
+    public bool IsResolved => _type is not null;
+
+    public BladeType Type
+    {
+        get
+        {
+            Assert.Invariant(_type is not null, $"Type symbol '{Name}' must be resolved before its type is read.");
+            return _type;
+        }
+    }
+
+    public void Resolve(BladeType type)
+    {
+        Requires.NotNull(type);
+        Assert.Invariant(_type is null, $"Type symbol '{Name}' must only be resolved once.");
+        _type = type;
+    }
 }
 
 public sealed class VariableSymbol : Symbol
 {
     public VariableSymbol(
         string name,
-        TypeSymbol type,
+        BladeType type,
         bool isConst,
         VariableStorageClass storageClass,
         VariableScopeKind scopeKind,
@@ -129,7 +155,7 @@ public sealed class VariableSymbol : Symbol
             && !fixedAddress.HasValue;
     }
 
-    public TypeSymbol Type { get; }
+    public BladeType Type { get; }
     public bool IsConst { get; }
     public VariableStorageClass StorageClass { get; }
     public VariableScopeKind ScopeKind { get; }
@@ -162,13 +188,13 @@ public sealed class VariableSymbol : Symbol
 
 public sealed class ParameterSymbol : Symbol
 {
-    public ParameterSymbol(string name, TypeSymbol type)
+    public ParameterSymbol(string name, BladeType type)
         : base(name)
     {
         Type = Requires.NotNull(type);
     }
 
-    public TypeSymbol Type { get; }
+    public BladeType Type { get; }
 }
 
 public enum VariableStorageClass
@@ -214,7 +240,7 @@ public enum ReturnPlacement
     FlagZ,
 }
 
-public readonly record struct ReturnSlot(TypeSymbol Type, ReturnPlacement Placement)
+public readonly record struct ReturnSlot(BladeType Type, ReturnPlacement Placement)
 {
     public bool IsFlagPlaced => Placement is ReturnPlacement.FlagC or ReturnPlacement.FlagZ;
 }
@@ -247,7 +273,7 @@ public sealed class FunctionSymbol : Symbol
     public bool IsAsmFunction => Syntax is AsmFunctionDeclarationSyntax;
     public IReadOnlyList<ParameterSymbol> Parameters { get; set; } = [];
     public IReadOnlyList<ReturnSlot> ReturnSlots { get; set; } = [];
-    public IReadOnlyList<TypeSymbol> ReturnTypes => System.Array.ConvertAll(
+    public IReadOnlyList<BladeType> ReturnTypes => System.Array.ConvertAll(
         ReturnSlots.ToArray(),
         static slot => slot.Type);
     public bool HasFlagReturns => ReturnSlots.Any(s => s.IsFlagPlaced);
@@ -255,13 +281,13 @@ public sealed class FunctionSymbol : Symbol
 
 public sealed class ModuleSymbol : Symbol
 {
-    public ModuleSymbol(string name, ImportedModule module)
+    public ModuleSymbol(string name, BoundModule module)
         : base(name)
     {
         Module = Requires.NotNull(module);
     }
 
-    public ImportedModule Module { get; }
+    public BoundModule Module { get; }
 }
 
 public sealed class Scope
@@ -279,11 +305,27 @@ public sealed class Scope
     {
         Requires.NotNull(symbol);
 
-        if (_symbols.ContainsKey(symbol.Name))
-            return false;
+        for (Scope? scope = this; scope is not null; scope = scope.Parent)
+        {
+            if (scope._symbols.ContainsKey(symbol.Name))
+                return false;
+        }
 
         _symbols.Add(symbol.Name, symbol);
         return true;
+    }
+
+    public bool ContainsInCurrentScope(string name)
+    {
+        Requires.NotNullOrWhiteSpace(name);
+        return _symbols.ContainsKey(name);
+    }
+
+    public void DeclareInCurrentScope(Symbol symbol)
+    {
+        Requires.NotNull(symbol);
+        Assert.Invariant(!_symbols.ContainsKey(symbol.Name), $"Symbol '{symbol.Name}' must not be redeclared in the same scope.");
+        _symbols.Add(symbol.Name, symbol);
     }
 
     public bool TryLookup(string name, out Symbol? symbol)

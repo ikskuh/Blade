@@ -5,6 +5,9 @@ using Blade.IR.Lir;
 using Blade.IR.Mir;
 using Blade.Semantics;
 using Blade.Semantics.Bound;
+using Blade.Source;
+using Blade.Syntax;
+using Blade.Syntax.Nodes;
 
 namespace Blade.Tests;
 
@@ -87,7 +90,8 @@ public class RegisterAllocatorTests
 
     private static IrBuildResult CreateBuildResult(AsmModule asmModule)
     {
-        BoundProgram program = new([], [], [], new Dictionary<string, TypeSymbol>(), new Dictionary<string, FunctionSymbol>(), new Dictionary<string, ImportedModule>());
+        CompilationUnitSyntax syntax = new([], new Token(TokenKind.EndOfFile, new TextSpan(0, 0), string.Empty));
+        BoundModule program = new("/tmp/test.blade", syntax, [], [], [], new Dictionary<string, TypeSymbol>(), new Dictionary<string, FunctionSymbol>(), new Dictionary<string, VariableSymbol>(), new Dictionary<string, BoundModule>());
         MirModule mirModule = new([], [], []);
         LirModule lirModule = new([]);
         return new IrBuildResult(program, mirModule, mirModule, lirModule, lirModule, asmModule, asmModule, string.Empty);

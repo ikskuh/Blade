@@ -137,7 +137,7 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
 
     public void ReportSymbolAlreadyDeclared(TextSpan span, string name)
     {
-        Report(DiagnosticCode.E0201_SymbolAlreadyDeclared, span, $"Symbol '{name}' is already declared in this scope.");
+        Report(DiagnosticCode.E0201_SymbolAlreadyDeclared, span, $"Symbol '{name}' is already declared.");
     }
 
     public void ReportUndefinedName(TextSpan span, string name)

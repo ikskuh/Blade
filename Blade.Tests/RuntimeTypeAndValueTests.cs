@@ -63,7 +63,7 @@ public sealed class RuntimeTypeAndValueTests
 
         StructTypeSymbol pair = new(
             "Pair",
-            new Dictionary<string, TypeSymbol>
+            new Dictionary<string, BladeType>
             {
                 ["lo"] = BuiltinTypes.U16,
                 ["hi"] = BuiltinTypes.U16,
@@ -84,7 +84,7 @@ public sealed class RuntimeTypeAndValueTests
         BitfieldTypeSymbol bitfieldType = new(
             "Flags",
             BuiltinTypes.U32,
-            new Dictionary<string, TypeSymbol> { ["flag"] = BuiltinTypes.Bool, ["mode"] = enumType },
+            new Dictionary<string, BladeType> { ["flag"] = BuiltinTypes.Bool, ["mode"] = enumType },
             new Dictionary<string, AggregateMemberSymbol>
             {
                 ["flag"] = new AggregateMemberSymbol("flag", BuiltinTypes.Bool, 0, 0, 1, isBitfield: true),
@@ -100,10 +100,10 @@ public sealed class RuntimeTypeAndValueTests
     [Test]
     public void RuntimeTypeLayout_UsesInstanceProperties()
     {
-        StructTypeSymbol structType = new("S", new Dictionary<string, TypeSymbol>(), new Dictionary<string, AggregateMemberSymbol>(), sizeBytes: 4, alignmentBytes: 2);
-        UnionTypeSymbol unionType = new("U", new Dictionary<string, TypeSymbol>(), new Dictionary<string, AggregateMemberSymbol>(), sizeBytes: 8, alignmentBytes: 4);
+        StructTypeSymbol structType = new("S", new Dictionary<string, BladeType>(), new Dictionary<string, AggregateMemberSymbol>(), sizeBytes: 4, alignmentBytes: 2);
+        UnionTypeSymbol unionType = new("U", new Dictionary<string, BladeType>(), new Dictionary<string, AggregateMemberSymbol>(), sizeBytes: 8, alignmentBytes: 4);
         EnumTypeSymbol enumType = new("Mode", BuiltinTypes.U16, new Dictionary<string, long>(), isOpen: false);
-        BitfieldTypeSymbol bitfieldType = new("Flags", BuiltinTypes.U32, new Dictionary<string, TypeSymbol>(), new Dictionary<string, AggregateMemberSymbol>());
+        BitfieldTypeSymbol bitfieldType = new("Flags", BuiltinTypes.U32, new Dictionary<string, BladeType>(), new Dictionary<string, AggregateMemberSymbol>());
         PointerTypeSymbol pointerType = new(BuiltinTypes.U32, isConst: false);
         ArrayTypeSymbol arrayType = new(BuiltinTypes.U16, 3);
 
@@ -135,7 +135,7 @@ public sealed class RuntimeTypeAndValueTests
     {
         PointerTypeSymbol pointerType = new(BuiltinTypes.U32, isConst: false);
         EnumTypeSymbol enumType = new("Mode", BuiltinTypes.U8, new Dictionary<string, long> { ["Idle"] = 0 }, isOpen: true);
-        BitfieldTypeSymbol bitfieldType = new("Flags", BuiltinTypes.U16, new Dictionary<string, TypeSymbol>(), new Dictionary<string, AggregateMemberSymbol>());
+        BitfieldTypeSymbol bitfieldType = new("Flags", BuiltinTypes.U16, new Dictionary<string, BladeType>(), new Dictionary<string, AggregateMemberSymbol>());
 
         Assert.Multiple(() =>
         {
@@ -164,7 +164,7 @@ public sealed class RuntimeTypeAndValueTests
     public void SignedIntegerAndScalarCastProperties_ReturnExpectedResults()
     {
         EnumTypeSymbol enumType = new("Mode", BuiltinTypes.U8, new Dictionary<string, long>(), isOpen: false);
-        BitfieldTypeSymbol bitfieldType = new("Flags", BuiltinTypes.U32, new Dictionary<string, TypeSymbol>(), new Dictionary<string, AggregateMemberSymbol>());
+        BitfieldTypeSymbol bitfieldType = new("Flags", BuiltinTypes.U32, new Dictionary<string, BladeType>(), new Dictionary<string, AggregateMemberSymbol>());
 
         Assert.Multiple(() =>
         {
@@ -237,7 +237,7 @@ public sealed class RuntimeTypeAndValueTests
     [Test]
     public void TypeEquality_KeepsNominalTypesIdentityBased()
     {
-        Dictionary<string, TypeSymbol> fields = new(StringComparer.Ordinal)
+        Dictionary<string, BladeType> fields = new(StringComparer.Ordinal)
         {
             ["value"] = BuiltinTypes.U16,
         };
@@ -271,7 +271,7 @@ public sealed class RuntimeTypeAndValueTests
         FunctionTypeSymbol functionRight = new(sharedFunction);
         FunctionTypeSymbol otherFunction = new(new FunctionSymbol("demo", FunctionKind.Default));
 
-        ImportedModule sharedModule = CreateImportedModule("shared");
+        BoundModule sharedModule = CreateImportedModule("shared");
         ModuleSymbol sharedModuleSymbol = new("math", sharedModule);
         ModuleTypeSymbol moduleLeft = new(sharedModuleSymbol);
         ModuleTypeSymbol moduleRight = new(sharedModuleSymbol);
@@ -297,7 +297,7 @@ public sealed class RuntimeTypeAndValueTests
         BladeValue aggregateLeft = new RuntimeBladeValue(
             new StructTypeSymbol(
                 "Pair",
-                new Dictionary<string, TypeSymbol>(StringComparer.Ordinal)
+                new Dictionary<string, BladeType>(StringComparer.Ordinal)
                 {
                     ["lo"] = BuiltinTypes.U8,
                     ["hi"] = BuiltinTypes.U8,
@@ -378,25 +378,19 @@ public sealed class RuntimeTypeAndValueTests
         });
     }
 
-    private static ImportedModule CreateImportedModule(string alias)
+    private static BoundModule CreateImportedModule(string alias)
     {
         CompilationUnitSyntax syntax = new([], new Token(TokenKind.EndOfFile, Span, string.Empty));
-        BoundProgram program = new(
-            [],
-            [],
-            [],
-            new Dictionary<string, TypeSymbol>(StringComparer.Ordinal),
-            new Dictionary<string, FunctionSymbol>(StringComparer.Ordinal),
-            new Dictionary<string, ImportedModule>(StringComparer.Ordinal));
-        return new ImportedModule(
-            alias,
+        return new BoundModule(
             $"/tmp/{alias}.blade",
             syntax,
-            program,
-            new Dictionary<string, FunctionSymbol>(StringComparer.Ordinal),
+            [],
+            [],
+            [],
             new Dictionary<string, TypeSymbol>(StringComparer.Ordinal),
+            new Dictionary<string, FunctionSymbol>(StringComparer.Ordinal),
             new Dictionary<string, VariableSymbol>(StringComparer.Ordinal),
-            new Dictionary<string, ImportedModule>(StringComparer.Ordinal));
+            new Dictionary<string, BoundModule>(StringComparer.Ordinal));
     }
 
     private static RuntimeTypeSymbol GetBuiltinRuntimeType(BuiltinTypeCase typeCase)

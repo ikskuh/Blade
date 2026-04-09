@@ -52,7 +52,7 @@ internal static class Program
         {
             TokenCount = compilation.TokenCount,
             MemberCount = compilation.Syntax.Members.Count,
-            BoundFunctionCount = compilation.BoundProgram.Functions.Count,
+            BoundFunctionCount = compilation.BoundModule.Functions.Count,
             MirFunctionCount = compilation.IrBuildResult?.MirModule.Functions.Count ?? 0,
             TimeMs = sw.Elapsed.TotalMilliseconds,
         };

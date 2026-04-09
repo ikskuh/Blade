@@ -27,7 +27,7 @@ public sealed class MirModule(
 public sealed class MirFunction(
     FunctionSymbol symbol,
     bool isEntryPoint,
-    IReadOnlyList<TypeSymbol> returnTypes,
+    IReadOnlyList<BladeType> returnTypes,
     IReadOnlyList<MirBlock> blocks,
     IReadOnlyList<ReturnSlot>? returnSlots = null,
     IReadOnlyDictionary<MirValueId, MirFlag>? flagValues = null)
@@ -37,7 +37,7 @@ public sealed class MirFunction(
     public bool IsEntryPoint { get; } = isEntryPoint;
     public FunctionKind Kind => Symbol.Kind;
     public FunctionInliningPolicy InliningPolicy => Symbol.InliningPolicy;
-    public IReadOnlyList<TypeSymbol> ReturnTypes { get; } = returnTypes;
+    public IReadOnlyList<BladeType> ReturnTypes { get; } = returnTypes;
     public IReadOnlyList<ReturnSlot> ReturnSlots { get; } = returnSlots ?? [];
     public IReadOnlyDictionary<MirValueId, MirFlag> FlagValues { get; } = flagValues ?? new Dictionary<MirValueId, MirFlag>();
     public IReadOnlyList<MirBlock> Blocks { get; } = blocks;
@@ -55,16 +55,16 @@ public sealed class MirBlock(
     public MirTerminator Terminator { get; } = terminator;
 }
 
-public sealed class MirBlockParameter(MirValueId value, string name, TypeSymbol type)
+public sealed class MirBlockParameter(MirValueId value, string name, BladeType type)
 {
     public MirValueId Value { get; } = value;
     public string Name { get; } = name;
-    public TypeSymbol Type { get; } = type;
+    public BladeType Type { get; } = type;
 }
 
 public abstract class MirInstruction
 {
-    protected MirInstruction(MirValueId? result, TypeSymbol? resultType, TextSpan span, bool hasSideEffects)
+    protected MirInstruction(MirValueId? result, BladeType? resultType, TextSpan span, bool hasSideEffects)
     {
         Result = result;
         ResultType = resultType;
@@ -73,7 +73,7 @@ public abstract class MirInstruction
     }
 
     public MirValueId? Result { get; }
-    public TypeSymbol? ResultType { get; }
+    public BladeType? ResultType { get; }
     public TextSpan Span { get; }
     public bool HasSideEffects { get; }
 
@@ -81,7 +81,7 @@ public abstract class MirInstruction
     public abstract MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping);
 }
 
-public sealed class MirConstantInstruction(MirValueId result, TypeSymbol type, BladeValue? value, TextSpan span)
+public sealed class MirConstantInstruction(MirValueId result, BladeType type, BladeValue? value, TextSpan span)
     : MirInstruction(result, type, span, hasSideEffects: false)
 {
     public BladeValue? Value { get; } = value;
@@ -91,7 +91,7 @@ public sealed class MirConstantInstruction(MirValueId result, TypeSymbol type, B
     public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping) => this;
 }
 
-public sealed class MirLoadPlaceInstruction(MirValueId result, TypeSymbol type, StoragePlace place, TextSpan span)
+public sealed class MirLoadPlaceInstruction(MirValueId result, BladeType type, StoragePlace place, TextSpan span)
     : MirInstruction(result, type, span, hasSideEffects: false)
 {
     public StoragePlace Place { get; } = place;
@@ -103,7 +103,7 @@ public sealed class MirLoadPlaceInstruction(MirValueId result, TypeSymbol type, 
 
 public sealed class MirCopyInstruction : MirInstruction
 {
-    public MirCopyInstruction(MirValueId result, TypeSymbol type, MirValueId source, TextSpan span)
+    public MirCopyInstruction(MirValueId result, BladeType type, MirValueId source, TextSpan span)
         : base(result, type, span, hasSideEffects: false)
     {
         Source = source;
@@ -122,7 +122,7 @@ public sealed class MirCopyInstruction : MirInstruction
 
 public sealed class MirUnaryInstruction : MirInstruction
 {
-    public MirUnaryInstruction(MirValueId result, TypeSymbol type, BoundUnaryOperatorKind op, MirValueId operand, TextSpan span)
+    public MirUnaryInstruction(MirValueId result, BladeType type, BoundUnaryOperatorKind op, MirValueId operand, TextSpan span)
         : base(result, type, span, hasSideEffects: false)
     {
         Operator = op;
@@ -145,7 +145,7 @@ public sealed class MirBinaryInstruction : MirInstruction
 {
     public MirBinaryInstruction(
         MirValueId result,
-        TypeSymbol type,
+        BladeType type,
         BoundBinaryOperatorKind op,
         MirValueId left,
         MirValueId right,
@@ -177,7 +177,7 @@ public sealed class MirPointerOffsetInstruction : MirInstruction
 {
     public MirPointerOffsetInstruction(
         MirValueId result,
-        TypeSymbol type,
+        BladeType type,
         BoundBinaryOperatorKind operatorKind,
         MirValueId baseAddress,
         MirValueId delta,
@@ -212,7 +212,7 @@ public sealed class MirPointerDifferenceInstruction : MirInstruction
 {
     public MirPointerDifferenceInstruction(
         MirValueId result,
-        TypeSymbol type,
+        BladeType type,
         MirValueId left,
         MirValueId right,
         int stride,
@@ -242,7 +242,7 @@ public sealed class MirPointerDifferenceInstruction : MirInstruction
 
 public sealed class MirConvertInstruction : MirInstruction
 {
-    public MirConvertInstruction(MirValueId result, TypeSymbol type, MirValueId operand, TextSpan span)
+    public MirConvertInstruction(MirValueId result, BladeType type, MirValueId operand, TextSpan span)
         : base(result, type, span, hasSideEffects: false)
     {
         Operand = operand;
@@ -313,7 +313,7 @@ public sealed class MirStructLiteralInstruction : MirInstruction
 
 public sealed class MirLoadMemberInstruction : MirInstruction
 {
-    public MirLoadMemberInstruction(MirValueId result, TypeSymbol type, MirValueId receiver, AggregateMemberSymbol member, TextSpan span)
+    public MirLoadMemberInstruction(MirValueId result, BladeType type, MirValueId receiver, AggregateMemberSymbol member, TextSpan span)
         : base(result, type, span, hasSideEffects: false)
     {
         Receiver = receiver;
@@ -338,8 +338,8 @@ public sealed class MirLoadIndexInstruction : MirInstruction
 {
     public MirLoadIndexInstruction(
         MirValueId result,
-        TypeSymbol type,
-        TypeSymbol indexedType,
+        BladeType type,
+        BladeType indexedType,
         MirValueId indexed,
         MirValueId index,
         VariableStorageClass storageClass,
@@ -353,7 +353,7 @@ public sealed class MirLoadIndexInstruction : MirInstruction
         StorageClass = storageClass;
     }
 
-    public TypeSymbol IndexedType { get; }
+    public BladeType IndexedType { get; }
     public MirValueId Indexed { get; }
     public MirValueId Index { get; }
     public VariableStorageClass StorageClass { get; }
@@ -374,8 +374,8 @@ public sealed class MirLoadDerefInstruction : MirInstruction
 {
     public MirLoadDerefInstruction(
         MirValueId result,
-        TypeSymbol type,
-        TypeSymbol pointerType,
+        BladeType type,
+        BladeType pointerType,
         MirValueId address,
         VariableStorageClass storageClass,
         bool hasSideEffects,
@@ -387,7 +387,7 @@ public sealed class MirLoadDerefInstruction : MirInstruction
         StorageClass = storageClass;
     }
 
-    public TypeSymbol PointerType { get; }
+    public BladeType PointerType { get; }
     public MirValueId Address { get; }
     public VariableStorageClass StorageClass { get; }
 
@@ -404,7 +404,7 @@ public sealed class MirLoadDerefInstruction : MirInstruction
 
 public sealed class MirBitfieldExtractInstruction : MirInstruction
 {
-    public MirBitfieldExtractInstruction(MirValueId result, TypeSymbol type, MirValueId receiver, AggregateMemberSymbol member, TextSpan span)
+    public MirBitfieldExtractInstruction(MirValueId result, BladeType type, MirValueId receiver, AggregateMemberSymbol member, TextSpan span)
         : base(result, type, span, hasSideEffects: false)
     {
         Receiver = receiver;
@@ -429,7 +429,7 @@ public sealed class MirBitfieldInsertInstruction : MirInstruction
 {
     public MirBitfieldInsertInstruction(
         MirValueId result,
-        TypeSymbol aggregateType,
+        BladeType aggregateType,
         MirValueId receiver,
         MirValueId value,
         AggregateMemberSymbol member,
@@ -461,7 +461,7 @@ public sealed class MirInsertMemberInstruction : MirInstruction
 {
     public MirInsertMemberInstruction(
         MirValueId result,
-        TypeSymbol aggregateType,
+        BladeType aggregateType,
         MirValueId receiver,
         MirValueId value,
         AggregateMemberSymbol member,
@@ -491,16 +491,16 @@ public sealed class MirInsertMemberInstruction : MirInstruction
 
 public sealed class MirCallInstruction(
     MirValueId? result,
-    TypeSymbol? resultType,
+    BladeType? resultType,
     FunctionSymbol function,
     IReadOnlyList<MirValueId> arguments,
     TextSpan span,
-    IReadOnlyList<(MirValueId Value, TypeSymbol Type)>? extraResults = null)
+    IReadOnlyList<(MirValueId Value, BladeType Type)>? extraResults = null)
     : MirInstruction(result, resultType, span, hasSideEffects: true)
 {
     public FunctionSymbol Function { get; } = Requires.NotNull(function);
     public IReadOnlyList<MirValueId> Arguments { get; } = arguments;
-    public IReadOnlyList<(MirValueId Value, TypeSymbol Type)> ExtraResults { get; } = extraResults ?? [];
+    public IReadOnlyList<(MirValueId Value, BladeType Type)> ExtraResults { get; } = extraResults ?? [];
 
     public override IReadOnlyList<MirValueId> Uses => Arguments;
 
@@ -515,10 +515,10 @@ public sealed class MirCallInstruction(
             changed |= mapped != arg;
         }
 
-        List<(MirValueId, TypeSymbol)>? rewrittenExtra = null;
+        List<(MirValueId, BladeType)>? rewrittenExtra = null;
         for (int i = 0; i < ExtraResults.Count; i++)
         {
-            (MirValueId extraVal, TypeSymbol extraType) = ExtraResults[i];
+            (MirValueId extraVal, BladeType extraType) = ExtraResults[i];
             if (mapping.TryGetValue(extraVal, out MirValueId mappedExtra) && mappedExtra != extraVal)
             {
                 if (rewrittenExtra is null)
@@ -544,7 +544,7 @@ public sealed class MirCallInstruction(
 
 public sealed class MirIntrinsicCallInstruction(
     MirValueId? result,
-    TypeSymbol? resultType,
+    BladeType? resultType,
     P2Mnemonic mnemonic,
     IReadOnlyList<MirValueId> arguments,
     TextSpan span)
@@ -571,8 +571,8 @@ public sealed class MirIntrinsicCallInstruction(
 }
 
 public sealed class MirStoreIndexInstruction(
-    TypeSymbol? elementType,
-    TypeSymbol indexedType,
+    BladeType? elementType,
+    BladeType indexedType,
     MirValueId indexed,
     MirValueId index,
     MirValueId value,
@@ -580,7 +580,7 @@ public sealed class MirStoreIndexInstruction(
     TextSpan span)
     : MirInstruction(result: null, resultType: elementType, span, hasSideEffects: true)
 {
-    public TypeSymbol IndexedType { get; } = Requires.NotNull(indexedType);
+    public BladeType IndexedType { get; } = Requires.NotNull(indexedType);
     public MirValueId Indexed { get; } = indexed;
     public MirValueId Index { get; } = index;
     public MirValueId Value { get; } = value;
@@ -600,15 +600,15 @@ public sealed class MirStoreIndexInstruction(
 }
 
 public sealed class MirStoreDerefInstruction(
-    TypeSymbol? elementType,
-    TypeSymbol pointerType,
+    BladeType? elementType,
+    BladeType pointerType,
     MirValueId address,
     MirValueId value,
     VariableStorageClass storageClass,
     TextSpan span)
     : MirInstruction(result: null, resultType: elementType, span, hasSideEffects: true)
 {
-    public TypeSymbol PointerType { get; } = Requires.NotNull(pointerType);
+    public BladeType PointerType { get; } = Requires.NotNull(pointerType);
     public MirValueId Address { get; } = address;
     public MirValueId Value { get; } = value;
     public VariableStorageClass StorageClass { get; } = storageClass;
@@ -682,7 +682,7 @@ public sealed class MirInlineAsmInstruction : MirInstruction
         IReadOnlyList<MirInlineAsmBinding> bindings,
         TextSpan span,
         MirValueId? flagResult = null,
-        TypeSymbol? flagResultType = null)
+        BladeType? flagResultType = null)
         : base(result: flagResult, resultType: flagResultType, span, hasSideEffects: true)
     {
         Volatility = volatility;

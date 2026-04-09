@@ -28,14 +28,14 @@ public sealed class CompilationResult
     public CompilationResult(
         SourceText source,
         CompilationUnitSyntax syntax,
-        BoundProgram boundProgram,
+        BoundModule boundModule,
         IrBuildResult? irBuildResult,
         IReadOnlyList<Diagnostic> diagnostics,
         int tokenCount)
     {
         Source = source;
         Syntax = syntax;
-        BoundProgram = boundProgram;
+        BoundModule = boundModule;
         IrBuildResult = irBuildResult;
         Diagnostics = diagnostics;
         TokenCount = tokenCount;
@@ -43,7 +43,7 @@ public sealed class CompilationResult
 
     public SourceText Source { get; }
     public CompilationUnitSyntax Syntax { get; }
-    public BoundProgram BoundProgram { get; }
+    public BoundModule BoundModule { get; }
     public IrBuildResult? IrBuildResult { get; }
     public IReadOnlyList<Diagnostic> Diagnostics { get; }
     public int TokenCount { get; }
@@ -76,9 +76,9 @@ public static class CompilerDriver
         LoadedCompilation loadedCompilation = CompilationModuleLoader.Load(source, diagnostics, effectiveOptions.NamedModuleRoots);
         CompilationUnitSyntax unit = loadedCompilation.RootModule.Syntax;
 
-        BoundProgram boundProgram = CreateEmptyBoundProgram();
+        BoundModule boundModule = CreateEmptyBoundModule();
         if (!diagnostics.HasErrors)
-            boundProgram = Binder.Bind(loadedCompilation, diagnostics, effectiveOptions.ComptimeFuel);
+            boundModule = Binder.Bind(loadedCompilation, diagnostics, effectiveOptions.ComptimeFuel);
 
         IrBuildResult? irBuildResult = null;
         if (!diagnostics.HasErrors && effectiveOptions.EmitIr)
@@ -92,11 +92,11 @@ public static class CompilerDriver
                 EnabledAsmirOptimizations = SortOptimizations(effectiveOptions.EnabledAsmirOptimizations),
                 RuntimeTemplate = effectiveOptions.RuntimeTemplate,
             };
-            irBuildResult = IrPipeline.Build(boundProgram, pipelineOptions, diagnostics);
+            irBuildResult = IrPipeline.Build(boundModule, pipelineOptions, diagnostics);
         }
 
         List<Diagnostic> diagnosticList = diagnostics.ToList();
-        return new CompilationResult(source, unit, boundProgram, irBuildResult, diagnosticList, loadedCompilation.RootModule.TokenCount);
+        return new CompilationResult(source, unit, boundModule, irBuildResult, diagnosticList, loadedCompilation.RootModule.TokenCount);
     }
 
     private static IReadOnlyList<T> SortOptimizations<T>(IReadOnlyList<T> optimizations) where T : Optimization
@@ -114,18 +114,23 @@ public static class CompilerDriver
     {
         Token eof = new(TokenKind.EndOfFile, new TextSpan(0, 0), string.Empty);
         CompilationUnitSyntax syntax = new([], eof);
-        BoundProgram boundProgram = CreateEmptyBoundProgram();
-        return new CompilationResult(source, syntax, boundProgram, null, diagnostics.ToList(), 0);
+        BoundModule boundModule = CreateEmptyBoundModule();
+        return new CompilationResult(source, syntax, boundModule, null, diagnostics.ToList(), 0);
     }
 
-    private static BoundProgram CreateEmptyBoundProgram()
+    private static BoundModule CreateEmptyBoundModule()
     {
-        return new BoundProgram(
+        Token eof = new(TokenKind.EndOfFile, new TextSpan(0, 0), string.Empty);
+        CompilationUnitSyntax syntax = new([], eof);
+        return new BoundModule(
+            "<empty>",
+            syntax,
             [],
             [],
             [],
             new Dictionary<string, TypeSymbol>(),
             new Dictionary<string, FunctionSymbol>(),
-            new Dictionary<string, ImportedModule>());
+            new Dictionary<string, VariableSymbol>(),
+            new Dictionary<string, BoundModule>());
     }
 }

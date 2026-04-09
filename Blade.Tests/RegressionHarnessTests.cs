@@ -913,7 +913,7 @@ public sealed class RegressionHarnessTests
         {
             "bound": {
                 "covered": [],
-                "uncovered": ["BoundProgram"]
+                "uncovered": ["BoundModule"]
             },
             "mir": {
                 "covered": [],
@@ -938,8 +938,8 @@ public sealed class RegressionHarnessTests
 
         Assert.That(result.Succeeded, Is.True);
         Assert.That(result.IrCoverageReport, Is.Not.Null);
-        Assert.That(ReadGuardArray(temp, "bound", "covered"), Does.Contain("BoundProgram"));
-        Assert.That(ReadGuardArray(temp, "bound", "uncovered"), Does.Not.Contain("BoundProgram"));
+        Assert.That(ReadGuardArray(temp, "bound", "covered"), Does.Contain("BoundModule"));
+        Assert.That(ReadGuardArray(temp, "bound", "uncovered"), Does.Not.Contain("BoundModule"));
     }
 
     [Test]

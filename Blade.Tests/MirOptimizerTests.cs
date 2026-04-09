@@ -11,7 +11,7 @@ namespace Blade.Tests;
 [TestFixture]
 public class MirOptimizerTests
 {
-    private static BladeValue Value(TypeSymbol type, object value)
+    private static BladeValue Value(BladeType type, object value)
     {
         if (type is ArrayTypeSymbol arrayType
             && arrayType.ElementType == BuiltinTypes.U8
@@ -29,7 +29,7 @@ public class MirOptimizerTests
         };
     }
 
-    private static object CanonicalizeValue(TypeSymbol type, object value)
+    private static object CanonicalizeValue(BladeType type, object value)
     {
         if (type is IntegerLiteralTypeSymbol or IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol)
         {
@@ -49,7 +49,7 @@ public class MirOptimizerTests
         return value;
     }
 
-    private static MirConstantInstruction Constant(MirValueId result, TypeSymbol type, object value, TextSpan span) => new(result, type, Value(type, value), span);
+    private static MirConstantInstruction Constant(MirValueId result, BladeType type, object value, TextSpan span) => new(result, type, Value(type, value), span);
 
     private static StructTypeSymbol CreateStructType(
         string name,
@@ -57,7 +57,7 @@ public class MirOptimizerTests
         int alignmentBytes,
         params AggregateMemberSymbol[] members)
     {
-        Dictionary<string, TypeSymbol> fields = new(StringComparer.Ordinal);
+        Dictionary<string, BladeType> fields = new(StringComparer.Ordinal);
         Dictionary<string, AggregateMemberSymbol> memberMap = new(StringComparer.Ordinal);
         foreach (AggregateMemberSymbol member in members)
         {
@@ -188,7 +188,7 @@ public class MirOptimizerTests
         BitfieldTypeSymbol flagsType = new(
             "Flags",
             BuiltinTypes.U32,
-            new Dictionary<string, TypeSymbol>(StringComparer.Ordinal)
+            new Dictionary<string, BladeType>(StringComparer.Ordinal)
             {
                 ["high"] = BuiltinTypes.Nib,
             },

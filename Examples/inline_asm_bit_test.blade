@@ -6,7 +6,7 @@
 
 reg var flags: u32 = 0;
 reg var pin_state: u32 = 0;
-reg var result: u32 = 0;
+reg var bit_result: u32 = 0;
 
 fn test_and_set_bit(val: u32, bit_num: u32) -> u32 {
     var out: u32 = 0;

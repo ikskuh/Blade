@@ -7,13 +7,13 @@ namespace Blade.Semantics.Bound;
 
 public abstract class BoundExpression : BoundNode
 {
-    protected BoundExpression(BoundNodeKind kind, TextSpan span, TypeSymbol type)
+    protected BoundExpression(BoundNodeKind kind, TextSpan span, BladeType type)
         : base(kind, span)
     {
         Type = type;
     }
 
-    public TypeSymbol Type { get; }
+    public BladeType Type { get; }
 }
 
 public sealed class BoundLiteralExpression : BoundExpression
@@ -29,7 +29,7 @@ public sealed class BoundLiteralExpression : BoundExpression
 
 public sealed class BoundSymbolExpression : BoundExpression
 {
-    public BoundSymbolExpression(Symbol symbol, TextSpan span, TypeSymbol type)
+    public BoundSymbolExpression(Symbol symbol, TextSpan span, BladeType type)
         : base(BoundNodeKind.SymbolExpression, span, type)
     {
         Symbol = symbol;
@@ -74,7 +74,7 @@ public sealed class BoundUnaryOperator
 
 public sealed class BoundUnaryExpression : BoundExpression
 {
-    public BoundUnaryExpression(BoundUnaryOperator op, BoundExpression operand, TextSpan span, TypeSymbol type)
+    public BoundUnaryExpression(BoundUnaryOperator op, BoundExpression operand, TextSpan span, BladeType type)
         : base(BoundNodeKind.UnaryExpression, span, type)
     {
         Operator = op;
@@ -157,7 +157,7 @@ public sealed class BoundBinaryOperator
 
 public sealed class BoundBinaryExpression : BoundExpression
 {
-    public BoundBinaryExpression(BoundExpression left, BoundBinaryOperator op, BoundExpression right, TextSpan span, TypeSymbol type)
+    public BoundBinaryExpression(BoundExpression left, BoundBinaryOperator op, BoundExpression right, TextSpan span, BladeType type)
         : base(BoundNodeKind.BinaryExpression, span, type)
     {
         Left = left;
@@ -172,7 +172,7 @@ public sealed class BoundBinaryExpression : BoundExpression
 
 public sealed class BoundCallExpression : BoundExpression
 {
-    public BoundCallExpression(FunctionSymbol function, IReadOnlyList<BoundExpression> arguments, TextSpan span, TypeSymbol type)
+    public BoundCallExpression(FunctionSymbol function, IReadOnlyList<BoundExpression> arguments, TextSpan span, BladeType type)
         : base(BoundNodeKind.CallExpression, span, type)
     {
         Function = function;
@@ -186,23 +186,23 @@ public sealed class BoundCallExpression : BoundExpression
 
 public sealed class BoundModuleCallExpression : BoundExpression
 {
-    public BoundModuleCallExpression(ImportedModule module, TextSpan span)
+    public BoundModuleCallExpression(BoundModule module, TextSpan span)
         : base(BoundNodeKind.ModuleCallExpression, span, BuiltinTypes.Void)
     {
         Module = Requires.NotNull(module);
     }
 
-    public ImportedModule Module { get; }
+    public BoundModule Module { get; }
 }
 
 public sealed class BoundIntrinsicCallExpression : BoundExpression
 {
-    public BoundIntrinsicCallExpression(string name, IReadOnlyList<BoundExpression> arguments, TextSpan span, TypeSymbol type)
+    public BoundIntrinsicCallExpression(string name, IReadOnlyList<BoundExpression> arguments, TextSpan span, BladeType type)
         : this(ParseMnemonic(name), arguments, span, type)
     {
     }
 
-    public BoundIntrinsicCallExpression(P2Mnemonic mnemonic, IReadOnlyList<BoundExpression> arguments, TextSpan span, TypeSymbol type)
+    public BoundIntrinsicCallExpression(P2Mnemonic mnemonic, IReadOnlyList<BoundExpression> arguments, TextSpan span, BladeType type)
         : base(BoundNodeKind.IntrinsicCallExpression, span, type)
     {
         Mnemonic = mnemonic;
@@ -272,7 +272,7 @@ public sealed class BoundMemberAccessExpression : BoundExpression
 
 public sealed class BoundIndexExpression : BoundExpression
 {
-    public BoundIndexExpression(BoundExpression expression, BoundExpression index, TextSpan span, TypeSymbol type)
+    public BoundIndexExpression(BoundExpression expression, BoundExpression index, TextSpan span, BladeType type)
         : base(BoundNodeKind.IndexExpression, span, type)
     {
         Expression = expression;
@@ -285,7 +285,7 @@ public sealed class BoundIndexExpression : BoundExpression
 
 public sealed class BoundPointerDerefExpression : BoundExpression
 {
-    public BoundPointerDerefExpression(BoundExpression expression, TextSpan span, TypeSymbol type)
+    public BoundPointerDerefExpression(BoundExpression expression, TextSpan span, BladeType type)
         : base(BoundNodeKind.PointerDerefExpression, span, type)
     {
         Expression = expression;
@@ -296,7 +296,7 @@ public sealed class BoundPointerDerefExpression : BoundExpression
 
 public sealed class BoundIfExpression : BoundExpression
 {
-    public BoundIfExpression(BoundExpression condition, BoundExpression thenExpression, BoundExpression elseExpression, TextSpan span, TypeSymbol type)
+    public BoundIfExpression(BoundExpression condition, BoundExpression thenExpression, BoundExpression elseExpression, TextSpan span, BladeType type)
         : base(BoundNodeKind.IfExpression, span, type)
     {
         Condition = condition;
@@ -338,7 +338,7 @@ public sealed class BoundStructFieldInitializer
 
 public sealed class BoundStructLiteralExpression : BoundExpression
 {
-    public BoundStructLiteralExpression(IReadOnlyList<BoundStructFieldInitializer> fields, TextSpan span, TypeSymbol type)
+    public BoundStructLiteralExpression(IReadOnlyList<BoundStructFieldInitializer> fields, TextSpan span, BladeType type)
         : base(BoundNodeKind.StructLiteralExpression, span, type)
     {
         Fields = fields;
@@ -349,7 +349,7 @@ public sealed class BoundStructLiteralExpression : BoundExpression
 
 public sealed class BoundConversionExpression : BoundExpression
 {
-    public BoundConversionExpression(BoundExpression expression, TextSpan span, TypeSymbol targetType)
+    public BoundConversionExpression(BoundExpression expression, TextSpan span, BladeType targetType)
         : base(BoundNodeKind.ConversionExpression, span, targetType)
     {
         Expression = expression;
@@ -360,7 +360,7 @@ public sealed class BoundConversionExpression : BoundExpression
 
 public sealed class BoundCastExpression : BoundExpression
 {
-    public BoundCastExpression(BoundExpression expression, TextSpan span, TypeSymbol targetType)
+    public BoundCastExpression(BoundExpression expression, TextSpan span, BladeType targetType)
         : base(BoundNodeKind.CastExpression, span, targetType)
     {
         Expression = expression;
@@ -371,7 +371,7 @@ public sealed class BoundCastExpression : BoundExpression
 
 public sealed class BoundBitcastExpression : BoundExpression
 {
-    public BoundBitcastExpression(BoundExpression expression, TextSpan span, TypeSymbol targetType)
+    public BoundBitcastExpression(BoundExpression expression, TextSpan span, BladeType targetType)
         : base(BoundNodeKind.BitcastExpression, span, targetType)
     {
         Expression = expression;
@@ -393,18 +393,18 @@ internal sealed class BoundErrorExpression : BoundExpression
 
 public abstract class BoundAssignmentTarget : BoundNode
 {
-    protected BoundAssignmentTarget(BoundNodeKind kind, TextSpan span, TypeSymbol type)
+    protected BoundAssignmentTarget(BoundNodeKind kind, TextSpan span, BladeType type)
         : base(kind, span)
     {
         Type = type;
     }
 
-    public TypeSymbol Type { get; }
+    public BladeType Type { get; }
 }
 
 public sealed class BoundSymbolAssignmentTarget : BoundAssignmentTarget
 {
-    public BoundSymbolAssignmentTarget(Symbol symbol, TextSpan span, TypeSymbol type)
+    public BoundSymbolAssignmentTarget(Symbol symbol, TextSpan span, BladeType type)
         : base(BoundNodeKind.SymbolAssignmentTarget, span, type)
     {
         Symbol = symbol;
@@ -444,7 +444,7 @@ public sealed class BoundBitfieldAssignmentTarget : BoundAssignmentTarget
 
 public sealed class BoundIndexAssignmentTarget : BoundAssignmentTarget
 {
-    public BoundIndexAssignmentTarget(BoundExpression expression, BoundExpression index, TextSpan span, TypeSymbol type)
+    public BoundIndexAssignmentTarget(BoundExpression expression, BoundExpression index, TextSpan span, BladeType type)
         : base(BoundNodeKind.IndexAssignmentTarget, span, type)
     {
         Expression = expression;
@@ -457,7 +457,7 @@ public sealed class BoundIndexAssignmentTarget : BoundAssignmentTarget
 
 public sealed class BoundPointerDerefAssignmentTarget : BoundAssignmentTarget
 {
-    public BoundPointerDerefAssignmentTarget(BoundExpression expression, TextSpan span, TypeSymbol type)
+    public BoundPointerDerefAssignmentTarget(BoundExpression expression, TextSpan span, BladeType type)
         : base(BoundNodeKind.PointerDerefAssignmentTarget, span, type)
     {
         Expression = expression;
@@ -468,7 +468,7 @@ public sealed class BoundPointerDerefAssignmentTarget : BoundAssignmentTarget
 
 public sealed class BoundDiscardAssignmentTarget : BoundAssignmentTarget
 {
-    public BoundDiscardAssignmentTarget(TextSpan span, TypeSymbol type)
+    public BoundDiscardAssignmentTarget(TextSpan span, BladeType type)
         : base(BoundNodeKind.DiscardAssignmentTarget, span, type)
     {
     }

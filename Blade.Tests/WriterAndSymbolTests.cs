@@ -6,6 +6,8 @@ using Blade.IR.Mir;
 using Blade.Semantics;
 using Blade.Semantics.Bound;
 using Blade.Source;
+using Blade.Syntax;
+using Blade.Syntax.Nodes;
 
 namespace Blade.Tests;
 
@@ -38,7 +40,8 @@ public class WriterAndSymbolTests
     [Test]
     public void DumpContentBuilder_ReturnsFinalAssemblyWhenNoExplicitDumpFlagsAreSet()
     {
-        BoundProgram program = new([], [], [], new Dictionary<string, TypeSymbol>(), new Dictionary<string, FunctionSymbol>(), new Dictionary<string, ImportedModule>());
+        CompilationUnitSyntax syntax = new([], new Token(TokenKind.EndOfFile, Span, string.Empty));
+        BoundModule program = new("/tmp/test.blade", syntax, [], [], [], new Dictionary<string, TypeSymbol>(), new Dictionary<string, FunctionSymbol>(), new Dictionary<string, VariableSymbol>(), new Dictionary<string, BoundModule>());
         MirModule mir = new([], [], []);
         LirModule lir = new([]);
         AsmModule asm = new([], [], []);

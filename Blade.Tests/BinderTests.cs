@@ -12,30 +12,30 @@ namespace Blade.Tests;
 [TestFixture]
 public class BinderTests
 {
-    private static (CompilationUnitSyntax Unit, BoundProgram Program, IReadOnlyList<Diagnostic> Diagnostics) Bind(string text)
+    private static (CompilationUnitSyntax Unit, BoundModule Program, IReadOnlyList<Diagnostic> Diagnostics) Bind(string text)
     {
         CompilationResult result = CompilerDriver.Compile(text, filePath: "<input>", new CompilationOptions
         {
             EmitIr = false,
         });
-        return (result.Syntax, result.BoundProgram, result.Diagnostics);
+        return (result.Syntax, result.BoundModule, result.Diagnostics);
     }
 
 
-    private static (CompilationUnitSyntax Unit, BoundProgram Program, IReadOnlyList<Diagnostic> Diagnostics) Bind(string text, string filePath, IReadOnlyDictionary<string, string>? namedModuleRoots = null)
+    private static (CompilationUnitSyntax Unit, BoundModule Program, IReadOnlyList<Diagnostic> Diagnostics) Bind(string text, string filePath, IReadOnlyDictionary<string, string>? namedModuleRoots = null)
     {
         CompilationResult result = CompilerDriver.Compile(text, filePath, new CompilationOptions
         {
             NamedModuleRoots = namedModuleRoots ?? new Dictionary<string, string>(StringComparer.Ordinal),
             EmitIr = false,
         });
-        return (result.Syntax, result.BoundProgram, result.Diagnostics);
+        return (result.Syntax, result.BoundModule, result.Diagnostics);
     }
 
     [Test]
     public void TypedAssignment_InsertsImplicitConversionForIntegerLiteral()
     {
-        (_, BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("reg var x: u32 = 0; x = 1;");
+        (_, BoundModule program, IReadOnlyList<Diagnostic> diagnostics) = Bind("reg var x: u32 = 0; x = 1;");
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
         string dump = BoundTreeWriter.Write(program);
@@ -45,7 +45,7 @@ public class BinderTests
     [Test]
     public void TypedCallArgument_InsertsImplicitConversionForIntegerLiteral()
     {
-        (_, BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
+        (_, BoundModule program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
             fn add(a: u32, b: u32) -> u32 {
                 return a + b;
             }
@@ -110,7 +110,7 @@ public class BinderTests
     [Test]
     public void LocalConst_RuntimeInitializer_BindsAsConstVariable()
     {
-        (_, BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
+        (_, BoundModule program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
             fn demo(param: u32) void {
                 const x: u32 = param * 2;
             }
@@ -155,7 +155,7 @@ public class BinderTests
     [Test]
     public void AddressOfLocalVariable_BindsRegisterPointerType()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn demo(param: u32) void {
                 var x: u32 = param;
                 var p: *reg u32 = &x;
@@ -177,7 +177,7 @@ public class BinderTests
     [Test]
     public void AddressOfParameter_BindsRegisterPointerType()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn demo(param: u32) void {
                 var p: *reg u32 = &param;
             }
@@ -236,7 +236,7 @@ public class BinderTests
     [Test]
     public void ExplicitIntegerCast_BindsCastExpression()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn demo(x: u32) void {
                 var y: u8 = x as u8;
             }
@@ -254,7 +254,7 @@ public class BinderTests
     [Test]
     public void ExplicitPointerCast_BindsCastExpression()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn demo() void {
                 var value: u32 = 1;
                 var source: *reg u32 = &value;
@@ -285,7 +285,7 @@ public class BinderTests
     [Test]
     public void Bitcast_BindsBitcastExpression()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn demo() void {
                 var raw: u32 = 1;
                 var ptr: *reg u32 = bitcast(*reg u32, raw);
@@ -389,7 +389,7 @@ public class BinderTests
     [Test]
     public void FunctionWithoutReturnSpec_BindsAsVoid()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn empty_call() {
             }
 
@@ -417,7 +417,7 @@ public class BinderTests
     [Test]
     public void NamedArguments_AreReorderedToParameterOrder()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn pair(x: u32, y: u32) -> u32 {
                 return x + y;
             }
@@ -440,7 +440,7 @@ public class BinderTests
     [Test]
     public void MixedNamedArguments_AreReorderedToParameterOrder()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn pair(x: u32, y: u32) -> u32 {
                 return x + y;
             }
@@ -551,7 +551,7 @@ public class BinderTests
     [Test]
     public void AsmVolatile_PropagatesToBoundTree()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn f(x: u32) void {
                 asm volatile {
                     MOV {x}, {x}
@@ -571,11 +571,11 @@ public class BinderTests
         temp.WriteFile("math.blade", "fn inc(x: u32) -> u32 { return x + 1; } var seed: u32 = 1;");
 
         string sourcePath = temp.GetFullPath("main.blade");
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""import "./math.blade" as math; var outv: u32 = math.inc(2); math();""", sourcePath);
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""import "./math.blade" as math; var outv: u32 = math.inc(2); math();""", sourcePath);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
         Assert.That(program.ImportedModules.ContainsKey("math"), Is.True);
-        Assert.That(program.ImportedModules["math"].ExportedFunctions.ContainsKey("inc"), Is.True);
+        Assert.That(program.ImportedModules["math"].FunctionLookup.ContainsKey("inc"), Is.True);
     }
 
     [Test]
@@ -613,14 +613,13 @@ public class BinderTests
         temp.WriteFile("types.blade", "type Alias = u32; fn id(x: u32) -> u32 { return x; }");
         string sourcePath = temp.GetFullPath("main.blade");
 
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""import "./types.blade" as t;""", sourcePath);
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""import "./types.blade" as t;""", sourcePath);
         Assert.That(diagnostics.Count, Is.EqualTo(0));
 
-        ImportedModule module = program.ImportedModules["t"];
-        Assert.That(module.SourceName, Is.EqualTo("./types.blade"));
+        BoundModule module = program.ImportedModules["t"];
         Assert.That(module.ResolvedFilePath, Is.EqualTo(temp.GetFullPath("types.blade")));
         Assert.That(module.Syntax, Is.Not.Null);
-        Assert.That(module.ExportedTypes.ContainsKey("Alias"), Is.True);
+        Assert.That(module.TypeAliases.ContainsKey("Alias"), Is.True);
     }
 
     [Test]
@@ -669,7 +668,7 @@ public class BinderTests
     [Test]
     public void AddressOfArray_BindsRegisterMultiPointerType()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn demo() void {
                 var values: [4]u32 = undefined;
                 var p: [*]reg u32 = &values;
@@ -686,7 +685,7 @@ public class BinderTests
     [Test]
     public void AddressOfArrayParameter_BindsRegisterMultiPointerType()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn demo(values: [4]u32) void {
                 var p: [*]reg u32 = &values;
             }
@@ -763,7 +762,7 @@ public class BinderTests
     [Test]
     public void AssignmentToFunction_ReportsInvalidAssignmentTargetAndWritesTargetError()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn demo() void {
             }
 
@@ -847,7 +846,7 @@ public class BinderTests
     [Test]
     public void EnumLiteral_BindsFromExpectedContext()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             type Mode = enum (u8) {
                 Idle = 0,
                 Busy = 1,
@@ -864,7 +863,7 @@ public class BinderTests
     [Test]
     public void QualifiedEnumMember_BindsWithoutValueScopeEntry()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             type Mode = enum (u8) {
                 Idle = 0,
                 Busy = 1,
@@ -881,7 +880,7 @@ public class BinderTests
     [Test]
     public void BareEnumLiteral_WithoutContextReportsDiagnostic()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             type Mode = enum (u8) {
                 Idle = 0,
             };
@@ -949,7 +948,7 @@ public class BinderTests
     [Test]
     public void OpenEnumExplicitCast_BindsButClosedEnumExplicitCastReportsDiagnostic()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             type OpenState = enum (u8) {
                 Idle = 0,
                 ...,
@@ -971,7 +970,7 @@ public class BinderTests
     [Test]
     public void ClosedEnumBitcast_BindsAsBitcastExpression()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             type ClosedState = enum (u8) {
                 Idle = 0,
             };
@@ -991,7 +990,7 @@ public class BinderTests
     [Test]
     public void EnumMembers_AutoIncrementAndRejectDuplicates()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             type Mode = enum (u8) {
                 Idle,
                 Busy = 5,
@@ -1001,7 +1000,7 @@ public class BinderTests
             """);
 
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0201_SymbolAlreadyDeclared), Is.True);
-        EnumTypeSymbol mode = (EnumTypeSymbol)program.TypeAliases["Mode"];
+        EnumTypeSymbol mode = (EnumTypeSymbol)program.TypeAliases["Mode"].Type;
         Assert.That(mode.Members["Idle"], Is.EqualTo(0));
         Assert.That(mode.Members["Busy"], Is.EqualTo(5));
         Assert.That(mode.Members["Done"], Is.EqualTo(6));
@@ -1045,7 +1044,7 @@ public class BinderTests
     [Test]
     public void EmptyAggregateAndEnumAliases_BindWithoutDiagnostics()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             type EmptyStruct = struct {
             };
 
@@ -1071,13 +1070,13 @@ public class BinderTests
     [Test]
     public void NonPackedStruct_AlignsFieldsAndRoundsSize()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             type P = struct { x: u8, y: u32 };
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
 
-        StructTypeSymbol p = (StructTypeSymbol)program.TypeAliases["P"];
+        StructTypeSymbol p = (StructTypeSymbol)program.TypeAliases["P"].Type;
 
         Assert.Multiple(() =>
         {
@@ -1105,7 +1104,7 @@ public class BinderTests
     [Test]
     public void AnonymousUnionAndBitfieldTypes_BindWithGeneratedNames()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn demo() void {
                 var header: union {
                     empty: void,
@@ -1150,7 +1149,7 @@ public class BinderTests
     [Test]
     public void UnionMemberAccess_BindsLikeStruct()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             type Header = union {
                 lo: u32,
                 hi: u32,
@@ -1251,7 +1250,7 @@ public class BinderTests
     [Test]
     public void BitfieldMemberAssignment_BindsDedicatedTarget()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             type Flags = bitfield (u32) {
                 low: nib,
                 high: nib,
@@ -1269,7 +1268,7 @@ public class BinderTests
     [Test]
     public void ArrayLiteral_BindsFromElementInference()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn demo() void {
                 [1, 2, 3];
             }
@@ -1282,7 +1281,7 @@ public class BinderTests
     [Test]
     public void ArrayLiteral_UsesExpectedElementTypeAndSpread()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             reg var values: [4]u32 = [1, 2...];
             """);
 
@@ -1298,7 +1297,7 @@ public class BinderTests
     [Test]
     public void ArrayLiteral_WithNonConstantContextLengthBindsLengthlessArrayType()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn demo(count: u32) void {
                 var values: [count]u32 = [1, 2, 3];
             }
@@ -1315,7 +1314,7 @@ public class BinderTests
     [Test]
     public void EmptyArrayLiteral_RequiresContextAndBindsWithExpectedType()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             reg var values: [3]u32 = [];
             """);
 
@@ -1328,7 +1327,7 @@ public class BinderTests
     [Test]
     public void ArrayLiteral_BoundTreeWriterMarksSpreadElement()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             reg var values: [4]u32 = [1, 2...];
             """);
 
@@ -1376,7 +1375,7 @@ public class BinderTests
     [Test]
     public void TypedStructLiteral_BindsCorrectly()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             type Point = struct { x: u32, y: u32 };
             var p: Point = Point { .x = 10, .y = 20 };
             """);
@@ -1443,7 +1442,7 @@ public class BinderTests
     [Test]
     public void ForLoop_CountOnly_BindsCorrectly()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("""
             reg var count: u32 = 4;
             reg var sink: u32 = 0;
             for (count) { sink = sink + 1; }
@@ -1504,7 +1503,7 @@ public class BinderTests
     [Test]
     public void CharLiteral_BindsAsIntegerLiteral()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("reg var x: u32 = 'A';");
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("reg var x: u32 = 'A';");
         Assert.That(diagnostics.Count, Is.EqualTo(0));
         string dump = BoundTreeWriter.Write(program);
         Assert.That(dump, Does.Contain("65"));
@@ -1513,7 +1512,7 @@ public class BinderTests
     [Test]
     public void CharLiteral_EscapeSequence_BindsCorrectly()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("reg var x: u32 = '\\n';");
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("reg var x: u32 = '\\n';");
         Assert.That(diagnostics.Count, Is.EqualTo(0));
         string dump = BoundTreeWriter.Write(program);
         Assert.That(dump, Does.Contain("10"));
@@ -1522,7 +1521,7 @@ public class BinderTests
     [Test]
     public void StringLiteral_CoercesToByteArray_WhenLengthMatches()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("reg var a: [4]u8 = \"bye!\";");
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("reg var a: [4]u8 = \"bye!\";");
         Assert.That(diagnostics.Count, Is.EqualTo(0));
         string dump = BoundTreeWriter.Write(program);
         Assert.That(dump, Does.Contain("Literal<[4]u8> [98, 121, 101, 33]"));
@@ -1532,7 +1531,7 @@ public class BinderTests
     public void ZeroTerminatedString_CoercesToByteArray_WithNul()
     {
         // z"hi!" is 3 chars + NUL = 4 bytes, matching [4]u8
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("reg var a: [4]u8 = z\"hi!\";");
+        (_, BoundModule program, DiagnosticBag diagnostics) = Bind("reg var a: [4]u8 = z\"hi!\";");
         Assert.That(diagnostics.Count, Is.EqualTo(0));
         string dump = BoundTreeWriter.Write(program);
         Assert.That(dump, Does.Contain("Literal<[4]u8> [104, 105, 33, 0]"));

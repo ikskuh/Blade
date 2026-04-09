@@ -54,7 +54,7 @@ internal static class IrTestFactory
         string name,
         bool isEntryPoint,
         FunctionKind kind,
-        IReadOnlyList<TypeSymbol> returnTypes,
+        IReadOnlyList<BladeType> returnTypes,
         IReadOnlyList<MirBlock> blocks,
         IReadOnlyList<ReturnSlot>? returnSlots = null,
         IReadOnlyDictionary<MirValueId, MirFlag>? flagValues = null)
@@ -72,7 +72,7 @@ internal static class IrTestFactory
         string name,
         bool isEntryPoint,
         FunctionKind kind,
-        IReadOnlyList<TypeSymbol> returnTypes,
+        IReadOnlyList<BladeType> returnTypes,
         IReadOnlyList<LirBlock> blocks,
         IReadOnlyList<ReturnSlot>? returnSlots = null)
     {
@@ -92,7 +92,7 @@ internal static class IrTestFactory
         CallingConventionTier ccTier,
         IReadOnlyList<AsmNode> nodes,
         FunctionKind kind = FunctionKind.Default,
-        IReadOnlyList<TypeSymbol>? returnTypes = null,
+        IReadOnlyList<BladeType>? returnTypes = null,
         IReadOnlyList<ReturnSlot>? returnSlots = null)
     {
         LirFunction sourceFunction = CreateLirFunction(
@@ -107,7 +107,7 @@ internal static class IrTestFactory
 
     public static VariableSymbol CreateVariableSymbol(
         string name,
-        TypeSymbol? type = null,
+        BladeType? type = null,
         VariableStorageClass storageClass = VariableStorageClass.Automatic,
         VariableScopeKind scopeKind = VariableScopeKind.Local,
         bool isConst = false,
@@ -129,7 +129,7 @@ internal static class IrTestFactory
     public static StoragePlace CreateStoragePlace(
         string name,
         StoragePlaceKind kind = StoragePlaceKind.AllocatableGlobalRegister,
-        TypeSymbol? type = null,
+        BladeType? type = null,
         VariableStorageClass storageClass = VariableStorageClass.Reg,
         VariableScopeKind scopeKind = VariableScopeKind.GlobalStorage,
         bool isConst = false,

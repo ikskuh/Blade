@@ -16,6 +16,6 @@ noinline fn bitwise(a: u32, b: u32) -> u32 {
     return and_result + or_result + xor_result;
 }
 
-reg var a: u32 = 0xFF00;
-reg var b: u32 = 0x0FF0;
-OUTA = bitwise(a, b);
+reg var lhs_bits: u32 = 0xFF00;
+reg var rhs_bits: u32 = 0x0FF0;
+OUTA = bitwise(lhs_bits, rhs_bits);

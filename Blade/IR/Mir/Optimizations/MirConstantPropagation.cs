@@ -117,7 +117,7 @@ public sealed class MirConstantPropagation : IMirOptimization
         return constants.TryGetValue(value, out constant);
     }
 
-    private static bool TryCreateConstantInstruction(MirValueId result, TypeSymbol resultType, BladeValue? rawValue, TextSpan span, out MirInstruction instruction)
+    private static bool TryCreateConstantInstruction(MirValueId result, BladeType resultType, BladeValue? rawValue, TextSpan span, out MirInstruction instruction)
     {
         if (rawValue is null)
         {

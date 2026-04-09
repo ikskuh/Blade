@@ -19,18 +19,18 @@ public sealed class PointedValue(Symbol symbol, int offset)
     }
 }
 
-public abstract partial class BladeValue(TypeSymbol type, object value) : IEquatable<BladeValue>
+public abstract partial class BladeValue(BladeType type, object value) : IEquatable<BladeValue>
 {
     public static ComptimeBladeValue Void { get; } = new((ComptimeTypeSymbol)BuiltinTypes.Void, VoidValue.Instance);
     public static ComptimeBladeValue Undefined { get; } = new((ComptimeTypeSymbol)BuiltinTypes.UndefinedLiteral, UndefinedValue.Instance);
 
-    public TypeSymbol Type { get; } = Requires.NotNull(type);
+    public BladeType Type { get; } = Requires.NotNull(type);
     public object Value { get; } = ValidateValue(type, value);
 
     public bool IsVoid => Type == BuiltinTypes.Void;
     public bool IsUndefined => Type == BuiltinTypes.UndefinedLiteral;
 
-    private static object ValidateValue(TypeSymbol type, object value)
+    private static object ValidateValue(BladeType type, object value)
     {
         Requires.NotNull(type);
         Requires.NotNull(value);

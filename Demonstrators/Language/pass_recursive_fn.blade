@@ -1,7 +1,7 @@
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// - MOV PB, g_n
+// - MOV PB, g_input_n
 // - CALLB #f_factorial
 // - PUSHB
 // - POPB
@@ -29,5 +29,5 @@ rec fn factorial(n: u32) -> u32 {
     }
 }
 
-reg var n: u32 = 5;
-OUTA = factorial(n);
+reg var input_n: u32 = 5;
+OUTA = factorial(input_n);

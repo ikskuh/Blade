@@ -62,7 +62,7 @@ public static class LirLowerer
                 {
                     for (int i = 0; i < callInstr.ExtraResults.Count; i++)
                     {
-                        (MirValueId extraValue, TypeSymbol extraType) = callInstr.ExtraResults[i];
+                        (MirValueId extraValue, BladeType extraType) = callInstr.ExtraResults[i];
                         LirVirtualRegister extraDest = GetRegister(extraValue);
                         ReturnPlacement placement = GetExtraResultPlacement(callInstr, i);
                         instructions.Add(new LirOpInstruction(

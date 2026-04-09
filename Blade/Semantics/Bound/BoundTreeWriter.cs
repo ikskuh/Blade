@@ -7,7 +7,7 @@ namespace Blade.Semantics.Bound;
 
 public static class BoundTreeWriter
 {
-    public static string Write(BoundProgram program)
+    public static string Write(BoundModule program)
     {
         Requires.NotNull(program);
 
@@ -16,7 +16,7 @@ public static class BoundTreeWriter
 
         AppendLine(sb, 1, "TypeAliases");
         foreach ((string aliasName, TypeSymbol aliasType) in program.TypeAliases)
-            AppendLine(sb, 2, $"{aliasName}: {aliasType.Name}");
+            AppendLine(sb, 2, $"{aliasName}: {aliasType.Type.Name}");
 
         AppendLine(sb, 1, "Globals");
         foreach (BoundGlobalVariableMember global in program.GlobalVariables)

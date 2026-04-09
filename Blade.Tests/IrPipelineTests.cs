@@ -10,6 +10,8 @@ using Blade.IR.Mir;
 using Blade.Semantics;
 using Blade.Semantics.Bound;
 using Blade.Source;
+using Blade.Syntax;
+using Blade.Syntax.Nodes;
 using DiagnosticBag = System.Collections.Generic.IReadOnlyList<Blade.Diagnostics.Diagnostic>;
 
 namespace Blade.Tests;
@@ -17,19 +19,19 @@ namespace Blade.Tests;
 [TestFixture]
 public class IrPipelineTests
 {
-    private static (BoundProgram Program, IReadOnlyList<Diagnostic> Diagnostics) Bind(string text)
+    private static (BoundModule Program, IReadOnlyList<Diagnostic> Diagnostics) Bind(string text)
     {
         CompilationResult result = CompilerDriver.Compile(text, filePath: "<input>", new CompilationOptions
         {
             EmitIr = false,
         });
-        return (result.BoundProgram, result.Diagnostics);
+        return (result.BoundModule, result.Diagnostics);
     }
 
     [Test]
     public void StageWriters_EmitVersionHeaders()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             inline fn inc(x: u32) -> u32 {
                 return x + 1;
             }
@@ -56,7 +58,7 @@ public class IrPipelineTests
     [Test]
     public void EntryPointExit_ExportsBladeEntryAndJumpsToBladeHalt()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             var flag: u32 = 1;
             """);
 
@@ -72,7 +74,7 @@ public class IrPipelineTests
     [Test]
     public void DumpContentBuilder_CanEmitPreOptimizationStageDumps()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn add_one(x: u32) -> u32 {
                 var copy: u32 = x;
                 return copy + 1;
@@ -119,7 +121,7 @@ public class IrPipelineTests
     [Test]
     public void BitcastToSignedByte_DoesNotEmitNegativeImmediateLiteral()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             reg var reinterpreted_signed: i8 = 0;
             reinterpreted_signed = bitcast(i8, 255 as u8);
             """);
@@ -134,7 +136,7 @@ public class IrPipelineTests
     [Test]
     public void InlineAsm_InlinedVolatileBindingValue_RemainsLiveThroughOptimization()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn consume(x: u32) {
                 asm volatile {
                     MOV INA, {x}
@@ -161,7 +163,7 @@ public class IrPipelineTests
     [Test]
     public void InlineAsm_CopyChainInput_RemainsLiveThroughOptimization()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             reg var input_word: u32 = 13;
             reg var copy_folded: u32 = 0;
 
@@ -190,7 +192,7 @@ public class IrPipelineTests
     [Test]
     public void NamedArguments_BuildThroughIrPipeline()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn pair(x: u32, y: u32) -> u32 {
                 return x + y;
             }
@@ -217,7 +219,7 @@ public class IrPipelineTests
     [Test]
     public void ExplicitIntegerCasts_EmitExtensionInstructions()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             noinline fn demo(x: u32) -> u32 {
                 var lo: u8 = x as u8;
                 var hi: i8 = x as i8;
@@ -244,7 +246,7 @@ public class IrPipelineTests
     [Test]
     public void ExplicitCast_StaticInitializer_IsNormalized()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             reg var narrowed: u8 = 257 as u8;
             """);
 
@@ -262,7 +264,7 @@ public class IrPipelineTests
     [Test]
     public void Bitcast_LowersAsCopy()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             noinline fn demo(raw: u32) -> u32 {
                 var ptr: *reg u32 = bitcast(*reg u32, raw);
                 return bitcast(u32, ptr);
@@ -287,7 +289,7 @@ public class IrPipelineTests
     [Test]
     public void Bitcast_StaticInitializer_ReinterpretsBits()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             reg var signed: i8 = bitcast(i8, 255 as u8);
             """);
 
@@ -305,7 +307,7 @@ public class IrPipelineTests
     [Test]
     public void LogicalOperators_LowerWithShortCircuitControlFlow()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn demo(a: bool, b: bool) -> bool {
                 return (a and b) or a;
             }
@@ -328,7 +330,7 @@ public class IrPipelineTests
     [Test]
     public void NewIntegerOperators_EmitExpectedAssemblyInstructions()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             noinline fn demo(x: u32, y: u32) -> u32 {
                 var plus: u32 = +x;
                 var inv: u32 = ~x;
@@ -364,7 +366,7 @@ public class IrPipelineTests
     [Test]
     public void AddressOfLocal_EmitsSymbolAddressForSyntheticStorage()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             noinline fn demo(param: u32) -> u32 {
                 var x: u32 = param;
                 var p: *reg u32 = &x;
@@ -395,7 +397,7 @@ public class IrPipelineTests
     [Test]
     public void AddressOfParameter_EmitsSyntheticStorage()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             noinline fn demo(param: u32) -> u32 {
                 var p: *reg u32 = &param;
                 var sink: u32 = 0;
@@ -425,7 +427,7 @@ public class IrPipelineTests
     [Test]
     public void VolatilePointerDeref_RemainsInMirAsSideEffect()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             noinline fn demo(p: *reg volatile u32) -> u32 {
                 _ = p.*;
                 return 0;
@@ -448,7 +450,7 @@ public class IrPipelineTests
     [Test]
     public void VolatileMultiPointerIndex_RemainsInMirAsSideEffect()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             noinline fn demo(p: [*]reg volatile u32, i: u32) -> u32 {
                 _ = p[i];
                 return 0;
@@ -471,7 +473,7 @@ public class IrPipelineTests
     [Test]
     public void VolatileRegPointerReadExpressions_EmitIndirectCogRegisterLoads()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             reg var sink: u32 = 0;
             reg var values: [4]u32 = undefined;
 
@@ -502,7 +504,7 @@ public class IrPipelineTests
     [Test]
     public void ArrayLiteral_LowersExplicitElementsToIndexedStores()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             reg var values: [3]u32 = [1, 2, 3];
             """);
 
@@ -523,7 +525,7 @@ public class IrPipelineTests
     [Test]
     public void RegArrayLiteralInitialization_EmitsIndirectCogRegisterStores()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             reg var values: [3]u32 = [1, 2, 3];
             """);
 
@@ -543,7 +545,7 @@ public class IrPipelineTests
     [Test]
     public void ArrayLiteral_SpreadFillsRemainingSlotsInMir()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             reg var values: [4]u32 = [1, 2...];
             """);
 
@@ -564,7 +566,7 @@ public class IrPipelineTests
     [Test]
     public void EmptyArrayLiteral_FillsEachSlotInMir()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             reg var values: [2]u32 = [];
             """);
 
@@ -596,7 +598,7 @@ public class IrPipelineTests
     [Test]
     public void ArrayLiteral_SpreadWithExactContextLengthDoesNotAddExtraStores()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             reg var values: [2]u32 = [1, 2...];
             """);
 
@@ -615,7 +617,7 @@ public class IrPipelineTests
     [Test]
     public void EnumLiteral_GlobalInitializer_LowersToImmediateBackingValue()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             type Mode = enum (u8) {
                 Off = 0,
                 On = 1,
@@ -639,7 +641,7 @@ public class IrPipelineTests
     [Test]
     public void BitfieldAssignment_LowersToInsertMirOpcode()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             type Flags = bitfield (u32) {
                 pad0: nib,
                 high: nib,
@@ -664,7 +666,7 @@ public class IrPipelineTests
     [Test]
     public void BitfieldAlignedReads_SelectSpecializedP2Instructions()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             type Flags = bitfield (u32) {
                 pad0: nib,
                 low: nib,
@@ -699,7 +701,7 @@ public class IrPipelineTests
     [Test]
     public void ModuloCompoundAssignment_UsesUpdatePlaceLowering()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             reg var acc: u32 = 17;
             acc %= 3;
             """);
@@ -719,7 +721,7 @@ public class IrPipelineTests
     [Test]
     public void ExtendedCompoundAssignments_UseReferenceDefinedUpdatePlaceLowering()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             reg var acc: u32 = 17;
             acc *= 3;
             acc /= 2;
@@ -756,7 +758,7 @@ public class IrPipelineTests
     [Test]
     public void PointerCompoundAssignments_CarryStrideMetadataThroughUpdatePlace()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             hub var words: [8]u16 = undefined;
             reg var cursor: [*]hub u16 = undefined;
             cursor = &words;
@@ -783,7 +785,7 @@ public class IrPipelineTests
     [Test]
     public void RangeForLoop_DoesNotMaterializeRangeInstructions()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             reg var sink: u32 = 0;
             for (1..<3) -> i {
                 sink = sink + i;
@@ -810,7 +812,7 @@ public class IrPipelineTests
     [Test]
     public void PointerArithmetic_NonPowerOfTwoStride_UsesMultiplyAndSignedDivision()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             hub var chunks: [4][3]u8 = undefined;
             reg var diff_sink: i32 = 0;
 
@@ -838,7 +840,7 @@ public class IrPipelineTests
     [Test]
     public void PointerDifference_PowerOfTwoStride_UsesArithmeticShift()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             hub var words: [8]u16 = undefined;
             reg var diff_sink: i32 = 0;
 
@@ -948,7 +950,7 @@ public class IrPipelineTests
             }
             """;
 
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind(source);
+        (BoundModule program, DiagnosticBag diagnostics) = Bind(source);
         Assert.That(diagnostics.Count, Is.EqualTo(0));
 
         IrBuildResult first = IrPipeline.Build(program, new IrPipelineOptions
@@ -968,7 +970,7 @@ public class IrPipelineTests
     [Test]
     public void InlineFunction_IsAlwaysInlined()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             inline fn add1(x: u32) -> u32 {
                 return x + 1;
             }
@@ -1002,7 +1004,7 @@ public class IrPipelineTests
             }
             """;
 
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind(source);
+        (BoundModule program, DiagnosticBag diagnostics) = Bind(source);
         Assert.That(diagnostics.Count, Is.EqualTo(0));
 
         IrBuildResult withoutInlining = IrPipeline.Build(program, new IrPipelineOptions
@@ -1035,7 +1037,7 @@ public class IrPipelineTests
             }
             """;
 
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind(source);
+        (BoundModule program, DiagnosticBag diagnostics) = Bind(source);
         Assert.That(diagnostics.Count, Is.EqualTo(0));
 
         IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
@@ -1051,7 +1053,7 @@ public class IrPipelineTests
     [Test]
     public void InlineAsm_TypedMode_SupportsColonTerminatedLabels()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn f(v: u32) -> u32 {
                 var out: u32 = 0;
                 asm {
@@ -1085,7 +1087,7 @@ public class IrPipelineTests
     [Test]
     public void InlineAsm_Volatile_LocalLabelsArePrefixedAndEmitWithoutColon()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn f(v: u32) -> u32 {
                 var out: u32 = 0;
                 asm volatile {
@@ -1118,7 +1120,7 @@ public class IrPipelineTests
     [Test]
     public void InlineAsm_PlaceholdersResolveToAllocatedSymbolsInFinalAssembly()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn test_and_set_bit(val: u32, bit_num: u32) -> u32 {
                 var out: u32 = 0;
                 asm {
@@ -1150,7 +1152,7 @@ public class IrPipelineTests
     [Test]
     public void InlineAsm_TemporaryRegisters_LowerThroughSharedBindingPipeline()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn f() -> u32 {
                 var out: u32 = 0;
                 asm {
@@ -1223,7 +1225,7 @@ public class IrPipelineTests
     [Test]
     public void InlineAsmVolatile_SurvivesMirAndLir()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn f(x: u32) -> u32 {
                 var out: u32 = 0;
                 asm volatile {
@@ -1254,7 +1256,7 @@ public class IrPipelineTests
     [Test]
     public void InlineAsm_NonVolatile_LowersToTypedAsmInstructions()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn f(x: u32) -> u32 {
                 var out: u32 = 0;
                 asm {
@@ -1284,7 +1286,7 @@ public class IrPipelineTests
     [Test]
     public void InlineAsm_GeneralTierReturnValue_StaysLiveThroughAsmOptimization()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn leaf_add(x: u32) -> u32 {
                 return x + 1;
             }
@@ -1326,7 +1328,7 @@ public class IrPipelineTests
     [Test]
     public void InlineAsm_Volatile_TransposesCommentsToPasmStyle()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn f(x: u32) -> u32 {
                 var out: u32 = 0;
                 asm volatile {
@@ -1356,7 +1358,7 @@ public class IrPipelineTests
     [Test]
     public void InlineAsm_NonVolatile_PreservesAndTransposesComments()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn f(x: u32) -> u32 {
                 var out: u32 = 0;
                 asm {
@@ -1386,7 +1388,7 @@ public class IrPipelineTests
     [Test]
     public void InlineAsm_NonVolatile_RejectsUnsupportedOperandShape()
     {
-        (BoundProgram _, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule _, DiagnosticBag diagnostics) = Bind("""
             fn f(x: u32) -> u32 {
                 var out: u32 = 0;
                 asm {
@@ -1405,7 +1407,7 @@ public class IrPipelineTests
     [Test]
     public void InlineAsm_FlagOutput_StaysOpaqueForOptimizationSafety()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn test_bit(val: u32, pos: u32) -> bool@C {
                 asm {
                     TESTB {val}, {pos} WC
@@ -1434,7 +1436,7 @@ public class IrPipelineTests
     [Test]
     public void InlineAsm_CopyAndJumpElision_CollapsesReturnHopChains()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             reg var flags: u32 = 0;
 
             fn test_and_set_bit(val: u32, bit_num: u32) -> u32 {
@@ -1487,7 +1489,7 @@ public class IrPipelineTests
     [Test]
     public void ReservedFixedRegisterAlias_UsesDirectOperandWithoutConAlias_AndKeepsAddressBinding()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             extern reg var OUTA: u32 @(0x1FC);
             OUTA |= 0x10;
             """);
@@ -1511,7 +1513,7 @@ public class IrPipelineTests
     [Test]
     public void NonReservedFixedRegisterAlias_StillEmitsConAlias()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             extern reg var LED_PORT: u32 @(0x1FC);
             LED_PORT |= 0x10;
             """);
@@ -1533,7 +1535,7 @@ public class IrPipelineTests
     [Test]
     public void FoldedFixedRegisterAliases_EmitFlexspinCompatibleConConstants()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             extern reg var A0: u32 @(1);
             extern reg var A1: u32 @((+3) as u8);
             extern reg var A2: u32 @((~0) as u8);
@@ -1559,7 +1561,7 @@ public class IrPipelineTests
     [Test]
     public void ExternalRegisterAliasWithoutAddress_StaysAsBareSymbol()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             extern reg var FOO: u32;
             FOO = 1;
             """);
@@ -1579,7 +1581,7 @@ public class IrPipelineTests
     [Test]
     public void AllocatableGlobalStaticInitializer_EmitsLongData()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             reg var g: u32 = 1000;
             """);
 
@@ -1598,7 +1600,7 @@ public class IrPipelineTests
     [Test]
     public void RegisterAllocator_LeafFunctions_ShareRegisterSlots()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn add_one(x: u32) -> u32 {
                 return x + 1;
             }
@@ -1633,7 +1635,7 @@ public class IrPipelineTests
     [Test]
     public void RegisterAllocator_NoVirtualRegistersInOutput()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             fn double(x: u32) -> u32 {
                 return x + x;
             }
@@ -1662,7 +1664,7 @@ public class IrPipelineTests
     public void RegisterAllocator_UsesSharedSlotLabels()
     {
         // Use a program complex enough that virtual registers survive optimization
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             reg var flags: u32 = 0;
 
             fn test_and_set_bit(val: u32, bit_num: u32) -> u32 {
@@ -1739,7 +1741,7 @@ public class IrPipelineTests
     [Test]
     public void BitfieldAlignedSignedExtracts_EmitGetByteGetWordAndSignExtension()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             type SignedFields = bitfield (u32) {
                 low: nib,
                 high: nib,
@@ -1773,7 +1775,7 @@ public class IrPipelineTests
     [Test]
     public void BitfieldUnalignedExtract_FallsBackToShiftAndMask()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             type UnalignedFields = bitfield (u32) {
                 flag: bool,
                 nibble: nib,
@@ -1802,7 +1804,7 @@ public class IrPipelineTests
     [Test]
     public void BitfieldUnalignedSignedExtract_UsesShiftAndSignExtension()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             type UnalignedFields = bitfield (u32) {
                 flag: bool,
                 bytev: i8,
@@ -1831,7 +1833,7 @@ public class IrPipelineTests
     [Test]
     public void BitfieldWholeWidthAndUnalignedInsert_CoverSpecialAndFallbackPaths()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             type WholeValue = bitfield (u32) {
                 all: u32,
             };
@@ -1867,7 +1869,7 @@ public class IrPipelineTests
     [Test]
     public void BitfieldAlignedWordInsert_UsesSetWord()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             type WordFields = bitfield (u32) {
                 low: u16,
                 high: u16,
@@ -1896,7 +1898,7 @@ public class IrPipelineTests
     [Test]
     public void VolatileMultiPointerIndexRead_RemainsSideEffectfulInMir()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             reg var values: [4]u32 = undefined;
 
             noinline fn demo(many: [*]reg volatile u32) -> u32 {
@@ -1923,7 +1925,7 @@ public class IrPipelineTests
     [Test]
     public void CompoundAssignments_CoverNonVolatileIndexAndVolatileDerefReadPaths()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             reg var base: u32 = 7;
             reg var values: [4]u32 = undefined;
 
@@ -1948,7 +1950,7 @@ public class IrPipelineTests
     [Test]
     public void CompoundAssignments_ExerciseMirAssignmentTargetReadPaths()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             type Pair = struct {
                 value: u32,
             };
@@ -1987,7 +1989,7 @@ public class IrPipelineTests
     [Test]
     public void ComparisonBranches_UseCorrectMirConditionFlags()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             noinline fn compare_flags(a: u32, b: u32) -> u32 {
                 var result: u32 = 0;
                 if (a == b) { result |= 0x01; }
@@ -2016,7 +2018,7 @@ public class IrPipelineTests
     [Test]
     public void NonPackedStructMemberAccess_PreservesAlignedByteOffsetInMir()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             type Pair = struct {
                 pad: u8,
                 value: u32,
@@ -2040,7 +2042,7 @@ public class IrPipelineTests
     [Test]
     public void NestedStructMemberAssignment_LowersRecursiveAggregateWriteback()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             type Inner = struct {
                 value: u32,
             };
@@ -2067,7 +2069,7 @@ public class IrPipelineTests
     [Test]
     public void IndexedStructMemberAssignment_LowersIndexedAggregateWriteback()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             type Pair = struct {
                 value: u32,
             };
@@ -2088,7 +2090,7 @@ public class IrPipelineTests
     [Test]
     public void PointerStructMemberAssignment_LowersPointerAggregateWriteback()
     {
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             type Pair = struct {
                 value: u32,
             };
@@ -2508,7 +2510,7 @@ public class IrPipelineTests
         // When the iterable is not an integer or array, the binder reports a
         // diagnostic but produces a BoundForStatement with IndexVariable = null.
         // The MIR lowerer must handle this gracefully.
-        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (BoundModule program, DiagnosticBag diagnostics) = Bind("""
             var x: bool = true;
             for (x) -> item { }
             """);
@@ -2563,13 +2565,16 @@ public class IrPipelineTests
             isExtern: false,
             fixedAddress: null,
             alignment: null);
-        BoundProgram program = new(
+        BoundModule program = new(
+            "/tmp/test.blade",
+            new CompilationUnitSyntax([], new Token(TokenKind.EndOfFile, new TextSpan(0, 0), string.Empty)),
             [],
             [new BoundGlobalVariableMember(symbol, new BoundLiteralExpression(new RuntimeBladeValue(BuiltinTypes.U32, 1L), new TextSpan(0, 0)), new TextSpan(0, 0))],
             [],
             new Dictionary<string, TypeSymbol>(),
             new Dictionary<string, FunctionSymbol>(),
-            new Dictionary<string, ImportedModule>());
+            new Dictionary<string, VariableSymbol>(),
+            new Dictionary<string, BoundModule>());
 
         MirModule mirModule = MirLowerer.Lower(program);
 
@@ -2608,7 +2613,7 @@ public class IrPipelineTests
         int alignmentBytes,
         params AggregateMemberSymbol[] members)
     {
-        Dictionary<string, TypeSymbol> fields = new(StringComparer.Ordinal);
+        Dictionary<string, BladeType> fields = new(StringComparer.Ordinal);
         Dictionary<string, AggregateMemberSymbol> memberMap = new(StringComparer.Ordinal);
         foreach (AggregateMemberSymbol member in members)
         {

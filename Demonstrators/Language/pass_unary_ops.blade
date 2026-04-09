@@ -15,5 +15,5 @@ noinline fn unary_ops(x: i32) -> i32 {
     return neg + plus + bitnot;
 }
 
-reg var x: i32 = 42;
-OUTA = bitcast(u32, unary_ops(x));
+reg var input_x: i32 = 42;
+OUTA = bitcast(u32, unary_ops(input_x));

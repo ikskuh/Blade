@@ -206,7 +206,7 @@ public abstract partial class BladeValue
         return EvaluationError.None;
     }
 
-    public static EvaluationError TryConvert(BladeValue value, TypeSymbol type, out BladeValue result)
+    public static EvaluationError TryConvert(BladeValue value, BladeType type, out BladeValue result)
     {
         Requires.NotNull(value);
         Requires.NotNull(type);
@@ -268,7 +268,7 @@ public abstract partial class BladeValue
         return Fail(EvaluationError.TypeMismatch, out result);
     }
 
-    public static EvaluationError TryCast(BladeValue value, TypeSymbol type, out BladeValue result)
+    public static EvaluationError TryCast(BladeValue value, BladeType type, out BladeValue result)
     {
         return TryConvert(value, type, out result);
     }
@@ -629,7 +629,7 @@ public abstract partial class BladeValue
         return signedValue;
     }
 
-    private static BladeValue CreateTypedValue(TypeSymbol type, object value)
+    private static BladeValue CreateTypedValue(BladeType type, object value)
     {
         return type switch
         {

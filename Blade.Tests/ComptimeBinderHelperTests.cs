@@ -20,7 +20,7 @@ public sealed class ComptimeBinderHelperTests
 {
     private static readonly TextSpan Span = new(0, 0);
 
-    private static (BoundProgram Program, IReadOnlyList<Diagnostic> Diagnostics) Bind(string text, string? filePath = null, IReadOnlyDictionary<string, string>? namedModuleRoots = null)
+    private static (BoundModule Program, IReadOnlyList<Diagnostic> Diagnostics) Bind(string text, string? filePath = null, IReadOnlyDictionary<string, string>? namedModuleRoots = null)
     {
         string effectivePath = filePath ?? "<input>";
         CompilationResult result = CompilerDriver.Compile(text, effectivePath, new CompilationOptions
@@ -28,7 +28,7 @@ public sealed class ComptimeBinderHelperTests
             NamedModuleRoots = namedModuleRoots ?? new Dictionary<string, string>(StringComparer.Ordinal),
             EmitIr = false,
         });
-        return (result.BoundProgram, result.Diagnostics);
+        return (result.BoundModule, result.Diagnostics);
     }
 
     private static SemanticBinder CreateBinder(DiagnosticBag diagnostics)
@@ -129,7 +129,7 @@ public sealed class ComptimeBinderHelperTests
         return unit.Members.OfType<FunctionDeclarationSyntax>().Single();
     }
 
-    private static FunctionSymbol CreateFunctionSymbol(string name, FunctionKind kind, params TypeSymbol[] returnTypes)
+    private static FunctionSymbol CreateFunctionSymbol(string name, FunctionKind kind, params BladeType[] returnTypes)
     {
         FunctionDeclarationSyntax syntax = ParseFunctionSyntax($"fn {name}() -> u32 {{ return 0; }}");
         FunctionSymbol function = new(name, syntax, kind)
@@ -144,37 +144,39 @@ public sealed class ComptimeBinderHelperTests
         return new CompilationUnitSyntax([], new Token(TokenKind.EndOfFile, Span, string.Empty));
     }
 
-    private static BoundProgram CreateProgram(
+    private static BoundModule CreateProgram(
         IReadOnlyList<BoundFunctionMember>? functions = null,
-        IReadOnlyDictionary<string, ImportedModule>? importedModules = null)
+        IReadOnlyDictionary<string, BoundModule>? importedModules = null)
     {
         IReadOnlyList<BoundFunctionMember> functionMembers = functions ?? [];
         Dictionary<string, FunctionSymbol> functionLookup = functionMembers.ToDictionary(member => member.Symbol.Name, member => member.Symbol, StringComparer.Ordinal);
-        return new BoundProgram(
+        return new BoundModule(
+            "/tmp/test.blade",
+            EmptyCompilationUnit(),
             [],
             [],
             functionMembers,
             new Dictionary<string, TypeSymbol>(StringComparer.Ordinal),
             functionLookup,
-            importedModules ?? new Dictionary<string, ImportedModule>(StringComparer.Ordinal));
+            new Dictionary<string, VariableSymbol>(StringComparer.Ordinal),
+            importedModules ?? new Dictionary<string, BoundModule>(StringComparer.Ordinal));
     }
 
-    private static ImportedModule CreateImportedModule(
+    private static BoundModule CreateImportedModule(
         string alias,
         IReadOnlyList<BoundFunctionMember>? functions = null,
-        IReadOnlyDictionary<string, ImportedModule>? importedModules = null)
+        IReadOnlyDictionary<string, BoundModule>? importedModules = null)
     {
-        BoundProgram program = CreateProgram(functions, importedModules);
-        Dictionary<string, FunctionSymbol> exportedFunctions = program.FunctionLookup.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
-        return new ImportedModule(
-            alias,
+        return new BoundModule(
             $"/tmp/{alias}.blade",
             EmptyCompilationUnit(),
-            program,
-            exportedFunctions,
+            [],
+            [],
+            functions ?? [],
             new Dictionary<string, TypeSymbol>(StringComparer.Ordinal),
+            (functions ?? []).ToDictionary(member => member.Symbol.Name, member => member.Symbol, StringComparer.Ordinal),
             new Dictionary<string, VariableSymbol>(StringComparer.Ordinal),
-            importedModules ?? new Dictionary<string, ImportedModule>(StringComparer.Ordinal));
+            importedModules ?? new Dictionary<string, BoundModule>(StringComparer.Ordinal));
     }
 
     private static object CreateFailure(string kindName, string detail = "detail")
@@ -192,7 +194,7 @@ public sealed class ComptimeBinderHelperTests
         return System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(evaluatorType);
     }
 
-    private static BladeValue CreateValue(TypeSymbol type, object value)
+    private static BladeValue CreateValue(BladeType type, object value)
     {
         if (type is ArrayTypeSymbol arrayType
             && arrayType.ElementType == BuiltinTypes.U8
@@ -210,7 +212,7 @@ public sealed class ComptimeBinderHelperTests
         };
     }
 
-    private static object CanonicalizeValue(TypeSymbol type, object value)
+    private static object CanonicalizeValue(BladeType type, object value)
     {
         if (type is IntegerLiteralTypeSymbol or IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol)
         {
@@ -230,7 +232,7 @@ public sealed class ComptimeBinderHelperTests
         return value;
     }
 
-    private static BoundLiteralExpression Literal(object value, TypeSymbol type) => new(CreateValue(type, value), Span);
+    private static BoundLiteralExpression Literal(object value, BladeType type) => new(CreateValue(type, value), Span);
 
     private static string GetRecordField(object instance, string propertyName)
     {
@@ -252,7 +254,7 @@ public sealed class ComptimeBinderHelperTests
         temp.WriteFile("math.blade", "fn inc(x: u32) -> u32 { return x + 1; }");
 
         string sourcePath = temp.GetFullPath("main.blade");
-        (BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""import "./math.blade" as math; var outv: u32 = math.inc(2);""", sourcePath);
+        (BoundModule program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""import "./math.blade" as math; var outv: u32 = math.inc(2);""", sourcePath);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
 
@@ -264,7 +266,7 @@ public sealed class ComptimeBinderHelperTests
     [Test]
     public void ComptimeBareIfWithoutElse_FoldsBoolLiteralCondition()
     {
-        (BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
+        (BoundModule program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
             comptime fn choose() -> u32 {
                 var value: u32 = 1;
                 if (true) {
@@ -286,7 +288,7 @@ public sealed class ComptimeBinderHelperTests
     [Test]
     public void StaticStorageConstants_AreReadableDuringFoldingAndComptimeEvaluation()
     {
-        (BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
+        (BoundModule program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
             reg const REG_RATE: u32 = 20_000_000;
             lut const LUT_OFFSET: u32 = 2;
             hub const HUB_OFFSET: u32 = 3;
@@ -306,7 +308,7 @@ public sealed class ComptimeBinderHelperTests
     [Test]
     public void IntegerLiteralFolding_Keeps64BitIntermediatesUntilFinalMaterialization()
     {
-        (BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
+        (BoundModule program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
             reg const CLOCKS: u32 = 250 * 20_000_000 / 1000;
             """);
 
@@ -323,11 +325,11 @@ public sealed class ComptimeBinderHelperTests
         VariableSymbol local = new("local", BuiltinTypes.U32, isConst: false, VariableStorageClass.Automatic, VariableScopeKind.Local, isExtern: false, fixedAddress: null, alignment: null);
         BoundExpression localSymbol = new BoundSymbolExpression(local, Span, BuiltinTypes.U32);
         FunctionSymbol function = CreateFunctionSymbol("callme", FunctionKind.Default, BuiltinTypes.U32);
-        ImportedModule module = CreateImportedModule("mod");
+        BoundModule module = CreateImportedModule("mod");
         AggregateMemberSymbol member = new("value", BuiltinTypes.U32, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false);
         StructTypeSymbol pairType = new(
             "Pair",
-            new Dictionary<string, TypeSymbol>(StringComparer.Ordinal) { ["value"] = BuiltinTypes.U32 },
+            new Dictionary<string, BladeType>(StringComparer.Ordinal) { ["value"] = BuiltinTypes.U32 },
             new Dictionary<string, AggregateMemberSymbol>(StringComparer.Ordinal) { ["value"] = member },
             sizeBytes: 4,
             alignmentBytes: 4);
@@ -370,7 +372,7 @@ public sealed class ComptimeBinderHelperTests
         VariableSymbol local = new("local", BuiltinTypes.U32, isConst: false, VariableStorageClass.Automatic, VariableScopeKind.Local, isExtern: false, fixedAddress: null, alignment: null);
         UnionTypeSymbol unionType = new(
             "OneOf",
-            new Dictionary<string, TypeSymbol>(StringComparer.Ordinal) { ["value"] = BuiltinTypes.U32 },
+            new Dictionary<string, BladeType>(StringComparer.Ordinal) { ["value"] = BuiltinTypes.U32 },
             new Dictionary<string, AggregateMemberSymbol>(StringComparer.Ordinal) { ["value"] = new AggregateMemberSymbol("value", BuiltinTypes.U32, 0, 0, 0, isBitfield: false) },
             sizeBytes: 4,
             alignmentBytes: 4);
@@ -471,7 +473,7 @@ public sealed class ComptimeBinderHelperTests
         FieldInfo boundBodiesField = typeof(SemanticBinder).GetField("_boundFunctionBodies", BindingFlags.Instance | BindingFlags.NonPublic)!;
         FieldInfo importedModulesField = typeof(SemanticBinder).GetField("_importedModules", BindingFlags.Instance | BindingFlags.NonPublic)!;
         Dictionary<FunctionSymbol, BoundBlockStatement> boundBodies = (Dictionary<FunctionSymbol, BoundBlockStatement>)boundBodiesField.GetValue(binder)!;
-        Dictionary<string, ImportedModule> importedModules = (Dictionary<string, ImportedModule>)importedModulesField.GetValue(binder)!;
+        Dictionary<string, BoundModule> importedModules = (Dictionary<string, BoundModule>)importedModulesField.GetValue(binder)!;
         MethodInfo resolveBody = GetBinderInstanceMethod("ResolveFunctionBodyForComptime", typeof(FunctionSymbol));
         MethodInfo reportFailure = GetBinderInstanceMethod("ReportComptimeFailure", CreateFailure("NotEvaluable").GetType());
 
@@ -482,11 +484,11 @@ public sealed class ComptimeBinderHelperTests
 
         FunctionSymbol importedFunction = CreateFunctionSymbol("imported", FunctionKind.Default);
         BoundBlockStatement importedBody = new([], Span);
-        ImportedModule nestedModule = CreateImportedModule("nested", [new BoundFunctionMember(importedFunction, importedBody, Span)]);
-        ImportedModule rootModule = CreateImportedModule(
+        BoundModule nestedModule = CreateImportedModule("nested", [new BoundFunctionMember(importedFunction, importedBody, Span)]);
+        BoundModule rootModule = CreateImportedModule(
             "root",
             functions: [],
-            importedModules: new Dictionary<string, ImportedModule>(StringComparer.Ordinal) { ["nested"] = nestedModule });
+            importedModules: new Dictionary<string, BoundModule>(StringComparer.Ordinal) { ["nested"] = nestedModule });
         importedModules.Add("root", rootModule);
 
         Assert.That(Invoke(resolveBody, binder, importedFunction), Is.SameAs(importedBody));

@@ -36,7 +36,7 @@ public sealed class LirFunction(MirFunction sourceFunction, IReadOnlyList<LirBlo
     public string Name => SourceFunction.Name;
     public bool IsEntryPoint => SourceFunction.IsEntryPoint;
     public FunctionKind Kind => SourceFunction.Kind;
-    public IReadOnlyList<TypeSymbol> ReturnTypes => SourceFunction.ReturnTypes;
+    public IReadOnlyList<BladeType> ReturnTypes => SourceFunction.ReturnTypes;
     public IReadOnlyList<ReturnSlot> ReturnSlots => SourceFunction.ReturnSlots;
     public IReadOnlyList<LirBlock> Blocks { get; } = blocks;
 }
@@ -53,11 +53,11 @@ public sealed class LirBlock(
     public LirTerminator Terminator { get; } = terminator;
 }
 
-public sealed class LirBlockParameter(LirVirtualRegister register, string name, TypeSymbol type)
+public sealed class LirBlockParameter(LirVirtualRegister register, string name, BladeType type)
 {
     public LirVirtualRegister Register { get; } = register;
     public string Name { get; } = name;
-    public TypeSymbol Type { get; } = type;
+    public BladeType Type { get; } = type;
 }
 
 public abstract class LirOperand
@@ -72,7 +72,7 @@ public sealed class LirRegisterOperand(LirVirtualRegister register) : LirOperand
 public sealed class LirImmediateOperand(BladeValue value) : LirOperand
 {
     public BladeValue Value { get; } = Requires.NotNull(value);
-    public TypeSymbol Type => Value.Type;
+    public BladeType Type => Value.Type;
 }
 
 public sealed class LirPlaceOperand(StoragePlace place) : LirOperand
@@ -84,7 +84,7 @@ public abstract class LirInstruction
 {
     protected LirInstruction(
         LirVirtualRegister? destination,
-        TypeSymbol? resultType,
+        BladeType? resultType,
         IReadOnlyList<LirOperand> operands,
         bool hasSideEffects,
         P2ConditionCode? predicate,
@@ -103,7 +103,7 @@ public abstract class LirInstruction
     }
 
     public LirVirtualRegister? Destination { get; }
-    public TypeSymbol? ResultType { get; }
+    public BladeType? ResultType { get; }
     public IReadOnlyList<LirOperand> Operands { get; }
     public bool HasSideEffects { get; }
     public P2ConditionCode? Predicate { get; }
@@ -124,7 +124,7 @@ public abstract class LirOperation
     /// </summary>
     public abstract string DisplayName { get; }
 
-    public abstract bool IsValidResultType(TypeSymbol? resultType);
+    public abstract bool IsValidResultType(BladeType? resultType);
 
     public abstract bool IsValidOperandCount(int operandCount);
 
@@ -138,13 +138,13 @@ public abstract class LirOperation
         };
     }
 
-    protected static bool MatchesExpectedType(TypeSymbol? actualType, TypeSymbol expectedType)
+    protected static bool MatchesExpectedType(BladeType? actualType, BladeType expectedType)
         => actualType?.Equals(expectedType) == true;
 
-    protected static bool IsSingleBitScalarType(TypeSymbol? resultType)
+    protected static bool IsSingleBitScalarType(BladeType? resultType)
         => resultType is ScalarTypeSymbol { BitWidth: 1 };
 
-    protected static bool MatchesContainerMember(TypeSymbol? containerType, AggregateMemberSymbol expectedMember)
+    protected static bool MatchesContainerMember(BladeType? containerType, AggregateMemberSymbol expectedMember)
     {
         AggregateMemberSymbol checkedMember = Requires.NotNull(expectedMember);
         IReadOnlyDictionary<string, AggregateMemberSymbol>? members = containerType switch
@@ -169,7 +169,7 @@ public sealed class LirConstOperation : LirOperation
 {
     public override string DisplayName => "const";
 
-    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is not null;
+    public override bool IsValidResultType(BladeType? resultType) => resultType is not null;
 
     public override bool IsValidOperandCount(int operandCount) => operandCount is 0 or 1;
 }
@@ -178,7 +178,7 @@ public sealed class LirMovOperation : LirOperation
 {
     public override string DisplayName => "mov";
 
-    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is not null;
+    public override bool IsValidResultType(BladeType? resultType) => resultType is not null;
 
     public override bool IsValidOperandCount(int operandCount) => operandCount == 1;
 }
@@ -187,7 +187,7 @@ public sealed class LirLoadPlaceOperation : LirOperation
 {
     public override string DisplayName => "load.place";
 
-    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is not null;
+    public override bool IsValidResultType(BladeType? resultType) => resultType is not null;
 
     public override bool IsValidOperandCount(int operandCount) => operandCount == 1;
 }
@@ -198,7 +198,7 @@ public sealed class LirUnaryOperation(BoundUnaryOperatorKind operatorKind) : Lir
 
     public override string DisplayName => $"unary.{OperatorKind}";
 
-    public override bool IsValidResultType(TypeSymbol? resultType)
+    public override bool IsValidResultType(BladeType? resultType)
     {
         return OperatorKind switch
         {
@@ -216,7 +216,7 @@ public sealed class LirBinaryOperation(BoundBinaryOperatorKind operatorKind) : L
 
     public override string DisplayName => $"binary.{OperatorKind}";
 
-    public override bool IsValidResultType(TypeSymbol? resultType)
+    public override bool IsValidResultType(BladeType? resultType)
     {
         return OperatorKind switch
         {
@@ -242,7 +242,7 @@ public sealed class LirPointerOffsetOperation(BoundBinaryOperatorKind operatorKi
 
     public override string DisplayName => $"ptr.offset.{OperatorKind}[{Stride}]";
 
-    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is PointerLikeTypeSymbol;
+    public override bool IsValidResultType(BladeType? resultType) => resultType is PointerLikeTypeSymbol;
 
     public override bool IsValidOperandCount(int operandCount) => operandCount == 2;
 }
@@ -253,7 +253,7 @@ public sealed class LirPointerDifferenceOperation(int stride) : LirOperation
 
     public override string DisplayName => $"ptr.diff[{Stride}]";
 
-    public override bool IsValidResultType(TypeSymbol? resultType) => MatchesExpectedType(resultType, BuiltinTypes.I32);
+    public override bool IsValidResultType(BladeType? resultType) => MatchesExpectedType(resultType, BuiltinTypes.I32);
 
     public override bool IsValidOperandCount(int operandCount) => operandCount == 2;
 }
@@ -262,7 +262,7 @@ public sealed class LirConvertOperation : LirOperation
 {
     public override string DisplayName => "convert";
 
-    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is not null;
+    public override bool IsValidResultType(BladeType? resultType) => resultType is not null;
 
     public override bool IsValidOperandCount(int operandCount) => operandCount == 1;
 }
@@ -285,7 +285,7 @@ public sealed class LirStructLiteralOperation(IReadOnlyList<AggregateMemberSymbo
         }
     }
 
-    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is StructTypeSymbol;
+    public override bool IsValidResultType(BladeType? resultType) => resultType is StructTypeSymbol;
 
     public override bool IsValidOperandCount(int operandCount) => operandCount == Members.Count;
 }
@@ -296,19 +296,19 @@ public sealed class LirLoadMemberOperation(AggregateMemberSymbol member) : LirOp
 
     public override string DisplayName => $"load.member.{Member.Name}.{Member.ByteOffset}";
 
-    public override bool IsValidResultType(TypeSymbol? resultType) => MatchesExpectedType(resultType, Member.Type);
+    public override bool IsValidResultType(BladeType? resultType) => MatchesExpectedType(resultType, Member.Type);
 
     public override bool IsValidOperandCount(int operandCount) => operandCount == 1;
 }
 
-public sealed class LirLoadIndexOperation(TypeSymbol indexedType, VariableStorageClass storageClass) : LirOperation
+public sealed class LirLoadIndexOperation(BladeType indexedType, VariableStorageClass storageClass) : LirOperation
 {
-    public TypeSymbol IndexedType { get; } = Requires.NotNull(indexedType);
+    public BladeType IndexedType { get; } = Requires.NotNull(indexedType);
     public VariableStorageClass StorageClass { get; } = storageClass;
 
     public override string DisplayName => $"load.index.{StorageClassSuffix(StorageClass)}";
 
-    public override bool IsValidResultType(TypeSymbol? resultType)
+    public override bool IsValidResultType(BladeType? resultType)
     {
         return IndexedType switch
         {
@@ -321,14 +321,14 @@ public sealed class LirLoadIndexOperation(TypeSymbol indexedType, VariableStorag
     public override bool IsValidOperandCount(int operandCount) => operandCount == 2;
 }
 
-public sealed class LirLoadDerefOperation(TypeSymbol pointerType, VariableStorageClass storageClass) : LirOperation
+public sealed class LirLoadDerefOperation(BladeType pointerType, VariableStorageClass storageClass) : LirOperation
 {
-    public TypeSymbol PointerType { get; } = Requires.NotNull(pointerType);
+    public BladeType PointerType { get; } = Requires.NotNull(pointerType);
     public VariableStorageClass StorageClass { get; } = storageClass;
 
     public override string DisplayName => $"load.deref.{StorageClassSuffix(StorageClass)}";
 
-    public override bool IsValidResultType(TypeSymbol? resultType)
+    public override bool IsValidResultType(BladeType? resultType)
     {
         return PointerType is PointerTypeSymbol pointer
             && MatchesExpectedType(resultType, pointer.PointeeType);
@@ -343,7 +343,7 @@ public sealed class LirBitfieldExtractOperation(AggregateMemberSymbol member) : 
 
     public override string DisplayName => $"bitfield.extract.{Member.BitOffset}.{Member.BitWidth}";
 
-    public override bool IsValidResultType(TypeSymbol? resultType) => MatchesExpectedType(resultType, Member.Type);
+    public override bool IsValidResultType(BladeType? resultType) => MatchesExpectedType(resultType, Member.Type);
 
     public override bool IsValidOperandCount(int operandCount) => operandCount == 1;
 }
@@ -354,7 +354,7 @@ public sealed class LirBitfieldInsertOperation(AggregateMemberSymbol member) : L
 
     public override string DisplayName => $"bitfield.insert.{Member.BitOffset}.{Member.BitWidth}";
 
-    public override bool IsValidResultType(TypeSymbol? resultType)
+    public override bool IsValidResultType(BladeType? resultType)
         => MatchesContainerMember(resultType, Member);
 
     public override bool IsValidOperandCount(int operandCount) => operandCount == 2;
@@ -366,7 +366,7 @@ public sealed class LirInsertMemberOperation(AggregateMemberSymbol member) : Lir
 
     public override string DisplayName => $"insert.member.{Member.Name}.{Member.ByteOffset}";
 
-    public override bool IsValidResultType(TypeSymbol? resultType)
+    public override bool IsValidResultType(BladeType? resultType)
         => MatchesContainerMember(resultType, Member);
 
     public override bool IsValidOperandCount(int operandCount) => operandCount == 2;
@@ -378,7 +378,7 @@ public sealed class LirCallOperation(FunctionSymbol targetFunction) : LirOperati
 
     public override string DisplayName => "call";
 
-    public override bool IsValidResultType(TypeSymbol? resultType)
+    public override bool IsValidResultType(BladeType? resultType)
     {
         if (TargetFunction.ReturnSlots.Count == 0)
             return resultType is null;
@@ -395,7 +395,7 @@ public sealed class LirCallExtractFlagOperation(MirFlag flag) : LirOperation
 
     public override string DisplayName => Flag == MirFlag.C ? "call.extractC" : "call.extractZ";
 
-    public override bool IsValidResultType(TypeSymbol? resultType)
+    public override bool IsValidResultType(BladeType? resultType)
         => MatchesExpectedType(resultType, BuiltinTypes.Bool) || MatchesExpectedType(resultType, BuiltinTypes.Bit);
 
     public override bool IsValidOperandCount(int operandCount) => operandCount == 0;
@@ -407,20 +407,20 @@ public sealed class LirIntrinsicOperation(P2Mnemonic mnemonic) : LirOperation
 
     public override string DisplayName => $"intrinsic.{Mnemonic}";
 
-    public override bool IsValidResultType(TypeSymbol? resultType) => true;
+    public override bool IsValidResultType(BladeType? resultType) => true;
 
     public override bool IsValidOperandCount(int operandCount) => P2InstructionMetadata.TryGetInstructionForm(Mnemonic, operandCount, out _)
         || P2InstructionMetadata.TryGetInstructionForm(Mnemonic, operandCount + 1, out _);
 }
 
-public sealed class LirStoreIndexOperation(TypeSymbol indexedType, VariableStorageClass storageClass) : LirOperation
+public sealed class LirStoreIndexOperation(BladeType indexedType, VariableStorageClass storageClass) : LirOperation
 {
-    public TypeSymbol IndexedType { get; } = Requires.NotNull(indexedType);
+    public BladeType IndexedType { get; } = Requires.NotNull(indexedType);
     public VariableStorageClass StorageClass { get; } = storageClass;
 
     public override string DisplayName => $"store.index.{StorageClassSuffix(StorageClass)}";
 
-    public override bool IsValidResultType(TypeSymbol? resultType)
+    public override bool IsValidResultType(BladeType? resultType)
     {
         if (resultType is null)
             return true;
@@ -436,14 +436,14 @@ public sealed class LirStoreIndexOperation(TypeSymbol indexedType, VariableStora
     public override bool IsValidOperandCount(int operandCount) => operandCount == 3;
 }
 
-public sealed class LirStoreDerefOperation(TypeSymbol pointerType, VariableStorageClass storageClass) : LirOperation
+public sealed class LirStoreDerefOperation(BladeType pointerType, VariableStorageClass storageClass) : LirOperation
 {
-    public TypeSymbol PointerType { get; } = Requires.NotNull(pointerType);
+    public BladeType PointerType { get; } = Requires.NotNull(pointerType);
     public VariableStorageClass StorageClass { get; } = storageClass;
 
     public override string DisplayName => $"store.deref.{StorageClassSuffix(StorageClass)}";
 
-    public override bool IsValidResultType(TypeSymbol? resultType)
+    public override bool IsValidResultType(BladeType? resultType)
     {
         if (resultType is null)
             return true;
@@ -459,7 +459,7 @@ public sealed class LirStorePlaceOperation : LirOperation
 {
     public override string DisplayName => "store.place";
 
-    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is null;
+    public override bool IsValidResultType(BladeType? resultType) => resultType is null;
 
     public override bool IsValidOperandCount(int operandCount) => operandCount == 2;
 }
@@ -474,7 +474,7 @@ public sealed class LirUpdatePlaceOperation(BoundBinaryOperatorKind operatorKind
         ? $"update.place.{OperatorKind}[{stride}]"
         : $"update.place.{OperatorKind}";
 
-    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is null;
+    public override bool IsValidResultType(BladeType? resultType) => resultType is null;
 
     public override bool IsValidOperandCount(int operandCount) => operandCount == 2;
 }
@@ -483,7 +483,7 @@ public sealed class LirYieldOperation : LirOperation
 {
     public override string DisplayName => "yield";
 
-    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is null;
+    public override bool IsValidResultType(BladeType? resultType) => resultType is null;
 
     public override bool IsValidOperandCount(int operandCount) => operandCount == 0;
 }
@@ -494,7 +494,7 @@ public sealed class LirYieldToOperation(FunctionSymbol targetFunction) : LirOper
 
     public override string DisplayName => $"yieldto:{TargetFunction.Name}";
 
-    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is null;
+    public override bool IsValidResultType(BladeType? resultType) => resultType is null;
 
     public override bool IsValidOperandCount(int operandCount) => operandCount == TargetFunction.Parameters.Count;
 }
@@ -503,7 +503,7 @@ public sealed class LirRepSetupOperation : LirOperation
 {
     public override string DisplayName => "rep.setup";
 
-    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is null;
+    public override bool IsValidResultType(BladeType? resultType) => resultType is null;
 
     public override bool IsValidOperandCount(int operandCount) => operandCount == 1;
 }
@@ -512,7 +512,7 @@ public sealed class LirRepIterOperation : LirOperation
 {
     public override string DisplayName => "rep.iter";
 
-    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is null;
+    public override bool IsValidResultType(BladeType? resultType) => resultType is null;
 
     public override bool IsValidOperandCount(int operandCount) => operandCount == 1;
 }
@@ -521,7 +521,7 @@ public sealed class LirRepForSetupOperation : LirOperation
 {
     public override string DisplayName => "repfor.setup";
 
-    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is null;
+    public override bool IsValidResultType(BladeType? resultType) => resultType is null;
 
     public override bool IsValidOperandCount(int operandCount) => operandCount == 2;
 }
@@ -530,7 +530,7 @@ public sealed class LirRepForIterOperation : LirOperation
 {
     public override string DisplayName => "repfor.iter";
 
-    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is null;
+    public override bool IsValidResultType(BladeType? resultType) => resultType is null;
 
     public override bool IsValidOperandCount(int operandCount) => operandCount == 2;
 }
@@ -539,7 +539,7 @@ public sealed class LirNoIrqBeginOperation : LirOperation
 {
     public override string DisplayName => "noirq.begin";
 
-    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is null;
+    public override bool IsValidResultType(BladeType? resultType) => resultType is null;
 
     public override bool IsValidOperandCount(int operandCount) => operandCount == 0;
 }
@@ -548,7 +548,7 @@ public sealed class LirNoIrqEndOperation : LirOperation
 {
     public override string DisplayName => "noirq.end";
 
-    public override bool IsValidResultType(TypeSymbol? resultType) => resultType is null;
+    public override bool IsValidResultType(BladeType? resultType) => resultType is null;
 
     public override bool IsValidOperandCount(int operandCount) => operandCount == 0;
 }
@@ -558,7 +558,7 @@ public sealed class LirOpInstruction : LirInstruction
     public LirOpInstruction(
         LirOperation operation,
         LirVirtualRegister? destination,
-        TypeSymbol? resultType,
+        BladeType? resultType,
         IReadOnlyList<LirOperand> operands,
         bool hasSideEffects,
         P2ConditionCode? predicate,
