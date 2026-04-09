@@ -34,7 +34,7 @@ public sealed class Binder
     private int _anonymousStructIndex;
 
     private static readonly EnumTypeSymbol MemorySpaceType = new("MemorySpace", BuiltinTypes.U32,
-        new Dictionary<string, long>(StringComparer.Ordinal) { ["reg"] = 0, ["lut"] = 1, ["hub"] = 2 },
+        new Dictionary<string, long>(StringComparer.Ordinal) { ["_reg"] = 0, ["_lut"] = 1, ["_hub"] = 2 },
         isOpen: false);
 
     private Binder(
@@ -141,28 +141,31 @@ public sealed class Binder
     {
         foreach (LoadedImport import in module.Imports)
         {
+            ImportedModule imported;
+
             if (import.Kind == LoadedImportKind.Builtin)
             {
-                ImportedModule builtinModule = CreateBuiltinModule(import.Alias);
-                _importedModules[import.Alias] = builtinModule;
-                if (!_globalScope.TryDeclare(new ModuleSymbol(import.Alias, builtinModule)))
-                    _diagnostics.ReportSymbolAlreadyDeclared(import.Syntax.Alias?.Span ?? import.Syntax.Source.Span, import.Alias);
+                imported = CreateBuiltinModule();
+            }
+            else
+            {
+                Assert.Invariant(import.Kind == LoadedImportKind.File, "Non-builtin imports must be file-backed.");
+                Assert.Invariant(import.ResolvedFullPath is not null, "Binder imports must be fully resolved and loaded before binding.");
+                imported = LoadAndBindModule(import.SourceName, import.Alias, import.ResolvedFullPath, import.Syntax.Source.Span);
+            }
+            if (!_globalScope.TryDeclare(new ModuleSymbol(import.Alias, imported)))
+            {
+                _diagnostics.ReportSymbolAlreadyDeclared(import.Syntax.Alias?.Span ?? import.Syntax.Source.Span, import.Alias);
                 continue;
             }
-
-            Assert.Invariant(import.Kind == LoadedImportKind.File, "Non-builtin imports must be file-backed.");
-            Assert.Invariant(import.ResolvedFullPath is not null, "Binder imports must be fully resolved and loaded before binding.");
-            ImportedModule imported = LoadAndBindModule(import.SourceName, import.Alias, import.ResolvedFullPath, import.Syntax.Source.Span);
-            _importedModules[import.Alias] = imported;
-            if (!_globalScope.TryDeclare(new ModuleSymbol(import.Alias, imported)))
-                _diagnostics.ReportSymbolAlreadyDeclared(import.Syntax.Alias?.Span ?? import.Syntax.Source.Span, import.Alias);
+            _importedModules.Add(import.Alias, imported);
         }
     }
 
     private ImportedModule LoadAndBindModule(string sourceName, string alias, string resolvedFullPath, TextSpan importSiteSpan)
     {
         if (_moduleDefinitionCache.TryGetValue(resolvedFullPath, out ImportedModuleDefinition? cachedDefinition))
-            return cachedDefinition.CreateImport(sourceName, alias);
+            return cachedDefinition.CreateImport(sourceName);
 
         Assert.Invariant(
             _compilation.ModulesByFullPath.TryGetValue(resolvedFullPath, out LoadedModule? loadedModule),
@@ -205,7 +208,7 @@ public sealed class Binder
 
         ImportedModuleDefinition definition = new(resolvedFullPath, imported.Syntax, program, functions, types, variables, importedModules);
         _moduleDefinitionCache[resolvedFullPath] = definition;
-        return definition.CreateImport(sourceName, alias);
+        return definition.CreateImport(sourceName);
     }
 
     private static ImportedModule CreateEmptyImportedModule(string sourceName, string alias, string resolvedPath, CompilationUnitSyntax? syntax = null)
@@ -215,7 +218,6 @@ public sealed class Binder
         return new ImportedModule(
             sourceName,
             resolvedPath,
-            alias,
             effectiveSyntax,
             emptyProgram,
             new Dictionary<string, FunctionSymbol>(),
@@ -224,7 +226,7 @@ public sealed class Binder
             new Dictionary<string, ImportedModule>());
     }
 
-    private static ImportedModule CreateBuiltinModule(string alias)
+    private static ImportedModule CreateBuiltinModule()
     {
         Dictionary<string, TypeSymbol> exportedTypes = new(StringComparer.Ordinal)
         {
@@ -236,7 +238,6 @@ public sealed class Binder
         return new ImportedModule(
             "builtin",
             "<builtin>",
-            alias,
             emptySyntax,
             emptyProgram,
             new Dictionary<string, FunctionSymbol>(),
@@ -537,15 +538,15 @@ public sealed class Binder
                 return true;
 
             case BoundBlockStatement block:
-            {
-                foreach (BoundStatement child in block.Statements)
                 {
-                    if (AlwaysReturns(child))
-                        return true;
-                }
+                    foreach (BoundStatement child in block.Statements)
+                    {
+                        if (AlwaysReturns(child))
+                            return true;
+                    }
 
-                return false;
-            }
+                    return false;
+                }
 
             case BoundIfStatement ifStatement:
                 return ifStatement.ElseBody is not null
@@ -596,110 +597,110 @@ public sealed class Binder
                 return BindLocalVariableDeclaration(variableDeclStatement.Declaration);
 
             case ExpressionStatementSyntax expressionStatement:
-            {
-                BoundExpression expr = BindExpression(expressionStatement.Expression);
-                return new BoundExpressionStatement(expr, expressionStatement.Span);
-            }
+                {
+                    BoundExpression expr = BindExpression(expressionStatement.Expression);
+                    return new BoundExpressionStatement(expr, expressionStatement.Span);
+                }
 
             case AssignmentStatementSyntax assignment:
-            {
-                BoundAssignmentTarget target = BindAssignmentTarget(assignment.Target);
-                BoundExpression value = BindAssignmentValue(assignment, target);
-                return new BoundAssignmentStatement(target, value, assignment.Operator.Kind, assignment.Span);
-            }
+                {
+                    BoundAssignmentTarget target = BindAssignmentTarget(assignment.Target);
+                    BoundExpression value = BindAssignmentValue(assignment, target);
+                    return new BoundAssignmentStatement(target, value, assignment.Operator.Kind, assignment.Span);
+                }
 
             case MultiAssignmentStatementSyntax multiAssignment:
                 return BindMultiAssignmentStatement(multiAssignment);
 
             case IfStatementSyntax ifStatement:
-            {
-                BoundExpression condition = BindExpression(ifStatement.Condition, BuiltinTypes.Bool);
-                BoundStatement thenBody = ifStatement.ThenBody switch
                 {
-                    BlockStatementSyntax thenBlock => BindBlockStatement(thenBlock, createScope: true, isTopLevel: false),
-                    _ => BindStatement(ifStatement.ThenBody, isTopLevel: false),
-                };
-                BoundStatement? elseBody = null;
-                if (ifStatement.ElseClause is not null)
-                {
-                    elseBody = ifStatement.ElseClause.Body switch
+                    BoundExpression condition = BindExpression(ifStatement.Condition, BuiltinTypes.Bool);
+                    BoundStatement thenBody = ifStatement.ThenBody switch
                     {
-                        BlockStatementSyntax elseBlock => BindBlockStatement(elseBlock, createScope: true, isTopLevel: false),
-                        _ => BindStatement(ifStatement.ElseClause.Body, isTopLevel: false),
+                        BlockStatementSyntax thenBlock => BindBlockStatement(thenBlock, createScope: true, isTopLevel: false),
+                        _ => BindStatement(ifStatement.ThenBody, isTopLevel: false),
                     };
+                    BoundStatement? elseBody = null;
+                    if (ifStatement.ElseClause is not null)
+                    {
+                        elseBody = ifStatement.ElseClause.Body switch
+                        {
+                            BlockStatementSyntax elseBlock => BindBlockStatement(elseBlock, createScope: true, isTopLevel: false),
+                            _ => BindStatement(ifStatement.ElseClause.Body, isTopLevel: false),
+                        };
+                    }
+
+                    return new BoundIfStatement(condition, thenBody, elseBody, ifStatement.Span);
                 }
 
-                return new BoundIfStatement(condition, thenBody, elseBody, ifStatement.Span);
-            }
-
             case WhileStatementSyntax whileStatement:
-            {
-                BoundExpression condition = BindExpression(whileStatement.Condition, BuiltinTypes.Bool);
-                PushLoop(LoopContext.Regular);
-                BoundBlockStatement body = BindBlockStatement(whileStatement.Body, createScope: true, isTopLevel: false);
-                PopLoop();
-                return new BoundWhileStatement(condition, body, whileStatement.Span);
-            }
+                {
+                    BoundExpression condition = BindExpression(whileStatement.Condition, BuiltinTypes.Bool);
+                    PushLoop(LoopContext.Regular);
+                    BoundBlockStatement body = BindBlockStatement(whileStatement.Body, createScope: true, isTopLevel: false);
+                    PopLoop();
+                    return new BoundWhileStatement(condition, body, whileStatement.Span);
+                }
 
             case ForStatementSyntax forStatement:
                 return BindForStatement(forStatement);
 
             case LoopStatementSyntax loopStatement:
-            {
-                PushLoop(LoopContext.Regular);
-                BoundBlockStatement body = BindBlockStatement(loopStatement.Body, createScope: true, isTopLevel: false);
-                PopLoop();
-                return new BoundLoopStatement(body, loopStatement.Span);
-            }
+                {
+                    PushLoop(LoopContext.Regular);
+                    BoundBlockStatement body = BindBlockStatement(loopStatement.Body, createScope: true, isTopLevel: false);
+                    PopLoop();
+                    return new BoundLoopStatement(body, loopStatement.Span);
+                }
 
             case RepLoopStatementSyntax repLoop:
-            {
-                PushLoop(LoopContext.Rep);
-                BoundBlockStatement body = BindBlockStatement(repLoop.Body, createScope: true, isTopLevel: false);
-                PopLoop();
-                return new BoundRepLoopStatement(body, repLoop.Span);
-            }
+                {
+                    PushLoop(LoopContext.Rep);
+                    BoundBlockStatement body = BindBlockStatement(repLoop.Body, createScope: true, isTopLevel: false);
+                    PopLoop();
+                    return new BoundRepLoopStatement(body, repLoop.Span);
+                }
 
             case RepForStatementSyntax repFor:
-            {
-                // The iterable should be a range expression for rep for
-                BoundExpression start;
-                BoundExpression end;
-                if (repFor.Iterable is RangeExpressionSyntax range)
                 {
-                    BoundRangeExpression boundRange = BindLoopRangeExpression(range);
-                    start = boundRange.Start;
-                    end = boundRange.End;
-                    // Normalize inclusive range: end + 1 → exclusive
-                    if (range.IsInclusive && end.Type is IntegerLiteralTypeSymbol or IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol)
+                    // The iterable should be a range expression for rep for
+                    BoundExpression start;
+                    BoundExpression end;
+                    if (repFor.Iterable is RangeExpressionSyntax range)
                     {
-                        end = new BoundBinaryExpression(
-                            end,
-                            Requires.NotNull(BoundBinaryOperator.Bind(TokenKind.Plus)),
-                            new BoundLiteralExpression(new RuntimeBladeValue(BuiltinTypes.U32, 1L), range.End.Span),
-                            range.End.Span,
-                            end.Type);
+                        BoundRangeExpression boundRange = BindLoopRangeExpression(range);
+                        start = boundRange.Start;
+                        end = boundRange.End;
+                        // Normalize inclusive range: end + 1 → exclusive
+                        if (range.IsInclusive && end.Type is IntegerLiteralTypeSymbol or IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol)
+                        {
+                            end = new BoundBinaryExpression(
+                                end,
+                                Requires.NotNull(BoundBinaryOperator.Bind(TokenKind.Plus)),
+                                new BoundLiteralExpression(new RuntimeBladeValue(BuiltinTypes.U32, 1L), range.End.Span),
+                                range.End.Span,
+                                end.Type);
+                        }
                     }
-                }
-                else
-                {
-                    // Non-range iterable — use as count (0..<count)
-                    BoundExpression iterable = BindExpression(repFor.Iterable);
-                    start = new BoundLiteralExpression(new RuntimeBladeValue(BuiltinTypes.U32, 0L), repFor.Iterable.Span);
-                    end = iterable;
-                }
+                    else
+                    {
+                        // Non-range iterable — use as count (0..<count)
+                        BoundExpression iterable = BindExpression(repFor.Iterable);
+                        start = new BoundLiteralExpression(new RuntimeBladeValue(BuiltinTypes.U32, 0L), repFor.Iterable.Span);
+                        end = iterable;
+                    }
 
-                PushLoop(LoopContext.Rep);
-                BoundRepForStatement boundRepFor = BindRepForBody(repFor, start, end);
-                PopLoop();
-                return boundRepFor;
-            }
+                    PushLoop(LoopContext.Rep);
+                    BoundRepForStatement boundRepFor = BindRepForBody(repFor, start, end);
+                    PopLoop();
+                    return boundRepFor;
+                }
 
             case NoirqStatementSyntax noirq:
-            {
-                BoundBlockStatement body = BindBlockStatement(noirq.Body, createScope: true, isTopLevel: false);
-                return new BoundNoirqStatement(body, noirq.Span);
-            }
+                {
+                    BoundBlockStatement body = BindBlockStatement(noirq.Body, createScope: true, isTopLevel: false);
+                    return new BoundNoirqStatement(body, noirq.Span);
+                }
 
             case AssertStatementSyntax assertStatement:
                 return BindAssertStatement(assertStatement);
@@ -714,67 +715,67 @@ public sealed class Binder
                 return BindBreakOrContinueStatement(continueStatement.ContinueKeyword, isBreak: false);
 
             case YieldStatementSyntax yieldStatement:
-            {
-                if (_currentFunction is null
-                    || (_currentFunction.Kind is not FunctionKind.Int1
-                        and not FunctionKind.Int2
-                        and not FunctionKind.Int3))
                 {
-                    _diagnostics.ReportInvalidYield(yieldStatement.YieldKeyword.Span);
-                }
+                    if (_currentFunction is null
+                        || (_currentFunction.Kind is not FunctionKind.Int1
+                            and not FunctionKind.Int2
+                            and not FunctionKind.Int3))
+                    {
+                        _diagnostics.ReportInvalidYield(yieldStatement.YieldKeyword.Span);
+                    }
 
-                return new BoundYieldStatement(yieldStatement.Span);
-            }
+                    return new BoundYieldStatement(yieldStatement.Span);
+                }
 
             case YieldtoStatementSyntax yieldtoStatement:
                 return BindYieldtoStatement(yieldtoStatement, isTopLevel);
 
             case AsmBlockStatementSyntax asm:
-            {
-                InlineAsmFlagOutput? flagOutput = null;
-                VariableSymbol? outputSymbol = null;
-                if (asm.OutputBinding is not null)
                 {
-                    string flag = asm.OutputBinding.FlagAnnotation?.Flag.Text ?? "";
-                    if (flag is not ("C" or "Z"))
+                    InlineAsmFlagOutput? flagOutput = null;
+                    VariableSymbol? outputSymbol = null;
+                    if (asm.OutputBinding is not null)
                     {
-                        _diagnostics.ReportInlineAsmInvalidFlagOutput(asm.OutputBinding.Span, flag);
+                        string flag = asm.OutputBinding.FlagAnnotation?.Flag.Text ?? "";
+                        if (flag is not ("C" or "Z"))
+                        {
+                            _diagnostics.ReportInlineAsmInvalidFlagOutput(asm.OutputBinding.Span, flag);
+                        }
+
+                        flagOutput = flag switch
+                        {
+                            "C" => InlineAsmFlagOutput.C,
+                            "Z" => InlineAsmFlagOutput.Z,
+                            _ => null,
+                        };
+                        TypeSymbol outputType = BindType(asm.OutputBinding.Type);
+                        VariableScopeKind outputScopeKind = _currentFunction is null
+                            ? VariableScopeKind.TopLevelAutomatic
+                            : VariableScopeKind.Local;
+                        outputSymbol = new VariableSymbol(
+                            asm.OutputBinding.Name.Text,
+                            outputType,
+                            isConst: false,
+                            VariableStorageClass.Automatic,
+                            outputScopeKind,
+                            isExtern: false,
+                            fixedAddress: null,
+                            alignment: null);
+
+                        if (!_currentScope.TryDeclare(outputSymbol))
+                            _diagnostics.ReportSymbolAlreadyDeclared(asm.OutputBinding.Name.Span, asm.OutputBinding.Name.Text);
                     }
 
-                    flagOutput = flag switch
+                    InlineAsmBindingResult asmResult = BindInlineAsmBody(asm.Body);
+
+                    if (outputSymbol is not null
+                        && asmResult.AvailableBindings.TryGetValue(outputSymbol.Name, out InlineAsmVarBindingSlot? outputSlot))
                     {
-                        "C" => InlineAsmFlagOutput.C,
-                        "Z" => InlineAsmFlagOutput.Z,
-                        _ => null,
-                    };
-                    TypeSymbol outputType = BindType(asm.OutputBinding.Type);
-                    VariableScopeKind outputScopeKind = _currentFunction is null
-                        ? VariableScopeKind.TopLevelAutomatic
-                        : VariableScopeKind.Local;
-                    outputSymbol = new VariableSymbol(
-                        asm.OutputBinding.Name.Text,
-                        outputType,
-                        isConst: false,
-                        VariableStorageClass.Automatic,
-                        outputScopeKind,
-                        isExtern: false,
-                        fixedAddress: null,
-                        alignment: null);
+                        asmResult.ReferencedSymbols[outputSlot] = outputSymbol;
+                    }
 
-                    if (!_currentScope.TryDeclare(outputSymbol))
-                        _diagnostics.ReportSymbolAlreadyDeclared(asm.OutputBinding.Name.Span, asm.OutputBinding.Name.Text);
+                    return new BoundAsmStatement(asm.Volatility, flagOutput, asmResult.Lines, asmResult.ReferencedSymbols, asm.Span);
                 }
-
-                InlineAsmBindingResult asmResult = BindInlineAsmBody(asm.Body);
-
-                if (outputSymbol is not null
-                    && asmResult.AvailableBindings.TryGetValue(outputSymbol.Name, out InlineAsmVarBindingSlot? outputSlot))
-                {
-                    asmResult.ReferencedSymbols[outputSlot] = outputSymbol;
-                }
-
-                return new BoundAsmStatement(asm.Volatility, flagOutput, asmResult.Lines, asmResult.ReferencedSymbols, asm.Span);
-            }
 
             default:
                 return Assert.UnreachableValue<BoundStatement>("all statement syntax types are handled above"); // pragma: force-coverage
@@ -821,21 +822,21 @@ public sealed class Binder
                     break;
 
                 case InlineAsmLabelLineSyntax labelLine:
-                {
-                    ControlFlowLabelSymbol label = labels[labelLine.Name.Text];
-                    lines.Add(new InlineAsmLabelLine(label, labelLine.TrailingComment));
-                    break;
-                }
+                    {
+                        ControlFlowLabelSymbol label = labels[labelLine.Name.Text];
+                        lines.Add(new InlineAsmLabelLine(label, labelLine.TrailingComment));
+                        break;
+                    }
 
                 case InlineAsmInstructionLineSyntax instructionLine:
-                {
-                    InlineAsmInstructionLine? bound = BindInlineAsmInstruction(
-                        instructionLine, bodySyntax.Span, availableBindings, labels,
-                        tempBindings, referencedVarBindings);
-                    if (bound is not null)
-                        lines.Add(bound);
-                    break;
-                }
+                    {
+                        InlineAsmInstructionLine? bound = BindInlineAsmInstruction(
+                            instructionLine, bodySyntax.Span, availableBindings, labels,
+                            tempBindings, referencedVarBindings);
+                        if (bound is not null)
+                            lines.Add(bound);
+                        break;
+                    }
 
                 default:
                     Assert.Unreachable(); // pragma: force-coverage
@@ -939,29 +940,29 @@ public sealed class Binder
         switch (operandSyntax)
         {
             case InlineAsmVarBindingOperandSyntax varBinding:
-            {
-                string name = string.Join(".", varBinding.Path.Select(static p => p.Text));
-                if (!availableBindings.TryGetValue(name, out InlineAsmVarBindingSlot? slot))
                 {
-                    _diagnostics.ReportInlineAsmUndefinedVariable(blockSpan, name);
-                    return null;
+                    string name = string.Join(".", varBinding.Path.Select(static p => p.Text));
+                    if (!availableBindings.TryGetValue(name, out InlineAsmVarBindingSlot? slot))
+                    {
+                        _diagnostics.ReportInlineAsmUndefinedVariable(blockSpan, name);
+                        return null;
+                    }
+                    referencedVarBindings.Add(slot);
+                    return new InlineAsmBindingRefOperand(slot);
                 }
-                referencedVarBindings.Add(slot);
-                return new InlineAsmBindingRefOperand(slot);
-            }
 
             case InlineAsmTempBindingOperandSyntax tempBinding:
-            {
-                int tempId = 0;
-                if (tempBinding.Number.Value is BladeValue tempValue && tempValue.TryGetInteger(out long tempLong))
-                    tempId = (int)tempLong;
-                if (!tempBindings.TryGetValue(tempId, out InlineAsmTempBindingSlot? slot))
                 {
-                    slot = new InlineAsmTempBindingSlot(tempId);
-                    tempBindings.Add(tempId, slot);
+                    int tempId = 0;
+                    if (tempBinding.Number.Value is BladeValue tempValue && tempValue.TryGetInteger(out long tempLong))
+                        tempId = (int)tempLong;
+                    if (!tempBindings.TryGetValue(tempId, out InlineAsmTempBindingSlot? slot))
+                    {
+                        slot = new InlineAsmTempBindingSlot(tempId);
+                        tempBindings.Add(tempId, slot);
+                    }
+                    return new InlineAsmBindingRefOperand(slot);
                 }
-                return new InlineAsmBindingRefOperand(slot);
-            }
 
             case InlineAsmImmediateOperandSyntax immediate:
                 return BindInlineAsmImmediateOperand(immediate, blockSpan, labels);
@@ -989,27 +990,27 @@ public sealed class Binder
         switch (immediate.Inner)
         {
             case InlineAsmIntegerLiteralOperandSyntax intLiteral:
-            {
-                long value = 0;
-                if (intLiteral.Literal.Value is BladeValue literalValue && literalValue.TryGetInteger(out long parsed))
-                    value = parsed;
-                if (intLiteral.Sign is Token sign && sign.Kind == TokenKind.Minus)
-                    value = -value;
-                return new InlineAsmImmediateOperand(value);
-            }
+                {
+                    long value = 0;
+                    if (intLiteral.Literal.Value is BladeValue literalValue && literalValue.TryGetInteger(out long parsed))
+                        value = parsed;
+                    if (intLiteral.Sign is Token sign && sign.Kind == TokenKind.Minus)
+                        value = -value;
+                    return new InlineAsmImmediateOperand(value);
+                }
 
             case InlineAsmCurrentAddressOperandSyntax:
                 return new InlineAsmCurrentAddressOperand(InlineAsmAddressingMode.Immediate);
 
             case InlineAsmSymbolOperandSyntax symbol:
-            {
-                string name = symbol.Name.Text;
-                if (labels.TryGetValue(name, out ControlFlowLabelSymbol? label))
-                    return new InlineAsmLabelOperand(label, InlineAsmAddressingMode.Immediate);
+                {
+                    string name = symbol.Name.Text;
+                    if (labels.TryGetValue(name, out ControlFlowLabelSymbol? label))
+                        return new InlineAsmLabelOperand(label, InlineAsmAddressingMode.Immediate);
 
-                _diagnostics.ReportInlineAsmUndefinedLabel(blockSpan, name);
-                return null;
-            }
+                    _diagnostics.ReportInlineAsmUndefinedLabel(blockSpan, name);
+                    return null;
+                }
 
             default:
                 _diagnostics.ReportInlineAsmUndefinedLabel(blockSpan, "#");
@@ -1479,79 +1480,79 @@ public sealed class Binder
                 return BindNameAssignmentTarget(nameExpression);
 
             case MemberAccessExpressionSyntax memberAccess:
-            {
-                BoundExpression receiver = BindExpression(memberAccess.Expression);
-                if (receiver.Type is ModuleTypeSymbol moduleType)
                 {
-                    ImportedModule module = moduleType.Module.Module;
-                    if (module.ExportedVariables.TryGetValue(memberAccess.Member.Text, out VariableSymbol? variable))
-                        return new BoundSymbolAssignmentTarget(variable, target.Span, variable.Type);
-
-                    _diagnostics.ReportUndefinedName(memberAccess.Member.Span, memberAccess.Member.Text);
-                    return new BoundSymbolAssignmentTarget(
-                        new VariableSymbol(
-                            memberAccess.Member.Text,
-                            BuiltinTypes.Unknown,
-                            isConst: false,
-                            VariableStorageClass.Automatic,
-                            VariableScopeKind.Local,
-                            isExtern: false,
-                            fixedAddress: null,
-                            alignment: null),
-                        target.Span,
-                        BuiltinTypes.Unknown);
-                }
-
-                TypeSymbol type = BuiltinTypes.Unknown;
-                if (TryGetAggregateMember(receiver.Type, memberAccess.Member.Text, out AggregateMemberSymbol? member)
-                    && member is not null)
-                {
-                    if (member.IsBitfield)
+                    BoundExpression receiver = BindExpression(memberAccess.Expression);
+                    if (receiver.Type is ModuleTypeSymbol moduleType)
                     {
-                        BoundAssignmentTarget receiverTarget = BindAssignmentTarget(memberAccess.Expression);
-                        return new BoundBitfieldAssignmentTarget(receiverTarget, receiver, member, target.Span);
+                        ImportedModule module = moduleType.Module.Module;
+                        if (module.ExportedVariables.TryGetValue(memberAccess.Member.Text, out VariableSymbol? variable))
+                            return new BoundSymbolAssignmentTarget(variable, target.Span, variable.Type);
+
+                        _diagnostics.ReportUndefinedName(memberAccess.Member.Span, memberAccess.Member.Text);
+                        return new BoundSymbolAssignmentTarget(
+                            new VariableSymbol(
+                                memberAccess.Member.Text,
+                                BuiltinTypes.Unknown,
+                                isConst: false,
+                                VariableStorageClass.Automatic,
+                                VariableScopeKind.Local,
+                                isExtern: false,
+                                fixedAddress: null,
+                                alignment: null),
+                            target.Span,
+                            BuiltinTypes.Unknown);
                     }
 
-                    return new BoundMemberAssignmentTarget(receiver, member, target.Span);
-                }
+                    TypeSymbol type = BuiltinTypes.Unknown;
+                    if (TryGetAggregateMember(receiver.Type, memberAccess.Member.Text, out AggregateMemberSymbol? member)
+                        && member is not null)
+                    {
+                        if (member.IsBitfield)
+                        {
+                            BoundAssignmentTarget receiverTarget = BindAssignmentTarget(memberAccess.Expression);
+                            return new BoundBitfieldAssignmentTarget(receiverTarget, receiver, member, target.Span);
+                        }
 
-                if (receiver.Type is StructTypeSymbol or UnionTypeSymbol or BitfieldTypeSymbol)
-                {
-                    _diagnostics.ReportUndefinedName(memberAccess.Member.Span, memberAccess.Member.Text);
-                }
+                        return new BoundMemberAssignmentTarget(receiver, member, target.Span);
+                    }
 
-                return new BoundMemberAssignmentTarget(
-                    receiver,
-                    new AggregateMemberSymbol(memberAccess.Member.Text, BuiltinTypes.Unknown, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false),
-                    target.Span);
-            }
+                    if (receiver.Type is StructTypeSymbol or UnionTypeSymbol or BitfieldTypeSymbol)
+                    {
+                        _diagnostics.ReportUndefinedName(memberAccess.Member.Span, memberAccess.Member.Text);
+                    }
+
+                    return new BoundMemberAssignmentTarget(
+                        receiver,
+                        new AggregateMemberSymbol(memberAccess.Member.Text, BuiltinTypes.Unknown, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false),
+                        target.Span);
+                }
 
             case IndexExpressionSyntax index:
-            {
-                BoundExpression expression = BindExpression(index.Expression);
-                BoundExpression indexExpr = BindExpression(index.Index);
-                if (indexExpr.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
-                    _diagnostics.ReportTypeMismatch(index.Index.Span, "integer", indexExpr.Type.Name);
-
-                TypeSymbol type = expression.Type switch
                 {
-                    ArrayTypeSymbol array => array.ElementType,
-                    MultiPointerTypeSymbol pointer => pointer.PointeeType,
-                    _ => BuiltinTypes.Unknown,
-                };
+                    BoundExpression expression = BindExpression(index.Expression);
+                    BoundExpression indexExpr = BindExpression(index.Index);
+                    if (indexExpr.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
+                        _diagnostics.ReportTypeMismatch(index.Index.Span, "integer", indexExpr.Type.Name);
 
-                if (expression.Type is PointerTypeSymbol)
-                    _diagnostics.ReportTypeMismatch(index.Expression.Span, "array or [*]pointer", expression.Type.Name);
+                    TypeSymbol type = expression.Type switch
+                    {
+                        ArrayTypeSymbol array => array.ElementType,
+                        MultiPointerTypeSymbol pointer => pointer.PointeeType,
+                        _ => BuiltinTypes.Unknown,
+                    };
 
-                return new BoundIndexAssignmentTarget(expression, indexExpr, target.Span, type);
-            }
+                    if (expression.Type is PointerTypeSymbol)
+                        _diagnostics.ReportTypeMismatch(index.Expression.Span, "array or [*]pointer", expression.Type.Name);
+
+                    return new BoundIndexAssignmentTarget(expression, indexExpr, target.Span, type);
+                }
 
             case PointerDerefExpressionSyntax pointerDeref:
-            {
-                BoundExpression expression = BindExpression(pointerDeref.Expression);
-                TypeSymbol type = BindPointerDerefType(pointerDeref.Expression.Span, expression.Type);
-                return new BoundPointerDerefAssignmentTarget(expression, target.Span, type);
-            }
+                {
+                    BoundExpression expression = BindExpression(pointerDeref.Expression);
+                    TypeSymbol type = BindPointerDerefType(pointerDeref.Expression.Span, expression.Type);
+                    return new BoundPointerDerefAssignmentTarget(expression, target.Span, type);
+                }
 
             default:
                 _diagnostics.ReportInvalidAssignmentTarget(target.Span);
@@ -1752,24 +1753,24 @@ public sealed class Binder
         switch (unaryOperator.Kind)
         {
             case BoundUnaryOperatorKind.LogicalNot:
-            {
-                BoundExpression operand = BindExpression(unary.Operand, BuiltinTypes.Bool);
-                return new BoundUnaryExpression(unaryOperator, operand, unary.Span, BuiltinTypes.Bool);
-            }
+                {
+                    BoundExpression operand = BindExpression(unary.Operand, BuiltinTypes.Bool);
+                    return new BoundUnaryExpression(unaryOperator, operand, unary.Span, BuiltinTypes.Bool);
+                }
 
             case BoundUnaryOperatorKind.Negation:
             case BoundUnaryOperatorKind.BitwiseNot:
             case BoundUnaryOperatorKind.UnaryPlus:
-            {
-                BoundExpression operand = BindExpression(unary.Operand);
-                if (operand.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
-                    _diagnostics.ReportTypeMismatch(unary.Operand.Span, "integer", operand.Type.Name);
-                return new BoundUnaryExpression(
-                    unaryOperator,
-                    operand,
-                    unary.Span,
-                    operand.Type is IntegerLiteralTypeSymbol or IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol ? operand.Type : BuiltinTypes.Unknown);
-            }
+                {
+                    BoundExpression operand = BindExpression(unary.Operand);
+                    if (operand.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
+                        _diagnostics.ReportTypeMismatch(unary.Operand.Span, "integer", operand.Type.Name);
+                    return new BoundUnaryExpression(
+                        unaryOperator,
+                        operand,
+                        unary.Span,
+                        operand.Type is IntegerLiteralTypeSymbol or IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol ? operand.Type : BuiltinTypes.Unknown);
+                }
 
             case BoundUnaryOperatorKind.AddressOf:
                 return BindAddressOfExpression(unary, unaryOperator);
@@ -1899,13 +1900,13 @@ public sealed class Binder
         switch (expression)
         {
             case BoundSymbolExpression { Symbol: VariableSymbol variable } when variable.Type is ArrayTypeSymbol:
-            {
-                VariableStorageClass storageClass = variable.IsAutomatic
-                    ? VariableStorageClass.Reg
-                    : variable.StorageClass;
-                pointerType = new PointerTypeSymbol(elementType, variable.IsConst, storageClass: storageClass);
-                return true;
-            }
+                {
+                    VariableStorageClass storageClass = variable.IsAutomatic
+                        ? VariableStorageClass.Reg
+                        : variable.StorageClass;
+                    pointerType = new PointerTypeSymbol(elementType, variable.IsConst, storageClass: storageClass);
+                    return true;
+                }
 
             case BoundSymbolExpression { Symbol: ParameterSymbol parameter } when parameter.Type is ArrayTypeSymbol:
                 pointerType = new PointerTypeSymbol(elementType, isConst: false, storageClass: VariableStorageClass.Reg);

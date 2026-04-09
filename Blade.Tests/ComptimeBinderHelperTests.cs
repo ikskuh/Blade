@@ -169,7 +169,6 @@ public sealed class ComptimeBinderHelperTests
         return new ImportedModule(
             alias,
             $"/tmp/{alias}.blade",
-            alias,
             EmptyCompilationUnit(),
             program,
             exportedFunctions,

@@ -619,7 +619,6 @@ public class BinderTests
         ImportedModule module = program.ImportedModules["t"];
         Assert.That(module.SourceName, Is.EqualTo("./types.blade"));
         Assert.That(module.ResolvedFilePath, Is.EqualTo(temp.GetFullPath("types.blade")));
-        Assert.That(module.DefaultAlias, Is.EqualTo("t"));
         Assert.That(module.Syntax, Is.Not.Null);
         Assert.That(module.ExportedTypes.ContainsKey("Alias"), Is.True);
     }

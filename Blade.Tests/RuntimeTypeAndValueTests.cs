@@ -391,7 +391,6 @@ public sealed class RuntimeTypeAndValueTests
         return new ImportedModule(
             alias,
             $"/tmp/{alias}.blade",
-            alias,
             syntax,
             program,
             new Dictionary<string, FunctionSymbol>(StringComparer.Ordinal),

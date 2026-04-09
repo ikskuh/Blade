@@ -1,0 +1,13 @@
+// EXPECT: pass
+//
+// NOTE:
+//  This test asserts that the cmpiler will not duplicate module instantiations internally
+//  for the "builtin" module.
+
+import "./forward.blade" as forward;
+
+import builtin;
+
+assert (forward.space == ._hub); // implicit use must work even if "builtin" would be duplicated
+
+assert (forward.space == builtin.MemorySpace._hub); // This will only work if "builtin" is not duplicated internally

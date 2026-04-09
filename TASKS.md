@@ -158,30 +158,6 @@ Design note in `CallGraphAnalyzer.cs` (line 9). Not a lowering gap, but a planne
 - Keep output-path problems as regular user-facing CLI errors instead of process-terminating exceptions.
 - Cover both text and JSON output paths in tests.
 
-## REVIEW-C7: Preserve source identity on diagnostics from imported modules
-
-Diagnostics currently only carry a `TextSpan`, while rendering resolves the span against the root compilation source file.
-
-- Attach originating source identity to diagnostics or diagnostic locations.
-- Render imported-module diagnostics against their actual source file instead of the root file.
-- Add coverage for imported-module parse/bind errors with file/line reporting.
-
-## REVIEW-C8: Report import failures at the `import` site
-
-`Binder.LoadAndBindModule` still reports some import failures with `new TextSpan(0, 0)` instead of the caller span.
-
-- Thread the import-site span through `LoadAndBindModule`.
-- Use that span for file-not-found and circular-import diagnostics.
-- Add regression coverage that checks the reported import location.
-
-## REVIEW-C9: Do not populate `_importedModules` before alias declaration succeeds
-
-`BindImports` writes `_importedModules[alias] = imported` before checking whether the module alias can be declared in the global scope.
-
-- Only commit the imported-module table entry after `TryDeclare` succeeds.
-- Keep `_importedModules` and the symbol table consistent after alias collisions.
-- Add a regression or unit test for duplicate import aliases.
-
 ## REVIEW-C16: Apply the shared flag-name parser to asm output bindings
 
 Return-item flags already accept `SyntaxFacts.IsIdentifierLike(...)`; asm output bindings still require a strict identifier token.

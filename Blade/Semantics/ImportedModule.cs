@@ -9,7 +9,6 @@ public sealed class ImportedModule
     public ImportedModule(
         string sourceName,
         string resolvedFilePath,
-        string defaultAlias,
         CompilationUnitSyntax syntax,
         BoundProgram program,
         IReadOnlyDictionary<string, FunctionSymbol> exportedFunctions,
@@ -19,7 +18,6 @@ public sealed class ImportedModule
     {
         SourceName = Requires.NotNull(sourceName);
         ResolvedFilePath = Requires.NotNull(resolvedFilePath);
-        DefaultAlias = Requires.NotNull(defaultAlias);
         Syntax = Requires.NotNull(syntax);
         Program = Requires.NotNull(program);
         ExportedFunctions = Requires.NotNull(exportedFunctions);
@@ -30,7 +28,6 @@ public sealed class ImportedModule
 
     public string SourceName { get; }
     public string ResolvedFilePath { get; }
-    public string DefaultAlias { get; }
     public CompilationUnitSyntax Syntax { get; }
     public BoundProgram Program { get; }
     public IReadOnlyDictionary<string, FunctionSymbol> ExportedFunctions { get; }
@@ -67,12 +64,11 @@ internal sealed class ImportedModuleDefinition
     public IReadOnlyDictionary<string, VariableSymbol> ExportedVariables { get; }
     public IReadOnlyDictionary<string, ImportedModule> ImportedModules { get; }
 
-    public ImportedModule CreateImport(string sourceName, string alias)
+    public ImportedModule CreateImport(string sourceName)
     {
         return new ImportedModule(
             sourceName,
             ResolvedFilePath,
-            alias,
             Syntax,
             Program,
             ExportedFunctions,
