@@ -163,7 +163,7 @@ public static class AsmLowerer
         if (place.Symbol is VariableSymbol { Type: ArrayTypeSymbol variableArrayType })
         {
             return variableArrayType.ElementType as RuntimeTypeSymbol
-                ?? Assert.UnreachableValue<RuntimeTypeSymbol>();
+                ?? Assert.UnreachableValue<RuntimeTypeSymbol>(); // pragma: force-coverage
         }
 
         if (place.Symbol is VariableSymbol { Type: RuntimeTypeSymbol runtimeType })
@@ -752,8 +752,8 @@ public static class AsmLowerer
 
         if (instruction is not LirOpInstruction op)
         {
-            Assert.Unreachable($"Unexpected LIR instruction type '{instruction.GetType().Name}'.");
-            return;
+            Assert.Unreachable($"Unexpected LIR instruction type '{instruction.GetType().Name}'."); // pragma: force-coverage
+            return; // pragma: force-coverage
         }
 
         switch (op.Operation)
@@ -865,7 +865,7 @@ public static class AsmLowerer
             return;
 
         // After label restriction (E0306), all valid inline asm should be typed-lowerable.
-        Assert.Unreachable();
+        Assert.Unreachable(); // pragma: force-coverage
     }
 
     private static bool TryLowerTypedInlineAsm(
@@ -1142,8 +1142,8 @@ public static class AsmLowerer
                 nodes.Add(Emit(SelectHubReadOpcode(RequireTypedResult(op, "load.deref")), dest, pointer));
                 break;
             default:
-                Assert.Unreachable($"Unexpected storage class '{storageClass}' for {op.DisplayName}.");
-                break;
+                Assert.Unreachable($"Unexpected storage class '{storageClass}' for {op.DisplayName}."); // pragma: force-coverage
+                break; // pragma: force-coverage
         }
     }
 
@@ -1196,8 +1196,8 @@ public static class AsmLowerer
                     break;
                 }
             default:
-                Assert.Unreachable($"Unexpected storage class '{storageClass}' for {op.DisplayName}.");
-                break;
+                Assert.Unreachable($"Unexpected storage class '{storageClass}' for {op.DisplayName}."); // pragma: force-coverage
+                break; // pragma: force-coverage
         }
     }
 
@@ -1220,14 +1220,14 @@ public static class AsmLowerer
                 nodes.Add(new AsmInstructionNode(SelectHubWriteOpcode(RequireTypedResult(op, "store.deref")), [value, pointer]));
                 break;
             case VariableStorageClass.Reg:
-                Assert.Unreachable("Register variable loads/stores must never reach ASMIR lowering as such");
-                break;
+                Assert.Unreachable("Register variable loads/stores must never reach ASMIR lowering as such"); // pragma: force-coverage
+                break; // pragma: force-coverage
             case VariableStorageClass.Automatic:
-                Assert.Unreachable("Automatic variable loads/stores must never reach ASMIR lowering as such");
-                break;
+                Assert.Unreachable("Automatic variable loads/stores must never reach ASMIR lowering as such"); // pragma: force-coverage
+                break; // pragma: force-coverage
             default:
-                Assert.Unreachable($"unhandled switch value: {op.DisplayName}");
-                break;
+                Assert.Unreachable($"unhandled switch value: {op.DisplayName}"); // pragma: force-coverage
+                break; // pragma: force-coverage
         }
     }
 
@@ -1261,8 +1261,8 @@ public static class AsmLowerer
                     break;
                 }
             default:
-                Assert.Unreachable($"Unexpected storage class '{storageClass}' for {op.DisplayName}.");
-                break;
+                Assert.Unreachable($"Unexpected storage class '{storageClass}' for {op.DisplayName}."); // pragma: force-coverage
+                break; // pragma: force-coverage
         }
     }
 
@@ -1718,8 +1718,8 @@ public static class AsmLowerer
                 break;
 
             default:
-                Assert.Unreachable($"Unexpected binary operator kind: {kind}");
-                break;
+                Assert.Unreachable($"Unexpected binary operator kind: {kind}"); // pragma: force-coverage
+                break; // pragma: force-coverage
         }
     }
 
@@ -1797,8 +1797,8 @@ public static class AsmLowerer
                 break;
 
             default:
-                Assert.Unreachable($"Unexpected unary operator kind: {kind}");
-                break;
+                Assert.Unreachable($"Unexpected unary operator kind: {kind}"); // pragma: force-coverage
+                break; // pragma: force-coverage
         }
     }
 
@@ -1849,8 +1849,8 @@ public static class AsmLowerer
                 }
 
             case CallingConventionTier.EntryPoint:
-                Assert.Unreachable("Entry point functions cannot be called.");
-                break;
+                Assert.Unreachable("Entry point functions cannot be called."); // pragma: force-coverage
+                break; // pragma: force-coverage
 
             case CallingConventionTier.Recursive:
                 var ok = ctx.RecursiveCallingConvention.TryGetValue(target, out RecursiveCallingConventionInfo? recursiveInfo);
@@ -1874,8 +1874,8 @@ public static class AsmLowerer
                 break;
 
             default:
-                Assert.Unreachable($"Unexpected callee tier: {calleeTier}");
-                return;
+                Assert.Unreachable($"Unexpected callee tier: {calleeTier}"); // pragma: force-coverage
+                return; // pragma: force-coverage
         }
     }
 
@@ -1921,7 +1921,7 @@ public static class AsmLowerer
             MirFlag.NC => P2Mnemonic.BITNC,
             MirFlag.Z => P2Mnemonic.BITZ,
             MirFlag.NZ => P2Mnemonic.BITNZ,
-            _ => Assert.UnreachableValue<P2Mnemonic>(),
+            _ => Assert.UnreachableValue<P2Mnemonic>(), // pragma: force-coverage
         };
         nodes.Add(Emit(opcode, destReg, new AsmImmediateOperand(0)));
     }
@@ -1985,8 +1985,8 @@ public static class AsmLowerer
                 nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [place, valueOp]));
                 break;
             default:
-                Assert.Unreachable($"Unexpected storage class: {storagePlace.StorageClass}");
-                break;
+                Assert.Unreachable($"Unexpected storage class: {storagePlace.StorageClass}"); // pragma: force-coverage
+                break; // pragma: force-coverage
         }
     }
 
@@ -2030,7 +2030,7 @@ public static class AsmLowerer
             BoundBinaryOperatorKind.RotateLeft => P2Mnemonic.ROL,
             BoundBinaryOperatorKind.RotateRight => P2Mnemonic.ROR,
             BoundBinaryOperatorKind.Modulo => P2Mnemonic.QDIV,
-            _ => Assert.UnreachableValue<P2Mnemonic>($"Update-place operator '{operation.OperatorKind}' must be one of the binder-reachable compound assignment kinds."),
+            _ => Assert.UnreachableValue<P2Mnemonic>($"Update-place operator '{operation.OperatorKind}' must be one of the binder-reachable compound assignment kinds."), // pragma: force-coverage
         };
 
         if (operation.OperatorKind == BoundBinaryOperatorKind.Multiply
@@ -2227,7 +2227,7 @@ public static class AsmLowerer
             FunctionKind.Int1 => P2Mnemonic.RESI1,
             FunctionKind.Int2 => P2Mnemonic.RESI2,
             FunctionKind.Int3 => P2Mnemonic.RESI3,
-            _ => Assert.UnreachableValue<P2Mnemonic>(),
+            _ => Assert.UnreachableValue<P2Mnemonic>(), // pragma: force-coverage
         };
         nodes.Add(Emit(resumeOpcode));
     }
@@ -2249,9 +2249,9 @@ public static class AsmLowerer
             && ctx.CoroutineCallingConvention.TryGetValue(ctx.Function.Symbol, out CoroutineCallingConventionInfo? sourceInfo)
             && sourceInfo is not null
             ? CreatePlaceRegisterOperand(sourceInfo.StatePlace)
-            : ctx.TopLevelYieldStatePlace is not null
-                ? CreatePlaceRegisterOperand(ctx.TopLevelYieldStatePlace)
-                : Assert.UnreachableValue<AsmOperand>();
+                : ctx.TopLevelYieldStatePlace is not null
+                    ? CreatePlaceRegisterOperand(ctx.TopLevelYieldStatePlace)
+                    : Assert.UnreachableValue<AsmOperand>(); // pragma: force-coverage
 
         nodes.Add(Emit(P2Mnemonic.CALLD, yieldStateDestination, CreatePlaceRegisterOperand(targetInfo.StatePlace)));
     }
@@ -2325,12 +2325,12 @@ public static class AsmLowerer
                 case CallingConventionTier.Coroutine:
                 case CallingConventionTier.EntryPoint:
                 case CallingConventionTier.Interrupt:
-                    Assert.Unreachable($"Functions of calling convention {ctx.Tier} must never produce a return value.");
-                    break;
+                    Assert.Unreachable($"Functions of calling convention {ctx.Tier} must never produce a return value."); // pragma: force-coverage
+                    break; // pragma: force-coverage
 
                 default:
-                    Assert.Unreachable($"Missing branch coverage for {ctx.Tier}");
-                    break;
+                    Assert.Unreachable($"Missing branch coverage for {ctx.Tier}"); // pragma: force-coverage
+                    break; // pragma: force-coverage
             }
         }
 
@@ -2366,7 +2366,7 @@ public static class AsmLowerer
                         FunctionKind.Int1 => P2SpecialRegister.IJMP1,
                         FunctionKind.Int2 => P2SpecialRegister.IJMP2,
                         FunctionKind.Int3 => P2SpecialRegister.IJMP3,
-                        _ => Assert.UnreachableValue<P2SpecialRegister>(),
+                        _ => Assert.UnreachableValue<P2SpecialRegister>(), // pragma: force-coverage
                     };
                     nodes.Add(Emit(
                     P2Mnemonic.MOV,
@@ -2391,12 +2391,12 @@ public static class AsmLowerer
                 break;
 
             case CallingConventionTier.Coroutine:
-                Assert.Unreachable("Coroutines must never return in the normal sense.");
-                break;
+                Assert.Unreachable("Coroutines must never return in the normal sense."); // pragma: force-coverage
+                break; // pragma: force-coverage
 
             default:
-                Assert.Unreachable($"Missing branch coverage for {ctx.Tier}");
-                break;
+                Assert.Unreachable($"Missing branch coverage for {ctx.Tier}"); // pragma: force-coverage
+                break; // pragma: force-coverage
         }
     }
 
@@ -2425,7 +2425,7 @@ public static class AsmLowerer
                 MirFlag.NC => P2ConditionCode.IF_NC,
                 MirFlag.Z => P2ConditionCode.IF_Z,
                 MirFlag.NZ => P2ConditionCode.IF_NZ,
-                _ => Assert.UnreachableValue<P2ConditionCode>(),
+                _ => Assert.UnreachableValue<P2ConditionCode>(), // pragma: force-coverage
             };
             P2ConditionCode falsePredicate = branch.ConditionFlag.Value switch
             {
@@ -2433,7 +2433,7 @@ public static class AsmLowerer
                 MirFlag.NC => P2ConditionCode.IF_C,
                 MirFlag.Z => P2ConditionCode.IF_NZ,
                 MirFlag.NZ => P2ConditionCode.IF_Z,
-                _ => Assert.UnreachableValue<P2ConditionCode>(),
+                _ => Assert.UnreachableValue<P2ConditionCode>(), // pragma: force-coverage
             };
 
             if (branch.TrueArguments.Count == 0 && branch.FalseArguments.Count == 0)
@@ -2536,7 +2536,7 @@ public static class AsmLowerer
             LirBitfieldInsertOperation => UnsupportedLoweringKind.BitfieldInsert,
             LirStructLiteralOperation => UnsupportedLoweringKind.StructLiteral,
             LirInsertMemberOperation => UnsupportedLoweringKind.InsertMember,
-            _ => Assert.UnreachableValue<UnsupportedLoweringKind>($"Unsupported lowering category must be defined for '{operation.GetType().Name}'."),
+            _ => Assert.UnreachableValue<UnsupportedLoweringKind>($"Unsupported lowering category must be defined for '{operation.GetType().Name}'."), // pragma: force-coverage
         };
     }
 
@@ -2548,7 +2548,7 @@ public static class AsmLowerer
             UnsupportedLoweringKind.BitfieldInsert => "bitfield.insert",
             UnsupportedLoweringKind.StructLiteral => "structlit",
             UnsupportedLoweringKind.InsertMember => "insert.member",
-            _ => Assert.UnreachableValue<string>(),
+            _ => Assert.UnreachableValue<string>(), // pragma: force-coverage
         };
     }
 
@@ -2573,7 +2573,7 @@ public static class AsmLowerer
             LirRegisterOperand reg => new AsmRegisterOperand(ctx.GetRegister(reg.Register)),
             LirImmediateOperand imm => LowerImmediateValue(imm.Value, ctx.PlacesBySymbol),
             LirPlaceOperand place => CreatePlaceOperand(place.Place),
-            _ => Assert.UnreachableValue<AsmOperand>(),
+            _ => Assert.UnreachableValue<AsmOperand>(), // pragma: force-coverage
         };
     }
 
@@ -2616,7 +2616,7 @@ public static class AsmLowerer
         {
             bool b => b ? 1 : 0,
             long l => l,
-            _ => Assert.UnreachableValue<long>($"Immediate '{imm.Format()}' is not encodable as a numeric PASM immediate."),
+            _ => Assert.UnreachableValue<long>($"Immediate '{imm.Format()}' is not encodable as a numeric PASM immediate."), // pragma: force-coverage
         };
     }
 

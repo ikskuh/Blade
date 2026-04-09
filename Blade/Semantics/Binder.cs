@@ -777,7 +777,7 @@ public sealed class Binder
             }
 
             default:
-                return Assert.UnreachableValue<BoundStatement>("all statement syntax types are handled above");
+                return Assert.UnreachableValue<BoundStatement>("all statement syntax types are handled above"); // pragma: force-coverage
         }
     }
 
@@ -838,8 +838,8 @@ public sealed class Binder
                 }
 
                 default:
-                    Assert.Unreachable();
-                    break;
+                    Assert.Unreachable(); // pragma: force-coverage
+                    break; // pragma: force-coverage
             }
         }
 
@@ -977,7 +977,7 @@ public sealed class Binder
                 return BindInlineAsmSymbolOperand(symbol.Name.Text, blockSpan, availableBindings, labels, referencedVarBindings);
 
             default:
-                return Assert.UnreachableValue<InlineAsmOperand?>("all inline asm operand syntaxes handled");
+                return Assert.UnreachableValue<InlineAsmOperand?>("all inline asm operand syntaxes handled"); // pragma: force-coverage
         }
     }
 
@@ -1661,14 +1661,14 @@ public sealed class Binder
                 return BindQueryExpression(query);
 
             default:
-                return Assert.UnreachableValue<BoundExpression>("all expression syntax types are handled above");
+                return Assert.UnreachableValue<BoundExpression>("all expression syntax types are handled above"); // pragma: force-coverage
         }
     }
 
     private BoundExpression BindLiteralExpression(LiteralExpressionSyntax literal)
     {
         if (literal.Token.Value is not BladeValue value)
-            return Assert.UnreachableValue<BoundExpression>($"Literal token '{literal.Token.Kind}' did not carry a typed value.");
+            return Assert.UnreachableValue<BoundExpression>($"Literal token '{literal.Token.Kind}' did not carry a typed value."); // pragma: force-coverage
 
         return new BoundLiteralExpression(value, literal.Span);
     }
@@ -1775,7 +1775,7 @@ public sealed class Binder
                 return BindAddressOfExpression(unary, unaryOperator);
         }
 
-        return Assert.UnreachableValue<BoundExpression>();
+        return Assert.UnreachableValue<BoundExpression>(); // pragma: force-coverage
     }
 
     private BoundExpression BindAddressOfExpression(UnaryExpressionSyntax unary, BoundUnaryOperator op)
@@ -2378,7 +2378,7 @@ public sealed class Binder
     private static BoundLiteralExpression CreateFoldedLiteralExpression(ComptimeResult value, BoundExpression expression)
     {
         if (BladeValue.TryConvert(value.Value, expression.Type, out BladeValue normalizedValue) != EvaluationError.None)
-            return Assert.UnreachableValue<BoundLiteralExpression>($"Failed to materialize folded value for '{expression.Type.Name}'.");
+            return Assert.UnreachableValue<BoundLiteralExpression>($"Failed to materialize folded value for '{expression.Type.Name}'."); // pragma: force-coverage
 
         return new BoundLiteralExpression(normalizedValue, expression.Span);
     }
@@ -2989,7 +2989,7 @@ public sealed class Binder
                 VariableStorageClass.Reg => ("reg", 0L),
                 VariableStorageClass.Lut => ("lut", 1L),
                 VariableStorageClass.Hub => ("hub", 2L),
-                _ => Assert.UnreachableValue<(string, long)>(),
+                _ => Assert.UnreachableValue<(string, long)>(), // pragma: force-coverage
             };
 
             return new BoundEnumLiteralExpression(MemorySpaceType, memberName, value, query.Span);
@@ -3466,7 +3466,7 @@ public sealed class Binder
             BitfieldTypeSyntax bitfieldType => BindBitfieldType(bitfieldType, aliasName),
             NamedTypeSyntax named => BindNamedType(named),
             QualifiedTypeSyntax qualified => BindQualifiedType(qualified),
-            _ => Assert.UnreachableValue<TypeSymbol>("all type syntax nodes are handled above")
+            _ => Assert.UnreachableValue<TypeSymbol>("all type syntax nodes are handled above") // pragma: force-coverage
         };
     }
 

@@ -183,7 +183,7 @@ public static class FinalAssemblyWriter
             AsmDataDirective.Byte => "BYTE",
             AsmDataDirective.Word => "WORD",
             AsmDataDirective.Long => "LONG",
-            _ => Assert.UnreachableValue<string>(),
+            _ => Assert.UnreachableValue<string>(), // pragma: force-coverage
         };
     }
 

@@ -351,7 +351,7 @@ public abstract partial class BladeValue
             BoundBinaryOperatorKind.LessOrEqual => comparison <= 0,
             BoundBinaryOperatorKind.Greater => comparison > 0,
             BoundBinaryOperatorKind.GreaterOrEqual => comparison >= 0,
-            _ => Assert.UnreachableValue<bool>(),
+            _ => Assert.UnreachableValue<bool>(), // pragma: force-coverage
         };
 
         result = Bool(value);
@@ -635,7 +635,7 @@ public abstract partial class BladeValue
         {
             RuntimeTypeSymbol runtimeType => new RuntimeBladeValue(runtimeType, value),
             ComptimeTypeSymbol comptimeType => new ComptimeBladeValue(comptimeType, value),
-            _ => Assert.UnreachableValue<BladeValue>(),
+            _ => Assert.UnreachableValue<BladeValue>(), // pragma: force-coverage
         };
     }
 

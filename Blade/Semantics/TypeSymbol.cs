@@ -253,11 +253,7 @@ public sealed class ArrayTypeSymbol(TypeSymbol elementType, int? length = null) 
             : $"[{Requires.NotNull(elementType).Name}]";
     }
 
-    private RuntimeTypeSymbol GetRuntimeElementType()
-    {
-        return ElementType as RuntimeTypeSymbol
-            ?? Assert.UnreachableValue<RuntimeTypeSymbol>();
-    }
+    private RuntimeTypeSymbol GetRuntimeElementType() => Assert.NotNull(ElementType as RuntimeTypeSymbol);
 }
 
 public sealed class AggregateMemberSymbol(string name, TypeSymbol type, int byteOffset, int bitOffset, int bitWidth, bool isBitfield)

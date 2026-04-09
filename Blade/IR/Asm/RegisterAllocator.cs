@@ -560,7 +560,7 @@ public static class RegisterAllocator
                     {
                         AsmRegisterConstraintKind.FixedPhysicalRegister => AllocatedLocation.ForPhysicalRegister(constraint.FixedRegister!.Value),
                         AsmRegisterConstraintKind.TiedStoragePlace => GetLocationForPlace(constraint.TiedPlace!, placeLocations),
-                        _ => Assert.UnreachableValue<AllocatedLocation>(),
+                        _ => Assert.UnreachableValue<AllocatedLocation>(), // pragma: force-coverage
                     };
 
                     colorToLocation[color] = constrainedLocation;
@@ -839,7 +839,7 @@ public static class RegisterAllocator
         if (place.Kind == StoragePlaceKind.AllocatableGlobalRegister)
             return AllocatedLocation.ForStoragePlace(place);
 
-        return Assert.UnreachableValue<AllocatedLocation>($"Missing allocated location for internal register place '{place.Symbol.Name}'.");
+        return Assert.UnreachableValue<AllocatedLocation>($"Missing allocated location for internal register place '{place.Symbol.Name}'."); // pragma: force-coverage
     }
 
     private static AsmOperand ToOperand(AllocatedLocation location, Func<int, AsmSpillSlotSymbol> getSlotSymbol)
@@ -849,7 +849,7 @@ public static class RegisterAllocator
             AllocatedLocationKind.SpillSlot => new AsmSymbolOperand(getSlotSymbol(location.SpillSlot), AsmSymbolAddressingMode.Register),
             AllocatedLocationKind.PhysicalRegister => new AsmPhysicalRegisterOperand(location.PhysicalRegister!.Value),
             AllocatedLocationKind.StoragePlace => new AsmSymbolOperand(location.StoragePlace!, AsmSymbolAddressingMode.Register),
-            _ => Assert.UnreachableValue<AsmOperand>(),
+            _ => Assert.UnreachableValue<AsmOperand>(), // pragma: force-coverage
         };
     }
 

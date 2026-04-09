@@ -571,8 +571,8 @@ public static class MirLowerer
                     break;
 
                 case BoundErrorStatement:
-                    Assert.Unreachable("MIR lowering must not run on bound statements that already contain binder errors.");
-                    break;
+                    Assert.Unreachable("MIR lowering must not run on bound statements that already contain binder errors."); // pragma: force-coverage
+                    break; // pragma: force-coverage
             }
         }
 
@@ -1210,8 +1210,8 @@ public static class MirLowerer
                     return LowerIfExpression(ifExpression);
 
                 case BoundRangeExpression:
-                    Assert.Unreachable("Range expressions must be consumed by loop lowering before MIR expression lowering.");
-                    break;
+                    Assert.Unreachable("Range expressions must be consumed by loop lowering before MIR expression lowering."); // pragma: force-coverage
+                    break; // pragma: force-coverage
 
                 case BoundStructLiteralExpression structLiteral:
                 {
@@ -1254,7 +1254,7 @@ public static class MirLowerer
                 }
 
                 case BoundErrorExpression:
-                    return Assert.UnreachableValue<MirValueId>("MIR lowering must not run on bound expressions that already contain binder errors.");
+                    return Assert.UnreachableValue<MirValueId>("MIR lowering must not run on bound expressions that already contain binder errors."); // pragma: force-coverage
             }
 
             return EmitPlaceholderConstant(BuiltinTypes.Unknown, expression.Span);
@@ -1305,7 +1305,7 @@ public static class MirLowerer
             if (unaryExpression.Operator.Kind == BoundUnaryOperatorKind.AddressOf
                 && unaryExpression.Operand is BoundSymbolExpression)
             {
-                Assert.Unreachable($"Direct address-of symbol expressions should fold to symbolic pointer literals before MIR lowering. Span={unaryExpression.Span}");
+                Assert.Unreachable($"Direct address-of symbol expressions should fold to symbolic pointer literals before MIR lowering. Span={unaryExpression.Span}"); // pragma: force-coverage
             }
 
             if (unaryExpression.Operator.Kind == BoundUnaryOperatorKind.AddressOf
@@ -1604,8 +1604,8 @@ public static class MirLowerer
                     return;
 
                 case BoundErrorAssignmentTarget:
-                    Assert.Unreachable("MIR lowering must not run on bound assignment targets that already contain binder errors.");
-                    return;
+                    Assert.Unreachable("MIR lowering must not run on bound assignment targets that already contain binder errors."); // pragma: force-coverage
+                    return; // pragma: force-coverage
             }
         }
 
@@ -1643,7 +1643,7 @@ public static class MirLowerer
                 }
             }
 
-            Assert.Unreachable($"Unsupported aggregate write expression '{expression.Kind}'.");
+            Assert.Unreachable($"Unsupported aggregate write expression '{expression.Kind}'."); // pragma: force-coverage
         }
 
         private void WriteSymbol(Symbol symbol, MirValueId value, TextSpan span)

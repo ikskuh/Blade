@@ -38,8 +38,8 @@ Your task is completed when:
     Bugs get hidden if "handled". Assert invariants instead of handling invariant violation.
 - Unreachable switch cases `throw new UnreachableException()` instead of returning wrong values
 - `Assert.Invariant(cond)` for invariants guaranteed by earlier stages — never write unreachable fallback code.
-- `Assert.Unreachable()` for statements that should never be reachable.
-- `Assert.UnreachableValue<T>()` for expressions that should never be reachable. `<T>` is the expected result. Useful for unreachable branches in switches.
+- `Assert.Unreachable()` for statements that should never be reachable. Always append `// pragma: force-coverage` to the `Assert.Unreachable(...)` line (and any follow-up `break`/`return`/`throw` used to satisfy flow analysis).
+- `Assert.UnreachableValue<T>()` for expressions that should never be reachable. `<T>` is the expected result. Useful for unreachable branches in switches. Always append `// pragma: force-coverage` to the line containing the call.
 - Argument validation via `Blade/Requires.cs` (`Requires.NotNull`, `.NonNegative`, `.Positive`, `.InRange`).
 - `Blade/.editorconfig` is the analyzer rule source of truth.
 - In-source suppressions (`#pragma`, attributes) only for single occurrences with a clear explanation.

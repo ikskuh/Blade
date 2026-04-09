@@ -74,7 +74,7 @@ public sealed class StoragePlace : IAsmSymbol
         or StoragePlaceKind.FixedLutAlias
         or StoragePlaceKind.FixedHubAlias;
 
-    public string EmittedName => _emittedName ?? Assert.UnreachableValue<string>("Storage place emitted names must be assigned by backend naming.");
+    public string EmittedName => Assert.NotNull(_emittedName, "Storage place emitted names must be assigned by backend naming."); // pragma: force-coverage
 
     string IAsmSymbol.Name => EmittedName;
 

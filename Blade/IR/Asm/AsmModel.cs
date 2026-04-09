@@ -295,8 +295,8 @@ public sealed class AsmInstructionNode : AsmNode
                 Assert.Invariant(operandInfo.SupportsImmediateSyntax, $"Operand {operandIndex} of '{form.Mnemonic}' does not allow immediate values.");
                 break;
             default:
-                Assert.Unreachable();
-                break;
+                Assert.Unreachable(); // pragma: force-coverage
+                break; // pragma: force-coverage
         }
     }
 
@@ -373,7 +373,7 @@ public sealed class AsmSymbolOperand : AsmOperand
     {
         AsmSymbolAddressingMode.Immediate => Offset == 0 ? $"#{Name}" : $"#{Name}{FormatOffset(Offset)}",
         AsmSymbolAddressingMode.Register => Offset == 0 ? Name : $"{Name}{FormatOffset(Offset)}",
-        _ => Assert.UnreachableValue<string>(),
+        _ => Assert.UnreachableValue<string>(), // pragma: force-coverage
     };
 
     private static string FormatOffset(int offset)
@@ -436,7 +436,7 @@ public sealed class AsmAltPlaceholderOperand : AsmOperand
     {
         AltPlaceholderKind.Immediate => "#<altered>",
         AltPlaceholderKind.Register => "<altered>",
-        _ => Assert.UnreachableValue<string>(),
+        _ => Assert.UnreachableValue<string>(), // pragma: force-coverage
     };
 }
 

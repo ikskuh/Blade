@@ -394,7 +394,7 @@ internal sealed class ComptimeFunctionSupportAnalyzer
                 return Unsupported(expression.Span, "error expressions are not evaluable.");
 
             default:
-                return Assert.UnreachableValue<ComptimeSupportResult>("all bound expression types are handled above");
+                return Assert.UnreachableValue<ComptimeSupportResult>("all bound expression types are handled above"); // pragma: force-coverage
         }
     }
 
@@ -528,7 +528,7 @@ internal sealed class ComptimeEvaluator
             EvaluationError.TypeMismatch => new ComptimeResult(ComptimeFailureKind.NotEvaluable, unary.Operand.Span, "unary operand is not a compile-time integer."),
             EvaluationError.Unsupported => new ComptimeResult(ComptimeFailureKind.UnsupportedConstruct, unary.Span, $"operator '{unary.Operator.Kind}' is not supported during comptime evaluation."),
             EvaluationError.UndefinedBehavior => new ComptimeResult(ComptimeFailureKind.NotEvaluable, unary.Span, $"operator '{unary.Operator.Kind}' is not evaluable at compile time."),
-            _ => Assert.UnreachableValue<ComptimeResult>(),
+            _ => Assert.UnreachableValue<ComptimeResult>(), // pragma: force-coverage
         };
     }
 
@@ -652,7 +652,7 @@ internal sealed class ComptimeEvaluator
             EvaluationError.UndefinedBehavior when binary.Operator.Kind == BoundBinaryOperatorKind.Divide => FailNotEvaluable(binary.Span, "division by zero is not evaluable at compile time."),
             EvaluationError.UndefinedBehavior when binary.Operator.Kind == BoundBinaryOperatorKind.Modulo => FailNotEvaluable(binary.Span, "modulo by zero is not evaluable at compile time."),
             EvaluationError.UndefinedBehavior => FailNotEvaluable(binary.Span, $"operator '{binary.Operator.Kind}' is not evaluable at compile time."),
-            _ => Assert.UnreachableValue<ComptimeResult>(),
+            _ => Assert.UnreachableValue<ComptimeResult>(), // pragma: force-coverage
         };
     }
 
@@ -687,7 +687,7 @@ internal sealed class ComptimeEvaluator
             ConversionKind.ExplicitCast => BladeValue.TryCast(operandResult.Value, targetType, out convertedValue),
             ConversionKind.BitCast when targetType is RuntimeTypeSymbol runtimeType => BladeValue.TryBitCast(operandResult.Value, runtimeType, out convertedValue),
             ConversionKind.BitCast => EvaluationError.Unsupported,
-            _ => Assert.UnreachableValue<EvaluationError>(),
+            _ => Assert.UnreachableValue<EvaluationError>(), // pragma: force-coverage
         };
 
         return error == EvaluationError.None
@@ -878,7 +878,7 @@ internal sealed class ComptimeEvaluator
                 TokenKind.GreaterGreaterGreaterEqual => BoundBinaryOperatorKind.ArithmeticShiftRight,
                 TokenKind.RotateLeftEqual => BoundBinaryOperatorKind.RotateLeft,
                 TokenKind.RotateRightEqual => BoundBinaryOperatorKind.RotateRight,
-                _ => Assert.UnreachableValue<BoundBinaryOperatorKind>("parser only produces known compound assignment operators"),
+                _ => Assert.UnreachableValue<BoundBinaryOperatorKind>("parser only produces known compound assignment operators"), // pragma: force-coverage
             };
 
             finalValue = TryApplyCompoundAssignment(operation, currentValue, assignedValue, variable.Type, assignment.Span);

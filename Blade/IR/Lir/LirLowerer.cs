@@ -426,7 +426,7 @@ public static class LirLowerer
                 writesZ: false,
                 end.Span),
 
-            _ => Assert.UnreachableValue<LirInstruction>(),
+            _ => Assert.UnreachableValue<LirInstruction>(), // pragma: force-coverage
         };
     }
 
@@ -523,7 +523,7 @@ public static class LirLowerer
                 return ReturnPlacement.FlagZ;
 
             default:
-                return Assert.UnreachableValue<ReturnPlacement>(
+                return Assert.UnreachableValue<ReturnPlacement>( // pragma: force-coverage
                     $"Call '{call.Function.Name}' exposes extra result index {extraResultIndex}, but only C and Z flag result slots are available.");
         }
     }

@@ -245,7 +245,7 @@ public static class AsmLegalizer
         {
             P2AugPrefixKind.AUGD => P2Mnemonic.AUGD,
             P2AugPrefixKind.AUGS => P2Mnemonic.AUGS,
-            _ => Assert.UnreachableValue<P2Mnemonic>(),
+            _ => Assert.UnreachableValue<P2Mnemonic>(), // pragma: force-coverage
         };
     }
 }

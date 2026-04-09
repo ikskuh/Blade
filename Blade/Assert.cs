@@ -30,13 +30,33 @@ internal static class Assert
     /// <param name="line"></param>
     /// <param name="member"></param>
     /// <exception cref="UnreachableException"></exception>
-    public static void Invariant([DoesNotReturnIf(false)] bool condition, string message = "", [CallerArgumentExpression(nameof(condition))] string expression = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
+    public static void Invariant([DoesNotReturnIf(false)] bool condition, string message = "", ParameterGuard _guard = ParameterGuard.DoNotWriteThis, [CallerArgumentExpression(nameof(condition))] string expression = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
     {
         if (!condition)
         {
             string detail = string.IsNullOrWhiteSpace(message) ? string.Empty : $": {message}";
             throw new UnreachableException($"Invariant {expression} does not hold true in {member} ({file}:{line}){detail}");
         }
+    }
+    
+    /// <summary>
+    /// Checks if a value is not null.
+    /// </summary>
+    /// <param name="value">The invariant to be checked. Crashes when false.</param>
+    /// <param name="message"></param>
+    /// <param name="expression"></param>
+    /// <param name="file"></param>
+    /// <param name="line"></param>
+    /// <param name="member"></param>
+    /// <exception cref="UnreachableException"></exception>
+    public static T NotNull<T>(T? value, string message = "", ParameterGuard _guard = ParameterGuard.DoNotWriteThis, [CallerArgumentExpression(nameof(value))] string expression = "", [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
+    {
+        if (value is null)
+        {
+            string detail = string.IsNullOrWhiteSpace(message) ? string.Empty : $": {message}";
+            throw new UnreachableException($"{expression} was null {member} ({file}:{line}){detail}");
+        }
+        return value;
     }
 
     /// <summary>
