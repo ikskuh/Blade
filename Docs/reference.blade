@@ -474,6 +474,10 @@ fn inline_asm_demo(a: u32, b: u32) {
         // dead code elimination, register renaming and so on.
         ADD {a}, {b} WC
 
+        // `$` refers to the current assembly address and `#$` uses it as an immediate:
+        MOV {a}, #$
+        MOV {a}, $
+
         IF_NZ JMP loop // we can also use prefixes
     };
 
@@ -486,7 +490,8 @@ fn inline_asm_demo(a: u32, b: u32) {
         // It will not perform any optimizations of the code whatsoever.
     };
 
-    // Both types of asm blocks can return values through flags:
+    // Both types of asm blocks can return values through flags.
+    // The output binding must explicitly name `@C` or `@Z`:
     asm {
         MODC _SET
         // The following line will bind the flag C to the name "state"

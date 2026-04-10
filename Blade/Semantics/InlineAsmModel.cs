@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
 namespace Blade.Semantics;
@@ -49,6 +50,8 @@ public abstract class InlineAsmOperand
 public abstract class InlineAsmBindingSlot
 {
     public abstract string PlaceholderText { get; }
+
+    [ExcludeFromCodeCoverage]
     public override string ToString() => PlaceholderText;
 }
 
@@ -98,10 +101,4 @@ public sealed class InlineAsmLabelOperand(ControlFlowLabelSymbol label, InlineAs
 public sealed class InlineAsmSpecialRegisterOperand(P2SpecialRegister register) : InlineAsmOperand
 {
     public P2SpecialRegister Register { get; } = register;
-}
-
-public sealed class InlineAsmSymbolOperand(IAsmSymbol symbol, InlineAsmAddressingMode addressingMode) : InlineAsmOperand
-{
-    public IAsmSymbol Symbol { get; } = Requires.NotNull(symbol);
-    public InlineAsmAddressingMode AddressingMode { get; } = addressingMode;
 }

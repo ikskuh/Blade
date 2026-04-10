@@ -94,7 +94,7 @@ internal static class CompilationModuleLoader
 
             if (!import.IsFileImport && string.Equals(sourceName, "builtin", StringComparison.Ordinal))
             {
-                imports.Add(new LoadedImport(import, alias, LoadedImportKind.Builtin, sourceName, ResolvedFullPath: null));
+                imports.Add(new LoadedImport(import, alias, LoadedImportKind.Builtin, ResolvedFullPath: null));
                 continue;
             }
 
@@ -105,7 +105,7 @@ internal static class CompilationModuleLoader
                 namedModuleRoots,
                 namedModuleOwners,
                 diagnostics);
-            imports.Add(new LoadedImport(import, alias, LoadedImportKind.File, sourceName, resolvedFullPath));
+            imports.Add(new LoadedImport(import, alias, LoadedImportKind.File, resolvedFullPath));
 
             if (resolvedFullPath is not null)
                 newlyDiscoveredModules.Add(resolvedFullPath);
@@ -132,7 +132,8 @@ internal static class CompilationModuleLoader
         string resolvedFullPath;
         if (import.IsFileImport)
         {
-            string importerDir = Path.GetDirectoryName(importerFullPath) ?? string.Empty;
+            string? importerDir = Path.GetDirectoryName(importerFullPath);
+            Assert.Invariant(importerDir is not null, "Imported file paths must have a containing directory.");
             resolvedFullPath = Path.GetFullPath(Path.Combine(importerDir, sourceName));
         }
         else
@@ -175,8 +176,7 @@ internal static class CompilationModuleLoader
             return System.Text.Encoding.UTF8.GetString(bytes);
         }
 
-        Assert.Invariant(false, $"Token '{token.Kind}' must carry a UTF-8 byte-array literal value.");
-        return string.Empty;
+        return Assert.UnreachableValue<string>($"Token '{token.Kind}' must carry a UTF-8 byte-array literal value."); // pragma: force-coverage
     }
 }
 
@@ -210,5 +210,4 @@ internal readonly record struct LoadedImport(
     ImportDeclarationSyntax Syntax,
     string Alias,
     LoadedImportKind Kind,
-    string SourceName,
     string? ResolvedFullPath);

@@ -314,7 +314,8 @@ public sealed class AsmRegisterOperand(VirtualAsmRegister register) : AsmOperand
 {
     public VirtualAsmRegister Register { get; } = Requires.NotNull(register);
 
-    public override string Format() => "%r?";
+    [ExcludeFromCodeCoverage]
+    public override string Format() => throw new InvalidOperationException($"{nameof(AsmRegisterOperand)} cannot be formatted directly.");
 }
 
 /// <summary>

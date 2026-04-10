@@ -326,6 +326,7 @@ public static class FinalAssemblyWriter
         return symbol switch
         {
             AsmSpecialRegisterSymbol => symbol.Name,
+            AsmCurrentAddressSymbol => symbol.Name,
             AsmFunction function => FormatFunctionIdentifier(functionIdentifiers, function.Symbol),
             AsmFunctionReferenceSymbol functionReference => FormatFunctionIdentifier(functionIdentifiers, functionReference.Function),
             _ => BackendSymbolNaming.SanitizeIdentifier(symbol.Name),
@@ -337,6 +338,7 @@ public static class FinalAssemblyWriter
         return symbol switch
         {
             AsmSpecialRegisterSymbol => symbol.Name,
+            AsmCurrentAddressSymbol => symbol.Name,
             _ => BackendSymbolNaming.SanitizeIdentifier(symbol.Name),
         };
     }

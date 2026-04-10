@@ -1,0 +1,10 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0304
+// NOTE:
+//   Inline asm output bindings must specify `@C` or `@Z`; a plain typed output stays rejected.
+
+fn read_pin(pin: u32) {
+    asm {
+        TESTP {pin} WC
+    } -> result: bool;
+}

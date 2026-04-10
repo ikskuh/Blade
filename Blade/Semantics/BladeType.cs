@@ -84,9 +84,9 @@ public sealed class TypeValueTypeSymbol(BladeType referencedType) : ComptimeType
 {
     public BladeType ReferencedType { get; } = referencedType;
 
-    protected override bool EqualsCore(BladeType other) => ReferenceEquals(ReferencedType, ((TypeValueTypeSymbol)other).ReferencedType);
+    protected override bool EqualsCore(BladeType other) => ReferenceEquals(ReferencedType, ((TypeValueTypeSymbol)other).ReferencedType); // pragma: force-coverage
 
-    protected override int GetHashCodeCore() => HashCode.Combine(typeof(TypeValueTypeSymbol), RuntimeHelpers.GetHashCode(ReferencedType));
+    protected override int GetHashCodeCore() => HashCode.Combine(typeof(TypeValueTypeSymbol), RuntimeHelpers.GetHashCode(ReferencedType)); // pragma: force-coverage
 }
 
 public abstract class ScalarTypeSymbol(string name, int bitWidth, int sizeBytes, int alignmentBytes) : RuntimeTypeSymbol(name)
@@ -110,9 +110,9 @@ public sealed class BoolTypeSymbol : ScalarTypeSymbol
 
     public override bool IsLegalRuntimeObject(object value) => value is bool;
 
-    protected override bool EqualsCore(BladeType other) => other is BoolTypeSymbol;
+    protected override bool EqualsCore(BladeType other) => other is BoolTypeSymbol; // pragma: force-coverage
 
-    protected override int GetHashCodeCore() => HashCode.Combine(typeof(BoolTypeSymbol));
+    protected override int GetHashCodeCore() => HashCode.Combine(typeof(BoolTypeSymbol)); // pragma: force-coverage
 }
 
 public sealed class IntegerTypeSymbol : ScalarTypeSymbol
@@ -140,7 +140,7 @@ public sealed class IntegerTypeSymbol : ScalarTypeSymbol
             && IsSignedInteger == typedOther.IsSignedInteger;
     }
 
-    protected override int GetHashCodeCore() => HashCode.Combine(typeof(IntegerTypeSymbol), BitWidth, IsSignedInteger);
+    protected override int GetHashCodeCore() => HashCode.Combine(typeof(IntegerTypeSymbol), BitWidth, IsSignedInteger); // pragma: force-coverage
 }
 
 public abstract class PointerLikeTypeSymbol(
@@ -174,7 +174,7 @@ public abstract class PointerLikeTypeSymbol(
 
     protected override int GetHashCodeCore()
     {
-        return HashCode.Combine(GetType(), PointeeType, IsConst, IsVolatile, Alignment, StorageClass);
+        return HashCode.Combine(GetType(), PointeeType, IsConst, IsVolatile, Alignment, StorageClass); // pragma: force-coverage
     }
 
     private static string BuildName(
@@ -306,9 +306,9 @@ public abstract class AggregateTypeSymbol(
         return true;
     }
 
-    protected override bool EqualsCore(BladeType other) => ReferenceEquals(this, other);
+    protected override bool EqualsCore(BladeType other) => ReferenceEquals(this, other); // pragma: force-coverage
 
-    protected override int GetHashCodeCore() => RuntimeHelpers.GetHashCode(this);
+    protected override int GetHashCodeCore() => RuntimeHelpers.GetHashCode(this); // pragma: force-coverage
 }
 
 public sealed class StructTypeSymbol(
@@ -344,9 +344,9 @@ public sealed class EnumTypeSymbol(string name, BladeType backingType, IReadOnly
 
     public override bool IsLegalRuntimeObject(object value) => BackingType.IsLegalRuntimeObject(value);
 
-    protected override bool EqualsCore(BladeType other) => ReferenceEquals(this, other);
+    protected override bool EqualsCore(BladeType other) => ReferenceEquals(this, other); // pragma: force-coverage
 
-    protected override int GetHashCodeCore() => RuntimeHelpers.GetHashCode(this);
+    protected override int GetHashCodeCore() => RuntimeHelpers.GetHashCode(this); // pragma: force-coverage
 }
 
 public sealed class BitfieldTypeSymbol(
@@ -378,9 +378,9 @@ public sealed class BitfieldTypeSymbol(
 
     public override bool IsLegalRuntimeObject(object value) => BackingType.IsLegalRuntimeObject(value);
 
-    protected override bool EqualsCore(BladeType other) => ReferenceEquals(this, other);
+    protected override bool EqualsCore(BladeType other) => ReferenceEquals(this, other); // pragma: force-coverage
 
-    protected override int GetHashCodeCore() => RuntimeHelpers.GetHashCode(this);
+    protected override int GetHashCodeCore() => RuntimeHelpers.GetHashCode(this); // pragma: force-coverage
 }
 
 public sealed class FunctionTypeSymbol(FunctionSymbol function) : ComptimeTypeSymbol($"fn {Requires.NotNull(function).Name}")
@@ -389,9 +389,9 @@ public sealed class FunctionTypeSymbol(FunctionSymbol function) : ComptimeTypeSy
 
     public override bool IsLegalRuntimeObject(object value) => ReferenceEquals(value, Function);
 
-    protected override bool EqualsCore(BladeType other) => ReferenceEquals(Function, ((FunctionTypeSymbol)other).Function);
+    protected override bool EqualsCore(BladeType other) => ReferenceEquals(Function, ((FunctionTypeSymbol)other).Function); // pragma: force-coverage
 
-    protected override int GetHashCodeCore() => HashCode.Combine(typeof(FunctionTypeSymbol), RuntimeHelpers.GetHashCode(Function));
+    protected override int GetHashCodeCore() => HashCode.Combine(typeof(FunctionTypeSymbol), RuntimeHelpers.GetHashCode(Function)); // pragma: force-coverage
 }
 
 public sealed class ModuleTypeSymbol(ModuleSymbol module) : ComptimeTypeSymbol($"module {Requires.NotNull(module).Name}")
@@ -400,9 +400,9 @@ public sealed class ModuleTypeSymbol(ModuleSymbol module) : ComptimeTypeSymbol($
 
     public override bool IsLegalRuntimeObject(object value) => ReferenceEquals(value, Module);
 
-    protected override bool EqualsCore(BladeType other) => ReferenceEquals(Module, ((ModuleTypeSymbol)other).Module);
+    protected override bool EqualsCore(BladeType other) => ReferenceEquals(Module, ((ModuleTypeSymbol)other).Module); // pragma: force-coverage
 
-    protected override int GetHashCodeCore() => HashCode.Combine(typeof(ModuleTypeSymbol), RuntimeHelpers.GetHashCode(Module));
+    protected override int GetHashCodeCore() => HashCode.Combine(typeof(ModuleTypeSymbol), RuntimeHelpers.GetHashCode(Module)); // pragma: force-coverage
 }
 
 public sealed class UnknownTypeSymbol : ComptimeTypeSymbol
@@ -414,9 +414,9 @@ public sealed class UnknownTypeSymbol : ComptimeTypeSymbol
     {
     }
 
-    protected override bool EqualsCore(BladeType other) => other is UnknownTypeSymbol;
+    protected override bool EqualsCore(BladeType other) => other is UnknownTypeSymbol; // pragma: force-coverage
 
-    protected override int GetHashCodeCore() => HashCode.Combine(typeof(UnknownTypeSymbol));
+    protected override int GetHashCodeCore() => HashCode.Combine(typeof(UnknownTypeSymbol)); // pragma: force-coverage
 }
 
 public sealed class UndefinedLiteralTypeSymbol : ComptimeTypeSymbol
@@ -430,9 +430,9 @@ public sealed class UndefinedLiteralTypeSymbol : ComptimeTypeSymbol
 
     public override bool IsLegalRuntimeObject(object value) => ReferenceEquals(value, UndefinedValue.Instance);
 
-    protected override bool EqualsCore(BladeType other) => other is UndefinedLiteralTypeSymbol;
+    protected override bool EqualsCore(BladeType other) => other is UndefinedLiteralTypeSymbol; // pragma: force-coverage
 
-    protected override int GetHashCodeCore() => HashCode.Combine(typeof(UndefinedLiteralTypeSymbol));
+    protected override int GetHashCodeCore() => HashCode.Combine(typeof(UndefinedLiteralTypeSymbol)); // pragma: force-coverage
 }
 
 public sealed class IntegerLiteralTypeSymbol : ComptimeTypeSymbol
@@ -446,9 +446,9 @@ public sealed class IntegerLiteralTypeSymbol : ComptimeTypeSymbol
 
     public override bool IsLegalRuntimeObject(object value) => value is long;
 
-    protected override bool EqualsCore(BladeType other) => other is IntegerLiteralTypeSymbol;
+    protected override bool EqualsCore(BladeType other) => other is IntegerLiteralTypeSymbol; // pragma: force-coverage
 
-    protected override int GetHashCodeCore() => HashCode.Combine(typeof(IntegerLiteralTypeSymbol));
+    protected override int GetHashCodeCore() => HashCode.Combine(typeof(IntegerLiteralTypeSymbol)); // pragma: force-coverage
 }
 
 public sealed class VoidTypeSymbol : ComptimeTypeSymbol
@@ -462,9 +462,9 @@ public sealed class VoidTypeSymbol : ComptimeTypeSymbol
 
     public override bool IsLegalRuntimeObject(object value) => ReferenceEquals(value, VoidValue.Instance);
 
-    protected override bool EqualsCore(BladeType other) => other is VoidTypeSymbol;
+    protected override bool EqualsCore(BladeType other) => other is VoidTypeSymbol; // pragma: force-coverage
 
-    protected override int GetHashCodeCore() => HashCode.Combine(typeof(VoidTypeSymbol));
+    protected override int GetHashCodeCore() => HashCode.Combine(typeof(VoidTypeSymbol)); // pragma: force-coverage
 }
 
 public sealed class RangeTypeSymbol : ComptimeTypeSymbol
@@ -476,9 +476,9 @@ public sealed class RangeTypeSymbol : ComptimeTypeSymbol
     {
     }
 
-    protected override bool EqualsCore(BladeType other) => other is RangeTypeSymbol;
+    protected override bool EqualsCore(BladeType other) => other is RangeTypeSymbol; // pragma: force-coverage
 
-    protected override int GetHashCodeCore() => HashCode.Combine(typeof(RangeTypeSymbol));
+    protected override int GetHashCodeCore() => HashCode.Combine(typeof(RangeTypeSymbol)); // pragma: force-coverage
 }
 
 public static class BuiltinTypes

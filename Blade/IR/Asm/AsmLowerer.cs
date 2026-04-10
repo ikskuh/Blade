@@ -951,16 +951,9 @@ public static class AsmLowerer
                 operand = new AsmSymbolOperand(specialRegister.Register);
                 return true;
 
-            case InlineAsmSymbolOperand symbol:
-                operand = new AsmSymbolOperand(
-                    symbol.Symbol,
-                    symbol.AddressingMode == InlineAsmAddressingMode.Immediate
-                        ? AsmSymbolAddressingMode.Immediate
-                        : AsmSymbolAddressingMode.Register);
-                return true;
-
             default:
-                return false;
+                Assert.Unreachable(); // pragma: force-coverage
+                return false; // pragma: force-coverage
         }
     }
 

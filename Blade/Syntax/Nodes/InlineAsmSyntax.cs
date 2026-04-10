@@ -75,7 +75,6 @@ public sealed class InlineAsmVarBindingOperandSyntax(Token openBrace, IReadOnlyL
     [ExcludeFromCodeCoverage]
     public Token OpenBrace { get; } = openBrace;
     public IReadOnlyList<Token> Path { get; } = Requires.NotNull(path);
-    public Token Name => Path[0];
     [ExcludeFromCodeCoverage]
     public Token CloseBrace { get; } = closeBrace;
 }

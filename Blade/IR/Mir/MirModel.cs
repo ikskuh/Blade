@@ -541,7 +541,6 @@ public sealed class MirUpdatePlaceInstruction(
     public BoundBinaryOperatorKind OperatorKind { get; } = operatorKind;
     public MirValueId Value { get; } = value;
     public int? PointerArithmeticStride { get; } = pointerArithmeticStride;
-    public bool IsPointerArithmetic => PointerArithmeticStride is not null;
 
     public override IReadOnlyList<MirValueId> Uses => [Value];
 

@@ -285,37 +285,40 @@ public sealed class LirLoadMemberOperation(AggregateMemberSymbol member) : LirOp
 public sealed class LirLoadIndexOperation(BladeType indexedType, VariableStorageClass storageClass) : LirOperation
 {
     public BladeType IndexedType { get; } = Requires.NotNull(indexedType);
+    public BladeType ElementType { get; } = GetElementType(indexedType);
     public VariableStorageClass StorageClass { get; } = storageClass;
 
     public override string DisplayName => $"load.index.{StorageClassSuffix(StorageClass)}";
 
-    public override bool IsValidResultType(BladeType? resultType)
-    {
-        return IndexedType switch
-        {
-            ArrayTypeSymbol arrayType => MatchesExpectedType(resultType, arrayType.ElementType),
-            MultiPointerTypeSymbol pointerType => MatchesExpectedType(resultType, pointerType.PointeeType),
-            _ => false,
-        };
-    }
+    public override bool IsValidResultType(BladeType? resultType) => MatchesExpectedType(resultType, ElementType);
 
     public override bool IsValidOperandCount(int operandCount) => operandCount == 2;
+
+    private static BladeType GetElementType(BladeType indexedType)
+    {
+        if (indexedType is MultiPointerTypeSymbol pointerType)
+            return pointerType.PointeeType;
+
+        return ((ArrayTypeSymbol)indexedType).ElementType;
+    }
 }
 
 public sealed class LirLoadDerefOperation(BladeType pointerType, VariableStorageClass storageClass) : LirOperation
 {
-    public BladeType PointerType { get; } = Requires.NotNull(pointerType);
+    public PointerTypeSymbol PointerType { get; } = GetPointerType(pointerType);
     public VariableStorageClass StorageClass { get; } = storageClass;
 
     public override string DisplayName => $"load.deref.{StorageClassSuffix(StorageClass)}";
 
-    public override bool IsValidResultType(BladeType? resultType)
-    {
-        return PointerType is PointerTypeSymbol pointer
-            && MatchesExpectedType(resultType, pointer.PointeeType);
-    }
+    public override bool IsValidResultType(BladeType? resultType) => MatchesExpectedType(resultType, PointerType.PointeeType);
 
     public override bool IsValidOperandCount(int operandCount) => operandCount == 1;
+
+    private static PointerTypeSymbol GetPointerType(BladeType pointerType)
+    {
+        BladeType effectivePointerType = Requires.NotNull(pointerType);
+        return (PointerTypeSymbol)effectivePointerType;
+    }
 }
 
 public sealed class LirBitfieldExtractOperation(AggregateMemberSymbol member) : LirOperation
@@ -397,43 +400,42 @@ public sealed class LirIntrinsicOperation(P2Mnemonic mnemonic) : LirOperation
 public sealed class LirStoreIndexOperation(BladeType indexedType, VariableStorageClass storageClass) : LirOperation
 {
     public BladeType IndexedType { get; } = Requires.NotNull(indexedType);
+    public BladeType ElementType { get; } = GetElementType(indexedType);
     public VariableStorageClass StorageClass { get; } = storageClass;
 
     public override string DisplayName => $"store.index.{StorageClassSuffix(StorageClass)}";
 
     public override bool IsValidResultType(BladeType? resultType)
-    {
-        if (resultType is null)
-            return true;
-
-        return IndexedType switch
-        {
-            ArrayTypeSymbol arrayType => MatchesExpectedType(resultType, arrayType.ElementType),
-            MultiPointerTypeSymbol pointerType => MatchesExpectedType(resultType, pointerType.PointeeType),
-            _ => false,
-        };
-    }
+        => MatchesExpectedType(resultType, ElementType);
 
     public override bool IsValidOperandCount(int operandCount) => operandCount == 3;
+
+    private static BladeType GetElementType(BladeType indexedType)
+    {
+        if (indexedType is MultiPointerTypeSymbol pointerType)
+            return pointerType.PointeeType;
+
+        return ((ArrayTypeSymbol)indexedType).ElementType;
+    }
 }
 
 public sealed class LirStoreDerefOperation(BladeType pointerType, VariableStorageClass storageClass) : LirOperation
 {
-    public BladeType PointerType { get; } = Requires.NotNull(pointerType);
+    public PointerTypeSymbol PointerType { get; } = GetPointerType(pointerType);
     public VariableStorageClass StorageClass { get; } = storageClass;
 
     public override string DisplayName => $"store.deref.{StorageClassSuffix(StorageClass)}";
 
     public override bool IsValidResultType(BladeType? resultType)
-    {
-        if (resultType is null)
-            return true;
-
-        return PointerType is PointerTypeSymbol pointer
-            && MatchesExpectedType(resultType, pointer.PointeeType);
-    }
+        => MatchesExpectedType(resultType, PointerType.PointeeType);
 
     public override bool IsValidOperandCount(int operandCount) => operandCount == 2;
+
+    private static PointerTypeSymbol GetPointerType(BladeType pointerType)
+    {
+        BladeType effectivePointerType = Requires.NotNull(pointerType);
+        return (PointerTypeSymbol)effectivePointerType;
+    }
 }
 
 public sealed class LirStorePlaceOperation : LirOperation
@@ -449,7 +451,6 @@ public sealed class LirUpdatePlaceOperation(BoundBinaryOperatorKind operatorKind
 {
     public BoundBinaryOperatorKind OperatorKind { get; } = operatorKind;
     public int? PointerArithmeticStride { get; } = pointerArithmeticStride;
-    public bool IsPointerArithmetic => PointerArithmeticStride is not null;
 
     public override string DisplayName => PointerArithmeticStride is int stride
         ? $"update.place.{OperatorKind}[{stride}]"

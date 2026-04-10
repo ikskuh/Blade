@@ -41,21 +41,49 @@ public abstract partial class BladeValue(BladeType type, object value) : IEquata
         return value;
     }
 
+
+    [ExcludeFromCodeCoverage(Justification = "Convenience constructor, not all are used in the compiler.")]
     public static RuntimeBladeValue Bool(bool value) => new(BuiltinTypes.Bool, value);
+
+    [ExcludeFromCodeCoverage(Justification = "Convenience constructor, not all are used in the compiler.")]
     public static RuntimeBladeValue Bit(long value) => new(BuiltinTypes.Bit, value);
+
+    [ExcludeFromCodeCoverage(Justification = "Convenience constructor, not all are used in the compiler.")]
     public static RuntimeBladeValue Nit(long value) => new(BuiltinTypes.Nit, value);
+
+    [ExcludeFromCodeCoverage(Justification = "Convenience constructor, not all are used in the compiler.")]
     public static RuntimeBladeValue Nib(long value) => new(BuiltinTypes.Nib, value);
+
+    [ExcludeFromCodeCoverage(Justification = "Convenience constructor, not all are used in the compiler.")]
     public static RuntimeBladeValue U8(long value) => new(BuiltinTypes.U8, value);
+
+    [ExcludeFromCodeCoverage(Justification = "Convenience constructor, not all are used in the compiler.")]
     public static RuntimeBladeValue I8(long value) => new(BuiltinTypes.I8, value);
+
+    [ExcludeFromCodeCoverage(Justification = "Convenience constructor, not all are used in the compiler.")]
     public static RuntimeBladeValue U16(long value) => new(BuiltinTypes.U16, value);
+
+    [ExcludeFromCodeCoverage(Justification = "Convenience constructor, not all are used in the compiler.")]
     public static RuntimeBladeValue I16(long value) => new(BuiltinTypes.I16, value);
+
+    [ExcludeFromCodeCoverage(Justification = "Convenience constructor, not all are used in the compiler.")]
     public static RuntimeBladeValue U32(long value) => new(BuiltinTypes.U32, value);
+
+    [ExcludeFromCodeCoverage(Justification = "Convenience constructor, not all are used in the compiler.")]
     public static RuntimeBladeValue I32(long value) => new(BuiltinTypes.I32, value);
     [SuppressMessage("Design", "CA1720:Identifier contains type name", Justification = "Matches the builtin Blade type name.")]
+
+    [ExcludeFromCodeCoverage(Justification = "Convenience constructor, not all are used in the compiler.")]
     public static RuntimeBladeValue Uint(long value) => new(BuiltinTypes.Uint, value);
     [SuppressMessage("Design", "CA1720:Identifier contains type name", Justification = "Matches the builtin Blade type name.")]
+
+    [ExcludeFromCodeCoverage(Justification = "Convenience constructor, not all are used in the compiler.")]
     public static RuntimeBladeValue Int(long value) => new(BuiltinTypes.Int, value);
+
+    [ExcludeFromCodeCoverage(Justification = "Convenience constructor, not all are used in the compiler.")]
     public static ComptimeBladeValue IntegerLiteral(long value) => new((ComptimeTypeSymbol)BuiltinTypes.IntegerLiteral, value);
+
+    [ExcludeFromCodeCoverage(Justification = "Convenience constructor, not all are used in the compiler.")]
     public static RuntimeBladeValue U8Array(byte[] value)
     {
         Requires.NotNull(value);

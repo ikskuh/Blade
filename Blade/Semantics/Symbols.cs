@@ -63,13 +63,7 @@ public sealed class ControlFlowLabelSymbol(string name, FunctionSymbol? function
     {
     }
 
-    private string _name = Requires.NotNullOrWhiteSpace(name);
-
-    public string Name
-    {
-        get => _name;
-        set => _name = Requires.NotNullOrWhiteSpace(value);
-    }
+    public string Name { get; } = Requires.NotNullOrWhiteSpace(name);
 
     public FunctionSymbol? Function { get; } = function;
     public SymbolType SymbolType => SymbolType.ControlFlowLabel;
@@ -158,9 +152,6 @@ public sealed class GlobalVariableSymbol(
     public int? FixedAddress => _fixedAddress;
     public int? Alignment => _alignment;
     public bool CanElideTopLevelStoreLoadChains => _canElideTopLevelStoreLoadChains;
-    public bool UsesGlobalRegisterStorage => StorageClass == VariableStorageClass.Reg;
-    public bool UsesGlobalLutStorage => StorageClass == VariableStorageClass.Lut;
-    public bool UsesGlobalHubStorage => StorageClass == VariableStorageClass.Hub;
 
     public BoundExpression? Initializer { get; private set; }
 
@@ -247,13 +238,11 @@ public sealed class FunctionSymbol(
     public IFunctionSignatureSyntax Syntax { get; } = Requires.NotNull(syntax);
     public FunctionKind Kind { get; } = kind;
     public FunctionInliningPolicy InliningPolicy { get; } = inliningPolicy;
-    public bool IsAsmFunction => Syntax is AsmFunctionDeclarationSyntax;
     public IReadOnlyList<ParameterVariableSymbol> Parameters { get; set; } = [];
     public IReadOnlyList<ReturnSlot> ReturnSlots { get; set; } = [];
     public IReadOnlyList<BladeType> ReturnTypes => System.Array.ConvertAll(
         ReturnSlots.ToArray(),
         static slot => slot.Type);
-    public bool HasFlagReturns => ReturnSlots.Any(s => s.IsFlagPlaced);
 }
 
 public sealed class ModuleSymbol(string name, BoundModule module, SourceSpan? sourceSpan = null) : Symbol(name, sourceSpan)

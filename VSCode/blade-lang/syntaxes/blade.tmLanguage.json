@@ -123,6 +123,25 @@
           }
         },
         {
+          "match": "(#)(\\$)",
+          "captures": {
+            "1": {
+              "name": "keyword.operator.immediate.asm.blade"
+            },
+            "2": {
+              "name": "constant.language.current-address.asm.blade"
+            }
+          }
+        },
+        {
+          "match": "(\\$)",
+          "captures": {
+            "1": {
+              "name": "constant.language.current-address.asm.blade"
+            }
+          }
+        },
+        {
           "match": "\\bIF_[A-Z0-9_]+\\b",
           "name": "keyword.control.conditional.asm.blade"
         },

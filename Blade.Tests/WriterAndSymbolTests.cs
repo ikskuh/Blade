@@ -8,6 +8,7 @@ using Blade.Semantics.Bound;
 using Blade.Source;
 using Blade.Syntax;
 using Blade.Syntax.Nodes;
+using System.Reflection;
 
 namespace Blade.Tests;
 
@@ -28,12 +29,39 @@ public class WriterAndSymbolTests
         VariableSymbol topLevel = CreateVariable("top", storageClass: null, VariableScopeKind.Local);
         VariableSymbol globalReg = CreateVariable("global_reg", VariableStorageClass.Reg, VariableScopeKind.GlobalStorage);
         VariableSymbol globalHub = CreateVariable("global_hub", VariableStorageClass.Hub, VariableScopeKind.GlobalStorage);
+        ControlFlowLabelSymbol label = new("bb0");
 
         Assert.That(local, Is.TypeOf<LocalVariableSymbol>());
         Assert.That(topLevel, Is.TypeOf<LocalVariableSymbol>());
         Assert.That(globalReg, Is.TypeOf<GlobalVariableSymbol>());
-        Assert.That(((GlobalVariableSymbol)globalReg).UsesGlobalRegisterStorage, Is.True);
-        Assert.That(((GlobalVariableSymbol)globalHub).UsesGlobalRegisterStorage, Is.False);
+        Assert.That(((GlobalVariableSymbol)globalReg).StorageClass, Is.EqualTo(VariableStorageClass.Reg));
+        Assert.That(((GlobalVariableSymbol)globalHub).StorageClass, Is.EqualTo(VariableStorageClass.Hub));
+        Assert.That(((GlobalVariableSymbol)globalReg).ScopeKind, Is.EqualTo(VariableScopeKind.GlobalStorage));
+        Assert.That(((GlobalVariableSymbol)globalHub).Alignment, Is.Null);
+        Assert.That(label.SymbolType, Is.EqualTo(SymbolType.ControlFlowLabel));
+    }
+
+    [Test]
+    public void LirIndexOperations_AcceptArrayAndManyPointerShapes()
+    {
+        ArrayTypeSymbol arrayType = new(BuiltinTypes.U32, 2);
+        MultiPointerTypeSymbol manyPointerType = new(BuiltinTypes.U32, isConst: false, VariableStorageClass.Reg);
+
+        Assert.That(new LirLoadIndexOperation(arrayType, VariableStorageClass.Reg).IsValidResultType(BuiltinTypes.U32), Is.True);
+        Assert.That(new LirLoadIndexOperation(manyPointerType, VariableStorageClass.Reg).IsValidResultType(BuiltinTypes.U32), Is.True);
+        Assert.That(new LirStoreIndexOperation(arrayType, VariableStorageClass.Reg).IsValidResultType(BuiltinTypes.U32), Is.True);
+        Assert.That(new LirStoreIndexOperation(manyPointerType, VariableStorageClass.Reg).IsValidResultType(BuiltinTypes.U32), Is.True);
+    }
+
+    [Test]
+    public void AsmCurrentAddressSymbol_ReportsControlFlowLabelKind()
+    {
+        Type symbolType = typeof(FinalAssemblyWriter).Assembly.GetType("Blade.IR.Asm.AsmCurrentAddressSymbol", throwOnError: true)!;
+        PropertyInfo instanceProperty = symbolType.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static)!;
+        object instance = instanceProperty.GetValue(null)!;
+        PropertyInfo kindProperty = symbolType.GetProperty("SymbolType", BindingFlags.Public | BindingFlags.Instance)!;
+
+        Assert.That(kindProperty.GetValue(instance), Is.EqualTo(SymbolType.ControlFlowLabel));
     }
 
     [Test]

@@ -555,7 +555,7 @@ public readonly record struct P2InstructionFormInfo(
             0 => Operand0,
             1 => Operand1,
             2 => Operand2,
-            _ => default,
+            _ => Assert.UnreachableValue<P2InstructionOperandInfo>(), // pragma: force-coverage
         };
 }
 
@@ -2204,4 +2204,3 @@ public static class P2InstructionMetadata
 }
 
 #nullable restore
-
