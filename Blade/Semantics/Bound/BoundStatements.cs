@@ -76,9 +76,9 @@ public sealed class BoundRepLoopStatement(BoundBlockStatement body, TextSpan spa
     public BoundBlockStatement Body { get; } = body;
 }
 
-public sealed class BoundRepForStatement(LocalVariableSymbol variable, BoundExpression start, BoundExpression end, BoundBlockStatement body, TextSpan span) : BoundStatement(BoundNodeKind.RepForStatement, span)
+public sealed class BoundRepForStatement(LocalVariableSymbol? variable, BoundExpression start, BoundExpression end, BoundBlockStatement body, TextSpan span) : BoundStatement(BoundNodeKind.RepForStatement, span)
 {
-    public LocalVariableSymbol Variable { get; } = variable;
+    public LocalVariableSymbol? Variable { get; } = variable;
     public BoundExpression Start { get; } = start;
     public BoundExpression End { get; } = end;
     public BoundBlockStatement Body { get; } = body;

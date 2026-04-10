@@ -129,7 +129,7 @@ public static class BoundTreeWriter
                 break;
 
             case BoundRepForStatement repFor:
-                AppendLine(sb, indent, $"RepFor ({repFor.Variable.Name})");
+                AppendLine(sb, indent, repFor.Variable is null ? "RepFor" : $"RepFor ({repFor.Variable.Name})");
                 WriteExpression(sb, indent + 1, repFor.Start);
                 WriteExpression(sb, indent + 1, repFor.End);
                 WriteStatement(sb, indent + 1, repFor.Body);

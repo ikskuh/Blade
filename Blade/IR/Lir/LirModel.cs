@@ -508,13 +508,15 @@ public sealed class LirRepForSetupOperation : LirOperation
     public override bool IsValidOperandCount(int operandCount) => operandCount == 2;
 }
 
-public sealed class LirRepForIterOperation : LirOperation
+public sealed class LirRepForIterOperation(int? indexCarrierOrdinal) : LirOperation
 {
     public override string DisplayName => "repfor.iter";
 
+    public int? IndexCarrierOrdinal { get; } = indexCarrierOrdinal;
+
     public override bool IsValidResultType(BladeType? resultType) => resultType is null;
 
-    public override bool IsValidOperandCount(int operandCount) => operandCount == 2;
+    public override bool IsValidOperandCount(int operandCount) => operandCount % 2 == 0;
 }
 
 public sealed class LirNoIrqBeginOperation : LirOperation

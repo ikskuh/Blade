@@ -1026,31 +1026,77 @@ public static class MirLowerer
         {
             MirValueId start = LowerExpression(repForStatement.Start);
             MirValueId end = LowerExpression(repForStatement.End);
-            _currentBlock.Instructions.Add(new MirRepForSetupInstruction(start, end, repForStatement.Span));
+
+            if (repForStatement.Variable is not null)
+                WriteSymbol(repForStatement.Variable, start, repForStatement.Span);
 
             Dictionary<Symbol, MirValueId> beforeEnv = SnapshotAutomaticEnvironment();
             IReadOnlyList<Symbol> envSymbols = GetOrderedAutomaticSymbols(beforeEnv);
 
             BlockBuilder bodyBlock = CreateBlock();
+            BlockBuilder continueBlock = CreateBlock();
             BlockBuilder exitBlock = CreateBlock();
             Dictionary<Symbol, MirValueId> bodyEnv = CreateEnvironmentParameters(bodyBlock, envSymbols, "repfor");
+            Dictionary<Symbol, MirValueId> continueEnv = CreateEnvironmentParameters(continueBlock, envSymbols, "repfor");
             Dictionary<Symbol, MirValueId> exitEnv = CreateEnvironmentParameters(exitBlock, envSymbols, "repfor");
 
-            _currentBlock.Terminator = new MirGotoTerminator(bodyBlock.Label, BuildEnvironmentArguments(envSymbols, repForStatement.Span), repForStatement.Span);
+            MirValueId hasIterations = NextValue();
+            _currentBlock.Instructions.Add(new MirBinaryInstruction(
+                hasIterations,
+                BuiltinTypes.Bool,
+                BoundBinaryOperatorKind.Less,
+                start,
+                end,
+                repForStatement.Span));
 
-            _loopStack.Push(new LoopContext(exitBlock.Label, bodyBlock.Label, envSymbols));
+            List<MirValueId> entryArguments = BuildEnvironmentArguments(envSymbols, repForStatement.Span);
+            _currentBlock.Terminator = new MirBranchTerminator(
+                hasIterations,
+                bodyBlock.Label,
+                exitBlock.Label,
+                entryArguments,
+                BuildEnvironmentArguments(envSymbols, repForStatement.Span),
+                repForStatement.Span);
+
+            _loopStack.Push(new LoopContext(exitBlock.Label, continueBlock.Label, envSymbols));
             _currentBlock = bodyBlock;
             ReplaceAutomaticEnvironment(bodyEnv);
-            _currentBlock.Instructions.Add(new MirRepForIterInstruction(start, end, repForStatement.Span));
+            MirValueId repIndex = repForStatement.Variable is not null
+                ? ReadSymbol(repForStatement.Variable, BuiltinTypes.U32, repForStatement.Span)
+                : start;
+            _currentBlock.Instructions.Add(new MirRepForSetupInstruction(repIndex, end, repForStatement.Span));
             LowerStatement(repForStatement.Body);
             if (_currentBlock.Terminator is null)
             {
                 _currentBlock.Terminator = new MirGotoTerminator(
-                    bodyBlock.Label,
+                    continueBlock.Label,
                     BuildEnvironmentArguments(envSymbols, repForStatement.Body.Span),
                     repForStatement.Body.Span);
             }
             _loopStack.Pop();
+
+            _currentBlock = continueBlock;
+            ReplaceAutomaticEnvironment(continueEnv);
+            List<MirValueId> carrierValues = new(envSymbols.Count);
+            int? indexCarrierOrdinal = null;
+            for (int i = 0; i < envSymbols.Count; i++)
+            {
+                Symbol symbol = envSymbols[i];
+                carrierValues.Add(bodyEnv[symbol]);
+                if (repForStatement.Variable is not null && ReferenceEquals(symbol, repForStatement.Variable))
+                    indexCarrierOrdinal = i;
+            }
+
+            IReadOnlyList<MirValueId> currentValues = BuildEnvironmentArguments(envSymbols, repForStatement.Body.Span);
+            _currentBlock.Instructions.Add(new MirRepForIterInstruction(
+                carrierValues,
+                currentValues,
+                indexCarrierOrdinal,
+                repForStatement.Body.Span));
+            _currentBlock.Terminator = new MirGotoTerminator(
+                exitBlock.Label,
+                BuildEnvironmentArguments(envSymbols, repForStatement.Body.Span),
+                repForStatement.Body.Span);
 
             _currentBlock = exitBlock;
             ReplaceAutomaticEnvironment(exitEnv);

@@ -29,23 +29,6 @@ The compiler must not let an `AUGS` intended for one instruction leak into an in
 - Ensure legalization does not emit an immediate `ALTx` that consumes or preserves the wrong `AUGS`.
 - Validate the final assembly ordering/operands so the hazard cannot occur.
 
-## BUG-3: Fix `rep for(...)` lowering and indexed variant codegen
-
-Reproducer: `Demonstrators/HwTest/hw_rep_for.blade` (`// EXPECT: xfail-hw`).
-
-- Compile the repro with `just compile-sample Demonstrators/HwTest/hw_rep_for.blade` and inspect the `*.dump.txt` for MIR/LIR/ASM.
-- Confirm which boundaries the current `REP` spans (what the assembler repeats) and where the end label lands.
-- Fix `Blade/IR/Mir/MirLowerer.cs` rep-for lowering so the REP setup is immediately before the repeated body, not before loop-invariant setup.
-- Ensure the REP end-label pseudo-op is emitted after the repeated body, not at the top of the block.
-- Remove the explicit loop-back `JMP` pattern for rep-for, since `REP` provides repetition and a `JMP` after the REP region can create an outer infinite loop.
-- Add an explicit zero-guard: if iterations is 0, skip the repeated region entirely to avoid `REP #0` infinite repeat semantics.
-- Thread the rep-for index binding correctly: initialize `i` to `start` and make it visible as the bound loop variable in the body.
-- Implement index increment by 1 at the end of each iteration for the indexed form.
-- Validate that the non-indexed form does not accidentally synthesize or clobber an index variable.
-- Update `Blade/IR/Asm/AsmLowerer.cs` for `repfor.setup`/`repfor.iter` so it uses both operands (start/end) and emits correct REP + index maintenance code.
-- Add a non-hardware regression fixture that asserts the final PASM has one `REP` region, no `JMP` back-edge after it, and a correct zero-guard.
-- Acceptance: `Demonstrators/HwTest/hw_rep_for.blade` becomes `pass-hw` and matches all expected runs.
-
 ## BUG-4: Emit truncation for explicit narrowing casts like `x as u8`
 
 Reproducer: `Demonstrators/HwTest/hw_casts_and_bitcasts.blade` (`// EXPECT: xfail-hw`).

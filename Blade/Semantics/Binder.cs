@@ -1375,13 +1375,16 @@ public sealed class Binder
         Scope previousScope = _currentScope;
         _currentScope = new Scope(previousScope);
 
-        string variableName = repFor.Binding?.ItemName.Text ?? "__rep_index";
-        LocalVariableSymbol variable = new(
-            variableName,
-            BuiltinTypes.IntegerLiteral,
-            isConst: true,
-            sourceSpan: CreateSourceSpan(repFor.Binding?.ItemName.Span ?? repFor.RepKeyword.Span));
-        _ = TryDeclareSymbol(_currentScope, variable, repFor.Binding?.ItemName.Span ?? repFor.RepKeyword.Span, preserveLocalBindingOnShadowing: true);
+        LocalVariableSymbol? variable = null;
+        if (repFor.Binding is not null)
+        {
+            variable = new LocalVariableSymbol(
+                repFor.Binding.ItemName.Text,
+                BuiltinTypes.U32,
+                isConst: true,
+                sourceSpan: CreateSourceSpan(repFor.Binding.ItemName.Span));
+            _ = TryDeclareSymbol(_currentScope, variable, repFor.Binding.ItemName.Span, preserveLocalBindingOnShadowing: true);
+        }
 
         BoundBlockStatement body = BindBlockStatement(repFor.Body, createScope: false);
 

@@ -1,0 +1,33 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// 1x REP @_rep_end_1_0,
+// 1x ADD _r1, #1
+// 1x MOV _r3, _r2
+// SEQUENCE:
+// - CMP ?, ? WC
+// - IF_NC JMP #_rep_end_1_0
+// - REP @_rep_end_1_0, ?
+// - ADD ?, ?
+// - MOV _r3, _r2
+// - _rep_end_1_0
+// ! JMP #sum_indices_bb1
+// - MOV PA, _r2
+// NOTE:
+//   Locks the final PASM shape for indexed rep-for lowering: one REP region,
+//   an explicit zero-trip guard before REP, in-region index increment, and no
+//   jump back to the repeated body after the REP end label.
+
+extern reg var OUTA: u32 @(0x1FC);
+extern reg var INA: u32 @(0x1FE);
+
+noinline fn sum_indices(n: u32) -> u32 {
+    var sum: u32 = 0;
+    rep for(n) -> i {
+        sum = sum + i;
+    }
+
+    return sum;
+}
+
+OUTA = sum_indices(INA);

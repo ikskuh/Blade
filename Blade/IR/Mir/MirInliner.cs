@@ -273,7 +273,7 @@ public static class MirInliner
                 MirRepSetupInstruction repSetup => new MirRepSetupInstruction(repSetup.Count, repSetup.Span),
                 MirRepIterInstruction repIter => new MirRepIterInstruction(repIter.Count, repIter.Span),
                 MirRepForSetupInstruction repForSetup => new MirRepForSetupInstruction(repForSetup.Start, repForSetup.End, repForSetup.Span),
-                MirRepForIterInstruction repForIter => new MirRepForIterInstruction(repForIter.Start, repForIter.End, repForIter.Span),
+                MirRepForIterInstruction repForIter => new MirRepForIterInstruction(repForIter.CarrierValues, repForIter.CurrentValues, repForIter.IndexCarrierOrdinal, repForIter.Span),
                 MirNoIrqBeginInstruction begin => new MirNoIrqBeginInstruction(begin.Span),
                 MirNoIrqEndInstruction end => new MirNoIrqEndInstruction(end.Span),
                 _ => rewritten,

@@ -684,19 +684,42 @@ public sealed class MirRepForSetupInstruction(MirValueId start, MirValueId end, 
     }
 }
 
-public sealed class MirRepForIterInstruction(MirValueId start, MirValueId end, TextSpan span)
+public sealed class MirRepForIterInstruction(
+    IReadOnlyList<MirValueId> carrierValues,
+    IReadOnlyList<MirValueId> currentValues,
+    int? indexCarrierOrdinal,
+    TextSpan span)
     : MirInstruction(result: null, resultType: null, span, hasSideEffects: true)
 {
-    public MirValueId Start { get; } = start;
-    public MirValueId End { get; } = end;
+    public IReadOnlyList<MirValueId> CarrierValues { get; } = Requires.NotNull(carrierValues);
+    public IReadOnlyList<MirValueId> CurrentValues { get; } = Requires.NotNull(currentValues);
+    public int? IndexCarrierOrdinal { get; } = indexCarrierOrdinal;
 
-    public override IReadOnlyList<MirValueId> Uses => [Start, End];
+    public override IReadOnlyList<MirValueId> Uses => [.. CarrierValues, .. CurrentValues];
 
     public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
     {
-        MirValueId start = mapping.TryGetValue(Start, out MirValueId mappedStart) ? mappedStart : Start;
-        MirValueId end = mapping.TryGetValue(End, out MirValueId mappedEnd) ? mappedEnd : End;
-        return start == Start && end == End ? this : new MirRepForIterInstruction(start, end, Span);
+        List<MirValueId> rewrittenCarriers = new(CarrierValues.Count);
+        List<MirValueId> rewrittenCurrent = new(CurrentValues.Count);
+        bool changed = false;
+
+        foreach (MirValueId carrier in CarrierValues)
+        {
+            MirValueId rewritten = mapping.TryGetValue(carrier, out MirValueId mappedCarrier) ? mappedCarrier : carrier;
+            rewrittenCarriers.Add(rewritten);
+            changed |= rewritten != carrier;
+        }
+
+        foreach (MirValueId current in CurrentValues)
+        {
+            MirValueId rewritten = mapping.TryGetValue(current, out MirValueId mappedCurrent) ? mappedCurrent : current;
+            rewrittenCurrent.Add(rewritten);
+            changed |= rewritten != current;
+        }
+
+        return changed
+            ? new MirRepForIterInstruction(rewrittenCarriers, rewrittenCurrent, IndexCarrierOrdinal, Span)
+            : this;
     }
 }
 

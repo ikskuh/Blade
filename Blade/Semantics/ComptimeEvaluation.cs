@@ -1066,11 +1066,15 @@ internal sealed class ComptimeEvaluator(
 
         for (long index = start; index < end; index++)
         {
-            ComptimeResult loopIndex = NormalizeLiteral(new ComptimeResult(index), repForStatement.Variable.Type, repForStatement.Start.Span);
-            if (loopIndex.IsFailed)
-                return EvaluationOutcome.Failed(loopIndex);
+            if (repForStatement.Variable is not null)
+            {
+                ComptimeResult loopIndex = NormalizeLiteral(new ComptimeResult(index), repForStatement.Variable.Type, repForStatement.Start.Span);
+                if (loopIndex.IsFailed)
+                    return EvaluationOutcome.Failed(loopIndex);
 
-            frame[repForStatement.Variable] = loopIndex;
+                frame[repForStatement.Variable] = loopIndex;
+            }
+
             EvaluationOutcome outcome = TryExecuteBlock(repForStatement.Body, frame);
             if (outcome.Kind == EvaluationOutcomeKind.Failed || outcome.Kind == EvaluationOutcomeKind.Return)
                 return outcome;

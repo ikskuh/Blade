@@ -789,7 +789,7 @@ public static class AsmLowerer
                 LowerRepForSetup(nodes, op, ctx);
                 break;
             case LirRepForIterOperation:
-                LowerRepForIter(nodes, ctx);
+                LowerRepForIter(nodes, op, ctx);
                 break;
             case LirNoIrqBeginOperation:
                 LowerNoIrqBegin(nodes, ctx);
@@ -1734,8 +1734,7 @@ public static class AsmLowerer
                 break;
 
             case BoundUnaryOperatorKind.BitwiseNot:
-                nodes.Add(Emit(P2Mnemonic.MOV, dest, src));
-                nodes.Add(Emit(P2Mnemonic.NOT, dest));
+                nodes.Add(Emit(P2Mnemonic.NOT, dest, src));
                 break;
 
             case BoundUnaryOperatorKind.UnaryPlus:
@@ -2124,16 +2123,46 @@ public static class AsmLowerer
 
     private static void LowerRepForSetup(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
-        if (op.Operands.Count < 2)
-            return;
+        Assert.Invariant(op.Operands.Count >= 2, "repfor.setup requires start and end operands.");
 
+        AsmRegisterOperand start = OpReg(op.Operands[0], ctx);
+        AsmRegisterOperand end = OpReg(op.Operands[1], ctx);
         ControlFlowLabelSymbol endLabel = PushRepEndLabel(ctx);
-        AsmOperand end = LowerOperand(op.Operands[1], ctx);
+        nodes.Add(Emit(P2Mnemonic.CMP, start, end, flagEffect: P2FlagEffect.WC));
+        nodes.Add(Emit(P2Mnemonic.JMP, new AsmSymbolOperand(endLabel, AsmSymbolAddressingMode.Immediate), predicate: P2ConditionCode.IF_NC));
+        nodes.Add(Emit(P2Mnemonic.SUB, end, start));
         nodes.Add(new AsmInstructionNode(P2Mnemonic.REP, [new AsmLabelRefOperand(endLabel), end]));
     }
 
-    private static void LowerRepForIter(List<AsmNode> nodes, LoweringContext ctx)
+    private static void LowerRepForIter(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
+        Assert.Invariant(op.Operation is LirRepForIterOperation, "repfor.iter lowering requires LirRepForIterOperation metadata.");
+        LirRepForIterOperation operation = (LirRepForIterOperation)op.Operation;
+
+        for (int i = 0; i + 1 < op.Operands.Count; i += 2)
+        {
+            LirRegisterOperand carrierOperand = (LirRegisterOperand)op.Operands[i];
+            LirRegisterOperand currentOperand = (LirRegisterOperand)op.Operands[i + 1];
+            AsmRegisterOperand carrier = new(ctx.GetRegister(carrierOperand.Register));
+            AsmRegisterOperand current = new(ctx.GetRegister(currentOperand.Register));
+
+            if (!ReferenceEquals(carrierOperand.Register, currentOperand.Register))
+            {
+                nodes.Add(new AsmInstructionNode(
+                    P2Mnemonic.MOV,
+                    [carrier, current],
+                    isNonElidable: true));
+            }
+
+            if (operation.IndexCarrierOrdinal == i / 2)
+            {
+                nodes.Add(new AsmInstructionNode(
+                    P2Mnemonic.ADD,
+                    [carrier, new AsmImmediateOperand(1)],
+                    isNonElidable: true));
+            }
+        }
+
         nodes.Add(new AsmLabelNode(PopRepEndLabel(ctx)));
     }
 

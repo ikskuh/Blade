@@ -9,13 +9,13 @@ public readonly record struct SourceSpan(SourceText Source, TextSpan Span)
 
     [ExcludeFromCodeCoverage]
     public string FilePath => Source.FilePath;
-    
+
     [ExcludeFromCodeCoverage]
     public int Start => Span.Start;
-    
+
     [ExcludeFromCodeCoverage]
     public int Length => Span.Length;
-    
+
     [ExcludeFromCodeCoverage]
     public int End => Span.End;
 

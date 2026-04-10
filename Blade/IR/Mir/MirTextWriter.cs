@@ -354,9 +354,17 @@ public static class MirTextWriter
 
             case MirRepForIterInstruction repForIter:
                 sb.Append("repfor.iter ");
-                sb.Append(formatter.Format(repForIter.Start));
-                sb.Append(", ");
-                sb.Append(formatter.Format(repForIter.End));
+                for (int i = 0; i < repForIter.CarrierValues.Count; i++)
+                {
+                    if (i > 0)
+                        sb.Append(", ");
+
+                    sb.Append(formatter.Format(repForIter.CarrierValues[i]));
+                    sb.Append(" <- ");
+                    sb.Append(formatter.Format(repForIter.CurrentValues[i]));
+                    if (repForIter.IndexCarrierOrdinal == i)
+                        sb.Append(" [+1]");
+                }
                 break;
 
             case MirNoIrqBeginInstruction:

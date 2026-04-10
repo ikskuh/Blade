@@ -394,10 +394,10 @@ public static class LirLowerer
                 repForSetup.Span),
 
             MirRepForIterInstruction repForIter => new LirOpInstruction(
-                new LirRepForIterOperation(),
+                new LirRepForIterOperation(repForIter.IndexCarrierOrdinal),
                 destination: null,
                 resultType: null,
-                [new LirRegisterOperand(getRegister(repForIter.Start)), new LirRegisterOperand(getRegister(repForIter.End))],
+                FlattenRepForIterOperands(repForIter, getRegister),
                 repForIter.HasSideEffects,
                 predicate: null,
                 writesC: false,
@@ -509,6 +509,24 @@ public static class LirLowerer
         List<LirOperand> operands = new(fields.Count);
         foreach (MirStructLiteralField field in fields)
             operands.Add(new LirRegisterOperand(getRegister(field.Value)));
+        return operands;
+    }
+
+    private static IReadOnlyList<LirOperand> FlattenRepForIterOperands(
+        MirRepForIterInstruction instruction,
+        System.Func<MirValueId, LirVirtualRegister> getRegister)
+    {
+        Assert.Invariant(
+            instruction.CarrierValues.Count == instruction.CurrentValues.Count,
+            "repfor.iter carrier and current value counts must match.");
+
+        List<LirOperand> operands = new(instruction.CarrierValues.Count * 2);
+        for (int i = 0; i < instruction.CarrierValues.Count; i++)
+        {
+            operands.Add(new LirRegisterOperand(getRegister(instruction.CarrierValues[i])));
+            operands.Add(new LirRegisterOperand(getRegister(instruction.CurrentValues[i])));
+        }
+
         return operands;
     }
 
