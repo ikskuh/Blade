@@ -425,6 +425,37 @@ public class IrPipelineTests
     }
 
     [Test]
+    public void AddressOfGlobal_ReusesExistingGlobalStoragePlace()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg var base: u32 = 7;
+
+            noinline fn demo() -> u32 {
+                var p: *reg u32 = &base;
+                var sink: u32 = 0;
+                asm volatile {
+                    MOV {sink}, {p}
+                };
+                return sink;
+            }
+
+            var result: u32 = demo();
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        Assert.That(MirTextWriter.Write(build.MirModule), Does.Contain("const &base"));
+        Assert.That(build.AsmModule.StoragePlaces.Count(place => place.Symbol.Name == "base"), Is.EqualTo(1));
+        Assert.That(build.AssemblyText, Does.Contain("MOV PA, #g_base"));
+    }
+
+    [Test]
     public void VolatilePointerDeref_RemainsInMirAsSideEffect()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""

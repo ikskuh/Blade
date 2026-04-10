@@ -76,25 +76,27 @@ public static class MirLowerer
         HashSet<Symbol> seenSymbols = [];
         CollectStoragePlaces(program.GlobalVariables, places, definitions, placesBySymbol, seenSymbols);
 
-        foreach (Symbol symbol in CollectAddressTakenSymbols(program))
+        foreach (VariableSymbol symbol in CollectAddressTakenSymbols(program))
         {
             if (!seenSymbols.Add(symbol))
                 continue;
 
-            if (symbol is GlobalVariableSymbol variable
-                && variable.IsConst
-                && variable.Initializer is BoundLiteralExpression { Value: RuntimeBladeValue constantValue })
+            StoragePlace place = symbol switch
             {
-                StoragePlace literalPlace = CreateGlobalStoragePlace(variable);
-                places.Add(literalPlace);
-                placesBySymbol[variable] = literalPlace;
-                definitions.Add(new StorageDefinition(literalPlace, constantValue));
-                continue;
-            }
-
-            StoragePlace place = CreateAddressTakenStoragePlace(symbol);
+                AutomaticVariableSymbol automaticVariable => CreateAddressTakenStoragePlace(automaticVariable),
+                GlobalVariableSymbol globalVariable => CreateGlobalStoragePlace(globalVariable),
+                _ => Assert.UnreachableValue<StoragePlace>($"Address-taken symbol '{symbol.Name}' must be a variable with storage."), // pragma: force-coverage
+            };
             places.Add(place);
             placesBySymbol[symbol] = place;
+
+            if (symbol is GlobalVariableSymbol fallbackGlobal
+                && place.IsAllocatable
+                && fallbackGlobal.Initializer is not null
+                && TryEvaluateStaticValue(fallbackGlobal.Initializer, fallbackGlobal.Type, out RuntimeBladeValue? value))
+            {
+                definitions.Add(new StorageDefinition(place, value));
+            }
         }
 
         return (places, definitions, placesBySymbol);
@@ -149,25 +151,18 @@ public static class MirLowerer
         return new StoragePlace(symbol, placement, registerRole, specialRegisterAlias: specialRegisterAlias);
     }
 
-    private static StoragePlace CreateAddressTakenStoragePlace(Symbol symbol)
+    private static StoragePlace CreateAddressTakenStoragePlace(AutomaticVariableSymbol symbol)
     {
-        if (symbol is not VariableSymbol variable)
-            return Assert.UnreachableValue<StoragePlace>($"Address-taken symbol '{symbol.Name}' must be a variable."); // pragma: force-coverage
-
-        VariableStorageClass storageClass = symbol is GlobalVariableSymbol global ? global.StorageClass : VariableStorageClass.Reg;
         GlobalVariableSymbol storageSymbol = new(
-            variable.Name,
-            variable.Type,
-            variable.IsConst,
-            storageClass,
+            symbol.Name,
+            symbol.Type,
+            symbol.IsConst,
+            VariableStorageClass.Reg,
             isExtern: false,
             fixedAddress: null,
             alignment: null,
-            variable.SourceSpan);
-        StoragePlaceRegisterRole? registerRole = storageClass == VariableStorageClass.Reg
-            ? StoragePlaceRegisterRole.Global
-            : null;
-        return new StoragePlace(storageSymbol, StoragePlacePlacement.Allocatable, registerRole);
+            symbol.SourceSpan);
+        return new StoragePlace(storageSymbol, StoragePlacePlacement.Allocatable, StoragePlaceRegisterRole.Global);
     }
 
     private static VariableStorageClass GetStorageClass(BladeType type)
@@ -193,9 +188,9 @@ public static class MirLowerer
         return VariableStorageClass.Reg;
     }
 
-    private static IReadOnlyList<Symbol> CollectAddressTakenSymbols(BoundProgram program)
+    private static IReadOnlyList<VariableSymbol> CollectAddressTakenSymbols(BoundProgram program)
     {
-        Dictionary<Symbol, Symbol> symbols = [];
+        Dictionary<VariableSymbol, VariableSymbol> symbols = [];
 
         foreach (BoundFunctionMember function in program.Functions)
             CollectAddressTakenSymbols(function.Body, symbols);
@@ -203,7 +198,7 @@ public static class MirLowerer
         return [.. symbols.Values];
     }
 
-    private static void CollectAddressTakenSymbols(BoundStatement statement, IDictionary<Symbol, Symbol> symbols)
+    private static void CollectAddressTakenSymbols(BoundStatement statement, IDictionary<VariableSymbol, VariableSymbol> symbols)
     {
         switch (statement)
         {
@@ -264,14 +259,14 @@ public static class MirLowerer
         }
     }
 
-    private static void CollectAddressTakenSymbols(BoundExpression expression, IDictionary<Symbol, Symbol> symbols)
+    private static void CollectAddressTakenSymbols(BoundExpression expression, IDictionary<VariableSymbol, VariableSymbol> symbols)
     {
         switch (expression)
         {
             case BoundLiteralExpression literal
                 when literal.Value.TryGetPointedValue(out PointedValue pointedValue)
-                && pointedValue.Symbol is not AbsoluteAddressSymbol:
-                symbols[pointedValue.Symbol] = pointedValue.Symbol;
+                && pointedValue.Symbol is VariableSymbol variable:
+                symbols[variable] = variable;
                 break;
             case BoundUnaryExpression unary when unary.Operator.Kind == BoundUnaryOperatorKind.AddressOf:
                 CollectAddressTakenTarget(unary.Operand, symbols);
@@ -333,12 +328,12 @@ public static class MirLowerer
         }
     }
 
-    private static void CollectAddressTakenTarget(BoundExpression expression, IDictionary<Symbol, Symbol> symbols)
+    private static void CollectAddressTakenTarget(BoundExpression expression, IDictionary<VariableSymbol, VariableSymbol> symbols)
     {
         switch (expression)
         {
-            case BoundSymbolExpression symbolExpression:
-                symbols[symbolExpression.Symbol] = symbolExpression.Symbol;
+            case BoundSymbolExpression { Symbol: VariableSymbol variable }:
+                symbols[variable] = variable;
                 return;
 
             case BoundIndexExpression indexExpression when indexExpression.Expression.Type is ArrayTypeSymbol:
