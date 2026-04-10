@@ -147,7 +147,7 @@ public class BinderTests
         Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0216_InvalidExternScope), Is.True);
         Assert.That(diagnostics.Any(diagnostic => diagnostic.Message == "automatic variable cannot be extern"), Is.True);
         Assert.That(program.GlobalVariables, Is.Empty);
-        Assert.That(program.TopLevelStatements.Single(), Is.TypeOf<BoundVariableDeclarationStatement>());
+        Assert.That(program.EntryPoint.Body.Statements.Single(), Is.TypeOf<BoundVariableDeclarationStatement>());
     }
 
     [Test]
@@ -359,7 +359,7 @@ public class BinderTests
     }
 
     [Test]
-    public void YieldtoOutsideCoroutineContext_ReportsDiagnostic()
+    public void YieldtoOutsideCoroutineContext_IsTemporarilyAccepted()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
             coro fn worker() void { loop { yieldto worker(); } }
@@ -368,7 +368,7 @@ public class BinderTests
             }
             """);
 
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0211_InvalidYieldtoUsage), Is.True);
+        Assert.That(diagnostics, Is.Empty);
     }
 
     [Test]

@@ -2558,7 +2558,7 @@ public class IrPipelineTests
     {
         LocalVariableSymbol symbol = new("local", BuiltinTypes.U32, isConst: false, sourceSpan: SourceSpan.Synthetic());
         BoundProgram program = IrTestFactory.CreateBoundProgram(
-            topLevelStatements:
+            constructorStatements:
             [
                 new BoundVariableDeclarationStatement(symbol, new BoundLiteralExpression(new RuntimeBladeValue(BuiltinTypes.U32, 1L), new TextSpan(0, 0)), new TextSpan(0, 0)),
             ]);

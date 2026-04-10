@@ -381,12 +381,13 @@ public sealed class RuntimeTypeAndValueTests
     private static BoundModule CreateImportedModule(string alias)
     {
         CompilationUnitSyntax syntax = new([], new Token(TokenKind.EndOfFile, Span, string.Empty));
+        BoundFunctionMember constructor = IrTestFactory.CreateConstructor();
         return new BoundModule(
             $"/tmp/{alias}.blade",
             syntax,
+            constructor,
             [],
-            [],
-            [],
+            [constructor],
             new Dictionary<string, Symbol>(StringComparer.Ordinal));
     }
 

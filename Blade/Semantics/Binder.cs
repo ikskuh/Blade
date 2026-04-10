@@ -26,7 +26,6 @@ public sealed class Binder
     private readonly Dictionary<string, BoundModule> _moduleDefinitionCache;
     private readonly HashSet<string> _moduleBindingStack;
     private readonly Scope _globalScope;
-    private readonly Scope _topLevelScope;
     private Scope _currentScope;
     private FunctionSymbol? _currentFunction;
     private SourceText? _currentSource;
@@ -51,7 +50,6 @@ public sealed class Binder
         _moduleDefinitionCache = Requires.NotNull(moduleDefinitionCache);
         _comptimeFuel = Requires.Positive(comptimeFuel);
         _globalScope = new Scope(parent: null);
-        _topLevelScope = new Scope(_globalScope);
         _currentScope = _globalScope;
     }
 
@@ -88,8 +86,7 @@ public sealed class Binder
         ResolveAllTypeAliases();
 
         List<GlobalVariableSymbol> boundGlobals = new();
-        List<BoundFunctionMember> boundFunctions = new();
-        List<BoundStatement> boundTopLevelStatements = new();
+        List<BoundFunctionMember> ordinaryFunctions = new();
 
         foreach (MemberSyntax member in unit.Members)
         {
@@ -97,53 +94,26 @@ public sealed class Binder
             {
                 case FunctionDeclarationSyntax function:
                     if (_functions.ContainsKey(function.Name.Text))
-                        boundFunctions.Add(BindFunction(function));
+                        ordinaryFunctions.Add(BindFunction(function));
                     break;
 
                 case AsmFunctionDeclarationSyntax asmFunction:
                     if (_functions.ContainsKey(asmFunction.Name.Text))
-                        boundFunctions.Add(BindAsmFunction(asmFunction));
+                        ordinaryFunctions.Add(BindAsmFunction(asmFunction));
                     break;
             }
         }
 
-        _currentScope = _topLevelScope;
-        foreach (MemberSyntax member in unit.Members)
-        {
-            switch (member)
-            {
-                case TypeAliasDeclarationSyntax:
-                    break;
-
-                case ImportDeclarationSyntax:
-                    break;
-
-                case VariableDeclarationSyntax variable:
-                    if (MapStorageClass(variable.StorageClassKeyword) == VariableStorageClass.Automatic)
-                    {
-                        boundTopLevelStatements.Add(BindLocalVariableDeclaration(variable));
-                    }
-                    else
-                    {
-                        _currentScope = _globalScope;
-                        boundGlobals.Add(BindGlobalVariable(variable));
-                        _currentScope = _topLevelScope;
-                    }
-                    break;
-
-                case GlobalStatementSyntax globalStatement:
-                    if (BindStatementNullable(globalStatement.Statement, isTopLevel: true) is BoundStatement boundStatement)
-                        boundTopLevelStatements.Add(boundStatement);
-                    break;
-            }
-        }
+        List<StatementSyntax> constructorStatements = CollectConstructorStatements(unit, boundGlobals);
+        BoundFunctionMember constructor = BindConstructor(constructorStatements);
+        List<BoundFunctionMember> boundFunctions = [constructor, .. ordinaryFunctions];
 
         Dictionary<string, Symbol> exportedSymbols = CreateExportedSymbols();
 
         return new BoundModule(
             module.FullPath,
             unit,
-            boundTopLevelStatements,
+            constructor,
             boundGlobals,
             boundFunctions,
             exportedSymbols);
@@ -168,7 +138,11 @@ public sealed class Binder
         foreach (BoundModule module in modules)
         {
             globalVariables.AddRange(module.GlobalVariables);
-            functions.AddRange(module.Functions);
+            foreach (BoundFunctionMember function in module.Functions)
+            {
+                if (!ReferenceEquals(function, module.Constructor))
+                    functions.Add(function);
+            }
         }
 
         return new BoundProgram(rootModule, modules, globalVariables, functions);
@@ -233,12 +207,13 @@ public sealed class Binder
     private static BoundModule CreateEmptyImportedModule(string resolvedPath, CompilationUnitSyntax? syntax = null)
     {
         CompilationUnitSyntax effectiveSyntax = syntax ?? new CompilationUnitSyntax([], new Token(TokenKind.EndOfFile, new TextSpan(0, 0), string.Empty));
+        BoundFunctionMember constructor = CreateSyntheticConstructor();
         return new BoundModule(
             resolvedPath,
             effectiveSyntax,
+            constructor,
             [],
-            [],
-            [],
+            [constructor],
             new Dictionary<string, Symbol>());
     }
 
@@ -253,12 +228,13 @@ public sealed class Binder
         };
 
         CompilationUnitSyntax emptySyntax = new([], new Token(TokenKind.EndOfFile, new TextSpan(0, 0), string.Empty));
+        BoundFunctionMember constructor = CreateSyntheticConstructor();
         BoundModule builtinModule = new(
             BuiltinModulePath,
             emptySyntax,
+            constructor,
             [],
-            [],
-            [],
+            [constructor],
             exportedSymbols);
 
         _moduleDefinitionCache[BuiltinModulePath] = builtinModule;
@@ -297,6 +273,62 @@ public sealed class Binder
         }
 
         return exportedSymbols;
+    }
+
+    private List<StatementSyntax> CollectConstructorStatements(CompilationUnitSyntax unit, ICollection<GlobalVariableSymbol> boundGlobals)
+    {
+        List<StatementSyntax> statements = new();
+        foreach (MemberSyntax member in unit.Members)
+        {
+            switch (member)
+            {
+                case VariableDeclarationSyntax variable:
+                    if (MapStorageClass(variable.StorageClassKeyword) == VariableStorageClass.Automatic)
+                    {
+                        statements.Add(new VariableDeclarationStatementSyntax(variable));
+                    }
+                    else
+                    {
+                        _currentScope = _globalScope;
+                        boundGlobals.Add(BindGlobalVariable(variable));
+                    }
+                    break;
+
+                case GlobalStatementSyntax globalStatement:
+                    statements.Add(globalStatement.Statement);
+                    break;
+            }
+        }
+
+        _currentScope = _globalScope;
+        return statements;
+    }
+
+    private BoundFunctionMember BindConstructor(IReadOnlyList<StatementSyntax> statements)
+    {
+        FunctionSymbol constructor = new("$init", FunctionKind.Default);
+        BlockStatementSyntax bodySyntax = CreateSyntheticBlockStatement(statements);
+        return BindBlockFunction(constructor, bodySyntax, bodySyntax.Span, bodySyntax.Span);
+    }
+
+    private static BoundFunctionMember CreateSyntheticConstructor()
+    {
+        BlockStatementSyntax bodySyntax = CreateSyntheticBlockStatement([]);
+        BoundBlockStatement body = new([], bodySyntax.Span);
+        return new BoundFunctionMember(new FunctionSymbol("$init", FunctionKind.Default), body, bodySyntax.Span);
+    }
+
+    private static BlockStatementSyntax CreateSyntheticBlockStatement(IReadOnlyList<StatementSyntax> statements)
+    {
+        Requires.NotNull(statements);
+
+        TextSpan blockSpan = statements.Count > 0
+            ? TextSpan.FromBounds(statements[0].Span.Start, statements[^1].Span.End)
+            : new TextSpan(0, 0);
+
+        Token openBrace = new(TokenKind.OpenBrace, new TextSpan(blockSpan.Start, 0), string.Empty);
+        Token closeBrace = new(TokenKind.CloseBrace, new TextSpan(blockSpan.End, 0), string.Empty);
+        return new BlockStatementSyntax(openBrace, statements, closeBrace);
     }
 
     private void CollectTopLevelTypes(CompilationUnitSyntax unit)
@@ -492,7 +524,19 @@ public sealed class Binder
     {
         bool found = _functions.TryGetValue(functionSyntax.Name.Text, out FunctionSymbol? function);
         Assert.Invariant(found && function is not null, "CollectTopLevelFunctions must register every function before binding.");
+        return BindBlockFunction(
+            Requires.NotNull(function),
+            functionSyntax.Body,
+            functionSyntax.Span,
+            functionSyntax.Body.CloseBrace.Span);
+    }
 
+    private BoundFunctionMember BindBlockFunction(
+        FunctionSymbol function,
+        BlockStatementSyntax bodySyntax,
+        TextSpan memberSpan,
+        TextSpan missingReturnSpan)
+    {
         Scope previousScope = _currentScope;
         FunctionSymbol? previousFunction = _currentFunction;
 
@@ -502,16 +546,16 @@ public sealed class Binder
         foreach (ParameterVariableSymbol parameter in function.Parameters)
             _ = TryDeclareSymbol(_currentScope, parameter, function.Syntax.Name.Span, preserveLocalBindingOnShadowing: true);
 
-        BoundBlockStatement body = BindBlockStatement(functionSyntax.Body, createScope: false, isTopLevel: false);
+        BoundBlockStatement body = BindBlockStatement(bodySyntax, createScope: false);
 
         if (function.ReturnTypes.Count > 0 && !AlwaysReturns(body))
-            _diagnostics.ReportMissingReturnValue(functionSyntax.Body.CloseBrace.Span, function.Name);
+            _diagnostics.ReportMissingReturnValue(missingReturnSpan, function.Name);
 
         _currentFunction = previousFunction;
         _currentScope = previousScope;
         _boundFunctionBodies[function] = body;
 
-        return new BoundFunctionMember(function, body, functionSyntax.Span);
+        return new BoundFunctionMember(function, body, memberSpan);
     }
 
     private BoundFunctionMember BindAsmFunction(AsmFunctionDeclarationSyntax asmSyntax)
@@ -617,7 +661,7 @@ public sealed class Binder
         }
     }
 
-    private BoundBlockStatement BindBlockStatement(BlockStatementSyntax block, bool createScope, bool isTopLevel)
+    private BoundBlockStatement BindBlockStatement(BlockStatementSyntax block, bool createScope)
     {
         Scope? previousScope = null;
         if (createScope)
@@ -629,7 +673,7 @@ public sealed class Binder
         List<BoundStatement> statements = new();
         foreach (StatementSyntax statement in block.Statements)
         {
-            if (BindStatementNullable(statement, isTopLevel) is BoundStatement boundStatement)
+            if (BindStatementNullable(statement) is BoundStatement boundStatement)
                 statements.Add(boundStatement);
         }
 
@@ -639,15 +683,15 @@ public sealed class Binder
         return new BoundBlockStatement(statements, block.Span);
     }
 
-    private BoundStatement BindStatement(StatementSyntax statement, bool isTopLevel)
-        => BindStatementNullable(statement, isTopLevel) ?? new BoundBlockStatement([], statement.Span);
+    private BoundStatement BindStatement(StatementSyntax statement)
+        => BindStatementNullable(statement) ?? new BoundBlockStatement([], statement.Span);
 
-    private BoundStatement? BindStatementNullable(StatementSyntax statement, bool isTopLevel)
+    private BoundStatement? BindStatementNullable(StatementSyntax statement)
     {
         switch (statement)
         {
             case BlockStatementSyntax block:
-                return BindBlockStatement(block, createScope: true, isTopLevel: false);
+                return BindBlockStatement(block, createScope: true);
 
             case VariableDeclarationStatementSyntax variableDeclStatement:
                 return BindLocalVariableDeclaration(variableDeclStatement.Declaration);
@@ -673,16 +717,16 @@ public sealed class Binder
                     BoundExpression condition = BindExpression(ifStatement.Condition, BuiltinTypes.Bool);
                     BoundStatement thenBody = ifStatement.ThenBody switch
                     {
-                        BlockStatementSyntax thenBlock => BindBlockStatement(thenBlock, createScope: true, isTopLevel: false),
-                        _ => BindStatement(ifStatement.ThenBody, isTopLevel: false),
+                        BlockStatementSyntax thenBlock => BindBlockStatement(thenBlock, createScope: true),
+                        _ => BindStatement(ifStatement.ThenBody),
                     };
                     BoundStatement? elseBody = null;
                     if (ifStatement.ElseClause is not null)
                     {
                         elseBody = ifStatement.ElseClause.Body switch
                         {
-                            BlockStatementSyntax elseBlock => BindBlockStatement(elseBlock, createScope: true, isTopLevel: false),
-                            _ => BindStatement(ifStatement.ElseClause.Body, isTopLevel: false),
+                            BlockStatementSyntax elseBlock => BindBlockStatement(elseBlock, createScope: true),
+                            _ => BindStatement(ifStatement.ElseClause.Body),
                         };
                     }
 
@@ -693,7 +737,7 @@ public sealed class Binder
                 {
                     BoundExpression condition = BindExpression(whileStatement.Condition, BuiltinTypes.Bool);
                     PushLoop(LoopContext.Regular);
-                    BoundBlockStatement body = BindBlockStatement(whileStatement.Body, createScope: true, isTopLevel: false);
+                    BoundBlockStatement body = BindBlockStatement(whileStatement.Body, createScope: true);
                     PopLoop();
                     return new BoundWhileStatement(condition, body, whileStatement.Span);
                 }
@@ -704,7 +748,7 @@ public sealed class Binder
             case LoopStatementSyntax loopStatement:
                 {
                     PushLoop(LoopContext.Regular);
-                    BoundBlockStatement body = BindBlockStatement(loopStatement.Body, createScope: true, isTopLevel: false);
+                    BoundBlockStatement body = BindBlockStatement(loopStatement.Body, createScope: true);
                     PopLoop();
                     return new BoundLoopStatement(body, loopStatement.Span);
                 }
@@ -712,7 +756,7 @@ public sealed class Binder
             case RepLoopStatementSyntax repLoop:
                 {
                     PushLoop(LoopContext.Rep);
-                    BoundBlockStatement body = BindBlockStatement(repLoop.Body, createScope: true, isTopLevel: false);
+                    BoundBlockStatement body = BindBlockStatement(repLoop.Body, createScope: true);
                     PopLoop();
                     return new BoundRepLoopStatement(body, repLoop.Span);
                 }
@@ -754,7 +798,7 @@ public sealed class Binder
 
             case NoirqStatementSyntax noirq:
                 {
-                    BoundBlockStatement body = BindBlockStatement(noirq.Body, createScope: true, isTopLevel: false);
+                    BoundBlockStatement body = BindBlockStatement(noirq.Body, createScope: true);
                     return new BoundNoirqStatement(body, noirq.Span);
                 }
 
@@ -784,7 +828,7 @@ public sealed class Binder
                 }
 
             case YieldtoStatementSyntax yieldtoStatement:
-                return BindYieldtoStatement(yieldtoStatement, isTopLevel);
+                return BindYieldtoStatement(yieldtoStatement);
 
             case AsmBlockStatementSyntax asm:
                 {
@@ -1321,7 +1365,7 @@ public sealed class Binder
         }
 
         PushLoop(LoopContext.Regular);
-        BoundBlockStatement body = BindBlockStatement(forStatement.Body, createScope: false, isTopLevel: false);
+        BoundBlockStatement body = BindBlockStatement(forStatement.Body, createScope: false);
         PopLoop();
 
         _currentScope = previousScope;
@@ -1341,7 +1385,7 @@ public sealed class Binder
             sourceSpan: CreateSourceSpan(repFor.Binding?.ItemName.Span ?? repFor.RepKeyword.Span));
         _ = TryDeclareSymbol(_currentScope, variable, repFor.Binding?.ItemName.Span ?? repFor.RepKeyword.Span, preserveLocalBindingOnShadowing: true);
 
-        BoundBlockStatement body = BindBlockStatement(repFor.Body, createScope: false, isTopLevel: false);
+        BoundBlockStatement body = BindBlockStatement(repFor.Body, createScope: false);
 
         _currentScope = previousScope;
         return new BoundRepForStatement(variable, start, end, body, repFor.Span);
@@ -1455,12 +1499,8 @@ public sealed class Binder
         return isBreak ? new BoundBreakStatement(keywordToken.Span) : new BoundContinueStatement(keywordToken.Span);
     }
 
-    private BoundYieldtoStatement BindYieldtoStatement(YieldtoStatementSyntax yieldtoStatement, bool isTopLevel)
+    private BoundYieldtoStatement BindYieldtoStatement(YieldtoStatementSyntax yieldtoStatement)
     {
-        bool allowedContext = isTopLevel || (_currentFunction?.Kind == FunctionKind.Coro);
-        if (!allowedContext)
-            _diagnostics.ReportInvalidYieldto(yieldtoStatement.YieldtoKeyword.Span);
-
         FunctionSymbol? target = null;
         if (_functions.TryGetValue(yieldtoStatement.Target.Text, out FunctionSymbol? targetFunction))
         {
@@ -1713,8 +1753,12 @@ public sealed class Binder
 
     private void ObserveVariableForTopLevelStoreLoadElision(VariableSymbol variable)
     {
-        if (_currentFunction is not null && variable is GlobalVariableSymbol globalVariable)
+        if (_currentFunction is not null
+            && _currentFunction.Name != "$init"
+            && variable is GlobalVariableSymbol globalVariable)
+        {
             globalVariable.DisableTopLevelStoreLoadChainElision();
+        }
     }
 
     private static void ObserveAddressTakenVariableForTopLevelStoreLoadElision(VariableSymbol variable)

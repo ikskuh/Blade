@@ -190,7 +190,7 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
 
     public void ReportInvalidYieldto(TextSpan span)
     {
-        Report(DiagnosticCode.E0211_InvalidYieldtoUsage, span, "'yieldto' is only allowed at top-level or inside coro functions.");
+        Report(DiagnosticCode.E0211_InvalidYieldtoUsage, span, "'yieldto' is not allowed in this context.");
     }
 
     public void ReportReturnValueCountMismatch(TextSpan span, string functionName, int expected, int actual)

@@ -22,9 +22,8 @@ public static class BoundTreeWriter
                 WriteExpression(sb, 3, global.Initializer);
         }
 
-        AppendLine(sb, 1, "TopLevelStatements");
-        foreach (BoundStatement statement in program.TopLevelStatements)
-            WriteStatement(sb, 2, statement);
+        AppendLine(sb, 1, $"EntryPoint {program.EntryPoint.Symbol.Name} ({program.EntryPoint.Symbol.Kind})");
+        WriteStatement(sb, 2, program.EntryPoint.Body);
 
         AppendLine(sb, 1, "Functions");
         foreach (BoundFunctionMember function in program.Functions)

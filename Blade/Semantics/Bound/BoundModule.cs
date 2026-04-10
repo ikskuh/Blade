@@ -9,16 +9,14 @@ namespace Blade.Semantics.Bound;
 public sealed class BoundModule(
     string resolvedFilePath,
     CompilationUnitSyntax syntax,
-    IReadOnlyList<BoundStatement> topLevelStatements,
+    BoundFunctionMember constructor,
     IReadOnlyList<GlobalVariableSymbol> globalVariables,
     IReadOnlyList<BoundFunctionMember> functions,
-    IReadOnlyDictionary<string, Symbol> exportedSymbols) : BoundNode(BoundNodeKind.Module, Requires.NotNull(topLevelStatements).Count > 0
-            ? TextSpan.FromBounds(topLevelStatements[0].Span.Start, topLevelStatements[^1].Span.End)
-            : new TextSpan(0, 0))
+    IReadOnlyDictionary<string, Symbol> exportedSymbols) : BoundNode(BoundNodeKind.Module, Requires.NotNull(constructor).Body.Span)
 {
     public string ResolvedFilePath { get; } = Requires.NotNull(resolvedFilePath);
     public CompilationUnitSyntax Syntax { get; } = Requires.NotNull(syntax);
-    public IReadOnlyList<BoundStatement> TopLevelStatements { get; } = Requires.NotNull(topLevelStatements);
+    public BoundFunctionMember Constructor { get; } = Requires.NotNull(constructor);
     public IReadOnlyList<GlobalVariableSymbol> GlobalVariables { get; } = Requires.NotNull(globalVariables);
     public IReadOnlyList<BoundFunctionMember> Functions { get; } = Requires.NotNull(functions);
     public IReadOnlyDictionary<string, Symbol> ExportedSymbols { get; } = Requires.NotNull(exportedSymbols);

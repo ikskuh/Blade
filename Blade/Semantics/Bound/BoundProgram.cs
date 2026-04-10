@@ -18,13 +18,11 @@ public sealed class BoundProgram(
 
     public string ResolvedFilePath => RootModule.ResolvedFilePath;
     public CompilationUnitSyntax Syntax => RootModule.Syntax;
-    public IReadOnlyList<BoundStatement> TopLevelStatements => RootModule.TopLevelStatements;
+    public BoundFunctionMember EntryPoint => RootModule.Constructor;
 
     private static TextSpan ComputeSpan(BoundModule rootModule)
     {
         Requires.NotNull(rootModule);
-        return rootModule.TopLevelStatements.Count > 0
-            ? TextSpan.FromBounds(rootModule.TopLevelStatements[0].Span.Start, rootModule.TopLevelStatements[^1].Span.End)
-            : new TextSpan(0, 0);
+        return rootModule.Constructor.Body.Span;
     }
 }

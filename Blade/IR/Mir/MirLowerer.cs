@@ -21,7 +21,7 @@ public static class MirLowerer
         BackendSymbolNaming.AssignStorageNames(storagePlaces);
 
         List<MirFunction> functions = new();
-        functions.Add(LowerTopLevel(program, storagePlaces, storageDefinitions));
+        functions.Add(LowerEntryPoint(program, storagePlaces, storageDefinitions));
 
         foreach (BoundFunctionMember functionMember in program.Functions)
             functions.Add(LowerFunction(functionMember, storagePlaces, storageDefinitions));
@@ -29,13 +29,19 @@ public static class MirLowerer
         return new MirModule(storagePlaces, storageDefinitions, functions);
     }
 
-    private static MirFunction LowerTopLevel(
+    private static MirFunction LowerEntryPoint(
         BoundProgram program,
         IReadOnlyList<StoragePlace> storagePlaces,
         IReadOnlyList<StorageDefinition> storageDefinitions)
     {
-        FunctionLoweringContext context = new(new FunctionSymbol("$top", FunctionKind.Default), isEntryPoint: true, [], storagePlaces, storageDefinitions);
-        context.LowerTopLevel(program.GlobalVariables, program.TopLevelStatements);
+        FunctionLoweringContext context = new(
+            program.EntryPoint.Symbol,
+            isEntryPoint: true,
+            program.EntryPoint.Symbol.ReturnTypes,
+            storagePlaces,
+            storageDefinitions,
+            program.EntryPoint.Symbol.ReturnSlots);
+        context.LowerEntryPointBody(program.GlobalVariables, program.EntryPoint.Body);
         return context.Build();
     }
 
@@ -159,10 +165,7 @@ public static class MirLowerer
         Dictionary<Symbol, Symbol> symbols = [];
 
         foreach (BoundModule module in program.Modules)
-        {
-            foreach (BoundStatement statement in module.TopLevelStatements)
-                CollectAddressTakenSymbols(statement, symbols);
-        }
+            CollectAddressTakenSymbols(module.Constructor.Body, symbols);
 
         foreach (BoundFunctionMember function in program.Functions)
             CollectAddressTakenSymbols(function.Body, symbols);
@@ -255,8 +258,7 @@ public static class MirLowerer
                     CollectAddressTakenSymbols(argument, symbols);
                 break;
             case BoundModuleCallExpression moduleCall:
-                foreach (BoundStatement statement in moduleCall.Module.TopLevelStatements)
-                    CollectAddressTakenSymbols(statement, symbols);
+                CollectAddressTakenSymbols(moduleCall.Module.Constructor.Body, symbols);
                 break;
             case BoundIntrinsicCallExpression intrinsic:
                 foreach (BoundExpression argument in intrinsic.Arguments)
@@ -366,9 +368,9 @@ public static class MirLowerer
             }
         }
 
-        public void LowerTopLevel(
+        public void LowerEntryPointBody(
             IReadOnlyList<GlobalVariableSymbol> globalVariables,
-            IReadOnlyList<BoundStatement> statements)
+            BoundBlockStatement body)
         {
             foreach (GlobalVariableSymbol global in globalVariables)
             {
@@ -388,10 +390,8 @@ public static class MirLowerer
                 EmitStorePlace(place, initializerValue, global.SourceSpan.Span);
             }
 
-            foreach (BoundStatement statement in statements)
-                LowerStatement(statement);
-
-            EmitFallthroughReturn(new TextSpan(0, 0));
+            LowerStatement(body);
+            EmitFallthroughReturn(body.Span);
         }
 
         public void LowerFunctionBody(BoundBlockStatement body, IReadOnlyList<ParameterVariableSymbol> parameters)
@@ -483,8 +483,7 @@ public static class MirLowerer
                 case BoundExpressionStatement expressionStatement:
                     if (expressionStatement.Expression is BoundModuleCallExpression moduleCallExpression)
                     {
-                        foreach (BoundStatement moduleStatement in moduleCallExpression.Module.TopLevelStatements)
-                            LowerStatement(moduleStatement);
+                        LowerModuleConstructor(moduleCallExpression.Module);
                     }
                     else
                     {
@@ -1096,6 +1095,11 @@ public static class MirLowerer
             return EmitConstant(defaultValue, span);
         }
 
+        private void LowerModuleConstructor(BoundModule module)
+        {
+            LowerStatement(module.Constructor.Body);
+        }
+
         private MirValueId LowerExpression(BoundExpression expression)
         {
             switch (expression)
@@ -1116,8 +1120,7 @@ public static class MirLowerer
                     return LowerCallExpression(callExpression);
 
                 case BoundModuleCallExpression moduleCallExpression:
-                    foreach (BoundStatement moduleStatement in moduleCallExpression.Module.TopLevelStatements)
-                        LowerStatement(moduleStatement);
+                    LowerModuleConstructor(moduleCallExpression.Module);
                     return EmitPlaceholderConstant(BuiltinTypes.Void, moduleCallExpression.Span);
 
                 case BoundIntrinsicCallExpression intrinsicCall:

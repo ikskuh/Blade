@@ -112,12 +112,14 @@ public static class CompilerDriver
     {
         Token eof = new(TokenKind.EndOfFile, new TextSpan(0, 0), string.Empty);
         CompilationUnitSyntax syntax = new([], eof);
+        BoundBlockStatement constructorBody = new([], new TextSpan(0, 0));
+        BoundFunctionMember constructor = new(new FunctionSymbol("$init", FunctionKind.Default), constructorBody, constructorBody.Span);
         BoundModule module = new BoundModule(
             "<empty>",
             syntax,
+            constructor,
             [],
-            [],
-            [],
+            [constructor],
             new Dictionary<string, Symbol>());
         return new BoundProgram(module, [module], [], []);
     }

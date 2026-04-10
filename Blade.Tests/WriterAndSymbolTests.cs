@@ -52,6 +52,15 @@ public class WriterAndSymbolTests
     }
 
     [Test]
+    public void BoundProgram_ExposesRootModuleEntryPointAndPath()
+    {
+        BoundProgram program = IrTestFactory.CreateBoundProgram("/tmp/test.blade");
+
+        Assert.That(program.ResolvedFilePath, Is.EqualTo("/tmp/test.blade"));
+        Assert.That(program.EntryPoint, Is.SameAs(program.RootModule.Constructor));
+    }
+
+    [Test]
     public void MirLirAndAsmTextWriters_FormatRepresentativeNodes()
     {
         StoragePlace place = new(CreateVariable("mem-slot", VariableStorageClass.Reg, VariableScopeKind.GlobalStorage), StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, emittedName: "g_mem_slot");

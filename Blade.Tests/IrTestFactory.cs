@@ -157,23 +157,25 @@ internal static class IrTestFactory
 
     public static BoundModule CreateBoundModule(
         string resolvedFilePath = "/tmp/test.blade",
-        IReadOnlyList<BoundStatement>? topLevelStatements = null,
+        IReadOnlyList<BoundStatement>? constructorStatements = null,
         IReadOnlyList<GlobalVariableSymbol>? globalVariables = null,
         IReadOnlyList<BoundFunctionMember>? functions = null,
         IReadOnlyDictionary<string, Symbol>? exportedSymbols = null)
     {
+        BoundFunctionMember constructor = CreateConstructor(constructorStatements);
+        IReadOnlyList<BoundFunctionMember> functionMembers = functions ?? [];
         return new BoundModule(
             resolvedFilePath,
             new CompilationUnitSyntax([], new Token(TokenKind.EndOfFile, new TextSpan(0, 0), string.Empty)),
-            topLevelStatements ?? [],
+            constructor,
             globalVariables ?? [],
-            functions ?? [],
-            exportedSymbols ?? CreateExports(globalVariables, functions));
+            [constructor, .. functionMembers],
+            exportedSymbols ?? CreateExports(globalVariables, functionMembers));
     }
 
     public static BoundProgram CreateBoundProgram(
         string resolvedFilePath = "/tmp/test.blade",
-        IReadOnlyList<BoundStatement>? topLevelStatements = null,
+        IReadOnlyList<BoundStatement>? constructorStatements = null,
         IReadOnlyList<GlobalVariableSymbol>? globalVariables = null,
         IReadOnlyList<BoundFunctionMember>? functions = null,
         IReadOnlyDictionary<string, Symbol>? exportedSymbols = null,
@@ -181,16 +183,34 @@ internal static class IrTestFactory
     {
         BoundModule rootModule = CreateBoundModule(
             resolvedFilePath,
-            topLevelStatements,
+            constructorStatements,
             globalVariables,
             functions,
             exportedSymbols);
         IReadOnlyList<BoundModule> effectiveModules = modules ?? [rootModule];
+        List<GlobalVariableSymbol> effectiveGlobals = [];
+        List<BoundFunctionMember> effectiveFunctions = [];
+        foreach (BoundModule module in effectiveModules)
+        {
+            effectiveGlobals.AddRange(module.GlobalVariables);
+            foreach (BoundFunctionMember function in module.Functions)
+            {
+                if (!ReferenceEquals(function, module.Constructor))
+                    effectiveFunctions.Add(function);
+            }
+        }
+
         return new BoundProgram(
             rootModule,
             effectiveModules,
-            globalVariables ?? [],
-            functions ?? []);
+            effectiveGlobals,
+            effectiveFunctions);
+    }
+
+    public static BoundFunctionMember CreateConstructor(IReadOnlyList<BoundStatement>? statements = null)
+    {
+        BoundBlockStatement body = new(statements ?? [], new TextSpan(0, 0));
+        return new BoundFunctionMember(new FunctionSymbol("$init", FunctionKind.Default), body, body.Span);
     }
 
     public static IReadOnlyDictionary<string, Symbol> CreateExports(

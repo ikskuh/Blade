@@ -150,12 +150,13 @@ public sealed class ComptimeBinderHelperTests
     {
         IReadOnlyList<BoundFunctionMember> functionMembers = functions ?? [];
         IReadOnlyDictionary<string, BoundModule> effectiveImportedModules = importedModules ?? new Dictionary<string, BoundModule>(StringComparer.Ordinal);
+        BoundFunctionMember constructor = IrTestFactory.CreateConstructor();
         return new BoundModule(
             "/tmp/test.blade",
             EmptyCompilationUnit(),
+            constructor,
             [],
-            [],
-            functionMembers,
+            [constructor, .. functionMembers],
             IrTestFactory.CreateExports(functions: functionMembers, importedModules: effectiveImportedModules));
     }
 
@@ -166,12 +167,13 @@ public sealed class ComptimeBinderHelperTests
     {
         IReadOnlyList<BoundFunctionMember> functionMembers = functions ?? [];
         IReadOnlyDictionary<string, BoundModule> effectiveImportedModules = importedModules ?? new Dictionary<string, BoundModule>(StringComparer.Ordinal);
+        BoundFunctionMember constructor = IrTestFactory.CreateConstructor();
         return new BoundModule(
             $"/tmp/{alias}.blade",
             EmptyCompilationUnit(),
+            constructor,
             [],
-            [],
-            functionMembers,
+            [constructor, .. functionMembers],
             IrTestFactory.CreateExports(functions: functionMembers, importedModules: effectiveImportedModules));
     }
 
@@ -254,7 +256,7 @@ public sealed class ComptimeBinderHelperTests
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
 
-        BoundVariableDeclarationStatement statement = (BoundVariableDeclarationStatement)program.TopLevelStatements.Single();
+        BoundVariableDeclarationStatement statement = (BoundVariableDeclarationStatement)program.EntryPoint.Body.Statements.Single();
         BoundLiteralExpression initializer = (BoundLiteralExpression)statement.Initializer!;
         Assert.That(initializer.Value.Value, Is.EqualTo(3L));
     }
@@ -276,7 +278,7 @@ public sealed class ComptimeBinderHelperTests
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
 
-        BoundVariableDeclarationStatement statement = (BoundVariableDeclarationStatement)program.TopLevelStatements.Single();
+        BoundVariableDeclarationStatement statement = (BoundVariableDeclarationStatement)program.EntryPoint.Body.Statements.Single();
         BoundLiteralExpression initializer = (BoundLiteralExpression)statement.Initializer!;
         Assert.That(initializer.Value.Value, Is.EqualTo(2L));
     }
