@@ -19,7 +19,9 @@
         "--mode",
         "editing",
         "--mode",
-        "interactive"
+        "interactive",
+        "--open-web-dashboard",
+        "false"
       ],
       "env": {
         "PATH": "/home/felix/.dotnet/tools:/usr/local/sbin:/usr/local/bin:/usr/bin",

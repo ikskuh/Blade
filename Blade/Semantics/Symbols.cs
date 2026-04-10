@@ -109,28 +109,12 @@ public abstract class VariableSymbol(string name, BladeType type, bool isConst, 
     public BladeType Type { get; } = Requires.NotNull(type);
     public bool IsConst { get; } = isConst;
     public abstract VariableScopeKind ScopeKind { get; }
-    public virtual bool IsAutomatic => false;
-    public virtual bool IsGlobalStorage => false;
-    public virtual bool IsInlineAsmTemporary => false;
-    public virtual bool IsExtern => false;
-    public virtual VariableStorageClass StorageClass => VariableStorageClass.Automatic;
-    public virtual int? FixedAddress => null;
-    public virtual int? Alignment => null;
-    public virtual bool CanElideTopLevelStoreLoadChains => false;
-    public bool UsesGlobalRegisterStorage => IsGlobalStorage && StorageClass == VariableStorageClass.Reg;
-    public bool UsesGlobalLutStorage => IsGlobalStorage && StorageClass == VariableStorageClass.Lut;
-    public bool UsesGlobalHubStorage => IsGlobalStorage && StorageClass == VariableStorageClass.Hub;
-
-    public virtual void DisableTopLevelStoreLoadChainElision()
-    {
-    }
 }
 
 public abstract class AutomaticVariableSymbol(string name, BladeType type, bool isConst, SourceSpan? sourceSpan = null)
     : VariableSymbol(name, type, isConst, sourceSpan)
 {
-    public override bool IsAutomatic => true;
-    public override VariableScopeKind ScopeKind => IsInlineAsmTemporary ? VariableScopeKind.InlineAsmTemporary : VariableScopeKind.Local;
+
 }
 
 public sealed class LocalVariableSymbol(
@@ -141,7 +125,8 @@ public sealed class LocalVariableSymbol(
     SourceSpan? sourceSpan = null)
     : AutomaticVariableSymbol(name, type, isConst, sourceSpan)
 {
-    public override bool IsInlineAsmTemporary { get; } = isInlineAsmTemporary;
+    public bool IsInlineAsmTemporary { get; } = isInlineAsmTemporary;
+    public override VariableScopeKind ScopeKind => IsInlineAsmTemporary ? VariableScopeKind.InlineAsmTemporary : VariableScopeKind.Local;
 }
 
 public sealed class ParameterVariableSymbol(string name, BladeType type, SourceSpan? sourceSpan = null)
@@ -167,13 +152,15 @@ public sealed class GlobalVariableSymbol(
         && !isExtern
         && !fixedAddress.HasValue;
 
-    public override bool IsGlobalStorage => true;
     public override VariableScopeKind ScopeKind => VariableScopeKind.GlobalStorage;
-    public override bool IsExtern { get; } = isExtern;
-    public override VariableStorageClass StorageClass { get; } = storageClass;
-    public override int? FixedAddress => _fixedAddress;
-    public override int? Alignment => _alignment;
-    public override bool CanElideTopLevelStoreLoadChains => _canElideTopLevelStoreLoadChains;
+    public bool IsExtern { get; } = isExtern;
+    public VariableStorageClass StorageClass { get; } = storageClass;
+    public int? FixedAddress => _fixedAddress;
+    public int? Alignment => _alignment;
+    public bool CanElideTopLevelStoreLoadChains => _canElideTopLevelStoreLoadChains;
+    public bool UsesGlobalRegisterStorage => StorageClass == VariableStorageClass.Reg;
+    public bool UsesGlobalLutStorage => StorageClass == VariableStorageClass.Lut;
+    public bool UsesGlobalHubStorage => StorageClass == VariableStorageClass.Hub;
 
     public BoundExpression? Initializer { get; private set; }
 
@@ -190,7 +177,7 @@ public sealed class GlobalVariableSymbol(
         Initializer = initializer;
     }
 
-    public override void DisableTopLevelStoreLoadChainElision()
+    public void DisableTopLevelStoreLoadChainElision()
     {
         _canElideTopLevelStoreLoadChains = false;
     }

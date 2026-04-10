@@ -126,7 +126,7 @@ internal static class JsonReportBuilder
 
         IrBuildResult buildResult = compilation.IrBuildResult!;
         if (options.DumpBound)
-            dumps["bound"] = Blade.Semantics.Bound.BoundTreeWriter.Write(buildResult.BoundModule);
+            dumps["bound"] = Blade.Semantics.Bound.BoundTreeWriter.Write(buildResult.BoundProgram);
         if (options.DumpMirPreOptimization)
             dumps["mir-preopt"] = Blade.IR.Mir.MirTextWriter.Write(buildResult.PreOptimizationMirModule);
         if (options.DumpMir)

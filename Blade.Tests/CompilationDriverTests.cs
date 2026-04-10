@@ -24,7 +24,7 @@ public sealed class CompilationDriverTests
 
         Assert.That(result.Diagnostics.Count, Is.GreaterThan(0));
         Assert.That(result.Diagnostics.Any(d => d.IsError), Is.True);
-        Assert.That(result.BoundModule.Functions, Is.Empty, "Binder must not run when any module has lexer/parser errors.");
+        Assert.That(result.BoundProgram.Functions, Is.Empty, "Binder must not run when any module has lexer/parser errors.");
 
         Diagnostic first = result.Diagnostics.First();
         Assert.That(first.Source.FilePath, Is.EqualTo(temp.GetFullPath("bad.blade")));

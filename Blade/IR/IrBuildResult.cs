@@ -6,7 +6,7 @@ using Blade.Semantics.Bound;
 namespace Blade.IR;
 
 public sealed class IrBuildResult(
-    BoundModule boundModule,
+    BoundProgram boundProgram,
     MirModule preOptimizationMirModule,
     MirModule mirModule,
     LirModule preOptimizationLirModule,
@@ -15,7 +15,7 @@ public sealed class IrBuildResult(
     AsmModule asmModule,
     string assemblyText)
 {
-    public BoundModule BoundModule { get; } = boundModule;
+    public BoundProgram BoundProgram { get; } = boundProgram;
     public MirModule PreOptimizationMirModule { get; } = preOptimizationMirModule;
     public MirModule MirModule { get; } = mirModule;
     public LirModule PreOptimizationLirModule { get; } = preOptimizationLirModule;

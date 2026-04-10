@@ -22,26 +22,24 @@ public class WriterAndSymbolTests
     }
 
     [Test]
-    public void VariableSymbol_ReportsAutomaticAndGlobalStorageProperties()
+    public void VariableSymbol_UsesConcreteVariableTypesForStorageSpecificProperties()
     {
         VariableSymbol local = CreateVariable("local", VariableStorageClass.Automatic, VariableScopeKind.Local);
         VariableSymbol topLevel = CreateVariable("top", VariableStorageClass.Automatic, VariableScopeKind.Local);
         VariableSymbol globalReg = CreateVariable("global_reg", VariableStorageClass.Reg, VariableScopeKind.GlobalStorage);
         VariableSymbol globalHub = CreateVariable("global_hub", VariableStorageClass.Hub, VariableScopeKind.GlobalStorage);
 
-        Assert.That(local.IsAutomatic, Is.True);
-        Assert.That(topLevel.IsAutomatic, Is.True);
-        Assert.That(globalReg.IsAutomatic, Is.False);
-        Assert.That(globalReg.IsGlobalStorage, Is.True);
-        Assert.That(globalReg.UsesGlobalRegisterStorage, Is.True);
-        Assert.That(globalHub.UsesGlobalRegisterStorage, Is.False);
+        Assert.That(local, Is.TypeOf<LocalVariableSymbol>());
+        Assert.That(topLevel, Is.TypeOf<LocalVariableSymbol>());
+        Assert.That(globalReg, Is.TypeOf<GlobalVariableSymbol>());
+        Assert.That(((GlobalVariableSymbol)globalReg).UsesGlobalRegisterStorage, Is.True);
+        Assert.That(((GlobalVariableSymbol)globalHub).UsesGlobalRegisterStorage, Is.False);
     }
 
     [Test]
     public void DumpContentBuilder_ReturnsFinalAssemblyWhenNoExplicitDumpFlagsAreSet()
     {
-        CompilationUnitSyntax syntax = new([], new Token(TokenKind.EndOfFile, Span, string.Empty));
-        BoundModule program = IrTestFactory.CreateBoundModule("/tmp/test.blade");
+        BoundProgram program = IrTestFactory.CreateBoundProgram("/tmp/test.blade");
         MirModule mir = new([], [], []);
         LirModule lir = new([]);
         AsmModule asm = new([], [], []);

@@ -349,14 +349,10 @@ see topic
 
 `extern var foo: u32` is legal, but doesn't make sense (foo has no name/storage assigned!)
 
-Okay.
+## header comment parsing in regression tester is broken
 
-Plan to apply the following changes:
-- fuse BoundModule [ TypeAliases, FunctionLookup, ExportedVariables, ImportedModules ] into ExportedSymbols.
-- Remove the TypeSymbol TypeAliasDeclarationSyntax constructor and keep an internal Dict<TypeSymbol, TypeAliasDeclarationSyntax> for caching unresolved TypeSymbol.
-- Erase ImportedModuleDefinition. 
-- Add Symbol
+```blade
+// EXPECT: fail
 
-- Remove all non-supported properties of "VariableSymbol" (like IsExtern). Use coercion into the right type instead.
-- Binder should yield a BoundProgram, which is a flattened version of the BoundModule that doesn't have a namespace anymore, but just fully interlinked symbols/BoundNodes
-- This should radically simplify MirLowerer
+// this is not a header comment anymore
+```

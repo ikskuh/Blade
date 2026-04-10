@@ -13,29 +13,29 @@ namespace Blade.IR.Mir;
 
 public static class MirLowerer
 {
-    public static MirModule Lower(BoundModule module)
+    public static MirModule Lower(BoundProgram program)
     {
-        Requires.NotNull(module);
+        Requires.NotNull(program);
 
-        (List<StoragePlace> storagePlaces, List<StorageDefinition> storageDefinitions) = CollectStoragePlaces(module);
+        (List<StoragePlace> storagePlaces, List<StorageDefinition> storageDefinitions) = CollectStoragePlaces(program);
         BackendSymbolNaming.AssignStorageNames(storagePlaces);
 
         List<MirFunction> functions = new();
-        functions.Add(LowerTopLevel(module, storagePlaces, storageDefinitions));
+        functions.Add(LowerTopLevel(program, storagePlaces, storageDefinitions));
 
-        foreach (BoundFunctionMember functionMember in module.Functions)
+        foreach (BoundFunctionMember functionMember in program.Functions)
             functions.Add(LowerFunction(functionMember, storagePlaces, storageDefinitions));
 
         return new MirModule(storagePlaces, storageDefinitions, functions);
     }
 
     private static MirFunction LowerTopLevel(
-        BoundModule module,
+        BoundProgram program,
         IReadOnlyList<StoragePlace> storagePlaces,
         IReadOnlyList<StorageDefinition> storageDefinitions)
     {
         FunctionLoweringContext context = new(new FunctionSymbol("$top", FunctionKind.Default), isEntryPoint: true, [], storagePlaces, storageDefinitions);
-        context.LowerTopLevel(module.GlobalVariables, module.TopLevelStatements);
+        context.LowerTopLevel(program.GlobalVariables, program.TopLevelStatements);
         return context.Build();
     }
 
@@ -56,20 +56,14 @@ public static class MirLowerer
         return context.Build();
     }
 
-    private static (List<StoragePlace> Places, List<StorageDefinition> Definitions) CollectStoragePlaces(BoundModule module)
+    private static (List<StoragePlace> Places, List<StorageDefinition> Definitions) CollectStoragePlaces(BoundProgram program)
     {
-        List<StoragePlace> places = new(module.GlobalVariables.Count);
+        List<StoragePlace> places = new(program.GlobalVariables.Count);
         List<StorageDefinition> definitions = [];
         HashSet<Symbol> seenSymbols = [];
-        HashSet<string> visitedModules = new(PathIdentity.Comparer);
-        CollectStoragePlaces(module.GlobalVariables, places, definitions, seenSymbols);
-        foreach (Symbol exportedSymbol in module.ExportedSymbols.Values)
-        {
-            if (exportedSymbol is ModuleSymbol importedModule)
-                CollectStoragePlaces(importedModule.Module, places, definitions, seenSymbols, visitedModules);
-        }
+        CollectStoragePlaces(program.GlobalVariables, places, definitions, seenSymbols);
 
-        foreach (Symbol symbol in CollectAddressTakenSymbols(module))
+        foreach (Symbol symbol in CollectAddressTakenSymbols(program))
         {
             if (!seenSymbols.Add(symbol))
                 continue;
@@ -99,7 +93,7 @@ public static class MirLowerer
         foreach (GlobalVariableSymbol global in globals)
         {
             GlobalVariableSymbol symbol = global;
-            if (!symbol.IsGlobalStorage || symbol.StorageClass == VariableStorageClass.Automatic || !seenSymbols.Add(symbol))
+            if (symbol.StorageClass == VariableStorageClass.Automatic || !seenSymbols.Add(symbol))
                 continue;
 
             StoragePlaceKind kind = MapStoragePlaceKind(symbol);
@@ -121,25 +115,7 @@ public static class MirLowerer
         }
     }
 
-    private static void CollectStoragePlaces(
-        BoundModule module,
-        ICollection<StoragePlace> places,
-        ICollection<StorageDefinition> definitions,
-        ISet<Symbol> seenSymbols,
-        ISet<string> visitedModules)
-    {
-        if (!visitedModules.Add(module.ResolvedFilePath))
-            return;
-
-        CollectStoragePlaces(module.GlobalVariables, places, definitions, seenSymbols);
-        foreach (Symbol exportedSymbol in module.ExportedSymbols.Values)
-        {
-            if (exportedSymbol is ModuleSymbol nestedModule)
-                CollectStoragePlaces(nestedModule.Module, places, definitions, seenSymbols, visitedModules);
-        }
-    }
-
-    private static StoragePlaceKind MapStoragePlaceKind(VariableSymbol symbol)
+    private static StoragePlaceKind MapStoragePlaceKind(GlobalVariableSymbol symbol)
     {
         return symbol.StorageClass switch
         {
@@ -172,20 +148,23 @@ public static class MirLowerer
 
         // For array variables (e.g. hub var data: [4]u32), the storage class
         // lives on the variable symbol, not on the array type.
-        if (expression is BoundSymbolExpression { Symbol: VariableSymbol variable })
+        if (expression is BoundSymbolExpression { Symbol: GlobalVariableSymbol variable })
             return variable.StorageClass;
 
         return VariableStorageClass.Reg;
     }
 
-    private static IReadOnlyList<Symbol> CollectAddressTakenSymbols(BoundModule module)
+    private static IReadOnlyList<Symbol> CollectAddressTakenSymbols(BoundProgram program)
     {
         Dictionary<Symbol, Symbol> symbols = [];
 
-        foreach (BoundStatement statement in module.TopLevelStatements)
-            CollectAddressTakenSymbols(statement, symbols);
+        foreach (BoundModule module in program.Modules)
+        {
+            foreach (BoundStatement statement in module.TopLevelStatements)
+                CollectAddressTakenSymbols(statement, symbols);
+        }
 
-        foreach (BoundFunctionMember function in module.Functions)
+        foreach (BoundFunctionMember function in program.Functions)
             CollectAddressTakenSymbols(function.Body, symbols);
 
         return [.. symbols.Values];

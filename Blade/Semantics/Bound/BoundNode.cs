@@ -5,6 +5,7 @@ namespace Blade.Semantics.Bound;
 public enum BoundNodeKind
 {
     Program,
+    Module,
     GlobalVariableMember,
     FunctionMember,
 

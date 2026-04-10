@@ -9,11 +9,11 @@ namespace Blade.IR;
 
 public static class IrPipeline
 {
-    public static IrBuildResult Build(BoundModule boundModule, IrPipelineOptions? options = null, DiagnosticBag? diagnostics = null)
+    public static IrBuildResult Build(BoundProgram boundProgram, IrPipelineOptions? options = null, DiagnosticBag? diagnostics = null)
     {
         options ??= new IrPipelineOptions();
 
-        MirModule mirModule = MirLowerer.Lower(boundModule);
+        MirModule mirModule = MirLowerer.Lower(boundProgram);
 
         bool enableSingleCallsiteInlining = options.EnableSingleCallsiteInlining
             && options.EnabledMirOptimizations.Contains(OptimizationRegistry.SingleCallsiteInlineMirOptimization);
@@ -45,7 +45,7 @@ public static class IrPipeline
         AsmModule preOptimizationAsmModule = asmModule;
 
         IrBuildResult preEmit = new(
-            boundModule,
+            boundProgram,
             preOptimizationMirModule,
             mirModule,
             preOptimizationLirModule,
@@ -59,7 +59,7 @@ public static class IrPipeline
             RuntimeTemplate = options.RuntimeTemplate,
         });
         return new IrBuildResult(
-            boundModule,
+            boundProgram,
             preOptimizationMirModule,
             mirModule,
             preOptimizationLirModule,

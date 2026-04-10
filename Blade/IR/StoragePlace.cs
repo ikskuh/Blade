@@ -65,7 +65,7 @@ public sealed class StoragePlace : IAsmSymbol
     public bool IsDedicatedRegisterSlot => Kind is StoragePlaceKind.AllocatableGlobalRegister
         or StoragePlaceKind.AllocatableInternalDedicatedRegister;
 
-    internal bool CanElideTopLevelStoreLoadChains => Symbol is VariableSymbol { CanElideTopLevelStoreLoadChains: true };
+    internal bool CanElideTopLevelStoreLoadChains => Symbol is GlobalVariableSymbol { CanElideTopLevelStoreLoadChains: true };
 
     public bool EmitsStorageLabel => Kind is StoragePlaceKind.AllocatableGlobalRegister
         or StoragePlaceKind.AllocatableLutEntry
@@ -81,8 +81,8 @@ public sealed class StoragePlace : IAsmSymbol
     public SymbolType SymbolType => Symbol switch
     {
         ParameterVariableSymbol => SymbolType.Parameter,
-        VariableSymbol { StorageClass: VariableStorageClass.Lut } => SymbolType.LutVariable,
-        VariableSymbol { StorageClass: VariableStorageClass.Hub } => SymbolType.HubVariable,
+        GlobalVariableSymbol { StorageClass: VariableStorageClass.Lut } => SymbolType.LutVariable,
+        GlobalVariableSymbol { StorageClass: VariableStorageClass.Hub } => SymbolType.HubVariable,
         _ => SymbolType.RegVariable,
     };
 

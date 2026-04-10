@@ -171,6 +171,28 @@ internal static class IrTestFactory
             exportedSymbols ?? CreateExports(globalVariables, functions));
     }
 
+    public static BoundProgram CreateBoundProgram(
+        string resolvedFilePath = "/tmp/test.blade",
+        IReadOnlyList<BoundStatement>? topLevelStatements = null,
+        IReadOnlyList<GlobalVariableSymbol>? globalVariables = null,
+        IReadOnlyList<BoundFunctionMember>? functions = null,
+        IReadOnlyDictionary<string, Symbol>? exportedSymbols = null,
+        IReadOnlyList<BoundModule>? modules = null)
+    {
+        BoundModule rootModule = CreateBoundModule(
+            resolvedFilePath,
+            topLevelStatements,
+            globalVariables,
+            functions,
+            exportedSymbols);
+        IReadOnlyList<BoundModule> effectiveModules = modules ?? [rootModule];
+        return new BoundProgram(
+            rootModule,
+            effectiveModules,
+            globalVariables ?? [],
+            functions ?? []);
+    }
+
     public static IReadOnlyDictionary<string, Symbol> CreateExports(
         IReadOnlyList<GlobalVariableSymbol>? globalVariables = null,
         IReadOnlyList<BoundFunctionMember>? functions = null,

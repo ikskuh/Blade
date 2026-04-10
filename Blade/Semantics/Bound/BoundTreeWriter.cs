@@ -7,26 +7,12 @@ namespace Blade.Semantics.Bound;
 
 public static class BoundTreeWriter
 {
-    public static string Write(BoundModule program)
+    public static string Write(BoundProgram program)
     {
         Requires.NotNull(program);
 
         StringBuilder sb = new();
         AppendLine(sb, 0, "Program");
-
-        AppendLine(sb, 1, "Exports");
-        foreach ((string name, Symbol symbol) in program.ExportedSymbols)
-        {
-            string description = symbol switch
-            {
-                TypeSymbol typeSymbol => $"type {typeSymbol.Type.Name}",
-                FunctionSymbol functionSymbol => $"function {functionSymbol.Kind}",
-                GlobalVariableSymbol globalVariable => $"global {globalVariable.Type.Name}",
-                ModuleSymbol => "module",
-                _ => symbol.GetType().Name,
-            };
-            AppendLine(sb, 2, $"{name}: {description}");
-        }
 
         AppendLine(sb, 1, "Globals");
         foreach (GlobalVariableSymbol global in program.GlobalVariables)
@@ -45,6 +31,25 @@ public static class BoundTreeWriter
         {
             AppendLine(sb, 2, $"{function.Symbol.Name} ({function.Symbol.Kind})");
             WriteStatement(sb, 3, function.Body);
+        }
+
+        AppendLine(sb, 1, "Modules");
+        foreach (BoundModule module in program.Modules)
+        {
+            AppendLine(sb, 2, module.ResolvedFilePath);
+            AppendLine(sb, 3, "Exports");
+            foreach ((string name, Symbol symbol) in module.ExportedSymbols)
+            {
+                string description = symbol switch
+                {
+                    TypeSymbol typeSymbol => $"type {typeSymbol.Type.Name}",
+                    FunctionSymbol functionSymbol => $"function {functionSymbol.Kind}",
+                    GlobalVariableSymbol globalVariable => $"global {globalVariable.Type.Name}",
+                    ModuleSymbol => "module",
+                    _ => symbol.GetType().Name,
+                };
+                AppendLine(sb, 4, $"{name}: {description}");
+            }
         }
 
         return sb.ToString();

@@ -12,7 +12,7 @@ public sealed class BoundModule(
     IReadOnlyList<BoundStatement> topLevelStatements,
     IReadOnlyList<GlobalVariableSymbol> globalVariables,
     IReadOnlyList<BoundFunctionMember> functions,
-    IReadOnlyDictionary<string, Symbol> exportedSymbols) : BoundNode(BoundNodeKind.Program, Requires.NotNull(topLevelStatements).Count > 0
+    IReadOnlyDictionary<string, Symbol> exportedSymbols) : BoundNode(BoundNodeKind.Module, Requires.NotNull(topLevelStatements).Count > 0
             ? TextSpan.FromBounds(topLevelStatements[0].Span.Start, topLevelStatements[^1].Span.End)
             : new TextSpan(0, 0))
 {

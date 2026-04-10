@@ -1111,7 +1111,7 @@ internal sealed class ComptimeEvaluator(
         if (expression.Type is PointerLikeTypeSymbol pointerType)
             return pointerType.StorageClass;
 
-        if (expression is BoundSymbolExpression { Symbol: VariableSymbol variable })
+        if (expression is BoundSymbolExpression { Symbol: GlobalVariableSymbol variable })
             return variable.StorageClass;
 
         return VariableStorageClass.Reg;

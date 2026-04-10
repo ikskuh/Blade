@@ -281,7 +281,7 @@ internal sealed class RegressionIrCoverageSession
 
     private static IrCoverageGroup? ClassifyStageRoot(Type type)
     {
-        if (typeof(BoundModule).IsAssignableFrom(type))
+        if (typeof(BoundProgram).IsAssignableFrom(type) || typeof(BoundModule).IsAssignableFrom(type))
             return IrCoverageGroup.Bound;
         if (typeof(MirModule).IsAssignableFrom(type))
             return IrCoverageGroup.Mir;

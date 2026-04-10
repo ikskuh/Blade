@@ -55,7 +55,7 @@ public sealed class Binder
         _currentScope = _globalScope;
     }
 
-    internal static BoundModule Bind(
+    internal static BoundProgram Bind(
         LoadedCompilation compilation,
         DiagnosticBag diagnostics,
         int comptimeFuel = 250)
@@ -69,7 +69,8 @@ public sealed class Binder
         };
         Dictionary<string, BoundModule> moduleDefinitionCache = new(PathIdentity.Comparer);
         Binder binder = new(diagnostics, compilation, moduleBindingStack, moduleDefinitionCache, comptimeFuel);
-        return binder.BindCompilationUnit(compilation.RootModule);
+        BoundModule rootModule = binder.BindCompilationUnit(compilation.RootModule);
+        return binder.CreateBoundProgram(rootModule);
     }
 
     private BoundModule BindCompilationUnit(LoadedModule module)
@@ -118,9 +119,16 @@ public sealed class Binder
                     break;
 
                 case VariableDeclarationSyntax variable:
-                    _currentScope = _globalScope;
-                    boundGlobals.Add(BindGlobalVariable(variable));
-                    _currentScope = _topLevelScope;
+                    if (MapStorageClass(variable.StorageClassKeyword) == VariableStorageClass.Automatic)
+                    {
+                        boundTopLevelStatements.Add(BindLocalVariableDeclaration(variable));
+                    }
+                    else
+                    {
+                        _currentScope = _globalScope;
+                        boundGlobals.Add(BindGlobalVariable(variable));
+                        _currentScope = _topLevelScope;
+                    }
                     break;
 
                 case GlobalStatementSyntax globalStatement:
@@ -139,6 +147,31 @@ public sealed class Binder
             boundGlobals,
             boundFunctions,
             exportedSymbols);
+    }
+
+    private BoundProgram CreateBoundProgram(BoundModule rootModule)
+    {
+        Requires.NotNull(rootModule);
+
+        List<BoundModule> modules = [rootModule];
+        foreach (BoundModule module in _moduleDefinitionCache
+                     .Where(static entry => !ReferenceEquals(entry.Value, null))
+                     .OrderBy(static entry => entry.Key, StringComparer.Ordinal)
+                     .Select(static entry => entry.Value))
+        {
+            if (!ReferenceEquals(module, rootModule))
+                modules.Add(module);
+        }
+
+        List<GlobalVariableSymbol> globalVariables = new();
+        List<BoundFunctionMember> functions = new();
+        foreach (BoundModule module in modules)
+        {
+            globalVariables.AddRange(module.GlobalVariables);
+            functions.AddRange(module.Functions);
+        }
+
+        return new BoundProgram(rootModule, modules, globalVariables, functions);
     }
 
     private void BindImports(LoadedModule module)
@@ -403,6 +436,9 @@ public sealed class Binder
         foreach (MemberSyntax member in unit.Members)
         {
             if (member is not VariableDeclarationSyntax variableDecl)
+                continue;
+
+            if (MapStorageClass(variableDecl.StorageClassKeyword) == VariableStorageClass.Automatic)
                 continue;
 
             BladeType variableType = BindType(variableDecl.Type);
@@ -1812,9 +1848,9 @@ public sealed class Binder
             return new BoundErrorExpression(unary.Span);
         }
 
-        VariableStorageClass storageClass = variable.IsAutomatic
-            ? VariableStorageClass.Reg
-            : variable.StorageClass;
+        VariableStorageClass storageClass = variable is GlobalVariableSymbol globalVariable
+            ? globalVariable.StorageClass
+            : VariableStorageClass.Reg;
         BladeType pointerType = variable.Type is ArrayTypeSymbol arrayType
             ? new MultiPointerTypeSymbol(arrayType.ElementType, variable.IsConst, storageClass: storageClass)
             : new PointerTypeSymbol(variable.Type, variable.IsConst, storageClass: storageClass);
@@ -1853,9 +1889,9 @@ public sealed class Binder
         {
             case BoundSymbolExpression { Symbol: VariableSymbol variable } when variable.Type is ArrayTypeSymbol:
                 {
-                    VariableStorageClass storageClass = variable.IsAutomatic
-                        ? VariableStorageClass.Reg
-                        : variable.StorageClass;
+                    VariableStorageClass storageClass = variable is GlobalVariableSymbol globalVariable
+                        ? globalVariable.StorageClass
+                        : VariableStorageClass.Reg;
                     pointerType = new PointerTypeSymbol(elementType, variable.IsConst, storageClass: storageClass);
                     return true;
                 }
@@ -2890,15 +2926,15 @@ public sealed class Binder
             return new BoundErrorExpression(query.Span);
         }
 
-        if (symbol is VariableSymbol variable)
+        if (symbol is AutomaticVariableSymbol)
         {
-            if (variable.IsAutomatic)
-            {
-                _diagnostics.ReportQueryAutomaticLocal(query.Subject.Span, operatorName, name);
-                return new BoundErrorExpression(query.Span);
-            }
+            _diagnostics.ReportQueryAutomaticLocal(query.Subject.Span, operatorName, name);
+            return new BoundErrorExpression(query.Span);
+        }
 
-            return FoldVariableQuery(query, variable, operatorName);
+        if (symbol is GlobalVariableSymbol globalVariable)
+        {
+            return FoldVariableQuery(query, globalVariable, operatorName);
         }
 
         // Symbol is not a variable (could be a function, module, or type alias).
@@ -2912,7 +2948,7 @@ public sealed class Binder
         return new BoundErrorExpression(query.Span);
     }
 
-    private BoundExpression FoldVariableQuery(QueryExpressionSyntax query, VariableSymbol variable, string operatorName)
+    private BoundExpression FoldVariableQuery(QueryExpressionSyntax query, GlobalVariableSymbol variable, string operatorName)
     {
         VariableStorageClass sc = variable.StorageClass;
 
@@ -3376,8 +3412,8 @@ public sealed class Binder
         return value.TryConvertToLong(out converted);
     }
 
-    private static bool RequiresComptimeInitializer(VariableSymbol symbol)
-        => symbol.IsGlobalStorage && symbol.StorageClass != VariableStorageClass.Automatic;
+    private static bool RequiresComptimeInitializer(GlobalVariableSymbol symbol)
+        => symbol.StorageClass != VariableStorageClass.Automatic;
 
     private BladeType BindType(TypeSyntax syntax, string? aliasName = null)
     {

@@ -218,7 +218,7 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
 
     public void ReportInvalidExternScope(TextSpan span)
     {
-        Report(DiagnosticCode.E0216_InvalidExternScope, span, "'extern' is only allowed on top-level storage declarations.");
+        Report(DiagnosticCode.E0216_InvalidExternScope, span, "automatic variable cannot be extern");
     }
 
     public void ReportInvalidParameterStorageClass(TextSpan span, string storageClass)

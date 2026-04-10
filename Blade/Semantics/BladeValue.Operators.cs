@@ -586,7 +586,7 @@ public abstract partial class BladeValue
             return true;
         }
 
-        if (pointedValue.Symbol is VariableSymbol { FixedAddress: int fixedAddress, StorageClass: var fixedStorageClass })
+        if (pointedValue.Symbol is GlobalVariableSymbol { FixedAddress: int fixedAddress, StorageClass: var fixedStorageClass })
         {
             if (fixedStorageClass != pointerType.StorageClass)
             {

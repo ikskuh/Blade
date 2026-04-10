@@ -90,8 +90,7 @@ public class RegisterAllocatorTests
 
     private static IrBuildResult CreateBuildResult(AsmModule asmModule)
     {
-        CompilationUnitSyntax syntax = new([], new Token(TokenKind.EndOfFile, new TextSpan(0, 0), string.Empty));
-        BoundModule program = new("/tmp/test.blade", syntax, [], [], [], new Dictionary<string, Symbol>());
+        BoundProgram program = IrTestFactory.CreateBoundProgram("/tmp/test.blade");
         MirModule mirModule = new([], [], []);
         LirModule lirModule = new([]);
         return new IrBuildResult(program, mirModule, mirModule, lirModule, lirModule, asmModule, asmModule, string.Empty);

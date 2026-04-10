@@ -20,7 +20,7 @@ public sealed class ComptimeBinderHelperTests
 {
     private static readonly TextSpan Span = new(0, 0);
 
-    private static (BoundModule Program, IReadOnlyList<Diagnostic> Diagnostics) Bind(string text, string? filePath = null, IReadOnlyDictionary<string, string>? namedModuleRoots = null)
+    private static (BoundProgram Program, IReadOnlyList<Diagnostic> Diagnostics) Bind(string text, string? filePath = null, IReadOnlyDictionary<string, string>? namedModuleRoots = null)
     {
         string effectivePath = filePath ?? "<input>";
         CompilationResult result = CompilerDriver.Compile(text, effectivePath, new CompilationOptions
@@ -28,7 +28,7 @@ public sealed class ComptimeBinderHelperTests
             NamedModuleRoots = namedModuleRoots ?? new Dictionary<string, string>(StringComparer.Ordinal),
             EmitIr = false,
         });
-        return (result.BoundModule, result.Diagnostics);
+        return (result.BoundProgram, result.Diagnostics);
     }
 
     private static SemanticBinder CreateBinder(DiagnosticBag diagnostics)
@@ -250,7 +250,7 @@ public sealed class ComptimeBinderHelperTests
         temp.WriteFile("math.blade", "fn inc(x: u32) -> u32 { return x + 1; }");
 
         string sourcePath = temp.GetFullPath("main.blade");
-        (BoundModule program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""import "./math.blade" as math; var outv: u32 = math.inc(2);""", sourcePath);
+        (BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""import "./math.blade" as math; var outv: u32 = math.inc(2);""", sourcePath);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
 
@@ -262,7 +262,7 @@ public sealed class ComptimeBinderHelperTests
     [Test]
     public void ComptimeBareIfWithoutElse_FoldsBoolLiteralCondition()
     {
-        (BoundModule program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
+        (BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
             comptime fn choose() -> u32 {
                 var value: u32 = 1;
                 if (true) {
@@ -284,7 +284,7 @@ public sealed class ComptimeBinderHelperTests
     [Test]
     public void StaticStorageConstants_AreReadableDuringFoldingAndComptimeEvaluation()
     {
-        (BoundModule program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
+        (BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
             reg const REG_RATE: u32 = 20_000_000;
             lut const LUT_OFFSET: u32 = 2;
             hub const HUB_OFFSET: u32 = 3;
@@ -304,7 +304,7 @@ public sealed class ComptimeBinderHelperTests
     [Test]
     public void IntegerLiteralFolding_Keeps64BitIntermediatesUntilFinalMaterialization()
     {
-        (BoundModule program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
+        (BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
             reg const CLOCKS: u32 = 250 * 20_000_000 / 1000;
             """);
 
