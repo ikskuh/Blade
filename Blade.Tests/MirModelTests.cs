@@ -13,8 +13,8 @@ public class MirModelTests
 
     private static StoragePlace CreatePlace(string name)
     {
-        VariableSymbol symbol = IrTestFactory.CreateVariableSymbol(name, BuiltinTypes.U32, VariableStorageClass.Reg, VariableScopeKind.GlobalStorage);
-        return new StoragePlace(symbol, StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, emittedName: $"g_{name}");
+        GlobalVariableSymbol symbol = (GlobalVariableSymbol)IrTestFactory.CreateVariableSymbol(name, BuiltinTypes.U32, VariableStorageClass.Reg, VariableScopeKind.GlobalStorage);
+        return new StoragePlace(symbol, StoragePlacePlacement.Allocatable, StoragePlaceRegisterRole.Global, emittedName: $"g_{name}");
     }
 
     private static InlineAsmVarBindingSlot CreateBindingSlot(string name) => new(name);

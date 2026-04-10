@@ -64,16 +64,10 @@ internal static class BackendSymbolNaming
 
     private static string GetBaseName(StoragePlace place)
     {
-        return place.Kind switch
+        return place switch
         {
-            StoragePlaceKind.AllocatableInternalSharedRegister
-                or StoragePlaceKind.AllocatableInternalDedicatedRegister => $"abi_{SanitizeIdentifier(place.Symbol.Name)}",
-            StoragePlaceKind.FixedRegisterAlias
-                or StoragePlaceKind.FixedLutAlias
-                or StoragePlaceKind.FixedHubAlias
-                or StoragePlaceKind.ExternalAlias
-                or StoragePlaceKind.ExternalLutAlias
-                or StoragePlaceKind.ExternalHubAlias => place.Symbol.Name,
+            { RegisterRole: StoragePlaceRegisterRole.InternalShared or StoragePlaceRegisterRole.InternalDedicated } => $"abi_{SanitizeIdentifier(place.Symbol.Name)}",
+            { Placement: StoragePlacePlacement.FixedAlias or StoragePlacePlacement.ExternalAlias } => place.Symbol.Name,
             _ => $"g_{SanitizeIdentifier(place.Symbol.Name)}",
         };
     }

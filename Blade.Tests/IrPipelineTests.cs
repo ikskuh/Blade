@@ -868,9 +868,9 @@ public class IrPipelineTests
     [Test]
     public void FinalAssemblyWriter_FormatsInlineAsmAndRegisterFileForReadability()
     {
-        StoragePlace r4 = new(CreateVariableSymbol("r4", scopeKind: VariableScopeKind.GlobalStorage, storageClass: VariableStorageClass.Reg), StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, emittedName: "_r4");
-        StoragePlace inputWord = new(CreateVariableSymbol("input_word_7", scopeKind: VariableScopeKind.GlobalStorage, storageClass: VariableStorageClass.Reg), StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, emittedName: "g_input_word_7");
-        StoragePlace deadCodeVisible = new(CreateVariableSymbol("dead_code_visible_10", scopeKind: VariableScopeKind.GlobalStorage, storageClass: VariableStorageClass.Reg), StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, emittedName: "g_dead_code_visible_10");
+        StoragePlace r4 = CreateStoragePlace("r4", emittedName: "_r4");
+        StoragePlace inputWord = CreateStoragePlace("input_word_7", emittedName: "g_input_word_7");
+        StoragePlace deadCodeVisible = CreateStoragePlace("dead_code_visible_10", emittedName: "g_dead_code_visible_10");
         AsmModule module = new(
             [inputWord, deadCodeVisible, r4],
             [
@@ -1326,6 +1326,46 @@ public class IrPipelineTests
     }
 
     [Test]
+    public void GeneralTierFunctionWithoutParameters_GetsSharedRegisterReturnPlace()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg var source: u32 = 1;
+            reg var sink: u32 = 0;
+
+            noinline fn leaf_source() -> u32 {
+                return source;
+            }
+
+            noinline fn middle() -> u32 {
+                return leaf_source();
+            }
+
+            noinline fn answer() -> u32 {
+                return middle();
+            }
+
+            sink = answer();
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableSingleCallsiteInlining = false,
+            EnableMirInlining = false,
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        AsmFunction function = build.AsmModule.Functions.Single(f => f.Name == "answer");
+        StoragePlace returnPlace = build.AsmModule.StoragePlaces.Single(place => place.Symbol.Name == "gen_answer_ret0");
+
+        Assert.That(function.CcTier, Is.EqualTo(CallingConventionTier.General));
+        Assert.That(returnPlace.RegisterRole, Is.EqualTo(StoragePlaceRegisterRole.InternalShared));
+        Assert.That(returnPlace.IsInternalRegisterSlot, Is.True);
+        Assert.That(returnPlace.Symbol.StorageClass, Is.EqualTo(VariableStorageClass.Reg));
+    }
+
+    [Test]
     public void InlineAsm_Volatile_TransposesCommentsToPasmStyle()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
@@ -1502,12 +1542,35 @@ public class IrPipelineTests
         });
 
         StoragePlace place = build.AsmModule.StoragePlaces.Single(p => p.EmittedName == "OUTA");
-        Assert.That(place.Kind, Is.EqualTo(StoragePlaceKind.FixedRegisterAlias));
+        Assert.That(place.Placement, Is.EqualTo(StoragePlacePlacement.FixedAlias));
         Assert.That(place.FixedAddress, Is.EqualTo(0x1FC));
         Assert.That(build.AssemblyText, Does.Contain("OR OUTA, #16"));
         Assert.That(build.AssemblyText, Does.Not.Contain("OUTA = $1FC"));
         Assert.That(build.AssemblyText, Does.Not.Match(@"LONG\s+0\b"));
         Assert.That(build.AssemblyText, Does.Not.Contain("g_OUTA"));
+    }
+
+    [Test]
+    public void PlainGlobalNamedLikeSpecialRegister_RemainsNormalStorage()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            reg var OUTA: u32 = 0;
+            OUTA |= 0x10;
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+        });
+
+        StoragePlace place = build.AsmModule.StoragePlaces.Single(p => p.Symbol.Name == "OUTA");
+        Assert.That(place.Placement, Is.EqualTo(StoragePlacePlacement.Allocatable));
+        Assert.That(place.SpecialRegisterAlias.HasValue, Is.False);
+        Assert.That(build.AssemblyText, Does.Contain("OR g_OUTA, #16"));
+        Assert.That(build.AssemblyText, Does.Not.Contain("OR OUTA, #16"));
+        Assert.That(build.AssemblyText, Does.Not.Contain("OUTA = $1FC"));
     }
 
     [Test]
@@ -1702,7 +1765,7 @@ public class IrPipelineTests
             coro fn worker(seed: u32) -> u32 {
                 var pair: Pair = Pair { .left = seed, .right = seed };
                 var arr: [2]u32 = undefined;
-                var ptr: *u32 = undefined;
+                var ptr: *reg u32 = undefined;
                 var sink: u32 = 0;
 
                 while (true) { break; }
@@ -2566,6 +2629,21 @@ public class IrPipelineTests
         MirModule mirModule = MirLowerer.Lower(program);
 
         Assert.That(mirModule.StoragePlaces.Any(place => place.Symbol is VariableSymbol { Name: "local" }), Is.False);
+    }
+
+    [Test]
+    public void DuplicateGlobalVariableSymbols_OnlyCreateOneMirStoragePlace()
+    {
+        GlobalVariableSymbol shared = (GlobalVariableSymbol)IrTestFactory.CreateVariableSymbol(
+            "seed",
+            BuiltinTypes.U32,
+            VariableStorageClass.Reg,
+            VariableScopeKind.GlobalStorage);
+        BoundProgram program = IrTestFactory.CreateBoundProgram(globalVariables: [shared, shared]);
+
+        MirModule mirModule = MirLowerer.Lower(program);
+
+        Assert.That(mirModule.StoragePlaces.Count(place => ReferenceEquals(place.Symbol, shared)), Is.EqualTo(1));
     }
 
     [Test]

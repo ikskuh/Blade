@@ -17,16 +17,19 @@ public static class MirLowerer
     {
         Requires.NotNull(program);
 
-        (List<StoragePlace> storagePlaces, List<StorageDefinition> storageDefinitions) = CollectStoragePlaces(program);
+        (
+            List<StoragePlace> storagePlaces,
+            List<StorageDefinition> storageDefinitions,
+            Dictionary<Symbol, StoragePlace> storagePlacesBySymbol) = CollectStoragePlaces(program);
         BackendSymbolNaming.AssignStorageNames(storagePlaces);
 
         List<MirFunction> functions = new();
-        functions.Add(LowerEntryPoint(program, storagePlaces, storageDefinitions));
+        functions.Add(LowerEntryPoint(program, storagePlacesBySymbol, storageDefinitions));
 
         foreach (BoundFunctionMember functionMember in program.Functions)
         {
             if (!ReferenceEquals(functionMember, program.EntryPoint))
-                functions.Add(LowerFunction(functionMember, storagePlaces, storageDefinitions));
+                functions.Add(LowerFunction(functionMember, storagePlacesBySymbol, storageDefinitions));
         }
 
         return new MirModule(storagePlaces, storageDefinitions, functions);
@@ -34,14 +37,14 @@ public static class MirLowerer
 
     private static MirFunction LowerEntryPoint(
         BoundProgram program,
-        IReadOnlyList<StoragePlace> storagePlaces,
+        IReadOnlyDictionary<Symbol, StoragePlace> storagePlacesBySymbol,
         IReadOnlyList<StorageDefinition> storageDefinitions)
     {
         FunctionLoweringContext context = new(
             program.EntryPoint.Symbol,
             isEntryPoint: true,
             program.EntryPoint.Symbol.ReturnTypes,
-            storagePlaces,
+            storagePlacesBySymbol,
             storageDefinitions,
             program.EntryPoint.Symbol.ReturnSlots);
         context.LowerEntryPointBody(program.GlobalVariables, program.EntryPoint.Body);
@@ -50,7 +53,7 @@ public static class MirLowerer
 
     private static MirFunction LowerFunction(
         BoundFunctionMember functionMember,
-        IReadOnlyList<StoragePlace> storagePlaces,
+        IReadOnlyDictionary<Symbol, StoragePlace> storagePlacesBySymbol,
         IReadOnlyList<StorageDefinition> storageDefinitions)
     {
         FunctionSymbol symbol = functionMember.Symbol;
@@ -58,19 +61,20 @@ public static class MirLowerer
             symbol,
             isEntryPoint: false,
             symbol.ReturnTypes,
-            storagePlaces,
+            storagePlacesBySymbol,
             storageDefinitions,
             symbol.ReturnSlots);
         context.LowerFunctionBody(functionMember.Body, symbol.Parameters);
         return context.Build();
     }
 
-    private static (List<StoragePlace> Places, List<StorageDefinition> Definitions) CollectStoragePlaces(BoundProgram program)
+    private static (List<StoragePlace> Places, List<StorageDefinition> Definitions, Dictionary<Symbol, StoragePlace> PlacesBySymbol) CollectStoragePlaces(BoundProgram program)
     {
         List<StoragePlace> places = new(program.GlobalVariables.Count);
         List<StorageDefinition> definitions = [];
+        Dictionary<Symbol, StoragePlace> placesBySymbol = [];
         HashSet<Symbol> seenSymbols = [];
-        CollectStoragePlaces(program.GlobalVariables, places, definitions, seenSymbols);
+        CollectStoragePlaces(program.GlobalVariables, places, definitions, placesBySymbol, seenSymbols);
 
         foreach (Symbol symbol in CollectAddressTakenSymbols(program))
         {
@@ -81,63 +85,89 @@ public static class MirLowerer
                 && variable.IsConst
                 && variable.Initializer is BoundLiteralExpression { Value: RuntimeBladeValue constantValue })
             {
-                StoragePlace literalPlace = new(variable, MapStoragePlaceKind(variable), fixedAddress: null);
+                StoragePlace literalPlace = CreateGlobalStoragePlace(variable);
                 places.Add(literalPlace);
+                placesBySymbol[variable] = literalPlace;
                 definitions.Add(new StorageDefinition(literalPlace, constantValue));
                 continue;
             }
 
-            places.Add(new StoragePlace(symbol, StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null));
+            StoragePlace place = CreateAddressTakenStoragePlace(symbol);
+            places.Add(place);
+            placesBySymbol[symbol] = place;
         }
 
-        return (places, definitions);
+        return (places, definitions, placesBySymbol);
     }
 
     private static void CollectStoragePlaces(
         IReadOnlyList<GlobalVariableSymbol> globals,
         ICollection<StoragePlace> places,
         ICollection<StorageDefinition> definitions,
+        IDictionary<Symbol, StoragePlace> placesBySymbol,
         ISet<Symbol> seenSymbols)
     {
         foreach (GlobalVariableSymbol global in globals)
         {
             GlobalVariableSymbol symbol = global;
-            if (symbol.StorageClass == VariableStorageClass.Automatic || !seenSymbols.Add(symbol))
+            if (!seenSymbols.Add(symbol))
                 continue;
 
-            StoragePlaceKind kind = MapStoragePlaceKind(symbol);
+            StoragePlace place = CreateGlobalStoragePlace(symbol);
 
             RuntimeBladeValue? staticInitializer = null;
-            if (kind is StoragePlaceKind.AllocatableGlobalRegister
-                    or StoragePlaceKind.AllocatableLutEntry
-                    or StoragePlaceKind.AllocatableHubEntry
+            if (place.IsAllocatable
                 && global.Initializer is not null
                 && TryEvaluateStaticValue(global.Initializer, symbol.Type, out RuntimeBladeValue? value))
             {
                 staticInitializer = value;
             }
 
-            StoragePlace place = new(symbol, kind, symbol.FixedAddress);
             places.Add(place);
+            placesBySymbol[symbol] = place;
             if (staticInitializer is not null)
                 definitions.Add(new StorageDefinition(place, staticInitializer));
         }
     }
 
-    private static StoragePlaceKind MapStoragePlaceKind(GlobalVariableSymbol symbol)
+    private static StoragePlace CreateGlobalStoragePlace(GlobalVariableSymbol symbol)
     {
-        return symbol.StorageClass switch
-        {
-            VariableStorageClass.Lut when symbol.FixedAddress.HasValue => StoragePlaceKind.FixedLutAlias,
-            VariableStorageClass.Lut when symbol.IsExtern => StoragePlaceKind.ExternalLutAlias,
-            VariableStorageClass.Lut => StoragePlaceKind.AllocatableLutEntry,
-            VariableStorageClass.Hub when symbol.FixedAddress.HasValue => StoragePlaceKind.FixedHubAlias,
-            VariableStorageClass.Hub when symbol.IsExtern => StoragePlaceKind.ExternalHubAlias,
-            VariableStorageClass.Hub => StoragePlaceKind.AllocatableHubEntry,
-            _ when symbol.FixedAddress.HasValue => StoragePlaceKind.FixedRegisterAlias,
-            _ when symbol.IsExtern => StoragePlaceKind.ExternalAlias,
-            _ => StoragePlaceKind.AllocatableGlobalRegister,
-        };
+        StoragePlacePlacement placement = symbol.FixedAddress.HasValue
+            ? StoragePlacePlacement.FixedAlias
+            : symbol.IsExtern
+                ? StoragePlacePlacement.ExternalAlias
+                : StoragePlacePlacement.Allocatable;
+        StoragePlaceRegisterRole? registerRole = placement == StoragePlacePlacement.Allocatable
+            && symbol.StorageClass == VariableStorageClass.Reg
+            ? StoragePlaceRegisterRole.Global
+            : null;
+        P2SpecialRegister? specialRegisterAlias = placement is StoragePlacePlacement.FixedAlias or StoragePlacePlacement.ExternalAlias
+            && symbol.StorageClass == VariableStorageClass.Reg
+            && P2InstructionMetadata.TryParseSpecialRegister(symbol.Name, out P2SpecialRegister specialRegister)
+                ? specialRegister
+                : null;
+        return new StoragePlace(symbol, placement, registerRole, specialRegisterAlias: specialRegisterAlias);
+    }
+
+    private static StoragePlace CreateAddressTakenStoragePlace(Symbol symbol)
+    {
+        if (symbol is not VariableSymbol variable)
+            return Assert.UnreachableValue<StoragePlace>($"Address-taken symbol '{symbol.Name}' must be a variable."); // pragma: force-coverage
+
+        VariableStorageClass storageClass = symbol is GlobalVariableSymbol global ? global.StorageClass : VariableStorageClass.Reg;
+        GlobalVariableSymbol storageSymbol = new(
+            variable.Name,
+            variable.Type,
+            variable.IsConst,
+            storageClass,
+            isExtern: false,
+            fixedAddress: null,
+            alignment: null,
+            variable.SourceSpan);
+        StoragePlaceRegisterRole? registerRole = storageClass == VariableStorageClass.Reg
+            ? StoragePlaceRegisterRole.Global
+            : null;
+        return new StoragePlace(storageSymbol, StoragePlacePlacement.Allocatable, registerRole);
     }
 
     private static VariableStorageClass GetStorageClass(BladeType type)
@@ -343,7 +373,7 @@ public static class MirLowerer
             FunctionSymbol symbol,
             bool isEntryPoint,
             IReadOnlyList<BladeType> returnTypes,
-            IReadOnlyList<StoragePlace> storagePlaces,
+            IReadOnlyDictionary<Symbol, StoragePlace> storagePlacesBySymbol,
             IReadOnlyList<StorageDefinition> storageDefinitions,
             IReadOnlyList<ReturnSlot>? returnSlots = null)
         {
@@ -351,8 +381,8 @@ public static class MirLowerer
             _isEntryPoint = isEntryPoint;
             _returnTypes = returnTypes;
             _returnSlots = returnSlots ?? [];
-            foreach (StoragePlace place in storagePlaces)
-                _storagePlacesBySymbol[place.Symbol] = place;
+            foreach ((Symbol storageSymbol, StoragePlace place) in storagePlacesBySymbol)
+                _storagePlacesBySymbol[storageSymbol] = place;
             foreach (StorageDefinition definition in storageDefinitions)
                 _preInitializedStoragePlaces.Add(definition.Place);
 
@@ -378,7 +408,8 @@ public static class MirLowerer
                     continue;
 
                 if (_preInitializedStoragePlaces.Contains(place)
-                    && place.Kind is StoragePlaceKind.AllocatableGlobalRegister or StoragePlaceKind.AllocatableHubEntry)
+                    && place.IsAllocatable
+                    && place.StorageClass is VariableStorageClass.Reg or VariableStorageClass.Hub)
                 {
                     continue;
                 }
@@ -1780,6 +1811,12 @@ public static class MirLowerer
 
         private MirValueId EmitConstant(BladeValue value, TextSpan span)
         {
+            if (value.TryGetPointedValue(out PointedValue pointedValue)
+                && _storagePlacesBySymbol.TryGetValue(pointedValue.Symbol, out StoragePlace? place))
+            {
+                value = BladeValue.Pointer((PointerLikeTypeSymbol)value.Type, new PointedValue(place.Symbol, pointedValue.Offset));
+            }
+
             MirValueId id = NextValue();
             _currentBlock.Instructions.Add(new MirConstantInstruction(id, value.Type, value, span));
             return id;

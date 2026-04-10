@@ -1,23 +1,21 @@
-using System;
 using System.Collections.Generic;
 using Blade;
 using Blade.Semantics;
 
 namespace Blade.IR;
 
-public enum StoragePlaceKind
+public enum StoragePlacePlacement
 {
-    AllocatableGlobalRegister,
-    AllocatableInternalSharedRegister,
-    AllocatableInternalDedicatedRegister,
-    FixedRegisterAlias,
+    Allocatable,
+    FixedAlias,
     ExternalAlias,
-    AllocatableLutEntry,
-    FixedLutAlias,
-    ExternalLutAlias,
-    AllocatableHubEntry,
-    FixedHubAlias,
-    ExternalHubAlias,
+}
+
+public enum StoragePlaceRegisterRole
+{
+    Global,
+    InternalShared,
+    InternalDedicated,
 }
 
 public sealed class StoragePlace : IAsmSymbol
@@ -25,64 +23,84 @@ public sealed class StoragePlace : IAsmSymbol
     private string? _emittedName;
 
     public StoragePlace(
-        Symbol symbol,
-        StoragePlaceKind kind,
-        int? fixedAddress,
+        GlobalVariableSymbol symbol,
+        StoragePlacePlacement placement,
+        StoragePlaceRegisterRole? registerRole = null,
         string? emittedName = null,
-        IReadOnlyList<P2Register>? preferredRegisters = null)
+        IReadOnlyList<P2Register>? preferredRegisters = null,
+        P2SpecialRegister? specialRegisterAlias = null)
     {
         Symbol = Requires.NotNull(symbol);
-        Kind = kind;
-        FixedAddress = fixedAddress;
+        Placement = placement;
         PreferredRegisters = preferredRegisters ?? [];
+        SpecialRegisterAlias = specialRegisterAlias;
+
+        bool isAllocatableRegisterPlace = placement == StoragePlacePlacement.Allocatable
+            && symbol.StorageClass == VariableStorageClass.Reg;
+        Assert.Invariant(isAllocatableRegisterPlace == registerRole.HasValue, "Register role must be present exactly for allocatable register storage places.");
+        RegisterRole = registerRole;
+
+        switch (placement)
+        {
+            case StoragePlacePlacement.Allocatable:
+                Assert.Invariant(!symbol.FixedAddress.HasValue, "Allocatable storage places must not have fixed addresses.");
+                Assert.Invariant(!symbol.IsExtern, "Allocatable storage places must not be extern.");
+                break;
+
+            case StoragePlacePlacement.FixedAlias:
+                Assert.Invariant(symbol.FixedAddress.HasValue, "Fixed alias storage places require a fixed address.");
+                break;
+
+            case StoragePlacePlacement.ExternalAlias:
+                Assert.Invariant(symbol.IsExtern, "External alias storage places must be extern.");
+                break;
+        }
+
+        if (specialRegisterAlias.HasValue)
+        {
+            Assert.Invariant(
+                placement is StoragePlacePlacement.FixedAlias or StoragePlacePlacement.ExternalAlias,
+                "Special-register aliases are only valid for fixed or external aliases.");
+            Assert.Invariant(symbol.StorageClass == VariableStorageClass.Reg, "Special-register aliases must live in register space.");
+        }
+
         if (!string.IsNullOrWhiteSpace(emittedName))
             _emittedName = emittedName;
-        if (P2InstructionMetadata.TryParseSpecialRegister(Symbol.Name, out P2SpecialRegister specialRegister))
-            SpecialRegisterAlias = new P2Register(specialRegister);
     }
 
-    public Symbol Symbol { get; }
-    public StoragePlaceKind Kind { get; }
-    public int? FixedAddress { get; }
+    public GlobalVariableSymbol Symbol { get; }
+    public StoragePlacePlacement Placement { get; }
+    public StoragePlaceRegisterRole? RegisterRole { get; }
     public IReadOnlyList<P2Register> PreferredRegisters { get; }
-    public P2Register? SpecialRegisterAlias { get; }
+    public P2SpecialRegister? SpecialRegisterAlias { get; }
+    public int? FixedAddress => Symbol.FixedAddress;
+    public VariableStorageClass StorageClass => Symbol.StorageClass;
     internal bool HasAssignedEmittedName => _emittedName is not null;
 
-    public VariableStorageClass StorageClass => Kind switch
-    {
-        StoragePlaceKind.AllocatableLutEntry
-            or StoragePlaceKind.FixedLutAlias
-            or StoragePlaceKind.ExternalLutAlias => VariableStorageClass.Lut,
-        StoragePlaceKind.AllocatableHubEntry
-            or StoragePlaceKind.FixedHubAlias
-            or StoragePlaceKind.ExternalHubAlias => VariableStorageClass.Hub,
-        _ => VariableStorageClass.Reg,
-    };
+    public bool IsInternalRegisterSlot => RegisterRole is StoragePlaceRegisterRole.InternalShared
+        or StoragePlaceRegisterRole.InternalDedicated;
 
-    public bool IsInternalRegisterSlot => Kind is StoragePlaceKind.AllocatableInternalSharedRegister
-        or StoragePlaceKind.AllocatableInternalDedicatedRegister;
+    public bool IsDedicatedRegisterSlot => RegisterRole is StoragePlaceRegisterRole.Global
+        or StoragePlaceRegisterRole.InternalDedicated;
 
-    public bool IsDedicatedRegisterSlot => Kind is StoragePlaceKind.AllocatableGlobalRegister
-        or StoragePlaceKind.AllocatableInternalDedicatedRegister;
+    public bool IsAllocatable => Placement == StoragePlacePlacement.Allocatable;
 
-    internal bool CanElideTopLevelStoreLoadChains => Symbol is GlobalVariableSymbol { CanElideTopLevelStoreLoadChains: true };
+    public bool IsFixedAlias => Placement == StoragePlacePlacement.FixedAlias;
 
-    public bool EmitsStorageLabel => Kind is StoragePlaceKind.AllocatableGlobalRegister
-        or StoragePlaceKind.AllocatableLutEntry
-        or StoragePlaceKind.AllocatableHubEntry
-        or StoragePlaceKind.FixedRegisterAlias
-        or StoragePlaceKind.FixedLutAlias
-        or StoragePlaceKind.FixedHubAlias;
+    public bool IsExternalAlias => Placement == StoragePlacePlacement.ExternalAlias;
+
+    internal bool CanElideTopLevelStoreLoadChains => Symbol.CanElideTopLevelStoreLoadChains;
+
+    public bool EmitsStorageLabel => Placement != StoragePlacePlacement.ExternalAlias;
 
     public string EmittedName => Assert.NotNull(_emittedName, "Storage place emitted names must be assigned by backend naming."); // pragma: force-coverage
 
     string IAsmSymbol.Name => EmittedName;
 
-    public SymbolType SymbolType => Symbol switch
+    public SymbolType SymbolType => StorageClass switch
     {
-        ParameterVariableSymbol => SymbolType.Parameter,
-        GlobalVariableSymbol { StorageClass: VariableStorageClass.Lut } => SymbolType.LutVariable,
-        GlobalVariableSymbol { StorageClass: VariableStorageClass.Hub } => SymbolType.HubVariable,
+        VariableStorageClass.Lut => SymbolType.LutVariable,
+        VariableStorageClass.Hub => SymbolType.HubVariable,
         _ => SymbolType.RegVariable,
     };
 

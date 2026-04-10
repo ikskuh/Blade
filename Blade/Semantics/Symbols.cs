@@ -185,7 +185,6 @@ public sealed class GlobalVariableSymbol(
 
 public enum VariableStorageClass
 {
-    Automatic,
     Reg,
     Lut,
     Hub,

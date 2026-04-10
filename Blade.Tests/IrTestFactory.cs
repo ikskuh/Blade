@@ -114,7 +114,7 @@ internal static class IrTestFactory
     public static VariableSymbol CreateVariableSymbol(
         string name,
         BladeType? type = null,
-        VariableStorageClass storageClass = VariableStorageClass.Automatic,
+        VariableStorageClass? storageClass = null,
         VariableScopeKind scopeKind = VariableScopeKind.Local,
         bool isConst = false,
         bool isExtern = false,
@@ -127,21 +127,32 @@ internal static class IrTestFactory
             VariableScopeKind.Parameter => new ParameterVariableSymbol(name, effectiveType, SourceSpan.Synthetic()),
             VariableScopeKind.InlineAsmTemporary => new LocalVariableSymbol(name, effectiveType, isConst, isInlineAsmTemporary: true, SourceSpan.Synthetic()),
             VariableScopeKind.Local => new LocalVariableSymbol(name, effectiveType, isConst, sourceSpan: SourceSpan.Synthetic()),
-            VariableScopeKind.GlobalStorage => new GlobalVariableSymbol(name, effectiveType, isConst, storageClass, isExtern, fixedAddress, alignment, SourceSpan.Synthetic()),
+            VariableScopeKind.GlobalStorage => new GlobalVariableSymbol(
+                name,
+                effectiveType,
+                isConst,
+                storageClass ?? throw new InvalidOperationException("Global storage variables require an explicit storage class."),
+                isExtern,
+                fixedAddress,
+                alignment,
+                SourceSpan.Synthetic()),
             _ => throw new InvalidOperationException($"Unsupported variable scope kind '{scopeKind}'."),
         };
     }
 
     public static StoragePlace CreateStoragePlace(
         string name,
-        StoragePlaceKind kind = StoragePlaceKind.AllocatableGlobalRegister,
+        StoragePlacePlacement placement = StoragePlacePlacement.Allocatable,
         BladeType? type = null,
         VariableStorageClass storageClass = VariableStorageClass.Reg,
         VariableScopeKind scopeKind = VariableScopeKind.GlobalStorage,
         bool isConst = false,
         bool isExtern = false,
         int? fixedAddress = null,
-        int? alignment = null)
+        int? alignment = null,
+        StoragePlaceRegisterRole? registerRole = null,
+        P2SpecialRegister? specialRegisterAlias = null,
+        string? emittedName = null)
     {
         VariableSymbol symbol = CreateVariableSymbol(
             name,
@@ -152,7 +163,16 @@ internal static class IrTestFactory
             isExtern,
             fixedAddress,
             alignment);
-        return new StoragePlace(symbol, kind, fixedAddress, emittedName: $"g_{name}");
+        GlobalVariableSymbol globalSymbol = (GlobalVariableSymbol)symbol;
+        StoragePlaceRegisterRole? effectiveRegisterRole = registerRole;
+        if (!effectiveRegisterRole.HasValue
+            && placement == StoragePlacePlacement.Allocatable
+            && storageClass == VariableStorageClass.Reg)
+        {
+            effectiveRegisterRole = StoragePlaceRegisterRole.Global;
+        }
+
+        return new StoragePlace(globalSymbol, placement, effectiveRegisterRole, emittedName ?? $"g_{name}", specialRegisterAlias: specialRegisterAlias);
     }
 
     public static BoundModule CreateBoundModule(

@@ -18,8 +18,8 @@ public class OptimizerTests
 
     private static StoragePlace CreatePlace(string name)
     {
-        VariableSymbol symbol = IrTestFactory.CreateVariableSymbol(name, BuiltinTypes.U32, VariableStorageClass.Reg, VariableScopeKind.GlobalStorage);
-        return new StoragePlace(symbol, StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, emittedName: $"g_{name}");
+        GlobalVariableSymbol symbol = (GlobalVariableSymbol)IrTestFactory.CreateVariableSymbol(name, BuiltinTypes.U32, VariableStorageClass.Reg, VariableScopeKind.GlobalStorage);
+        return new StoragePlace(symbol, StoragePlacePlacement.Allocatable, StoragePlaceRegisterRole.Global, emittedName: $"g_{name}");
     }
 
     [Test]
@@ -218,8 +218,8 @@ public class OptimizerTests
     [Test]
     public void AsmOptimizer_ElidesStraightLineMovChainWhenDeadAtFunctionEnd()
     {
-        StoragePlace inputPlace = new(CreateVariableSymbol("input", scopeKind: VariableScopeKind.GlobalStorage, storageClass: VariableStorageClass.Reg), StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, emittedName: "input");
-        StoragePlace outputPlace = new(CreateVariableSymbol("output", scopeKind: VariableScopeKind.GlobalStorage, storageClass: VariableStorageClass.Reg), StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, emittedName: "output");
+        StoragePlace inputPlace = IrTestFactory.CreateStoragePlace("input", emittedName: "input");
+        StoragePlace outputPlace = IrTestFactory.CreateStoragePlace("output", emittedName: "output");
         AsmRegisterOperand r1 = AsmRegister(1);
         AsmRegisterOperand r2 = AsmRegister(2);
         AsmSymbolOperand input = new(inputPlace, AsmSymbolAddressingMode.Register);
@@ -251,8 +251,8 @@ public class OptimizerTests
     [Test]
     public void AsmOptimizer_DoesNotElideCopyAcrossInlineAsmBarrier()
     {
-        StoragePlace inputPlace = new(CreateVariableSymbol("input", scopeKind: VariableScopeKind.GlobalStorage, storageClass: VariableStorageClass.Reg), StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, emittedName: "input");
-        StoragePlace outputPlace = new(CreateVariableSymbol("output", scopeKind: VariableScopeKind.GlobalStorage, storageClass: VariableStorageClass.Reg), StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, emittedName: "output");
+        StoragePlace inputPlace = IrTestFactory.CreateStoragePlace("input", emittedName: "input");
+        StoragePlace outputPlace = IrTestFactory.CreateStoragePlace("output", emittedName: "output");
         AsmRegisterOperand r1 = AsmRegister(1);
         AsmSymbolOperand input = new(inputPlace, AsmSymbolAddressingMode.Register);
         AsmSymbolOperand output = new(outputPlace, AsmSymbolAddressingMode.Register);

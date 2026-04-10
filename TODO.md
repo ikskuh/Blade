@@ -246,16 +246,6 @@ while `shared += 1` compiles to `ADD _r4, #1`.
 
 `Demonstrators/Optimizations/asmir-global_reg-operator-no-copy.blade`
 
-## Rewrite how inline assembly works in general
-
-Right now, it is transposed into a block/IR for non-volatile asm, and volatile asm seems to be treated as a string
-which is regularly rewritten.
-
-This seems brittle, and i think a better solution is having a "block" of inline assembly which just also contains IR
-that must never be reordered at all.
-
-This should simplify the code generation pipeline by reducing a lot of "rewriting".
-
 ## Clean up demonstrators
 
 Apply new `?` operand matching instead of hardcoding internals like generated symbol names `_r1` and such.
@@ -291,16 +281,6 @@ they cannot overlap anyways.
 
 This should give much much better results than running front-to-back.
 
-## Rewire inline assembly into proper language syntax
-
-Right now, inline assembly is an afterthought.
-
-Wire it properly into the language frontend so it's parsed by the parser, not by a
-later staged validator.
-
-This removes a lot of surface from the compiler and gives additional useful properties
-like proper location tracking
-
 ## Add emission of JSON based debug info
 
 - Source <=> Assembly mapping
@@ -318,12 +298,6 @@ like proper location tracking
   - This requires maintaining an additional hand-written instruction database (yaml or json) for all instructions / mnemonics
 - Instructions like `RFBYTE D {WC/WZ/WCZ}` should return `u8`, as `D` will receive a zero-extended byte, and never 32 bit
   - This also requires the instruction database to define properties of the consumed or returned values (here: bit count/size)
-
-## Refactor storage organization
-
-These should not be modelled as assembly instructions, but as typed blocks.
-
-Also `object?` is a bad storage format, we already have a Comptime Value for this
 
 Also we need `ALIGNW` and `ALIGNL` for storage emission
 
@@ -343,11 +317,6 @@ see topic
 ## Improve BladeValue/TypeSymbol
 
 - Support comptime comparison for `==` and `!=` on types in the language.
-
-
-## Compiler Bug
-
-`extern var foo: u32` is legal, but doesn't make sense (foo has no name/storage assigned!)
 
 ## header comment parsing in regression tester is broken
 

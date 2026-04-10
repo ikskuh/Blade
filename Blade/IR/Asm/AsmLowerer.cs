@@ -108,44 +108,40 @@ public static class AsmLowerer
 
         foreach (StoragePlace place in storagePlaces)
         {
-            switch (place.Kind)
+            if (place.IsAllocatable
+                && (place.RegisterRole == StoragePlaceRegisterRole.Global
+                    || place.StorageClass is VariableStorageClass.Lut or VariableStorageClass.Hub))
             {
-                case StoragePlaceKind.AllocatableGlobalRegister:
-                case StoragePlaceKind.AllocatableLutEntry:
-                case StoragePlaceKind.AllocatableHubEntry:
-                    RuntimeTypeSymbol elementType = GetPlaceElementType(place);
-                    int count = GetPlaceEntryCount(place);
-                    IReadOnlyList<AsmOperand>? loweredInitialValues = LowerDataInitialValue(initialValues.GetValueOrDefault(place), placesBySymbol);
-                    AsmAllocatedStorageDefinition allocated = new(
-                        place,
-                        place.StorageClass,
-                        elementType,
-                        loweredInitialValues,
-                        count);
-                    switch (place.Kind)
-                    {
-                        case StoragePlaceKind.AllocatableGlobalRegister:
-                            registerDefinitions.Add(allocated);
-                            break;
-                        case StoragePlaceKind.AllocatableLutEntry:
-                            lutDefinitions.Add(allocated);
-                            break;
-                        case StoragePlaceKind.AllocatableHubEntry:
-                            hubDefinitions.Add(allocated);
-                            break;
-                    }
+                RuntimeTypeSymbol elementType = GetPlaceElementType(place);
+                int count = GetPlaceEntryCount(place);
+                IReadOnlyList<AsmOperand>? loweredInitialValues = LowerDataInitialValue(initialValues.GetValueOrDefault(place), placesBySymbol);
+                AsmAllocatedStorageDefinition allocated = new(
+                    place,
+                    place.StorageClass,
+                    elementType,
+                    loweredInitialValues,
+                    count);
+                switch (place.StorageClass)
+                {
+                    case VariableStorageClass.Reg:
+                        registerDefinitions.Add(allocated);
+                        break;
+                    case VariableStorageClass.Lut:
+                        lutDefinitions.Add(allocated);
+                        break;
+                    case VariableStorageClass.Hub:
+                        hubDefinitions.Add(allocated);
+                        break;
+                    default:
+                        Assert.Unreachable($"Unexpected storage class: {place.StorageClass}"); // pragma: force-coverage
+                        break; // pragma: force-coverage
+                }
 
-                    break;
-
-                case StoragePlaceKind.FixedRegisterAlias:
-                case StoragePlaceKind.ExternalAlias:
-                case StoragePlaceKind.FixedLutAlias:
-                case StoragePlaceKind.ExternalLutAlias:
-                case StoragePlaceKind.FixedHubAlias:
-                case StoragePlaceKind.ExternalHubAlias:
-                    externalDefinitions.Add(new AsmExternalBindingDefinition(place));
-                    break;
+                continue;
             }
+
+            if (!place.IsAllocatable)
+                externalDefinitions.Add(new AsmExternalBindingDefinition(place));
         }
 
         return
@@ -169,7 +165,7 @@ public static class AsmLowerer
         if (place.Symbol is VariableSymbol { Type: RuntimeTypeSymbol runtimeType })
             return runtimeType;
 
-        return BuiltinTypes.U32;
+        return Assert.UnreachableValue<RuntimeTypeSymbol>(); // pragma: force-coverage
     }
 
     private static int GetPlaceEntryCount(StoragePlace place)
@@ -376,7 +372,7 @@ public static class AsmLowerer
                     StoragePlace parameterPlace = CreateInternalRegisterPlace(
                         $"{abiPrefix}_{function.Name}_arg{i}",
                         entryParameters[i].Type,
-                        StoragePlaceKind.AllocatableInternalSharedRegister);
+                        StoragePlaceRegisterRole.InternalShared);
                     parameterPlaces.Add(parameterPlace);
                     storagePlaces.Add(parameterPlace);
                 }
@@ -396,7 +392,7 @@ public static class AsmLowerer
                     StoragePlace parameterPlace = CreateInternalRegisterPlace(
                         $"gen_{function.Name}_arg{i}",
                         entryParameters[i].Type,
-                        StoragePlaceKind.AllocatableInternalSharedRegister,
+                        StoragePlaceRegisterRole.InternalShared,
                         preferredRegisters: i == 0 ? [new P2Register(P2SpecialRegister.PB), new P2Register(P2SpecialRegister.PA)] : null);
                     parameterPlaces.Add(parameterPlace);
                     storagePlaces.Add(parameterPlace);
@@ -419,7 +415,7 @@ public static class AsmLowerer
                         registerReturnPlace = CreateInternalRegisterPlace(
                             $"gen_{function.Name}_ret0",
                             slot.Type,
-                            StoragePlaceKind.AllocatableInternalSharedRegister,
+                            StoragePlaceRegisterRole.InternalShared,
                             preferredRegisters: [new P2Register(P2SpecialRegister.PB), new P2Register(P2SpecialRegister.PA)]);
                         storagePlaces.Add(registerReturnPlace);
                     }
@@ -437,7 +433,7 @@ public static class AsmLowerer
                     StoragePlace parameterPlace = CreateInternalRegisterPlace(
                         $"rec_{function.Name}_arg{i}",
                         entryParameters[i].Type,
-                        StoragePlaceKind.AllocatableInternalSharedRegister,
+                        StoragePlaceRegisterRole.InternalShared,
                         preferredRegisters: i == 0 ? [new P2Register(P2SpecialRegister.PB), new P2Register(P2SpecialRegister.PA)] : null);
                     parameterPlaces.Add(parameterPlace);
                     storagePlaces.Add(parameterPlace);
@@ -460,7 +456,7 @@ public static class AsmLowerer
                         registerReturnPlace = CreateInternalRegisterPlace(
                             $"rec_{function.Name}_ret0",
                             slot.Type,
-                            StoragePlaceKind.AllocatableInternalSharedRegister,
+                            StoragePlaceRegisterRole.InternalShared,
                             preferredRegisters: [new P2Register(P2SpecialRegister.PB), new P2Register(P2SpecialRegister.PA)]);
                         storagePlaces.Add(registerReturnPlace);
                     }
@@ -478,7 +474,7 @@ public static class AsmLowerer
                     StoragePlace parameterPlace = CreateInternalRegisterPlace(
                         $"coro_{function.Name}_arg{i}",
                         entryParameters[i].Type,
-                        StoragePlaceKind.AllocatableInternalDedicatedRegister);
+                        StoragePlaceRegisterRole.InternalDedicated);
                     parameterPlaces.Add(parameterPlace);
                     storagePlaces.Add(parameterPlace);
                 }
@@ -487,7 +483,7 @@ public static class AsmLowerer
                 StoragePlace statePlace = CreateInternalRegisterPlace(
                     $"coro_{function.Name}_state",
                     BuiltinTypes.U32,
-                    StoragePlaceKind.AllocatableInternalDedicatedRegister);
+                    StoragePlaceRegisterRole.InternalDedicated);
                 storagePlaces.Add(statePlace);
 
                 coroutineCallingConvention[function.Symbol] = new CoroutineCallingConventionInfo(statePlace, parameterPlaces);
@@ -508,8 +504,8 @@ public static class AsmLowerer
                 sourceSpan: SourceSpan.Synthetic());
             topLevelYieldStatePlace = new StoragePlace(
                 topYieldStateSymbol,
-                StoragePlaceKind.AllocatableGlobalRegister,
-                fixedAddress: null);
+                StoragePlacePlacement.Allocatable,
+                StoragePlaceRegisterRole.Global);
             storagePlaces.Add(topLevelYieldStatePlace);
         }
 
@@ -520,7 +516,7 @@ public static class AsmLowerer
     private static StoragePlace CreateInternalRegisterPlace(
         string name,
         BladeType type,
-        StoragePlaceKind kind,
+        StoragePlaceRegisterRole registerRole,
         IReadOnlyList<P2Register>? preferredRegisters = null)
     {
         GlobalVariableSymbol symbol = new(
@@ -532,7 +528,7 @@ public static class AsmLowerer
             fixedAddress: null,
             alignment: null,
             sourceSpan: SourceSpan.Synthetic());
-        return new StoragePlace(symbol, kind, fixedAddress: null, preferredRegisters: preferredRegisters);
+        return new StoragePlace(symbol, StoragePlacePlacement.Allocatable, registerRole, preferredRegisters: preferredRegisters);
     }
 
     private static bool FunctionContainsYield(LirFunction function)
@@ -1172,18 +1168,16 @@ public static class AsmLowerer
 
         switch (storageClass)
         {
+            case VariableStorageClass.Reg:
+                nodes.Add(WithNonElidable(Emit(P2Mnemonic.ALTD, pointer)));
+                nodes.Add(WithNonElidable(Emit(P2Mnemonic.MOV, AsmAltPlaceholderOperand.Register, value)));
+                break;
             case VariableStorageClass.Lut:
                 nodes.Add(new AsmInstructionNode(P2Mnemonic.WRLUT, [value, pointer]));
                 break;
             case VariableStorageClass.Hub:
                 nodes.Add(new AsmInstructionNode(SelectHubWriteOpcode(RequireTypedResult(op, "store.deref")), [value, pointer]));
                 break;
-            case VariableStorageClass.Reg:
-                Assert.Unreachable("Register variable loads/stores must never reach ASMIR lowering as such"); // pragma: force-coverage
-                break; // pragma: force-coverage
-            case VariableStorageClass.Automatic:
-                Assert.Unreachable("Automatic variable loads/stores must never reach ASMIR lowering as such"); // pragma: force-coverage
-                break; // pragma: force-coverage
             default:
                 Assert.Unreachable($"unhandled switch value: {op.DisplayName}"); // pragma: force-coverage
                 break; // pragma: force-coverage
@@ -1928,7 +1922,7 @@ public static class AsmLowerer
         AsmOperand valueOp = LowerOperand(op.Operands[1], ctx);
         StoragePlace storagePlace = (StoragePlace)place.Symbol;
 
-        BladeType? placeType = (storagePlace.Symbol as VariableSymbol)?.Type;
+        BladeType placeType = storagePlace.Symbol.Type;
 
         switch (storagePlace.StorageClass)
         {
@@ -1936,10 +1930,8 @@ public static class AsmLowerer
                 nodes.Add(new AsmInstructionNode(P2Mnemonic.WRLUT, [valueOp, place]));
                 break;
             case VariableStorageClass.Hub:
-                Assert.Invariant(placeType is not null, "Hub place stores require a concrete place type.");
                 nodes.Add(new AsmInstructionNode(SelectHubWriteOpcode(placeType), [valueOp, place]));
                 break;
-            case VariableStorageClass.Automatic:
             case VariableStorageClass.Reg:
                 nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [place, valueOp]));
                 break;

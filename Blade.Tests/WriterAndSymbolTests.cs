@@ -16,7 +16,7 @@ public class WriterAndSymbolTests
 {
     private static readonly TextSpan Span = new(0, 0);
 
-    private static VariableSymbol CreateVariable(string name, VariableStorageClass storageClass, VariableScopeKind scopeKind)
+    private static VariableSymbol CreateVariable(string name, VariableStorageClass? storageClass, VariableScopeKind scopeKind)
     {
         return IrTestFactory.CreateVariableSymbol(name, BuiltinTypes.U32, storageClass, scopeKind);
     }
@@ -24,8 +24,8 @@ public class WriterAndSymbolTests
     [Test]
     public void VariableSymbol_UsesConcreteVariableTypesForStorageSpecificProperties()
     {
-        VariableSymbol local = CreateVariable("local", VariableStorageClass.Automatic, VariableScopeKind.Local);
-        VariableSymbol topLevel = CreateVariable("top", VariableStorageClass.Automatic, VariableScopeKind.Local);
+        VariableSymbol local = CreateVariable("local", storageClass: null, VariableScopeKind.Local);
+        VariableSymbol topLevel = CreateVariable("top", storageClass: null, VariableScopeKind.Local);
         VariableSymbol globalReg = CreateVariable("global_reg", VariableStorageClass.Reg, VariableScopeKind.GlobalStorage);
         VariableSymbol globalHub = CreateVariable("global_hub", VariableStorageClass.Hub, VariableScopeKind.GlobalStorage);
 
@@ -63,7 +63,7 @@ public class WriterAndSymbolTests
     [Test]
     public void MirLirAndAsmTextWriters_FormatRepresentativeNodes()
     {
-        StoragePlace place = new(CreateVariable("mem-slot", VariableStorageClass.Reg, VariableScopeKind.GlobalStorage), StoragePlaceKind.AllocatableGlobalRegister, fixedAddress: null, emittedName: "g_mem_slot");
+        StoragePlace place = IrTestFactory.CreateStoragePlace("mem-slot", emittedName: "g_mem_slot");
 
         MirModule mir = new([], [], [
             CreateMirFunction("mir_fn", isEntryPoint: true, FunctionKind.Leaf, [BuiltinTypes.U32],
@@ -117,5 +117,43 @@ public class WriterAndSymbolTests
         Assert.That(asmText, Does.Contain("' test"));
         Assert.That(asmText, Does.Contain("IF_C ADD %r0, #5 WCZ"));
         Assert.That(asmText, Does.Contain("MOV %r0, #1"));
+    }
+
+    [Test]
+    public void StoragePlace_DerivesPlacementLabelAndSymbolTypeFromOrthogonalMetadata()
+    {
+        StoragePlace allocatableRegister = IrTestFactory.CreateStoragePlace(
+            "global_reg",
+            placement: StoragePlacePlacement.Allocatable,
+            storageClass: VariableStorageClass.Reg,
+            emittedName: "g_global_reg");
+        StoragePlace fixedLutAlias = IrTestFactory.CreateStoragePlace(
+            "fixed_lut",
+            placement: StoragePlacePlacement.FixedAlias,
+            storageClass: VariableStorageClass.Lut,
+            fixedAddress: 12,
+            emittedName: "fixed_lut");
+        StoragePlace externalHubAlias = IrTestFactory.CreateStoragePlace(
+            "external_hub",
+            placement: StoragePlacePlacement.ExternalAlias,
+            storageClass: VariableStorageClass.Hub,
+            isExtern: true,
+            emittedName: "external_hub");
+
+        Assert.That(allocatableRegister.IsAllocatable, Is.True);
+        Assert.That(allocatableRegister.IsFixedAlias, Is.False);
+        Assert.That(allocatableRegister.IsExternalAlias, Is.False);
+        Assert.That(allocatableRegister.EmitsStorageLabel, Is.True);
+        Assert.That(allocatableRegister.SymbolType, Is.EqualTo(SymbolType.RegVariable));
+
+        Assert.That(fixedLutAlias.IsFixedAlias, Is.True);
+        Assert.That(fixedLutAlias.IsExternalAlias, Is.False);
+        Assert.That(fixedLutAlias.EmitsStorageLabel, Is.True);
+        Assert.That(fixedLutAlias.SymbolType, Is.EqualTo(SymbolType.LutVariable));
+
+        Assert.That(externalHubAlias.IsFixedAlias, Is.False);
+        Assert.That(externalHubAlias.IsExternalAlias, Is.True);
+        Assert.That(externalHubAlias.EmitsStorageLabel, Is.False);
+        Assert.That(externalHubAlias.SymbolType, Is.EqualTo(SymbolType.HubVariable));
     }
 }

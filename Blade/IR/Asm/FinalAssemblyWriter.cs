@@ -37,7 +37,7 @@ public static class FinalAssemblyWriter
         foreach (AsmExternalBindingDefinition binding in externalBlock.Definitions.OfType<AsmExternalBindingDefinition>())
         {
             StoragePlace place = binding.Place;
-            if (place.FixedAddress is not int fixedAddress || place.SpecialRegisterAlias is not null)
+            if (place.FixedAddress is not int fixedAddress || place.SpecialRegisterAlias.HasValue)
                 continue;
 
             sb.Append("    ");

@@ -79,13 +79,12 @@ public sealed class RuntimeTemplateTests
         Assert.That(loadSucceeded, Is.True, errorMessage);
 
         StoragePlace ledPort = new(
-            IrTestFactory.CreateVariableSymbol(
+            (GlobalVariableSymbol)IrTestFactory.CreateVariableSymbol(
                 "LED_PORT",
                 storageClass: VariableStorageClass.Reg,
                 scopeKind: VariableScopeKind.GlobalStorage,
                 fixedAddress: 0x1FC),
-            StoragePlaceKind.FixedRegisterAlias,
-            fixedAddress: 0x1FC,
+            StoragePlacePlacement.FixedAlias,
             emittedName: "LED_PORT");
         AsmModule module = new(
             [ledPort],
@@ -123,9 +122,9 @@ public sealed class RuntimeTemplateTests
     public void FinalAssemblyWriter_RawOutputPlacesDefaultBladeHaltBeforeConstantFile()
     {
         StoragePlace constantOne = new(
-            IrTestFactory.CreateVariableSymbol("c_one", storageClass: VariableStorageClass.Reg, scopeKind: VariableScopeKind.GlobalStorage),
-            StoragePlaceKind.AllocatableGlobalRegister,
-            fixedAddress: null,
+            (GlobalVariableSymbol)IrTestFactory.CreateVariableSymbol("c_one", storageClass: VariableStorageClass.Reg, scopeKind: VariableScopeKind.GlobalStorage),
+            StoragePlacePlacement.Allocatable,
+            StoragePlaceRegisterRole.Global,
             emittedName: "c_one");
         AsmModule module = new(
             [constantOne],

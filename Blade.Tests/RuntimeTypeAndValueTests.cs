@@ -104,7 +104,7 @@ public sealed class RuntimeTypeAndValueTests
         UnionTypeSymbol unionType = new("U", new Dictionary<string, BladeType>(), new Dictionary<string, AggregateMemberSymbol>(), sizeBytes: 8, alignmentBytes: 4);
         EnumTypeSymbol enumType = new("Mode", BuiltinTypes.U16, new Dictionary<string, long>(), isOpen: false);
         BitfieldTypeSymbol bitfieldType = new("Flags", BuiltinTypes.U32, new Dictionary<string, BladeType>(), new Dictionary<string, AggregateMemberSymbol>());
-        PointerTypeSymbol pointerType = new(BuiltinTypes.U32, isConst: false);
+        PointerTypeSymbol pointerType = new(BuiltinTypes.U32, isConst: false, storageClass: VariableStorageClass.Reg);
         ArrayTypeSymbol arrayType = new(BuiltinTypes.U16, 3);
 
         Assert.Multiple(() =>
@@ -133,7 +133,7 @@ public sealed class RuntimeTypeAndValueTests
     [Test]
     public void RuntimeTypeLegality_RejectsRepairStylePayloads()
     {
-        PointerTypeSymbol pointerType = new(BuiltinTypes.U32, isConst: false);
+        PointerTypeSymbol pointerType = new(BuiltinTypes.U32, isConst: false, storageClass: VariableStorageClass.Reg);
         EnumTypeSymbol enumType = new("Mode", BuiltinTypes.U8, new Dictionary<string, long> { ["Idle"] = 0 }, isOpen: true);
         BitfieldTypeSymbol bitfieldType = new("Flags", BuiltinTypes.U16, new Dictionary<string, BladeType>(), new Dictionary<string, AggregateMemberSymbol>());
 
@@ -176,7 +176,7 @@ public sealed class RuntimeTypeAndValueTests
             Assert.That(BuiltinTypes.U32.IsSignedInteger, Is.False);
 
             Assert.That(BuiltinTypes.Bool.IsScalarCastType, Is.True);
-            Assert.That(new PointerTypeSymbol(BuiltinTypes.U32, isConst: false).IsScalarCastType, Is.True);
+            Assert.That(new PointerTypeSymbol(BuiltinTypes.U32, isConst: false, storageClass: VariableStorageClass.Reg).IsScalarCastType, Is.True);
             Assert.That(enumType.IsScalarCastType, Is.True);
             Assert.That(bitfieldType.IsScalarCastType, Is.True);
             Assert.That(BladeValue.U8Array([120]).Type, Is.TypeOf<ArrayTypeSymbol>());

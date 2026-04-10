@@ -190,7 +190,7 @@ public abstract class PointerLikeTypeSymbol(
             VariableStorageClass.Reg => "reg ",
             VariableStorageClass.Lut => "lut ",
             VariableStorageClass.Hub => "hub ",
-            _ => string.Empty,
+            _ => Assert.UnreachableValue<string>($"Unexpected pointer storage class '{storageClass}'."), // pragma: force-coverage
         };
 
         List<string> parts = [$"{prefix}{storageText}".TrimEnd()];
@@ -208,17 +208,17 @@ public abstract class PointerLikeTypeSymbol(
 public sealed class PointerTypeSymbol(
     BladeType pointeeType,
     bool isConst,
+    VariableStorageClass storageClass,
     bool isVolatile = false,
-    int? alignment = null,
-    VariableStorageClass storageClass = VariableStorageClass.Automatic)
+    int? alignment = null)
     : PointerLikeTypeSymbol("*", pointeeType, isConst, isVolatile, alignment, storageClass);
 
 public sealed class MultiPointerTypeSymbol(
     BladeType pointeeType,
     bool isConst,
+    VariableStorageClass storageClass,
     bool isVolatile = false,
-    int? alignment = null,
-    VariableStorageClass storageClass = VariableStorageClass.Automatic)
+    int? alignment = null)
     : PointerLikeTypeSymbol("[*]", pointeeType, isConst, isVolatile, alignment, storageClass);
 
 public sealed class ArrayTypeSymbol(BladeType elementType, int? length = null) : RuntimeTypeSymbol(BuildName(elementType, length))

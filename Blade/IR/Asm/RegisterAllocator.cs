@@ -517,7 +517,7 @@ public static class RegisterAllocator
             }
 
             IReadOnlyList<StoragePlace> sharedPlaces = [.. function.SharedRegisterPlaces
-                .Where(static place => place.Kind == StoragePlaceKind.AllocatableInternalSharedRegister)
+                .Where(static place => place.RegisterRole == StoragePlaceRegisterRole.InternalShared)
                 .Distinct()];
             foreach (StoragePlace place in sharedPlaces)
             {
@@ -836,7 +836,7 @@ public static class RegisterAllocator
         if (placeLocations.TryGetValue(place, out AllocatedLocation location))
             return location;
 
-        if (place.Kind == StoragePlaceKind.AllocatableGlobalRegister)
+        if (place.RegisterRole == StoragePlaceRegisterRole.Global)
             return AllocatedLocation.ForStoragePlace(place);
 
         return Assert.UnreachableValue<AllocatedLocation>($"Missing allocated location for internal register place '{place.Symbol.Name}'."); // pragma: force-coverage

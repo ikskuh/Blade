@@ -32,6 +32,7 @@ public sealed class Binder
     private readonly Stack<LoopContext> _loopStack = new();
     private readonly int _comptimeFuel;
     private int _anonymousStructIndex;
+    private bool _suppressPointerStorageClassDiagnostics;
 
     private static readonly EnumTypeSymbol MemorySpaceType = new("MemorySpace", BuiltinTypes.U32,
         new Dictionary<string, long>(StringComparer.Ordinal) { ["reg"] = 0, ["lut"] = 1, ["hub"] = 2, ["_reg"] = 0, ["_lut"] = 1, ["_hub"] = 2 },
@@ -279,7 +280,7 @@ public sealed class Binder
             switch (member)
             {
                 case VariableDeclarationSyntax variable:
-                    if (MapStorageClass(variable.StorageClassKeyword) == VariableStorageClass.Automatic)
+                    if (MapStorageClass(variable.StorageClassKeyword) is null)
                     {
                         statements.Add(new VariableDeclarationStatementSyntax(variable));
                     }
@@ -466,10 +467,12 @@ public sealed class Binder
             if (member is not VariableDeclarationSyntax variableDecl)
                 continue;
 
-            if (MapStorageClass(variableDecl.StorageClassKeyword) == VariableStorageClass.Automatic)
+            if (MapStorageClass(variableDecl.StorageClassKeyword) is null)
                 continue;
 
+            _suppressPointerStorageClassDiagnostics = true;
             BladeType variableType = BindType(variableDecl.Type);
+            _suppressPointerStorageClassDiagnostics = false;
             GlobalVariableSymbol symbol = CreateGlobalVariableSymbol(variableDecl, variableType);
 
             _ = TryDeclareSymbol(_globalScope, symbol, variableDecl.Name.Span);
@@ -507,8 +510,7 @@ public sealed class Binder
             else
             {
                 initializer = BindExpression(variable.Initializer, variableSymbol.Type);
-                if (RequiresComptimeInitializer(variableSymbol))
-                    initializer = RequireComptimeExpression(initializer, variable.Initializer.Span);
+                initializer = RequireComptimeExpression(initializer, variable.Initializer.Span);
             }
         }
 
@@ -1919,9 +1921,9 @@ public sealed class Binder
             pointerType = new PointerTypeSymbol(
                 elementType,
                 manyPointer.IsConst,
+                manyPointer.StorageClass,
                 manyPointer.IsVolatile,
-                manyPointer.Alignment,
-                manyPointer.StorageClass);
+                manyPointer.Alignment);
             return true;
         }
 
@@ -3377,26 +3379,39 @@ public sealed class Binder
         VariableDeclarationSyntax declaration,
         BladeType variableType)
     {
+        VariableStorageClass? storageClass = MapStorageClass(declaration.StorageClassKeyword);
+        Assert.Invariant(storageClass.HasValue, "Global variable declarations must have an explicit storage class.");
         return new GlobalVariableSymbol(
             declaration.Name.Text,
             variableType,
             declaration.MutabilityKeyword.Kind == TokenKind.ConstKeyword,
-            MapStorageClass(declaration.StorageClassKeyword),
+            storageClass.Value,
             declaration.ExternKeyword is not null,
             fixedAddress: null,
             alignment: null,
             sourceSpan: CreateSourceSpan(declaration.Name.Span));
     }
 
-    private static VariableStorageClass MapStorageClass(Token? storageClassKeyword)
+    private static VariableStorageClass? MapStorageClass(Token? storageClassKeyword)
     {
         return storageClassKeyword?.Kind switch
         {
             TokenKind.RegKeyword => VariableStorageClass.Reg,
             TokenKind.LutKeyword => VariableStorageClass.Lut,
             TokenKind.HubKeyword => VariableStorageClass.Hub,
-            _ => VariableStorageClass.Automatic,
+            _ => null,
         };
+    }
+
+    private VariableStorageClass BindPointerStorageClass(Token? storageClassKeyword, TextSpan span)
+    {
+        VariableStorageClass? storageClass = MapStorageClass(storageClassKeyword);
+        if (storageClass is VariableStorageClass explicitStorageClass)
+            return explicitStorageClass;
+
+        if (!_suppressPointerStorageClassDiagnostics)
+            _diagnostics.ReportPointerStorageClassRequired(span);
+        return VariableStorageClass.Reg;
     }
 
     private void ResolveLayoutMetadata(VariableDeclarationSyntax declaration, GlobalVariableSymbol variableSymbol)
@@ -3452,9 +3467,6 @@ public sealed class Binder
         return value.TryConvertToLong(out converted);
     }
 
-    private static bool RequiresComptimeInitializer(GlobalVariableSymbol symbol)
-        => symbol.StorageClass != VariableStorageClass.Automatic;
-
     private BladeType BindType(TypeSyntax syntax, string? aliasName = null)
     {
         return syntax switch
@@ -3465,15 +3477,15 @@ public sealed class Binder
             PointerTypeSyntax pointer => new PointerTypeSymbol(
                 BindType(pointer.PointeeType),
                 pointer.ConstKeyword is not null,
+                BindPointerStorageClass(pointer.StorageClassKeyword, pointer.Span),
                 pointer.VolatileKeyword is not null,
-                TryEvaluateConstantInt(pointer.AlignClause?.Alignment),
-                MapStorageClass(pointer.StorageClassKeyword)),
+                TryEvaluateConstantInt(pointer.AlignClause?.Alignment)),
             MultiPointerTypeSyntax multiPointer => new MultiPointerTypeSymbol(
                 BindType(multiPointer.PointeeType),
                 multiPointer.ConstKeyword is not null,
+                BindPointerStorageClass(multiPointer.StorageClassKeyword, multiPointer.Span),
                 multiPointer.VolatileKeyword is not null,
-                TryEvaluateConstantInt(multiPointer.AlignClause?.Alignment),
-                MapStorageClass(multiPointer.StorageClassKeyword)),
+                TryEvaluateConstantInt(multiPointer.AlignClause?.Alignment)),
             StructTypeSyntax structType => BindStructType(structType, aliasName),
             UnionTypeSyntax unionType => BindUnionType(unionType, aliasName),
             EnumTypeSyntax enumType => BindEnumType(enumType, aliasName),

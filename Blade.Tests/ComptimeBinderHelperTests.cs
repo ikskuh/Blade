@@ -320,7 +320,7 @@ public sealed class ComptimeBinderHelperTests
     public void PrivateComptimeValidationHelpers_CoverRecursiveBranches()
     {
         MethodInfo method = GetBinderStaticMethod("TryValidateComptimeExpression", 2);
-        VariableSymbol local = IrTestFactory.CreateVariableSymbol("local", BuiltinTypes.U32, VariableStorageClass.Automatic, VariableScopeKind.Local);
+        VariableSymbol local = IrTestFactory.CreateVariableSymbol("local", BuiltinTypes.U32, storageClass: null, VariableScopeKind.Local);
         BoundExpression localSymbol = new BoundSymbolExpression(local, Span, BuiltinTypes.U32);
         FunctionSymbol function = CreateFunctionSymbol("callme", FunctionKind.Default, BuiltinTypes.U32);
         BoundModule module = CreateImportedModule("mod");
@@ -334,7 +334,7 @@ public sealed class ComptimeBinderHelperTests
 
         BoundExpression[] unsupportedExpressions =
         [
-            new BoundUnaryExpression(BoundUnaryOperator.Bind(TokenKind.Ampersand)!, Literal(1, BuiltinTypes.IntegerLiteral), Span, new PointerTypeSymbol(BuiltinTypes.U32, isConst: false)),
+            new BoundUnaryExpression(BoundUnaryOperator.Bind(TokenKind.Ampersand)!, Literal(1, BuiltinTypes.IntegerLiteral), Span, new PointerTypeSymbol(BuiltinTypes.U32, isConst: false, storageClass: VariableStorageClass.Reg)),
             new BoundBinaryExpression(Literal(1, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.Plus)!, localSymbol, Span, BuiltinTypes.IntegerLiteral),
             new BoundArrayLiteralExpression([Literal(1, BuiltinTypes.IntegerLiteral), localSymbol], lastElementIsSpread: false, Span, new ArrayTypeSymbol(BuiltinTypes.U32, 2)),
             new BoundStructLiteralExpression([new BoundStructFieldInitializer("value", localSymbol)], Span, pairType),
@@ -367,7 +367,7 @@ public sealed class ComptimeBinderHelperTests
         MethodInfo method = GetBinderStaticMethod("RequiresSuccessfulComptimeEvaluation", typeof(BoundExpression));
         EnumTypeSymbol mode = new("Mode", BuiltinTypes.U32, new Dictionary<string, long>(StringComparer.Ordinal) { ["On"] = 1 }, isOpen: false);
         FunctionSymbol function = CreateFunctionSymbol("callme", FunctionKind.Default, BuiltinTypes.U32);
-        VariableSymbol local = IrTestFactory.CreateVariableSymbol("local", BuiltinTypes.U32, VariableStorageClass.Automatic, VariableScopeKind.Local);
+        VariableSymbol local = IrTestFactory.CreateVariableSymbol("local", BuiltinTypes.U32, storageClass: null, VariableScopeKind.Local);
         UnionTypeSymbol unionType = new(
             "OneOf",
             new Dictionary<string, BladeType>(StringComparer.Ordinal) { ["value"] = BuiltinTypes.U32 },

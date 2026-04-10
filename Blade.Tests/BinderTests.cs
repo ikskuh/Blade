@@ -1575,5 +1575,16 @@ public class BinderTests
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0240_StringToNonConstPointer), Is.False);
     }
 
+    [Test]
+    public void PointerTypeWithoutStorageClass_ReportsE0264()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            reg var single: *const u8 = undefined;
+            reg var many: [*]volatile u32 = undefined;
+            """);
+
+        Assert.That(diagnostics.Count(d => d.Code == DiagnosticCode.E0264_PointerStorageClassRequired), Is.EqualTo(2));
+    }
+
 
 }

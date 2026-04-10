@@ -89,6 +89,7 @@ public enum DiagnosticCode
     W0261_ComptimeIntegerTruncation = 261,
     E0262_AddressOfParameter = 262,
     E0263_RangeExpressionOutsideForLoop = 263,
+    E0264_PointerStorageClassRequired = 264,
 
     // Inline assembly errors
     E0301_InlineAsmUnknownInstruction = 301,

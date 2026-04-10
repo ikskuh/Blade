@@ -231,6 +231,11 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
         Report(DiagnosticCode.E0218_UnsupportedStorageClass, span, $"Storage class '{storageClass}' is not supported yet.");
     }
 
+    public void ReportPointerStorageClassRequired(TextSpan span)
+    {
+        Report(DiagnosticCode.E0264_PointerStorageClassRequired, span, "Pointer types must explicitly declare a storage class.");
+    }
+
     public void ReportUnknownNamedArgument(TextSpan span, string functionName, string parameterName)
     {
         Report(
