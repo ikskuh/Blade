@@ -138,11 +138,7 @@ public sealed class Binder
         foreach (BoundModule module in modules)
         {
             globalVariables.AddRange(module.GlobalVariables);
-            foreach (BoundFunctionMember function in module.Functions)
-            {
-                if (!ReferenceEquals(function, module.Constructor))
-                    functions.Add(function);
-            }
+            functions.AddRange(module.Functions);
         }
 
         return new BoundProgram(rootModule, modules, globalVariables, functions);

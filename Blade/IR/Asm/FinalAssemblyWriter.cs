@@ -59,6 +59,7 @@ public static class FinalAssemblyWriter
     {
         Requires.NotNull(module);
 
+        IReadOnlyDictionary<FunctionSymbol, string> functionIdentifiers = BuildFunctionIdentifiers(module.Functions);
         StringBuilder sb = new();
         sb.AppendLine("    ' --- Blade compiler output ---");
 
@@ -73,20 +74,42 @@ public static class FinalAssemblyWriter
             if (function.IsEntryPoint)
                 sb.AppendLine("  blade_entry");
             sb.Append("  ");
-            sb.AppendLine(FormatFunctionIdentifier(function.Name));
-            WriteFunctionNodes(sb, function.Nodes);
+            sb.AppendLine(FormatFunctionIdentifier(functionIdentifiers, function.Symbol));
+            WriteFunctionNodes(sb, function.Nodes, functionIdentifiers);
             if (includeDefaultBladeHalt && function.IsEntryPoint)
                 WriteDefaultBladeHalt(sb);
         }
 
-        WriteDataBlocks(sb, module.DataBlocks);
+        WriteDataBlocks(sb, module.DataBlocks, functionIdentifiers);
         return sb.ToString();
     }
 
-    private static void WriteFunctionNodes(StringBuilder sb, IReadOnlyList<AsmNode> nodes)
+    private static IReadOnlyDictionary<FunctionSymbol, string> BuildFunctionIdentifiers(IReadOnlyList<AsmFunction> functions)
+    {
+        Dictionary<string, int> emittedNameCounts = new(StringComparer.Ordinal);
+        Dictionary<FunctionSymbol, string> identifiers = [];
+        foreach (AsmFunction function in functions)
+        {
+            string baseName = $"f_{BackendSymbolNaming.SanitizeIdentifier(function.Name)}";
+            if (emittedNameCounts.TryGetValue(baseName, out int seenCount))
+            {
+                int nextCount = seenCount + 1;
+                emittedNameCounts[baseName] = nextCount;
+                identifiers.Add(function.Symbol, $"{baseName}_{nextCount}");
+                continue;
+            }
+
+            emittedNameCounts.Add(baseName, 1);
+            identifiers.Add(function.Symbol, baseName);
+        }
+
+        return identifiers;
+    }
+
+    private static void WriteFunctionNodes(StringBuilder sb, IReadOnlyList<AsmNode> nodes, IReadOnlyDictionary<FunctionSymbol, string> functionIdentifiers)
     {
         foreach (AsmNode node in nodes)
-            WriteNode(sb, node);
+            WriteNode(sb, node, functionIdentifiers);
     }
 
     private static void WriteDefaultBladeHalt(StringBuilder sb)
@@ -98,7 +121,7 @@ public static class FinalAssemblyWriter
         sb.AppendLine("    NOP");
     }
 
-    private static void WriteDataBlocks(StringBuilder sb, IReadOnlyList<AsmDataBlock> dataBlocks)
+    private static void WriteDataBlocks(StringBuilder sb, IReadOnlyList<AsmDataBlock> dataBlocks, IReadOnlyDictionary<FunctionSymbol, string> functionIdentifiers)
     {
         foreach (AsmDataBlockKind kind in new[] { AsmDataBlockKind.Register, AsmDataBlockKind.Constant, AsmDataBlockKind.Lut, AsmDataBlockKind.External, AsmDataBlockKind.Hub })
         {
@@ -109,23 +132,23 @@ public static class FinalAssemblyWriter
             switch (kind)
             {
                 case AsmDataBlockKind.Register:
-                    WriteAllocatedBlock(sb, block, "' --- register file ---");
+                    WriteAllocatedBlock(sb, block, "' --- register file ---", functionIdentifiers);
                     break;
                 case AsmDataBlockKind.Constant:
-                    WriteAllocatedBlock(sb, block, "' --- constant file ---");
+                    WriteAllocatedBlock(sb, block, "' --- constant file ---", functionIdentifiers);
                     break;
                 case AsmDataBlockKind.Lut:
                     sb.AppendLine();
                     sb.AppendLine("    fit $200");
                     sb.AppendLine("    org $200");
-                    WriteAllocatedBlock(sb, block, "' --- lut file ---");
+                    WriteAllocatedBlock(sb, block, "' --- lut file ---", functionIdentifiers);
                     break;
                 case AsmDataBlockKind.External:
                     break;
                 case AsmDataBlockKind.Hub:
                     sb.AppendLine();
                     sb.AppendLine("    orgh");
-                    WriteAllocatedBlock(sb, block, "' --- hub file ---", emitAlignmentDirectives: true);
+                    WriteAllocatedBlock(sb, block, "' --- hub file ---", functionIdentifiers, emitAlignmentDirectives: true);
                     break;
             }
         }
@@ -135,6 +158,7 @@ public static class FinalAssemblyWriter
         StringBuilder sb,
         AsmDataBlock block,
         string header,
+        IReadOnlyDictionary<FunctionSymbol, string> functionIdentifiers,
         bool emitAlignmentDirectives = false)
     {
         List<AsmAllocatedStorageDefinition> definitions = block.Definitions
@@ -148,7 +172,7 @@ public static class FinalAssemblyWriter
         if (definitions.Count == 0)
             return;
 
-        int maxLabelWidth = definitions.Max(static definition => FormatSymbol(definition.Symbol).Length);
+        int maxLabelWidth = definitions.Max(definition => FormatSymbol(definition.Symbol, functionIdentifiers).Length);
         int maxDirectiveWidth = definitions.Max(static definition => FormatDataDirective(definition.Directive).Length);
         int currentAlignment = -1;
 
@@ -163,9 +187,9 @@ public static class FinalAssemblyWriter
                     sb.AppendLine("    ALIGNW");
             }
 
-            string label = FormatSymbol(definition.Symbol);
+            string label = FormatSymbol(definition.Symbol, functionIdentifiers);
             string directive = FormatDataDirective(definition.Directive);
-            string value = FormatDataValue(definition);
+            string value = FormatDataValue(definition, functionIdentifiers);
 
             sb.Append(label.PadRight(maxLabelWidth));
             sb.Append(' ');
@@ -187,41 +211,41 @@ public static class FinalAssemblyWriter
         };
     }
 
-    private static string FormatDataValue(AsmAllocatedStorageDefinition definition)
+    private static string FormatDataValue(AsmAllocatedStorageDefinition definition, IReadOnlyDictionary<FunctionSymbol, string> functionIdentifiers)
     {
         if (definition.InitialValues is null || definition.InitialValues.Count == 0)
             return definition.Count > 1 ? $"0[{definition.Count}]" : "0";
 
         if (definition.InitialValues.Count == 1)
         {
-            string initializer = FormatDataOperand(definition.InitialValues[0], definition.UseHexFormat);
+            string initializer = FormatDataOperand(definition.InitialValues[0], definition.UseHexFormat, functionIdentifiers);
             return definition.Count > 1 ? $"{initializer}[{definition.Count}]" : initializer;
         }
 
         List<string> values = new(definition.InitialValues.Count);
         foreach (AsmOperand operand in definition.InitialValues)
-            values.Add(FormatDataOperand(operand, definition.UseHexFormat));
+            values.Add(FormatDataOperand(operand, definition.UseHexFormat, functionIdentifiers));
         return string.Join(", ", values);
     }
 
-    private static string FormatDataOperand(AsmOperand operand, bool useHexFormat)
+    private static string FormatDataOperand(AsmOperand operand, bool useHexFormat, IReadOnlyDictionary<FunctionSymbol, string> functionIdentifiers)
     {
         return operand switch
         {
             AsmImmediateOperand { Value: >= 0 } immediate when useHexFormat => $"${immediate.Value:X8}",
             AsmImmediateOperand immediate => immediate.Value.ToString(CultureInfo.InvariantCulture),
-            AsmSymbolOperand symbol => FormatSymbolOperand(symbol).TrimStart('#'),
+            AsmSymbolOperand symbol => FormatSymbolOperand(symbol, functionIdentifiers).TrimStart('#'),
             _ => operand.Format(),
         };
     }
 
-    private static void WriteNode(StringBuilder sb, AsmNode node)
+    private static void WriteNode(StringBuilder sb, AsmNode node, IReadOnlyDictionary<FunctionSymbol, string> functionIdentifiers)
     {
         switch (node)
         {
             case AsmLabelNode label:
                 sb.Append("  ");
-                sb.AppendLine(FormatSymbol(label.Label));
+                sb.AppendLine(FormatSymbol(label.Label, functionIdentifiers));
                 break;
 
             case AsmCommentNode comment:
@@ -249,7 +273,7 @@ public static class FinalAssemblyWriter
                     {
                         if (i > 0)
                             sb.Append(", ");
-                        sb.Append(FormatOperand(instruction, i));
+                        sb.Append(FormatOperand(instruction, i, functionIdentifiers));
                     }
                 }
 
@@ -264,7 +288,7 @@ public static class FinalAssemblyWriter
         }
     }
 
-    private static string FormatOperand(AsmInstructionNode instruction, int operandIndex)
+    private static string FormatOperand(AsmInstructionNode instruction, int operandIndex, IReadOnlyDictionary<FunctionSymbol, string> functionIdentifiers)
     {
         AsmOperand operand = instruction.Operands[operandIndex];
         return operand switch
@@ -274,13 +298,13 @@ public static class FinalAssemblyWriter
             AsmImmediateOperand immediate => immediate.Format(),
             AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Immediate } => "#0",
             AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Register } => "0",
-            AsmSymbolOperand symbol => FormatSymbolOperand(symbol),
+            AsmSymbolOperand symbol => FormatSymbolOperand(symbol, functionIdentifiers),
             AsmLabelRefOperand labelRef => labelRef.Format(),
             _ => operand.Format(),
         };
     }
 
-    private static string FormatSymbolOperand(AsmSymbolOperand operand)
+    private static string FormatSymbolOperand(AsmSymbolOperand operand, IReadOnlyDictionary<FunctionSymbol, string> functionIdentifiers)
     {
         if (operand.Symbol is StoragePlace { StorageClass: VariableStorageClass.Lut } lutPlace
             && operand.AddressingMode == AsmSymbolAddressingMode.Immediate)
@@ -288,13 +312,24 @@ public static class FinalAssemblyWriter
             string lutOffset = operand.Offset == 0
                 ? string.Empty
                 : operand.Offset > 0 ? $" + {operand.Offset}" : $" - {-operand.Offset}";
-            return $"#{FormatSymbol(lutPlace)} - $200{lutOffset}";
+            return $"#{FormatSymbol(lutPlace, functionIdentifiers)} - $200{lutOffset}";
         }
 
-        string formatted = FormatSymbol(operand.Symbol);
+        string formatted = FormatSymbol(operand.Symbol, functionIdentifiers);
         if (operand.Offset != 0)
             formatted = operand.Offset > 0 ? $"{formatted} + {operand.Offset}" : $"{formatted} - {-operand.Offset}";
         return operand.AddressingMode == AsmSymbolAddressingMode.Immediate ? $"#{formatted}" : formatted;
+    }
+
+    private static string FormatSymbol(IAsmSymbol symbol, IReadOnlyDictionary<FunctionSymbol, string> functionIdentifiers)
+    {
+        return symbol switch
+        {
+            AsmSpecialRegisterSymbol => symbol.Name,
+            AsmFunction function => FormatFunctionIdentifier(functionIdentifiers, function.Symbol),
+            AsmFunctionReferenceSymbol functionReference => FormatFunctionIdentifier(functionIdentifiers, functionReference.Function),
+            _ => BackendSymbolNaming.SanitizeIdentifier(symbol.Name),
+        };
     }
 
     private static string FormatSymbol(IAsmSymbol symbol)
@@ -302,14 +337,12 @@ public static class FinalAssemblyWriter
         return symbol switch
         {
             AsmSpecialRegisterSymbol => symbol.Name,
-            AsmFunction => FormatFunctionIdentifier(symbol.Name),
-            AsmFunctionReferenceSymbol => FormatFunctionIdentifier(symbol.Name),
             _ => BackendSymbolNaming.SanitizeIdentifier(symbol.Name),
         };
     }
 
-    private static string FormatFunctionIdentifier(string name)
+    private static string FormatFunctionIdentifier(IReadOnlyDictionary<FunctionSymbol, string> functionIdentifiers, FunctionSymbol function)
     {
-        return $"f_{BackendSymbolNaming.SanitizeIdentifier(name)}";
+        return functionIdentifiers[function];
     }
 }

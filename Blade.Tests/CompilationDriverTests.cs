@@ -24,7 +24,7 @@ public sealed class CompilationDriverTests
 
         Assert.That(result.Diagnostics.Count, Is.GreaterThan(0));
         Assert.That(result.Diagnostics.Any(d => d.IsError), Is.True);
-        Assert.That(result.BoundProgram.Functions, Is.Empty, "Binder must not run when any module has lexer/parser errors.");
+        Assert.That(result.BoundProgram.Functions.Select(function => function.Symbol.Name), Is.EqualTo(new[] { "$init" }), "Failed compilations still expose the synthetic empty constructor only.");
 
         Diagnostic first = result.Diagnostics.First();
         Assert.That(first.Source.FilePath, Is.EqualTo(temp.GetFullPath("bad.blade")));
@@ -51,4 +51,3 @@ public sealed class CompilationDriverTests
         Assert.That(cycle.GetLocation().FilePath, Is.EqualTo(temp.GetFullPath("b.blade")));
     }
 }
-

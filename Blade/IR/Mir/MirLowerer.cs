@@ -24,7 +24,10 @@ public static class MirLowerer
         functions.Add(LowerEntryPoint(program, storagePlaces, storageDefinitions));
 
         foreach (BoundFunctionMember functionMember in program.Functions)
-            functions.Add(LowerFunction(functionMember, storagePlaces, storageDefinitions));
+        {
+            if (!ReferenceEquals(functionMember, program.EntryPoint))
+                functions.Add(LowerFunction(functionMember, storagePlaces, storageDefinitions));
+        }
 
         return new MirModule(storagePlaces, storageDefinitions, functions);
     }
@@ -163,9 +166,6 @@ public static class MirLowerer
     private static IReadOnlyList<Symbol> CollectAddressTakenSymbols(BoundProgram program)
     {
         Dictionary<Symbol, Symbol> symbols = [];
-
-        foreach (BoundModule module in program.Modules)
-            CollectAddressTakenSymbols(module.Constructor.Body, symbols);
 
         foreach (BoundFunctionMember function in program.Functions)
             CollectAddressTakenSymbols(function.Body, symbols);
@@ -481,14 +481,7 @@ public static class MirLowerer
                     break;
 
                 case BoundExpressionStatement expressionStatement:
-                    if (expressionStatement.Expression is BoundModuleCallExpression moduleCallExpression)
-                    {
-                        LowerModuleConstructor(moduleCallExpression.Module);
-                    }
-                    else
-                    {
-                        _ = LowerExpression(expressionStatement.Expression);
-                    }
+                    _ = LowerExpression(expressionStatement.Expression);
                     break;
 
                 case BoundIfStatement ifStatement:
@@ -1095,11 +1088,6 @@ public static class MirLowerer
             return EmitConstant(defaultValue, span);
         }
 
-        private void LowerModuleConstructor(BoundModule module)
-        {
-            LowerStatement(module.Constructor.Body);
-        }
-
         private MirValueId LowerExpression(BoundExpression expression)
         {
             switch (expression)
@@ -1120,8 +1108,11 @@ public static class MirLowerer
                     return LowerCallExpression(callExpression);
 
                 case BoundModuleCallExpression moduleCallExpression:
-                    LowerModuleConstructor(moduleCallExpression.Module);
-                    return EmitPlaceholderConstant(BuiltinTypes.Void, moduleCallExpression.Span);
+                    return LowerCallExpression(new BoundCallExpression(
+                        moduleCallExpression.Module.Constructor.Symbol,
+                        [],
+                        moduleCallExpression.Span,
+                        moduleCallExpression.Type));
 
                 case BoundIntrinsicCallExpression intrinsicCall:
                 {

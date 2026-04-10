@@ -32,6 +32,11 @@ public class BinderTests
         return (result.Syntax, result.BoundProgram, result.Diagnostics);
     }
 
+    private static BoundFunctionMember GetFunction(BoundProgram program, string name)
+    {
+        return program.Functions.Single(member => member.Symbol.Name == name);
+    }
+
     [Test]
     public void TypedAssignment_InsertsImplicitConversionForIntegerLiteral()
     {
@@ -118,7 +123,7 @@ public class BinderTests
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
 
-        BoundFunctionMember function = program.Functions.Single();
+        BoundFunctionMember function = GetFunction(program, "demo");
         BoundBlockStatement body = function.Body;
         BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)body.Statements[0];
 
@@ -175,7 +180,7 @@ public class BinderTests
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
 
-        BoundFunctionMember function = program.Functions.Single();
+        BoundFunctionMember function = GetFunction(program, "demo");
         BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)function.Body.Statements[1];
         BoundLiteralExpression initializer = (BoundLiteralExpression)declaration.Initializer!;
 
@@ -196,7 +201,7 @@ public class BinderTests
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
 
-        BoundFunctionMember function = program.Functions.Single();
+        BoundFunctionMember function = GetFunction(program, "demo");
         BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)function.Body.Statements[0];
         BoundLiteralExpression initializer = (BoundLiteralExpression)declaration.Initializer!;
 
@@ -255,7 +260,7 @@ public class BinderTests
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
 
-        BoundFunctionMember function = program.Functions.Single();
+        BoundFunctionMember function = GetFunction(program, "demo");
         BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)function.Body.Statements[0];
 
         Assert.That(declaration.Initializer, Is.TypeOf<BoundCastExpression>());
@@ -275,7 +280,7 @@ public class BinderTests
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
 
-        BoundFunctionMember function = program.Functions.Single();
+        BoundFunctionMember function = GetFunction(program, "demo");
         BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)function.Body.Statements[2];
         Assert.That(declaration.Initializer, Is.TypeOf<BoundCastExpression>());
         Assert.That(declaration.Initializer!.Type.Name, Is.EqualTo("*hub u32"));
@@ -305,7 +310,7 @@ public class BinderTests
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
 
-        BoundFunctionMember function = program.Functions.Single();
+        BoundFunctionMember function = GetFunction(program, "demo");
         BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)function.Body.Statements[1];
         Assert.That(declaration.Initializer, Is.TypeOf<BoundBitcastExpression>());
         Assert.That(declaration.Initializer!.Type.Name, Is.EqualTo("*reg u32"));
@@ -359,19 +364,6 @@ public class BinderTests
     }
 
     [Test]
-    public void YieldtoOutsideCoroutineContext_IsTemporarilyAccepted()
-    {
-        (_, _, DiagnosticBag diagnostics) = Bind("""
-            coro fn worker() void { loop { yieldto worker(); } }
-            fn f() void {
-                yieldto worker();
-            }
-            """);
-
-        Assert.That(diagnostics, Is.Empty);
-    }
-
-    [Test]
     public void ReturnCountMismatch_ReportsDiagnostic()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
@@ -408,7 +400,7 @@ public class BinderTests
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
-        Assert.That(program.Functions.Single().Symbol.ReturnTypes, Is.Empty);
+        Assert.That(GetFunction(program, "empty_call").Symbol.ReturnTypes, Is.Empty);
     }
 
     [Test]
@@ -691,7 +683,7 @@ public class BinderTests
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
 
-        BoundFunctionMember function = program.Functions.Single();
+        BoundFunctionMember function = GetFunction(program, "demo");
         BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)function.Body.Statements[1];
         Assert.That(declaration.Initializer!.Type.Name, Is.EqualTo("[*]reg u32"));
     }
@@ -707,7 +699,7 @@ public class BinderTests
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
 
-        BoundFunctionMember function = program.Functions.Single();
+        BoundFunctionMember function = GetFunction(program, "demo");
         BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)function.Body.Statements[0];
         Assert.That(declaration.Initializer!.Type.Name, Is.EqualTo("[*]reg u32"));
     }
@@ -996,7 +988,7 @@ public class BinderTests
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
-        BoundFunctionMember function = program.Functions.Single();
+        BoundFunctionMember function = GetFunction(program, "demo");
         BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)function.Body.Statements[1];
         Assert.That(declaration.Initializer, Is.TypeOf<BoundBitcastExpression>());
     }
@@ -1134,7 +1126,7 @@ public class BinderTests
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
 
-        BoundFunctionMember function = program.Functions.Single();
+        BoundFunctionMember function = GetFunction(program, "demo");
         BoundVariableDeclarationStatement headerDeclaration = (BoundVariableDeclarationStatement)function.Body.Statements[0];
         BoundVariableDeclarationStatement flagsDeclaration = (BoundVariableDeclarationStatement)function.Body.Statements[1];
 
@@ -1289,7 +1281,7 @@ public class BinderTests
             """);
 
         Assert.That(diagnostics.Select(d => d.Code), Is.EqualTo(new[] { DiagnosticCode.E0259_ExpressionNotAStatement }));
-        Assert.That(program.Functions, Is.Empty);
+        Assert.That(program.Functions.Select(function => function.Symbol.Name), Is.EqualTo(new[] { "$init" }));
     }
 
     [Test]
@@ -1318,7 +1310,7 @@ public class BinderTests
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
-        BoundFunctionMember function = program.Functions.Single();
+        BoundFunctionMember function = GetFunction(program, "demo");
         BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)function.Body.Statements[0];
         BoundArrayLiteralExpression literal = (BoundArrayLiteralExpression)declaration.Initializer!;
         Assert.That(literal.Type.Name, Is.EqualTo("[u32]"));

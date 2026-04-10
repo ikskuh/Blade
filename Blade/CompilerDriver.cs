@@ -121,6 +121,6 @@ public static class CompilerDriver
             [],
             [constructor],
             new Dictionary<string, Symbol>());
-        return new BoundProgram(module, [module], [], []);
+        return new BoundProgram(module, [module], [], [constructor]);
     }
 }

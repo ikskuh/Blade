@@ -28,6 +28,9 @@ public static class BoundTreeWriter
         AppendLine(sb, 1, "Functions");
         foreach (BoundFunctionMember function in program.Functions)
         {
+            if (ReferenceEquals(function, program.EntryPoint))
+                continue;
+
             AppendLine(sb, 2, $"{function.Symbol.Name} ({function.Symbol.Kind})");
             WriteStatement(sb, 3, function.Body);
         }

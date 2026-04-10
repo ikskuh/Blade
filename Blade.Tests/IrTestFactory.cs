@@ -193,11 +193,7 @@ internal static class IrTestFactory
         foreach (BoundModule module in effectiveModules)
         {
             effectiveGlobals.AddRange(module.GlobalVariables);
-            foreach (BoundFunctionMember function in module.Functions)
-            {
-                if (!ReferenceEquals(function, module.Constructor))
-                    effectiveFunctions.Add(function);
-            }
+            effectiveFunctions.AddRange(module.Functions);
         }
 
         return new BoundProgram(
