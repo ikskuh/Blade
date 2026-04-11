@@ -1,9 +1,11 @@
 using System.Linq;
+using System.Reflection;
 using Blade.IR;
 using Blade.IR.Asm;
 using Blade.IR.Lir;
 using Blade.IR.Mir;
 using Blade.Semantics;
+using Blade.Semantics.Bound;
 using Blade.Source;
 
 namespace Blade.Tests;
@@ -12,6 +14,13 @@ namespace Blade.Tests;
 public class OptimizerTests
 {
     private static readonly TextSpan Span = new(0, 0);
+
+    private static object? InvokePrivateStatic(Type type, string methodName, params object?[] arguments)
+    {
+        MethodInfo method = type.GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new InvalidOperationException($"Missing private static method {type.FullName}.{methodName}.");
+        return method.Invoke(null, arguments);
+    }
 
     private static MirConstantInstruction Constant(MirValueId result, RuntimeTypeSymbol type, object value)
         => new(result, type, new RuntimeBladeValue(type, value is int intValue ? (long)intValue : value is uint uintValue ? (long)uintValue : value), Span);
@@ -67,6 +76,63 @@ public class OptimizerTests
     }
 
     [Test]
+    public void MirOptimizer_DeadCodeEliminationPreservesValuesNeededAcrossSuccessorBlocks()
+    {
+        MirValueId condition = MirValue(0);
+        MirValueId truncated = MirValue(1);
+        MirValueId widened = MirValue(2);
+        MirValueId merged = MirValue(3);
+        StoragePlace resultPlace = CreatePlace("result");
+        MirBlockRef bb0 = new();
+        MirBlockRef bb1 = new();
+        MirBlockRef bb2 = new();
+        MirBlockRef bb3 = new();
+
+        MirModule module = new([], [], [
+            CreateMirFunction("f", isEntryPoint: false, FunctionKind.Default, [],
+            [
+                new MirBlock(bb0, [],
+                [
+                    Constant(condition, BuiltinTypes.Bool, false),
+                    new MirConvertInstruction(truncated, BuiltinTypes.U8, condition, Span),
+                    new MirConvertInstruction(widened, BuiltinTypes.U32, truncated, Span),
+                ],
+                new MirBranchTerminator(condition, bb1, bb2, [], [], Span)),
+                new MirBlock(bb1, [], [], new MirGotoTerminator(bb3, [widened], Span)),
+                new MirBlock(bb2, [], [], new MirGotoTerminator(bb3, [widened], Span)),
+                new MirBlock(bb3, [new MirBlockParameter(merged, "merged", BuiltinTypes.U32)],
+                    [new MirStorePlaceInstruction(resultPlace, merged, Span)],
+                    new MirReturnTerminator([], Span)),
+            ]),
+        ]);
+
+        MirModule optimized = MirOptimizer.Optimize(module, maxIterations: 1, enabledOptimizations:
+        [
+            OptimizationRegistry.GetMirOptimization("dce")!,
+        ]);
+
+        IReadOnlyList<MirInstruction> entryInstructions = optimized.Functions[0].Blocks[0].Instructions;
+        Assert.That(entryInstructions.OfType<MirConvertInstruction>().Count(), Is.EqualTo(2));
+    }
+
+    [Test]
+    public void MirOptimizer_DeadCodeElimination_ToleratesMissingSuccessorBlocks()
+    {
+        HashSet<MirValueId> liveOut = [];
+        MirBlockRef missing = new();
+
+        Assert.DoesNotThrow(() => InvokePrivateStatic(
+            typeof(Blade.IR.Mir.Optimizations.MirDeadCodeElimination),
+            "AddSuccessorLiveValues",
+            liveOut,
+            missing,
+            Array.Empty<MirValueId>(),
+            new Dictionary<MirBlockRef, MirBlock>(),
+            new Dictionary<MirBlockRef, HashSet<MirValueId>>()));
+        Assert.That(liveOut, Is.Empty);
+    }
+
+    [Test]
     public void LirOptimizer_PropagatesCopiesAcrossGotoArgumentsAndMergesBlocks()
     {
         LirVirtualRegister seed = LirRegister(0);
@@ -113,6 +179,127 @@ public class OptimizerTests
         LirOpInstruction store = (LirOpInstruction)function.Blocks[0].Instructions[1];
         Assert.That(store.Operands[1], Is.TypeOf<LirRegisterOperand>());
         Assert.That(((LirRegisterOperand)store.Operands[1]).Register, Is.EqualTo(seed));
+    }
+
+    [Test]
+    public void LirOptimizer_DeadCodeEliminationPreservesValuesNeededAcrossSuccessorBlocks()
+    {
+        LirVirtualRegister raw = LirRegister(0);
+        LirVirtualRegister branchFlag = LirRegister(1);
+        LirVirtualRegister truncated = LirRegister(2);
+        LirVirtualRegister widened = LirRegister(3);
+        LirVirtualRegister zero = LirRegister(4);
+        LirVirtualRegister condition = LirRegister(5);
+        LirVirtualRegister trueTag = LirRegister(6);
+        LirVirtualRegister falseTag = LirRegister(7);
+        LirVirtualRegister mergedTag = LirRegister(8);
+        LirVirtualRegister mergedValue = LirRegister(9);
+        LirVirtualRegister tagAsU32 = LirRegister(10);
+        LirVirtualRegister result = LirRegister(11);
+        LirBlockRef bb0 = new();
+        LirBlockRef bb1 = new();
+        LirBlockRef bb2 = new();
+        LirBlockRef bb3 = new();
+
+        LirModule module = new([
+            CreateLirFunction("f", isEntryPoint: false, FunctionKind.Default, [],
+            [
+                new LirBlock(bb0,
+                [
+                    new LirBlockParameter(raw, "raw", BuiltinTypes.U32),
+                    new LirBlockParameter(branchFlag, "branchFlag", BuiltinTypes.U32),
+                ],
+                [
+                    new LirOpInstruction(new LirConvertOperation(), truncated, BuiltinTypes.U8,
+                        [new LirRegisterOperand(raw)],
+                        hasSideEffects: false, predicate: null, writesC: false, writesZ: false, Span),
+                    new LirOpInstruction(new LirConvertOperation(), widened, BuiltinTypes.U32,
+                        [new LirRegisterOperand(truncated)],
+                        hasSideEffects: false, predicate: null, writesC: false, writesZ: false, Span),
+                    new LirOpInstruction(new LirConstOperation(), zero, BuiltinTypes.U32,
+                        [new LirImmediateOperand(new RuntimeBladeValue(BuiltinTypes.U32, 0L))],
+                        hasSideEffects: false, predicate: null, writesC: false, writesZ: false, Span),
+                    new LirOpInstruction(new LirBinaryOperation(BoundBinaryOperatorKind.NotEquals), condition, BuiltinTypes.Bool,
+                        [new LirRegisterOperand(branchFlag), new LirRegisterOperand(zero)],
+                        hasSideEffects: false, predicate: null, writesC: false, writesZ: false, Span),
+                ],
+                new LirBranchTerminator(
+                    new LirRegisterOperand(condition),
+                    bb1,
+                    bb2,
+                    [],
+                    [],
+                    Span)),
+                new LirBlock(bb1, [],
+                [
+                    new LirOpInstruction(new LirConstOperation(), trueTag, BuiltinTypes.IntegerLiteral,
+                        [new LirImmediateOperand(BladeValue.IntegerLiteral(1))],
+                        hasSideEffects: false, predicate: null, writesC: false, writesZ: false, Span),
+                ],
+                new LirGotoTerminator(bb3, [new LirRegisterOperand(trueTag), new LirRegisterOperand(widened)], Span)),
+                new LirBlock(bb2, [],
+                [
+                    new LirOpInstruction(new LirConstOperation(), falseTag, BuiltinTypes.IntegerLiteral,
+                        [new LirImmediateOperand(BladeValue.IntegerLiteral(0))],
+                        hasSideEffects: false, predicate: null, writesC: false, writesZ: false, Span),
+                ],
+                new LirGotoTerminator(bb3, [new LirRegisterOperand(falseTag), new LirRegisterOperand(widened)], Span)),
+                new LirBlock(bb3,
+                [
+                    new LirBlockParameter(mergedTag, "tag", BuiltinTypes.IntegerLiteral),
+                    new LirBlockParameter(mergedValue, "value", BuiltinTypes.U32),
+                ],
+                [
+                    new LirOpInstruction(new LirConvertOperation(), tagAsU32, BuiltinTypes.U32,
+                        [new LirRegisterOperand(mergedTag)],
+                        hasSideEffects: false, predicate: null, writesC: false, writesZ: false, Span),
+                    new LirOpInstruction(new LirBinaryOperation(BoundBinaryOperatorKind.BitwiseOr), result, BuiltinTypes.U32,
+                        [new LirRegisterOperand(mergedValue), new LirRegisterOperand(tagAsU32)],
+                        hasSideEffects: false, predicate: null, writesC: false, writesZ: false, Span),
+                ],
+                new LirReturnTerminator([new LirRegisterOperand(result)], Span)),
+            ]),
+        ]);
+
+        LirModule optimized = LirOptimizer.Optimize(module, maxIterations: 1, enabledOptimizations:
+        [
+            OptimizationRegistry.GetLirOptimization("dce")!,
+        ]);
+
+        IReadOnlyList<LirInstruction> entryInstructions = optimized.Functions[0].Blocks[0].Instructions;
+        Assert.That(entryInstructions.OfType<LirOpInstruction>().Count(op => op.Operation is LirConvertOperation), Is.EqualTo(2));
+    }
+
+    [Test]
+    public void LirOptimizer_DeadCodeElimination_ToleratesMissingSuccessorBlocks()
+    {
+        HashSet<LirVirtualRegister> liveOut = [];
+        LirBlockRef missing = new();
+
+        Assert.DoesNotThrow(() => InvokePrivateStatic(
+            typeof(Blade.IR.Lir.Optimizations.LirDeadCodeElimination),
+            "AddSuccessorLiveValues",
+            liveOut,
+            missing,
+            Array.Empty<LirOperand>(),
+            new Dictionary<LirBlockRef, LirBlock>(),
+            new Dictionary<LirBlockRef, HashSet<LirVirtualRegister>>()));
+        Assert.That(liveOut, Is.Empty);
+    }
+
+    [Test]
+    public void LirOptimizer_DeadCodeElimination_ToleratesMismatchedSuccessorArguments()
+    {
+        LirVirtualRegister threaded = LirRegister(1);
+
+        object? mapping = InvokePrivateStatic(
+            typeof(Blade.IR.Lir.Optimizations.LirDeadCodeElimination),
+            "CreateParameterMap",
+            new List<LirBlockParameter> { new(threaded, "x", BuiltinTypes.U32) },
+            Array.Empty<LirOperand>());
+
+        Assert.That(mapping, Is.TypeOf<Dictionary<LirVirtualRegister, LirOperand>>());
+        Assert.That(((Dictionary<LirVirtualRegister, LirOperand>)mapping!).Count, Is.EqualTo(0));
     }
 
     [Test]

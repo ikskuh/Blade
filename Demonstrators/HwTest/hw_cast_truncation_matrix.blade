@@ -1,0 +1,101 @@
+// EXPECT: pass-hw
+// RUNS:
+// - [ 0x000001FF, 0, 0 ] = 0x000000FF
+// - [ 0xDEADBEEF, 0, 1 ] = 0x800000EF
+// - [ 0xDEADBEEF, 1, 0 ] = 0x0000BEEF
+// - [ 0x00001234, 1, 1 ] = 0x80001234
+// - [ 0xFFFFFF80, 2, 0 ] = 0x00000080
+// - [ 0x12345680, 2, 1 ] = 0x80000080
+// - [ 0x00000080, 3, 1 ] = 0xFFFFFF81
+// - [ 0x0000007F, 3, 0 ] = 0x0000007F
+// - [ 0xFFFF8001, 4, 0 ] = 0x00008001
+// - [ 0x12348001, 4, 1 ] = 0x80008001
+// - [ 0x00008000, 5, 1 ] = 0xFFFF8001
+// - [ 0x00007FFF, 5, 0 ] = 0x00007FFF
+// - [ 0, 6, 1 ] = 0x00000002
+// - [ 3, 6, 0 ] = 0x00000001
+// NOTE:
+//   Regression for explicit narrowing casts that cross a later control-flow join.
+//   MIR/LIR DCE must keep values that stay live only through successor blocks, so
+//   these cast round-trips continue to lower to real truncation/extending code.
+//   This fixture isolates BUG-4 from signed-compare lowering by using only cast
+//   round-trips and unsigned control flow.
+//
+//   mode 0: u32 -> u8  -> u32
+//   mode 1: u32 -> u16 -> u32
+//   mode 2: i32 -> u8  -> u32      (source via bitcast(i32, raw))
+//   mode 3: i32 -> i8  -> i32      (result packed with low-bit branch tag)
+//   mode 4: i32 -> u16 -> u32      (source via bitcast(i32, raw))
+//   mode 5: i32 -> i16 -> i32      (result packed with low-bit branch tag)
+//   mode 6: bool control lane      (should remain unaffected)
+
+extern reg var rt_result: u32;
+extern reg var rt_param0: u32;
+extern reg var rt_param1: u32;
+extern reg var rt_param2: u32;
+
+noinline fn roundtrip_u32_u8(raw: u32, branch_flag: u32) -> u32 {
+    var narrowed: u8 = raw as u8;
+    var widened: u32 = narrowed as u32;
+    var tag: u32 = if (branch_flag != 0) 0x80000000 else 0;
+    return widened | tag;
+}
+
+noinline fn roundtrip_u32_u16(raw: u32, branch_flag: u32) -> u32 {
+    var narrowed: u16 = raw as u16;
+    var widened: u32 = narrowed as u32;
+    var tag: u32 = if (branch_flag != 0) 0x80000000 else 0;
+    return widened | tag;
+}
+
+noinline fn roundtrip_i32_u8(raw: u32, branch_flag: u32) -> u32 {
+    var signed: i32 = bitcast(i32, raw);
+    var narrowed: u8 = signed as u8;
+    var widened: u32 = narrowed as u32;
+    var tag: u32 = if (branch_flag != 0) 0x80000000 else 0;
+    return widened | tag;
+}
+
+noinline fn roundtrip_i32_i8(raw: u32, branch_flag: u32) -> u32 {
+    var signed: i32 = bitcast(i32, raw);
+    var narrowed: i8 = signed as i8;
+    var widened: i32 = narrowed as i32;
+    var tag: i32 = if (branch_flag != 0) 1 else 0;
+    return bitcast(u32, widened | tag);
+}
+
+noinline fn roundtrip_i32_u16(raw: u32, branch_flag: u32) -> u32 {
+    var signed: i32 = bitcast(i32, raw);
+    var narrowed: u16 = signed as u16;
+    var widened: u32 = narrowed as u32;
+    var tag: u32 = if (branch_flag != 0) 0x80000000 else 0;
+    return widened | tag;
+}
+
+noinline fn roundtrip_i32_i16(raw: u32, branch_flag: u32) -> u32 {
+    var signed: i32 = bitcast(i32, raw);
+    var narrowed: i16 = signed as i16;
+    var widened: i32 = narrowed as i32;
+    var tag: i32 = if (branch_flag != 0) 1 else 0;
+    return bitcast(u32, widened | tag);
+}
+
+noinline fn bool_control(raw: u32, branch_flag: u32) -> u32 {
+    var flag: bool = raw != 0;
+    var widened: u32 = if (flag) 1 else 0;
+    var tag: u32 = if (branch_flag != 0) 2 else 0;
+    return widened | tag;
+}
+
+noinline fn run_case(raw: u32, mode: u32, branch_flag: u32) -> u32 {
+    if (mode == 0) { return roundtrip_u32_u8(raw, branch_flag); }
+    if (mode == 1) { return roundtrip_u32_u16(raw, branch_flag); }
+    if (mode == 2) { return roundtrip_i32_u8(raw, branch_flag); }
+    if (mode == 3) { return roundtrip_i32_i8(raw, branch_flag); }
+    if (mode == 4) { return roundtrip_i32_u16(raw, branch_flag); }
+    if (mode == 5) { return roundtrip_i32_i16(raw, branch_flag); }
+    if (mode == 6) { return bool_control(raw, branch_flag); }
+    return 0xBAD00000 | mode;
+}
+
+rt_result = run_case(rt_param0, rt_param1, rt_param2);

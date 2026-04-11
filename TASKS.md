@@ -29,23 +29,6 @@ The compiler must not let an `AUGS` intended for one instruction leak into an in
 - Ensure legalization does not emit an immediate `ALTx` that consumes or preserves the wrong `AUGS`.
 - Validate the final assembly ordering/operands so the hazard cannot occur.
 
-## BUG-4: Emit truncation for explicit narrowing casts like `x as u8`
-
-Reproducer: `Demonstrators/HwTest/hw_casts_and_bitcasts.blade` (`// EXPECT: xfail-hw`).
-
-- Compile the repro and confirm whether `MirConvertInstruction` is present for the `as u8` cast.
-- Inspect `Blade/IR/Asm/AsmLowerer.cs` `LowerConvert` output for u32->u8 and u32->u16: it must clear upper bits via `ZEROX` (or equivalent).
-- If the convert is optimized away, fix the MIR/LIR optimization passes so narrowing converts are never deleted when the value later widens.
-- Ensure the conversion result type is preserved through MIR and LIR (avoid losing the u8 width and treating it as u32).
-- Add an IR-focused demonstrator that checks for a `convert<u8>` node in MIR and a `ZEROX ..., #7` in final assembly.
-- Confirm behavior for both constants and runtime values (e.g. `0x1FF as u8` and `rt_param0 as u8`).
-- Confirm behavior for chained casts: `u32 -> u8 -> u32` must round-trip as `(x & 0xFF)` not identity.
-- Ensure signed narrowing (`as i8`) uses sign extension rules only when widening, not when truncating.
-- Ensure `as bool` (if supported) is not accidentally routed through the integer truncation path.
-- Add coverage for both `as u8` and `as u16` in one fixture to prevent partial fixes.
-- Update the repro header from `xfail-hw` only when the hardware runner validates the expected runs.
-- Acceptance: `hw_casts_and_bitcasts.blade` reports correct low-byte truncation on all runs.
-
 ## BUG-5: Lower signed comparisons correctly (`bitcast(i32, x) < 0`)
 
 Reproducer: `Demonstrators/HwTest/hw_casts_and_bitcasts.blade` (`// EXPECT: xfail-hw`).
