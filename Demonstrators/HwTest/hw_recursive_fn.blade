@@ -1,11 +1,11 @@
-// EXPECT: xfail-hw
+// EXPECT: pass-hw
 // RUNS:
 // - [ 0 ] = 1
 // - [ 1 ] = 1
 // - [ 4 ] = 24
 // - [ 6 ] = 720
 // NOTE:
-//   XFAIL: rec fn codegen saves n-1 before recursive call; POPB clobbers result.
+//   Regression for recursive call result preservation across CALLB spill restore.
 //   Tests rec fn calling convention (hub-based stack via PB).
 //   factorial(n): if n<2 return 1; else return n*factorial(n-1)
 //   Run 1: factorial(0) = 1 (base case)

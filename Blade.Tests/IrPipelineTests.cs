@@ -263,6 +263,33 @@ public class IrPipelineTests
     }
 
     [Test]
+    public void RecursiveCallResult_IsCopiedBeforeSpillRestore()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            rec fn factorial(n: u32) -> u32 {
+                if (n < 2) {
+                    return 1;
+                }
+
+                return n * factorial(n - 1);
+            }
+
+            reg var input: u32 = 6;
+            reg var result: u32 = 0;
+
+            result = factorial(input);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program);
+        string assembly = build.AssemblyText;
+
+        Match callMatch = Regex.Match(assembly, @"CALLB #f_factorial\s+MOV (_r\d+|P[AB]), PA\s+POPB PA\s+QMUL PA, \1", RegexOptions.Singleline);
+        Assert.That(callMatch.Success, Is.True, assembly);
+    }
+
+    [Test]
     public void Bitcast_LowersAsCopy()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""

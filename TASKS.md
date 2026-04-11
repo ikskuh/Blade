@@ -46,23 +46,6 @@ Reproducer: `Demonstrators/HwTest/hw_multi_return.blade` (`// EXPECT: xfail-hw`)
 - Update the repro header from `xfail-hw` only when the hardware runner validates the expected runs.
 - Acceptance: `Demonstrators/HwTest/hw_multi_return.blade` becomes `pass-hw` and matches all expected runs.
 
-## BUG-7: Fix recursive function calling convention so `rec fn` results survive spills
-
-Reproducer: `Demonstrators/HwTest/hw_recursive_fn.blade` (`// EXPECT: xfail-hw`).
-
-- Compile the repro and inspect the PASM around the recursive call and subsequent multiply.
-- Confirm whether the recursive tier is allocating arg0/ret0 to `PB` and whether `PUSHB`/`POPB` sequences restore into `PB`.
-- Reserve `PB` from value allocation for recursive-tier functions if `PB` is semantically tied to the PTRB hub stack / CALLB mechanism.
-- Update `Blade/IR/Asm/AsmLowerer.cs` recursive calling convention preference to favor `PA` (or a dedicated non-PB register) for arg0/ret0.
-- Audit `Blade/IR/Asm/RegisterAllocator.cs` recursive-call spill insertion so it never pops a spill into the active return register before the return value is consumed.
-- Ensure expression evaluation order for `n * factorial(n - 1)` preserves `n` across the call (save `n` before clobbering the argument/return location).
-- Add a regression fixture that asserts the recursive result register/place is not overwritten by a POP immediately after CALLB.
-- Add a regression fixture that checks factorial output for small values (0, 1, 4, 6) at the harness level.
-- Validate both base-case and recursive-case control flow for `rec fn` are unaffected by the calling convention change.
-- Ensure the fix does not regress general/leaf calling conventions (focus the change to recursive tier only).
-- Update the repro header from `xfail-hw` only when the hardware runner validates the expected runs.
-- Acceptance: `Demonstrators/HwTest/hw_recursive_fn.blade` becomes `pass-hw` and matches all expected runs.
-
 ## BUG-9: Do not crash on variable declarations with a missing/empty identifier
 
 Reproducer: malformed `var` statement where `VariableDeclarationSyntax.Name.Text` is empty (binder currently throws).

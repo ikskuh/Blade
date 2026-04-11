@@ -100,6 +100,28 @@ public static class RegisterAllocator
 
             for (int i = 0; i < function.Nodes.Count; i++)
             {
+                if (TryGetRecursiveCallBundle(function.Nodes, i, out int callIndex, out int resultCopyIndex))
+                {
+                    List<VirtualAsmRegister> bundledLiveRegisters = [];
+                    if (liveness.LiveRegistersByCallInstruction.TryGetValue(callIndex, out HashSet<VirtualAsmRegister>? bundledLiveSet))
+                        bundledLiveRegisters.AddRange(bundledLiveSet.OrderBy(register => registerOrder.GetValueOrDefault(register, int.MaxValue)));
+
+                    foreach (VirtualAsmRegister register in bundledLiveRegisters)
+                        rewrittenNodes.Add(new AsmInstructionNode(P2Mnemonic.PUSHB, [new AsmRegisterOperand(register)]));
+
+                    for (int bundleIndex = i; bundleIndex <= callIndex; bundleIndex++)
+                        rewrittenNodes.Add(function.Nodes[bundleIndex]);
+
+                    if (resultCopyIndex >= 0)
+                        rewrittenNodes.Add(function.Nodes[resultCopyIndex]);
+
+                    for (int liveIndex = bundledLiveRegisters.Count - 1; liveIndex >= 0; liveIndex--)
+                        rewrittenNodes.Add(new AsmInstructionNode(P2Mnemonic.POPB, [new AsmRegisterOperand(bundledLiveRegisters[liveIndex])]));
+
+                    i = resultCopyIndex >= 0 ? resultCopyIndex : callIndex;
+                    continue;
+                }
+
                 if (function.Nodes[i] is not AsmInstructionNode instruction
                     || instruction.Mnemonic != P2Mnemonic.CALLB)
                 {
@@ -116,6 +138,13 @@ public static class RegisterAllocator
 
                 rewrittenNodes.Add(instruction);
 
+                if (i + 1 < function.Nodes.Count
+                    && IsImmediateRecursiveResultCopy(function.Nodes[i + 1]))
+                {
+                    rewrittenNodes.Add(function.Nodes[i + 1]);
+                    i++;
+                }
+
                 for (int liveIndex = liveRegisters.Count - 1; liveIndex >= 0; liveIndex--)
                     rewrittenNodes.Add(new AsmInstructionNode(P2Mnemonic.POPB, [new AsmRegisterOperand(liveRegisters[liveIndex])]));
             }
@@ -124,6 +153,60 @@ public static class RegisterAllocator
         }
 
         return new AsmModule(module.StoragePlaces, module.DataBlocks, functions);
+    }
+
+    private static bool TryGetRecursiveCallBundle(
+        IReadOnlyList<AsmNode> nodes,
+        int startIndex,
+        out int callIndex,
+        out int resultCopyIndex)
+    {
+        callIndex = -1;
+        resultCopyIndex = -1;
+
+        if (!IsRecursiveArgumentMove(nodes[startIndex]))
+            return false;
+
+        int index = startIndex;
+        while (index < nodes.Count && IsRecursiveArgumentMove(nodes[index]))
+            index++;
+
+        if (index >= nodes.Count
+            || nodes[index] is not AsmInstructionNode { Mnemonic: P2Mnemonic.CALLB })
+        {
+            return false;
+        }
+
+        callIndex = index;
+        if (index + 1 < nodes.Count && IsImmediateRecursiveResultCopy(nodes[index + 1]))
+            resultCopyIndex = index + 1;
+
+        return true;
+    }
+
+    private static bool IsRecursiveArgumentMove(AsmNode node)
+    {
+        if (node is not AsmInstructionNode { Mnemonic: P2Mnemonic.MOV, Operands.Count: 2 } mov)
+            return false;
+
+        return mov.Operands[0] is AsmSymbolOperand
+        {
+            AddressingMode: AsmSymbolAddressingMode.Register,
+            Symbol: StoragePlace { RegisterRole: StoragePlaceRegisterRole.InternalShared },
+        };
+    }
+
+    private static bool IsImmediateRecursiveResultCopy(AsmNode node)
+    {
+        if (node is not AsmInstructionNode { Mnemonic: P2Mnemonic.MOV, Operands.Count: 2 } mov)
+            return false;
+
+        return mov.Operands[0] is AsmRegisterOperand
+            && mov.Operands[1] is AsmSymbolOperand
+            {
+                AddressingMode: AsmSymbolAddressingMode.Register,
+                Symbol: StoragePlace { RegisterRole: StoragePlaceRegisterRole.InternalShared },
+            };
     }
 
     private static IReadOnlyDictionary<VirtualAsmRegister, int> ComputeRegisterOrder(AsmFunction function)

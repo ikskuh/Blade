@@ -22,6 +22,7 @@ internal static class AsmOptimizationHelpers
         source = null!;
 
         if (!IsPlainMov(instruction)
+            || instruction.IsNonElidable
             || instruction.Operands[0] is not AsmRegisterOperand dest)
         {
             return false;
@@ -111,6 +112,9 @@ internal static class AsmOptimizationHelpers
     internal static bool IsBarrier(AsmInstructionNode instruction)
     {
         if (instruction.Condition is not null || instruction.FlagEffect != P2FlagEffect.None)
+            return true;
+
+        if (instruction.Mnemonic is P2Mnemonic.PUSHB or P2Mnemonic.POPB)
             return true;
 
         return P2InstructionMetadata.IsControlFlow(instruction.Mnemonic, instruction.Operands.Count)

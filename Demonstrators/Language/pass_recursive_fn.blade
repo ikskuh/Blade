@@ -3,6 +3,8 @@
 // CONTAINS:
 // - MOV PB, g_input_n
 // - CALLB #f_factorial
+// - MOV _r1, PA
+// - MOV OUTA, _r1
 // - PUSHB
 // - POPB
 // - RETB
@@ -12,12 +14,15 @@
 // ! RDLONG
 // SEQUENCE:
 // - factorial_bb2
-// - MOV _r1, PB
-// - JMP #factorial_bb3
+// - PUSHB PB
+// - MOV PB, PA
+// - CALLB #f_factorial
+// - MOV PA, PA
+// - POPB PB
 // NOTE:
 //   Exercises recursive function (rec fn) calling convention with
-//   PB as the shared argument/return slot plus stack-backed preservation of the
-//   live caller value across the self-call.
+//   PB as the shared argument slot, PA as the recursive return slot, and
+//   stack-backed preservation of the live caller value across the self-call.
 
 extern reg var OUTA: u32 @(0x1FC);
 

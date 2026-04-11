@@ -447,19 +447,15 @@ public static class AsmLowerer
                 StoragePlace? registerReturnPlace = null;
                 if (registerReturnSlot is { } slot)
                 {
-                    if (parameterPlaces.Count > 0)
-                    {
-                        registerReturnPlace = parameterPlaces[0];
-                    }
-                    else
-                    {
-                        registerReturnPlace = CreateInternalRegisterPlace(
-                            $"rec_{function.Name}_ret0",
-                            slot.Type,
-                            StoragePlaceRegisterRole.InternalShared,
-                            preferredRegisters: [new P2Register(P2SpecialRegister.PB), new P2Register(P2SpecialRegister.PA)]);
-                        storagePlaces.Add(registerReturnPlace);
-                    }
+                    IReadOnlyList<P2Register> preferredReturnRegisters = parameterPlaces.Count > 0
+                        ? [new P2Register(P2SpecialRegister.PA), new P2Register(P2SpecialRegister.PB)]
+                        : [new P2Register(P2SpecialRegister.PB), new P2Register(P2SpecialRegister.PA)];
+                    registerReturnPlace = CreateInternalRegisterPlace(
+                        $"rec_{function.Name}_ret0",
+                        slot.Type,
+                        StoragePlaceRegisterRole.InternalShared,
+                        preferredRegisters: preferredReturnRegisters);
+                    storagePlaces.Add(registerReturnPlace);
                 }
 
                 recursiveCallingConvention[function.Symbol] = new RecursiveCallingConventionInfo(parameterPlaces, registerReturnPlace);
@@ -1840,8 +1836,10 @@ public static class AsmLowerer
                 if (destReg is not null)
                 {
                     Assert.Invariant(recursiveInfo.RegisterReturnPlace is not null, "Recursive register-return calls must have a return storage place.");
-                    ctx.TieRegisterToPlace(op.Destination!, recursiveInfo.RegisterReturnPlace);
-                    nodes.Add(Emit(P2Mnemonic.MOV, destReg, CreatePlaceRegisterOperand(recursiveInfo.RegisterReturnPlace)));
+                    nodes.Add(new AsmInstructionNode(
+                        P2Mnemonic.MOV,
+                        [destReg, CreatePlaceRegisterOperand(recursiveInfo.RegisterReturnPlace)],
+                        isNonElidable: true));
                 }
                 break;
 

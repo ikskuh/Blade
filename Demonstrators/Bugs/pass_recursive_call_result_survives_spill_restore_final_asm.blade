@@ -1,0 +1,24 @@
+// EXPECT: pass
+// STAGE: final-asm
+// SEQUENCE:
+// - PUSHB PA
+// - MOV PB, PA
+// - POPB PA
+// - QMUL PA, PB
+// NOTE:
+//   Recursive calls spill the live caller value across CALLB. The returned value
+//   must be copied out of PA before the restore POPB runs, or the multiply uses
+//   the restored caller value twice.
+
+rec fn factorial(n: u32) -> u32 {
+    if (n < 2) {
+        return 1;
+    }
+
+    return n * factorial(n - 1);
+}
+
+reg var input: u32 = 6;
+reg var sink: u32 = 0;
+
+sink = factorial(input);
