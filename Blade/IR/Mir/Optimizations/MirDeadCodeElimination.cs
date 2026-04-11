@@ -63,7 +63,8 @@ public sealed class MirDeadCodeElimination : IMirOptimization
                 function.IsEntryPoint,
                 function.ReturnTypes,
                 blocks,
-                function.ReturnSlots));
+                function.ReturnSlots,
+                function.FlagValues));
         }
 
         MirModule result = new(input.StoragePlaces, input.StorageDefinitions, functions);

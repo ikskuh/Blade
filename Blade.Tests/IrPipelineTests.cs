@@ -263,6 +263,51 @@ public class IrPipelineTests
     }
 
     [Test]
+    public void MultiReturnFlagValues_PropagateIntoIfExpressionsAndDiscardExtractions()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            noinline fn two_ret(a: u32, b: u32) -> u32, bool {
+                return a + b, (a < b);
+            }
+
+            noinline fn three_ret(a: u32, b: u32) -> u32, bool, bool {
+                return a + b, (a < b), (a == b);
+            }
+
+            var sum2: u32 = undefined;
+            var lt2: bool = undefined;
+            sum2, lt2 = two_ret(3, 4);
+            _, _ = two_ret(4, 3);
+
+            var sum3: u32 = undefined;
+            var lt3: bool = undefined;
+            var eq3: bool = undefined;
+            sum3, lt3, eq3 = three_ret(5, 5);
+
+            var lt2_u: u32 = if (lt2) 1 else 0;
+            var eq3_u: u32 = if (eq3) 1 else 0;
+            reg var packed: u32 = 0;
+            packed = (sum2 & 0xFFFF) | (lt2_u << 16) | (eq3_u << 17);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program);
+        string mir = MirTextWriter.Write(build.MirModule);
+        string lir = LirTextWriter.Write(build.LirModule);
+        string assembly = build.AssemblyText;
+
+        Assert.That(Regex.Matches(mir, @"branch %v\d+ \[flag:C\]").Count, Is.GreaterThanOrEqualTo(1), mir);
+        Assert.That(Regex.Matches(mir, @"branch %v\d+ \[flag:Z\]").Count, Is.GreaterThanOrEqualTo(1), mir);
+        Assert.That(lir, Does.Contain("call.extractC"));
+        Assert.That(Regex.Matches(lir, "call\\.extractC").Count, Is.EqualTo(3), lir);
+        Assert.That(Regex.Matches(lir, "call\\.extractZ").Count, Is.EqualTo(1), lir);
+        Assert.That(assembly, Does.Contain("BITC"));
+        Assert.That(assembly, Does.Contain("BITZ"));
+        Assert.That(Regex.Matches(assembly, @"MOV _r\d+, #1").Count, Is.GreaterThanOrEqualTo(2), assembly);
+    }
+
+    [Test]
     public void RecursiveCallResult_IsCopiedBeforeSpillRestore()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""

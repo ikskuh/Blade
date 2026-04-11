@@ -70,7 +70,7 @@ public static class LirLowerer
                             extraDest,
                             extraType,
                             [],
-                            hasSideEffects: false,
+                            hasSideEffects: true,
                             predicate: null,
                             writesC: false,
                             writesZ: false,
@@ -532,17 +532,15 @@ public static class LirLowerer
 
     private static ReturnPlacement GetExtraResultPlacement(MirCallInstruction call, int extraResultIndex)
     {
-        switch (extraResultIndex)
-        {
-            case 0:
-                return ReturnPlacement.FlagC;
+        int returnSlotIndex = extraResultIndex + 1;
+        Assert.Invariant(
+            returnSlotIndex < call.Function.ReturnSlots.Count,
+            $"Call '{call.Function.Name}' exposes extra result index {extraResultIndex}, but no corresponding return slot exists.");
 
-            case 1:
-                return ReturnPlacement.FlagZ;
-
-            default:
-                return Assert.UnreachableValue<ReturnPlacement>( // pragma: force-coverage
-                    $"Call '{call.Function.Name}' exposes extra result index {extraResultIndex}, but only C and Z flag result slots are available.");
-        }
+        ReturnPlacement placement = call.Function.ReturnSlots[returnSlotIndex].Placement;
+        Assert.Invariant(
+            placement is ReturnPlacement.FlagC or ReturnPlacement.FlagZ,
+            $"Call '{call.Function.Name}' extra result index {extraResultIndex} must be flag-backed, but uses placement '{placement}'.");
+        return placement;
     }
 }

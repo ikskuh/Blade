@@ -415,7 +415,7 @@ public static class MirInliner
                     block.Terminator));
             }
 
-            return new MirFunction(_source.Symbol, _source.IsEntryPoint, _source.ReturnTypes, blocks, _source.ReturnSlots);
+            return new MirFunction(_source.Symbol, _source.IsEntryPoint, _source.ReturnTypes, blocks, _source.ReturnSlots, _source.FlagValues);
         }
     }
 

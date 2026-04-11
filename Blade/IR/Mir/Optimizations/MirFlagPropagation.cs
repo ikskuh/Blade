@@ -53,6 +53,8 @@ public sealed class MirFlagPropagation : IMirOptimization
                 }
             }
 
+            PropagateFlagsThroughBlockParameters(function, flagMap);
+
             // Now rewrite branches that consume flag values.
             List<MirBlock> blocks = new(function.Blocks.Count);
             foreach (MirBlock block in function.Blocks)
@@ -88,5 +90,88 @@ public sealed class MirFlagPropagation : IMirOptimization
         }
 
         return anyChanged ? new MirModule(input.StoragePlaces, input.StorageDefinitions, functions) : null;
+    }
+
+    private static void PropagateFlagsThroughBlockParameters(
+        MirFunction function,
+        Dictionary<MirValueId, MirFlag> flagMap)
+    {
+        bool changed;
+        do
+        {
+            changed = false;
+
+            foreach (MirBlock block in function.Blocks)
+            {
+                for (int parameterIndex = 0; parameterIndex < block.Parameters.Count; parameterIndex++)
+                {
+                    MirValueId parameterValue = block.Parameters[parameterIndex].Value;
+                    if (flagMap.ContainsKey(parameterValue))
+                        continue;
+
+                    if (!TryGetIncomingParameterFlag(function, block.Ref, parameterIndex, flagMap, out MirFlag parameterFlag))
+                        continue;
+
+                    flagMap[parameterValue] = parameterFlag;
+                    changed = true;
+                }
+            }
+        }
+        while (changed);
+    }
+
+    private static bool TryGetIncomingParameterFlag(
+        MirFunction function,
+        MirBlockRef target,
+        int parameterIndex,
+        IReadOnlyDictionary<MirValueId, MirFlag> flagMap,
+        out MirFlag parameterFlag)
+    {
+        parameterFlag = default;
+        bool sawIncomingArgument = false;
+
+        foreach (MirBlock predecessor in function.Blocks)
+        {
+            foreach (IReadOnlyList<MirValueId> arguments in GetArgumentsForSuccessor(predecessor.Terminator, target))
+            {
+                if (parameterIndex >= arguments.Count)
+                    return false;
+
+                MirValueId argument = arguments[parameterIndex];
+                if (!flagMap.TryGetValue(argument, out MirFlag incomingFlag))
+                    return false;
+
+                if (!sawIncomingArgument)
+                {
+                    parameterFlag = incomingFlag;
+                    sawIncomingArgument = true;
+                    continue;
+                }
+
+                if (parameterFlag != incomingFlag)
+                    return false;
+            }
+        }
+
+        return sawIncomingArgument;
+    }
+
+    private static IEnumerable<IReadOnlyList<MirValueId>> GetArgumentsForSuccessor(MirTerminator terminator, MirBlockRef target)
+    {
+        switch (terminator)
+        {
+            case MirGotoTerminator mirGoto when mirGoto.Target == target:
+                yield return mirGoto.Arguments;
+                yield break;
+
+            case MirBranchTerminator branch:
+                if (branch.TrueTarget == target)
+                    yield return branch.TrueArguments;
+
+                if (branch.FalseTarget == target)
+                    yield return branch.FalseArguments;
+
+                yield break;
+        }
     }
 }

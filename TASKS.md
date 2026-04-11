@@ -29,23 +29,6 @@ The compiler must not let an `AUGS` intended for one instruction leak into an in
 - Ensure legalization does not emit an immediate `ALTx` that consumes or preserves the wrong `AUGS`.
 - Validate the final assembly ordering/operands so the hazard cannot occur.
 
-## BUG-6: Fix multi-return bool capture from C/Z and bool->u32 if-expression lowering
-
-Reproducer: `Demonstrators/HwTest/hw_multi_return.blade` (`// EXPECT: xfail-hw`).
-
-- Compile the repro and inspect whether `LirCallExtractFlagOperation` is emitted for every bool extra result.
-- Confirm return placement policy for multiple bools: which bool maps to `C` vs `Z`, and ensure it matches binder return-slot ordering.
-- Ensure `call.extractC`/`call.extractZ` are emitted immediately after the corresponding call and cannot be moved past later flag-writing instructions.
-- If necessary, model flag reads in LIR or mark flag-extract ops as order-sensitive so optimizations cannot reorder or eliminate them.
-- Validate discard assignments (`_, _ = ...`) still perform the call but do not corrupt previously captured bool values.
-- Fix `if (lt2) 1 else 0` lowering so then/else bodies actually assign the result value, not jump through empty blocks.
-- Ensure bool conditions used by if-expressions are materialized into registers when needed (do not rely on stale C/Z flags).
-- Add a non-hardware regression fixture that asserts the final PASM contains both flag-extract instructions for the 3-return call.
-- Add a regression fixture that asserts the then/else blocks contain the constant assignment ops for `lt2_u` and `eq3_u`.
-- Confirm the final packed result matches the expected bit layout for all runs.
-- Update the repro header from `xfail-hw` only when the hardware runner validates the expected runs.
-- Acceptance: `Demonstrators/HwTest/hw_multi_return.blade` becomes `pass-hw` and matches all expected runs.
-
 ## BUG-9: Do not crash on variable declarations with a missing/empty identifier
 
 Reproducer: malformed `var` statement where `VariableDeclarationSyntax.Name.Text` is empty (binder currently throws).

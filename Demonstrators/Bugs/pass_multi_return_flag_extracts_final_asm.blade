@@ -1,0 +1,33 @@
+// EXPECT: pass
+// STAGE: final-asm
+// SEQUENCE:
+// - CALLPA ?, #f_three_ret
+// - MOV ?1, PA
+// - BITC ?2, #0
+// - BITZ ?3, #0
+// CONTAINS:
+// - CALLPA ?, #f_two_ret
+// - BITC ?, #0
+// NOTE:
+//   Multi-return calls with bool extras must materialize both flag-backed extra
+//   results immediately after the call. The three-return case must extract C and
+//   Z separately; the two-return case must still extract C.
+
+noinline fn two_ret(a: u32, b: u32) -> u32, bool {
+    return a + b, (a < b);
+}
+
+noinline fn three_ret(a: u32, b: u32) -> u32, bool, bool {
+    return a + b, (a < b), (a == b);
+}
+
+reg var left: u32 = 5;
+reg var right: u32 = 5;
+reg var sum2: u32 = 0;
+reg var lt2: bool = false;
+reg var sum3: u32 = 0;
+reg var lt3: bool = false;
+reg var eq3: bool = false;
+
+sum2, lt2 = two_ret(left, right);
+sum3, lt3, eq3 = three_ret(left, right);

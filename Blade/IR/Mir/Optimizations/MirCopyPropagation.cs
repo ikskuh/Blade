@@ -43,7 +43,8 @@ public sealed class MirCopyPropagation : IMirOptimization
                 function.IsEntryPoint,
                 function.ReturnTypes,
                 blocks,
-                function.ReturnSlots));
+                function.ReturnSlots,
+                function.FlagValues));
         }
 
         MirModule result2 = new(input.StoragePlaces, input.StorageDefinitions, functions);

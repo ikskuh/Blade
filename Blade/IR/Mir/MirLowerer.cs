@@ -730,6 +730,12 @@ public static class MirLowerer
             {
                 if (targets[i + 1] is not BoundDiscardAssignmentTarget)
                     LowerAssignmentTargetWrite(targets[i + 1], extraResults[i].Value, multiAssignment.Span);
+
+                ReturnPlacement placement = callExpression.Function.ReturnSlots[i + 1].Placement;
+                if (placement == ReturnPlacement.FlagC)
+                    _flagValues[extraResults[i].Value] = MirFlag.C;
+                else if (placement == ReturnPlacement.FlagZ)
+                    _flagValues[extraResults[i].Value] = MirFlag.Z;
             }
         }
 
@@ -1603,13 +1609,16 @@ public static class MirLowerer
             mergeBlock.Parameters.Add(new MirBlockParameter(result, "ifexpr", ifExpression.Type));
             Dictionary<Symbol, MirValueId> mergeEnv = CreateEnvironmentParameters(mergeBlock, envSymbols, "ifexpr");
 
+            _flagValues.TryGetValue(condition, out MirFlag conditionFlag);
+
             _currentBlock.Terminator = new MirBranchTerminator(
                 condition,
                 thenBlock.Label,
                 elseBlock.Label,
                 [],
                 [],
-                ifExpression.Condition.Span);
+                ifExpression.Condition.Span,
+                _flagValues.ContainsKey(condition) ? conditionFlag : null);
 
             _currentBlock = thenBlock;
             ReplaceAutomaticEnvironment(beforeEnv);
