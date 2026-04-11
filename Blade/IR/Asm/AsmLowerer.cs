@@ -1640,25 +1640,25 @@ public static class AsmLowerer
                 break;
 
             case BoundBinaryOperatorKind.Less:
-                nodes.Add(Emit(P2Mnemonic.CMP, left, right, flagEffect: P2FlagEffect.WC));
+                EmitOrderingCompare(nodes, operation, left, right, swapOperands: false);
                 if (!isFlagOnly)
                     nodes.Add(Emit(P2Mnemonic.BITC, dest, new AsmImmediateOperand(0)));
                 break;
 
             case BoundBinaryOperatorKind.LessOrEqual:
-                nodes.Add(Emit(P2Mnemonic.CMP, right, left, flagEffect: P2FlagEffect.WC));
+                EmitOrderingCompare(nodes, operation, left, right, swapOperands: true);
                 if (!isFlagOnly)
                     nodes.Add(Emit(P2Mnemonic.BITNC, dest, new AsmImmediateOperand(0)));
                 break;
 
             case BoundBinaryOperatorKind.Greater:
-                nodes.Add(Emit(P2Mnemonic.CMP, right, left, flagEffect: P2FlagEffect.WC));
+                EmitOrderingCompare(nodes, operation, left, right, swapOperands: true);
                 if (!isFlagOnly)
                     nodes.Add(Emit(P2Mnemonic.BITC, dest, new AsmImmediateOperand(0)));
                 break;
 
             case BoundBinaryOperatorKind.GreaterOrEqual:
-                nodes.Add(Emit(P2Mnemonic.CMP, left, right, flagEffect: P2FlagEffect.WC));
+                EmitOrderingCompare(nodes, operation, left, right, swapOperands: false);
                 if (!isFlagOnly)
                     nodes.Add(Emit(P2Mnemonic.BITNC, dest, new AsmImmediateOperand(0)));
                 break;
@@ -1667,6 +1667,33 @@ public static class AsmLowerer
                 Assert.Unreachable($"Unexpected binary operator kind: {kind}"); // pragma: force-coverage
                 break; // pragma: force-coverage
         }
+    }
+
+    private static void EmitOrderingCompare(
+        List<AsmNode> nodes,
+        LirBinaryOperation operation,
+        AsmRegisterOperand left,
+        AsmRegisterOperand right,
+        bool swapOperands)
+    {
+        if (operation.ComparisonLoweringKind == ComparisonLoweringKind.NegativeBitTest)
+        {
+            nodes.Add(Emit(P2Mnemonic.TESTB, left, new AsmImmediateOperand(31), flagEffect: P2FlagEffect.WC));
+            return;
+        }
+
+        if (operation.ComparisonLoweringKind == ComparisonLoweringKind.NonNegativeBitTest)
+        {
+            nodes.Add(Emit(P2Mnemonic.TESTB, left, new AsmImmediateOperand(31), flagEffect: P2FlagEffect.WC));
+            return;
+        }
+
+        P2Mnemonic mnemonic = operation.ComparisonLoweringKind == ComparisonLoweringKind.SignedOrder
+            ? P2Mnemonic.CMPS
+            : P2Mnemonic.CMP;
+        AsmRegisterOperand compareLeft = swapOperands ? right : left;
+        AsmRegisterOperand compareRight = swapOperands ? left : right;
+        nodes.Add(Emit(mnemonic, compareLeft, compareRight, flagEffect: P2FlagEffect.WC));
     }
 
     private static void LowerPointerOffset(

@@ -243,7 +243,7 @@ public static class MirInliner
                 MirLoadPlaceInstruction loadPlace => new MirLoadPlaceInstruction(newResult!, loadPlace.ResultType!, loadPlace.Place, loadPlace.Span),
                 MirCopyInstruction copy => new MirCopyInstruction(newResult!, copy.ResultType!, copy.Source, copy.Span),
                 MirUnaryInstruction unary => new MirUnaryInstruction(newResult!, unary.ResultType!, unary.Operator, unary.Operand, unary.Span),
-                MirBinaryInstruction binary => new MirBinaryInstruction(newResult!, binary.ResultType!, binary.Operator, binary.Left, binary.Right, binary.Span),
+                MirBinaryInstruction binary => new MirBinaryInstruction(newResult!, binary.ResultType!, binary.Operator, binary.Left, binary.Right, binary.Span, binary.ComparisonLoweringKind),
                 MirPointerOffsetInstruction pointerOffset => new MirPointerOffsetInstruction(newResult!, pointerOffset.ResultType!, pointerOffset.OperatorKind, pointerOffset.BaseAddress, pointerOffset.Delta, pointerOffset.Stride, pointerOffset.Span),
                 MirPointerDifferenceInstruction pointerDifference => new MirPointerDifferenceInstruction(newResult!, pointerDifference.ResultType!, pointerDifference.Left, pointerDifference.Right, pointerDifference.Stride, pointerDifference.Span),
                 MirConvertInstruction convert => new MirConvertInstruction(newResult!, convert.ResultType!, convert.Operand, convert.Span),

@@ -1,13 +1,13 @@
-// EXPECT: xfail-hw
+// EXPECT: pass-hw
 // RUNS:
 // - [ 0x42 ] = 0x0042
 // - [ 0x1FF ] = 0x00FF
 // - [ 0x80000000 ] = 0x0100
 // - [ 0xDEADBEEF ] = 0x01EF
 // NOTE:
-//   XFAIL: 'as u8' emits no truncation; 'bitcast(i32,x) < 0' uses unsigned CMP.
-//   Tests explicit narrowing casts (as u8), widening (u8 as u32),
-//   and bitcast reinterpretation between u32 and i32.
+//   Regression for the combined cast/sign path that originally exposed BUG-4 and
+//   BUG-5 together. The low byte must truncate through `as u8 as u32`, and the
+//   sign lane must detect `bitcast(i32, x) < 0` via signed lowering.
 //   f(x) = (x as u8 as u32) | (is_negative_signed(x) << 8)
 //   Run 1: byte=0x42, is_neg=0 -> 0x0042
 //   Run 2: byte=0xFF (truncated), is_neg=0 -> 0x00FF

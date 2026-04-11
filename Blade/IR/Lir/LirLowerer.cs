@@ -141,7 +141,7 @@ public static class LirLowerer
                 unary.Span),
 
             MirBinaryInstruction binary => new LirOpInstruction(
-                new LirBinaryOperation(binary.Operator),
+                new LirBinaryOperation(binary.Operator, binary.ComparisonLoweringKind),
                 destination,
                 binary.ResultType,
                 [new LirRegisterOperand(getRegister(binary.Left)), new LirRegisterOperand(getRegister(binary.Right))],

@@ -114,6 +114,12 @@ public static class MirTextWriter
             case MirBinaryInstruction binary:
                 sb.Append("binary.");
                 sb.Append(binary.Operator);
+                if (binary.ComparisonLoweringKind != ComparisonLoweringKind.Default)
+                {
+                    sb.Append('[');
+                    sb.Append(binary.ComparisonLoweringKind);
+                    sb.Append(']');
+                }
                 sb.Append(' ');
                 sb.Append(formatter.Format(binary.Left));
                 sb.Append(", ");

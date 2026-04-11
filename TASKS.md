@@ -29,23 +29,6 @@ The compiler must not let an `AUGS` intended for one instruction leak into an in
 - Ensure legalization does not emit an immediate `ALTx` that consumes or preserves the wrong `AUGS`.
 - Validate the final assembly ordering/operands so the hazard cannot occur.
 
-## BUG-5: Lower signed comparisons correctly (`bitcast(i32, x) < 0`)
-
-Reproducer: `Demonstrators/HwTest/hw_casts_and_bitcasts.blade` (`// EXPECT: xfail-hw`).
-
-- Confirm the current lowering path: `i32 < 0` ends up as `CMP reg, #0 WC` (unsigned) in PASM.
-- Thread operand signedness through IR: comparisons currently lose operand type because the result is `bool`.
-- Extend `MirBinaryInstruction` and/or `LirBinaryOperation` so ordering comparisons carry the operand type (or an `IsSignedComparison` bit).
-- Update `Blade/IR/Asm/AsmLowerer.cs` `LowerBinary` to choose signed compare lowering when the operand type is signed.
-- For the specific `< 0` pattern, implement a fast sign-bit test lowering (`TESTB x, #31 WC` or an equivalent sequence) instead of full signed compare.
-- Ensure `>= 0` and `<= -1` style forms also lower correctly (no inverted polarity bugs).
-- Ensure non-zero RHS signed compares either use `CMPS` (if available/desired) or a correct arithmetic transform, not unsigned `CMP`.
-- Add a targeted regression fixture that locks the exact emitted instruction sequence for `signed < 0`.
-- Validate that `MirFlagPropagation` and branch lowering preserve the intended flag polarity for signed compares.
-- Validate the result for both edge cases: `0x80000000` (negative) and `0x00000000` (non-negative).
-- Update the repro header from `xfail-hw` only when the hardware runner validates the expected runs.
-- Acceptance: `bitcast(i32, x) < 0` produces correct results for all runs in `hw_casts_and_bitcasts.blade`.
-
 ## BUG-6: Fix multi-return bool capture from C/Z and bool->u32 if-expression lowering
 
 Reproducer: `Demonstrators/HwTest/hw_multi_return.blade` (`// EXPECT: xfail-hw`).

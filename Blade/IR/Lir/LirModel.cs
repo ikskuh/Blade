@@ -191,11 +191,16 @@ public sealed class LirUnaryOperation(BoundUnaryOperatorKind operatorKind) : Lir
     public override bool IsValidOperandCount(int operandCount) => operandCount == 1;
 }
 
-public sealed class LirBinaryOperation(BoundBinaryOperatorKind operatorKind) : LirOperation
+public sealed class LirBinaryOperation(
+    BoundBinaryOperatorKind operatorKind,
+    ComparisonLoweringKind comparisonLoweringKind = ComparisonLoweringKind.Default) : LirOperation
 {
     public BoundBinaryOperatorKind OperatorKind { get; } = operatorKind;
+    public ComparisonLoweringKind ComparisonLoweringKind { get; } = comparisonLoweringKind;
 
-    public override string DisplayName => $"binary.{OperatorKind}";
+    public override string DisplayName => ComparisonLoweringKind == ComparisonLoweringKind.Default
+        ? $"binary.{OperatorKind}"
+        : $"binary.{OperatorKind}[{ComparisonLoweringKind}]";
 
     public override bool IsValidResultType(BladeType? resultType)
     {

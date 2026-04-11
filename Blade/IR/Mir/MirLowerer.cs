@@ -1458,13 +1458,15 @@ public static class MirLowerer
             MirValueId left = LowerExpression(binaryExpression.Left);
             MirValueId right = LowerExpression(binaryExpression.Right);
             MirValueId result = NextValue();
+            ComparisonLoweringKind comparisonLoweringKind = GetComparisonLoweringKind(binaryExpression);
             _currentBlock.Instructions.Add(new MirBinaryInstruction(
                 result,
                 binaryExpression.Type,
                 binaryExpression.Operator.Kind,
                 left,
                 right,
-                binaryExpression.Span));
+                binaryExpression.Span,
+                comparisonLoweringKind));
 
             // Comparison operators produce flag values using the same polarity as the
             // eventual branch condition: Z/NZ for equality, C/NC for ordering.
@@ -1483,6 +1485,63 @@ public static class MirLowerer
                 _flagValues[result] = flag.Value;
 
             return result;
+        }
+
+        private static ComparisonLoweringKind GetComparisonLoweringKind(BoundBinaryExpression binaryExpression)
+        {
+            if (!IsOrderingComparison(binaryExpression.Operator.Kind)
+                || binaryExpression.Left.Type is not RuntimeTypeSymbol { IsSignedInteger: true })
+            {
+                return ComparisonLoweringKind.Default;
+            }
+
+            if (binaryExpression.Operator.Kind == BoundBinaryOperatorKind.Less
+                && TryGetIntegerLiteralValue(binaryExpression.Right, out long lessRhs)
+                && lessRhs == 0)
+            {
+                return ComparisonLoweringKind.NegativeBitTest;
+            }
+
+            if (binaryExpression.Operator.Kind == BoundBinaryOperatorKind.GreaterOrEqual
+                && TryGetIntegerLiteralValue(binaryExpression.Right, out long greaterOrEqualRhs)
+                && greaterOrEqualRhs == 0)
+            {
+                return ComparisonLoweringKind.NonNegativeBitTest;
+            }
+
+            return ComparisonLoweringKind.SignedOrder;
+        }
+
+        private static bool IsOrderingComparison(BoundBinaryOperatorKind operatorKind)
+        {
+            return operatorKind is BoundBinaryOperatorKind.Less
+                or BoundBinaryOperatorKind.LessOrEqual
+                or BoundBinaryOperatorKind.Greater
+                or BoundBinaryOperatorKind.GreaterOrEqual;
+        }
+
+        private static bool TryGetIntegerLiteralValue(BoundExpression expression, out long value)
+        {
+            if (expression is BoundLiteralExpression literal
+                && literal.Value.TryGetInteger(out long integerValue))
+            {
+                value = integerValue;
+                return true;
+            }
+
+            ComptimeEvaluator evaluator = new(
+                fuel: 8,
+                functionBodyResolver: static _ => null,
+                supportResolver: static _ => new ComptimeSupportResult(true, default));
+            ComptimeResult evaluated = evaluator.TryEvaluateExpression(expression);
+            if (evaluated.TryConvertToLong(out long evaluatedValue))
+            {
+                value = evaluatedValue;
+                return true;
+            }
+
+            value = 0;
+            return false;
         }
 
         private MirValueId LowerShortCircuitBinaryExpression(BoundBinaryExpression binaryExpression)

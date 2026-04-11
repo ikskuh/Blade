@@ -1,5 +1,6 @@
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text.RegularExpressions;
 using Blade;
 using Blade.Diagnostics;
@@ -2107,6 +2108,67 @@ public class IrPipelineTests
         Assert.That(Regex.Matches(mir, @"\[flag:NZ\]").Count, Is.EqualTo(1), mir);
         Assert.That(Regex.Matches(mir, @"\[flag:C\]").Count, Is.EqualTo(2), mir);
         Assert.That(Regex.Matches(mir, @"\[flag:NC\]").Count, Is.EqualTo(2), mir);
+    }
+
+    [Test]
+    public void SignedOrderingComparisons_LowerToTestBAndCmps()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            noinline fn compare_signed(value: u32, other: i32) -> u32 {
+                var signed: i32 = bitcast(i32, value);
+                var result: u32 = 0;
+                if (signed < 0) { result |= 0x01; }
+                if (signed >= 0) { result |= 0x02; }
+                if (signed < other) { result |= 0x04; }
+                return result;
+            }
+
+            reg var input_value: u32 = 0x80000000;
+            reg var other_value: i32 = 5;
+            reg var sink: u32 = 0;
+
+            sink = compare_signed(input_value, other_value);
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program);
+
+        Assert.That(Regex.Matches(build.AssemblyText, @"(?m)^\s*TESTB\s+.*#31").Count, Is.EqualTo(2), build.AssemblyText);
+        Assert.That(Regex.Matches(build.AssemblyText, @"(?m)^\s*CMPS\s+").Count, Is.EqualTo(1), build.AssemblyText);
+        Assert.That(Regex.Matches(build.AssemblyText, @"(?m)^\s*CMP\s+").Count, Is.EqualTo(0), build.AssemblyText);
+    }
+
+    [Test]
+    public void SignedComparisonLiteralMatcher_HandlesLiteralConvertedLiteralAndNonConstant()
+    {
+        Type contextType = typeof(MirLowerer).GetNestedType("FunctionLoweringContext", BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("Missing MirLowerer.FunctionLoweringContext.");
+        MethodInfo method = contextType.GetMethod("TryGetIntegerLiteralValue", BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new InvalidOperationException("Missing TryGetIntegerLiteralValue helper.");
+        TextSpan span = new(0, 0);
+
+        object?[] literalArgs = [new BoundLiteralExpression(BladeValue.IntegerLiteral(0), span), 0L];
+        Assert.That(method.Invoke(null, literalArgs), Is.EqualTo(true));
+        Assert.That(literalArgs[1], Is.EqualTo(0L));
+
+        object?[] convertedArgs =
+        [
+            new BoundConversionExpression(new BoundLiteralExpression(BladeValue.IntegerLiteral(0), span), span, BuiltinTypes.I32),
+            1L,
+        ];
+        Assert.That(method.Invoke(null, convertedArgs), Is.EqualTo(true));
+        Assert.That(convertedArgs[1], Is.EqualTo(0L));
+
+        VariableSymbol symbol = CreateVariableSymbol("value", BuiltinTypes.I32);
+        object?[] nonConstantArgs = [new BoundSymbolExpression(symbol, span, BuiltinTypes.I32), 7L];
+        Assert.That(method.Invoke(null, nonConstantArgs), Is.EqualTo(false));
+        Assert.That(nonConstantArgs[1], Is.EqualTo(0L));
+
+        FunctionSymbol function = new("helper", FunctionKind.Default);
+        object?[] callArgs = [new BoundCallExpression(function, [], span, BuiltinTypes.I32), 9L];
+        Assert.That(method.Invoke(null, callArgs), Is.EqualTo(false));
+        Assert.That(callArgs[1], Is.EqualTo(0L));
     }
 
     [Test]

@@ -1,0 +1,17 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - TESTB ?, #31 WC
+// NOTE:
+//   Signed `< 0` must lower to a direct sign-bit test instead of routing through
+//   the generic compare path.
+
+reg var input_value: u32 = 0;
+reg var sink: u32 = 0;
+
+noinline fn is_negative(x: u32) -> u32 {
+    var signed: i32 = bitcast(i32, x);
+    return if (signed < 0) 1 else 0;
+}
+
+sink = is_negative(input_value);

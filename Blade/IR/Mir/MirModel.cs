@@ -126,11 +126,13 @@ public sealed class MirBinaryInstruction(
     BoundBinaryOperatorKind op,
     MirValueId left,
     MirValueId right,
-    TextSpan span) : MirInstruction(result, type, span, hasSideEffects: false)
+    TextSpan span,
+    ComparisonLoweringKind comparisonLoweringKind = ComparisonLoweringKind.Default) : MirInstruction(result, type, span, hasSideEffects: false)
 {
     public BoundBinaryOperatorKind Operator { get; } = op;
     public MirValueId Left { get; } = left;
     public MirValueId Right { get; } = right;
+    public ComparisonLoweringKind ComparisonLoweringKind { get; } = comparisonLoweringKind;
 
     public override IReadOnlyList<MirValueId> Uses => [Left, Right];
 
@@ -140,7 +142,7 @@ public sealed class MirBinaryInstruction(
         MirValueId right = mapping.TryGetValue(Right, out MirValueId mappedRight) ? mappedRight : Right;
         if (left == Left && right == Right)
             return this;
-        return new MirBinaryInstruction(Result!, ResultType!, Operator, left, right, Span);
+        return new MirBinaryInstruction(Result!, ResultType!, Operator, left, right, Span, ComparisonLoweringKind);
     }
 }
 
