@@ -29,23 +29,6 @@ The compiler must not let an `AUGS` intended for one instruction leak into an in
 - Ensure legalization does not emit an immediate `ALTx` that consumes or preserves the wrong `AUGS`.
 - Validate the final assembly ordering/operands so the hazard cannot occur.
 
-## BUG-9: Do not crash on variable declarations with a missing/empty identifier
-
-Reproducer: malformed `var` statement where `VariableDeclarationSyntax.Name.Text` is empty (binder currently throws).
-
-- Create a focused reject demonstrator that omits the identifier in a local var declaration and asserts diagnostics.
-- In `Blade/Semantics/Binder.cs`, guard `CreateVariableSymbol` against `string.IsNullOrWhiteSpace(declaration.Name.Text)`.
-- When the name is missing, emit `E0105_ExpectedIdentifier` (or a more specific binder diagnostic if desired) at the declaration span.
-- Synthesize a unique non-empty placeholder name for error recovery to avoid `Requires.NotNullOrWhitespace` failures.
-- Ensure placeholder names do not collide within the same scope (use a monotonic counter on the binder instance).
-- Ensure global-storage variable declarations follow the same non-crashing path as locals.
-- Ensure follow-on phases treat the symbol as an error-carrying placeholder and avoid cascading null-ref paths.
-- Add a regression that mixes one malformed and one valid declaration in the same scope to validate recovery.
-- Confirm the compiler does not throw during binding, MIR lowering, or dumping for the malformed input.
-- Ensure diagnostic output points at the missing identifier site, not at unrelated later tokens.
-- Run `just regressions` to ensure the recovery change doesn’t hide real diagnostics elsewhere.
-- Acceptance: malformed variable declarations produce diagnostics and the compiler never throws.
-
 ## Backend Lowering Backlog
 
 ### LOW-6: Implement non-aligned bitfield insert
