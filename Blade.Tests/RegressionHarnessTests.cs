@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.Json;
+using Blade.HwTestRunner;
 using Blade.Regressions;
 
 namespace Blade.Tests;
@@ -368,6 +369,96 @@ public sealed class RegressionHarnessTests
         finally
         {
             Environment.SetEnvironmentVariable("BLADE_TEST_PORT", previous);
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void RegressionCommandLine_ParsesHardwareLoaderFlag()
+    {
+        RegressionRunOptions turbopropOptions = ParseRegressionCommandLine("--hw-loader", "turboprop");
+        RegressionRunOptions loadp2Options = ParseRegressionCommandLine("--hw-loader", "loadp2");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(turbopropOptions.HardwareLoader, Is.EqualTo(HardwareLoaderKind.Turboprop));
+            Assert.That(loadp2Options.HardwareLoader, Is.EqualTo(HardwareLoaderKind.Loadp2));
+        });
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void RegressionCommandLine_UsesEnvironmentHardwareLoaderWhenCliFlagIsAbsent()
+    {
+        string? previous = Environment.GetEnvironmentVariable(HardwareLoaderSettings.LoaderEnvironmentVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(HardwareLoaderSettings.LoaderEnvironmentVariable, "turboprop");
+            RegressionRunOptions options = ParseRegressionCommandLine();
+            Assert.That(options.HardwareLoader, Is.EqualTo(HardwareLoaderKind.Turboprop));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(HardwareLoaderSettings.LoaderEnvironmentVariable, previous);
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void RegressionCommandLine_CliHardwareLoaderOverridesEnvironment()
+    {
+        string? previous = Environment.GetEnvironmentVariable(HardwareLoaderSettings.LoaderEnvironmentVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(HardwareLoaderSettings.LoaderEnvironmentVariable, "turboprop");
+            RegressionRunOptions options = ParseRegressionCommandLine("--hw-loader", "loadp2");
+            Assert.That(options.HardwareLoader, Is.EqualTo(HardwareLoaderKind.Loadp2));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(HardwareLoaderSettings.LoaderEnvironmentVariable, previous);
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void RegressionCommandLine_UsesEnvironmentTurbopropNoVersionCheckWhenCliFlagIsAbsent()
+    {
+        string? previous = Environment.GetEnvironmentVariable(HardwareLoaderSettings.TurbopropNoVersionCheckEnvironmentVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(HardwareLoaderSettings.TurbopropNoVersionCheckEnvironmentVariable, "true");
+            RegressionRunOptions options = ParseRegressionCommandLine();
+            Assert.That(options.HardwareTurbopropNoVersionCheck, Is.True);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(HardwareLoaderSettings.TurbopropNoVersionCheckEnvironmentVariable, previous);
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void RegressionCommandLine_ParsesTurbopropNoVersionCheckFlag()
+    {
+        RegressionRunOptions options = ParseRegressionCommandLine("--hw-turboprop-no-version-check");
+        Assert.That(options.HardwareTurbopropNoVersionCheck, Is.True);
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void RegressionCommandLine_VersionCheckFlagOverridesEnvironment()
+    {
+        string? previous = Environment.GetEnvironmentVariable(HardwareLoaderSettings.TurbopropNoVersionCheckEnvironmentVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(HardwareLoaderSettings.TurbopropNoVersionCheckEnvironmentVariable, "true");
+            RegressionRunOptions options = ParseRegressionCommandLine("--hw-turboprop-version-check");
+            Assert.That(options.HardwareTurbopropNoVersionCheck, Is.False);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(HardwareLoaderSettings.TurbopropNoVersionCheckEnvironmentVariable, previous);
         }
     }
 

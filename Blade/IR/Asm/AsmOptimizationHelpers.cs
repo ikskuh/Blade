@@ -59,6 +59,9 @@ internal static class AsmOptimizationHelpers
         if (left.AddressingMode != right.AddressingMode)
             return false;
 
+        if (left.Offset != right.Offset)
+            return false;
+
         if (ReferenceEquals(left.Symbol, right.Symbol))
             return true;
 

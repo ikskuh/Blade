@@ -25,6 +25,10 @@
       <HintPath>..\Blade\bin\$(Configuration)\net10.0\blade.dll</HintPath>
       <Private>true</Private>
     </Reference>
+    <Reference Include="Blade.HwTestRunner">
+      <HintPath>..\Blade.HwTestRunner\bin\$(Configuration)\net10.0\Blade.HwTestRunner.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
     <Reference Include="Blade.Regressions">
       <HintPath>..\Blade.Regressions\bin\$(Configuration)\net10.0\Blade.Regressions.dll</HintPath>
       <Private>true</Private>

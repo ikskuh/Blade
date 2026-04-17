@@ -170,9 +170,24 @@ public static class AsmLowerer
 
     private static int GetPlaceEntryCount(StoragePlace place)
     {
-        return place.Symbol is VariableSymbol { Type: ArrayTypeSymbol { Length: int length } }
-            ? length
-            : 1;
+        if (place.Symbol is not VariableSymbol variable)
+            return 1;
+
+        RuntimeTypeSymbol runtimeType = variable.Type switch
+        {
+            ArrayTypeSymbol arrayType => arrayType.ElementType as RuntimeTypeSymbol
+                ?? Assert.UnreachableValue<RuntimeTypeSymbol>(), // pragma: force-coverage
+            RuntimeTypeSymbol directType => directType,
+            _ => Assert.UnreachableValue<RuntimeTypeSymbol>(), // pragma: force-coverage
+        };
+
+        int elementCount = variable.Type is ArrayTypeSymbol { Length: int length } ? length : 1;
+        if (place.StorageClass is VariableStorageClass.Reg or VariableStorageClass.Lut)
+            return elementCount * runtimeType.GetSizeInMemorySpace(place.StorageClass);
+
+        return runtimeType is AggregateTypeSymbol
+            ? elementCount * GetAggregateLaneCount(runtimeType)
+            : elementCount;
     }
 
     private static IReadOnlyList<AsmOperand>? LowerDataInitialValue(
@@ -232,8 +247,10 @@ public static class AsmLowerer
         public DiagnosticBag? Diagnostics { get; } = diagnostics;
         public HashSet<UnsupportedLoweringKey> ReportedUnsupportedLowerings { get; } = [];
         public Dictionary<LirBlockRef, ControlFlowLabelSymbol> BlockLabels { get; } = [];
+        public IReadOnlyDictionary<LirVirtualRegister, BladeType> RegisterTypes { get; } = BuildRegisterTypeMap(function);
         public RegisterAssociator Registers { get; } = new();
         public Dictionary<VirtualAsmRegister, AsmRegisterConstraint> RegisterConstraints { get; } = [];
+        public Dictionary<LirVirtualRegister, IReadOnlyList<VirtualAsmRegister>> AggregateRegisters { get; } = [];
         public List<StoragePlace> SharedRegisterPlaces { get; } = [];
         public int NextInlineAsmBlockOrdinal { get; set; }
         public int NextRepLabelOrdinal { get; set; }
@@ -266,9 +283,49 @@ public static class AsmLowerer
             return Registers.FromLir(register);
         }
 
+        public VirtualAsmRegister GetRegisterLane(LirVirtualRegister register, BladeType? type, int lane)
+        {
+            Requires.NonNegative(lane);
+            if (!IsAggregateValueType(type))
+            {
+                if (lane == 0)
+                    return GetRegister(register);
+
+                if (AggregateRegisters.TryGetValue(register, out IReadOnlyList<VirtualAsmRegister>? unknownLanes)
+                    && lane < unknownLanes.Count)
+                {
+                    return unknownLanes[lane];
+                }
+
+                int createdLaneCount = lane + 1;
+                List<VirtualAsmRegister> createdUnknown = new(createdLaneCount);
+                for (int i = 0; i < createdLaneCount; i++)
+                    createdUnknown.Add(i == 0 ? GetRegister(register) : new VirtualAsmRegister());
+                AggregateRegisters[register] = createdUnknown;
+                return createdUnknown[lane];
+            }
+
+            int laneCount = GetAggregateLaneCount(type);
+            Assert.Invariant(lane < laneCount, $"Aggregate lane {lane} must be inside lane count {laneCount}.");
+            if (AggregateRegisters.TryGetValue(register, out IReadOnlyList<VirtualAsmRegister>? lanes))
+                return lanes[lane];
+
+            List<VirtualAsmRegister> created = new(laneCount);
+            for (int i = 0; i < laneCount; i++)
+                created.Add(i == 0 ? GetRegister(register) : new VirtualAsmRegister());
+            AggregateRegisters.Add(register, created);
+            return created[lane];
+        }
+
         public void TieRegisterToPlace(LirVirtualRegister register, StoragePlace place)
         {
             VirtualAsmRegister asmRegister = GetRegister(register);
+            RegisterConstraints[asmRegister] = new AsmRegisterConstraint(place);
+        }
+
+        public void TieRegisterLaneToPlace(LirVirtualRegister register, BladeType? type, int lane, StoragePlace place)
+        {
+            VirtualAsmRegister asmRegister = GetRegisterLane(register, type, lane);
             RegisterConstraints[asmRegister] = new AsmRegisterConstraint(place);
         }
 
@@ -277,30 +334,38 @@ public static class AsmLowerer
             VirtualAsmRegister asmRegister = GetRegister(register);
             RegisterConstraints[asmRegister] = new AsmRegisterConstraint(new P2Register(specialRegister));
         }
+
+        public void FixRegisterLaneToSpecialRegister(LirVirtualRegister register, BladeType? type, int lane, P2SpecialRegister specialRegister)
+        {
+            VirtualAsmRegister asmRegister = GetRegisterLane(register, type, lane);
+            RegisterConstraints[asmRegister] = new AsmRegisterConstraint(new P2Register(specialRegister));
+        }
     }
 
     private sealed class SpecializedCallingConventionInfo(
         P2SpecialRegister transportRegister,
-        IReadOnlyList<StoragePlace> parameterPlaces)
+        IReadOnlyList<StoragePlace> parameterPlaces,
+        IReadOnlyList<StoragePlace> registerReturnPlaces)
     {
         public P2SpecialRegister TransportRegister { get; } = transportRegister;
         public IReadOnlyList<StoragePlace> ParameterPlaces { get; } = parameterPlaces;
+        public IReadOnlyList<StoragePlace> RegisterReturnPlaces { get; } = registerReturnPlaces;
     }
 
     private sealed class GeneralCallingConventionInfo(
         IReadOnlyList<StoragePlace> parameterPlaces,
-        StoragePlace? registerReturnPlace)
+        IReadOnlyList<StoragePlace> registerReturnPlaces)
     {
         public IReadOnlyList<StoragePlace> ParameterPlaces { get; } = parameterPlaces;
-        public StoragePlace? RegisterReturnPlace { get; } = registerReturnPlace;
+        public IReadOnlyList<StoragePlace> RegisterReturnPlaces { get; } = registerReturnPlaces;
     }
 
     private sealed class RecursiveCallingConventionInfo(
         IReadOnlyList<StoragePlace> parameterPlaces,
-        StoragePlace? registerReturnPlace)
+        IReadOnlyList<StoragePlace> registerReturnPlaces)
     {
         public IReadOnlyList<StoragePlace> ParameterPlaces { get; } = parameterPlaces;
-        public StoragePlace? RegisterReturnPlace { get; } = registerReturnPlace;
+        public IReadOnlyList<StoragePlace> RegisterReturnPlaces { get; } = registerReturnPlaces;
     }
 
     private sealed class CoroutineCallingConventionInfo(
@@ -365,37 +430,38 @@ public static class AsmLowerer
             {
                 Assert.Invariant(function.Blocks.Count > 0, "Specialized functions must have an entry block.");
                 IReadOnlyList<LirBlockParameter> entryParameters = function.Blocks[0].Parameters;
-                List<StoragePlace> parameterPlaces = new(entryParameters.Count);
+                List<StoragePlace> parameterPlaces = [];
                 for (int i = 0; i < entryParameters.Count; i++)
                 {
                     string abiPrefix = functionTier == CallingConventionTier.Leaf ? "leaf" : "second";
-                    StoragePlace parameterPlace = CreateInternalRegisterPlace(
+                    AddInternalRegisterPlaces(
+                        storagePlaces,
+                        parameterPlaces,
                         $"{abiPrefix}_{function.Name}_arg{i}",
                         entryParameters[i].Type,
                         StoragePlaceRegisterRole.InternalShared);
-                    parameterPlaces.Add(parameterPlace);
-                    storagePlaces.Add(parameterPlace);
                 }
 
                 P2SpecialRegister transportRegister = functionTier == CallingConventionTier.Leaf
                     ? P2SpecialRegister.PA
                     : P2SpecialRegister.PB;
-                specializedCallingConvention[function.Symbol] = new SpecializedCallingConventionInfo(transportRegister, parameterPlaces);
+                List<StoragePlace> returnPlaces = CreateSpecializedReturnPlaces(function, functionTier, storagePlaces);
+                specializedCallingConvention[function.Symbol] = new SpecializedCallingConventionInfo(transportRegister, parameterPlaces, returnPlaces);
             }
             else if (functionTier == CallingConventionTier.General)
             {
                 Assert.Invariant(function.Blocks.Count > 0, "General functions must have an entry block.");
                 IReadOnlyList<LirBlockParameter> entryParameters = function.Blocks[0].Parameters;
-                List<StoragePlace> parameterPlaces = new(entryParameters.Count);
+                List<StoragePlace> parameterPlaces = [];
                 for (int i = 0; i < entryParameters.Count; i++)
                 {
-                    StoragePlace parameterPlace = CreateInternalRegisterPlace(
+                    AddInternalRegisterPlaces(
+                        storagePlaces,
+                        parameterPlaces,
                         $"gen_{function.Name}_arg{i}",
                         entryParameters[i].Type,
                         StoragePlaceRegisterRole.InternalShared,
                         preferredRegisters: i == 0 ? [new P2Register(P2SpecialRegister.PB), new P2Register(P2SpecialRegister.PA)] : null);
-                    parameterPlaces.Add(parameterPlace);
-                    storagePlaces.Add(parameterPlace);
                 }
 
                 ReturnSlot? registerReturnSlot = function.ReturnSlots
@@ -403,40 +469,51 @@ public static class AsmLowerer
                     .Cast<ReturnSlot?>()
                     .FirstOrDefault();
 
-                StoragePlace? registerReturnPlace = null;
+                List<StoragePlace> registerReturnPlaces = [];
                 if (registerReturnSlot is { } slot)
                 {
+                    int returnLaneCount = GetAggregateLaneCount(slot.Type);
                     if (parameterPlaces.Count > 0)
                     {
-                        registerReturnPlace = parameterPlaces[0];
+                        registerReturnPlaces.Add(parameterPlaces[0]);
+                        for (int lane = 1; lane < returnLaneCount; lane++)
+                        {
+                            StoragePlace returnPlace = CreateInternalRegisterPlace(
+                                $"gen_{function.Name}_ret0_lane{lane}",
+                                BuiltinTypes.U32,
+                                StoragePlaceRegisterRole.InternalShared);
+                            registerReturnPlaces.Add(returnPlace);
+                            storagePlaces.Add(returnPlace);
+                        }
                     }
                     else
                     {
-                        registerReturnPlace = CreateInternalRegisterPlace(
+                        AddInternalRegisterPlaces(
+                            storagePlaces,
+                            registerReturnPlaces,
                             $"gen_{function.Name}_ret0",
                             slot.Type,
                             StoragePlaceRegisterRole.InternalShared,
                             preferredRegisters: [new P2Register(P2SpecialRegister.PB), new P2Register(P2SpecialRegister.PA)]);
-                        storagePlaces.Add(registerReturnPlace);
                     }
                 }
 
-                generalCallingConvention[function.Symbol] = new GeneralCallingConventionInfo(parameterPlaces, registerReturnPlace);
+                generalCallingConvention[function.Symbol] = new GeneralCallingConventionInfo(parameterPlaces, registerReturnPlaces);
             }
             else if (functionTier == CallingConventionTier.Recursive)
             {
                 Assert.Invariant(function.Blocks.Count > 0, "Recursive functions must have an entry block.");
                 IReadOnlyList<LirBlockParameter> entryParameters = function.Blocks[0].Parameters;
-                List<StoragePlace> parameterPlaces = new(entryParameters.Count);
+                List<StoragePlace> parameterPlaces = [];
                 for (int i = 0; i < entryParameters.Count; i++)
                 {
-                    StoragePlace parameterPlace = CreateInternalRegisterPlace(
+                    AddInternalRegisterPlaces(
+                        storagePlaces,
+                        parameterPlaces,
                         $"rec_{function.Name}_arg{i}",
                         entryParameters[i].Type,
                         StoragePlaceRegisterRole.InternalShared,
                         preferredRegisters: i == 0 ? [new P2Register(P2SpecialRegister.PB), new P2Register(P2SpecialRegister.PA)] : null);
-                    parameterPlaces.Add(parameterPlace);
-                    storagePlaces.Add(parameterPlace);
                 }
 
                 ReturnSlot? registerReturnSlot = function.ReturnSlots
@@ -444,35 +521,36 @@ public static class AsmLowerer
                     .Cast<ReturnSlot?>()
                     .FirstOrDefault();
 
-                StoragePlace? registerReturnPlace = null;
+                List<StoragePlace> registerReturnPlaces = [];
                 if (registerReturnSlot is { } slot)
                 {
                     IReadOnlyList<P2Register> preferredReturnRegisters = parameterPlaces.Count > 0
                         ? [new P2Register(P2SpecialRegister.PA), new P2Register(P2SpecialRegister.PB)]
                         : [new P2Register(P2SpecialRegister.PB), new P2Register(P2SpecialRegister.PA)];
-                    registerReturnPlace = CreateInternalRegisterPlace(
+                    AddInternalRegisterPlaces(
+                        storagePlaces,
+                        registerReturnPlaces,
                         $"rec_{function.Name}_ret0",
                         slot.Type,
                         StoragePlaceRegisterRole.InternalShared,
                         preferredRegisters: preferredReturnRegisters);
-                    storagePlaces.Add(registerReturnPlace);
                 }
 
-                recursiveCallingConvention[function.Symbol] = new RecursiveCallingConventionInfo(parameterPlaces, registerReturnPlace);
+                recursiveCallingConvention[function.Symbol] = new RecursiveCallingConventionInfo(parameterPlaces, registerReturnPlaces);
             }
             else if (functionTier == CallingConventionTier.Coroutine)
             {
                 Assert.Invariant(function.Blocks.Count > 0, "Coroutine functions must have an entry block.");
                 IReadOnlyList<LirBlockParameter> entryParameters = function.Blocks[0].Parameters;
-                List<StoragePlace> parameterPlaces = new(entryParameters.Count);
+                List<StoragePlace> parameterPlaces = [];
                 for (int i = 0; i < entryParameters.Count; i++)
                 {
-                    StoragePlace parameterPlace = CreateInternalRegisterPlace(
+                    AddInternalRegisterPlaces(
+                        storagePlaces,
+                        parameterPlaces,
                         $"coro_{function.Name}_arg{i}",
                         entryParameters[i].Type,
                         StoragePlaceRegisterRole.InternalDedicated);
-                    parameterPlaces.Add(parameterPlace);
-                    storagePlaces.Add(parameterPlace);
                 }
 
                 ControlFlowLabelSymbol entryLabel = new($"{function.Name}_bb0");
@@ -507,6 +585,58 @@ public static class AsmLowerer
 
         BackendSymbolNaming.AssignStorageNames(storagePlaces);
         return (storagePlaces, specializedCallingConvention, generalCallingConvention, recursiveCallingConvention, coroutineCallingConvention, topLevelYieldStatePlace);
+    }
+
+    private static List<StoragePlace> CreateSpecializedReturnPlaces(
+        LirFunction function,
+        CallingConventionTier functionTier,
+        ICollection<StoragePlace> storagePlaces)
+    {
+        ReturnSlot? registerReturnSlot = function.ReturnSlots
+            .Where(static slot => slot.Placement == ReturnPlacement.Register)
+            .Cast<ReturnSlot?>()
+            .FirstOrDefault();
+        List<StoragePlace> returnPlaces = [];
+        if (registerReturnSlot is not { } slot)
+            return returnPlaces;
+
+        int returnLaneCount = GetAggregateLaneCount(slot.Type);
+        if (returnLaneCount <= 1)
+            return returnPlaces;
+
+        string abiPrefix = functionTier == CallingConventionTier.Leaf ? "leaf" : "second";
+        for (int lane = 1; lane < returnLaneCount; lane++)
+        {
+            StoragePlace returnPlace = CreateInternalRegisterPlace(
+                $"{abiPrefix}_{function.Name}_ret0_lane{lane}",
+                BuiltinTypes.U32,
+                StoragePlaceRegisterRole.InternalShared);
+            returnPlaces.Add(returnPlace);
+            storagePlaces.Add(returnPlace);
+        }
+
+        return returnPlaces;
+    }
+
+    private static void AddInternalRegisterPlaces(
+        ICollection<StoragePlace> storagePlaces,
+        ICollection<StoragePlace> destination,
+        string name,
+        BladeType type,
+        StoragePlaceRegisterRole registerRole,
+        IReadOnlyList<P2Register>? preferredRegisters = null)
+    {
+        int laneCount = GetAggregateLaneCount(type);
+        for (int lane = 0; lane < laneCount; lane++)
+        {
+            StoragePlace place = CreateInternalRegisterPlace(
+                laneCount == 1 ? name : $"{name}_lane{lane}",
+                laneCount == 1 ? type : BuiltinTypes.U32,
+                registerRole,
+                preferredRegisters: lane == 0 ? preferredRegisters : null);
+            destination.Add(place);
+            storagePlaces.Add(place);
+        }
     }
 
     private static StoragePlace CreateInternalRegisterPlace(
@@ -579,15 +709,20 @@ public static class AsmLowerer
                 {
                     bool found = ctx.GeneralCallingConvention.TryGetValue(ctx.Function.Symbol, out GeneralCallingConventionInfo? info);
                     Assert.Invariant(found, "General functions must have calling-convention metadata.");
-                    Assert.Invariant(info!.ParameterPlaces.Count == block.Parameters.Count, "General entry ABI must match the function parameter list.");
-                    for (int i = 0; i < block.Parameters.Count; i++)
+                    Assert.Invariant(info!.ParameterPlaces.Count == GetFlattenedParameterLaneCount(block.Parameters), "General entry ABI must match the function parameter list.");
+                    int placeIndex = 0;
+                    foreach (LirBlockParameter parameter in block.Parameters)
                     {
-                        ctx.TieRegisterToPlace(block.Parameters[i].Register, info.ParameterPlaces[i]);
-                        ctx.SharedRegisterPlaces.Add(info.ParameterPlaces[i]);
+                        int laneCount = GetAggregateLaneCount(parameter.Type);
+                        for (int lane = 0; lane < laneCount; lane++)
+                        {
+                            StoragePlace parameterPlace = info.ParameterPlaces[placeIndex++];
+                            ctx.TieRegisterLaneToPlace(parameter.Register, parameter.Type, lane, parameterPlace);
+                            ctx.SharedRegisterPlaces.Add(parameterPlace);
+                        }
                     }
 
-                    if (info.RegisterReturnPlace is not null)
-                        ctx.SharedRegisterPlaces.Add(info.RegisterReturnPlace);
+                    ctx.SharedRegisterPlaces.AddRange(info.RegisterReturnPlaces);
                     break;
                 }
 
@@ -595,15 +730,20 @@ public static class AsmLowerer
                 {
                     bool found = ctx.RecursiveCallingConvention.TryGetValue(ctx.Function.Symbol, out RecursiveCallingConventionInfo? info);
                     Assert.Invariant(found, "Recursive functions must have calling-convention metadata.");
-                    Assert.Invariant(info!.ParameterPlaces.Count == block.Parameters.Count, "Recursive entry ABI must match the function parameter list.");
-                    for (int i = 0; i < block.Parameters.Count; i++)
+                    Assert.Invariant(info!.ParameterPlaces.Count == GetFlattenedParameterLaneCount(block.Parameters), "Recursive entry ABI must match the function parameter list.");
+                    int placeIndex = 0;
+                    foreach (LirBlockParameter parameter in block.Parameters)
                     {
-                        ctx.TieRegisterToPlace(block.Parameters[i].Register, info.ParameterPlaces[i]);
-                        ctx.SharedRegisterPlaces.Add(info.ParameterPlaces[i]);
+                        int laneCount = GetAggregateLaneCount(parameter.Type);
+                        for (int lane = 0; lane < laneCount; lane++)
+                        {
+                            StoragePlace parameterPlace = info.ParameterPlaces[placeIndex++];
+                            ctx.TieRegisterLaneToPlace(parameter.Register, parameter.Type, lane, parameterPlace);
+                            ctx.SharedRegisterPlaces.Add(parameterPlace);
+                        }
                     }
 
-                    if (info.RegisterReturnPlace is not null)
-                        ctx.SharedRegisterPlaces.Add(info.RegisterReturnPlace);
+                    ctx.SharedRegisterPlaces.AddRange(info.RegisterReturnPlaces);
                     break;
                 }
 
@@ -611,9 +751,17 @@ public static class AsmLowerer
                 {
                     bool found = ctx.CoroutineCallingConvention.TryGetValue(ctx.Function.Symbol, out CoroutineCallingConventionInfo? info);
                     Assert.Invariant(found, "Coroutine functions must have calling-convention metadata.");
-                    Assert.Invariant(info!.ParameterPlaces.Count == block.Parameters.Count, "Coroutine entry ABI must match the function parameter list.");
-                    for (int i = 0; i < block.Parameters.Count; i++)
-                        ctx.TieRegisterToPlace(block.Parameters[i].Register, info.ParameterPlaces[i]);
+                    Assert.Invariant(info!.ParameterPlaces.Count == GetFlattenedParameterLaneCount(block.Parameters), "Coroutine entry ABI must match the function parameter list.");
+                    int placeIndex = 0;
+                    foreach (LirBlockParameter parameter in block.Parameters)
+                    {
+                        int laneCount = GetAggregateLaneCount(parameter.Type);
+                        for (int lane = 0; lane < laneCount; lane++)
+                        {
+                            StoragePlace parameterPlace = info.ParameterPlaces[placeIndex++];
+                            ctx.TieRegisterLaneToPlace(parameter.Register, parameter.Type, lane, parameterPlace);
+                        }
+                    }
                     break;
                 }
         }
@@ -623,21 +771,28 @@ public static class AsmLowerer
     {
         bool found = ctx.SpecializedCallingConvention.TryGetValue(ctx.Function.Symbol, out SpecializedCallingConventionInfo? info);
         Assert.Invariant(found, "Specialized functions must have calling-convention metadata.");
-        Assert.Invariant(info!.ParameterPlaces.Count == block.Parameters.Count, "Specialized entry ABI must match the function parameter list.");
+        Assert.Invariant(info!.ParameterPlaces.Count == GetFlattenedParameterLaneCount(block.Parameters), "Specialized entry ABI must match the function parameter list.");
 
-        for (int i = 0; i < block.Parameters.Count; i++)
+        int placeIndex = 0;
+        foreach (LirBlockParameter parameter in block.Parameters)
         {
-            StoragePlace parameterPlace = info.ParameterPlaces[i];
-            ctx.TieRegisterToPlace(block.Parameters[i].Register, parameterPlace);
-            ctx.SharedRegisterPlaces.Add(parameterPlace);
+            int laneCount = GetAggregateLaneCount(parameter.Type);
+            for (int lane = 0; lane < laneCount; lane++)
+            {
+                StoragePlace parameterPlace = info.ParameterPlaces[placeIndex++];
+                ctx.TieRegisterLaneToPlace(parameter.Register, parameter.Type, lane, parameterPlace);
+                ctx.SharedRegisterPlaces.Add(parameterPlace);
+            }
         }
+
+        ctx.SharedRegisterPlaces.AddRange(info.RegisterReturnPlaces);
     }
 
     private static void EmitSpecializedFunctionEntryLoads(List<AsmNode> nodes, LirBlock block, LoweringContext ctx)
     {
         bool found = ctx.SpecializedCallingConvention.TryGetValue(ctx.Function.Symbol, out SpecializedCallingConventionInfo? info);
         Assert.Invariant(found, "Specialized functions must have calling-convention metadata.");
-        Assert.Invariant(info!.ParameterPlaces.Count == block.Parameters.Count, "Specialized entry ABI must match the function parameter list.");
+        Assert.Invariant(info!.ParameterPlaces.Count == GetFlattenedParameterLaneCount(block.Parameters), "Specialized entry ABI must match the function parameter list.");
 
         if (info.ParameterPlaces.Count == 0)
             return;
@@ -1002,6 +1157,12 @@ public static class AsmLowerer
 
     private static void LowerConst(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
+        if (IsAggregateValueType(op.ResultType))
+        {
+            ZeroAggregate(nodes, op.Destination!, op.ResultType, ctx);
+            return;
+        }
+
         AsmRegisterOperand dest = DestReg(op, ctx);
         if (op.Operands.Count == 0)
         {
@@ -1028,6 +1189,12 @@ public static class AsmLowerer
 
     private static void LowerMov(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
+        if (IsAggregateValueType(op.ResultType))
+        {
+            CopyAggregateValue(nodes, op.Destination!, op.ResultType, op.Operands[0], ctx);
+            return;
+        }
+
         AsmRegisterOperand dest = DestReg(op, ctx);
         AsmRegisterOperand src = OpReg(op.Operands[0], ctx);
         nodes.Add(Emit(P2Mnemonic.MOV, dest, src));
@@ -1035,8 +1202,37 @@ public static class AsmLowerer
 
     private static void LowerLoadPlace(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
-        AsmRegisterOperand dest = DestReg(op, ctx);
         AsmSymbolOperand place = (AsmSymbolOperand)LowerOperand(op.Operands[0], ctx);
+        StoragePlace storagePlace = (StoragePlace)place.Symbol;
+
+        if (IsAggregateValueType(op.ResultType))
+        {
+            int laneCount = GetAggregateLaneCount(op.ResultType);
+            for (int lane = 0; lane < laneCount; lane++)
+            {
+                AsmRegisterOperand destLane = DestRegLane(op, lane, ctx);
+                AsmSymbolOperand placeLane = CreatePlaceLaneOperand(storagePlace, lane);
+                switch (storagePlace.StorageClass)
+                {
+                    case VariableStorageClass.Lut:
+                        nodes.Add(Emit(P2Mnemonic.RDLUT, destLane, placeLane));
+                        break;
+                    case VariableStorageClass.Hub:
+                        nodes.Add(Emit(P2Mnemonic.RDLONG, destLane, placeLane));
+                        break;
+                    case VariableStorageClass.Reg:
+                        nodes.Add(Emit(P2Mnemonic.MOV, destLane, placeLane));
+                        break;
+                    default:
+                        Assert.Unreachable($"Unexpected storage class: {storagePlace.StorageClass}"); // pragma: force-coverage
+                        break; // pragma: force-coverage
+                }
+            }
+
+            return;
+        }
+
+        AsmRegisterOperand dest = DestReg(op, ctx);
 
         // For array-typed places in LUT/Hub, produce the base address (not the
         // stored value) because subsequent index operations need an address to
@@ -1044,8 +1240,6 @@ public static class AsmLowerer
         // #label (hub) or #label - $200 (LUT), so a plain MOV gives us the
         // address immediate.
         bool isArrayBase = op.ResultType is ArrayTypeSymbol;
-
-        StoragePlace storagePlace = (StoragePlace)place.Symbol;
 
         switch (storagePlace.StorageClass)
         {
@@ -1098,6 +1292,19 @@ public static class AsmLowerer
         LoweringContext ctx)
     {
         AggregateMemberSymbol member = operation.Member;
+        BladeType? receiverType = GetRegisterOperandType(op.Operands[0], ctx);
+        if (IsAggregateValueType(op.ResultType))
+        {
+            if (!TryCopyAggregateMemberLanes(nodes, op.Destination!, op.ResultType, op.Operands[0], receiverType, member.ByteOffset, ctx))
+            {
+                ReportUnsupportedOpcode(ctx, op);
+                nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
+            }
+
+            return;
+        }
+
+        AsmRegisterOperand dest = DestReg(op, ctx);
         if (!TryGetAggregateValueShape(member.ByteOffset, op.ResultType, out AggregateAccessShape shape))
         {
             ReportUnsupportedOpcode(ctx, op);
@@ -1105,8 +1312,7 @@ public static class AsmLowerer
             return;
         }
 
-        AsmRegisterOperand dest = DestReg(op, ctx);
-        AsmRegisterOperand receiver = OpReg(op.Operands[0], ctx);
+        AsmRegisterOperand receiver = OpRegLane(op.Operands[0], receiverType, shape.Lane, ctx);
         EmitAggregateExtract(nodes, dest, receiver, shape, op.ResultType);
     }
 
@@ -1215,6 +1421,19 @@ public static class AsmLowerer
         LoweringContext ctx)
     {
         AggregateMemberSymbol member = operation.Member;
+        CopyAggregateValue(nodes, op.Destination!, op.ResultType, op.Operands[0], ctx);
+
+        if (IsAggregateValueType(member.Type))
+        {
+            if (!TryStoreAggregateValueIntoAggregate(nodes, op.Destination!, op.ResultType, member.ByteOffset, op.Operands[1], member.Type, ctx))
+            {
+                ReportUnsupportedOpcode(ctx, op);
+                nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
+            }
+
+            return;
+        }
+
         if (!TryGetAggregateMemberShape(op.ResultType, member.Name, member.ByteOffset, out AggregateAccessShape shape))
         {
             ReportUnsupportedOpcode(ctx, op);
@@ -1222,10 +1441,9 @@ public static class AsmLowerer
             return;
         }
 
-        AsmRegisterOperand dest = DestReg(op, ctx);
-        AsmRegisterOperand receiver = OpReg(op.Operands[0], ctx);
         AsmRegisterOperand value = OpReg(op.Operands[1], ctx);
-        EmitAggregateInsert(nodes, dest, receiver, value, shape);
+        AsmRegisterOperand destLane = DestRegLane(op, shape.Lane, ctx);
+        EmitAggregateInsertInPlace(nodes, destLane, value, shape);
     }
 
     private static int GetHubElementSize(BladeType? type)
@@ -1269,25 +1487,29 @@ public static class AsmLowerer
         Assert.Invariant(op.ResultType is StructTypeSymbol, $"Struct literal '{op.DisplayName}' must produce a struct result type.");
         StructTypeSymbol structType = (StructTypeSymbol)op.ResultType;
 
-        if (!TryGetSingleWordAggregateSize(structType, out _))
-        {
-            ReportUnsupportedOpcode(ctx, op);
-            nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
-            return;
-        }
-
         Assert.Invariant(
             operation.Members.Count == op.Operands.Count,
             $"Struct literal '{op.DisplayName}' must have the same number of members and operands.");
 
-        AsmRegisterOperand dest = DestReg(op, ctx);
-        nodes.Add(Emit(P2Mnemonic.MOV, dest, new AsmImmediateOperand(0)));
+        ZeroAggregate(nodes, op.Destination!, op.ResultType, ctx);
 
         for (int i = 0; i < op.Operands.Count; i++)
         {
             AggregateMemberSymbol member = operation.Members[i];
             bool found = structType.Members.TryGetValue(member.Name, out AggregateMemberSymbol? resolvedMember);
             Assert.Invariant(found, $"Struct literal member '{member.Name}' must exist on '{structType.Name}'.");
+
+            if (IsAggregateValueType(resolvedMember!.Type))
+            {
+                if (!TryStoreAggregateValueIntoAggregate(nodes, op.Destination!, op.ResultType, resolvedMember.ByteOffset, op.Operands[i], resolvedMember.Type, ctx))
+                {
+                    ReportUnsupportedOpcode(ctx, op);
+                    nodes.Add(new AsmCommentNode($"unhandled: {op.DisplayName}"));
+                    return;
+                }
+
+                continue;
+            }
 
             if (!TryGetAggregateMemberShape(structType, resolvedMember!.Name, resolvedMember.ByteOffset, out AggregateAccessShape shape))
             {
@@ -1297,7 +1519,8 @@ public static class AsmLowerer
             }
 
             AsmRegisterOperand value = OpReg(op.Operands[i], ctx);
-            EmitAggregateInsert(nodes, dest, dest, value, shape);
+            AsmRegisterOperand destLane = DestRegLane(op, shape.Lane, ctx);
+            EmitAggregateInsertInPlace(nodes, destLane, value, shape);
         }
     }
 
@@ -1417,9 +1640,9 @@ public static class AsmLowerer
         }
 
         int sizeBytes = runtimeMemberType.SizeBytes;
-        if (sizeBytes <= 0
-            || byteOffset < 0
-            || byteOffset + sizeBytes > 4)
+        int lane = byteOffset / 4;
+        int byteOffsetInLane = byteOffset % 4;
+        if (sizeBytes <= 0 || byteOffset < 0 || byteOffsetInLane + sizeBytes > 4)
         {
             return false;
         }
@@ -1427,15 +1650,15 @@ public static class AsmLowerer
         AggregateAccessKind kind = sizeBytes switch
         {
             1 => AggregateAccessKind.Byte,
-            2 when byteOffset % 2 == 0 => AggregateAccessKind.Word,
-            4 when byteOffset == 0 => AggregateAccessKind.Long,
+            2 when byteOffsetInLane % 2 == 0 => AggregateAccessKind.Word,
+            4 when byteOffsetInLane == 0 => AggregateAccessKind.Long,
             _ => AggregateAccessKind.Invalid,
         };
 
         if (kind == AggregateAccessKind.Invalid)
             return false;
 
-        shape = new AggregateAccessShape(kind, byteOffset);
+        shape = new AggregateAccessShape(kind, lane, byteOffsetInLane);
         return true;
     }
 
@@ -1448,9 +1671,6 @@ public static class AsmLowerer
         shape = default;
 
         if (aggregateType is not AggregateTypeSymbol resolvedAggregateType)
-            return false;
-
-        if (!TryGetSingleWordAggregateSize(resolvedAggregateType, out _))
             return false;
 
         if (!resolvedAggregateType.Members.TryGetValue(memberName, out AggregateMemberSymbol? member))
@@ -1503,6 +1723,15 @@ public static class AsmLowerer
         AggregateAccessShape shape)
     {
         nodes.Add(Emit(P2Mnemonic.MOV, dest, receiver));
+        EmitAggregateInsertInPlace(nodes, dest, value, shape);
+    }
+
+    private static void EmitAggregateInsertInPlace(
+        List<AsmNode> nodes,
+        AsmRegisterOperand dest,
+        AsmRegisterOperand value,
+        AggregateAccessShape shape)
+    {
 
         if (shape.Kind == AggregateAccessKind.Long)
         {
@@ -1537,7 +1766,7 @@ public static class AsmLowerer
         Long,
     }
 
-    private readonly record struct AggregateAccessShape(AggregateAccessKind Kind, int ByteOffset);
+    private readonly record struct AggregateAccessShape(AggregateAccessKind Kind, int Lane, int ByteOffset);
 
     private static void LowerBinary(
         List<AsmNode> nodes,
@@ -1776,43 +2005,32 @@ public static class AsmLowerer
         FunctionSymbol target = operation.TargetFunction;
         CallingConventionTier calleeTier = ctx.CalleeTiers.GetValueOrDefault(target, CallingConventionTier.General);
 
-        // Collect argument registers
-        List<AsmRegisterOperand> args = [];
-        for (int i = 0; i < op.Operands.Count; i++)
-            args.Add(OpReg(op.Operands[i], ctx));
-
-        AsmRegisterOperand? destReg = op.Destination is { } dest ? new AsmRegisterOperand(ctx.GetRegister(dest)) : null;
         AsmSymbolOperand targetOp = new(new AsmFunctionReferenceSymbol(target), AsmSymbolAddressingMode.Immediate);
 
         switch (calleeTier)
         {
             case CallingConventionTier.Leaf:
-                LowerSpecializedCall(nodes, op, args, destReg, targetOp, ctx);
+                LowerSpecializedCall(nodes, op, targetOp, ctx);
                 break;
 
             case CallingConventionTier.SecondOrder:
-                LowerSpecializedCall(nodes, op, args, destReg, targetOp, ctx);
+                LowerSpecializedCall(nodes, op, targetOp, ctx);
                 break;
 
             case CallingConventionTier.General:
                 {
                     bool hasInfo = ctx.GeneralCallingConvention.TryGetValue(target, out GeneralCallingConventionInfo? generalInfo);
                     Assert.Invariant(hasInfo, "General callees must have calling-convention metadata.");
-                    Assert.Invariant(generalInfo!.ParameterPlaces.Count == args.Count, "General call arguments must match the callee parameter ABI.");
+                    Assert.Invariant(generalInfo!.ParameterPlaces.Count == GetFlattenedArgumentLaneCount(operation.TargetFunction.Parameters), "General call arguments must match the callee parameter ABI.");
                     ctx.SharedRegisterPlaces.AddRange(generalInfo.ParameterPlaces);
-                    if (generalInfo.RegisterReturnPlace is not null)
-                        ctx.SharedRegisterPlaces.Add(generalInfo.RegisterReturnPlace);
+                    ctx.SharedRegisterPlaces.AddRange(generalInfo.RegisterReturnPlaces);
 
-                    for (int i = 0; i < args.Count; i++)
-                        nodes.Add(Emit(P2Mnemonic.MOV, CreatePlaceRegisterOperand(generalInfo.ParameterPlaces[i]), args[i]));
+                    EmitArgumentMovesToPlaces(nodes, op.Operands, operation.TargetFunction.Parameters, generalInfo.ParameterPlaces, ctx);
 
                     nodes.Add(Emit(P2Mnemonic.CALL, targetOp));
 
-                    if (destReg is not null && generalInfo.RegisterReturnPlace is not null)
-                    {
-                        ctx.TieRegisterToPlace(op.Destination!, generalInfo.RegisterReturnPlace);
-                        nodes.Add(Emit(P2Mnemonic.MOV, destReg, CreatePlaceRegisterOperand(generalInfo.RegisterReturnPlace)));
-                    }
+                    if (op.Destination is not null && generalInfo.RegisterReturnPlaces.Count > 0)
+                        EmitReturnPlaceCopiesToDestination(nodes, op, generalInfo.RegisterReturnPlaces, ctx);
                     break;
                 }
 
@@ -1823,24 +2041,16 @@ public static class AsmLowerer
             case CallingConventionTier.Recursive:
                 var ok = ctx.RecursiveCallingConvention.TryGetValue(target, out RecursiveCallingConventionInfo? recursiveInfo);
                 Assert.Invariant(ok, "Recursive callees must have calling-convention metadata.");
-                Assert.Invariant(recursiveInfo!.ParameterPlaces.Count == args.Count, "Recursive call arguments must match the callee parameter ABI.");
+                Assert.Invariant(recursiveInfo!.ParameterPlaces.Count == GetFlattenedArgumentLaneCount(operation.TargetFunction.Parameters), "Recursive call arguments must match the callee parameter ABI.");
                 ctx.SharedRegisterPlaces.AddRange(recursiveInfo.ParameterPlaces);
-                if (recursiveInfo.RegisterReturnPlace is not null)
-                    ctx.SharedRegisterPlaces.Add(recursiveInfo.RegisterReturnPlace);
+                ctx.SharedRegisterPlaces.AddRange(recursiveInfo.RegisterReturnPlaces);
 
-                for (int i = 0; i < args.Count; i++)
-                    nodes.Add(Emit(P2Mnemonic.MOV, CreatePlaceRegisterOperand(recursiveInfo.ParameterPlaces[i]), args[i]));
+                EmitArgumentMovesToPlaces(nodes, op.Operands, operation.TargetFunction.Parameters, recursiveInfo.ParameterPlaces, ctx);
 
                 nodes.Add(Emit(P2Mnemonic.CALLB, targetOp));
 
-                if (destReg is not null)
-                {
-                    Assert.Invariant(recursiveInfo.RegisterReturnPlace is not null, "Recursive register-return calls must have a return storage place.");
-                    nodes.Add(new AsmInstructionNode(
-                        P2Mnemonic.MOV,
-                        [destReg, CreatePlaceRegisterOperand(recursiveInfo.RegisterReturnPlace)],
-                        isNonElidable: true));
-                }
+                if (op.Destination is not null)
+                    EmitReturnPlaceCopiesToDestination(nodes, op, recursiveInfo.RegisterReturnPlaces, ctx, isNonElidable: true, tieDestinationToPlaces: false);
                 break;
 
             default:
@@ -1852,31 +2062,148 @@ public static class AsmLowerer
     private static void LowerSpecializedCall(
         List<AsmNode> nodes,
         LirOpInstruction op,
-        IReadOnlyList<AsmRegisterOperand> args,
-        AsmRegisterOperand? destReg,
         AsmSymbolOperand targetOp,
         LoweringContext ctx)
     {
         LirCallOperation operation = (LirCallOperation)op.Operation;
         bool found = ctx.SpecializedCallingConvention.TryGetValue(operation.TargetFunction, out SpecializedCallingConventionInfo? info);
         Assert.Invariant(found, "Specialized callees must have calling-convention metadata.");
-        Assert.Invariant(info!.ParameterPlaces.Count == args.Count, "Specialized call arguments must match the callee parameter ABI.");
+        Assert.Invariant(info!.ParameterPlaces.Count == GetFlattenedArgumentLaneCount(operation.TargetFunction.Parameters), "Specialized call arguments must match the callee parameter ABI.");
 
         ctx.SharedRegisterPlaces.AddRange(info.ParameterPlaces);
-        for (int i = 1; i < args.Count; i++)
-            nodes.Add(Emit(P2Mnemonic.MOV, CreatePlaceRegisterOperand(info.ParameterPlaces[i]), args[i]));
+        ctx.SharedRegisterPlaces.AddRange(info.RegisterReturnPlaces);
 
-        AsmSymbolOperand transport = new(info.TransportRegister);
-        if (args.Count > 0)
-            nodes.Add(Emit(P2Mnemonic.MOV, transport, args[0]));
+        AsmOperand transport = op.Operands.Count > 0
+            ? LowerOperandLane(op.Operands[0], operation.TargetFunction.Parameters[0].Type, 0, ctx)
+            : new AsmSymbolOperand(info.TransportRegister);
+
+        int flattenedIndex = 0;
+        for (int argumentIndex = 0; argumentIndex < op.Operands.Count; argumentIndex++)
+        {
+            BladeType argumentType = operation.TargetFunction.Parameters[argumentIndex].Type;
+            int laneCount = GetAggregateLaneCount(argumentType);
+            for (int lane = 0; lane < laneCount; lane++)
+            {
+                if (flattenedIndex == 0)
+                {
+                    flattenedIndex++;
+                    continue;
+                }
+
+                nodes.Add(Emit(
+                    P2Mnemonic.MOV,
+                    CreatePlaceRegisterOperand(info.ParameterPlaces[flattenedIndex]),
+                    LowerOperandLane(op.Operands[argumentIndex], argumentType, lane, ctx)));
+                flattenedIndex++;
+            }
+        }
 
         P2Mnemonic callMnemonic = info.TransportRegister == P2SpecialRegister.PA
             ? P2Mnemonic.CALLPA
             : P2Mnemonic.CALLPB;
         nodes.Add(Emit(callMnemonic, transport, targetOp));
 
-        if (destReg is not null)
-            nodes.Add(Emit(P2Mnemonic.MOV, destReg, new AsmSymbolOperand(info.TransportRegister)));
+        if (op.Destination is not null)
+        {
+            AsmRegisterOperand destLane0 = DestRegLane(op, 0, ctx);
+            nodes.Add(Emit(P2Mnemonic.MOV, destLane0, new AsmSymbolOperand(info.TransportRegister)));
+            for (int lane = 1; lane < GetAggregateLaneCount(op.ResultType); lane++)
+            {
+                nodes.Add(Emit(
+                    P2Mnemonic.MOV,
+                    DestRegLane(op, lane, ctx),
+                    CreatePlaceRegisterOperand(info.RegisterReturnPlaces[lane - 1])));
+            }
+        }
+    }
+
+    private static int GetFlattenedArgumentLaneCount(IReadOnlyList<ParameterVariableSymbol> parameters)
+    {
+        int count = 0;
+        foreach (ParameterVariableSymbol parameter in parameters)
+            count += GetAggregateLaneCount(parameter.Type);
+        return count;
+    }
+
+    private static void EmitArgumentMovesToPlaces(
+        List<AsmNode> nodes,
+        IReadOnlyList<LirOperand> operands,
+        IReadOnlyList<ParameterVariableSymbol> parameters,
+        IReadOnlyList<StoragePlace> parameterPlaces,
+        LoweringContext ctx)
+    {
+        int placeIndex = 0;
+        for (int argumentIndex = 0; argumentIndex < operands.Count; argumentIndex++)
+        {
+            BladeType argumentType = parameters[argumentIndex].Type;
+            int laneCount = GetAggregateLaneCount(argumentType);
+            for (int lane = 0; lane < laneCount; lane++)
+            {
+                nodes.Add(Emit(
+                    P2Mnemonic.MOV,
+                    CreatePlaceRegisterOperand(parameterPlaces[placeIndex++]),
+                    LowerOperandLane(operands[argumentIndex], argumentType, lane, ctx)));
+            }
+        }
+    }
+
+    private static void EmitReturnPlaceCopiesToDestination(
+        List<AsmNode> nodes,
+        LirOpInstruction op,
+        IReadOnlyList<StoragePlace> returnPlaces,
+        LoweringContext ctx,
+        bool isNonElidable = false,
+        bool tieDestinationToPlaces = true)
+    {
+        int laneCount = GetAggregateLaneCount(op.ResultType);
+        Assert.Invariant(returnPlaces.Count == laneCount, "Return place count must match destination lane count.");
+        for (int lane = 0; lane < laneCount; lane++)
+        {
+            if (tieDestinationToPlaces)
+                ctx.TieRegisterLaneToPlace(op.Destination!, op.ResultType, lane, returnPlaces[lane]);
+            nodes.Add(new AsmInstructionNode(
+                P2Mnemonic.MOV,
+                [DestRegLane(op, lane, ctx), CreatePlaceRegisterOperand(returnPlaces[lane])],
+                isNonElidable: isNonElidable));
+        }
+    }
+
+    private static void EmitReturnValueToPlaces(
+        List<AsmNode> nodes,
+        LirOperand value,
+        BladeType valueType,
+        LirRegisterOperand? valueRegister,
+        IReadOnlyList<StoragePlace> returnPlaces,
+        LoweringContext ctx)
+    {
+        int laneCount = GetAggregateLaneCount(valueType);
+        Assert.Invariant(returnPlaces.Count == laneCount, "Return place count must match returned value lane count.");
+        for (int lane = 0; lane < laneCount; lane++)
+        {
+            if (valueRegister is not null)
+                ctx.TieRegisterLaneToPlace(valueRegister.Register, valueType, lane, returnPlaces[lane]);
+            nodes.Add(new AsmInstructionNode(
+                P2Mnemonic.MOV,
+                [CreatePlaceRegisterOperand(returnPlaces[lane]), LowerOperandLane(value, valueType, lane, ctx)]));
+        }
+    }
+
+    private static void EmitSpecializedExtraReturnLanes(
+        List<AsmNode> nodes,
+        LoweringContext ctx,
+        LirOperand value,
+        BladeType valueType)
+    {
+        bool found = ctx.SpecializedCallingConvention.TryGetValue(ctx.Function.Symbol, out SpecializedCallingConventionInfo? info);
+        Assert.Invariant(found, "Specialized functions must have calling-convention metadata.");
+        int laneCount = GetAggregateLaneCount(valueType);
+        Assert.Invariant(info!.RegisterReturnPlaces.Count == Math.Max(0, laneCount - 1), "Specialized return place count must match extra return lanes.");
+        for (int lane = 1; lane < laneCount; lane++)
+        {
+            nodes.Add(new AsmInstructionNode(
+                P2Mnemonic.MOV,
+                [CreatePlaceRegisterOperand(info.RegisterReturnPlaces[lane - 1]), LowerOperandLane(value, valueType, lane, ctx)]));
+        }
     }
 
     private static void LowerCallExtractFlag(List<AsmNode> nodes, LirOpInstruction op, MirFlag flag, LoweringContext ctx)
@@ -1936,10 +2263,37 @@ public static class AsmLowerer
     private static void LowerStorePlace(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
     {
         AsmSymbolOperand place = (AsmSymbolOperand)LowerOperand(op.Operands[0], ctx);
-        AsmOperand valueOp = LowerOperand(op.Operands[1], ctx);
         StoragePlace storagePlace = (StoragePlace)place.Symbol;
 
         BladeType placeType = storagePlace.Symbol.Type;
+        if (IsAggregateValueType(placeType))
+        {
+            int laneCount = GetAggregateLaneCount(placeType);
+            for (int lane = 0; lane < laneCount; lane++)
+            {
+                AsmSymbolOperand placeLane = CreatePlaceLaneOperand(storagePlace, lane);
+                AsmOperand valueLane = LowerOperandLane(op.Operands[1], placeType, lane, ctx);
+                switch (storagePlace.StorageClass)
+                {
+                    case VariableStorageClass.Lut:
+                        nodes.Add(new AsmInstructionNode(P2Mnemonic.WRLUT, [valueLane, placeLane]));
+                        break;
+                    case VariableStorageClass.Hub:
+                        nodes.Add(new AsmInstructionNode(P2Mnemonic.WRLONG, [valueLane, placeLane]));
+                        break;
+                    case VariableStorageClass.Reg:
+                        nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [placeLane, valueLane]));
+                        break;
+                    default:
+                        Assert.Unreachable($"Unexpected storage class: {storagePlace.StorageClass}"); // pragma: force-coverage
+                        break; // pragma: force-coverage
+                }
+            }
+
+            return;
+        }
+
+        AsmOperand valueOp = LowerOperand(op.Operands[1], ctx);
 
         switch (storagePlace.StorageClass)
         {
@@ -2283,41 +2637,39 @@ public static class AsmLowerer
         // Move first return value (register-placed) to appropriate location based on CC tier
         if (ret.Values.Count > 0)
         {
-            AsmOperand resultOp = LowerOperand(ret.Values[0], ctx);
             LirRegisterOperand? resultRegister = ret.Values[0] as LirRegisterOperand;
+            BladeType returnType = ctx.Function.ReturnSlots[0].Type;
 
             switch (ctx.Tier)
             {
                 case CallingConventionTier.General:
                     bool hasInfo = ctx.GeneralCallingConvention.TryGetValue(ctx.Function.Symbol, out GeneralCallingConventionInfo? generalInfo);
                     Assert.Invariant(hasInfo, "General functions must have calling-convention metadata.");
-                    Assert.Invariant(generalInfo!.RegisterReturnPlace is not null, "General register-return functions must have a return storage place.");
-                    if (resultRegister is not null)
-                        ctx.TieRegisterToPlace(resultRegister.Register, generalInfo.RegisterReturnPlace);
-                    nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [CreatePlaceRegisterOperand(generalInfo.RegisterReturnPlace), resultOp]));
+                    Assert.Invariant(generalInfo!.RegisterReturnPlaces.Count == GetAggregateLaneCount(returnType), "General register-return functions must have return storage places.");
+                    EmitReturnValueToPlaces(nodes, ret.Values[0], returnType, resultRegister, generalInfo.RegisterReturnPlaces, ctx);
                     break;
 
                 case CallingConventionTier.Leaf:
                     // Result in PA
                     if (resultRegister is not null)
-                        ctx.FixRegisterToSpecialRegister(resultRegister.Register, P2SpecialRegister.PA);
-                    nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(P2SpecialRegister.PA), resultOp]));
+                        ctx.FixRegisterLaneToSpecialRegister(resultRegister.Register, returnType, 0, P2SpecialRegister.PA);
+                    nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(P2SpecialRegister.PA), LowerOperandLane(ret.Values[0], returnType, 0, ctx)]));
+                    EmitSpecializedExtraReturnLanes(nodes, ctx, ret.Values[0], returnType);
                     break;
 
                 case CallingConventionTier.SecondOrder:
                     // Result in PB
                     if (resultRegister is not null)
-                        ctx.FixRegisterToSpecialRegister(resultRegister.Register, P2SpecialRegister.PB);
-                    nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(P2SpecialRegister.PB), resultOp]));
+                        ctx.FixRegisterLaneToSpecialRegister(resultRegister.Register, returnType, 0, P2SpecialRegister.PB);
+                    nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(P2SpecialRegister.PB), LowerOperandLane(ret.Values[0], returnType, 0, ctx)]));
+                    EmitSpecializedExtraReturnLanes(nodes, ctx, ret.Values[0], returnType);
                     break;
 
                 case CallingConventionTier.Recursive:
                     var ok = ctx.RecursiveCallingConvention.TryGetValue(ctx.Function.Symbol, out RecursiveCallingConventionInfo? recursiveInfo);
                     Assert.Invariant(ok, "Recursive functions must have calling-convention metadata.");
-                    Assert.Invariant(recursiveInfo!.RegisterReturnPlace is not null, "Recursive register-return functions must have a return storage place.");
-                    if (resultRegister is not null)
-                        ctx.TieRegisterToPlace(resultRegister.Register, recursiveInfo.RegisterReturnPlace);
-                    nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [CreatePlaceRegisterOperand(recursiveInfo.RegisterReturnPlace), resultOp]));
+                    Assert.Invariant(recursiveInfo!.RegisterReturnPlaces.Count == GetAggregateLaneCount(returnType), "Recursive register-return functions must have return storage places.");
+                    EmitReturnValueToPlaces(nodes, ret.Values[0], returnType, resultRegister, recursiveInfo.RegisterReturnPlaces, ctx);
                     break;
 
                 case CallingConventionTier.Coroutine:
@@ -2493,9 +2845,14 @@ public static class AsmLowerer
 
         for (int i = 0; i < arguments.Count; i++)
         {
-            AsmOperand src = LowerOperand(arguments[i], ctx);
-            AsmRegisterOperand paramReg = new(ctx.GetRegister(targetParams[i].Register));
-            nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [paramReg, src], predicate, isPhiMove: true));
+            LirBlockParameter parameter = targetParams[i];
+            int laneCount = GetAggregateLaneCount(parameter.Type);
+            for (int lane = 0; lane < laneCount; lane++)
+            {
+                AsmOperand src = LowerOperandLane(arguments[i], parameter.Type, lane, ctx);
+                AsmRegisterOperand paramReg = new(ctx.GetRegisterLane(parameter.Register, parameter.Type, lane));
+                nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [paramReg, src], predicate, isPhiMove: true));
+            }
         }
     }
 
@@ -2552,16 +2909,159 @@ public static class AsmLowerer
 
     // --- Helpers ---
 
+    private static IReadOnlyDictionary<LirVirtualRegister, BladeType> BuildRegisterTypeMap(LirFunction function)
+    {
+        Dictionary<LirVirtualRegister, BladeType> types = [];
+        foreach (LirBlock block in function.Blocks)
+        {
+            foreach (LirBlockParameter parameter in block.Parameters)
+                types[parameter.Register] = parameter.Type;
+
+            foreach (LirInstruction instruction in block.Instructions)
+            {
+                if (instruction.Destination is LirVirtualRegister destination
+                    && instruction.ResultType is BladeType resultType)
+                {
+                    types[destination] = resultType;
+                }
+            }
+        }
+
+        return types;
+    }
+
+    private static bool IsAggregateValueType(BladeType? type)
+        => type is AggregateTypeSymbol;
+
+    private static int GetAggregateLaneCount(BladeType? type)
+    {
+        if (type is RuntimeTypeSymbol runtimeType)
+            return Math.Max(1, (runtimeType.SizeBytes + 3) / 4);
+
+        return 1;
+    }
+
+    private static int GetFlattenedParameterLaneCount(IReadOnlyList<LirBlockParameter> parameters)
+    {
+        int count = 0;
+        foreach (LirBlockParameter parameter in parameters)
+            count += GetAggregateLaneCount(parameter.Type);
+        return count;
+    }
+
     private static AsmRegisterOperand DestReg(LirOpInstruction op, LoweringContext ctx)
     {
         Assert.Invariant(op.Destination is not null, $"Instruction '{op.DisplayName}' expected a destination register");
         return new AsmRegisterOperand(ctx.GetRegister(op.Destination));
     }
 
+    private static AsmRegisterOperand DestRegLane(LirOpInstruction op, int lane, LoweringContext ctx)
+    {
+        Assert.Invariant(op.Destination is not null, $"Instruction '{op.DisplayName}' expected a destination register");
+        return new AsmRegisterOperand(ctx.GetRegisterLane(op.Destination, op.ResultType, lane));
+    }
+
     private static AsmRegisterOperand OpReg(LirOperand operand, LoweringContext ctx)
     {
         Assert.Invariant(operand is LirRegisterOperand, $"Expected register operand, got {operand.GetType().Name}");
         return new AsmRegisterOperand(ctx.GetRegister(((LirRegisterOperand)operand).Register));
+    }
+
+    private static AsmRegisterOperand OpRegLane(LirOperand operand, BladeType? type, int lane, LoweringContext ctx)
+    {
+        Assert.Invariant(operand is LirRegisterOperand, $"Expected register operand, got {operand.GetType().Name}");
+        return new AsmRegisterOperand(ctx.GetRegisterLane(((LirRegisterOperand)operand).Register, type, lane));
+    }
+
+    private static AsmOperand LowerOperandLane(LirOperand operand, BladeType? type, int lane, LoweringContext ctx)
+    {
+        return operand switch
+        {
+            LirRegisterOperand reg => new AsmRegisterOperand(ctx.GetRegisterLane(reg.Register, type, lane)),
+            LirImmediateOperand imm when lane == 0 => LowerImmediateValue(imm.Value, ctx.PlacesBySymbol),
+            _ => Assert.UnreachableValue<AsmOperand>($"Operand '{operand.GetType().Name}' cannot be lowered as aggregate lane {lane}."), // pragma: force-coverage
+        };
+    }
+
+    private static BladeType? GetRegisterOperandType(LirOperand operand, LoweringContext ctx)
+    {
+        Assert.Invariant(operand is LirRegisterOperand, $"Expected register operand, got {operand.GetType().Name}");
+        LirVirtualRegister register = ((LirRegisterOperand)operand).Register;
+        return ctx.RegisterTypes.GetValueOrDefault(register);
+    }
+
+    private static void ZeroAggregate(List<AsmNode> nodes, LirVirtualRegister register, BladeType? type, LoweringContext ctx)
+    {
+        int laneCount = GetAggregateLaneCount(type);
+        for (int lane = 0; lane < laneCount; lane++)
+        {
+            AsmRegisterOperand dest = new(ctx.GetRegisterLane(register, type, lane));
+            nodes.Add(Emit(P2Mnemonic.MOV, dest, new AsmImmediateOperand(0)));
+        }
+    }
+
+    private static void CopyAggregateValue(
+        List<AsmNode> nodes,
+        LirVirtualRegister destination,
+        BladeType? type,
+        LirOperand source,
+        LoweringContext ctx)
+    {
+        int laneCount = GetAggregateLaneCount(type);
+        for (int lane = 0; lane < laneCount; lane++)
+        {
+            AsmRegisterOperand destLane = new(ctx.GetRegisterLane(destination, type, lane));
+            AsmOperand srcLane = LowerOperandLane(source, type, lane, ctx);
+            nodes.Add(Emit(P2Mnemonic.MOV, destLane, srcLane));
+        }
+    }
+
+    private static bool TryCopyAggregateMemberLanes(
+        List<AsmNode> nodes,
+        LirVirtualRegister destination,
+        BladeType? memberType,
+        LirOperand receiver,
+        BladeType? receiverType,
+        int byteOffset,
+        LoweringContext ctx)
+    {
+        if (byteOffset % 4 != 0)
+            return false;
+
+        int sourceLaneStart = byteOffset / 4;
+        int laneCount = GetAggregateLaneCount(memberType);
+        for (int lane = 0; lane < laneCount; lane++)
+        {
+            AsmRegisterOperand destLane = new(ctx.GetRegisterLane(destination, memberType, lane));
+            AsmRegisterOperand sourceLane = OpRegLane(receiver, receiverType, sourceLaneStart + lane, ctx);
+            nodes.Add(Emit(P2Mnemonic.MOV, destLane, sourceLane));
+        }
+
+        return true;
+    }
+
+    private static bool TryStoreAggregateValueIntoAggregate(
+        List<AsmNode> nodes,
+        LirVirtualRegister destination,
+        BladeType? destinationType,
+        int byteOffset,
+        LirOperand value,
+        BladeType valueType,
+        LoweringContext ctx)
+    {
+        if (byteOffset % 4 != 0)
+            return false;
+
+        int destinationLaneStart = byteOffset / 4;
+        int laneCount = GetAggregateLaneCount(valueType);
+        for (int lane = 0; lane < laneCount; lane++)
+        {
+            AsmRegisterOperand destLane = new(ctx.GetRegisterLane(destination, destinationType, destinationLaneStart + lane));
+            AsmOperand valueLane = LowerOperandLane(value, valueType, lane, ctx);
+            nodes.Add(Emit(P2Mnemonic.MOV, destLane, valueLane));
+        }
+
+        return true;
     }
 
     private static AsmOperand LowerOperand(LirOperand operand, LoweringContext ctx)
@@ -2582,6 +3082,15 @@ public static class AsmLowerer
             ? AsmSymbolAddressingMode.Immediate
             : AsmSymbolAddressingMode.Register;
         return new AsmSymbolOperand(place, addressingMode);
+    }
+
+    private static AsmSymbolOperand CreatePlaceLaneOperand(StoragePlace place, int lane)
+    {
+        AsmSymbolAddressingMode addressingMode = place.StorageClass is VariableStorageClass.Lut or VariableStorageClass.Hub
+            ? AsmSymbolAddressingMode.Immediate
+            : AsmSymbolAddressingMode.Register;
+        int offset = place.StorageClass == VariableStorageClass.Hub ? lane * 4 : lane;
+        return new AsmSymbolOperand(place, addressingMode, offset);
     }
 
     private static AsmSymbolOperand CreatePlaceRegisterOperand(StoragePlace place)

@@ -22,6 +22,8 @@ public sealed class RegressionRunOptions
     public IReadOnlyList<string> Filters { get; init; } = [];
     public bool WriteFailureArtifacts { get; init; } = true;
     public string? HardwarePort { get; init; }
+    public HardwareLoaderKind? HardwareLoader { get; init; }
+    public bool? HardwareTurbopropNoVersionCheck { get; init; }
     public bool Json { get; init; }
 }
 
@@ -287,6 +289,8 @@ public static class RegressionRunner
         RegressionRunOptions effectiveOptions = options ?? new RegressionRunOptions();
         string repositoryRootPath = RepositoryLayout.FindRepositoryRoot(effectiveOptions.RepositoryRootPath);
         string? hardwarePort = HardwarePortResolver.Resolve(effectiveOptions.HardwarePort);
+        HardwareLoaderKind hardwareLoader = HardwareLoaderSettings.ResolveLoader(effectiveOptions.HardwareLoader);
+        bool hardwareTurbopropNoVersionCheck = HardwareLoaderSettings.ResolveTurbopropNoVersionCheck(effectiveOptions.HardwareTurbopropNoVersionCheck);
         bool isFullRun = effectiveOptions.Filters.Count == 0;
 
         FlexspinProbeResult flexspinProbe = FlexspinRunner.ProbeAvailability();
@@ -303,7 +307,9 @@ public static class RegressionRunner
                 artifactWriter,
                 flexspinProbe,
                 irCoverageSession,
-                hardwarePort);
+                hardwarePort,
+                hardwareLoader,
+                hardwareTurbopropNoVersionCheck);
             fixtureResults.Add(result);
         }
 
@@ -351,7 +357,9 @@ public static class RegressionRunner
         ArtifactWriter artifactWriter,
         FlexspinProbeResult flexspinProbe,
         RegressionIrCoverageSession? irCoverageSession,
-        string? hardwarePort)
+        string? hardwarePort,
+        HardwareLoaderKind hardwareLoader,
+        bool hardwareTurbopropNoVersionCheck)
     {
         string relativePath = Path.GetRelativePath(repositoryRootPath, fixturePath).Replace('\\', '/');
         RegressionFixture? fixture = null;
@@ -384,7 +392,12 @@ public static class RegressionRunner
             issues.AddRange(EvaluateFlexspin(fixture, evaluatedFixture));
             if (issues.Count == 0)
             {
-                HardwareExecutionResult hardwareExecution = EvaluateHardwareExecution(fixture, evaluatedFixture, hardwarePort);
+                HardwareExecutionResult hardwareExecution = EvaluateHardwareExecution(
+                    fixture,
+                    evaluatedFixture,
+                    hardwarePort,
+                    hardwareLoader,
+                    hardwareTurbopropNoVersionCheck);
                 hardwareAttempted = hardwareExecution.Attempted;
                 if (hardwareExecution.BinaryBytes is not null)
                     evaluatedFixture = evaluatedFixture.WithHardwareBinary(hardwareExecution.BinaryBytes);
@@ -858,7 +871,9 @@ public static class RegressionRunner
     private static HardwareExecutionResult EvaluateHardwareExecution(
         RegressionFixture fixture,
         EvaluatedFixture evaluatedFixture,
-        string? hardwarePort)
+        string? hardwarePort,
+        HardwareLoaderKind hardwareLoader,
+        bool hardwareTurbopropNoVersionCheck)
     {
         bool isPassHw = fixture.Expectation.ExpectationKind == RegressionExpectationKind.PassHw;
         bool isXFailHw = fixture.Expectation.ExpectationKind == RegressionExpectationKind.XFailHw;
@@ -907,7 +922,9 @@ public static class RegressionRunner
                         binaryResult.BinaryBytes,
                         hardwarePort,
                         config,
-                        run.Parameters.ToArray());
+                        run.Parameters.ToArray(),
+                        hardwareLoader,
+                        hardwareTurbopropNoVersionCheck);
 
                     bool runPassed = actualOutput == run.ExpectedOutput;
                     if (isPassHw && !runPassed)
@@ -2204,7 +2221,13 @@ internal sealed class HardwareExecutionResult
 
 internal static class HardwareFixtureRunner
 {
-    public static uint Run(byte[] binaryBytes, string portName, FixtureConfig config, FixtureParameter[] parameters)
+    public static uint Run(
+        byte[] binaryBytes,
+        string portName,
+        FixtureConfig config,
+        FixtureParameter[] parameters,
+        HardwareLoaderKind hardwareLoader,
+        bool turbopropNoVersionCheck)
     {
         string tempDirectoryPath = Path.Combine(Path.GetTempPath(), "blade-regressions", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDirectoryPath);
@@ -2216,6 +2239,8 @@ internal static class HardwareFixtureRunner
             Runner runner = new()
             {
                 PortName = portName,
+                Loader = hardwareLoader,
+                TurbopropNoVersionCheck = turbopropNoVersionCheck,
             };
             return runner.Execute(binaryPath, config, parameters);
         }
@@ -2405,6 +2430,8 @@ internal static class RegressionCommandLine
     {
         string? repositoryRootPath = null;
         string? hardwarePort = null;
+        HardwareLoaderKind? hardwareLoader = null;
+        bool? turbopropNoVersionCheck = null;
         bool writeFailureArtifacts = true;
         bool json = false;
         List<string> filters = [];
@@ -2434,6 +2461,20 @@ internal static class RegressionCommandLine
                     hardwarePort = args[++i];
                     break;
 
+                case "--hw-loader":
+                    if (i + 1 >= args.Length)
+                        throw new InvalidOperationException("Missing value for --hw-loader.");
+                    hardwareLoader = HardwareLoaderSettings.ParseLoaderKind(args[++i]);
+                    break;
+
+                case "--hw-turboprop-no-version-check":
+                    turbopropNoVersionCheck = true;
+                    break;
+
+                case "--hw-turboprop-version-check":
+                    turbopropNoVersionCheck = false;
+                    break;
+
                 default:
                     filters.Add(arg);
                     break;
@@ -2446,6 +2487,8 @@ internal static class RegressionCommandLine
             Filters = filters,
             WriteFailureArtifacts = writeFailureArtifacts,
             HardwarePort = HardwarePortResolver.Resolve(hardwarePort),
+            HardwareLoader = HardwareLoaderSettings.ResolveLoader(hardwareLoader),
+            HardwareTurbopropNoVersionCheck = HardwareLoaderSettings.ResolveTurbopropNoVersionCheck(turbopropNoVersionCheck),
             Json = json,
         };
     }

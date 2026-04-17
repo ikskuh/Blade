@@ -10,14 +10,9 @@ namespace Blade.HwTestRunner;
 /// A parameter that can be passed to a fixture. Allows implicit casts from
 /// several types, including `int`, `uint` and `bool`.
 /// </summary>
-public struct FixtureParameter
+public readonly struct FixtureParameter(uint value)
 {
-    private readonly uint value;
-
-    public FixtureParameter(uint value)
-    {
-        this.value = value;
-    }
+    private readonly uint value = value;
 
     public FixtureParameter(int value)
         : this(unchecked((uint)value))
@@ -47,10 +42,76 @@ public sealed class FixtureConfig
     public int ParameterCount { get; set; } = 0;
 }
 
+public enum HardwareLoaderKind
+{
+    Auto,
+    Loadp2,
+    Turboprop,
+}
+
+public static class HardwareLoaderSettings
+{
+    public const string LoaderEnvironmentVariable = "BLADE_TEST_LOADER";
+    public const string TurbopropNoVersionCheckEnvironmentVariable = "BLADE_TEST_TURBOPROP_NO_VERSION_CHECK";
+
+    public static HardwareLoaderKind ResolveLoader(HardwareLoaderKind? explicitLoader)
+    {
+        if (explicitLoader.HasValue)
+            return explicitLoader.Value;
+
+        string? environmentValue = Environment.GetEnvironmentVariable(LoaderEnvironmentVariable);
+        return string.IsNullOrWhiteSpace(environmentValue)
+            ? HardwareLoaderKind.Auto
+            : ParseLoaderKind(environmentValue);
+    }
+
+    public static bool ResolveTurbopropNoVersionCheck(bool? explicitValue)
+    {
+        if (explicitValue.HasValue)
+            return explicitValue.Value;
+
+        string? environmentValue = Environment.GetEnvironmentVariable(TurbopropNoVersionCheckEnvironmentVariable);
+        return string.IsNullOrWhiteSpace(environmentValue)
+            ? false
+            : ParseBoolean(TurbopropNoVersionCheckEnvironmentVariable, environmentValue);
+    }
+
+    public static HardwareLoaderKind ParseLoaderKind(string value)
+    {
+        ArgumentNullException.ThrowIfNull(value, nameof(value));
+
+        string normalized = value.Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "auto" => HardwareLoaderKind.Auto,
+            "loadp2" => HardwareLoaderKind.Loadp2,
+            "turboprop" => HardwareLoaderKind.Turboprop,
+            _ => throw new ArgumentException($"Invalid hardware loader '{value}'. Expected auto, loadp2, or turboprop.", nameof(value)),
+        };
+    }
+
+    public static bool ParseBoolean(string name, string value)
+    {
+        ArgumentNullException.ThrowIfNull(name, nameof(name));
+        ArgumentNullException.ThrowIfNull(value, nameof(value));
+
+        string normalized = value.Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "1" or "true" or "yes" => true,
+            "0" or "false" or "no" => false,
+            _ => throw new ArgumentException($"Invalid boolean value '{value}' for {name}. Expected true/false, yes/no, or 1/0.", nameof(value)),
+        };
+    }
+}
+
 public sealed class Runner
 {
     const byte STX = 0x02;
     const byte ETX = 0x03;
+    const int StartupTimeoutMs = 1000;
+    const int ResultTimeoutMs = 1000;
+    const int ExitTimeoutMs = 3000;
 
     /// <summary>
     /// 
@@ -62,11 +123,15 @@ public sealed class Runner
     /// </summary>
     public int Timeout { get; set; } = 2500;
 
+    public HardwareLoaderKind Loader { get; set; } = HardwareLoaderKind.Auto;
+
+    public bool TurbopropNoVersionCheck { get; set; }
+
     public Runner()
     {
 
     }
-    
+
     public uint Execute(string file, FixtureConfig config, FixtureParameter[] parameters)
     {
         ArgumentNullException.ThrowIfNull(file, nameof(file));
@@ -79,14 +144,25 @@ public sealed class Runner
         if(parameters.Length > config.ParameterCount)
             throw new ArgumentOutOfRangeException(nameof(parameters));
         
-        var testBinary = File.ReadAllBytes(file);
+        byte[] testBinary = File.ReadAllBytes(file);
 
         PatchParameters(testBinary, parameters);
 
-        using var patchedFile = new TempFile();
+        HardwareLoaderKind selectedLoader = ResolveLoader();
+        return selectedLoader switch
+        {
+            HardwareLoaderKind.Loadp2 => ExecuteLoadp2(testBinary),
+            HardwareLoaderKind.Turboprop => ExecuteTurboprop(testBinary),
+            _ => throw new UnreachableException(),
+        };
+    }
+
+    private uint ExecuteLoadp2(byte[] testBinary)
+    {
+        using TempFile patchedFile = new();
         patchedFile.WriteAllBytes(testBinary);
 
-        var startInfo = new ProcessStartInfo
+        ProcessStartInfo startInfo = new()
         {
             FileName = "loadp2",
             RedirectStandardInput = true,
@@ -100,60 +176,141 @@ public sealed class Runner
         startInfo.ArgumentList.Add("-q"); // quiet mode
         startInfo.ArgumentList.Add(patchedFile.Path);
 
-        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Failed to start process!");
-
-        var stdout = process.StandardOutput.BaseStream;
-
-        if (!WaitForByte(stdout, STX, 1000))
-        {
-            try { process.Kill(entireProcessTree: true); } catch { }
-            throw new TimeoutException("No response from fixture");
-        }
-        if (!WaitForByte(stdout, ETX, Timeout))
-        {
-            try { process.Kill(entireProcessTree: true); } catch { }
-            throw new TimeoutException($"Blade code did not exit after {Timeout} ms.");
-        }
-
-        // Terminate loadp2 by closing stdin:
-        process.StandardInput.Close();
-
-        // Wait until loadp2 properly terminated (bounded to avoid hanging)
-        if (!process.WaitForExit(3000))
-        {
-            try { process.Kill(entireProcessTree: true); } catch { }
-        }
-
-        var suffix_bytes = ReadToEnd(stdout);
-        var stderr_bytes = ReadToEnd(process.StandardError.BaseStream);
-
+        using Process process = StartProcess(startInfo, "loadp2");
         try
         {
+            uint result = ReadFixtureResult(process.StandardOutput.BaseStream, "loadp2");
 
-            var suffix_string = Encoding.ASCII.GetString(suffix_bytes);
-
+            CloseStandardInput(process);
+            if (!process.WaitForExit(ExitTimeoutMs))
+                KillProcess(process);
 
             if (process.ExitCode != 0)
                 throw new FixtureException($"loadp2 crashed with exit code {process.ExitCode}");
 
-            var results = suffix_string.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-            if (results.Length != 1)
-                throw new FixtureException($"Unexpected output: {suffix_string}");
-
-            try
-            {
-                return Convert.ToUInt32(results[0], 16);
-            }
-            catch (Exception ex)
-            {
-                throw new FixtureException($"Unexpected result value '{results[0]}': {ex.Message}", ex);
-            }
+            return result;
         }
         catch (Exception)
         {
-            Console.Error.WriteLine("stdout: {0}", Convert.ToHexString(suffix_bytes));
-            Console.Error.WriteLine("stderr: {0}", Convert.ToHexString(stderr_bytes));
+            KillProcess(process);
+            DumpStderr(process);
             throw;
+        }
+    }
+
+    private uint ExecuteTurboprop(byte[] testBinary)
+    {
+        ProcessStartInfo startInfo = new()
+        {
+            FileName = "turboprop",
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+
+        startInfo.ArgumentList.Add($"--port={this.PortName}");
+        startInfo.ArgumentList.Add("--monitor");
+        startInfo.ArgumentList.Add("--monitor-format=raw");
+        if (this.TurbopropNoVersionCheck)
+            startInfo.ArgumentList.Add("--no-version-check");
+        startInfo.ArgumentList.Add("-");
+
+        using Process process = StartProcess(startInfo, "turboprop");
+        try
+        {
+            byte[] loadableBinary = PadToLongBoundary(testBinary);
+            process.StandardInput.BaseStream.Write(loadableBinary, 0, loadableBinary.Length);
+            process.StandardInput.Close();
+
+            uint result = ReadFixtureResult(process.StandardOutput.BaseStream, "turboprop");
+            KillProcess(process);
+            return result;
+        }
+        catch (Exception)
+        {
+            KillProcess(process);
+            DumpStderr(process);
+            throw;
+        }
+    }
+
+    private static byte[] PadToLongBoundary(byte[] input)
+    {
+        int remainder = input.Length % 4;
+        if (remainder == 0)
+            return input;
+
+        byte[] padded = new byte[input.Length + (4 - remainder)];
+        Buffer.BlockCopy(input, 0, padded, 0, input.Length);
+        return padded;
+    }
+
+    private HardwareLoaderKind ResolveLoader()
+    {
+        if (this.Loader != HardwareLoaderKind.Auto)
+            return this.Loader;
+
+        return IsCommandAvailable("turboprop")
+            ? HardwareLoaderKind.Turboprop
+            : HardwareLoaderKind.Loadp2;
+    }
+
+    private static bool IsCommandAvailable(string fileName)
+    {
+        string? pathValue = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrWhiteSpace(pathValue))
+            return false;
+
+        string[] directories = pathValue.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
+        foreach (string directory in directories)
+        {
+            string candidate = Path.Combine(directory, fileName);
+            if (File.Exists(candidate))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static Process StartProcess(ProcessStartInfo startInfo, string loaderName)
+    {
+        try
+        {
+            return Process.Start(startInfo) ?? throw new FixtureException($"Failed to start {loaderName}.");
+        }
+        catch (FixtureException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new FixtureException($"Failed to start {loaderName}: {ex.Message}", ex);
+        }
+    }
+
+    private uint ReadFixtureResult(Stream stdout, string loaderName)
+    {
+        WaitForByte(
+            stdout,
+            STX,
+            StartupTimeoutMs,
+            $"No response from fixture via {loaderName}.",
+            $"{loaderName} exited before the fixture responded.");
+        WaitForByte(
+            stdout,
+            ETX,
+            Timeout,
+            $"Blade code did not exit after {Timeout} ms via {loaderName}.",
+            $"{loaderName} exited before Blade code completed.");
+
+        string resultText = ReadResultLine(stdout, loaderName);
+        try
+        {
+            return Convert.ToUInt32(resultText, 16);
+        }
+        catch (Exception ex)
+        {
+            throw new FixtureException($"Unexpected result value from {loaderName} '{resultText}': {ex.Message}", ex);
         }
     }
 
@@ -162,13 +319,13 @@ public sealed class Runner
     /// </summary>
     private void PatchParameters(byte[] input, FixtureParameter[] parameters)
     {
-        var size = (4 * (parameters.Length + 4));
+        int size = (4 * (parameters.Length + 4));
         if(input.Length < size)
             throw new ArgumentException($"Test binary must be at least {size} bytes large!");
         Trace.Assert(BitConverter.IsLittleEndian);
         for (int i = 0; i < parameters.Length; i++)
         {
-            var bytes = BitConverter.GetBytes(parameters[i].UInt);
+            byte[] bytes = BitConverter.GetBytes(parameters[i].UInt);
             input[4 * i + 4] = bytes[0];
             input[4 * i + 5] = bytes[1];
             input[4 * i + 6] = bytes[2];
@@ -179,37 +336,23 @@ public sealed class Runner
     static byte[] ReadToEnd(Stream stream)
     {
 
-        using var ms = new MemoryStream();
+        using MemoryStream ms = new();
         stream.CopyTo(ms);
         return ms.ToArray();
     }
 
-    static bool WaitForByte(Stream stream, byte marker, int timeoutMs)
+    static void WaitForByte(Stream stream, byte marker, int timeoutMs, string timeoutMessage, string eofMessage)
     {
         using CancellationTokenSource cts = new(timeoutMs);
-
-        byte[] buffer = new byte[1];
         bool any = false;
         try
         {
             while (true)
             {
-                int cnt;
-                try
-                {
-                    cnt = stream.ReadAsync(buffer.AsMemory(), cts.Token).AsTask().GetAwaiter().GetResult();
-                }
-                catch (OperationCanceledException)
-                {
-                    return false; // timeout
-                }
-
-                if (cnt == 0)
-                    return false; // end of stream
-                Debug.Assert(cnt == 1);
-                if (buffer[0] == marker)
-                    return true; // found the marker
-                Console.Write(Encoding.ASCII.GetString(buffer[0..cnt]));
+                byte value = ReadByte(stream, cts.Token, timeoutMessage, eofMessage);
+                if (value == marker)
+                    return; // found the marker
+                Console.Write(Encoding.ASCII.GetString([value]));
                 any = true;
             }
         }
@@ -217,6 +360,94 @@ public sealed class Runner
         {
             if (any)
                 Console.WriteLine();
+        }
+    }
+
+    static string ReadResultLine(Stream stream, string loaderName)
+    {
+        using CancellationTokenSource cts = new(ResultTimeoutMs);
+        using MemoryStream buffer = new();
+        while (true)
+        {
+            byte value = ReadByte(
+                stream,
+                cts.Token,
+                $"No fixture result arrived after {loaderName} reported completion.",
+                $"{loaderName} exited before writing the fixture result.");
+
+            if (value == (byte)'\n')
+            {
+                string result = Encoding.ASCII.GetString(buffer.ToArray()).Trim();
+                if (string.IsNullOrEmpty(result))
+                    throw new FixtureException($"Unexpected empty result from {loaderName}.");
+                return result;
+            }
+
+            buffer.WriteByte(value);
+        }
+    }
+
+    static byte ReadByte(Stream stream, CancellationToken cancellationToken, string timeoutMessage, string eofMessage)
+    {
+        byte[] buffer = new byte[1];
+        int count;
+        try
+        {
+            count = stream.ReadAsync(buffer.AsMemory(), cancellationToken).AsTask().GetAwaiter().GetResult();
+        }
+        catch (OperationCanceledException)
+        {
+            throw new TimeoutException(timeoutMessage);
+        }
+
+        if (count == 0)
+            throw new FixtureException(eofMessage);
+
+        Debug.Assert(count == 1);
+        return buffer[0];
+    }
+
+    static void CloseStandardInput(Process process)
+    {
+        try
+        {
+            process.StandardInput.Close();
+        }
+        catch
+        {
+        }
+    }
+
+    static void KillProcess(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            process.WaitForExit(ExitTimeoutMs);
+        }
+        catch
+        {
+        }
+    }
+
+    static void DumpStderr(Process process)
+    {
+        try
+        {
+            byte[] stderrBytes = ReadToEnd(process.StandardError.BaseStream);
+            if (stderrBytes.Length > 0)
+                Console.Error.WriteLine("stderr: {0}", Convert.ToHexString(stderrBytes));
+        }
+        catch
+        {
         }
     }
 }

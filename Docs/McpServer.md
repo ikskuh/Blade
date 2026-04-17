@@ -68,3 +68,8 @@ The server reads repo-root `.blade_mcp.json`:
 ```
 
 Hardware execution is considered available only when the configured device path exists.
+
+Hardware execution uses the regression runner CLI under the hood, so the runner's loader
+environment variables are honored. Set `BLADE_TEST_LOADER=loadp2|turboprop|auto` or
+`BLADE_TEST_TURBOPROP_NO_VERSION_CHECK=true` in the MCP server environment to control
+the hardware loader without changing `.blade_mcp.json`.

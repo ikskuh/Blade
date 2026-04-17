@@ -1902,7 +1902,7 @@ public class IrPipelineTests
             """, "advanced_semantics.blade");
 
         Assert.That(compilation.IrBuildResult, Is.Not.Null);
-        Assert.That(compilation.Diagnostics.Count(d => d.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.EqualTo(1));
+        Assert.That(compilation.Diagnostics.Count(d => d.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.EqualTo(0));
     }
 
     [Test]
@@ -2658,10 +2658,10 @@ public class IrPipelineTests
         AsmModule asmModule = AsmLowerer.Lower(new LirModule([function]));
         string asmir = AsmTextWriter.Write(asmModule);
 
-        Assert.That(asmir, Does.Contain("unhandled: load.member.right.4"));
         Assert.That(asmir, Does.Contain("unhandled: load.member.value.1"));
-        Assert.That(asmir, Does.Contain("unhandled: insert.member.right.4"));
-        Assert.That(asmir, Does.Contain("unhandled: structlit.left.right"));
+        Assert.That(asmir, Does.Not.Contain("unhandled: load.member.right.4"));
+        Assert.That(asmir, Does.Not.Contain("unhandled: insert.member.right.4"));
+        Assert.That(asmir, Does.Not.Contain("unhandled: structlit.left.right"));
     }
 
     private static IEnumerable<string> AcceptProgramsForPipeline()

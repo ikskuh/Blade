@@ -1,7 +1,7 @@
-// EXPECT: xfail
+// EXPECT: pass
 // NOTE:
-//   Struct literal lowering is not yet implemented (E0401).
-//   This fixture tracks the missing feature.
+//   Struct literal lowering preserves aggregate values through IR and lowers
+//   them into byte-accurate register lanes.
 
 type Pair = struct {
     a: u32,

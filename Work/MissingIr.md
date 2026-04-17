@@ -31,23 +31,6 @@ normalized before reporting:
 These are produced by the current compiler and can reach `AsmLowerer` from
 normal source programs.
 
-### Aggregate values and member access
-
-- `structlit`
-  - Produced for regular struct literals such as `.{ ... }` and typed struct
-    literals after binding.
-  - MIR emits `structlit.<field>...`; diagnostics are normalized to `structlit`.
-
-- `load.member`
-  - Produced for struct/union member reads.
-  - MIR emits `load.member.<name>.<byteOffset>`; diagnostics are normalized to
-    `load.member`.
-
-- `store.member`
-  - Produced for struct/union member writes.
-  - MIR emits store targets like `member:<name>:<byteOffset>`; diagnostics are
-    normalized to `store.member`.
-
 ### Range values
 
 - `range`
