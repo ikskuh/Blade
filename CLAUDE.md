@@ -46,6 +46,8 @@ Your task is completed when:
 - Prefer primary constructors for data classes
 - Don't use trinary operators for control flow. Use local variables or switch pattern matching instead.
 - We prefer "one file per responsibility" over split functionality. Some files or classes like `Binder` or `AsmLowerer` have a really large surface, but still only have a single task. These tasks are complex and it's better to keep code that belongs together in a single file.
+- Never use default values for parameters. Explicitly pass parameters or use a proper options struct if a lot of parameter values would be necessary.
+  - Default values create implicit bugs because it's trivial to forget critical parameters. This applies to reviewers and writers.
 
 ## Type Safety Rules
 

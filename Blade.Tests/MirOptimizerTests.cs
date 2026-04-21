@@ -204,7 +204,7 @@ public class MirOptimizerTests
             new AggregateMemberSymbol("tag", BuiltinTypes.U8, byteOffset: 0, bitOffset: 0, bitWidth: 0, isBitfield: false),
             structMember);
 
-        FunctionSymbol calleeSymbol = new("callee", FunctionKind.Default)
+        FunctionSymbol calleeSymbol = new("callee", FunctionKind.Default, isTopLevel: false)
         {
             Parameters =
             [
@@ -247,7 +247,7 @@ public class MirOptimizerTests
             new MirReturnTerminator([MirValue(110)], span));
         MirFunction callee = new(calleeSymbol, isEntryPoint: false, [packedType], [calleeBlock], calleeSymbol.ReturnSlots);
 
-        FunctionSymbol callerSymbol = new("caller", FunctionKind.Default)
+        FunctionSymbol callerSymbol = new("caller", FunctionKind.Default, isTopLevel: false)
         {
             Parameters = calleeSymbol.Parameters,
             ReturnSlots = calleeSymbol.ReturnSlots,

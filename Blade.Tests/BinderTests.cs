@@ -1281,7 +1281,8 @@ public class BinderTests
             """);
 
         Assert.That(diagnostics.Select(d => d.Code), Is.EqualTo(new[] { DiagnosticCode.E0259_ExpressionNotAStatement }));
-        Assert.That(program.Functions.Select(function => function.Symbol.Name), Is.EqualTo(new[] { "$init" }));
+        Assert.That(program.Functions, Has.Count.EqualTo(1));
+        Assert.That(program.Functions.Single().Symbol.IsTopLevel, Is.True);
     }
 
     [Test]

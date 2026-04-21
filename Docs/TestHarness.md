@@ -282,6 +282,8 @@ entry
 
 - `just regressions` runs the full regression corpus
 - `just regressions -- --hw-port <port>` runs the full regression corpus and enables real hardware execution for `EXPECT: pass-hw` fixtures
+- `just regressions -- --hw-loader turboprop --hw-port <port>` forces the hardware runner to use `turboprop`
+- `just regressions -- --hw-turboprop-no-version-check --hw-port <port>` passes `--no-version-check` when `turboprop` is selected
 - `just coverage` runs `dotnet test --collect:"XPlat Code Coverage"`
 
 Hardware port resolution order for `EXPECT: pass-hw` is:
@@ -289,6 +291,23 @@ Hardware port resolution order for `EXPECT: pass-hw` is:
 - `--hw-port <port>`
 - `BLADE_TEST_PORT`
 - no hardware execution; the fixture still runs as a normal compile/FlexSpin regression using the hardware runtime
+
+Hardware loader resolution order is:
+
+- `--hw-loader auto|loadp2|turboprop`
+- `BLADE_TEST_LOADER=auto|loadp2|turboprop`
+- `auto`
+
+`auto` selects `turboprop` when it is available on `PATH`, otherwise it falls back to `loadp2`.
+The `loadp2` path writes the patched binary to a temporary file and runs `loadp2 -p <port> -t -q <file>`.
+The `turboprop` path pads the patched binary to a 4-byte boundary, streams it through stdin, and runs `turboprop --port=<port> --monitor --monitor-format=raw -`.
+
+The `turboprop` version check is enabled by default. Disable it for faster runs with:
+
+- `--hw-turboprop-no-version-check`
+- `BLADE_TEST_TURBOPROP_NO_VERSION_CHECK=true`
+
+Use `--hw-turboprop-version-check` to force the version check back on when the environment variable is set.
 
 The NUnit suite contains a thin wrapper that invokes the regression runner in-process, so the regression harness contributes to the existing coverage data without a second coverage pipeline.
 

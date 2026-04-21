@@ -303,7 +303,7 @@ public sealed class Binder
 
     private BoundFunctionMember BindConstructor(IReadOnlyList<StatementSyntax> statements)
     {
-        FunctionSymbol constructor = new("$init", FunctionKind.Default);
+        FunctionSymbol constructor = new("$init", FunctionKind.Default, isTopLevel: true);
         BlockStatementSyntax bodySyntax = CreateSyntheticBlockStatement(statements);
         return BindBlockFunction(constructor, bodySyntax, bodySyntax.Span, bodySyntax.Span);
     }
@@ -312,7 +312,7 @@ public sealed class Binder
     {
         BlockStatementSyntax bodySyntax = CreateSyntheticBlockStatement([]);
         BoundBlockStatement body = new([], bodySyntax.Span);
-        return new BoundFunctionMember(new FunctionSymbol("$init", FunctionKind.Default), body, bodySyntax.Span);
+        return new BoundFunctionMember(new FunctionSymbol("$init", FunctionKind.Default, isTopLevel: true), body, bodySyntax.Span);
     }
 
     private static BlockStatementSyntax CreateSyntheticBlockStatement(IReadOnlyList<StatementSyntax> statements)
@@ -380,7 +380,7 @@ public sealed class Binder
 
             Assert.Invariant(!string.IsNullOrWhiteSpace(syntax.Name.Text), "Binder requires well-formed syntax. Parser errors must short-circuit before binding.");
 
-            FunctionSymbol function = new(syntax.Name.Text, syntax, kind, inliningPolicy, CreateSourceSpan(syntax.Name.Span));
+            FunctionSymbol function = new(syntax.Name.Text, syntax, kind, isTopLevel: false, inliningPolicy, CreateSourceSpan(syntax.Name.Span));
             if (!_functions.TryAdd(function.Name, function))
             {
                 _diagnostics.ReportSymbolAlreadyDeclared(syntax.Name.Span, function.Name);
@@ -657,6 +657,16 @@ public sealed class Binder
             default:
                 return false;
         }
+    }
+
+    private bool IsTopLevelContext()
+    {
+        return _currentFunction is { IsTopLevel: true };
+    }
+
+    private bool IsYieldtoContextAllowed()
+    {
+        return IsTopLevelContext() || _currentFunction?.Kind == FunctionKind.Coro;
     }
 
     private BoundBlockStatement BindBlockStatement(BlockStatementSyntax block, bool createScope)
@@ -1396,7 +1406,7 @@ public sealed class Binder
     {
         List<BoundExpression> values = new();
 
-        if (_currentFunction is null)
+        if (_currentFunction is null || IsTopLevelContext())
         {
             _diagnostics.ReportReturnOutsideFunction(returnStatement.ReturnKeyword.Span);
             if (returnStatement.Values is not null)
@@ -1502,6 +1512,9 @@ public sealed class Binder
 
     private BoundYieldtoStatement BindYieldtoStatement(YieldtoStatementSyntax yieldtoStatement)
     {
+        if (!IsYieldtoContextAllowed())
+            _diagnostics.ReportInvalidYieldto(yieldtoStatement.YieldtoKeyword.Span);
+
         FunctionSymbol? target = null;
         if (_functions.TryGetValue(yieldtoStatement.Target.Text, out FunctionSymbol? targetFunction))
         {
@@ -1754,8 +1767,7 @@ public sealed class Binder
 
     private void ObserveVariableForTopLevelStoreLoadElision(VariableSymbol variable)
     {
-        if (_currentFunction is not null
-            && _currentFunction.Name != "$init"
+        if (_currentFunction?.IsTopLevel == false
             && variable is GlobalVariableSymbol globalVariable)
         {
             globalVariable.DisableTopLevelStoreLoadChainElision();

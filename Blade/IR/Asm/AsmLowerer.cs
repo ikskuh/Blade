@@ -1715,17 +1715,6 @@ public static class AsmLowerer
         }
     }
 
-    private static void EmitAggregateInsert(
-        List<AsmNode> nodes,
-        AsmRegisterOperand dest,
-        AsmRegisterOperand receiver,
-        AsmRegisterOperand value,
-        AggregateAccessShape shape)
-    {
-        nodes.Add(Emit(P2Mnemonic.MOV, dest, receiver));
-        EmitAggregateInsertInPlace(nodes, dest, value, shape);
-    }
-
     private static void EmitAggregateInsertInPlace(
         List<AsmNode> nodes,
         AsmRegisterOperand dest,
@@ -1748,14 +1737,6 @@ public static class AsmLowerer
             Assert.Invariant(shape.Kind == AggregateAccessKind.Word, $"Unexpected aggregate access kind '{shape.Kind}'.");
             nodes.Add(new AsmInstructionNode(P2Mnemonic.SETWORD, [dest, value, new AsmImmediateOperand(shape.ByteOffset / 2)]));
         }
-    }
-
-    private static bool TryGetSingleWordAggregateSize(BladeType type, out int sizeBytes)
-    {
-        bool ok = type is RuntimeTypeSymbol;
-        sizeBytes = ok ? ((RuntimeTypeSymbol)type).SizeBytes : 0;
-        Assert.Invariant(ok, $"Type '{type.Name}' must have a known size.");
-        return sizeBytes > 0 && sizeBytes <= 4;
     }
 
     private enum AggregateAccessKind

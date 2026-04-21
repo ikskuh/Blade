@@ -1017,7 +1017,7 @@ public static class RegressionRunner
     {
         if (expectationKind == RegressionExpectationKind.XFail)
         {
-            if (matched && LooksLikeUnexpectedPass(fixture, evaluatedFixture))
+            if (matched)
                 return RegressionFixtureOutcome.UnexpectedPass;
 
             // If the fixture expected error diagnostics but the compiler
@@ -1037,14 +1037,6 @@ public static class RegressionRunner
         }
 
         return matched ? RegressionFixtureOutcome.Pass : RegressionFixtureOutcome.Fail;
-    }
-
-    private static bool LooksLikeUnexpectedPass(RegressionFixture fixture, EvaluatedFixture evaluatedFixture)
-    {
-        if (fixture.Kind != RegressionFixtureKind.Blade)
-            return true;
-
-        return evaluatedFixture.Diagnostics.Count == 0 && evaluatedFixture.FinalAssemblyText is not null;
     }
 
     /// <summary>

@@ -132,7 +132,7 @@ public sealed class ComptimeBinderHelperTests
     private static FunctionSymbol CreateFunctionSymbol(string name, FunctionKind kind, params BladeType[] returnTypes)
     {
         FunctionDeclarationSyntax syntax = ParseFunctionSyntax($"fn {name}() -> u32 {{ return 0; }}");
-        FunctionSymbol function = new(name, syntax, kind)
+        FunctionSymbol function = new(name, syntax, kind, isTopLevel: false)
         {
             ReturnSlots = System.Array.ConvertAll(returnTypes, static t => new ReturnSlot(t, ReturnPlacement.Register)),
         };

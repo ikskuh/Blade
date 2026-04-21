@@ -563,7 +563,7 @@ public static class MirLowerer
                     foreach (BoundExpression argument in yieldtoStatement.Arguments)
                         arguments.Add(LowerExpression(argument));
 
-                    FunctionSymbol target = yieldtoStatement.Target ?? new FunctionSymbol("<error>", FunctionKind.Default);
+                    FunctionSymbol target = yieldtoStatement.Target ?? new FunctionSymbol("<error>", FunctionKind.Default, isTopLevel: false);
                     _currentBlock.Instructions.Add(new MirYieldToInstruction(target, arguments, yieldtoStatement.Span));
                     break;
                 }

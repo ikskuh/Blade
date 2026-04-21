@@ -266,10 +266,10 @@ public sealed class RuntimeTypeAndValueTests
     [Test]
     public void TypeEquality_UsesWrappedDeclarationIdentityForFunctionAndModuleTypes()
     {
-        FunctionSymbol sharedFunction = new("demo", FunctionKind.Default);
+        FunctionSymbol sharedFunction = new("demo", FunctionKind.Default, isTopLevel: false);
         FunctionTypeSymbol functionLeft = new(sharedFunction);
         FunctionTypeSymbol functionRight = new(sharedFunction);
-        FunctionTypeSymbol otherFunction = new(new FunctionSymbol("demo", FunctionKind.Default));
+        FunctionTypeSymbol otherFunction = new(new FunctionSymbol("demo", FunctionKind.Default, isTopLevel: false));
 
         BoundModule sharedModule = CreateImportedModule("shared");
         ModuleSymbol sharedModuleSymbol = new("math", sharedModule);

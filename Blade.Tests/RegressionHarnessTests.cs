@@ -835,6 +835,95 @@ public sealed class RegressionHarnessTests
     }
 
     [Test]
+    public void XFailFixture_WithMatchingDiagnostics_IsUnexpectedPass()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.MakeDir("Demonstrators/Binder");
+        temp.WriteFile("Demonstrators/Binder/fail_control_flow_contexts.blade", """
+        // EXPECT: xfail
+        // DIAGNOSTICS: E0202, E0208, E0209, E0210, E0211, E0212, E0213, E0214
+        fn helper() {
+        }
+
+        coro fn worker(seed: u32) {
+            loop {
+                yieldto worker(seed);
+            }
+        }
+
+        return 1;
+        break;
+        continue;
+
+        rep for(4) -> i {
+            break;
+        }
+
+        fn bad_yield() {
+            yield;
+        }
+
+        fn bad_context() {
+            yieldto worker(1);
+        }
+
+        yieldto helper();
+        yieldto missing();
+
+        fn wrong_return() -> u32 {
+            return;
+        }
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(r =>
+            r.RelativePath == "Demonstrators/Binder/fail_control_flow_contexts.blade");
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.UnexpectedPass));
+            Assert.That(fixtureResult.Summary, Is.EqualTo("unexpected pass"));
+            Assert.That(fixtureResult.Details, Is.Empty);
+        });
+    }
+
+    [Test]
+    public void XFailFixture_WhenExpectedDiagnosticsDisappear_IsUnexpectedPass()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/xfail_resolved.blade", """
+        // EXPECT: xfail
+        // DIAGNOSTICS: E0202
+        fn main() -> u32 {
+            return 1;
+        }
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(r =>
+            r.RelativePath == "Demonstrators/xfail_resolved.blade");
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.UnexpectedPass));
+            Assert.That(fixtureResult.Summary, Is.EqualTo("unexpected pass"));
+            Assert.That(fixtureResult.Details, Has.Some.Contains("missing diagnostic code E0202: expected at least 1, got 0"));
+        });
+    }
+
+    [Test]
     public void HwTestFolder_RejectsPlainPassExpectation()
     {
         using TempDirectory temp = new();

@@ -66,7 +66,7 @@ internal static class IrTestFactory
         IReadOnlyDictionary<MirValueId, MirFlag>? flagValues = null)
     {
         return new MirFunction(
-            new FunctionSymbol(name, kind),
+            new FunctionSymbol(name, kind, isTopLevel: false),
             isEntryPoint,
             returnTypes,
             blocks,
@@ -226,7 +226,7 @@ internal static class IrTestFactory
     public static BoundFunctionMember CreateConstructor(IReadOnlyList<BoundStatement>? statements = null)
     {
         BoundBlockStatement body = new(statements ?? [], new TextSpan(0, 0));
-        return new BoundFunctionMember(new FunctionSymbol("$init", FunctionKind.Default), body, body.Span);
+        return new BoundFunctionMember(new FunctionSymbol("$init", FunctionKind.Default, isTopLevel: true), body, body.Span);
     }
 
     public static IReadOnlyDictionary<string, Symbol> CreateExports(

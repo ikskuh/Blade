@@ -224,19 +224,22 @@ public sealed class FunctionSymbol(
     string name,
     IFunctionSignatureSyntax syntax,
     FunctionKind kind,
+    bool isTopLevel,
     FunctionInliningPolicy inliningPolicy = FunctionInliningPolicy.Default,
     SourceSpan? sourceSpan = null) : Symbol(name, sourceSpan)
 {
     public FunctionSymbol(
         string name,
         FunctionKind kind,
+        bool isTopLevel,
         FunctionInliningPolicy inliningPolicy = FunctionInliningPolicy.Default)
-        : this(name, new SyntheticFunctionSignatureSyntax(name), kind, inliningPolicy)
+        : this(name, new SyntheticFunctionSignatureSyntax(name), kind, isTopLevel, inliningPolicy)
     {
     }
 
     public IFunctionSignatureSyntax Syntax { get; } = Requires.NotNull(syntax);
     public FunctionKind Kind { get; } = kind;
+    public bool IsTopLevel { get; } = isTopLevel;
     public FunctionInliningPolicy InliningPolicy { get; } = inliningPolicy;
     public IReadOnlyList<ParameterVariableSymbol> Parameters { get; set; } = [];
     public IReadOnlyList<ReturnSlot> ReturnSlots { get; set; } = [];
