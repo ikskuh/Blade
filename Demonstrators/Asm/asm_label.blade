@@ -5,7 +5,7 @@
 // - __asm_0_0_self
 // - MOV g_foo, #__asm_0_0_self
 
-reg var foo: u32 = 0;
+cog var foo: u32 = 0;
 asm {
   self:
     MOV {foo}, #self

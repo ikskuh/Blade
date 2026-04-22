@@ -25,10 +25,10 @@ type Pair = struct {
     value: u32,
 };
 
-reg var seed: u32 = 1;
-reg var values: [1]u32 = [1];
-reg var ptr: *reg u32 = undefined;
-reg var pair: Pair = Pair { .value = 1 };
+cog var seed: u32 = 1;
+cog var values: [1]u32 = [1];
+cog var ptr: *cog u32 = undefined;
+cog var pair: Pair = Pair { .value = 1 };
 
 fn runtime_u32() -> u32 { return 1; }
 fn runtime_bool() -> bool { return true; }
@@ -37,21 +37,21 @@ comptime fn read_global() -> u32 { return seed; }
 comptime fn write_global() -> u32 { seed = 2; return 0; }
 comptime fn use_intrinsic() -> u32 { return @encod(1); }
 
-reg const bad_direct_call: u32 = runtime_u32();
-reg const bad_read_global: u32 = read_global();
-reg const bad_write_global: u32 = write_global();
-reg const bad_intrinsic_call: u32 = use_intrinsic();
+cog const bad_direct_call: u32 = runtime_u32();
+cog const bad_read_global: u32 = read_global();
+cog const bad_write_global: u32 = write_global();
+cog const bad_intrinsic_call: u32 = use_intrinsic();
 
-extern reg var check_unary: u32 @(-seed);
-extern reg var check_binary: u32 @(seed + 1);
-extern reg var check_if: u32 @(if (true) seed else 1);
-extern reg var check_member: u32 @(pair.value);
-extern reg var check_index: u32 @(values[0]);
-extern reg var check_deref: u32 @(ptr.*);
-extern reg var check_module: u32 @(ext());
-extern reg var check_symbol: u32 @(seed);
+extern cog var check_unary: u32 @(-seed);
+extern cog var check_binary: u32 @(seed + 1);
+extern cog var check_if: u32 @(if (true) seed else 1);
+extern cog var check_member: u32 @(pair.value);
+extern cog var check_index: u32 @(values[0]);
+extern cog var check_deref: u32 @(ptr.*);
+extern cog var check_module: u32 @(ext());
+extern cog var check_symbol: u32 @(seed);
 
-reg const check_array_call: [1]u32 = [runtime_u32()];
-reg const check_array_conversion: [1]u8 = [@encod(1)];
-reg const check_array_cast: [1]u8 = [@encod(1) as u8];
-reg const check_array_bitcast: [1]u32 = [bitcast(u32, @encod(1))];
+cog const check_array_call: [1]u32 = [runtime_u32()];
+cog const check_array_conversion: [1]u8 = [@encod(1)];
+cog const check_array_cast: [1]u8 = [@encod(1) as u8];
+cog const check_array_bitcast: [1]u32 = [bitcast(u32, @encod(1))];

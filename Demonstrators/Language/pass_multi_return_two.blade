@@ -11,9 +11,9 @@ fn divmod(a: u32, b: u32) -> u32, bool {
     }
 }
 
-reg const in_a: u32 = 100;
-reg const in_b: u32 = 50;
-reg var result: u32 = 0;
-reg var flag: bool = false;
+cog const in_a: u32 = 100;
+cog const in_b: u32 = 50;
+cog var result: u32 = 0;
+cog var flag: bool = false;
 
 result, flag = divmod(in_a, in_b);

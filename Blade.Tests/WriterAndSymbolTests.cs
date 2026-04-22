@@ -27,14 +27,14 @@ public class WriterAndSymbolTests
     {
         VariableSymbol local = CreateVariable("local", storageClass: null, VariableScopeKind.Local);
         VariableSymbol topLevel = CreateVariable("top", storageClass: null, VariableScopeKind.Local);
-        VariableSymbol globalReg = CreateVariable("global_reg", VariableStorageClass.Reg, VariableScopeKind.GlobalStorage);
+        VariableSymbol globalReg = CreateVariable("global_reg", VariableStorageClass.Cog, VariableScopeKind.GlobalStorage);
         VariableSymbol globalHub = CreateVariable("global_hub", VariableStorageClass.Hub, VariableScopeKind.GlobalStorage);
         ControlFlowLabelSymbol label = new("bb0");
 
         Assert.That(local, Is.TypeOf<LocalVariableSymbol>());
         Assert.That(topLevel, Is.TypeOf<LocalVariableSymbol>());
         Assert.That(globalReg, Is.TypeOf<GlobalVariableSymbol>());
-        Assert.That(((GlobalVariableSymbol)globalReg).StorageClass, Is.EqualTo(VariableStorageClass.Reg));
+        Assert.That(((GlobalVariableSymbol)globalReg).StorageClass, Is.EqualTo(VariableStorageClass.Cog));
         Assert.That(((GlobalVariableSymbol)globalHub).StorageClass, Is.EqualTo(VariableStorageClass.Hub));
         Assert.That(((GlobalVariableSymbol)globalReg).ScopeKind, Is.EqualTo(VariableScopeKind.GlobalStorage));
         Assert.That(((GlobalVariableSymbol)globalHub).Alignment, Is.Null);
@@ -45,12 +45,12 @@ public class WriterAndSymbolTests
     public void LirIndexOperations_AcceptArrayAndManyPointerShapes()
     {
         ArrayTypeSymbol arrayType = new(BuiltinTypes.U32, 2);
-        MultiPointerTypeSymbol manyPointerType = new(BuiltinTypes.U32, isConst: false, VariableStorageClass.Reg);
+        MultiPointerTypeSymbol manyPointerType = new(BuiltinTypes.U32, isConst: false, VariableStorageClass.Cog);
 
-        Assert.That(new LirLoadIndexOperation(arrayType, VariableStorageClass.Reg).IsValidResultType(BuiltinTypes.U32), Is.True);
-        Assert.That(new LirLoadIndexOperation(manyPointerType, VariableStorageClass.Reg).IsValidResultType(BuiltinTypes.U32), Is.True);
-        Assert.That(new LirStoreIndexOperation(arrayType, VariableStorageClass.Reg).IsValidResultType(BuiltinTypes.U32), Is.True);
-        Assert.That(new LirStoreIndexOperation(manyPointerType, VariableStorageClass.Reg).IsValidResultType(BuiltinTypes.U32), Is.True);
+        Assert.That(new LirLoadIndexOperation(arrayType, VariableStorageClass.Cog).IsValidResultType(BuiltinTypes.U32), Is.True);
+        Assert.That(new LirLoadIndexOperation(manyPointerType, VariableStorageClass.Cog).IsValidResultType(BuiltinTypes.U32), Is.True);
+        Assert.That(new LirStoreIndexOperation(arrayType, VariableStorageClass.Cog).IsValidResultType(BuiltinTypes.U32), Is.True);
+        Assert.That(new LirStoreIndexOperation(manyPointerType, VariableStorageClass.Cog).IsValidResultType(BuiltinTypes.U32), Is.True);
     }
 
     [Test]
@@ -153,7 +153,7 @@ public class WriterAndSymbolTests
         StoragePlace allocatableRegister = IrTestFactory.CreateStoragePlace(
             "global_reg",
             placement: StoragePlacePlacement.Allocatable,
-            storageClass: VariableStorageClass.Reg,
+            storageClass: VariableStorageClass.Cog,
             emittedName: "g_global_reg");
         StoragePlace fixedLutAlias = IrTestFactory.CreateStoragePlace(
             "fixed_lut",

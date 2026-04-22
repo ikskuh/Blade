@@ -35,7 +35,7 @@ public sealed class Binder
     private bool _suppressPointerStorageClassDiagnostics;
 
     private static readonly EnumTypeSymbol MemorySpaceType = new("MemorySpace", BuiltinTypes.U32,
-        new Dictionary<string, long>(StringComparer.Ordinal) { ["reg"] = 0, ["lut"] = 1, ["hub"] = 2, ["_reg"] = 0, ["_lut"] = 1, ["_hub"] = 2 },
+        new Dictionary<string, long>(StringComparer.Ordinal) { ["cog"] = 0, ["lut"] = 1, ["hub"] = 2, ["_cog"] = 0, ["_lut"] = 1, ["_hub"] = 2 },
         isOpen: false);
 
     private Binder(
@@ -1907,7 +1907,7 @@ public sealed class Binder
 
         VariableStorageClass storageClass = variable is GlobalVariableSymbol globalVariable
             ? globalVariable.StorageClass
-            : VariableStorageClass.Reg;
+            : VariableStorageClass.Cog;
         BladeType pointerType = variable.Type is ArrayTypeSymbol arrayType
             ? new MultiPointerTypeSymbol(arrayType.ElementType, variable.IsConst, storageClass: storageClass)
             : new PointerTypeSymbol(variable.Type, variable.IsConst, storageClass: storageClass);
@@ -1948,13 +1948,13 @@ public sealed class Binder
                 {
                     VariableStorageClass storageClass = variable is GlobalVariableSymbol globalVariable
                         ? globalVariable.StorageClass
-                        : VariableStorageClass.Reg;
+                        : VariableStorageClass.Cog;
                     pointerType = new PointerTypeSymbol(elementType, variable.IsConst, storageClass: storageClass);
                     return true;
                 }
 
             case BoundSymbolExpression { Symbol: ParameterVariableSymbol parameter } when parameter.Type is ArrayTypeSymbol:
-                pointerType = new PointerTypeSymbol(elementType, isConst: false, storageClass: VariableStorageClass.Reg);
+                pointerType = new PointerTypeSymbol(elementType, isConst: false, storageClass: VariableStorageClass.Cog);
                 return true;
 
             default:
@@ -3013,7 +3013,7 @@ public sealed class Binder
         {
             (string memberName, long value) = sc switch
             {
-                VariableStorageClass.Reg => ("reg", 0L),
+                VariableStorageClass.Cog => ("cog", 0L),
                 VariableStorageClass.Lut => ("lut", 1L),
                 VariableStorageClass.Hub => ("hub", 2L),
                 _ => Assert.UnreachableValue<(string, long)>(), // pragma: force-coverage
@@ -3052,7 +3052,7 @@ public sealed class Binder
         {
             return enumLiteral.Value switch
             {
-                0 => VariableStorageClass.Reg,
+                0 => VariableStorageClass.Cog,
                 1 => VariableStorageClass.Lut,
                 2 => VariableStorageClass.Hub,
                 _ => ReportInvalidMemorySpace(span),
@@ -3064,7 +3064,7 @@ public sealed class Binder
         {
             return value switch
             {
-                0 => VariableStorageClass.Reg,
+                0 => VariableStorageClass.Cog,
                 1 => VariableStorageClass.Lut,
                 2 => VariableStorageClass.Hub,
                 _ => ReportInvalidMemorySpace(span),
@@ -3411,7 +3411,7 @@ public sealed class Binder
     {
         return storageClassKeyword?.Kind switch
         {
-            TokenKind.RegKeyword => VariableStorageClass.Reg,
+            TokenKind.CogKeyword => VariableStorageClass.Cog,
             TokenKind.LutKeyword => VariableStorageClass.Lut,
             TokenKind.HubKeyword => VariableStorageClass.Hub,
             _ => null,
@@ -3426,7 +3426,7 @@ public sealed class Binder
 
         if (!_suppressPointerStorageClassDiagnostics)
             _diagnostics.ReportPointerStorageClassRequired(span);
-        return VariableStorageClass.Reg;
+        return VariableStorageClass.Cog;
     }
 
     private void ResolveLayoutMetadata(VariableDeclarationSyntax declaration, GlobalVariableSymbol variableSymbol)

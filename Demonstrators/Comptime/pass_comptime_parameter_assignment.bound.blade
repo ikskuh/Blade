@@ -8,5 +8,5 @@ comptime fn increment(p: u32) -> u32 {
     return p;
 }
 
-reg const result: u32 = increment(41);
+cog const result: u32 = increment(41);
 assert result == 42;

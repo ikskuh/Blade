@@ -5,7 +5,7 @@
 // NOTE:
 //   `*T` supports deref only, `[*]T` supports indexing only.
 
-fn demo(ptr: *reg u32, many: [*]reg u32) -> u32 {
+fn demo(ptr: *cog u32, many: [*]cog u32) -> u32 {
     var a: u32 = ptr[0];
     var b: u32 = many.*;
     return a + b;

@@ -12,7 +12,7 @@
 
 hub var values: [4]u32 = undefined;
 hub var sink: u32 = 0;
-reg var index: u32 = 2;
+cog var index: u32 = 2;
 
 noinline fn store_one(ptr: *hub u32, value: u32) {
     ptr.* = value;

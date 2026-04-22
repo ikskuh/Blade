@@ -25,8 +25,8 @@ noinline fn general_use(a: u32) -> u32
     return leaf2_func(a) + 2;
 }
 
-reg var source: u32 = 0;
-reg var sink: u32 = 0;
+cog var source: u32 = 0;
+cog var sink: u32 = 0;
 
 sink = general_use(source);
 sink = general_use(sink);

@@ -851,7 +851,7 @@ public static class RegisterAllocator
 
             registerDefinitions.Add(new AsmAllocatedStorageDefinition(
                 label,
-                VariableStorageClass.Reg,
+                VariableStorageClass.Cog,
                 BuiltinTypes.U32));
         }
 

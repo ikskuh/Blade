@@ -464,7 +464,7 @@ public static class MirTextWriter
         {
             VariableStorageClass.Lut => "lut",
             VariableStorageClass.Hub => "hub",
-            _ => "reg",
+            _ => "cog",
         };
     }
 

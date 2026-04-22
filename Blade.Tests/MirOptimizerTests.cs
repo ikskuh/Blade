@@ -182,7 +182,7 @@ public class MirOptimizerTests
     public void Inliner_PreservesIndexedPointerAndAggregateMetadataOnClonedInstructions()
     {
         TextSpan span = new(0, 0);
-        MultiPointerTypeSymbol manyType = new(BuiltinTypes.U32, isConst: false, storageClass: VariableStorageClass.Reg);
+        MultiPointerTypeSymbol manyType = new(BuiltinTypes.U32, isConst: false, storageClass: VariableStorageClass.Cog);
         PointerTypeSymbol pointerType = new(BuiltinTypes.U16, isConst: false, storageClass: VariableStorageClass.Hub);
         AggregateMemberSymbol bitfieldMember = new("high", BuiltinTypes.Nib, byteOffset: 0, bitOffset: 4, bitWidth: 4, isBitfield: true);
         BitfieldTypeSymbol flagsType = new(
@@ -236,12 +236,12 @@ public class MirOptimizerTests
                 new MirBlockParameter(storeValueArg, "storeValue", BuiltinTypes.U32),
             ],
             [
-                new MirLoadIndexInstruction(MirValue(106), BuiltinTypes.U32, manyType, manyArg, indexArg, VariableStorageClass.Reg, hasSideEffects: false, span),
+                new MirLoadIndexInstruction(MirValue(106), BuiltinTypes.U32, manyType, manyArg, indexArg, VariableStorageClass.Cog, hasSideEffects: false, span),
                 new MirLoadDerefInstruction(MirValue(107), BuiltinTypes.U16, pointerType, pointerArg, VariableStorageClass.Hub, hasSideEffects: false, span),
                 new MirBitfieldExtractInstruction(MirValue(108), BuiltinTypes.Nib, flagsArg, bitfieldMember, span),
                 new MirBitfieldInsertInstruction(MirValue(109), flagsType, flagsArg, MirValue(108), bitfieldMember, span),
                 new MirInsertMemberInstruction(MirValue(110), packedType, packedArg, MirValue(107), structMember, span),
-                new MirStoreIndexInstruction(BuiltinTypes.U32, manyType, manyArg, indexArg, storeValueArg, VariableStorageClass.Reg, span),
+                new MirStoreIndexInstruction(BuiltinTypes.U32, manyType, manyArg, indexArg, storeValueArg, VariableStorageClass.Cog, span),
                 new MirStoreDerefInstruction(BuiltinTypes.U16, pointerType, pointerArg, MirValue(107), VariableStorageClass.Hub, span),
             ],
             new MirReturnTerminator([MirValue(110)], span));

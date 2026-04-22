@@ -1,11 +1,11 @@
 // EXPECT: pass
 // STAGE: bound
 // CONTAINS:
-// - Literal<[*]reg const u8>
-// - &lit_Reg_
+// - Literal<[*]cog const u8>
+// - &lit_Cog_
 // NOTE:
 //   String literals now bind directly to literal-backed symbolic pointers.
 
-fn test_reg() {
-    var s: [*]reg const u8 = "hello";
+fn test_cog() {
+    var s: [*]cog const u8 = "hello";
 }

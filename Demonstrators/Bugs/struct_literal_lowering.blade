@@ -19,7 +19,7 @@ hub var pair: Pair = Pair {
     .value = 1,
 };
 
-reg var sink: u32 = 0;
+cog var sink: u32 = 0;
 
 sink = pair.value;
 pair.value = sink + 1;

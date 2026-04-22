@@ -8,4 +8,4 @@ comptime fn bad_div() -> u32 {
     return 10 / 0;
 }
 
-reg const folded: u32 = bad_div();
+cog const folded: u32 = bad_div();

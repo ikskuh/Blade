@@ -15,7 +15,7 @@ type Header = union {
     hi: u32,
 };
 
-reg var header: Header = undefined;
+cog var header: Header = undefined;
 
 fn touch_union_members() {
     var first: u32 = header.lo;

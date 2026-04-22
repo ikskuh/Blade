@@ -6,8 +6,8 @@
 //   Signed `< 0` must lower to a direct sign-bit test instead of routing through
 //   the generic compare path.
 
-reg var input_value: u32 = 0;
-reg var sink: u32 = 0;
+cog var input_value: u32 = 0;
+cog var sink: u32 = 0;
 
 noinline fn is_negative(x: u32) -> u32 {
     var signed: i32 = bitcast(i32, x);

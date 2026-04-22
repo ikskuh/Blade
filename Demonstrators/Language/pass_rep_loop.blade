@@ -2,7 +2,7 @@
 // NOTE:
 //   Exercises rep loop (infinite) lowering to REP with @label body-length calculation.
 
-extern reg var OUTA: u32 @(0x1FC);
+extern cog var OUTA: u32 @(0x1FC);
 
 noinline fn spin_forever(value: u32) -> u32 {
     rep loop {
@@ -11,5 +11,5 @@ noinline fn spin_forever(value: u32) -> u32 {
     return 0;
 }
 
-reg var v: u32 = 42;
+cog var v: u32 = 42;
 OUTA = spin_forever(v);

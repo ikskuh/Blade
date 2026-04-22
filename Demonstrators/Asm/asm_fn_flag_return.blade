@@ -9,5 +9,5 @@ asm fn add_with_carry(a: u32, b: u32) -> bool@C {
     ADD {a}, {b} WC
 }
 
-reg var flag: bool = false;
+cog var flag: bool = false;
 flag = add_with_carry(0xFFFF_FFFF, 1);

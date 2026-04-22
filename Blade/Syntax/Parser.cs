@@ -82,7 +82,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
             case TokenKind.ExternKeyword:
                 return ParseVariableDeclaration(NextToken());
 
-            case TokenKind.RegKeyword or TokenKind.LutKeyword or TokenKind.HubKeyword:
+            case TokenKind.CogKeyword or TokenKind.LutKeyword or TokenKind.HubKeyword:
                 return ParseVariableDeclaration(externKeyword: null);
 
             case TokenKind.VarKeyword:
@@ -294,7 +294,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
     private ParameterSyntax ParseParameter()
     {
         Token? storageClass = null;
-        if (Current.Kind is TokenKind.RegKeyword or TokenKind.LutKeyword or TokenKind.HubKeyword)
+        if (Current.Kind is TokenKind.CogKeyword or TokenKind.LutKeyword or TokenKind.HubKeyword)
             storageClass = NextToken();
 
         Token name = MatchToken(TokenKind.Identifier);
@@ -348,7 +348,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
     private VariableDeclarationSyntax ParseVariableDeclaration(Token? externKeyword)
     {
         Token? storageClass = null;
-        if (Current.Kind is TokenKind.RegKeyword or TokenKind.LutKeyword or TokenKind.HubKeyword)
+        if (Current.Kind is TokenKind.CogKeyword or TokenKind.LutKeyword or TokenKind.HubKeyword)
             storageClass = NextToken();
 
         Token mutability = Current.Kind == TokenKind.VarKeyword || Current.Kind == TokenKind.ConstKeyword
@@ -440,7 +440,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
             case TokenKind.OpenBrace:
                 return ParseBlockStatement();
 
-            case TokenKind.VarKeyword or TokenKind.RegKeyword or TokenKind.LutKeyword or TokenKind.HubKeyword:
+            case TokenKind.VarKeyword or TokenKind.CogKeyword or TokenKind.LutKeyword or TokenKind.HubKeyword:
                 return new VariableDeclarationStatementSyntax(ParseVariableDeclaration(externKeyword: null));
 
             case TokenKind.ConstKeyword:
@@ -1142,7 +1142,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
         {
             switch (Current.Kind)
             {
-                case TokenKind.RegKeyword or TokenKind.LutKeyword or TokenKind.HubKeyword when storageClass is null:
+                case TokenKind.CogKeyword or TokenKind.LutKeyword or TokenKind.HubKeyword when storageClass is null:
                     storageClass = NextToken();
                     break;
                 case TokenKind.ConstKeyword when constKw is null:

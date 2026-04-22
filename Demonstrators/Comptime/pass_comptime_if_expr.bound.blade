@@ -6,7 +6,7 @@
 // NOTE:
 //   Covers comptime if-expression evaluation path.
 
-reg var sink: u32 = 0;
+cog var sink: u32 = 0;
 
 comptime fn if_true() -> u32 {
     return if (true) 42 else 99;

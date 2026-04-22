@@ -14,9 +14,9 @@
 //   Run 4: 0+0xFFFFFFFF+0xFFFFFFFF+0x0F0F0F0F = 0x0F0F0F0D (wrapping)
 //   Run 5: 0xA5A5A5A5+0xA5A5A5A5+0+0x5A5A5A5A = 0xA5A5A5A4 (wrapping)
 
-extern reg var rt_result: u32;
-extern reg var rt_param0: u32;
-extern reg var rt_param1: u32;
+extern cog var rt_result: u32;
+extern cog var rt_param0: u32;
+extern cog var rt_param1: u32;
 
 noinline fn bitwise(a: u32, b: u32) -> u32 {
     var and_r: u32 = a & b;

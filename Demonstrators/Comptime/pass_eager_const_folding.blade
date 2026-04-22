@@ -8,6 +8,6 @@
 //   The compiler must optimize the "ticks - 2" into a constant
 //   node as we've guaranteed the value won't ever change.
 
-reg const ticks: u32 = 5000;
+cog const ticks: u32 = 5000;
 
 @WAITX(ticks - 2); // this must be folded by the compiler eagerly

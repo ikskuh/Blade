@@ -40,7 +40,7 @@ public class BinderTests
     [Test]
     public void TypedAssignment_InsertsImplicitConversionForIntegerLiteral()
     {
-        (_, BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("reg var x: u32 = 0; x = 1;");
+        (_, BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("cog var x: u32 = 0; x = 1;");
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
         string dump = BoundTreeWriter.Write(program);
@@ -92,10 +92,10 @@ public class BinderTests
     public void CompileTimeKnownNarrowing_ReportsTruncationWarning()
     {
         (_, _, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
-            reg const wide: u32 = 257;
-            reg const implicit_small: u8 = wide;
-            reg const explicit_small: u8 = 257 as u8;
-            reg const exact_small: u8 = 255;
+            cog const wide: u32 = 257;
+            cog const implicit_small: u8 = wide;
+            cog const explicit_small: u8 = 257 as u8;
+            cog const exact_small: u8 = 255;
             """);
 
         Assert.That(diagnostics.Count(static diagnostic => diagnostic.Code == DiagnosticCode.W0261_ComptimeIntegerTruncation), Is.EqualTo(2));
@@ -105,7 +105,7 @@ public class BinderTests
     public void AssignmentToConst_ReportsDiagnostic()
     {
         (_, _, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
-            reg const x: u32 = 1;
+            cog const x: u32 = 1;
             x = 2;
             """);
 
@@ -174,7 +174,7 @@ public class BinderTests
         (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
             fn demo(param: u32) void {
                 var x: u32 = param;
-                var p: *reg u32 = &x;
+                var p: *cog u32 = &x;
             }
             """);
 
@@ -184,7 +184,7 @@ public class BinderTests
         BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)function.Body.Statements[1];
         BoundLiteralExpression initializer = (BoundLiteralExpression)declaration.Initializer!;
 
-        Assert.That(initializer.Type.Name, Is.EqualTo("*reg u32"));
+        Assert.That(initializer.Type.Name, Is.EqualTo("*cog u32"));
         Assert.That(initializer.Value.TryGetPointedValue(out PointedValue pointedValue), Is.True);
         Assert.That(pointedValue.Symbol.Name, Is.EqualTo("x"));
         Assert.That(pointedValue.Offset, Is.EqualTo(0));
@@ -195,7 +195,7 @@ public class BinderTests
     {
         (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
             fn demo(param: u32) void {
-                var p: *reg u32 = &param;
+                var p: *cog u32 = &param;
             }
             """);
 
@@ -205,7 +205,7 @@ public class BinderTests
         BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)function.Body.Statements[0];
         BoundLiteralExpression initializer = (BoundLiteralExpression)declaration.Initializer!;
 
-        Assert.That(initializer.Type.Name, Is.EqualTo("*reg u32"));
+        Assert.That(initializer.Type.Name, Is.EqualTo("*cog u32"));
         Assert.That(initializer.Value.TryGetPointedValue(out PointedValue pointedValue), Is.True);
         Assert.That(pointedValue.Symbol.Name, Is.EqualTo("param"));
         Assert.That(pointedValue.Offset, Is.EqualTo(0));
@@ -216,7 +216,7 @@ public class BinderTests
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
             fn demo() void {
-                var p: *reg u32 = &(1 + 2);
+                var p: *cog u32 = &(1 + 2);
             }
             """);
 
@@ -229,7 +229,7 @@ public class BinderTests
         (_, _, DiagnosticBag diagnostics) = Bind("""
             rec fn demo(bound: u32) void {
                 var x: u32 = bound;
-                var p: *reg u32 = &x;
+                var p: *cog u32 = &x;
             }
             """);
 
@@ -273,7 +273,7 @@ public class BinderTests
         (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
             fn demo() void {
                 var value: u32 = 1;
-                var source: *reg u32 = &value;
+                var source: *cog u32 = &value;
                 var sink: *hub u32 = source as *hub u32;
             }
             """);
@@ -304,7 +304,7 @@ public class BinderTests
         (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
             fn demo() void {
                 var raw: u32 = 1;
-                var ptr: *reg u32 = bitcast(*reg u32, raw);
+                var ptr: *cog u32 = bitcast(*cog u32, raw);
             }
             """);
 
@@ -313,15 +313,15 @@ public class BinderTests
         BoundFunctionMember function = GetFunction(program, "demo");
         BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)function.Body.Statements[1];
         Assert.That(declaration.Initializer, Is.TypeOf<BoundBitcastExpression>());
-        Assert.That(declaration.Initializer!.Type.Name, Is.EqualTo("*reg u32"));
+        Assert.That(declaration.Initializer!.Type.Name, Is.EqualTo("*cog u32"));
     }
 
     [Test]
     public void BitcastSizeMismatch_ReportsDiagnostic()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
-            reg var raw: u32 = 1;
-            reg var narrowed: u16 = bitcast(u16, raw);
+            cog var raw: u32 = 1;
+            cog var narrowed: u16 = bitcast(u16, raw);
             """);
 
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0225_BitcastSizeMismatch), Is.True);
@@ -411,7 +411,7 @@ public class BinderTests
                 return a + b;
             }
 
-            reg var x: u32 = add(1);
+            cog var x: u32 = add(1);
             """);
 
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0207_ArgumentCountMismatch), Is.True);
@@ -522,7 +522,7 @@ public class BinderTests
     [Test]
     public void UndefinedTypeAlias_ReportsDiagnostic()
     {
-        (_, _, DiagnosticBag diagnostics) = Bind("reg var x: MissingType = undefined;");
+        (_, _, DiagnosticBag diagnostics) = Bind("cog var x: MissingType = undefined;");
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0203_UndefinedType), Is.True);
     }
 
@@ -677,7 +677,7 @@ public class BinderTests
         (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
             fn demo() void {
                 var values: [4]u32 = undefined;
-                var p: [*]reg u32 = &values;
+                var p: [*]cog u32 = &values;
             }
             """);
 
@@ -685,7 +685,7 @@ public class BinderTests
 
         BoundFunctionMember function = GetFunction(program, "demo");
         BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)function.Body.Statements[1];
-        Assert.That(declaration.Initializer!.Type.Name, Is.EqualTo("[*]reg u32"));
+        Assert.That(declaration.Initializer!.Type.Name, Is.EqualTo("[*]cog u32"));
     }
 
     [Test]
@@ -693,7 +693,7 @@ public class BinderTests
     {
         (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
             fn demo(values: [4]u32) void {
-                var p: [*]reg u32 = &values;
+                var p: [*]cog u32 = &values;
             }
             """);
 
@@ -701,7 +701,7 @@ public class BinderTests
 
         BoundFunctionMember function = GetFunction(program, "demo");
         BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)function.Body.Statements[0];
-        Assert.That(declaration.Initializer!.Type.Name, Is.EqualTo("[*]reg u32"));
+        Assert.That(declaration.Initializer!.Type.Name, Is.EqualTo("[*]cog u32"));
     }
 
     [Test]
@@ -709,7 +709,7 @@ public class BinderTests
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
             fn demo() void {
-                var p: *reg u32 = &missing;
+                var p: *cog u32 = &missing;
             }
             """);
 
@@ -721,7 +721,7 @@ public class BinderTests
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
             rec fn demo(value: u32) void {
-                var p: *reg u32 = &value;
+                var p: *cog u32 = &value;
             }
             """);
 
@@ -732,7 +732,7 @@ public class BinderTests
     public void PointerIndexing_ReportsDiagnosticForSinglePointer()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
-            fn demo(p: *reg u32) -> u32 {
+            fn demo(p: *cog u32) -> u32 {
                 return p[0];
             }
             """);
@@ -744,7 +744,7 @@ public class BinderTests
     public void PointerIndexAssignment_ReportsDiagnosticForSinglePointerAndNonIntegerIndex()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
-            fn demo(p: *reg u32, values: [4]u32) void {
+            fn demo(p: *cog u32, values: [4]u32) void {
                 p[0] = 1;
                 values[false] = 2;
             }
@@ -757,7 +757,7 @@ public class BinderTests
     public void MultiPointerDeref_ReportsDiagnostic()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
-            fn demo(p: [*]reg u32) -> u32 {
+            fn demo(p: [*]cog u32) -> u32 {
                 return p.*;
             }
             """);
@@ -795,8 +795,8 @@ public class BinderTests
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
             fn demo() void {
-                var source: *reg u32 = undefined;
-                var sink: *reg const volatile u32 = source;
+                var source: *cog u32 = undefined;
+                var sink: *cog const volatile u32 = source;
             }
             """);
 
@@ -807,8 +807,8 @@ public class BinderTests
     public void PointerQualifiers_RejectDroppingConstOrVolatile()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
-            reg var source: *reg const volatile u32 = undefined;
-            reg var sink: *reg u32 = source;
+            cog var source: *cog const volatile u32 = undefined;
+            cog var sink: *cog u32 = source;
             """);
 
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
@@ -819,8 +819,8 @@ public class BinderTests
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
             fn demo() void {
-                var source: *reg align(8) u32 = undefined;
-                var sink: *reg align(4) u32 = source;
+                var source: *cog align(8) u32 = undefined;
+                var sink: *cog align(4) u32 = source;
             }
             """);
 
@@ -831,8 +831,8 @@ public class BinderTests
     public void PointerAlignment_RejectsWeakerSourceAlignment()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
-            reg var source: *reg align(4) u32 = undefined;
-            reg var sink: *reg align(8) u32 = source;
+            cog var source: *cog align(4) u32 = undefined;
+            cog var sink: *cog align(8) u32 = source;
             """);
 
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
@@ -842,8 +842,8 @@ public class BinderTests
     public void PointerAssignment_RejectsFamilyMismatch()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
-            reg var source: [*]reg u32 = undefined;
-            reg var sink: *reg u32 = source;
+            cog var source: [*]cog u32 = undefined;
+            cog var sink: *cog u32 = source;
             """);
 
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
@@ -858,7 +858,7 @@ public class BinderTests
                 Busy = 1,
             };
 
-            reg var mode: Mode = .Busy;
+            cog var mode: Mode = .Busy;
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
@@ -875,7 +875,7 @@ public class BinderTests
                 Busy = 1,
             };
 
-            reg var mode: Mode = Mode.Busy;
+            cog var mode: Mode = Mode.Busy;
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
@@ -891,7 +891,7 @@ public class BinderTests
                 Idle = 0,
             };
 
-            reg var x: u32 = .Idle;
+            cog var x: u32 = .Idle;
             """);
 
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0232_EnumLiteralRequiresContext), Is.True);
@@ -903,7 +903,7 @@ public class BinderTests
     public void MissingTypeAliasQualifiedMember_ReportsUndefinedName()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
-            reg var value: u32 = MissingAlias.Member;
+            cog var value: u32 = MissingAlias.Member;
             """);
 
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0202_UndefinedName), Is.True);
@@ -917,7 +917,7 @@ public class BinderTests
                 Idle = 0,
             };
 
-            reg var mode: Mode = .Missing;
+            cog var mode: Mode = .Missing;
             """);
 
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0202_UndefinedName), Is.True);
@@ -931,7 +931,7 @@ public class BinderTests
                 Idle = 0,
             };
 
-            reg var mode: Mode = Mode.Missing;
+            cog var mode: Mode = Mode.Missing;
             """);
 
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0202_UndefinedName), Is.True);
@@ -944,8 +944,8 @@ public class BinderTests
             type First = enum (u8) { A = 0, };
             type Second = enum (u8) { A = 0, };
 
-            reg var first: First = .A;
-            reg var second: Second = first;
+            cog var first: First = .A;
+            cog var second: Second = first;
             """);
 
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
@@ -964,9 +964,9 @@ public class BinderTests
                 Idle = 0,
             };
 
-            reg var raw: u8 = ((2 as u8) as OpenState) as u8;
-            reg var closed: ClosedState = .Idle;
-            reg var bad: u8 = closed as u8;
+            cog var raw: u8 = ((2 as u8) as OpenState) as u8;
+            cog var closed: ClosedState = .Idle;
+            cog var bad: u8 = closed as u8;
             """);
 
         Assert.That(program.GlobalVariables.Single(global => global.Name == "raw").Initializer, Is.TypeOf<BoundLiteralExpression>());
@@ -1016,7 +1016,7 @@ public class BinderTests
     public void EnumType_RejectsNonIntegerBackingAndNonConstantMemberValues()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
-            reg var seed: u32 = 1;
+            cog var seed: u32 = 1;
 
             type BadBacking = enum (bool) {
                 A = 0,
@@ -1063,10 +1063,10 @@ public class BinderTests
             type EmptyFlags = bitfield (u32) {
             };
 
-            reg var s: EmptyStruct = undefined;
-            reg var u: EmptyUnion = undefined;
-            reg var e: EmptyEnum = undefined;
-            reg var f: EmptyFlags = undefined;
+            cog var s: EmptyStruct = undefined;
+            cog var u: EmptyUnion = undefined;
+            cog var e: EmptyEnum = undefined;
+            cog var f: EmptyFlags = undefined;
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
@@ -1178,7 +1178,7 @@ public class BinderTests
                 lo: u32,
             };
 
-            reg var header: Header = undefined;
+            cog var header: Header = undefined;
             header.hi = 1;
             """);
 
@@ -1246,8 +1246,8 @@ public class BinderTests
                 low: nib,
             };
 
-            reg var left: Left = undefined;
-            reg var right: Right = left;
+            cog var left: Left = undefined;
+            cog var right: Right = left;
             """);
 
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
@@ -1262,7 +1262,7 @@ public class BinderTests
                 high: nib,
             };
 
-            reg var flags: Flags = undefined;
+            cog var flags: Flags = undefined;
             flags.high = 3;
             """);
 
@@ -1289,7 +1289,7 @@ public class BinderTests
     public void ArrayLiteral_UsesExpectedElementTypeAndSpread()
     {
         (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            reg var values: [4]u32 = [1, 2...];
+            cog var values: [4]u32 = [1, 2...];
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
@@ -1322,7 +1322,7 @@ public class BinderTests
     public void EmptyArrayLiteral_RequiresContextAndBindsWithExpectedType()
     {
         (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            reg var values: [3]u32 = [];
+            cog var values: [3]u32 = [];
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
@@ -1335,7 +1335,7 @@ public class BinderTests
     public void ArrayLiteral_BoundTreeWriterMarksSpreadElement()
     {
         (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            reg var values: [4]u32 = [1, 2...];
+            cog var values: [4]u32 = [1, 2...];
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
@@ -1348,7 +1348,7 @@ public class BinderTests
     public void ArrayLiteral_ElementTypeMismatchReportsDiagnostic()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
-            reg var values: [2]u32 = [1, false];
+            cog var values: [2]u32 = [1, false];
             """);
 
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
@@ -1358,7 +1358,7 @@ public class BinderTests
     public void ArrayLiteral_SpreadMustBeLastReportsDiagnostic()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
-            reg var values: [4]u32 = [1..., 2];
+            cog var values: [4]u32 = [1..., 2];
             """);
 
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0235_ArrayLiteralSpreadMustBeLast), Is.True);
@@ -1450,8 +1450,8 @@ public class BinderTests
     public void ForLoop_CountOnly_BindsCorrectly()
     {
         (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            reg var count: u32 = 4;
-            reg var sink: u32 = 0;
+            cog var count: u32 = 4;
+            cog var sink: u32 = 0;
             for (count) { sink = sink + 1; }
             """);
 
@@ -1475,7 +1475,7 @@ public class BinderTests
     public void ForLoop_MutableRefOnCount_ReportsDiagnostic()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
-            reg var count: u32 = 4;
+            cog var count: u32 = 4;
             for (count) -> &i { }
             """);
 
@@ -1510,7 +1510,7 @@ public class BinderTests
     [Test]
     public void CharLiteral_BindsAsIntegerLiteral()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("reg var x: u32 = 'A';");
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("cog var x: u32 = 'A';");
         Assert.That(diagnostics.Count, Is.EqualTo(0));
         string dump = BoundTreeWriter.Write(program);
         Assert.That(dump, Does.Contain("65"));
@@ -1519,7 +1519,7 @@ public class BinderTests
     [Test]
     public void CharLiteral_EscapeSequence_BindsCorrectly()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("reg var x: u32 = '\\n';");
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("cog var x: u32 = '\\n';");
         Assert.That(diagnostics.Count, Is.EqualTo(0));
         string dump = BoundTreeWriter.Write(program);
         Assert.That(dump, Does.Contain("10"));
@@ -1528,7 +1528,7 @@ public class BinderTests
     [Test]
     public void StringLiteral_CoercesToByteArray_WhenLengthMatches()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("reg var a: [4]u8 = \"bye!\";");
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("cog var a: [4]u8 = \"bye!\";");
         Assert.That(diagnostics.Count, Is.EqualTo(0));
         string dump = BoundTreeWriter.Write(program);
         Assert.That(dump, Does.Contain("Literal<[4]u8> [98, 121, 101, 33]"));
@@ -1538,7 +1538,7 @@ public class BinderTests
     public void ZeroTerminatedString_CoercesToByteArray_WithNul()
     {
         // z"hi!" is 3 chars + NUL = 4 bytes, matching [4]u8
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("reg var a: [4]u8 = z\"hi!\";");
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("cog var a: [4]u8 = z\"hi!\";");
         Assert.That(diagnostics.Count, Is.EqualTo(0));
         string dump = BoundTreeWriter.Write(program);
         Assert.That(dump, Does.Contain("Literal<[4]u8> [104, 105, 33, 0]"));
@@ -1547,7 +1547,7 @@ public class BinderTests
     [Test]
     public void StringLiteral_LengthMismatch_ReportsTypeMismatch()
     {
-        (_, _, DiagnosticBag diagnostics) = Bind("reg var a: [3]u8 = \"bye!\";");
+        (_, _, DiagnosticBag diagnostics) = Bind("cog var a: [3]u8 = \"bye!\";");
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
     }
 
@@ -1555,14 +1555,14 @@ public class BinderTests
     public void ZeroTerminatedString_LengthMismatch_ReportsTypeMismatch()
     {
         // z"hi!" is 4 bytes (3 + NUL), does not fit in [3]u8
-        (_, _, DiagnosticBag diagnostics) = Bind("reg var a: [3]u8 = z\"hi!\";");
+        (_, _, DiagnosticBag diagnostics) = Bind("cog var a: [3]u8 = z\"hi!\";");
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
     }
 
     [Test]
     public void StringLiteral_ToNonConstPointer_ReportsE0240()
     {
-        (_, _, DiagnosticBag diagnostics) = Bind("reg var s: [*]reg u8 = \"hello\";");
+        (_, _, DiagnosticBag diagnostics) = Bind("cog var s: [*]cog u8 = \"hello\";");
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0240_StringToNonConstPointer), Is.True);
     }
 
@@ -1570,7 +1570,7 @@ public class BinderTests
     public void StringLiteral_ToConstPointer_IsAssignable()
     {
         // Verify binding succeeds (even though backend lowering is not implemented)
-        (_, _, DiagnosticBag diagnostics) = Bind("reg var s: [*]reg const u8 = \"hello\";");
+        (_, _, DiagnosticBag diagnostics) = Bind("cog var s: [*]cog const u8 = \"hello\";");
         // Should not report type mismatch or string-to-non-const errors
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.False);
         Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0240_StringToNonConstPointer), Is.False);
@@ -1580,8 +1580,8 @@ public class BinderTests
     public void PointerTypeWithoutStorageClass_ReportsE0264()
     {
         (_, _, DiagnosticBag diagnostics) = Bind("""
-            reg var single: *const u8 = undefined;
-            reg var many: [*]volatile u32 = undefined;
+            cog var single: *const u8 = undefined;
+            cog var many: [*]volatile u32 = undefined;
             """);
 
         Assert.That(diagnostics.Count(d => d.Code == DiagnosticCode.E0264_PointerStorageClassRequired), Is.EqualTo(2));

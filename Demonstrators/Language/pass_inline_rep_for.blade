@@ -2,8 +2,8 @@
 // NOTE:
 //   Exercises rep-for setup/iter rewrite paths via a single-callsite inlineable helper.
 
-reg var count: u32 = 4;
-reg var sink: u32 = 0;
+cog var count: u32 = 4;
+cog var sink: u32 = 0;
 
 fn inline_rep_for(n: u32) -> u32 {
     var sum: u32 = 0;

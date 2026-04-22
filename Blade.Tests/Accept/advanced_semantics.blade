@@ -5,7 +5,7 @@ coro fn worker(seed: u32)  {
     loop  {
         var pair: Pair = Pair { .left = seed, .right = seed };
         var arr: [2]u32 = undefined;
-        var ptr: *reg u32 = undefined;
+        var ptr: *cog u32 = undefined;
         var sink: u32 = 0;
 
         sink = pair.left;

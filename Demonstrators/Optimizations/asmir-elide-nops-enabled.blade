@@ -14,7 +14,7 @@
 //   Positive case for elide-nops: semantic no-ops inside asm must be removed
 //   without stripping the entry-point runtime halt jump.
 
-reg var sink: u32 = 0;
+cog var sink: u32 = 0;
 var x: u32 = 1;
 asm {
   MOV {x}, {x}

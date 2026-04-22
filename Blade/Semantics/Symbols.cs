@@ -142,7 +142,7 @@ public sealed class GlobalVariableSymbol(
 {
     private int? _fixedAddress = fixedAddress;
     private int? _alignment = alignment;
-    private bool _canElideTopLevelStoreLoadChains = storageClass == VariableStorageClass.Reg
+    private bool _canElideTopLevelStoreLoadChains = storageClass == VariableStorageClass.Cog
         && !isExtern
         && !fixedAddress.HasValue;
 
@@ -176,7 +176,7 @@ public sealed class GlobalVariableSymbol(
 
 public enum VariableStorageClass
 {
-    Reg,
+    Cog,
     Lut,
     Hub,
 }

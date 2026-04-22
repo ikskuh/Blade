@@ -17,7 +17,7 @@ public enum TokenKind
     CharLiteral,
 
     // Storage class keywords
-    RegKeyword,
+    CogKeyword,
     LutKeyword,
     HubKeyword,
 

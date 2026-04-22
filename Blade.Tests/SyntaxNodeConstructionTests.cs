@@ -24,7 +24,7 @@ public class SyntaxNodeConstructionTests
         UnionTypeSyntax unionType = new(Tok(TokenKind.UnionKeyword, 0, 5, "union"), Tok(TokenKind.OpenBrace, 6, 1, "{"), structFields, Tok(TokenKind.CloseBrace, 40, 1, "}"));
         EnumTypeSyntax enumType = new(Tok(TokenKind.EnumKeyword, 0, 4, "enum"), Tok(TokenKind.OpenParen, 5, 1, "("), backing, Tok(TokenKind.CloseParen, 9, 1, ")"), Tok(TokenKind.OpenBrace, 11, 1, "{"), enumMembers, Tok(TokenKind.CloseBrace, 41, 1, "}"));
         BitfieldTypeSyntax bitfieldType = new(Tok(TokenKind.BitfieldKeyword, 0, 8, "bitfield"), Tok(TokenKind.OpenParen, 8, 1, "("), backing, Tok(TokenKind.CloseParen, 12, 1, ")"), Tok(TokenKind.OpenBrace, 14, 1, "{"), structFields, Tok(TokenKind.CloseBrace, 42, 1, "}"));
-        MultiPointerTypeSyntax multiPointer = new(Tok(TokenKind.OpenBracket, 0, 1, "["), Tok(TokenKind.Star, 1, 1, "*"), Tok(TokenKind.CloseBracket, 2, 1, "]"), Tok(TokenKind.RegKeyword, 3, 3, "reg"), null, null, null, backing);
+        MultiPointerTypeSyntax multiPointer = new(Tok(TokenKind.OpenBracket, 0, 1, "["), Tok(TokenKind.Star, 1, 1, "*"), Tok(TokenKind.CloseBracket, 2, 1, "]"), Tok(TokenKind.CogKeyword, 3, 3, "cog"), null, null, null, backing);
         QualifiedTypeSyntax qualified = new([Tok(TokenKind.Identifier, 50, 3, "mod"), Tok(TokenKind.Identifier, 54, 4, "Type")]);
 
         Assert.That(unionType.UnionKeyword.Kind, Is.EqualTo(TokenKind.UnionKeyword));
@@ -51,7 +51,7 @@ public class SyntaxNodeConstructionTests
         Assert.That(multiPointer.OpenBracket.Kind, Is.EqualTo(TokenKind.OpenBracket));
         Assert.That(multiPointer.Star.Kind, Is.EqualTo(TokenKind.Star));
         Assert.That(multiPointer.CloseBracket.Kind, Is.EqualTo(TokenKind.CloseBracket));
-        Assert.That(multiPointer.StorageClassKeyword?.Kind, Is.EqualTo(TokenKind.RegKeyword));
+        Assert.That(multiPointer.StorageClassKeyword?.Kind, Is.EqualTo(TokenKind.CogKeyword));
         Assert.That(multiPointer.ConstKeyword, Is.Null);
         Assert.That(multiPointer.VolatileKeyword, Is.Null);
         Assert.That(multiPointer.AlignClause, Is.Null);

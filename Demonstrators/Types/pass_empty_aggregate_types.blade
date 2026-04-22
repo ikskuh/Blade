@@ -20,7 +20,7 @@ type EmptyClosed = enum (u8) {
 type EmptyFlags = bitfield (u32) {
 };
 
-reg var empty_struct: EmptyStruct = undefined;
-reg var empty_union: EmptyUnion = undefined;
-reg var empty_enum: EmptyClosed = undefined;
-reg var empty_flags: EmptyFlags = undefined;
+cog var empty_struct: EmptyStruct = undefined;
+cog var empty_union: EmptyUnion = undefined;
+cog var empty_enum: EmptyClosed = undefined;
+cog var empty_flags: EmptyFlags = undefined;

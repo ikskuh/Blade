@@ -8,8 +8,8 @@
 //   Exercises MIR constant propagation across unary, integer-binary, comparison,
 //   and boolean operators using runtime symbols initialized from constants.
 
-reg var sink_u: u32 = 0;
-reg var sink_b: bool = false;
+cog var sink_u: u32 = 0;
+cog var sink_b: bool = false;
 
 noinline fn demo() {
     var zero: u32 = 0;

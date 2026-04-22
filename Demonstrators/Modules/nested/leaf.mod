@@ -1,1 +1,1 @@
-reg var touched: u32 = 1;
+cog var touched: u32 = 1;

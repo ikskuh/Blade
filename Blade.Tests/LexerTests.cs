@@ -130,7 +130,7 @@ public class LexerTests
 
     // --- Keywords ---
 
-    [TestCase("reg", TokenKind.RegKeyword)]
+    [TestCase("cog", TokenKind.CogKeyword)]
     [TestCase("lut", TokenKind.LutKeyword)]
     [TestCase("hub", TokenKind.HubKeyword)]
     [TestCase("extern", TokenKind.ExternKeyword)]
@@ -745,10 +745,10 @@ public class LexerTests
     [Test]
     public void LexVariableDeclaration()
     {
-        List<Token> tokens = Lex("reg var counter: u32 = 0;");
+        List<Token> tokens = Lex("cog var counter: u32 = 0;");
         TokenKind[] expected = new[]
         {
-            TokenKind.RegKeyword,
+            TokenKind.CogKeyword,
             TokenKind.VarKeyword,
             TokenKind.Identifier,   // counter
             TokenKind.Colon,

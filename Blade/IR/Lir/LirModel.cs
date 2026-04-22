@@ -115,7 +115,7 @@ public abstract class LirOperation
         {
             VariableStorageClass.Lut => "lut",
             VariableStorageClass.Hub => "hub",
-            _ => "reg",
+            _ => "cog",
         };
     }
 

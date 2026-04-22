@@ -2,10 +2,10 @@
 // DIAGNOSTICS:
 // - E0243
 
-reg var base: u32 = 5;
+cog var base: u32 = 5;
 
 fn read_base(delta: u32) -> u32 {
     return base + delta;
 }
 
-reg const folded: u32 = read_base(1);
+cog const folded: u32 = read_base(1);

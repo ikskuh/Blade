@@ -10,8 +10,8 @@
 //   store_load(val): writes val to stored.value, reads it back.
 //   Result must equal the input (write-then-read identity).
 
-extern reg var rt_result: u32;
-extern reg var rt_param0: u32;
+extern cog var rt_result: u32;
+extern cog var rt_param0: u32;
 
 type Pair = struct {
     value: u32,

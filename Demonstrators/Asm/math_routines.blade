@@ -1,9 +1,9 @@
 // Tight math and bit-twiddling routines using plain optimizer-visible asm.
 
-reg var input_a: u32 = 7;
-reg var input_b: u32 = 11;
-reg var scaled_sum: u32 = 0;
-reg var masked_mix: u32 = 0;
+cog var input_a: u32 = 7;
+cog var input_b: u32 = 11;
+cog var scaled_sum: u32 = 0;
+cog var masked_mix: u32 = 0;
 
 fn mul_by_ten(x: u32) -> u32 {
     var out: u32 = 0;

@@ -36,7 +36,7 @@ public sealed class StoragePlace : IAsmSymbol
         SpecialRegisterAlias = specialRegisterAlias;
 
         bool isAllocatableRegisterPlace = placement == StoragePlacePlacement.Allocatable
-            && symbol.StorageClass == VariableStorageClass.Reg;
+            && symbol.StorageClass == VariableStorageClass.Cog;
         Assert.Invariant(isAllocatableRegisterPlace == registerRole.HasValue, "Register role must be present exactly for allocatable register storage places.");
         RegisterRole = registerRole;
 
@@ -61,7 +61,7 @@ public sealed class StoragePlace : IAsmSymbol
             Assert.Invariant(
                 placement is StoragePlacePlacement.FixedAlias or StoragePlacePlacement.ExternalAlias,
                 "Special-register aliases are only valid for fixed or external aliases.");
-            Assert.Invariant(symbol.StorageClass == VariableStorageClass.Reg, "Special-register aliases must live in register space.");
+            Assert.Invariant(symbol.StorageClass == VariableStorageClass.Cog, "Special-register aliases must live in register space.");
         }
 
         if (!string.IsNullOrWhiteSpace(emittedName))

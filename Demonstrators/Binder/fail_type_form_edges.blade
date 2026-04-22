@@ -3,9 +3,9 @@
 // NOTE:
 //   Covers generic-width and array-size type checks plus invalid bitcast forms.
 
-reg var width_u: uint(false) = 0;
-reg var width_i: int(false) = 0;
-reg var sized: [false]u32 = undefined;
+cog var width_u: uint(false) = 0;
+cog var width_i: int(false) = 0;
+cog var sized: [false]u32 = undefined;
 
-reg var bad_bitcast_type: u32 = bitcast(u32, [1, 2]);
-reg var bad_bitcast_size: u16 = bitcast(u16, 1 as u32);
+cog var bad_bitcast_type: u32 = bitcast(u32, [1, 2]);
+cog var bad_bitcast_size: u16 = bitcast(u16, 1 as u32);

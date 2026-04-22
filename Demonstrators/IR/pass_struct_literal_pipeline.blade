@@ -8,10 +8,10 @@ type Pair = struct {
     b: u32,
 };
 
-reg var pair: Pair = Pair {
+cog var pair: Pair = Pair {
     .a = 1,
     .b = 2,
 };
 
-reg var sink: u32 = 0;
+cog var sink: u32 = 0;
 sink = pair.a;

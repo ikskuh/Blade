@@ -1,6 +1,6 @@
 // Inline assembly with condition prefixes and flag effects
-reg var acc: u32 = 0;
-reg var delta: u32 = 1;
+cog var acc: u32 = 0;
+cog var delta: u32 = 1;
 
 fn conditional_add(val: u32, d: u32) -> u32 {
     var result: u32 = 0;

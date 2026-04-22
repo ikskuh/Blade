@@ -6,4 +6,4 @@ asm fn bad_insn(a: u32) -> u32 {
     FAKEINSTR {a}
 }
 
-reg var sink: u32 = bad_insn(1);
+cog var sink: u32 = bad_insn(1);

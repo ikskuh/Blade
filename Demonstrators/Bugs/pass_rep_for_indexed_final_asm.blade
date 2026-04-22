@@ -18,8 +18,8 @@
 //   an explicit zero-trip guard before REP, in-region index increment, and no
 //   jump back to the repeated body after the REP end label.
 
-extern reg var OUTA: u32 @(0x1FC);
-extern reg var INA: u32 @(0x1FE);
+extern cog var OUTA: u32 @(0x1FC);
+extern cog var INA: u32 @(0x1FE);
 
 noinline fn sum_indices(n: u32) -> u32 {
     var sum: u32 = 0;

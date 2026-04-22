@@ -1118,7 +1118,7 @@ internal sealed class ComptimeEvaluator(
         if (expression is BoundSymbolExpression { Symbol: GlobalVariableSymbol variable })
             return variable.StorageClass;
 
-        return VariableStorageClass.Reg;
+        return VariableStorageClass.Cog;
     }
 
     private static ComptimeResult RequireIntegerResult(ComptimeResult value, TextSpan span, string detail)

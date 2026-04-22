@@ -12,8 +12,8 @@
 //   Run 3: n=1:  0 (single iteration, index=0)
 //   Run 4: n=5:  10
 
-extern reg var rt_result: u32;
-extern reg var rt_param0: u32;
+extern cog var rt_result: u32;
+extern cog var rt_param0: u32;
 
 noinline fn sum_indices(n: u32) -> u32 {
     var result: u32 = 0;

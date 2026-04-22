@@ -140,11 +140,11 @@ public static class MirLowerer
                 ? StoragePlacePlacement.ExternalAlias
                 : StoragePlacePlacement.Allocatable;
         StoragePlaceRegisterRole? registerRole = placement == StoragePlacePlacement.Allocatable
-            && symbol.StorageClass == VariableStorageClass.Reg
+            && symbol.StorageClass == VariableStorageClass.Cog
             ? StoragePlaceRegisterRole.Global
             : null;
         P2SpecialRegister? specialRegisterAlias = placement is StoragePlacePlacement.FixedAlias or StoragePlacePlacement.ExternalAlias
-            && symbol.StorageClass == VariableStorageClass.Reg
+            && symbol.StorageClass == VariableStorageClass.Cog
             && P2InstructionMetadata.TryParseSpecialRegister(symbol.Name, out P2SpecialRegister specialRegister)
                 ? specialRegister
                 : null;
@@ -157,7 +157,7 @@ public static class MirLowerer
             symbol.Name,
             symbol.Type,
             symbol.IsConst,
-            VariableStorageClass.Reg,
+            VariableStorageClass.Cog,
             isExtern: false,
             fixedAddress: null,
             alignment: null,
@@ -170,7 +170,7 @@ public static class MirLowerer
         return type switch
         {
             PointerLikeTypeSymbol pointer => pointer.StorageClass,
-            _ => VariableStorageClass.Reg,
+            _ => VariableStorageClass.Cog,
         };
     }
 
@@ -185,7 +185,7 @@ public static class MirLowerer
         if (expression is BoundSymbolExpression { Symbol: GlobalVariableSymbol variable })
             return variable.StorageClass;
 
-        return VariableStorageClass.Reg;
+        return VariableStorageClass.Cog;
     }
 
     private static IReadOnlyList<VariableSymbol> CollectAddressTakenSymbols(BoundProgram program)
@@ -404,7 +404,7 @@ public static class MirLowerer
 
                 if (_preInitializedStoragePlaces.Contains(place)
                     && place.IsAllocatable
-                    && place.StorageClass is VariableStorageClass.Reg or VariableStorageClass.Hub)
+                    && place.StorageClass is VariableStorageClass.Cog or VariableStorageClass.Hub)
                 {
                     continue;
                 }

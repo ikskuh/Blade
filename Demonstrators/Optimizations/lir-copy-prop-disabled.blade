@@ -10,7 +10,7 @@
 //   Unary plus materializes a LIR mov. With copy-prop disabled, later uses still
 //   read through the moved value.
 
-reg var sink: u32 = 0;
+cog var sink: u32 = 0;
 
 noinline fn demo(x: u32) -> u32 {
     var y: u32 = +x;

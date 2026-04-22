@@ -20,10 +20,10 @@ noinline fn get_triple(a: u32) -> u32, bool, bool {
     }
 }
 
-reg const input: u32 = 42;
-reg var result: u32 = 0;
-reg var flag1: bool = false;
-reg var flag2: bool = false;
+cog const input: u32 = 42;
+cog var result: u32 = 0;
+cog var flag1: bool = false;
+cog var flag2: bool = false;
 
 result, flag1 = get_pair(input);
 result, flag1, flag2 = get_triple(input);

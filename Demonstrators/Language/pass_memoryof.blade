@@ -6,14 +6,14 @@
 // - Literal<MemorySpace> 2
 // NOTE:
 //   Tests memoryof operator returning MemorySpace enum values
-//   for reg, lut, and hub variables.
+//   for cog, lut, and hub variables.
 
 import builtin;
 
-extern reg var rv: u32;
+extern cog var rv: u32;
 extern lut var lv: u32;
 extern hub var hv: u32;
 
-reg var cls: builtin.MemorySpace = memoryof(rv);
-reg var cls2: builtin.MemorySpace = memoryof(lv);
-reg var cls3: builtin.MemorySpace = memoryof(hv);
+cog var cls: builtin.MemorySpace = memoryof(rv);
+cog var cls2: builtin.MemorySpace = memoryof(lv);
+cog var cls3: builtin.MemorySpace = memoryof(hv);

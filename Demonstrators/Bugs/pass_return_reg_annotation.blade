@@ -2,11 +2,11 @@
 // NOTE:
 //   Parses and lowers the documented mixed register/flag return annotation shape.
 
-fn get_three_specific() -> u32@reg, bool@C, bit@Z {
+fn get_three_specific() -> u32@cog, bool@C, bit@Z {
     return 100, false, 1;
 }
 
-reg var value: u32 = 0;
+cog var value: u32 = 0;
 hub var carry: bool = false;
 hub var zero: bit = 0;
 

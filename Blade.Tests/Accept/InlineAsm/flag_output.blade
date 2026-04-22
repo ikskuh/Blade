@@ -1,6 +1,6 @@
 // Inline assembly with flag output annotation
-reg var value: u32 = 0xAB;
-reg var bit_pos: u32 = 3;
+cog var value: u32 = 0xAB;
+cog var bit_pos: u32 = 3;
 
 fn test_bit(val: u32, pos: u32) -> bool@C {
     asm {

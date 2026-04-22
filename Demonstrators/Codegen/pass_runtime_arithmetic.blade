@@ -3,9 +3,9 @@
 //   Comprehensive runtime arithmetic exercising AsmLowerer paths.
 //   Covers multiply, divide, modulo, shifts, rotates, and bitwise ops.
 
-reg var sink: u32 = 0;
-reg var a: u32 = 100;
-reg var b: u32 = 7;
+cog var sink: u32 = 0;
+cog var a: u32 = 100;
+cog var b: u32 = 7;
 
 fn multiply(x: u32, y: u32) -> u32 {
     return x * y;

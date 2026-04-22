@@ -7,7 +7,7 @@
 //   Hub var of u16 type emits RDWORD/WRWORD instructions.
 
 hub var word_val: u16 = 0;
-reg var sink: u32 = 0;
+cog var sink: u32 = 0;
 
 sink = word_val;
 word_val = 1000;

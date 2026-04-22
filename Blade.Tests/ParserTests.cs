@@ -65,14 +65,14 @@ public class ParserTests
     [Test]
     public void SingleVariableDeclaration_ParsesCorrectly()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var x: u32 = 42;");
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog var x: u32 = 42;");
         AssertNoDiagnostics(diag);
         Assert.That(unit.Members, Has.Count.EqualTo(1));
         Assert.That(unit.Members[0], Is.TypeOf<VariableDeclarationSyntax>());
 
         VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
         Assert.That(decl.StorageClassKeyword, Is.Not.Null);
-        Assert.That(decl.StorageClassKeyword is Token storageClass && storageClass.Kind == TokenKind.RegKeyword, Is.True);
+        Assert.That(decl.StorageClassKeyword is Token storageClass && storageClass.Kind == TokenKind.CogKeyword, Is.True);
         Assert.That(decl.MutabilityKeyword.Kind, Is.EqualTo(TokenKind.VarKeyword));
         Assert.That(decl.Name.Text, Is.EqualTo("x"));
         Assert.That(decl.Type, Is.TypeOf<PrimitiveTypeSyntax>());
@@ -99,7 +99,7 @@ public class ParserTests
     [Test]
     public void MultiplicationBindsTighterThanAddition()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var x: u32 = 1 + 2 * 3;");
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog var x: u32 = 1 + 2 * 3;");
         AssertNoDiagnostics(diag);
 
         VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
@@ -114,7 +114,7 @@ public class ParserTests
     [Test]
     public void UnaryMinusBindsTighterThanBinary()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var x: u32 = -1 + 2;");
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog var x: u32 = -1 + 2;");
         AssertNoDiagnostics(diag);
 
         VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
@@ -127,7 +127,7 @@ public class ParserTests
     [Test]
     public void ParenthesesOverridePrecedence()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var x: u32 = (1 + 2) * 3;");
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog var x: u32 = (1 + 2) * 3;");
         AssertNoDiagnostics(diag);
 
         VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
@@ -141,7 +141,7 @@ public class ParserTests
     [Test]
     public void InvalidQuaternaryLiteral_DoesNotCascadeIntoUnexpectedToken()
     {
-        (_, DiagnosticBag diag) = Parse("reg var x: u32 = 0q123_456;");
+        (_, DiagnosticBag diag) = Parse("cog var x: u32 = 0q123_456;");
 
         Assert.That(diag.Select(diagnostic => diagnostic.Code), Is.EqualTo([DiagnosticCode.E0003_InvalidNumberLiteral]));
     }
@@ -272,7 +272,7 @@ public class ParserTests
     [Test]
     public void ArrayType_ParsesCorrectly()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var buf: [32]u8 = undefined;");
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog var buf: [32]u8 = undefined;");
         AssertNoDiagnostics(diag);
 
         VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
@@ -284,7 +284,7 @@ public class ParserTests
     [Test]
     public void PointerType_ParsesCorrectly()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var p: *const u8 = undefined;");
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog var p: *const u8 = undefined;");
         AssertNoDiagnostics(diag);
 
         VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
@@ -296,7 +296,7 @@ public class ParserTests
     [Test]
     public void GenericWidthType_ParsesCorrectly()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var x: uint(5) = 0;");
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog var x: uint(5) = 0;");
         AssertNoDiagnostics(diag);
 
         VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
@@ -308,7 +308,7 @@ public class ParserTests
     [Test]
     public void MissingSemicolon_ReportsDiagnostic()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var x: u32 = 0");
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog var x: u32 = 0");
         Assert.That(diag.Count, Is.GreaterThan(0));
         Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0101_UnexpectedToken), Is.True);
     }
@@ -356,7 +356,7 @@ public class ParserTests
     [Test]
     public void ExternConstVariableDeclaration_ParsesAllOptionalClauses()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("extern reg const table: u32 @(1) align(4) = 7;");
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("extern cog const table: u32 @(1) align(4) = 7;");
         AssertNoDiagnostics(diag);
 
         VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
@@ -370,7 +370,7 @@ public class ParserTests
     [Test]
     public void DuplicateAddressClause_ReportsDiagnosticAndKeepsFirstClause()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var table: u32 @(1) @(2);");
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog var table: u32 @(1) @(2);");
 
         VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
         Assert.That(diag.Select(diagnostic => diagnostic.Code), Is.EqualTo([DiagnosticCode.E0108_DuplicateVariableClause]));
@@ -380,7 +380,7 @@ public class ParserTests
     [Test]
     public void DuplicateAlignClause_ReportsDiagnosticAndKeepsFirstClause()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var table: u32 align(4) align(8);");
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog var table: u32 align(4) align(8);");
 
         VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
         Assert.That(diag.Select(diagnostic => diagnostic.Code), Is.EqualTo([DiagnosticCode.E0108_DuplicateVariableClause]));
@@ -390,7 +390,7 @@ public class ParserTests
     [Test]
     public void DuplicateInitializer_ReportsDiagnosticAndKeepsFirstClause()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var table: u32 = 1 = 2;");
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog var table: u32 = 1 = 2;");
 
         VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
         Assert.That(diag.Select(diagnostic => diagnostic.Code), Is.EqualTo([DiagnosticCode.E0108_DuplicateVariableClause]));
@@ -400,7 +400,7 @@ public class ParserTests
     [Test]
     public void MixedDuplicateVariableClauses_ReportEachDuplicateAndKeepFirstOccurrences()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var table: u32 @(1) align(4) = 7 @(2) align(8) = 9;");
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog var table: u32 @(1) align(4) = 7 @(2) align(8) = 9;");
 
         VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
         Assert.That(diag.Select(diagnostic => diagnostic.Code), Is.EqualTo([
@@ -416,7 +416,7 @@ public class ParserTests
     [Test]
     public void MissingVariableMutability_ReportsDiagnostic()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg table: u32;");
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog table: u32;");
         Assert.That(unit.Members[0], Is.TypeOf<VariableDeclarationSyntax>());
         Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0101_UnexpectedToken), Is.True);
     }
@@ -599,14 +599,14 @@ public class ParserTests
     [Test]
     public void FunctionWithExplicitRegisterAndFlagReturnItems_ParsesCorrectly()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("fn get_three_specific() -> u32@reg, bool@C, bit@Z { return 100, false, 1; }");
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("fn get_three_specific() -> u32@cog, bool@C, bit@Z { return 100, false, 1; }");
         AssertNoDiagnostics(diag);
 
         FunctionDeclarationSyntax func = (FunctionDeclarationSyntax)unit.Members[0];
         Assert.That(func.ReturnSpec, Is.Not.Null);
         Assert.That(func.ReturnSpec!.Count, Is.EqualTo(3));
-        Assert.That(func.ReturnSpec[0].FlagAnnotation?.Flag.Text, Is.EqualTo("reg"));
-        Assert.That(func.ReturnSpec[0].FlagAnnotation?.Flag.Kind, Is.EqualTo(TokenKind.RegKeyword));
+        Assert.That(func.ReturnSpec[0].FlagAnnotation?.Flag.Text, Is.EqualTo("cog"));
+        Assert.That(func.ReturnSpec[0].FlagAnnotation?.Flag.Kind, Is.EqualTo(TokenKind.CogKeyword));
         Assert.That(func.ReturnSpec[1].FlagAnnotation?.Flag.Text, Is.EqualTo("C"));
         Assert.That(func.ReturnSpec[2].FlagAnnotation?.Flag.Text, Is.EqualTo("Z"));
     }
@@ -639,7 +639,7 @@ public class ParserTests
     {
         (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("""
             {
-                extern reg var ext: u32;
+                extern cog var ext: u32;
                 for (i) { }
                 loop { }
                 rep loop { }
@@ -699,7 +699,7 @@ public class ParserTests
     [Test]
     public void RangeExpression_ParsesCorrectly()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var span: u32 = 1..<4;");
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog var span: u32 = 1..<4;");
         AssertNoDiagnostics(diag);
 
         VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
@@ -711,7 +711,7 @@ public class ParserTests
     [Test]
     public void RangeExpression_Inclusive_ParsesCorrectly()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var span: u32 = 1..=4;");
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog var span: u32 = 1..=4;");
         AssertNoDiagnostics(diag);
 
         VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
@@ -789,7 +789,7 @@ public class ParserTests
     [Test]
     public void BitcastExpression_ParsesAndReportsExpressionNotAStatement()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("bitcast(*reg u32, value);");
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("bitcast(*cog u32, value);");
         Assert.That(diag.Select(d => d.Code), Is.EqualTo(new[] { DiagnosticCode.E0259_ExpressionNotAStatement }));
 
         GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
@@ -868,7 +868,7 @@ public class ParserTests
     [Test]
     public void IfExpression_ParsesCorrectly()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var choice: u32 = if (cond) left else right;");
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog var choice: u32 = if (cond) left else right;");
         AssertNoDiagnostics(diag);
 
         VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
@@ -878,7 +878,7 @@ public class ParserTests
     [Test]
     public void MissingTypeName_ReportsDiagnostic()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var value: = 0;");
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog var value: = 0;");
         Assert.That(unit.Members[0], Is.TypeOf<VariableDeclarationSyntax>());
         Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0104_ExpectedTypeName), Is.True);
     }
@@ -886,7 +886,7 @@ public class ParserTests
     [Test]
     public void NamedType_ParsesCorrectly()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var value: CustomType = undefined;");
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog var value: CustomType = undefined;");
         AssertNoDiagnostics(diag);
 
         VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
@@ -1081,7 +1081,7 @@ public class ParserTests
     [Test]
     public void MultiPointerType_ParsesCorrectly()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("reg var p: [*]reg u32 = undefined;");
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog var p: [*]cog u32 = undefined;");
         AssertNoDiagnostics(diag);
 
         VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];

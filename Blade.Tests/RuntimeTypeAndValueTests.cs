@@ -35,10 +35,10 @@ public sealed class RuntimeTypeAndValueTests
     public void PointerTypeNames_IncludeQualifiersInNormalizedOrder()
     {
         PointerTypeSymbol pointer = new(BuiltinTypes.U32, isConst: true, isVolatile: true, alignment: 4, storageClass: VariableStorageClass.Hub);
-        MultiPointerTypeSymbol multiPointer = new(BuiltinTypes.U8, isConst: false, isVolatile: true, alignment: 8, storageClass: VariableStorageClass.Reg);
+        MultiPointerTypeSymbol multiPointer = new(BuiltinTypes.U8, isConst: false, isVolatile: true, alignment: 8, storageClass: VariableStorageClass.Cog);
 
         Assert.That(pointer.Name, Is.EqualTo("*hub const volatile align(4) u32"));
-        Assert.That(multiPointer.Name, Is.EqualTo("[*]reg volatile align(8) u8"));
+        Assert.That(multiPointer.Name, Is.EqualTo("[*]cog volatile align(8) u8"));
         Assert.That(multiPointer.ScalarWidthBits, Is.EqualTo(32));
     }
 
@@ -104,7 +104,7 @@ public sealed class RuntimeTypeAndValueTests
         UnionTypeSymbol unionType = new("U", new Dictionary<string, BladeType>(), new Dictionary<string, AggregateMemberSymbol>(), sizeBytes: 8, alignmentBytes: 4);
         EnumTypeSymbol enumType = new("Mode", BuiltinTypes.U16, new Dictionary<string, long>(), isOpen: false);
         BitfieldTypeSymbol bitfieldType = new("Flags", BuiltinTypes.U32, new Dictionary<string, BladeType>(), new Dictionary<string, AggregateMemberSymbol>());
-        PointerTypeSymbol pointerType = new(BuiltinTypes.U32, isConst: false, storageClass: VariableStorageClass.Reg);
+        PointerTypeSymbol pointerType = new(BuiltinTypes.U32, isConst: false, storageClass: VariableStorageClass.Cog);
         ArrayTypeSymbol arrayType = new(BuiltinTypes.U16, 3);
 
         Assert.Multiple(() =>
@@ -124,7 +124,7 @@ public sealed class RuntimeTypeAndValueTests
             Assert.That(BuiltinTypes.Bool.AlignmentBytes, Is.EqualTo(1));
             Assert.That(BuiltinTypes.Nib.SizeBytes, Is.EqualTo(1));
             Assert.That(arrayType.GetSizeInMemorySpace(VariableStorageClass.Hub), Is.EqualTo(6));
-            Assert.That(arrayType.GetSizeInMemorySpace(VariableStorageClass.Reg), Is.EqualTo(2));
+            Assert.That(arrayType.GetSizeInMemorySpace(VariableStorageClass.Cog), Is.EqualTo(2));
             Assert.That(arrayType.GetAlignmentInMemorySpace(VariableStorageClass.Hub), Is.EqualTo(2));
             Assert.That(arrayType.GetAlignmentInMemorySpace(VariableStorageClass.Lut), Is.EqualTo(1));
         });
@@ -133,7 +133,7 @@ public sealed class RuntimeTypeAndValueTests
     [Test]
     public void RuntimeTypeLegality_RejectsRepairStylePayloads()
     {
-        PointerTypeSymbol pointerType = new(BuiltinTypes.U32, isConst: false, storageClass: VariableStorageClass.Reg);
+        PointerTypeSymbol pointerType = new(BuiltinTypes.U32, isConst: false, storageClass: VariableStorageClass.Cog);
         EnumTypeSymbol enumType = new("Mode", BuiltinTypes.U8, new Dictionary<string, long> { ["Idle"] = 0 }, isOpen: true);
         BitfieldTypeSymbol bitfieldType = new("Flags", BuiltinTypes.U16, new Dictionary<string, BladeType>(), new Dictionary<string, AggregateMemberSymbol>());
 
@@ -176,7 +176,7 @@ public sealed class RuntimeTypeAndValueTests
             Assert.That(BuiltinTypes.U32.IsSignedInteger, Is.False);
 
             Assert.That(BuiltinTypes.Bool.IsScalarCastType, Is.True);
-            Assert.That(new PointerTypeSymbol(BuiltinTypes.U32, isConst: false, storageClass: VariableStorageClass.Reg).IsScalarCastType, Is.True);
+            Assert.That(new PointerTypeSymbol(BuiltinTypes.U32, isConst: false, storageClass: VariableStorageClass.Cog).IsScalarCastType, Is.True);
             Assert.That(enumType.IsScalarCastType, Is.True);
             Assert.That(bitfieldType.IsScalarCastType, Is.True);
             Assert.That(BladeValue.U8Array([120]).Type, Is.TypeOf<ArrayTypeSymbol>());
@@ -348,7 +348,7 @@ public sealed class RuntimeTypeAndValueTests
         BladeValue differentSymbolPointer = BladeValue.Pointer(singlePointer, new PointedValue(differentSymbol, 2));
         BladeValue absoluteHub = BladeValue.Pointer(singlePointer, new PointedValue(new AbsoluteAddressSymbol(12, VariableStorageClass.Hub), 1));
         BladeValue fixedHub = BladeValue.Pointer(multiPointer, new PointedValue(IrTestFactory.CreateVariableSymbol("fixed", BuiltinTypes.U8, VariableStorageClass.Hub, VariableScopeKind.GlobalStorage, fixedAddress: 13), 0));
-        BladeValue absoluteReg = BladeValue.Pointer(new PointerTypeSymbol(BuiltinTypes.U8, isConst: false, storageClass: VariableStorageClass.Reg), new PointedValue(new AbsoluteAddressSymbol(13, VariableStorageClass.Reg), 0));
+        BladeValue absoluteReg = BladeValue.Pointer(new PointerTypeSymbol(BuiltinTypes.U8, isConst: false, storageClass: VariableStorageClass.Cog), new PointedValue(new AbsoluteAddressSymbol(13, VariableStorageClass.Cog), 0));
 
         Assert.Multiple(() =>
         {

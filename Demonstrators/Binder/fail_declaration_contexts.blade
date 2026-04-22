@@ -11,10 +11,10 @@ type Pair = struct {
     other: u32,
 };
 
-reg var sink: u32 = 0;
-reg var sink: u32 = 1;
+cog var sink: u32 = 0;
+cog var sink: u32 = 1;
 
-fn bad(reg value: u32, value: u32) {
+fn bad(cog value: u32, value: u32) {
     extern var local_extern: u32 = 0;
     hub var local_storage: u32 = 0;
 

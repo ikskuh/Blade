@@ -17,9 +17,9 @@
 //   Run 3: (1,0): and=F,or=T,!a=F,!b=T -> 0x0A
 //   Run 4: (0,1): and=F,or=T,!a=T,!b=F -> 0x06
 
-extern reg var rt_result: u32;
-extern reg var rt_param0: u32;
-extern reg var rt_param1: u32;
+extern cog var rt_result: u32;
+extern cog var rt_param0: u32;
+extern cog var rt_param1: u32;
 
 noinline fn bool_ops(a: u32, b: u32) -> u32 {
     var b0: u32 = 0;

@@ -8,7 +8,7 @@ fn get_pair() -> u32, bool {
     return 1, true;
 }
 
-reg var value: u32 = 0;
-reg var state: bool = false;
+cog var value: u32 = 0;
+cog var state: bool = false;
 
 value, state, _ = get_pair();

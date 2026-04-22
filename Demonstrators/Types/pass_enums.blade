@@ -22,6 +22,6 @@ type OpenState = enum (u8) {
     ...,
 };
 
-reg var mode: Mode = .On;
-reg var other: OtherMode = OtherMode.Off;
-reg var raw: u8 = ((2 as u8) as OpenState) as u8;
+cog var mode: Mode = .On;
+cog var other: OtherMode = OtherMode.Off;
+cog var raw: u8 = ((2 as u8) as OpenState) as u8;

@@ -7,8 +7,8 @@
 // NOTE:
 //   Negative case for MIR cfg-simplify: the original branch fanout remains.
 
-reg var sink: u32 = 0;
-reg var input: bool = false;
+cog var sink: u32 = 0;
+cog var input: bool = false;
 
 noinline fn demo(x: bool) -> u32 {
     var y: u32 = 1;

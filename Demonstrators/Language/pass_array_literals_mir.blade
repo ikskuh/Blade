@@ -1,7 +1,7 @@
 // EXPECT: pass
 // STAGE: mir
 // CONTAINS:
-// - store index.reg(
+// - store index.cog(
 // - store.place g_explicit_values(
 // - store.place g_spread_values(
 // - store.place g_empty_values(
@@ -9,6 +9,6 @@
 //   Array literals lower to indexed stores for explicit elements, spread fill,
 //   and empty contextual fill.
 
-reg var explicit_values: [3]u32 = [1, 2, 3];
-reg var spread_values: [4]u32 = [1, 2...];
-reg var empty_values: [2]u32 = [];
+cog var explicit_values: [3]u32 = [1, 2, 3];
+cog var spread_values: [4]u32 = [1, 2...];
+cog var empty_values: [2]u32 = [];

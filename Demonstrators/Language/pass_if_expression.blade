@@ -6,12 +6,12 @@
 // NOTE:
 //   Exercises if-expression (ternary select) lowering through the full pipeline.
 
-extern reg var OUTA: u32 @(0x1FC);
+extern cog var OUTA: u32 @(0x1FC);
 
 noinline fn abs_diff(a: u32, b: u32) -> u32 {
     return if (a > b) a - b else b - a;
 }
 
-reg var left_value: u32 = 10;
-reg var right_value: u32 = 20;
+cog var left_value: u32 = 10;
+cog var right_value: u32 = 20;
 OUTA = abs_diff(left_value, right_value);

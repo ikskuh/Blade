@@ -29,10 +29,10 @@
 //   mode 5: i32 -> i16 -> i32      (result packed with low-bit branch tag)
 //   mode 6: bool control lane      (should remain unaffected)
 
-extern reg var rt_result: u32;
-extern reg var rt_param0: u32;
-extern reg var rt_param1: u32;
-extern reg var rt_param2: u32;
+extern cog var rt_result: u32;
+extern cog var rt_param0: u32;
+extern cog var rt_param1: u32;
+extern cog var rt_param2: u32;
 
 noinline fn roundtrip_u32_u8(raw: u32, branch_flag: u32) -> u32 {
     var narrowed: u8 = raw as u8;

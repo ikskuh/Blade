@@ -2,7 +2,7 @@
 // NOTE:
 //   Exercises while loop codegen.
 
-extern reg var OUTA: u32 @(0x1FC);
+extern cog var OUTA: u32 @(0x1FC);
 
 noinline fn countdown(n: u32) -> u32 {
     var result: u32 = 0;
@@ -14,5 +14,5 @@ noinline fn countdown(n: u32) -> u32 {
     return result;
 }
 
-reg var start_n: u32 = 5;
+cog var start_n: u32 = 5;
 OUTA = countdown(start_n);

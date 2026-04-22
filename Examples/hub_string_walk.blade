@@ -11,6 +11,6 @@ fn count_string(ptr: [*]hub const u8) -> u32 {
     return count;
 }
 
-reg var length: u32 = 0;
+cog var length: u32 = 0;
 
 length = count_string(&greeting);

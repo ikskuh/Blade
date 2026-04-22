@@ -81,7 +81,7 @@ public sealed class RuntimeTemplateTests
         StoragePlace ledPort = new(
             (GlobalVariableSymbol)IrTestFactory.CreateVariableSymbol(
                 "LED_PORT",
-                storageClass: VariableStorageClass.Reg,
+                storageClass: VariableStorageClass.Cog,
                 scopeKind: VariableScopeKind.GlobalStorage,
                 fixedAddress: 0x1FC),
             StoragePlacePlacement.FixedAlias,
@@ -122,7 +122,7 @@ public sealed class RuntimeTemplateTests
     public void FinalAssemblyWriter_RawOutputPlacesDefaultBladeHaltBeforeConstantFile()
     {
         StoragePlace constantOne = new(
-            (GlobalVariableSymbol)IrTestFactory.CreateVariableSymbol("c_one", storageClass: VariableStorageClass.Reg, scopeKind: VariableScopeKind.GlobalStorage),
+            (GlobalVariableSymbol)IrTestFactory.CreateVariableSymbol("c_one", storageClass: VariableStorageClass.Cog, scopeKind: VariableScopeKind.GlobalStorage),
             StoragePlacePlacement.Allocatable,
             StoragePlaceRegisterRole.Global,
             emittedName: "c_one");
@@ -134,7 +134,7 @@ public sealed class RuntimeTemplateTests
                     [
                         new AsmAllocatedStorageDefinition(
                             constantOne,
-                            VariableStorageClass.Reg,
+                            VariableStorageClass.Cog,
                             BuiltinTypes.U32,
                             [new AsmImmediateOperand(1L)]),
                     ]),

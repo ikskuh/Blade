@@ -362,7 +362,7 @@
     "flag-annotations": {
       "patterns": [
         {
-          "match": "(@)(C|Z|reg)\\b",
+          "match": "(@)(C|Z|cog)\\b",
           "captures": {
             "1": {
               "name": "punctuation.definition.annotation.blade"
@@ -412,7 +412,7 @@
           "include": "#comments"
         },
         {
-          "match": "\\b(reg|lut|hub)\\b(?=\\s+[A-Za-z_][A-Za-z0-9_]*\\s*:)",
+          "match": "\\b(cog|lut|hub)\\b(?=\\s+[A-Za-z_][A-Za-z0-9_]*\\s*:)",
           "name": "storage.modifier.storage-class.blade"
         },
         {
@@ -505,7 +505,7 @@
           "name": "keyword.control.blade"
         },
         {
-          "match": "\\b(?:extern|reg|lut|hub|var|const|volatile)\\b",
+          "match": "\\b(?:extern|cog|lut|hub|var|const|volatile)\\b",
           "name": "storage.modifier.blade"
         },
         {
@@ -792,7 +792,7 @@
       "name": "storage.type.blade"
     },
     "variable-declarations": {
-      "begin": "\\b(?:(extern)\\s+)?(?:(reg|lut|hub)\\s+)?(var|const)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b",
+      "begin": "\\b(?:(extern)\\s+)?(?:(cog|lut|hub)\\s+)?(var|const)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b",
       "beginCaptures": {
         "1": {
           "name": "storage.modifier.external.blade"

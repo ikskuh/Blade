@@ -9,14 +9,14 @@
 //   It exercises all 8 runtime parameters through the regression harness.
 
 
-extern reg var rt_result: u32;
-extern reg var rt_param0: u32;
-extern reg var rt_param1: u32;
-extern reg var rt_param2: u32;
-extern reg var rt_param3: u32;
-extern reg var rt_param4: u32;
-extern reg var rt_param5: u32;
-extern reg var rt_param6: u32;
-extern reg var rt_param7: u32;
+extern cog var rt_result: u32;
+extern cog var rt_param0: u32;
+extern cog var rt_param1: u32;
+extern cog var rt_param2: u32;
+extern cog var rt_param3: u32;
+extern cog var rt_param4: u32;
+extern cog var rt_param5: u32;
+extern cog var rt_param6: u32;
+extern cog var rt_param7: u32;
 
 rt_result = rt_param0 ^ rt_param1 ^ rt_param2 ^ rt_param3 ^ rt_param4 ^ rt_param5 ^ rt_param6 ^ rt_param7;

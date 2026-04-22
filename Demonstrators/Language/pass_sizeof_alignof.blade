@@ -14,15 +14,15 @@
 //   Reg/LUT are word-addressed (scalars always size 1, align 1).
 //   Hub is byte-addressed (u32 = 4 bytes, u16 = 2 bytes).
 
-extern reg var rv: u32;
+extern cog var rv: u32;
 extern hub var hv: u32;
 
-reg var s1: u32 = 110 + sizeof(rv);
-reg var s2: u32 = 120 + sizeof(u32, .hub);
-reg var s3: u32 = 130 + sizeof(u32, .reg);
-reg var s4: u32 = 140 + sizeof(u16, .hub);
+cog var s1: u32 = 110 + sizeof(rv);
+cog var s2: u32 = 120 + sizeof(u32, .hub);
+cog var s3: u32 = 130 + sizeof(u32, .cog);
+cog var s4: u32 = 140 + sizeof(u16, .hub);
 
-reg var a1: u32 = 210 + alignof(rv);
-reg var a2: u32 = 220 + alignof(u32, .hub);
-reg var a3: u32 = 230 + alignof(u16, .hub);
-reg var a4: u32 = 240 + alignof(u32, .reg);
+cog var a1: u32 = 210 + alignof(rv);
+cog var a2: u32 = 220 + alignof(u32, .hub);
+cog var a3: u32 = 230 + alignof(u16, .hub);
+cog var a4: u32 = 240 + alignof(u32, .cog);

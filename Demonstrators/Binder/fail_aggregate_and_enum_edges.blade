@@ -29,9 +29,9 @@ type ClosedState = enum (u8) {
     Idle = 0,
 };
 
-reg var raw: u32 = 1;
-reg var narrowed: u16 = bitcast(u16, raw);
-reg var cast_bad: u8 = false as u8;
-reg var bare: u32 = .Idle;
-reg var qualified_missing: ClosedState = ClosedState.Missing;
-reg var contextual_missing: ClosedState = .Missing;
+cog var raw: u32 = 1;
+cog var narrowed: u16 = bitcast(u16, raw);
+cog var cast_bad: u8 = false as u8;
+cog var bare: u32 = .Idle;
+cog var qualified_missing: ClosedState = ClosedState.Missing;
+cog var contextual_missing: ClosedState = .Missing;

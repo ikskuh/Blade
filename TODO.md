@@ -310,7 +310,7 @@ the symbol types themselves.
 
 Why isn't a "place" a symbol?
 
-##  Rework parser to not require `IReadOnlyList<object>` at all
+## Rework parser to not require `IReadOnlyList<object>` at all
 
 see topic
 
@@ -340,7 +340,6 @@ Also consider if coroutines should be able to return back to the caller, which w
 
 Maybe treating a "coroutine process" as a function which can return, but internally jump between routines makes sense?
 
-
 ## Rewrite MirValueId into something better
 
 Right now, MirValueId is a pure handle instead of an actual load-bearing value.
@@ -351,3 +350,6 @@ This means everything has to be indirected instead of just being able to access 
 
 Right now `Demonstrators/HwTest/hw_struct_literal_lowering.blade` only tests the register space and not the read/write with lut and hub memory spaces.
 
+## Improve struct load/store performance
+
+see generated code

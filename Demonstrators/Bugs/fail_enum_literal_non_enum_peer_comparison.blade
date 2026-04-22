@@ -10,6 +10,6 @@ type Mode = enum (u8) {
     On = 1,
 };
 
-reg var raw: u8 = 0;
-reg var eq_bad: bool = .Off == raw;
-reg var ne_bad: bool = raw != .Off;
+cog var raw: u8 = 0;
+cog var eq_bad: bool = .Off == raw;
+cog var ne_bad: bool = raw != .Off;

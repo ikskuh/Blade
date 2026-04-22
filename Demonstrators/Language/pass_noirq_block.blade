@@ -2,7 +2,7 @@
 // NOTE:
 //   Exercises noirq block lowering to REP with @label body-length calculation.
 
-extern reg var OUTA: u32 @(0x1FC);
+extern cog var OUTA: u32 @(0x1FC);
 
 noinline fn atomic_update(value: u32) -> u32 {
     var result: u32 = value;
@@ -12,5 +12,5 @@ noinline fn atomic_update(value: u32) -> u32 {
     return result;
 }
 
-reg var v: u32 = 10;
+cog var v: u32 = 10;
 OUTA = atomic_update(v);

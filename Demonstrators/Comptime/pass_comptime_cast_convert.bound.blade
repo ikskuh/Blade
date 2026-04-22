@@ -3,7 +3,7 @@
 // NOTE:
 //   Covers comptime cast and conversion paths in ComptimeEvaluator.
 
-reg var sink: u32 = 0;
+cog var sink: u32 = 0;
 
 comptime fn explicit_cast() -> u32 {
     var x: u32 = 300;

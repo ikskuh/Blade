@@ -10,7 +10,7 @@ public class SyntaxFactsTests
 {
     private static readonly IReadOnlyDictionary<TokenKind, string> FixedTokenText = new Dictionary<TokenKind, string>
     {
-        [TokenKind.RegKeyword] = "reg",
+        [TokenKind.CogKeyword] = "cog",
         [TokenKind.LutKeyword] = "lut",
         [TokenKind.HubKeyword] = "hub",
         [TokenKind.ExternKeyword] = "extern",

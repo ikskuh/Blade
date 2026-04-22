@@ -12,13 +12,13 @@ noinline fn get_pair(a: u32) -> u32, bool {
     }
 }
 
-reg var val: u32 = 0;
-reg var flag: bool = false;
+cog var val: u32 = 0;
+cog var flag: bool = false;
 
 fn wrapper(x: u32) {
     val, flag = get_pair(x);
 }
 
-reg const input: u32 = 42;
+cog const input: u32 = 42;
 
 wrapper(input);

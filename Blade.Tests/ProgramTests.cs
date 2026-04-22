@@ -257,7 +257,7 @@ public class ProgramTests
     public void EntryPoint_PrintsDiagnosticForForbiddenControlCharacter()
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-invalid-control-{Guid.NewGuid():N}.blade");
-        File.WriteAllText(filePath, "reg var x:\u0001 u32 = 1;");
+        File.WriteAllText(filePath, "cog var x:\u0001 u32 = 1;");
 
         try
         {
@@ -280,7 +280,7 @@ public class ProgramTests
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-valid-{Guid.NewGuid():N}.blade");
         string dumpDir = Path.Combine(Path.GetTempPath(), $"blade-dumps-{Guid.NewGuid():N}");
-        File.WriteAllText(filePath, "reg var x: u32 = 1;");
+        File.WriteAllText(filePath, "cog var x: u32 = 1;");
 
         try
         {
@@ -305,7 +305,7 @@ public class ProgramTests
     public void EntryPoint_WritesRequestedDumpToStdoutWithoutDumpDirectory()
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-stdout-{Guid.NewGuid():N}.blade");
-        File.WriteAllText(filePath, "reg var x: u32 = 1;");
+        File.WriteAllText(filePath, "cog var x: u32 = 1;");
 
         try
         {
@@ -327,7 +327,7 @@ public class ProgramTests
     public void EntryPoint_WritesMultipleDumpsToStdoutWithSeparators()
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-stdout-multi-{Guid.NewGuid():N}.blade");
-        File.WriteAllText(filePath, "reg var x: u32 = 1;");
+        File.WriteAllText(filePath, "cog var x: u32 = 1;");
 
         try
         {
@@ -348,7 +348,7 @@ public class ProgramTests
     public void EntryPoint_PrintsMetricsAsCommentsWhenRequested()
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-stdout-metrics-{Guid.NewGuid():N}.blade");
-        File.WriteAllText(filePath, "reg var x: u32 = 1;");
+        File.WriteAllText(filePath, "cog var x: u32 = 1;");
 
         try
         {
@@ -370,7 +370,7 @@ public class ProgramTests
     public void EntryPoint_WritesRequestedDumpAsJsonToStdout()
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-json-stdout-{Guid.NewGuid():N}.blade");
-        File.WriteAllText(filePath, "reg var x: u32 = 1;");
+        File.WriteAllText(filePath, "cog var x: u32 = 1;");
 
         try
         {
@@ -399,7 +399,7 @@ public class ProgramTests
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-output-file-{Guid.NewGuid():N}.blade");
         string outputPath = Path.Combine(Path.GetTempPath(), $"blade-output-file-{Guid.NewGuid():N}.txt");
-        File.WriteAllText(filePath, "reg var x: u32 = 1;");
+        File.WriteAllText(filePath, "cog var x: u32 = 1;");
 
         try
         {
@@ -427,7 +427,7 @@ public class ProgramTests
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-output-fail-{Guid.NewGuid():N}.blade");
         string outputDirectory = Path.Combine(Path.GetTempPath(), $"blade-output-dir-{Guid.NewGuid():N}");
-        File.WriteAllText(filePath, "reg var x: u32 = 1;");
+        File.WriteAllText(filePath, "cog var x: u32 = 1;");
         Directory.CreateDirectory(outputDirectory);
 
         try
@@ -453,7 +453,7 @@ public class ProgramTests
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-json-file-{Guid.NewGuid():N}.blade");
         string outputPath = Path.Combine(Path.GetTempPath(), $"blade-json-file-{Guid.NewGuid():N}.json");
-        File.WriteAllText(filePath, "reg var x: u32 = 1;");
+        File.WriteAllText(filePath, "cog var x: u32 = 1;");
 
         try
         {
@@ -483,7 +483,7 @@ public class ProgramTests
     public void EntryPoint_EmitsJsonMetricsOnlyWhenRequested()
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-json-metrics-{Guid.NewGuid():N}.blade");
-        File.WriteAllText(filePath, "reg var x: u32 = 1;");
+        File.WriteAllText(filePath, "cog var x: u32 = 1;");
 
         try
         {
@@ -508,7 +508,7 @@ public class ProgramTests
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-json-output-fail-{Guid.NewGuid():N}.blade");
         string outputDirectory = Path.Combine(Path.GetTempPath(), $"blade-json-output-dir-{Guid.NewGuid():N}");
-        File.WriteAllText(filePath, "reg var x: u32 = 1;");
+        File.WriteAllText(filePath, "cog var x: u32 = 1;");
         Directory.CreateDirectory(outputDirectory);
 
         try
@@ -533,7 +533,7 @@ public class ProgramTests
     public void EntryPoint_TreatsDashOutputPathAsStdout()
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-json-dash-{Guid.NewGuid():N}.blade");
-        File.WriteAllText(filePath, "reg var x: u32 = 1;");
+        File.WriteAllText(filePath, "cog var x: u32 = 1;");
 
         try
         {

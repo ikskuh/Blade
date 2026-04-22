@@ -12,9 +12,9 @@
 //   Run 3: 0+0+0            = 0
 //   Run 4: 300+(-100)+(-100)= 100
 
-extern reg var rt_result: u32;
-extern reg var rt_param0: i32;
-extern reg var rt_param1: i32;
+extern cog var rt_result: u32;
+extern cog var rt_param0: i32;
+extern cog var rt_param1: i32;
 
 noinline fn signed_ops(a: i32, b: i32) -> i32 {
     var sum: i32 = a + b;

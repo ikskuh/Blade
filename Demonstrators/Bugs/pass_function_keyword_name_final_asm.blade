@@ -12,7 +12,7 @@ noinline fn step(value: u32) -> u32 {
     return value + 1;
 }
 
-reg var dirh: u32 = 41;
-reg var wrlong: u32 = 0;
+cog var dirh: u32 = 41;
+cog var wrlong: u32 = 0;
 
 wrlong = step(dirh);

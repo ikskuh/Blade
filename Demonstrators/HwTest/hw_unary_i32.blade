@@ -10,8 +10,8 @@
 //   Run 2: x=0:   0+0+(-1)    = -1
 //   Run 3: x=-1:  1+(-1)+0    = 0
 
-extern reg var rt_result: u32;
-extern reg var rt_param0: i32;
+extern cog var rt_result: u32;
+extern cog var rt_param0: i32;
 
 noinline fn unary(x: i32) -> i32 {
     var neg: i32 = -x;

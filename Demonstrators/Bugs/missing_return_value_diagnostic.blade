@@ -7,5 +7,5 @@ fn read_pin_to_carry(pin: u32) -> bool@C {
     } -> result: bool@C;
 }
 
-reg var foo: bool = false;
+cog var foo: bool = false;
 foo = read_pin_to_carry(1);

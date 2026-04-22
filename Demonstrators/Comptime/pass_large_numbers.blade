@@ -5,5 +5,5 @@
 //   which is a foot gun. Internal arithmetics of blade must use
 //   64 bit arithmetics.
 
-reg const CLOCKS: u32 = 250 * 20_000_000 / 1000;
+cog const CLOCKS: u32 = 250 * 20_000_000 / 1000;
 assert CLOCKS == 5_000_000;

@@ -3,7 +3,7 @@
 //   Exercises runtime hub memory access AsmLowerer paths.
 
 hub var buf: [8]u32 = undefined;
-reg var sink: u32 = 0;
+cog var sink: u32 = 0;
 
 noinline fn store_at(ptr: *hub u32, val: u32) {
     ptr.* = val;

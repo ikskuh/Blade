@@ -10,7 +10,7 @@
 //   Inline asm provides a stable jump-over-single-instruction trigger for the
 //   ASMIR conditional-move-fusion pass.
 
-reg var sink: u32 = 0;
+cog var sink: u32 = 0;
 asm {
   CMP {sink}, #0 WZ
   IF_Z JMP #done

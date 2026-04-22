@@ -3,7 +3,7 @@
 // NOTE:
 //   Writing to an extern const variable must be rejected.
 
-extern reg const INA: u32 @(0x1FE);
+extern cog const INA: u32 @(0x1FE);
 
 fn write_to_const() void {
     INA = 1;

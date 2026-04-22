@@ -11,11 +11,11 @@
 //   Demonstrates the new arithmetic and logical operators while keeping the
 //   lowering visible in final PASM2 output.
 
-reg var operator_input: u32 = 305419896;
-reg var shift_amount: u32 = 5;
-reg var operator_result: u32 = 0;
-reg var bool_result: bool = false;
-reg var address_bits: u32 = 0;
+cog var operator_input: u32 = 305419896;
+cog var shift_amount: u32 = 5;
+cog var operator_result: u32 = 0;
+cog var bool_result: bool = false;
+cog var address_bits: u32 = 0;
 
 noinline fn crunch(x: u32, y: u32, a: bool, b: bool) -> u32 {
     var plus: u32 = +x;
@@ -32,7 +32,7 @@ noinline fn crunch(x: u32, y: u32, a: bool, b: bool) -> u32 {
 
 noinline fn capture_address(param: u32) -> u32 {
     var local: u32 = param + 1;
-    var pointer: *reg u32 = &local;
+    var pointer: *cog u32 = &local;
     var sink: u32 = 0;
     asm volatile {
         MOV {sink}, {pointer}

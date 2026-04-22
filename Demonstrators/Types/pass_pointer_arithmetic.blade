@@ -13,9 +13,9 @@ hub var words: [8]u16 = undefined;
 hub var chunks: [4][3]u8 = undefined;
 lut var lut_words: [4]u32 = undefined;
 
-reg var hub_cursor: [*]hub u16 = undefined;
-reg var lut_cursor: [*]lut u32 = undefined;
-reg var diff_sink: i32 = 0;
+cog var hub_cursor: [*]hub u16 = undefined;
+cog var lut_cursor: [*]lut u32 = undefined;
+cog var diff_sink: i32 = 0;
 
 noinline fn advance_hub(base: [*]hub u16, step: u8) -> [*]hub u16 {
     return base + step;

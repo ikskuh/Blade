@@ -8,8 +8,8 @@
 //   Exercises mixed-width field stores plus a whole-struct snapshot load on
 //   LUT-backed storage. The result packs each field into non-overlapping bits.
 
-extern reg var rt_result: u32;
-extern reg var rt_param0: u32;
+extern cog var rt_result: u32;
+extern cog var rt_param0: u32;
 
 type Packet = struct {
     small: i8,
@@ -26,8 +26,8 @@ lut var stored: Packet = Packet {
     .flag = false,
     .digit = 0,
 };
-reg var snapshot: Packet = undefined;
-reg var flag_word: u32 = 0;
+cog var snapshot: Packet = undefined;
+cog var flag_word: u32 = 0;
 
 stored.small = rt_param0 as i8;
 stored.wide = (rt_param0 >> 8) as u16;

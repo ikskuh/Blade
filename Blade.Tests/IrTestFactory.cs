@@ -144,7 +144,7 @@ internal static class IrTestFactory
         string name,
         StoragePlacePlacement placement = StoragePlacePlacement.Allocatable,
         BladeType? type = null,
-        VariableStorageClass storageClass = VariableStorageClass.Reg,
+        VariableStorageClass storageClass = VariableStorageClass.Cog,
         VariableScopeKind scopeKind = VariableScopeKind.GlobalStorage,
         bool isConst = false,
         bool isExtern = false,
@@ -167,7 +167,7 @@ internal static class IrTestFactory
         StoragePlaceRegisterRole? effectiveRegisterRole = registerRole;
         if (!effectiveRegisterRole.HasValue
             && placement == StoragePlacePlacement.Allocatable
-            && storageClass == VariableStorageClass.Reg)
+            && storageClass == VariableStorageClass.Cog)
         {
             effectiveRegisterRole = StoragePlaceRegisterRole.Global;
         }

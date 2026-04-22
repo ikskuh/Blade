@@ -6,7 +6,7 @@
 // NOTE:
 //   Exercises unary negation, bitwise NOT, and unary plus through codegen.
 
-extern reg var OUTA: u32 @(0x1FC);
+extern cog var OUTA: u32 @(0x1FC);
 
 noinline fn unary_ops(x: i32) -> i32 {
     var neg: i32 = -x;
@@ -15,5 +15,5 @@ noinline fn unary_ops(x: i32) -> i32 {
     return neg + plus + bitnot;
 }
 
-reg var input_x: i32 = 42;
+cog var input_x: i32 = 42;
 OUTA = bitcast(u32, unary_ops(input_x));

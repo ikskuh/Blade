@@ -4,8 +4,8 @@
 // output pixel data, generate signals, or DMA between hub and pins.
 // It requires SETQ + XINIT, which are most naturally expressed in asm.
 
-reg var mode: u32 = 0;
-reg var count: u32 = 64;
+cog var mode: u32 = 0;
+cog var count: u32 = 64;
 
 fn setup_streamer(m: u32, cnt: u32) void {
     asm {

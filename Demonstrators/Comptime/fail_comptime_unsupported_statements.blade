@@ -6,7 +6,7 @@
 //   Covers ComptimeFunctionSupportAnalyzer rejection paths for unsupported statements:
 //   inline asm (E0242) and non-local variable write (E0243).
 
-reg var global_sink: u32 = 0;
+cog var global_sink: u32 = 0;
 
 comptime fn use_inline_asm() -> u32 {
     asm volatile {

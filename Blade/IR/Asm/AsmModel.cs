@@ -90,7 +90,7 @@ public sealed class AsmAllocatedStorageDefinition(
 
     public override int AlignmentBytes => ElementType.GetAlignmentInMemorySpace(StorageClass);
 
-    public AsmDataDirective Directive => StorageClass is VariableStorageClass.Reg or VariableStorageClass.Lut
+    public AsmDataDirective Directive => StorageClass is VariableStorageClass.Cog or VariableStorageClass.Lut
         ? AsmDataDirective.Long
         : SelectDirective(ElementType);
 

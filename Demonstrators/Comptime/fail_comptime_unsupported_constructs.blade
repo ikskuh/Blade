@@ -8,13 +8,13 @@
 //   pointer dereference (E0242), member assignment to global (E0244),
 //   and multi-return call (E0242).
 
-reg var global_sink: u32 = 0;
+cog var global_sink: u32 = 0;
 
 fn multi_ret() -> u32, u32 {
     return 1, 2;
 }
 
-comptime fn use_pointer_deref(ptr: *reg u32) -> u32 {
+comptime fn use_pointer_deref(ptr: *cog u32) -> u32 {
     return ptr.*;
 }
 

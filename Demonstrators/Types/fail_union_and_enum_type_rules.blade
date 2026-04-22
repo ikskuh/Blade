@@ -24,8 +24,8 @@ type Right = enum (u8) {
 var header: Header = undefined;
 var missing: u32 = header.missing;
 
-reg var left: Left = .A;
-reg var right: Right = left;
+cog var left: Left = .A;
+cog var right: Right = left;
 
 fn demo(value: Left) -> u32 {
     return value + 1;

@@ -9,9 +9,9 @@
 // NOTE:
 //   asm volatile is useful when the exact instruction text and ordering must be preserved.
 
-reg var mode_word: u32 = 0x1234;
-reg var transfer_count: u32 = 4;
-reg var pulse_width: u32 = 32;
+cog var mode_word: u32 = 0x1234;
+cog var transfer_count: u32 = 4;
+cog var pulse_width: u32 = 32;
 
 fn start_streamer(mode: u32, count: u32) void {
     asm volatile {

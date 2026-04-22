@@ -11,7 +11,7 @@ public static class SyntaxFacts
     private static readonly FrozenDictionary<string, TokenKind> Keywords = new Dictionary<string, TokenKind>
     {
         // Storage classes
-        ["reg"] = TokenKind.RegKeyword,
+        ["cog"] = TokenKind.CogKeyword,
         ["lut"] = TokenKind.LutKeyword,
         ["hub"] = TokenKind.HubKeyword,
 
@@ -100,7 +100,7 @@ public static class SyntaxFacts
     public static string? GetText(TokenKind kind) => kind switch
     {
         // Keywords
-        TokenKind.RegKeyword => "reg",
+        TokenKind.CogKeyword => "cog",
         TokenKind.LutKeyword => "lut",
         TokenKind.HubKeyword => "hub",
         TokenKind.ExternKeyword => "extern",
@@ -226,7 +226,7 @@ public static class SyntaxFacts
 
     /// <summary>
     /// Returns true if the token kind is an identifier or a keyword that can serve as a
-    /// contextual name (e.g. enum member names like <c>.reg</c>, <c>.lut</c>, <c>.hub</c>).
+    /// contextual name (e.g. enum member names like <c>.cog</c>, <c>.lut</c>, <c>.hub</c>).
     /// </summary>
     public static bool IsIdentifierLike(TokenKind kind)
     {

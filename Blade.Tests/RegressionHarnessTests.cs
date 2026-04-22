@@ -160,9 +160,9 @@ public sealed class RegressionHarnessTests
         // - rt_result LONG 0
         // - rt_param0 LONG 0
         // - rt_param1 LONG 0
-        extern reg var rt_result: u32;
-        extern reg var rt_param0: u32;
-        extern reg var rt_param1: i32;
+        extern cog var rt_result: u32;
+        extern cog var rt_param0: u32;
+        extern cog var rt_param1: i32;
         rt_result = rt_param0 + bitcast(u32, rt_param1);
         """);
 
@@ -479,7 +479,7 @@ public sealed class RegressionHarnessTests
         // EXPECT: pass-hw
         // RUNS:
         // - [] = 0x0
-        extern reg var rt_result: u32;
+        extern cog var rt_result: u32;
         rt_result = 0;
         """);
 
@@ -513,7 +513,7 @@ public sealed class RegressionHarnessTests
         // EXPECT: xfail-hw
         // RUNS:
         // - [] = 0x1
-        extern reg var rt_result: u32;
+        extern cog var rt_result: u32;
         rt_result = 0;
         """);
 
@@ -547,7 +547,7 @@ public sealed class RegressionHarnessTests
         // EXPECT: pass-hw
         // RUNS:
         // - [] = 0x0
-        extern reg var rt_result: u32;
+        extern cog var rt_result: u32;
         rt_result = 0;
         """);
 
@@ -646,7 +646,7 @@ public sealed class RegressionHarnessTests
         // - [] = 1234
         // - [ 0 ] = 1234
         // - [ 0, -10, 0x12345 ] = -1
-        extern reg var rt_result: u32;
+        extern cog var rt_result: u32;
         rt_result = 1234;
         """);
 
@@ -788,7 +788,7 @@ public sealed class RegressionHarnessTests
         // EXPECT: xfail-hw
         // RUNS:
         // - [] = 0x1
-        extern reg var rt_result: u32;
+        extern cog var rt_result: u32;
         rt_result = 1;
         """);
 

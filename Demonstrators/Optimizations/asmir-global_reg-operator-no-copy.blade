@@ -5,6 +5,6 @@
 // ! MOV ?, g_shared
 // ! MOV g_shared, ?
 
-reg var shared: u32 = 0;
+cog var shared: u32 = 0;
 
 shared = shared + 1; // Must be optimized to 'ADD g_shared, #1'

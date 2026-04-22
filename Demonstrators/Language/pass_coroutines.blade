@@ -1,9 +1,9 @@
 // NOTE:
 //   Exercises coroutine (coro fn) and yieldto lowering.
 
-extern reg var OUTA: u32 @(0x1FC);
+extern cog var OUTA: u32 @(0x1FC);
 
-reg var shared: u32 = 0;
+cog var shared: u32 = 0;
 
 coro fn producer() {
     loop {

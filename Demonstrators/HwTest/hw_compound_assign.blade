@@ -14,8 +14,8 @@
 //   Run 4: 0xDEAD…-> 0xDEADBEFF -> 0x0E0F -> 0x0F0E -> 0xF0E0 -> 0x3C38 = 15416
 //   Run 5: 0x5A5A…-> 0x5A5A5AFF -> 0x0A0F -> 0x0B0E -> 0xB0E0 -> 0x2C38 = 11320
 
-extern reg var rt_result: u32;
-extern reg var rt_param0: u32;
+extern cog var rt_result: u32;
+extern cog var rt_param0: u32;
 
 noinline fn compound(x: u32) -> u32 {
     var r: u32 = x;

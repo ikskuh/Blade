@@ -8,8 +8,8 @@
 // NOTE:
 //   Negative case for LIR dce: the dead addition is still present.
 
-reg var sink: u32 = 0;
-reg var input: u32 = 5;
+cog var sink: u32 = 0;
+cog var input: u32 = 5;
 
 noinline fn demo(x: u32) -> u32 {
     var y: u32 = x + 1;

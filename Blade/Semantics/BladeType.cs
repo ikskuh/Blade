@@ -55,14 +55,14 @@ public abstract class RuntimeTypeSymbol(string name) : BladeType(name)
 
     public int GetSizeInMemorySpace(VariableStorageClass storageClass)
     {
-        return storageClass is VariableStorageClass.Reg or VariableStorageClass.Lut
+        return storageClass is VariableStorageClass.Cog or VariableStorageClass.Lut
             ? Math.Max(1, (SizeBytes + 3) / 4)
             : SizeBytes;
     }
 
     public int GetAlignmentInMemorySpace(VariableStorageClass storageClass)
     {
-        return storageClass is VariableStorageClass.Reg or VariableStorageClass.Lut
+        return storageClass is VariableStorageClass.Cog or VariableStorageClass.Lut
             ? 1
             : AlignmentBytes;
     }
@@ -187,7 +187,7 @@ public abstract class PointerLikeTypeSymbol(
     {
         string storageText = storageClass switch
         {
-            VariableStorageClass.Reg => "reg ",
+            VariableStorageClass.Cog => "cog ",
             VariableStorageClass.Lut => "lut ",
             VariableStorageClass.Hub => "hub ",
             _ => Assert.UnreachableValue<string>($"Unexpected pointer storage class '{storageClass}'."), // pragma: force-coverage

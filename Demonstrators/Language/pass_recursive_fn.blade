@@ -24,7 +24,7 @@
 //   PB as the shared argument slot, PA as the recursive return slot, and
 //   stack-backed preservation of the live caller value across the self-call.
 
-extern reg var OUTA: u32 @(0x1FC);
+extern cog var OUTA: u32 @(0x1FC);
 
 rec fn factorial(n: u32) -> u32 {
     if (n < 2) {
@@ -34,5 +34,5 @@ rec fn factorial(n: u32) -> u32 {
     }
 }
 
-reg var input_n: u32 = 5;
+cog var input_n: u32 = 5;
 OUTA = factorial(input_n);

@@ -3,7 +3,7 @@
 // NOTE:
 //   Reading a `%N` temp before any prior write is allowed but warns.
 
-reg var result: u32 = 0;
+cog var result: u32 = 0;
 
 asm fn read_temp() -> u32 {
     MOV {return}, %0

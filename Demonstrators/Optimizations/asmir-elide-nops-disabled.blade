@@ -12,7 +12,7 @@
 //   Negative case for elide-nops: with optimization disabled, the inline no-ops remain
 //   and the entry-point exit still targets the runtime halt hook.
 
-reg var sink: u32 = 0;
+cog var sink: u32 = 0;
 var x: u32 = 1;
 asm {
   MOV {x}, {x}

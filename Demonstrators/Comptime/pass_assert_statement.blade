@@ -1,6 +1,6 @@
 // EXPECT: pass
 
-reg const global_state: u32 = 100;
+cog const global_state: u32 = 100;
 
 assert global_state < 200;
 assert sizeof(global_state) == 1;

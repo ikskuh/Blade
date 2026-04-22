@@ -3,6 +3,6 @@
 //   Compile-time arithmetic should use 64-bit intermediates and only
 //   materialize to the final storage type at the end.
 
-reg const CLOCKS: u32 = 250 * 20_000_000 / 1000;
+cog const CLOCKS: u32 = 250 * 20_000_000 / 1000;
 
 assert CLOCKS == 5_000_000;

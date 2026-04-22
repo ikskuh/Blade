@@ -11,14 +11,14 @@
 //   Extern variables must not allocate storage (no LONG directives).
 //   FlexSpin is forbidden because FOO is a truly external symbol.
 
-extern reg var FOO: u32;
-extern reg var OUTA: u32 @(0x1FC);
-extern reg const INA: u32 @(0x1FE);
+extern cog var FOO: u32;
+extern cog var OUTA: u32 @(0x1FC);
+extern cog const INA: u32 @(0x1FE);
 
 extern lut var ext_lut: u32;
 extern hub var ext_hub: u32;
 
-reg var sink: u32 = 0;
+cog var sink: u32 = 0;
 
 fn use_extern() void {
     sink = FOO;

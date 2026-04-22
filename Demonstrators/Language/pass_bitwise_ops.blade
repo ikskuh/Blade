@@ -7,7 +7,7 @@
 // NOTE:
 //   Exercises bitwise AND, OR, XOR through full codegen pipeline.
 
-extern reg var OUTA: u32 @(0x1FC);
+extern cog var OUTA: u32 @(0x1FC);
 
 noinline fn bitwise(a: u32, b: u32) -> u32 {
     var and_result: u32 = a & b;
@@ -16,6 +16,6 @@ noinline fn bitwise(a: u32, b: u32) -> u32 {
     return and_result + or_result + xor_result;
 }
 
-reg var lhs_bits: u32 = 0xFF00;
-reg var rhs_bits: u32 = 0x0FF0;
+cog var lhs_bits: u32 = 0xFF00;
+cog var rhs_bits: u32 = 0x0FF0;
 OUTA = bitwise(lhs_bits, rhs_bits);

@@ -7,7 +7,7 @@
 // NOTE:
 //   `asm fn` bodies can use `%N` scratch registers without declaring locals.
 
-reg var result: u32 = 0;
+cog var result: u32 = 0;
 
 asm fn add_vals() -> u32 {
     MOV %0, #10

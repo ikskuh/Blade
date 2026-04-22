@@ -10,17 +10,17 @@
 // 2x ALTS
 // 2x MOV ?, 0
 // NOTE:
-//   Discarded volatile reg pointer reads survive MIR DCE and lower through
+//   Discarded volatile cog pointer reads survive MIR DCE and lower through
 //   indirect cog-register reads in final assembly.
 
-reg var sink: u32 = 0;
-reg var values: [4]u32 = undefined;
+cog var sink: u32 = 0;
+cog var values: [4]u32 = undefined;
 
-noinline fn demo(ptr: *reg volatile u32, many: [*]reg volatile u32) -> u32 {
+noinline fn demo(ptr: *cog volatile u32, many: [*]cog volatile u32) -> u32 {
     _ = ptr.*;
     _ = many[1];
     return 0;
 }
 
-reg var base: u32 = 7;
+cog var base: u32 = 7;
 sink = demo(&base, &values);

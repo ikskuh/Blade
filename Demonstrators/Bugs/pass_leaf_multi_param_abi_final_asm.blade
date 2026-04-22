@@ -18,8 +18,8 @@ noinline leaf fn leaf_sub(a: u32, b: u32) -> u32 {
     return a - b;
 }
 
-reg var left: u32 = 10;
-reg var right: u32 = 3;
-reg var sink: u32 = 0;
+cog var left: u32 = 10;
+cog var right: u32 = 3;
+cog var sink: u32 = 0;
 
 sink = leaf_sub(left, right);

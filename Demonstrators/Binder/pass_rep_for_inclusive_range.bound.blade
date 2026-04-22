@@ -4,7 +4,7 @@
 //   Covers inclusive range normalization in rep for statements (end + 1).
 //   Exercises the IsInclusive path in rep for binding.
 
-reg var sink: u32 = 0;
+cog var sink: u32 = 0;
 
 fn test() {
     rep for(0..=3) -> i {

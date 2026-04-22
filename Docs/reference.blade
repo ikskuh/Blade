@@ -51,7 +51,7 @@ fn get_three() -> u32, bool, bit {
 }
 
 // functions can also specify an explicit placement for the two additional values:
-fn get_three_specific() -> u32@reg, bool@C, bit@Z {
+fn get_three_specific() -> u32@cog, bool@C, bit@Z {
     // in this case, the default return value is returned through
     // the register slot, the boolean value is returned in the C flag
     // and the bit value is returned in the Z flag.
@@ -238,10 +238,10 @@ int3 fn cc_int3() {
 // and two classifications (var/const).
 // All of these values require a constant, comptime initializer.
 
-// "reg var" are guaranteed to be allocated in register
+// "cog var" are guaranteed to be allocated in register
 // space and do not require load/stores to be accessed:
-// The address of a "reg var" yields as "*reg T".
-reg var rv_01: u32 = 0;
+// The address of a "cog var" yields as "*cog T".
+cog var rv_01: u32 = 0;
 
 // "lut var" is allocated in the LUT memory and will
 // require RDLUT and WRLUT instructions to be accessed.
@@ -259,7 +259,7 @@ hub var hv_01: u32 = 0;
 // the values of constants into the emitted code to elide loads.
 //
 // The storage class is still required to retain proper pointer semantics.
-reg const rc_01: u32 = 0;
+cog const rc_01: u32 = 0;
 lut const lc_01: u32 = 0;
 hub const hc_01: u32 = 0;
 
@@ -277,7 +277,7 @@ fn showcase_locals(param: u32) {
     const local_const: u32 = 2 * local_var;
 
     // It *is* possible to take a pointer to a local variable, then it will
-    // be a `*reg T` or `[*]reg T` type.
+    // be a `*cog T` or `[*]cog T` type.
     // When the address is taken, the local variable will be forced into
     // existence and basically behaves like a register-spaced global.
     //
@@ -295,28 +295,28 @@ fn showcase_locals(param: u32) {
 // to the top-level code alone:
 var toplevel_var: u32 = 0;
 
-// TODO: reg var foo: align(value) = 0;
+// TODO: cog var foo: align(value) = 0;
 
 // This declaration creates an external variable:
-extern reg var ext_var: u32;
+extern cog var ext_var: u32;
 
 // external variables are available for all storage kinds:
-extern reg var ext_reg_var: u32;
+extern cog var ext_cog_var: u32;
 extern lut var ext_lut_var: u32;
 extern hub var ext_hub_var: u32;
 
 // External variables can also be explicitly allocated instead
 // of needing a true external source:
-extern reg var DIRA: u32 @(0x1FA); // assigns "DIRA" the location 0x1FA
-extern reg var DIRB: u32 @(0x1FB); // this is basically an alias type which
-extern reg var OUTA: u32 @(0x1FC); // replaces a global constant pointer which
-extern reg var OUTB: u32 @(0x1FD); // would need deref/ref semantics
-extern reg const INA: u32 @(0x1FE); // external variables can also be assigned const,
-extern reg const INB: u32 @(0x1FF); // which prevents writing to them.
-extern reg var PTRA: u32 @(0x1F8);
-extern reg var PTRB: u32 @(0x1F9);
-extern reg var PA: u32 @(0x1F6);
-extern reg var PB: u32 @(0x1F7);
+extern cog var DIRA: u32 @(0x1FA); // assigns "DIRA" the location 0x1FA
+extern cog var DIRB: u32 @(0x1FB); // this is basically an alias type which
+extern cog var OUTA: u32 @(0x1FC); // replaces a global constant pointer which
+extern cog var OUTB: u32 @(0x1FD); // would need deref/ref semantics
+extern cog const INA: u32 @(0x1FE); // external variables can also be assigned const,
+extern cog const INB: u32 @(0x1FF); // which prevents writing to them.
+extern cog var PTRA: u32 @(0x1F8);
+extern cog var PTRB: u32 @(0x1F9);
+extern cog var PA: u32 @(0x1F6);
+extern cog var PB: u32 @(0x1F7);
 
 //////////////////////////////////////////////////////////////////////////////
 // Control Flow
@@ -570,8 +570,8 @@ fn builtin_types() {
     var v_14: u8x4 = [1,2,3,4];
 
     // Pointer types can also be defined, and always require a storage type:
-    var v_15: *reg T = undefined; // ptr to a single register
-    var v_16: [*]reg T = undefined; // ptr to an array of unknown length
+    var v_15: *cog T = undefined; // ptr to a single register
+    var v_16: [*]cog T = undefined; // ptr to an array of unknown length
     
     var v_17: *lut T = undefined; // ptr to a single lut variable
     var v_18: [*]lut T = undefined; // ptr to an array of unknown length
@@ -581,8 +581,8 @@ fn builtin_types() {
 
     // Pointers  also can have additional attributes in addition to their
     // arity and the storage space:
-    var v_21: *reg align(8) T = undefined; // The pointers address must be aligned to a multiple of 8
-    var v_22: *reg const T = undefined; // The pointee cannot be changed through this pointer
+    var v_21: *cog align(8) T = undefined; // The pointers address must be aligned to a multiple of 8
+    var v_22: *cog const T = undefined; // The pointee cannot be changed through this pointer
     var v_23: *lut volatile T = undefined; // The compiler may not elide reads or writes through the pointer, as the value may be changed externally through other cogs
 
     // This variable combines all possible pointer attributes and shows them in the nominal order.
@@ -666,7 +666,7 @@ import builtin; // see "Module Subsystem" for explanations
 //      // This type is the return value of the "memoryof" operator:
 //      type MemorySpace = enum(u32) {
 //          // The item is stored in registers.
-//          reg,
+//          cog,
 //          // The item is stored in the LUT.
 //          lut,
 //          // The item is stored in the Hub.
@@ -704,7 +704,7 @@ fn expressions() {
     var y: u32 = 0;
     var b: bool = false;
     var c: bool = false;
-    var p: *reg T = undefined;
+    var p: *cog T = undefined;
     var f: Bitfield = undefined;
     var s: u8 = undefined;
     var e: OpenEnum = undefined;
@@ -760,7 +760,7 @@ fn expressions() {
     a = [ 1... ]; // spread operator fills all remaining elements with the given value
     a = [ 1, 2... ]; // can also be used with a prefix
 
-    p = &x; // address-of operator, returns a "*<storage> T" for non-array variables and "[*]<storage> T" for arrays, with <storage> being `reg`, `lut`, or `hub` depending on the sourced type
+    p = &x; // address-of operator, returns a "*<storage> T" for non-array variables and "[*]<storage> T" for arrays, with <storage> being `cog`, `lut`, or `hub` depending on the sourced type
     y = p.*; // value-of operator
 
     x = (y); // parens overwrite precedence
@@ -789,7 +789,7 @@ fn expressions() {
 
     x = sizeof(ext_var); // returns the size of the "ext_var" variable
     x = sizeof(u32, builtin.MemorySpace.hub); // returns the size of the "u32" type when stored in hub
-    x = sizeof(u32, builtin.MemorySpace.reg); // this distinction is important as registers and LUT are addressed with 32 bit elements, while Hub is addressed byte-wise.
+    x = sizeof(u32, builtin.MemorySpace.cog); // this distinction is important as registers and LUT are addressed with 32 bit elements, while Hub is addressed byte-wise.
     x = alignof(ext_var); // Returns the memory alignment of the "ext_var" variable
     x = alignof(u32, builtin.MemorySpace.hub); // Returns the alignment of the given type in the memory space. Same as with sizeof: It needs to know the memory space for proper values
 
@@ -797,7 +797,7 @@ fn expressions() {
 
     // The "memoryof" operator returns the storage class for a given variable:
     var cls: builtin.MemorySpace = undefined;
-    cls = memoryof(rv_01); // returns MemorySpace.reg
+    cls = memoryof(rv_01); // returns MemorySpace.cog
     cls = memoryof(lv_01); // returns MemorySpace.lut
     cls = memoryof(hv_01); // returns MemorySpace.hub
 
@@ -945,7 +945,7 @@ fn values() {
     var a: [4]u8 = undefined;
     var e: ClosedEnum = undefined;
     var s: Point = undefined;
-    var str: [*]reg const u8 = undefined;
+    var str: [*]cog const u8 = undefined;
 
     // "undefined" is a value that makes the compiler not initialize the value, but just leave it as is.
     // this is potentially unsafe, but allows good optimizations and communication that the value isn't
@@ -1053,10 +1053,10 @@ assert true, "Assertion description"; // Will print the given message string whe
 // Assertions always evaluate at compile time, thus they can only operate on constant values. As the compiler
 // is free to inline constant values (and omit their storage unless their address is taken), we can do the following:
 
-reg const global_state: u32 = 100;
+cog const global_state: u32 = 100;
 assert global_state < 200, "global_state must always be less than 200!";
 
 // We can also use state queries with the builtin operators:
 assert sizeof(global_state) == 1;
-assert alignof(global_state) >= 1; // don't be confused, a u32 reg var is aligned to 1 as the addressible unit is 32 bit wide!
-assert memoryof(global_state) == .reg; // assert variables have proper placement
+assert alignof(global_state) >= 1; // don't be confused, a u32 cog var is aligned to 1 as the addressible unit is 32 bit wide!
+assert memoryof(global_state) == .cog; // assert variables have proper placement

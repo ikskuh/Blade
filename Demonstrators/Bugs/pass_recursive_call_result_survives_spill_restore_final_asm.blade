@@ -18,7 +18,7 @@ rec fn factorial(n: u32) -> u32 {
     return n * factorial(n - 1);
 }
 
-reg var input: u32 = 6;
-reg var sink: u32 = 0;
+cog var input: u32 = 6;
+cog var sink: u32 = 0;
 
 sink = factorial(input);

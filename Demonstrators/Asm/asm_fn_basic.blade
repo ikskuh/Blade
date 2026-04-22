@@ -9,7 +9,7 @@
 //   and volatile with no parameters or return.
 //   Both functions are single-caller leaves, so they get inlined into $top.
 
-reg var result: u32 = 0;
+cog var result: u32 = 0;
 
 asm fn add_vals(a: u32, b: u32) -> u32 {
     MOV {return}, {a}

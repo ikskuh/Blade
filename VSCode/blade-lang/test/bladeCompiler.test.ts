@@ -168,7 +168,7 @@ test("startBladeCompilation requests json and all dumps", async () => {
         {
             cwd: "/workspace/project",
             executablePath: "blade",
-            sourceText: "reg var x: u32 = 1;",
+            sourceText: "cog var x: u32 = 1;",
         },
         fakeSpawn);
 

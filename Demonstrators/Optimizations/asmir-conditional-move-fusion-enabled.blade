@@ -9,7 +9,7 @@
 //   Inline asm provides a stable jump-over-single-instruction trigger, and the
 //   optimizer fuses it into a conditional MOV with the inverted predicate.
 
-reg var sink: u32 = 0;
+cog var sink: u32 = 0;
 asm {
   CMP {sink}, #0 WZ
   IF_Z JMP #done

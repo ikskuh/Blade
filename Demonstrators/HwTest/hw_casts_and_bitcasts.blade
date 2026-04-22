@@ -14,8 +14,8 @@
 //   Run 3: byte=0x00 (truncated), is_neg=1 -> 0x0100
 //   Run 4: byte=0xEF (truncated), is_neg=1 -> 0x01EF
 
-extern reg var rt_result: u32;
-extern reg var rt_param0: u32;
+extern cog var rt_result: u32;
+extern cog var rt_param0: u32;
 
 noinline fn narrow_and_sign(x: u32) -> u32 {
     var byte_val: u8 = x as u8;

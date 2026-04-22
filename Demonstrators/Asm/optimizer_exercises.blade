@@ -4,9 +4,9 @@
 // NOTE:
 //   Small routines intended to exercise inline-asm optimization behavior.
 
-reg var input_word: u32 = 13;
-reg var copy_folded: u32 = 0;
-reg var dead_code_visible: u32 = 0;
+cog var input_word: u32 = 13;
+cog var copy_folded: u32 = 0;
+cog var dead_code_visible: u32 = 0;
 
 fn copy_chain(x: u32) -> u32 {
     var tmp0: u32 = 0;

@@ -17,7 +17,7 @@ type Flags = bitfield (u32) {
     flag: bool,
 };
 
-reg var output: u32 = 0;
+cog var output: u32 = 0;
 
 noinline fn demo(raw: u32) -> u32 {
     var flags: Flags = bitcast(Flags, raw);

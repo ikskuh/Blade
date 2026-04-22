@@ -1,4 +1,4 @@
-reg var counter: u32 = 0;
-reg const MASK: u32 = 0xFF00FF00;
-extern reg var DIRA: u32 @(0x1FA);
-reg var aligned_buf: [16]u32 align(16) = undefined;
+cog var counter: u32 = 0;
+cog const MASK: u32 = 0xFF00FF00;
+extern cog var DIRA: u32 @(0x1FA);
+cog var aligned_buf: [16]u32 align(16) = undefined;

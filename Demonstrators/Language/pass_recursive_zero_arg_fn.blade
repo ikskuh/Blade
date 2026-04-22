@@ -18,9 +18,9 @@
 //   parameters. The recursive return value now comes back in the shared
 //   register slot, and entry-point materialization may copy it through a temp.
 
-extern reg var OUTA: u32 @(0x1FC);
+extern cog var OUTA: u32 @(0x1FC);
 
-reg var remaining: u32 = 2;
+cog var remaining: u32 = 2;
 
 rec fn descend() -> u32 {
     if (remaining < 1) {

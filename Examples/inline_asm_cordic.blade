@@ -5,10 +5,10 @@
 // You issue a command (QMUL, QDIV, etc.) and retrieve results
 // with GETQX/GETQY after the pipeline completes.
 
-reg var multiplicand: u32 = 1000;
-reg var multiplier: u32 = 42;
-reg var product_lo: u32 = 0;
-reg var product_hi: u32 = 0;
+cog var multiplicand: u32 = 1000;
+cog var multiplier: u32 = 42;
+cog var product_lo: u32 = 0;
+cog var product_hi: u32 = 0;
 
 fn unsigned_multiply(a: u32, b: u32) -> u32 {
     var lo: u32 = 0;

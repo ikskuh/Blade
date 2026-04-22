@@ -240,7 +240,7 @@ public sealed class ComptimeBinderHelperTests
     [Test]
     public void StorageLayoutMetadata_RequiresComptimeInteger()
     {
-        (_, IReadOnlyList<Diagnostic> diagnostics) = Bind("extern reg var DIRA: u32 @(true);");
+        (_, IReadOnlyList<Diagnostic> diagnostics) = Bind("extern cog var DIRA: u32 @(true);");
 
         Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
     }
@@ -287,7 +287,7 @@ public sealed class ComptimeBinderHelperTests
     public void StaticStorageConstants_AreReadableDuringFoldingAndComptimeEvaluation()
     {
         (BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
-            reg const REG_RATE: u32 = 20_000_000;
+            cog const REG_RATE: u32 = 20_000_000;
             lut const LUT_OFFSET: u32 = 2;
             hub const HUB_OFFSET: u32 = 3;
 
@@ -295,8 +295,8 @@ public sealed class ComptimeBinderHelperTests
                 return REG_RATE / 1_000_000 + LUT_OFFSET + HUB_OFFSET;
             }
 
-            reg const DIRECT: u32 = REG_RATE / 1_000_000 + LUT_OFFSET + HUB_OFFSET;
-            reg const VIA_FN: u32 = total();
+            cog const DIRECT: u32 = REG_RATE / 1_000_000 + LUT_OFFSET + HUB_OFFSET;
+            cog const VIA_FN: u32 = total();
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
@@ -307,7 +307,7 @@ public sealed class ComptimeBinderHelperTests
     public void IntegerLiteralFolding_Keeps64BitIntermediatesUntilFinalMaterialization()
     {
         (BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
-            reg const CLOCKS: u32 = 250 * 20_000_000 / 1000;
+            cog const CLOCKS: u32 = 250 * 20_000_000 / 1000;
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
@@ -334,7 +334,7 @@ public sealed class ComptimeBinderHelperTests
 
         BoundExpression[] unsupportedExpressions =
         [
-            new BoundUnaryExpression(BoundUnaryOperator.Bind(TokenKind.Ampersand)!, Literal(1, BuiltinTypes.IntegerLiteral), Span, new PointerTypeSymbol(BuiltinTypes.U32, isConst: false, storageClass: VariableStorageClass.Reg)),
+            new BoundUnaryExpression(BoundUnaryOperator.Bind(TokenKind.Ampersand)!, Literal(1, BuiltinTypes.IntegerLiteral), Span, new PointerTypeSymbol(BuiltinTypes.U32, isConst: false, storageClass: VariableStorageClass.Cog)),
             new BoundBinaryExpression(Literal(1, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.Plus)!, localSymbol, Span, BuiltinTypes.IntegerLiteral),
             new BoundArrayLiteralExpression([Literal(1, BuiltinTypes.IntegerLiteral), localSymbol], lastElementIsSpread: false, Span, new ArrayTypeSymbol(BuiltinTypes.U32, 2)),
             new BoundStructLiteralExpression([new BoundStructFieldInitializer("value", localSymbol)], Span, pairType),

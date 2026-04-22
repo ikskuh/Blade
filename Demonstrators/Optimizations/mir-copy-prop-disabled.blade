@@ -9,7 +9,7 @@
 //   Unary plus materializes a MIR copy. With copy-prop disabled, later uses still
 //   read through the copied value.
 
-reg var sink: u32 = 0;
+cog var sink: u32 = 0;
 
 noinline fn demo(x: u32) -> u32 {
     var y: u32 = +x;

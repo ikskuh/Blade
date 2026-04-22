@@ -5,7 +5,7 @@
 // NOTE:
 //   Covers comptime for-loop execution path with index variable.
 
-reg var sink: u32 = 0;
+cog var sink: u32 = 0;
 
 comptime fn sum_for() -> u32 {
     var sum: u32 = 0;

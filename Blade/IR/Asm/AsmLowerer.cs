@@ -123,7 +123,7 @@ public static class AsmLowerer
                     count);
                 switch (place.StorageClass)
                 {
-                    case VariableStorageClass.Reg:
+                    case VariableStorageClass.Cog:
                         registerDefinitions.Add(allocated);
                         break;
                     case VariableStorageClass.Lut:
@@ -182,7 +182,7 @@ public static class AsmLowerer
         };
 
         int elementCount = variable.Type is ArrayTypeSymbol { Length: int length } ? length : 1;
-        if (place.StorageClass is VariableStorageClass.Reg or VariableStorageClass.Lut)
+        if (place.StorageClass is VariableStorageClass.Cog or VariableStorageClass.Lut)
             return elementCount * runtimeType.GetSizeInMemorySpace(place.StorageClass);
 
         return runtimeType is AggregateTypeSymbol
@@ -571,7 +571,7 @@ public static class AsmLowerer
                 "top_yield_state",
                 BuiltinTypes.U32,
                 isConst: false,
-                VariableStorageClass.Reg,
+                VariableStorageClass.Cog,
                 isExtern: false,
                 fixedAddress: null,
                 alignment: null,
@@ -649,7 +649,7 @@ public static class AsmLowerer
             name,
             type,
             isConst: false,
-            VariableStorageClass.Reg,
+            VariableStorageClass.Cog,
             isExtern: false,
             fixedAddress: null,
             alignment: null,
@@ -1220,7 +1220,7 @@ public static class AsmLowerer
                     case VariableStorageClass.Hub:
                         nodes.Add(Emit(P2Mnemonic.RDLONG, destLane, placeLane));
                         break;
-                    case VariableStorageClass.Reg:
+                    case VariableStorageClass.Cog:
                         nodes.Add(Emit(P2Mnemonic.MOV, destLane, placeLane));
                         break;
                     default:
@@ -1269,7 +1269,7 @@ public static class AsmLowerer
         VariableStorageClass storageClass = operation.StorageClass;
         switch (storageClass)
         {
-            case VariableStorageClass.Reg:
+            case VariableStorageClass.Cog:
                 nodes.Add(WithNonElidable(Emit(P2Mnemonic.ALTS, pointer)));
                 nodes.Add(WithNonElidable(Emit(P2Mnemonic.MOV, dest, AsmAltPlaceholderOperand.Register)));
                 break;
@@ -1328,7 +1328,7 @@ public static class AsmLowerer
         VariableStorageClass storageClass = operation.StorageClass;
         switch (storageClass)
         {
-            case VariableStorageClass.Reg:
+            case VariableStorageClass.Cog:
                 nodes.Add(WithNonElidable(Emit(P2Mnemonic.ALTS, index, baseOp)));
                 nodes.Add(WithNonElidable(Emit(P2Mnemonic.MOV, dest, AsmAltPlaceholderOperand.Register)));
                 break;
@@ -1363,7 +1363,7 @@ public static class AsmLowerer
 
         switch (storageClass)
         {
-            case VariableStorageClass.Reg:
+            case VariableStorageClass.Cog:
                 nodes.Add(WithNonElidable(Emit(P2Mnemonic.ALTD, pointer)));
                 nodes.Add(WithNonElidable(Emit(P2Mnemonic.MOV, AsmAltPlaceholderOperand.Register, value)));
                 break;
@@ -1391,7 +1391,7 @@ public static class AsmLowerer
         VariableStorageClass storageClass = operation.StorageClass;
         switch (storageClass)
         {
-            case VariableStorageClass.Reg:
+            case VariableStorageClass.Cog:
                 nodes.Add(WithNonElidable(Emit(P2Mnemonic.ALTD, index, baseOp)));
                 nodes.Add(WithNonElidable(Emit(P2Mnemonic.MOV, AsmAltPlaceholderOperand.Register, value)));
                 break;
@@ -2264,7 +2264,7 @@ public static class AsmLowerer
                     case VariableStorageClass.Hub:
                         nodes.Add(new AsmInstructionNode(P2Mnemonic.WRLONG, [valueLane, placeLane]));
                         break;
-                    case VariableStorageClass.Reg:
+                    case VariableStorageClass.Cog:
                         nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [placeLane, valueLane]));
                         break;
                     default:
@@ -2286,7 +2286,7 @@ public static class AsmLowerer
             case VariableStorageClass.Hub:
                 nodes.Add(new AsmInstructionNode(SelectHubWriteOpcode(placeType), [valueOp, place]));
                 break;
-            case VariableStorageClass.Reg:
+            case VariableStorageClass.Cog:
                 nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [place, valueOp]));
                 break;
             default:

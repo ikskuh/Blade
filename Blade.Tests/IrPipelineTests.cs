@@ -123,7 +123,7 @@ public class IrPipelineTests
     public void BitcastToSignedByte_DoesNotEmitNegativeImmediateLiteral()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            reg var reinterpreted_signed: i8 = 0;
+            cog var reinterpreted_signed: i8 = 0;
             reinterpreted_signed = bitcast(i8, 255 as u8);
             """);
 
@@ -165,8 +165,8 @@ public class IrPipelineTests
     public void InlineAsm_CopyChainInput_RemainsLiveThroughOptimization()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            reg var input_word: u32 = 13;
-            reg var copy_folded: u32 = 0;
+            cog var input_word: u32 = 13;
+            cog var copy_folded: u32 = 0;
 
             fn copy_chain(x: u32) -> u32 {
                 var tmp0: u32 = 0;
@@ -248,7 +248,7 @@ public class IrPipelineTests
     public void ExplicitCast_StaticInitializer_IsNormalized()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            reg var narrowed: u8 = 257 as u8;
+            cog var narrowed: u8 = 257 as u8;
             """);
 
         Assert.That(diagnostics.Select(static diagnostic => diagnostic.Code), Is.EqualTo([DiagnosticCode.W0261_ComptimeIntegerTruncation]));
@@ -286,7 +286,7 @@ public class IrPipelineTests
 
             var lt2_u: u32 = if (lt2) 1 else 0;
             var eq3_u: u32 = if (eq3) 1 else 0;
-            reg var packed: u32 = 0;
+            cog var packed: u32 = 0;
             packed = (sum2 & 0xFFFF) | (lt2_u << 16) | (eq3_u << 17);
             """);
 
@@ -319,8 +319,8 @@ public class IrPipelineTests
                 return n * factorial(n - 1);
             }
 
-            reg var input: u32 = 6;
-            reg var result: u32 = 0;
+            cog var input: u32 = 6;
+            cog var result: u32 = 0;
 
             result = factorial(input);
             """);
@@ -339,7 +339,7 @@ public class IrPipelineTests
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
             noinline fn demo(raw: u32) -> u32 {
-                var ptr: *reg u32 = bitcast(*reg u32, raw);
+                var ptr: *cog u32 = bitcast(*cog u32, raw);
                 return bitcast(u32, ptr);
             }
 
@@ -363,7 +363,7 @@ public class IrPipelineTests
     public void Bitcast_StaticInitializer_ReinterpretsBits()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            reg var signed: i8 = bitcast(i8, 255 as u8);
+            cog var signed: i8 = bitcast(i8, 255 as u8);
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
@@ -442,7 +442,7 @@ public class IrPipelineTests
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
             noinline fn demo(param: u32) -> u32 {
                 var x: u32 = param;
-                var p: *reg u32 = &x;
+                var p: *cog u32 = &x;
                 var sink: u32 = 0;
                 asm volatile {
                     MOV {sink}, {p}
@@ -472,7 +472,7 @@ public class IrPipelineTests
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
             noinline fn demo(param: u32) -> u32 {
-                var p: *reg u32 = &param;
+                var p: *cog u32 = &param;
                 var sink: u32 = 0;
                 asm volatile {
                     MOV {sink}, {p}
@@ -501,10 +501,10 @@ public class IrPipelineTests
     public void AddressOfGlobal_ReusesExistingGlobalStoragePlace()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            reg var base: u32 = 7;
+            cog var base: u32 = 7;
 
             noinline fn demo() -> u32 {
-                var p: *reg u32 = &base;
+                var p: *cog u32 = &base;
                 var sink: u32 = 0;
                 asm volatile {
                     MOV {sink}, {p}
@@ -532,7 +532,7 @@ public class IrPipelineTests
     public void VolatilePointerDeref_RemainsInMirAsSideEffect()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            noinline fn demo(p: *reg volatile u32) -> u32 {
+            noinline fn demo(p: *cog volatile u32) -> u32 {
                 _ = p.*;
                 return 0;
             }
@@ -547,7 +547,7 @@ public class IrPipelineTests
         });
 
         string mir = MirTextWriter.Write(build.MirModule);
-        Assert.That(mir, Does.Contain("load.deref.reg"));
+        Assert.That(mir, Does.Contain("load.deref.cog"));
         Assert.That(mir, Does.Contain("sidefx"));
     }
 
@@ -555,7 +555,7 @@ public class IrPipelineTests
     public void VolatileMultiPointerIndex_RemainsInMirAsSideEffect()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            noinline fn demo(p: [*]reg volatile u32, i: u32) -> u32 {
+            noinline fn demo(p: [*]cog volatile u32, i: u32) -> u32 {
                 _ = p[i];
                 return 0;
             }
@@ -570,7 +570,7 @@ public class IrPipelineTests
         });
 
         string mir = MirTextWriter.Write(build.MirModule);
-        Assert.That(mir, Does.Contain("load.index.reg"));
+        Assert.That(mir, Does.Contain("load.index.cog"));
         Assert.That(mir, Does.Contain("sidefx"));
     }
 
@@ -578,16 +578,16 @@ public class IrPipelineTests
     public void VolatileRegPointerReadExpressions_EmitIndirectCogRegisterLoads()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            reg var sink: u32 = 0;
-            reg var values: [4]u32 = undefined;
+            cog var sink: u32 = 0;
+            cog var values: [4]u32 = undefined;
 
-            noinline fn demo(ptr: *reg volatile u32, many: [*]reg volatile u32) -> u32 {
+            noinline fn demo(ptr: *cog volatile u32, many: [*]cog volatile u32) -> u32 {
                 _ = ptr.*;
                 _ = many[1];
                 return 0;
             }
 
-            reg var base: u32 = 7;
+            cog var base: u32 = 7;
             sink = demo(&base, &values);
             """);
 
@@ -609,7 +609,7 @@ public class IrPipelineTests
     public void ArrayLiteral_LowersExplicitElementsToIndexedStores()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            reg var values: [3]u32 = [1, 2, 3];
+            cog var values: [3]u32 = [1, 2, 3];
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
@@ -622,7 +622,7 @@ public class IrPipelineTests
 
         string mir = MirTextWriter.Write(build.MirModule);
         Assert.That(mir, Does.Contain("%v0:[3]u32 = const null"));
-        Assert.That(Regex.Matches(mir, @"store index\.reg\(").Count, Is.EqualTo(3), mir);
+        Assert.That(Regex.Matches(mir, @"store index\.cog\(").Count, Is.EqualTo(3), mir);
         Assert.That(mir, Does.Contain("store.place g_values"));
     }
 
@@ -630,7 +630,7 @@ public class IrPipelineTests
     public void RegArrayLiteralInitialization_EmitsIndirectCogRegisterStores()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            reg var values: [3]u32 = [1, 2, 3];
+            cog var values: [3]u32 = [1, 2, 3];
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
@@ -650,7 +650,7 @@ public class IrPipelineTests
     public void ArrayLiteral_SpreadFillsRemainingSlotsInMir()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            reg var values: [4]u32 = [1, 2...];
+            cog var values: [4]u32 = [1, 2...];
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
@@ -662,7 +662,7 @@ public class IrPipelineTests
         });
 
         string mir = MirTextWriter.Write(build.MirModule);
-        Assert.That(Regex.Matches(mir, @"store index\.reg\(").Count, Is.EqualTo(4), mir);
+        Assert.That(Regex.Matches(mir, @"store index\.cog\(").Count, Is.EqualTo(4), mir);
         Assert.That(mir, Does.Contain("const 2"));
         Assert.That(mir, Does.Contain("const 3"));
     }
@@ -671,7 +671,7 @@ public class IrPipelineTests
     public void EmptyArrayLiteral_FillsEachSlotInMir()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            reg var values: [2]u32 = [];
+            cog var values: [2]u32 = [];
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
@@ -683,7 +683,7 @@ public class IrPipelineTests
         });
 
         string mir = MirTextWriter.Write(build.MirModule);
-        Assert.That(Regex.Matches(mir, @"store index\.reg\(").Count, Is.EqualTo(2), mir);
+        Assert.That(Regex.Matches(mir, @"store index\.cog\(").Count, Is.EqualTo(2), mir);
         Assert.That(Regex.Matches(mir, @"const 0").Count, Is.GreaterThanOrEqualTo(2), mir);
     }
 
@@ -691,7 +691,7 @@ public class IrPipelineTests
     public void CompilerDriver_ArrayLiteralEmitsIndirectRegisterStores()
     {
         CompilationResult compilation = CompilerDriver.Compile("""
-            reg var values: [2]u32 = [1, 2];
+            cog var values: [2]u32 = [1, 2];
             """, "array_literal.blade");
 
         Assert.That(compilation.IrBuildResult, Is.Not.Null);
@@ -703,7 +703,7 @@ public class IrPipelineTests
     public void ArrayLiteral_SpreadWithExactContextLengthDoesNotAddExtraStores()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            reg var values: [2]u32 = [1, 2...];
+            cog var values: [2]u32 = [1, 2...];
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
@@ -715,7 +715,7 @@ public class IrPipelineTests
         });
 
         string mir = MirTextWriter.Write(build.MirModule);
-        Assert.That(Regex.Matches(mir, @"store index\.reg\(").Count, Is.EqualTo(2), mir);
+        Assert.That(Regex.Matches(mir, @"store index\.cog\(").Count, Is.EqualTo(2), mir);
     }
 
     [Test]
@@ -728,7 +728,7 @@ public class IrPipelineTests
                 ...,
             };
 
-            reg var mode: Mode = .On;
+            cog var mode: Mode = .On;
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
@@ -751,7 +751,7 @@ public class IrPipelineTests
                 high: nib,
             };
 
-            reg var flags: Flags = undefined;
+            cog var flags: Flags = undefined;
             flags.high = 3;
             """);
 
@@ -806,7 +806,7 @@ public class IrPipelineTests
     public void ModuloCompoundAssignment_UsesUpdatePlaceLowering()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            reg var acc: u32 = 17;
+            cog var acc: u32 = 17;
             acc %= 3;
             """);
 
@@ -826,7 +826,7 @@ public class IrPipelineTests
     public void ExtendedCompoundAssignments_UseReferenceDefinedUpdatePlaceLowering()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            reg var acc: u32 = 17;
+            cog var acc: u32 = 17;
             acc *= 3;
             acc /= 2;
             acc <<<= 1;
@@ -864,7 +864,7 @@ public class IrPipelineTests
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
             hub var words: [8]u16 = undefined;
-            reg var cursor: [*]hub u16 = undefined;
+            cog var cursor: [*]hub u16 = undefined;
             cursor = &words;
             cursor += 2;
             cursor -= 1;
@@ -890,7 +890,7 @@ public class IrPipelineTests
     public void RangeForLoop_DoesNotMaterializeRangeInstructions()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            reg var sink: u32 = 0;
+            cog var sink: u32 = 0;
             for (1..<3) -> i {
                 sink = sink + i;
             }
@@ -918,7 +918,7 @@ public class IrPipelineTests
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
             hub var chunks: [4][3]u8 = undefined;
-            reg var diff_sink: i32 = 0;
+            cog var diff_sink: i32 = 0;
 
             noinline fn diff_chunks(base: [*]hub [3]u8, step: i8) -> i32 {
                 var p: [*]hub [3]u8 = base + step;
@@ -946,7 +946,7 @@ public class IrPipelineTests
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
             hub var words: [8]u16 = undefined;
-            reg var diff_sink: i32 = 0;
+            cog var diff_sink: i32 = 0;
 
             noinline fn diff_words(base: [*]hub u16, step: u8) -> i32 {
                 var p: [*]hub u16 = base + step;
@@ -981,9 +981,9 @@ public class IrPipelineTests
                 new AsmDataBlock(
                     AsmDataBlockKind.Register,
                     [
-                        new AsmAllocatedStorageDefinition(inputWord, VariableStorageClass.Reg, BuiltinTypes.U32, [new AsmImmediateOperand(13L)]),
-                        new AsmAllocatedStorageDefinition(deadCodeVisible, VariableStorageClass.Reg, BuiltinTypes.U32, [new AsmImmediateOperand(0L)]),
-                        new AsmAllocatedStorageDefinition(r4, VariableStorageClass.Reg, BuiltinTypes.U32, [new AsmImmediateOperand(0L)]),
+                        new AsmAllocatedStorageDefinition(inputWord, VariableStorageClass.Cog, BuiltinTypes.U32, [new AsmImmediateOperand(13L)]),
+                        new AsmAllocatedStorageDefinition(deadCodeVisible, VariableStorageClass.Cog, BuiltinTypes.U32, [new AsmImmediateOperand(0L)]),
+                        new AsmAllocatedStorageDefinition(r4, VariableStorageClass.Cog, BuiltinTypes.U32, [new AsmImmediateOperand(0L)]),
                     ]),
             ],
             [
@@ -1298,7 +1298,7 @@ public class IrPipelineTests
                 MOV {return}, %0
             }
 
-            reg var sink: u32 = 0;
+            cog var sink: u32 = 0;
             sink = add_vals();
             """, "asm_fn_temps.blade");
 
@@ -1316,7 +1316,7 @@ public class IrPipelineTests
                 MOV {return}, %0
             }
 
-            reg var sink: u32 = 0;
+            cog var sink: u32 = 0;
             sink = read_temp();
             """, "asm_temp_warning.blade");
 
@@ -1433,8 +1433,8 @@ public class IrPipelineTests
     public void GeneralTierFunctionWithoutParameters_GetsSharedRegisterReturnPlace()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            reg var source: u32 = 1;
-            reg var sink: u32 = 0;
+            cog var source: u32 = 1;
+            cog var sink: u32 = 0;
 
             noinline fn leaf_source() -> u32 {
                 return source;
@@ -1466,7 +1466,7 @@ public class IrPipelineTests
         Assert.That(function.CcTier, Is.EqualTo(CallingConventionTier.General));
         Assert.That(returnPlace.RegisterRole, Is.EqualTo(StoragePlaceRegisterRole.InternalShared));
         Assert.That(returnPlace.IsInternalRegisterSlot, Is.True);
-        Assert.That(returnPlace.Symbol.StorageClass, Is.EqualTo(VariableStorageClass.Reg));
+        Assert.That(returnPlace.Symbol.StorageClass, Is.EqualTo(VariableStorageClass.Cog));
     }
 
     [Test]
@@ -1560,7 +1560,7 @@ public class IrPipelineTests
 
             hub var hub_value: Triple = undefined;
             lut var lut_value: Triple = undefined;
-            reg var sink: Triple = undefined;
+            cog var sink: Triple = undefined;
 
             sink = hub_value;
             sink = lut_value;
@@ -1586,7 +1586,7 @@ public class IrPipelineTests
     public void AggregateMemberStores_DoNotAliasInsertedValueWithDestinationLane()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            extern reg var input: u32;
+            extern cog var input: u32;
 
             type Packet = struct {
                 small: i8,
@@ -1596,7 +1596,7 @@ public class IrPipelineTests
                 digit: nib,
             };
 
-            reg var stored: Packet = Packet {
+            cog var stored: Packet = Packet {
                 .small = 0,
                 .wide = 0,
                 .signed = 0,
@@ -1657,7 +1657,7 @@ public class IrPipelineTests
     public void InlineAsm_CopyAndJumpElision_CollapsesReturnHopChains()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            reg var flags: u32 = 0;
+            cog var flags: u32 = 0;
 
             fn test_and_set_bit(val: u32, bit_num: u32) -> u32 {
                 var out: u32 = 0;
@@ -1710,7 +1710,7 @@ public class IrPipelineTests
     public void ReservedFixedRegisterAlias_UsesDirectOperandWithoutConAlias_AndKeepsAddressBinding()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            extern reg var OUTA: u32 @(0x1FC);
+            extern cog var OUTA: u32 @(0x1FC);
             OUTA |= 0x10;
             """);
 
@@ -1734,7 +1734,7 @@ public class IrPipelineTests
     public void PlainGlobalNamedLikeSpecialRegister_RemainsNormalStorage()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            reg var OUTA: u32 = 0;
+            cog var OUTA: u32 = 0;
             OUTA |= 0x10;
             """);
 
@@ -1757,7 +1757,7 @@ public class IrPipelineTests
     public void NonReservedFixedRegisterAlias_StillEmitsConAlias()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            extern reg var LED_PORT: u32 @(0x1FC);
+            extern cog var LED_PORT: u32 @(0x1FC);
             LED_PORT |= 0x10;
             """);
 
@@ -1779,11 +1779,11 @@ public class IrPipelineTests
     public void FoldedFixedRegisterAliases_EmitFlexspinCompatibleConConstants()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            extern reg var A0: u32 @(1);
-            extern reg var A1: u32 @((+3) as u8);
-            extern reg var A2: u32 @((~0) as u8);
-            extern reg var A3: u32 @((-1) as u8);
-            extern reg var A4: u32 @(bitcast(u8, 5 as u8));
+            extern cog var A0: u32 @(1);
+            extern cog var A1: u32 @((+3) as u8);
+            extern cog var A2: u32 @((~0) as u8);
+            extern cog var A3: u32 @((-1) as u8);
+            extern cog var A4: u32 @(bitcast(u8, 5 as u8));
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
@@ -1805,7 +1805,7 @@ public class IrPipelineTests
     public void ExternalRegisterAliasWithoutAddress_StaysAsBareSymbol()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            extern reg var FOO: u32;
+            extern cog var FOO: u32;
             FOO = 1;
             """);
 
@@ -1825,7 +1825,7 @@ public class IrPipelineTests
     public void AllocatableGlobalStaticInitializer_EmitsLongData()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            reg var g: u32 = 1000;
+            cog var g: u32 = 1000;
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
@@ -1908,7 +1908,7 @@ public class IrPipelineTests
     {
         // Use a program complex enough that virtual registers survive optimization
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            reg var flags: u32 = 0;
+            cog var flags: u32 = 0;
 
             fn test_and_set_bit(val: u32, bit_num: u32) -> u32 {
                 var out: u32 = 0;
@@ -1945,7 +1945,7 @@ public class IrPipelineTests
             coro fn worker(seed: u32) -> u32 {
                 var pair: Pair = Pair { .left = seed, .right = seed };
                 var arr: [2]u32 = undefined;
-                var ptr: *reg u32 = undefined;
+                var ptr: *cog u32 = undefined;
                 var sink: u32 = 0;
 
                 while (true) { break; }
@@ -2142,9 +2142,9 @@ public class IrPipelineTests
     public void VolatileMultiPointerIndexRead_RemainsSideEffectfulInMir()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            reg var values: [4]u32 = undefined;
+            cog var values: [4]u32 = undefined;
 
-            noinline fn demo(many: [*]reg volatile u32) -> u32 {
+            noinline fn demo(many: [*]cog volatile u32) -> u32 {
                 _ = many[1];
                 return 0;
             }
@@ -2161,7 +2161,7 @@ public class IrPipelineTests
         });
 
         string mir = MirTextWriter.Write(build.MirModule);
-        Assert.That(mir, Does.Contain("load.index.reg"));
+        Assert.That(mir, Does.Contain("load.index.cog"));
         Assert.That(mir, Does.Contain("; sidefx"));
     }
 
@@ -2169,10 +2169,10 @@ public class IrPipelineTests
     public void CompoundAssignments_CoverNonVolatileIndexAndVolatileDerefReadPaths()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            reg var base: u32 = 7;
-            reg var values: [4]u32 = undefined;
+            cog var base: u32 = 7;
+            cog var values: [4]u32 = undefined;
 
-            noinline fn demo(ptr: *reg volatile u32, many: [*]reg u32) void {
+            noinline fn demo(ptr: *cog volatile u32, many: [*]cog u32) void {
                 many[0] += 1;
                 ptr.* += 1;
             }
@@ -2185,8 +2185,8 @@ public class IrPipelineTests
         MirModule mirModule = MirLowerer.Lower(program);
         string mir = MirTextWriter.Write(mirModule);
 
-        Assert.That(mir, Does.Contain("load.index.reg"));
-        Assert.That(mir, Does.Contain("load.deref.reg"));
+        Assert.That(mir, Does.Contain("load.index.cog"));
+        Assert.That(mir, Does.Contain("load.deref.cog"));
         Assert.That(mir, Does.Contain("; sidefx"));
     }
 
@@ -2203,7 +2203,7 @@ public class IrPipelineTests
                 high: nib,
             };
 
-            noinline fn demo(ptr: *reg u32, many: [*]reg volatile u32) void {
+            noinline fn demo(ptr: *cog u32, many: [*]cog volatile u32) void {
                 var pair: Pair = Pair { .value = 1 };
                 var flags: Flags = undefined;
                 pair.value += 1;
@@ -2212,8 +2212,8 @@ public class IrPipelineTests
                 flags.high += 1;
             }
 
-            reg var base: u32 = 7;
-            reg var values: [4]u32 = undefined;
+            cog var base: u32 = 7;
+            cog var values: [4]u32 = undefined;
             demo(&base, &values);
             """);
 
@@ -2223,8 +2223,8 @@ public class IrPipelineTests
         string mir = MirTextWriter.Write(mirModule);
 
         Assert.That(mir, Does.Contain("load.member.value"));
-        Assert.That(mir, Does.Contain("load.index.reg"));
-        Assert.That(mir, Does.Contain("load.deref.reg"));
+        Assert.That(mir, Does.Contain("load.index.cog"));
+        Assert.That(mir, Does.Contain("load.deref.cog"));
         Assert.That(mir, Does.Contain("bitfield.extract.4.4"));
         Assert.That(mir, Does.Contain("bitfield.insert.4.4"));
     }
@@ -2244,7 +2244,7 @@ public class IrPipelineTests
                 return result;
             }
 
-            reg var sink: u32 = compare_flags(1, 2);
+            cog var sink: u32 = compare_flags(1, 2);
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
@@ -2271,9 +2271,9 @@ public class IrPipelineTests
                 return result;
             }
 
-            reg var input_value: u32 = 0x80000000;
-            reg var other_value: i32 = 5;
-            reg var sink: u32 = 0;
+            cog var input_value: u32 = 0x80000000;
+            cog var other_value: i32 = 5;
+            cog var sink: u32 = 0;
 
             sink = compare_signed(input_value, other_value);
             """);
@@ -2828,7 +2828,7 @@ public class IrPipelineTests
     {
         using TempDirectory temp = new();
         temp.WriteFile("extmod.blade", """
-            reg var seed: u32 = 7;
+            cog var seed: u32 = 7;
             seed = seed + 1;
             """);
         string sourcePath = temp.GetFullPath("main.blade");
@@ -2878,7 +2878,7 @@ public class IrPipelineTests
         GlobalVariableSymbol shared = (GlobalVariableSymbol)IrTestFactory.CreateVariableSymbol(
             "seed",
             BuiltinTypes.U32,
-            VariableStorageClass.Reg,
+            VariableStorageClass.Cog,
             VariableScopeKind.GlobalStorage);
         BoundProgram program = IrTestFactory.CreateBoundProgram(globalVariables: [shared, shared]);
 
@@ -2892,7 +2892,7 @@ public class IrPipelineTests
     {
         using TempDirectory temp = new();
         temp.WriteFile("shared.mod", """
-            reg var seed: u32 = 7;
+            cog var seed: u32 = 7;
             """);
 
         string sourcePath = temp.GetFullPath("main.blade");

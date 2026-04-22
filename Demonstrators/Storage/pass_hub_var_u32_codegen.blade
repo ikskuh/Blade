@@ -7,7 +7,7 @@
 //   Hub var of u32 type emits RDLONG/WRLONG instructions.
 
 hub var data: u32 = 100;
-reg var sink: u32 = 0;
+cog var sink: u32 = 0;
 
 sink = data;
 data = 200;

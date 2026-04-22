@@ -12,7 +12,7 @@
 //   Positive case for ASMIR ret-fusion: the RET should fuse into the preceding
 //   register handoff instead of surviving as a standalone terminator.
 
-reg var sink: u32 = 0;
+cog var sink: u32 = 0;
 var input: u32 = 1;
 
 noinline fn leaf_id(x: u32) -> u32 {

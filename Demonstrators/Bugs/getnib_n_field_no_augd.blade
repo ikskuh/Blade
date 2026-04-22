@@ -8,7 +8,7 @@
 // NOTE:
 //   GETNIB may AUG-extend the S operand, but the #N operand is immediate-only and must not trigger AUGD/AUGS.
 
-reg var nibble: u32 = 0;
+cog var nibble: u32 = 0;
 
 asm {
     GETNIB {nibble}, #1110, #3

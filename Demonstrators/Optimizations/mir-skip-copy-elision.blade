@@ -7,11 +7,11 @@
 // NOTE:
 //   Exercises unary plus to emit a "LirMovOperation"
 
-extern reg var OUTA: u32 @(0x1FC);
+extern cog var OUTA: u32 @(0x1FC);
 
 noinline fn unary_ops(x: i32) -> i32 {
     return +x;
 }
 
-reg var input_x: i32 = 42;
+cog var input_x: i32 = 42;
 OUTA = bitcast(u32, unary_ops(input_x));

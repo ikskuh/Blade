@@ -3,7 +3,7 @@
 // NOTE:
 //   Covers comptime bitcast evaluation paths in BladeValue.Operators.
 
-reg var sink: u32 = 0;
+cog var sink: u32 = 0;
 
 comptime fn bitcast_int_to_int() -> u32 {
     var x: i32 = -1;

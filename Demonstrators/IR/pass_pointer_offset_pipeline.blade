@@ -6,7 +6,7 @@
 //   Covers pointer offset operations through the MIR pipeline.
 //   Exercises MirPointerOffsetInstruction lowering.
 
-fn pointer_offset_write(p: [*]reg u32, offset: u32) -> u32 {
-    var q: [*]reg u32 = p + offset;
+fn pointer_offset_write(p: [*]cog u32, offset: u32) -> u32 {
+    var q: [*]cog u32 = p + offset;
     return q[0];
 }

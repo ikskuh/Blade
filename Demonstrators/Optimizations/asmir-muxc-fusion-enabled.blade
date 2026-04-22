@@ -10,7 +10,7 @@
 // NOTE:
 //   Positive case for muxc-fusion: IF_C OR + IF_NC ANDN should fold to MUXC.
 
-reg var sink: u32 = 0;
+cog var sink: u32 = 0;
 var x: u32 = 1;
 var m: u32 = 2;
 asm {

@@ -11,8 +11,8 @@ noinline fn sal_expr(value: u32, amount: u32) -> u32 {
     return value <<< amount;
 }
 
-reg var input_value: u32 = 0x80000001;
-reg var shift_amount: u32 = 4;
-reg var sink: u32 = 0;
+cog var input_value: u32 = 0x80000001;
+cog var shift_amount: u32 = 4;
+cog var sink: u32 = 0;
 
 sink = sal_expr(input_value, shift_amount);

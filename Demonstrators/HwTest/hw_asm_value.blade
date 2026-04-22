@@ -11,9 +11,9 @@
 //   result = asm_sum(a,b) + inline_sum(a,b) = 2*(a+b)
 //   Run 3: 2*(1+0xFFFFFFFF) = 2*0 = 0 (wrapping)
 
-extern reg var rt_result: u32;
-extern reg var rt_param0: u32;
-extern reg var rt_param1: u32;
+extern cog var rt_result: u32;
+extern cog var rt_param0: u32;
+extern cog var rt_param1: u32;
 
 asm fn asm_sum(a: u32, b: u32) -> u32 {
     ADD {a}, {b}
