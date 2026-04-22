@@ -464,7 +464,7 @@ public class IrPipelineTests
         Assert.That(MirTextWriter.Write(build.MirModule), Does.Contain("const &x"));
         Assert.That(build.AssemblyText, Does.Contain("MOV _r1, PA"));
         Assert.That(build.AssemblyText, Does.Contain("MOV g_x, _r1"));
-        Assert.That(build.AssemblyText, Does.Contain("MOV PA, #g_x"));
+        Assert.That(build.AssemblyText, Does.Contain("MOV PA, ##g_x"));
     }
 
     [Test]
@@ -494,7 +494,7 @@ public class IrPipelineTests
         Assert.That(MirTextWriter.Write(build.MirModule), Does.Contain("const &param"));
         Assert.That(build.AssemblyText, Does.Contain("MOV _r1, PA"));
         Assert.That(build.AssemblyText, Does.Contain("MOV g_param, _r1"));
-        Assert.That(build.AssemblyText, Does.Contain("MOV PA, #g_param"));
+        Assert.That(build.AssemblyText, Does.Contain("MOV PA, ##g_param"));
     }
 
     [Test]
@@ -525,7 +525,7 @@ public class IrPipelineTests
 
         Assert.That(MirTextWriter.Write(build.MirModule), Does.Contain("const &base"));
         Assert.That(build.AsmModule.StoragePlaces.Count(place => place.Symbol.Name == "base"), Is.EqualTo(1));
-        Assert.That(build.AssemblyText, Does.Contain("MOV PA, #g_base"));
+        Assert.That(build.AssemblyText, Does.Contain("MOV PA, ##g_base"));
     }
 
     [Test]
@@ -1426,7 +1426,7 @@ public class IrPipelineTests
         Assert.That(function.Nodes.OfType<AsmInstructionNode>().Any(i => i.Opcode == "ADD"), Is.True);
         string asmir = AsmTextWriter.Write(build.AsmModule);
         Assert.That(asmir, Does.Contain("CALLPB"));
-        Assert.That(asmir, Does.Contain("ADD _r0, #1"));
+        Assert.That(asmir, Does.Match(@"ADD _r\d+, #1"));
     }
 
     [Test]
@@ -1496,7 +1496,7 @@ public class IrPipelineTests
 
         Assert.That(build.AssemblyText, Does.Contain("' keep this comment"));
         Assert.That(build.AssemblyText, Does.Not.Contain("// keep this comment"));
-        Assert.That(build.AssemblyText, Does.Contain("MOV _r0, _r0"));
+        Assert.That(build.AssemblyText, Does.Match(@"' keep this comment\s+MOV\s+(PA|_r\d+),\s+(PA|_r\d+)"));
     }
 
     [Test]
@@ -1546,6 +1546,82 @@ public class IrPipelineTests
 
         Assert.That(diagnostics.Count, Is.GreaterThan(0));
         Assert.That(diagnostics.Any(d => d.Code.ToString().StartsWith("E030")), Is.True);
+    }
+
+    [Test]
+    public void FinalAssembly_ImmediateSymbolOffsets_AreParenthesized()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            type Triple = struct {
+                a: u32,
+                b: u32,
+                c: u32,
+            };
+
+            hub var hub_value: Triple = undefined;
+            lut var lut_value: Triple = undefined;
+            reg var sink: Triple = undefined;
+
+            sink = hub_value;
+            sink = lut_value;
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableSingleCallsiteInlining = false,
+            EnableMirInlining = false,
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        Assert.That(build.AssemblyText, Does.Contain("RDLONG "));
+        Assert.That(build.AssemblyText, Does.Contain("##(g_hub_value + 4)"), build.AssemblyText);
+        Assert.That(build.AssemblyText, Does.Contain("##(g_hub_value + 8)"), build.AssemblyText);
+        Assert.That(build.AssemblyText, Does.Contain("##(g_lut_value - $200 + 1)"), build.AssemblyText);
+        Assert.That(build.AssemblyText, Does.Contain("##(g_lut_value - $200 + 2)"), build.AssemblyText);
+    }
+
+    [Test]
+    public void AggregateMemberStores_DoNotAliasInsertedValueWithDestinationLane()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            extern reg var input: u32;
+
+            type Packet = struct {
+                small: i8,
+                wide: u16,
+                signed: i32,
+                flag: bool,
+                digit: nib,
+            };
+
+            reg var stored: Packet = Packet {
+                .small = 0,
+                .wide = 0,
+                .signed = 0,
+                .flag = false,
+                .digit = 0,
+            };
+
+            stored.small = input as i8;
+            stored.wide = (input >> 8) as u16;
+            stored.flag = (input & 1) != 0;
+            stored.digit = (input >> 4) as nib;
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableSingleCallsiteInlining = false,
+            EnableMirInlining = false,
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        string asmir = AsmTextWriter.Write(build.AsmModule);
+        Assert.That(asmir, Does.Not.Match(@"SETBYTE\s+([A-Z_][A-Z0-9_]*|_r\d+),\s+\1,"), asmir);
+        Assert.That(asmir, Does.Not.Match(@"SETWORD\s+([A-Z_][A-Z0-9_]*|_r\d+),\s+\1,"), asmir);
     }
 
     [Test]

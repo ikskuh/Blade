@@ -309,16 +309,34 @@ public static class FinalAssemblyWriter
         if (operand.Symbol is StoragePlace { StorageClass: VariableStorageClass.Lut } lutPlace
             && operand.AddressingMode == AsmSymbolAddressingMode.Immediate)
         {
-            string lutOffset = operand.Offset == 0
-                ? string.Empty
-                : operand.Offset > 0 ? $" + {operand.Offset}" : $" - {-operand.Offset}";
-            return $"#{FormatSymbol(lutPlace, functionIdentifiers)} - $200{lutOffset}";
+            string lutBase = $"{FormatSymbol(lutPlace, functionIdentifiers)} - $200";
+            return FormatImmediateOffsetExpression(lutBase, operand.Offset, useLongImmediate: true);
         }
 
         string formatted = FormatSymbol(operand.Symbol, functionIdentifiers);
+        if (operand.AddressingMode == AsmSymbolAddressingMode.Immediate)
+        {
+            bool useLongImmediate = operand.Symbol is StoragePlace;
+            return FormatImmediateOffsetExpression(formatted, operand.Offset, useLongImmediate);
+        }
+
         if (operand.Offset != 0)
             formatted = operand.Offset > 0 ? $"{formatted} + {operand.Offset}" : $"{formatted} - {-operand.Offset}";
-        return operand.AddressingMode == AsmSymbolAddressingMode.Immediate ? $"#{formatted}" : formatted;
+
+        return formatted;
+    }
+
+    private static string FormatImmediateOffsetExpression(string baseExpression, int offset, bool useLongImmediate)
+    {
+        string prefix = useLongImmediate ? "##" : "#";
+
+        if (offset == 0)
+            return $"{prefix}{baseExpression}";
+
+        string offsetExpression = offset > 0
+            ? $"{baseExpression} + {offset}"
+            : $"{baseExpression} - {-offset}";
+        return $"{prefix}({offsetExpression})";
     }
 
     private static string FormatSymbol(IAsmSymbol symbol, IReadOnlyDictionary<FunctionSymbol, string> functionIdentifiers)

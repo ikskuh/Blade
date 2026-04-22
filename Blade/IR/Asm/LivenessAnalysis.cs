@@ -361,6 +361,8 @@ public static class LivenessAnalyzer
                             }
                         }
 
+                        AddIntraInstructionReadWriteInterference(interference, instruction);
+
                         // Phi moves are parallel copies at control-flow edges. Their source
                         // registers must remain distinct from the other values already live
                         // across the same phi-move bundle, even though they are only uses.
@@ -435,6 +437,51 @@ public static class LivenessAnalyzer
                     uses.Add(register.Register);
 
                 defs.Add(register.Register);
+            }
+        }
+    }
+
+    private static void AddIntraInstructionReadWriteInterference(
+        Dictionary<VirtualAsmRegister, HashSet<VirtualAsmRegister>> interference,
+        AsmInstructionNode instruction)
+    {
+        if (instruction.Mnemonic == P2Mnemonic.MOV && instruction.Operands.Count == 2)
+            return;
+
+        if (!P2InstructionMetadata.TryGetInstructionForm(instruction.Mnemonic, instruction.Operands.Count, out _))
+            return;
+
+        for (int writeOperandIndex = 0; writeOperandIndex < instruction.Operands.Count; writeOperandIndex++)
+        {
+            if (instruction.Operands[writeOperandIndex] is not AsmRegisterOperand writeOperand)
+                continue;
+
+            P2OperandAccess writeAccess = P2InstructionMetadata.GetOperandAccess(
+                instruction.Mnemonic,
+                instruction.Operands.Count,
+                writeOperandIndex);
+            if (writeAccess is not P2OperandAccess.Write and not P2OperandAccess.ReadWrite)
+                continue;
+
+            EnsureNode(interference, writeOperand.Register);
+
+            for (int readOperandIndex = 0; readOperandIndex < instruction.Operands.Count; readOperandIndex++)
+            {
+                if (readOperandIndex == writeOperandIndex)
+                    continue;
+
+                if (instruction.Operands[readOperandIndex] is not AsmRegisterOperand readOperand)
+                    continue;
+
+                P2OperandAccess readAccess = P2InstructionMetadata.GetOperandAccess(
+                    instruction.Mnemonic,
+                    instruction.Operands.Count,
+                    readOperandIndex);
+                if (readAccess is not P2OperandAccess.Read and not P2OperandAccess.ReadWrite)
+                    continue;
+
+                if (readOperand.Register != writeOperand.Register)
+                    AddEdge(interference, writeOperand.Register, readOperand.Register);
             }
         }
     }

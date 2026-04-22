@@ -1421,10 +1421,10 @@ public static class AsmLowerer
         LoweringContext ctx)
     {
         AggregateMemberSymbol member = operation.Member;
-        CopyAggregateValue(nodes, op.Destination!, op.ResultType, op.Operands[0], ctx);
 
         if (IsAggregateValueType(member.Type))
         {
+            CopyAggregateValue(nodes, op.Destination!, op.ResultType, op.Operands[0], ctx);
             if (!TryStoreAggregateValueIntoAggregate(nodes, op.Destination!, op.ResultType, member.ByteOffset, op.Operands[1], member.Type, ctx))
             {
                 ReportUnsupportedOpcode(ctx, op);
@@ -1433,6 +1433,8 @@ public static class AsmLowerer
 
             return;
         }
+
+        CopyAggregateValueNonElidable(nodes, op.Destination!, op.ResultType, op.Operands[0], ctx);
 
         if (!TryGetAggregateMemberShape(op.ResultType, member.Name, member.ByteOffset, out AggregateAccessShape shape))
         {
@@ -1468,7 +1470,7 @@ public static class AsmLowerer
     {
         AsmRegisterOperand dest = DestReg(op, ctx);
         AsmRegisterOperand src = OpReg(op.Operands[0], ctx);
-        nodes.Add(Emit(P2Mnemonic.MOV, dest, src));
+        nodes.Add(WithNonElidable(Emit(P2Mnemonic.MOV, dest, src)));
 
         if (op.ResultType is not RuntimeTypeSymbol { ScalarWidthBits: int width } runtimeResultType || width >= 32)
             return;
@@ -2988,12 +2990,34 @@ public static class AsmLowerer
         LirOperand source,
         LoweringContext ctx)
     {
+        CopyAggregateValueCore(nodes, destination, type, source, ctx, isNonElidable: false);
+    }
+
+    private static void CopyAggregateValueNonElidable(
+        List<AsmNode> nodes,
+        LirVirtualRegister destination,
+        BladeType? type,
+        LirOperand source,
+        LoweringContext ctx)
+    {
+        CopyAggregateValueCore(nodes, destination, type, source, ctx, isNonElidable: true);
+    }
+
+    private static void CopyAggregateValueCore(
+        List<AsmNode> nodes,
+        LirVirtualRegister destination,
+        BladeType? type,
+        LirOperand source,
+        LoweringContext ctx,
+        bool isNonElidable)
+    {
         int laneCount = GetAggregateLaneCount(type);
         for (int lane = 0; lane < laneCount; lane++)
         {
             AsmRegisterOperand destLane = new(ctx.GetRegisterLane(destination, type, lane));
             AsmOperand srcLane = LowerOperandLane(source, type, lane, ctx);
-            nodes.Add(Emit(P2Mnemonic.MOV, destLane, srcLane));
+            AsmInstructionNode move = Emit(P2Mnemonic.MOV, destLane, srcLane);
+            nodes.Add(isNonElidable ? WithNonElidable(move) : move);
         }
     }
 

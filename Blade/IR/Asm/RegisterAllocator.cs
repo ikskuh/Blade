@@ -361,6 +361,7 @@ public static class RegisterAllocator
             if (instruction.Mnemonic != P2Mnemonic.MOV
                 || instruction.Condition is not null
                 || instruction.FlagEffect != P2FlagEffect.None
+                || instruction.IsNonElidable
                 || instruction.IsPhiMove
                 || instruction.Operands.Count != 2)
             {

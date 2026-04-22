@@ -70,7 +70,10 @@ Return-item flags already accept `SyntaxFacts.IsIdentifierLike(...)`; asm output
 
 - Replace the broad keyword-table check with explicit allowlists or smaller context-specific predicates.
 - Audit the existing call sites so each one admits only the intended keyword subset.
-- Add parser coverage for accepted and rejected contextual names.
+- Add parser coverage for accepted and rejected co
+
+## REVIEW-X6: Reduce `DiagnosticBag` boilerplate with descriptor-driven reporting
+ntextual names.
 
 ## REVIEW-X4: Refactor compilation option parsing boilerplate
 
@@ -79,9 +82,6 @@ Return-item flags already accept `SyntaxFacts.IsIdentifierLike(...)`; asm output
 - Introduce a staged dispatcher or result object model so option parsing is easier to audit.
 - Centralize error propagation instead of repeating the same control flow after each parse attempt.
 - Preserve current CLI surface and diagnostics.
-
-## REVIEW-X6: Reduce `DiagnosticBag` boilerplate with descriptor-driven reporting
-
 `DiagnosticBag` still exposes a large repetitive surface of near-identical reporting helpers.
 
 - Centralize diagnostic descriptors and format templates.
