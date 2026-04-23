@@ -18,7 +18,7 @@ public class BinderTests
         {
             EmitIr = false,
         });
-        return (result.Syntax, result.BoundProgram, result.Diagnostics);
+        return (result.Syntax, result.BoundProgram!, result.Diagnostics);
     }
 
 
@@ -29,7 +29,7 @@ public class BinderTests
             NamedModuleRoots = namedModuleRoots ?? new Dictionary<string, string>(StringComparer.Ordinal),
             EmitIr = false,
         });
-        return (result.Syntax, result.BoundProgram, result.Diagnostics);
+        return (result.Syntax, result.BoundProgram!, result.Diagnostics);
     }
 
     private static BoundFunctionMember GetFunction(BoundProgram program, string name)
@@ -145,14 +145,44 @@ public class BinderTests
     }
 
     [Test]
-    public void TopLevelAutomaticExtern_IsRejectedAndDoesNotBecomeGlobal()
+    public void TopLevelAutomaticExtern_WithoutMain_DoesNotBecomeGlobal()
     {
-        (_, BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("extern var foo: u32;");
+        CompilationResult result = CompilerDriver.Compile("extern var foo: u32;", filePath: "<input>", new CompilationOptions
+        {
+            EmitIr = false,
+        });
 
-        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0216_InvalidExternScope), Is.True);
-        Assert.That(diagnostics.Any(diagnostic => diagnostic.Message == "automatic variable cannot be extern"), Is.True);
-        Assert.That(program.GlobalVariables, Is.Empty);
-        Assert.That(program.EntryPoint.Body.Statements.Single(), Is.TypeOf<BoundVariableDeclarationStatement>());
+        Assert.That(result.Diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0270_MissingMainTask), Is.True);
+        Assert.That(result.BoundProgram, Is.Null);
+    }
+
+    [Test]
+    public void MainTask_BecomesBoundProgramEntryPoint()
+    {
+        (_, BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("cog task main() { hub var started: u32 = 1; }");
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+        Assert.That(program.EntryPoint.Name, Is.EqualTo("main"));
+        Assert.That(program.EntryPoint.StorageClass, Is.EqualTo(VariableStorageClass.Cog));
+        Assert.That(ReferenceEquals(program.EntryPoint.EntryFunction, program.EntryPointFunction.Symbol), Is.True);
+    }
+
+    [Test]
+    public void MissingMainTask_ReportsDiagnostic()
+    {
+        (_, _, IReadOnlyList<Diagnostic> diagnostics) = Bind("fn helper() void { }");
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0270_MissingMainTask), Is.True);
+    }
+
+    [Test]
+    public void NonCogMainTask_ReportsWarning()
+    {
+        (_, BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("lut task main() { }");
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.W0269_MainTaskMustBeCog), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0270_MissingMainTask), Is.False);
+        Assert.That(program.EntryPoint.StorageClass, Is.EqualTo(VariableStorageClass.Lut));
     }
 
     [Test]
@@ -568,13 +598,19 @@ public class BinderTests
     }
 
     [Test]
-    public void FileImport_BindsModuleAliasMemberFunctionAndCall()
+    public void FileImport_BindsModuleAliasMemberFunctionCall()
     {
         using TempDirectory temp = new();
-        temp.WriteFile("math.blade", "fn inc(x: u32) -> u32 { return x + 1; } var seed: u32 = 1;");
+        temp.WriteFile("math.blade", "fn inc(x: u32) -> u32 { return x + 1; } hub var seed: u32 = 1;");
 
         string sourcePath = temp.GetFullPath("main.blade");
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""import "./math.blade" as math; var outv: u32 = math.inc(2); math();""", sourcePath);
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            import "./math.blade" as math;
+
+            cog task main() {
+                var outv: u32 = math.inc(2);
+            }
+            """, sourcePath);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
         Assert.That(program.RootModule.ExportedSymbols.TryGetValue("math", out Symbol? exportedSymbol), Is.True);
@@ -651,14 +687,20 @@ public class BinderTests
     }
 
     [Test]
-    public void ModuleCall_WithArgumentsReportsArgumentCountMismatch()
+    public void ModuleCall_ReportsNotCallable()
     {
         using TempDirectory temp = new();
         temp.WriteFile("math.blade", "fn inc(x: u32) -> u32 { return x + 1; }");
         string sourcePath = temp.GetFullPath("main.blade");
 
-        (_, _, DiagnosticBag diagnostics) = Bind("""import "./math.blade" as math; math(1);""", sourcePath);
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0207_ArgumentCountMismatch), Is.True);
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            import "./math.blade" as math;
+
+            cog task main() {
+                math(1);
+            }
+            """, sourcePath);
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0206_NotCallable), Is.True);
     }
 
     [Test]
@@ -1585,6 +1627,397 @@ public class BinderTests
             """);
 
         Assert.That(diagnostics.Count(d => d.Code == DiagnosticCode.E0264_PointerStorageClassRequired), Is.EqualTo(2));
+    }
+
+    [Test]
+    public void Yieldto_CoroutineTarget_BindsWithoutDiagnostics()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            coro fn worker(seed: u32) {
+                yieldto worker(seed);
+            }
+
+            cog task main() {
+            }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+
+        BoundFunctionMember worker = GetFunction(program, "worker");
+        BoundYieldtoStatement yieldto = (BoundYieldtoStatement)worker.Body.Statements[0];
+        Assert.That(yieldto.Target.Name, Is.EqualTo("worker"));
+    }
+
+    [Test]
+    public void Yieldto_InvalidTarget_BindsErrorStatement()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            fn helper() {
+            }
+
+            coro fn worker() {
+                yieldto helper();
+            }
+
+            cog task main() {
+            }
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0214_InvalidYieldtoTarget), Is.True);
+
+        BoundFunctionMember worker = GetFunction(program, "worker");
+        Assert.That(worker.Body.Statements[0].Kind, Is.EqualTo(BoundNodeKind.ErrorStatement));
+    }
+
+    [Test]
+    public void TaskHelperFunction_CanSeeImportedLayoutMembers()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            layout BaseState {
+                cog var local_counter: u32 = 0;
+            }
+
+            cog task helper_showcase(start: u32) : BaseState {
+                fn add_step(value: u32) -> u32 {
+                    local_counter += value;
+                    return local_counter;
+                }
+
+                var current: u32 = add_step(start);
+                _ = current;
+            }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+
+        BoundFunctionMember helper = GetFunction(program, "add_step");
+        BoundAssignmentStatement assignment = (BoundAssignmentStatement)helper.Body.Statements[0];
+        BoundSymbolAssignmentTarget target = (BoundSymbolAssignmentTarget)assignment.Target;
+        Assert.That(target.Symbol.Name, Is.EqualTo("local_counter"));
+    }
+
+    [Test]
+    public void TaskUnqualifiedName_PrefersLexicalSymbolAndWarnsOnLayoutConflict()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            hub var global_hub_visible: u32 = 123;
+
+            layout HubScoped {
+                hub var global_hub_visible: u32 = 456;
+            }
+
+            cog task uses_layout() : HubScoped {
+                var plain: u32 = global_hub_visible;
+                var qualified: u32 = HubScoped.global_hub_visible;
+            }
+            """);
+
+        Assert.That(diagnostics.Count(d => d.Code == DiagnosticCode.W0266_LexicalNameConflictsWithLayoutMember), Is.EqualTo(1));
+
+        BoundFunctionMember task = GetFunction(program, "uses_layout");
+        BoundVariableDeclarationStatement plainDeclaration = (BoundVariableDeclarationStatement)task.Body.Statements[0];
+        BoundVariableDeclarationStatement qualifiedDeclaration = (BoundVariableDeclarationStatement)task.Body.Statements[1];
+
+        BoundSymbolExpression plainInitializer = (BoundSymbolExpression)plainDeclaration.Initializer!;
+        BoundSymbolExpression qualifiedInitializer = (BoundSymbolExpression)qualifiedDeclaration.Initializer!;
+
+        Assert.That(plainInitializer.Symbol, Is.Not.SameAs(qualifiedInitializer.Symbol));
+    }
+
+    [Test]
+    public void TaskLayoutMembers_AreNotAccessibleOutsideTheTask()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            cog task worker() {
+                hub var private_counter: u32 = 0;
+            }
+
+            fn demo() {
+                _ = worker.private_counter;
+            }
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0202_UndefinedName), Is.True);
+    }
+
+    [Test]
+    public void TaskQualifiedMemberAccess_InsideSameTask_BindsToTaskStorage()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            cog task worker() {
+                hub var private_counter: u32 = 0;
+                var copy: u32 = worker.private_counter;
+            }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected same-task qualified member access to bind without diagnostics.");
+
+        BoundFunctionMember task = GetFunction(program, "worker");
+        BoundVariableDeclarationStatement statement = (BoundVariableDeclarationStatement)task.Body.Statements[0];
+        BoundSymbolExpression expression = (BoundSymbolExpression)statement.Initializer!;
+        Assert.That(expression.Symbol.Name, Is.EqualTo("private_counter"));
+    }
+
+    [Test]
+    public void TaskBody_CanAccessOwnStoredMemberImplicitly()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            cog task worker() {
+                hub var private_counter: u32 = 0;
+                var copy: u32 = private_counter;
+            }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected task body to bind its own stored member implicitly.");
+
+        BoundFunctionMember task = GetFunction(program, "worker");
+        BoundVariableDeclarationStatement statement = (BoundVariableDeclarationStatement)task.Body.Statements[0];
+        BoundSymbolExpression expression = (BoundSymbolExpression)statement.Initializer!;
+        Assert.That(expression.Symbol.Name, Is.EqualTo("private_counter"));
+    }
+
+    [Test]
+    public void TaskLayouts_CannotBeInherited()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            cog task worker() {
+            }
+
+            layout Derived : worker {
+            }
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0268_TaskLayoutCannotBeInherited), Is.True);
+    }
+
+    [Test]
+    public void ImportedLayout_CanBeInheritedByLayout()
+    {
+        using TempDirectory temp = new();
+        temp.WriteFile("example.blade", "layout A { hub var lval: u32 = 0; }");
+
+        string sourcePath = temp.GetFullPath("main.blade");
+        (_, _, DiagnosticBag diagnostics) = Bind(
+            """
+            import "./example.blade" as ex;
+
+            layout SubA : ex.A {
+            }
+            """,
+            sourcePath);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected imported layout inheritance to bind without diagnostics.");
+    }
+
+    [Test]
+    public void ImportedLayout_CanBeInheritedByTask()
+    {
+        using TempDirectory temp = new();
+        temp.WriteFile("example.blade", "layout A { hub var lval: u32 = 0; }");
+
+        string sourcePath = temp.GetFullPath("main.blade");
+        (_, _, DiagnosticBag diagnostics) = Bind(
+            """
+            import "./example.blade" as ex;
+
+            cog task SubT() : ex.A {
+            }
+            """,
+            sourcePath);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected imported layout inheritance for tasks to bind without diagnostics.");
+    }
+
+    [Test]
+    public void ImportedModule_ExportsTaskSymbol()
+    {
+        using TempDirectory temp = new();
+        temp.WriteFile("example.blade", "cog task worker() { hub var private_counter: u32 = 0; }");
+
+        string sourcePath = temp.GetFullPath("main.blade");
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind(
+            """
+            import "./example.blade" as ex;
+            """,
+            sourcePath);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        ModuleSymbol importedModule = (ModuleSymbol)program.RootModule.ExportedSymbols["ex"];
+        Assert.That(importedModule.Module.ExportedSymbols.ContainsKey("worker"), Is.True);
+        Assert.That(importedModule.Module.ExportedSymbols["worker"], Is.TypeOf<TaskSymbol>());
+    }
+
+    [Test]
+    public void Function_CanAccessLayoutMemberByQualifiedLayoutName()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            layout A {
+                hub var lval: u32 = 0;
+            }
+
+            fn bar() {
+                var copy: u32 = A.lval;
+            }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        BoundFunctionMember function = GetFunction(program, "bar");
+        BoundVariableDeclarationStatement statement = (BoundVariableDeclarationStatement)function.Body.Statements[0];
+        BoundSymbolExpression expression = (BoundSymbolExpression)statement.Initializer!;
+        Assert.That(expression.Symbol.Name, Is.EqualTo("lval"));
+    }
+
+    [Test]
+    public void Declaration_CanAccessLayoutMemberByQualifiedLayoutName()
+    {
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            layout A {
+                hub var lval: u32 = 0;
+            }
+
+            cog task worker() {
+                var copy: u32 = A.lval;
+            }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        BoundFunctionMember worker = GetFunction(program, "worker");
+        BoundVariableDeclarationStatement statement = (BoundVariableDeclarationStatement)worker.Body.Statements[0];
+        BoundSymbolExpression expression = (BoundSymbolExpression)statement.Initializer!;
+        Assert.That(expression.Symbol.Name, Is.EqualTo("lval"));
+    }
+
+    [Test]
+    public void ImportedLayoutMember_CanBeAccessedByQualifiedPath()
+    {
+        using TempDirectory temp = new();
+        temp.WriteFile("example.blade", "layout A { hub var lval: u32 = 0; }");
+
+        string sourcePath = temp.GetFullPath("main.blade");
+        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind(
+            """
+            import "./example.blade" as ex;
+
+            fn bar() {
+                var copy: u32 = ex.A.lval;
+            }
+            """,
+            sourcePath);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        BoundFunctionMember function = GetFunction(program, "bar");
+        BoundVariableDeclarationStatement statement = (BoundVariableDeclarationStatement)function.Body.Statements[0];
+        BoundSymbolExpression expression = (BoundSymbolExpression)statement.Initializer!;
+        Assert.That(expression.Symbol.Name, Is.EqualTo("lval"));
+    }
+
+    [Test]
+    public void ImportedTaskLayout_CannotBeInherited()
+    {
+        using TempDirectory temp = new();
+        temp.WriteFile("example.blade", "cog task worker() { hub var private_counter: u32 = 0; }");
+
+        string sourcePath = temp.GetFullPath("main.blade");
+        (_, _, DiagnosticBag diagnostics) = Bind(
+            """
+            import "./example.blade" as ex;
+
+            cog task consumer() : ex.worker {
+            }
+            """,
+            sourcePath);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0268_TaskLayoutCannotBeInherited), Is.True);
+    }
+
+    [Test]
+    public void ImportedTaskMembers_AreNotAccessibleOutsideTheTask()
+    {
+        using TempDirectory temp = new();
+        temp.WriteFile("example.blade", "cog task worker() { hub var private_counter: u32 = 0; }");
+
+        string sourcePath = temp.GetFullPath("main.blade");
+        (_, _, DiagnosticBag diagnostics) = Bind(
+            """
+            import "./example.blade" as ex;
+
+            fn bar() {
+                var copy: u32 = ex.worker.private_counter;
+            }
+            """,
+            sourcePath);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0202_UndefinedName), Is.True);
+    }
+
+    [Test]
+    public void TaskHelperFunctions_DoNotSeeTaskStartupParameter()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            cog task worker(step: u32) {
+                fn helper() -> u32 {
+                    return step;
+                }
+            }
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0202_UndefinedName), Is.True);
+    }
+
+    [Test]
+    public void MultipleImportedLayouts_MakeUnqualifiedAccessAmbiguous()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            layout A {
+                cog var x: u32 = 1;
+            }
+
+            layout B {
+                cog var x: u32 = 2;
+            }
+
+            cog task worker() : A, B {
+                var value: u32 = x;
+            }
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0265_AmbiguousLayoutMemberAccess), Is.True);
+    }
+
+    [Test]
+    public void ChildLayoutShadowing_ReportsWarning()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            layout BaseState {
+                hub var shared_counter: u32 = 100;
+            }
+
+            layout ShadowingChild : BaseState {
+                hub var shared_counter: u32 = 999;
+            }
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.W0267_LayoutMemberShadowsParentMember), Is.True);
+    }
+
+    [Test]
+    public void ChildLayoutScope_DoesNotImportParentMembers()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            layout BaseState {
+                hub var shared_counter: u32 = 100;
+            }
+
+            layout Child : BaseState {
+                hub var copied: u32 = shared_counter;
+            }
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0202_UndefinedName), Is.True);
     }
 
 

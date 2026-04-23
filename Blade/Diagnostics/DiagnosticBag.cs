@@ -531,6 +531,74 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
         Report(DiagnosticCode.E0262_AddressOfParameter, span, $"Cannot take the address of parameter '{name}'.");
     }
 
+    /// <summary>
+    /// Reports that an unqualified name is provided by multiple imported layouts.
+    /// </summary>
+    public void ReportAmbiguousLayoutMemberAccess(TextSpan span, string name, IReadOnlyList<string> layoutNames)
+    {
+        Report(
+            DiagnosticCode.E0265_AmbiguousLayoutMemberAccess,
+            span,
+            $"Name '{name}' is provided by multiple layouts ({string.Join(", ", layoutNames)}). Use 'Layout.member' to disambiguate.");
+    }
+
+    /// <summary>
+    /// Reports that lexical resolution won over one or more imported layout members of the same name.
+    /// </summary>
+    public void ReportLexicalNameConflictsWithLayoutMember(TextSpan span, string name, IReadOnlyList<string> layoutNames)
+    {
+        Report(
+            DiagnosticCode.W0266_LexicalNameConflictsWithLayoutMember,
+            span,
+            $"Name '{name}' is visible both lexically and through layout members ({string.Join(", ", layoutNames)}). The lexical name wins.");
+    }
+
+    /// <summary>
+    /// Reports that a layout declaration shadows a member inherited from a parent layout.
+    /// </summary>
+    public void ReportLayoutMemberShadowsParentMember(TextSpan span, string layoutName, string memberName)
+    {
+        Report(
+            DiagnosticCode.W0267_LayoutMemberShadowsParentMember,
+            span,
+            $"Layout '{layoutName}' declares member '{memberName}', which shadows an inherited layout member.");
+    }
+
+    /// <summary>
+    /// Reports that a layout attempted to inherit from a task-private layout.
+    /// </summary>
+    public void ReportTaskLayoutCannotBeInherited(TextSpan span, string taskName)
+    {
+        Report(DiagnosticCode.E0268_TaskLayoutCannotBeInherited, span, $"Task layout '{taskName}' cannot be inherited.");
+    }
+
+    /// <summary>
+    /// Reports that the required root entry task exists but does not start in cog storage.
+    /// </summary>
+    public void ReportMainTaskMustBeCog(TextSpan span, string taskName, Blade.Semantics.VariableStorageClass storageClass)
+    {
+        string storageClassKeyword = storageClass switch
+        {
+            Blade.Semantics.VariableStorageClass.Cog => "cog",
+            Blade.Semantics.VariableStorageClass.Lut => "lut",
+            Blade.Semantics.VariableStorageClass.Hub => "hub",
+            _ => Assert.UnreachableValue<string>(), // pragma: force-coverage
+        };
+
+        Report(
+            DiagnosticCode.W0269_MainTaskMustBeCog,
+            span,
+            $"Entry task '{taskName}' should be declared as 'cog task'; found '{storageClassKeyword} task'.");
+    }
+
+    /// <summary>
+    /// Reports that the root module does not export the required <c>main</c> task.
+    /// </summary>
+    public void ReportMissingMainTask(TextSpan span)
+    {
+        Report(DiagnosticCode.E0270_MissingMainTask, span, "Root module must export a task named 'main'.");
+    }
+
     // Inline assembly diagnostics
 
     public void ReportInlineAsmUnknownInstruction(TextSpan span, string mnemonic)

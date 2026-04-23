@@ -26,14 +26,14 @@ public sealed class CompilationOptions
 public sealed class CompilationResult(
     SourceText source,
     CompilationUnitSyntax syntax,
-    BoundProgram boundProgram,
+    BoundProgram? boundProgram,
     IrBuildResult? irBuildResult,
     IReadOnlyList<Diagnostic> diagnostics,
     int tokenCount)
 {
     public SourceText Source { get; } = source;
     public CompilationUnitSyntax Syntax { get; } = syntax;
-    public BoundProgram BoundProgram { get; } = boundProgram;
+    public BoundProgram? BoundProgram { get; } = boundProgram;
     public IrBuildResult? IrBuildResult { get; } = irBuildResult;
     public IReadOnlyList<Diagnostic> Diagnostics { get; } = diagnostics;
     public int TokenCount { get; } = tokenCount;
@@ -66,12 +66,12 @@ public static class CompilerDriver
         LoadedCompilation loadedCompilation = CompilationModuleLoader.Load(source, diagnostics, effectiveOptions.NamedModuleRoots);
         CompilationUnitSyntax unit = loadedCompilation.RootModule.Syntax;
 
-        BoundProgram boundProgram = CreateEmptyBoundProgram();
+        BoundProgram? boundProgram = null;
         if (!diagnostics.HasErrors)
             boundProgram = Binder.Bind(loadedCompilation, diagnostics, effectiveOptions.ComptimeFuel);
 
         IrBuildResult? irBuildResult = null;
-        if (!diagnostics.HasErrors && effectiveOptions.EmitIr)
+        if (boundProgram is not null && !diagnostics.HasErrors && effectiveOptions.EmitIr)
         {
             using IDisposable _ = diagnostics.UseSource(source);
             IrPipelineOptions pipelineOptions = new()
@@ -104,23 +104,6 @@ public static class CompilerDriver
     {
         Token eof = new(TokenKind.EndOfFile, new TextSpan(0, 0), string.Empty);
         CompilationUnitSyntax syntax = new([], eof);
-        BoundProgram boundProgram = CreateEmptyBoundProgram();
-        return new CompilationResult(source, syntax, boundProgram, null, diagnostics.ToList(), 0);
-    }
-
-    private static BoundProgram CreateEmptyBoundProgram()
-    {
-        Token eof = new(TokenKind.EndOfFile, new TextSpan(0, 0), string.Empty);
-        CompilationUnitSyntax syntax = new([], eof);
-        BoundBlockStatement constructorBody = new([], new TextSpan(0, 0));
-        BoundFunctionMember constructor = new(new FunctionSymbol("$init", FunctionKind.Default, isTopLevel: true), constructorBody, constructorBody.Span);
-        BoundModule module = new BoundModule(
-            "<empty>",
-            syntax,
-            constructor,
-            [],
-            [constructor],
-            new Dictionary<string, Symbol>());
-        return new BoundProgram(module, [module], [], [constructor]);
+        return new CompilationResult(source, syntax, boundProgram: null, null, diagnostics.ToList(), 0);
     }
 }

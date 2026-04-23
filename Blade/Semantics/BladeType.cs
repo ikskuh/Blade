@@ -394,6 +394,46 @@ public sealed class FunctionTypeSymbol(FunctionSymbol function) : ComptimeTypeSy
     protected override int GetHashCodeCore() => HashCode.Combine(typeof(FunctionTypeSymbol), RuntimeHelpers.GetHashCode(Function)); // pragma: force-coverage
 }
 
+/// <summary>
+/// Represents the compile-time type of a named layout value.
+/// </summary>
+public sealed class LayoutTypeSymbol(LayoutSymbol layout) : ComptimeTypeSymbol($"layout {Requires.NotNull(layout).Name}")
+{
+    /// <summary>
+    /// Gets the layout symbol carried by this compile-time value.
+    /// </summary>
+    public LayoutSymbol Layout { get; } = Requires.NotNull(layout);
+
+    /// <summary>
+    /// Determines whether a runtime object is this exact layout symbol.
+    /// </summary>
+    public override bool IsLegalRuntimeObject(object value) => ReferenceEquals(value, Layout);
+
+    protected override bool EqualsCore(BladeType other) => ReferenceEquals(Layout, ((LayoutTypeSymbol)other).Layout); // pragma: force-coverage
+
+    protected override int GetHashCodeCore() => HashCode.Combine(typeof(LayoutTypeSymbol), RuntimeHelpers.GetHashCode(Layout)); // pragma: force-coverage
+}
+
+/// <summary>
+/// Represents the compile-time type of a named task reference.
+/// </summary>
+public sealed class TaskTypeSymbol(TaskSymbol task) : ComptimeTypeSymbol($"task {Requires.NotNull(task).Name}")
+{
+    /// <summary>
+    /// Gets the task symbol carried by this compile-time value.
+    /// </summary>
+    public TaskSymbol Task { get; } = Requires.NotNull(task);
+
+    /// <summary>
+    /// Determines whether a runtime object is this exact task symbol.
+    /// </summary>
+    public override bool IsLegalRuntimeObject(object value) => ReferenceEquals(value, Task);
+
+    protected override bool EqualsCore(BladeType other) => ReferenceEquals(Task, ((TaskTypeSymbol)other).Task); // pragma: force-coverage
+
+    protected override int GetHashCodeCore() => HashCode.Combine(typeof(TaskTypeSymbol), RuntimeHelpers.GetHashCode(Task)); // pragma: force-coverage
+}
+
 public sealed class ModuleTypeSymbol(ModuleSymbol module) : ComptimeTypeSymbol($"module {Requires.NotNull(module).Name}")
 {
     public ModuleSymbol Module { get; } = Requires.NotNull(module);

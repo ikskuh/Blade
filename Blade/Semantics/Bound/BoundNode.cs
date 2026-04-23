@@ -34,7 +34,6 @@ public enum BoundNodeKind
     UnaryExpression,
     BinaryExpression,
     CallExpression,
-    ModuleCallExpression,
     IntrinsicCallExpression,
     EnumLiteralExpression,
     ArrayLiteralExpression,

@@ -85,7 +85,9 @@ public class WriterAndSymbolTests
         BoundProgram program = IrTestFactory.CreateBoundProgram("/tmp/test.blade");
 
         Assert.That(program.ResolvedFilePath, Is.EqualTo("/tmp/test.blade"));
-        Assert.That(program.EntryPoint, Is.SameAs(program.RootModule.Constructor));
+        Assert.That(program.EntryPoint.Name, Is.EqualTo("main"));
+        Assert.That(program.Functions.Single(), Is.SameAs(program.EntryPointFunction));
+        Assert.That(program.RootModule.Functions.Single(), Is.SameAs(program.EntryPointFunction));
     }
 
     [Test]

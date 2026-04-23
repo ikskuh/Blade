@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Blade;
 using Blade.Source;
@@ -13,6 +14,29 @@ public sealed class ParameterSyntax(Token? storageClassKeyword, Token name, Toke
     [ExcludeFromCodeCoverage]
     public Token Colon { get; } = colon;
     public TypeSyntax Type { get; } = Requires.NotNull(type);
+}
+
+/// <summary>
+/// Represents the mixed declaration-and-statement body of a task declaration.
+/// </summary>
+public sealed class TaskBodySyntax(Token openBrace, IReadOnlyList<SyntaxNode> items, Token closeBrace) : SyntaxNode(TextSpan.FromBounds(openBrace.Span.Start, closeBrace.Span.End))
+{
+    /// <summary>
+    /// Gets the opening brace token of the task body.
+    /// </summary>
+    [ExcludeFromCodeCoverage]
+    public Token OpenBrace { get; } = openBrace;
+
+    /// <summary>
+    /// Gets the declarations and statements contained in the task body.
+    /// </summary>
+    public IReadOnlyList<SyntaxNode> Items { get; } = Requires.NotNull(items);
+
+    /// <summary>
+    /// Gets the closing brace token of the task body.
+    /// </summary>
+    [ExcludeFromCodeCoverage]
+    public Token CloseBrace { get; } = closeBrace;
 }
 
 public sealed class ReturnItemSyntax(Token? name, Token? colonToken, TypeSyntax type, FlagAnnotationSyntax? flagAnnotation) : SyntaxNode(TextSpan.FromBounds(

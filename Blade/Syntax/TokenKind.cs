@@ -64,6 +64,8 @@ public enum TokenKind
     EnumKeyword,
     BitfieldKeyword,
     TypeKeyword,
+    LayoutKeyword,
+    TaskKeyword,
     BitcastKeyword,
     UndefinedKeyword,
     AlignKeyword,

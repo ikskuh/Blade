@@ -22,13 +22,13 @@ public static class BoundTreeWriter
                 WriteExpression(sb, 3, global.Initializer);
         }
 
-        AppendLine(sb, 1, $"EntryPoint {program.EntryPoint.Symbol.Name} ({program.EntryPoint.Symbol.Kind})");
-        WriteStatement(sb, 2, program.EntryPoint.Body);
+        AppendLine(sb, 1, $"EntryPoint {program.EntryPoint.Name} ({program.EntryPoint.StorageClass})");
+        WriteStatement(sb, 2, program.EntryPointFunction.Body);
 
         AppendLine(sb, 1, "Functions");
         foreach (BoundFunctionMember function in program.Functions)
         {
-            if (ReferenceEquals(function, program.EntryPoint))
+            if (ReferenceEquals(function, program.EntryPointFunction))
                 continue;
 
             AppendLine(sb, 2, $"{function.Symbol.Name} ({function.Symbol.Kind})");
@@ -159,7 +159,7 @@ public static class BoundTreeWriter
                 break;
 
             case BoundYieldtoStatement yieldto:
-                AppendLine(sb, indent, $"Yieldto ({yieldto.Target?.Name ?? "<error>"})");
+                AppendLine(sb, indent, $"Yieldto ({yieldto.Target.Name})");
                 foreach (BoundExpression arg in yieldto.Arguments)
                     WriteExpression(sb, indent + 1, arg);
                 break;

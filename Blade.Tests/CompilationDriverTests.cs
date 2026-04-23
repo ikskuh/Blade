@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using Blade;
 using Blade.Diagnostics;
+using Blade.Semantics;
 
 namespace Blade.Tests;
 
@@ -24,8 +25,7 @@ public sealed class CompilationDriverTests
 
         Assert.That(result.Diagnostics.Count, Is.GreaterThan(0));
         Assert.That(result.Diagnostics.Any(d => d.IsError), Is.True);
-        Assert.That(result.BoundProgram.Functions, Has.Count.EqualTo(1), "Failed compilations still expose the synthetic empty constructor only.");
-        Assert.That(result.BoundProgram.Functions.Single().Symbol.IsTopLevel, Is.True);
+        Assert.That(result.BoundProgram, Is.Null);
 
         Diagnostic first = result.Diagnostics.First();
         Assert.That(first.Source.FilePath, Is.EqualTo(temp.GetFullPath("bad.blade")));

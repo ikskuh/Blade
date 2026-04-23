@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -24,14 +25,6 @@ public interface IAsmSymbol
 {
     string Name { get; }
     SymbolType SymbolType { get; }
-}
-
-internal sealed class SyntheticFunctionSignatureSyntax(string name) : IFunctionSignatureSyntax
-{
-    public Token Name { get; } = new Token(TokenKind.Identifier, new TextSpan(0, 0), name);
-    public SeparatedSyntaxList<ParameterSyntax> Parameters { get; } = new SeparatedSyntaxList<ParameterSyntax>([]);
-    public Token? Arrow => null;
-    public SeparatedSyntaxList<ReturnItemSyntax>? ReturnSpec => null;
 }
 
 public abstract class Symbol(string name, SourceSpan? sourceSpan = null)
@@ -228,16 +221,9 @@ public sealed class FunctionSymbol(
     FunctionInliningPolicy inliningPolicy = FunctionInliningPolicy.Default,
     SourceSpan? sourceSpan = null) : Symbol(name, sourceSpan)
 {
-    public FunctionSymbol(
-        string name,
-        FunctionKind kind,
-        bool isTopLevel,
-        FunctionInliningPolicy inliningPolicy = FunctionInliningPolicy.Default)
-        : this(name, new SyntheticFunctionSignatureSyntax(name), kind, isTopLevel, inliningPolicy)
-    {
-    }
-
-    public IFunctionSignatureSyntax Syntax { get; } = Requires.NotNull(syntax);
+    internal TextSpan SignatureNameSpan { get; } = Requires.NotNull(syntax).Name.Span;
+    internal SeparatedSyntaxList<ParameterSyntax> SignatureParameters { get; } = syntax.Parameters;
+    internal SeparatedSyntaxList<ReturnItemSyntax>? SignatureReturnSpec { get; } = syntax.ReturnSpec;
     public FunctionKind Kind { get; } = kind;
     public bool IsTopLevel { get; } = isTopLevel;
     public FunctionInliningPolicy InliningPolicy { get; } = inliningPolicy;
@@ -251,6 +237,69 @@ public sealed class FunctionSymbol(
 public sealed class ModuleSymbol(string name, BoundModule module, SourceSpan? sourceSpan = null) : Symbol(name, sourceSpan)
 {
     public BoundModule Module { get; } = Requires.NotNull(module);
+}
+
+/// <summary>
+/// Represents a named storage layout whose members may be imported into task scope.
+/// </summary>
+public class LayoutSymbol(string name, SourceSpan? sourceSpan = null) : Symbol(name, sourceSpan)
+{
+    private IReadOnlyList<LayoutSymbol> _parents = [];
+    private readonly Dictionary<string, GlobalVariableSymbol> _declaredMembers = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Gets the layouts that this layout inherits from.
+    /// </summary>
+    public IReadOnlyList<LayoutSymbol> Parents => _parents;
+
+    /// <summary>
+    /// Gets the members declared directly by this layout.
+    /// </summary>
+    public IReadOnlyDictionary<string, GlobalVariableSymbol> DeclaredMembers => _declaredMembers;
+
+    /// <summary>
+    /// Gets a value indicating whether this layout is the implicit private layout attached to a task.
+    /// </summary>
+    public virtual bool IsTaskLayout => false;
+
+    /// <summary>
+    /// Replaces the direct parent-layout list associated with this layout.
+    /// </summary>
+    public void SetParents(IReadOnlyList<LayoutSymbol> parents)
+    {
+        _parents = Requires.NotNull(parents);
+    }
+
+    /// <summary>
+    /// Tries to add a directly declared member to this layout.
+    /// </summary>
+    public bool TryDeclareMember(GlobalVariableSymbol variable)
+    {
+        Requires.NotNull(variable);
+        return _declaredMembers.TryAdd(variable.Name, variable);
+    }
+}
+
+/// <summary>
+/// Represents a task declaration together with its implicit private layout.
+/// </summary>
+public sealed class TaskSymbol(string name, FunctionSymbol entryFunction, VariableStorageClass storageClass, SourceSpan? sourceSpan = null)
+    : LayoutSymbol(name, sourceSpan)
+{
+    /// <summary>
+    /// Gets the entry function that executes this task body.
+    /// </summary>
+    public FunctionSymbol EntryFunction { get; } = Requires.NotNull(entryFunction);
+
+    /// <summary>
+    /// Gets the execution/storage space in which this task starts.
+    /// </summary>
+    public VariableStorageClass StorageClass { get; } = storageClass;
+
+    /// <summary>
+    /// Gets a value indicating that this layout is the implicit private layout attached to a task.
+    /// </summary>
+    public override bool IsTaskLayout => true;
 }
 
 public sealed class Scope(Scope? parent)

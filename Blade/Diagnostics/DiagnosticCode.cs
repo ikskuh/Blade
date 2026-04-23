@@ -90,6 +90,12 @@ public enum DiagnosticCode
     E0262_AddressOfParameter = 262,
     E0263_RangeExpressionOutsideForLoop = 263,
     E0264_PointerStorageClassRequired = 264,
+    E0265_AmbiguousLayoutMemberAccess = 265,
+    W0266_LexicalNameConflictsWithLayoutMember = 266,
+    W0267_LayoutMemberShadowsParentMember = 267,
+    E0268_TaskLayoutCannotBeInherited = 268,
+    W0269_MainTaskMustBeCog = 269,
+    E0270_MissingMainTask = 270,
 
     // Inline assembly errors
     E0301_InlineAsmUnknownInstruction = 301,

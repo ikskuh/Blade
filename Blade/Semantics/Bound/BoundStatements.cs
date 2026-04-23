@@ -106,9 +106,9 @@ public sealed class BoundYieldStatement(TextSpan span) : BoundStatement(BoundNod
 {
 }
 
-public sealed class BoundYieldtoStatement(FunctionSymbol? target, IReadOnlyList<BoundExpression> arguments, TextSpan span) : BoundStatement(BoundNodeKind.YieldtoStatement, span)
+public sealed class BoundYieldtoStatement(FunctionSymbol target, IReadOnlyList<BoundExpression> arguments, TextSpan span) : BoundStatement(BoundNodeKind.YieldtoStatement, span)
 {
-    public FunctionSymbol? Target { get; } = target;
+    public FunctionSymbol Target { get; } = target;
     public IReadOnlyList<BoundExpression> Arguments { get; } = arguments;
 }
 

@@ -137,12 +137,6 @@ public sealed class BoundCallExpression(FunctionSymbol function, IReadOnlyList<B
     public IReadOnlyList<BoundExpression> Arguments { get; } = arguments;
 }
 
-
-public sealed class BoundModuleCallExpression(BoundModule module, TextSpan span) : BoundExpression(BoundNodeKind.ModuleCallExpression, span, BuiltinTypes.Void)
-{
-    public BoundModule Module { get; } = Requires.NotNull(module);
-}
-
 public sealed class BoundIntrinsicCallExpression(P2Mnemonic mnemonic, IReadOnlyList<BoundExpression> arguments, TextSpan span, BladeType type) : BoundExpression(BoundNodeKind.IntrinsicCallExpression, span, type)
 {
     public BoundIntrinsicCallExpression(string name, IReadOnlyList<BoundExpression> arguments, TextSpan span, BladeType type)

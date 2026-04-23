@@ -48,6 +48,16 @@ Your task is completed when:
 - We prefer "one file per responsibility" over split functionality. Some files or classes like `Binder` or `AsmLowerer` have a really large surface, but still only have a single task. These tasks are complex and it's better to keep code that belongs together in a single file.
 - Never use default values for parameters. Explicitly pass parameters or use a proper options struct if a lot of parameter values would be necessary.
   - Default values create implicit bugs because it's trivial to forget critical parameters. This applies to reviewers and writers.
+- For all public members of a class (excluding ctor), document their purpose:
+  - Classes should have a short description of their purpose
+    - Pure data classes (like symbols, operations, ...) should have a short explanation to what concept they map.
+    - Functional classes (like binder, optimizations, ...) should have a short explanation what their task is.
+  - Functions should have at least a single sentence describing what they do.
+  - Properties should have at least a single sentence describing what they express.
+  - Events should have at least a single sentence describing when they fire.
+- If you refactor a class, method, property, event, ... and
+  - that member has no documentation comment yet, add one.
+  - that member has a documentation comment, update it if you changed behavior.
 
 ## Type Safety Rules
 

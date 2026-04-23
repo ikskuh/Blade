@@ -26,7 +26,7 @@ public class IrPipelineTests
         {
             EmitIr = false,
         });
-        return (result.BoundProgram, result.Diagnostics);
+        return (Requires.NotNull(result.BoundProgram), result.Diagnostics);
     }
 
     [Test]
@@ -2313,7 +2313,7 @@ public class IrPipelineTests
         Assert.That(method.Invoke(null, nonConstantArgs), Is.EqualTo(false));
         Assert.That(nonConstantArgs[1], Is.EqualTo(0L));
 
-        FunctionSymbol function = new("helper", FunctionKind.Default, isTopLevel: false);
+        FunctionSymbol function = new("helper", IrTestFactory.CreateFunctionDeclarationSyntax("helper"), FunctionKind.Default, isTopLevel: false);
         object?[] callArgs = [new BoundCallExpression(function, [], span, BuiltinTypes.I32), 9L];
         Assert.That(method.Invoke(null, callArgs), Is.EqualTo(false));
         Assert.That(callArgs[1], Is.EqualTo(0L));
@@ -2824,19 +2824,20 @@ public class IrPipelineTests
     }
 
     [Test]
-    public void ImportedModuleGlobals_AreAllocatedOnceAcrossRepeatedModuleCalls()
+    public void ImportedModuleGlobals_AreAllocatedOnceWhenReferencedMultipleTimes()
     {
         using TempDirectory temp = new();
         temp.WriteFile("extmod.blade", """
             cog var seed: u32 = 7;
-            seed = seed + 1;
             """);
         string sourcePath = temp.GetFullPath("main.blade");
         string source = """
             import extmod as ext;
-            ext();
-            ext();
-            var after: u32 = ext.seed;
+
+            cog task main() {
+                var after: u32 = ext.seed;
+                var again: u32 = ext.seed;
+            }
             """;
 
         CompilationResult compilation = CompilerDriver.Compile(
@@ -2862,7 +2863,7 @@ public class IrPipelineTests
     {
         LocalVariableSymbol symbol = new("local", BuiltinTypes.U32, isConst: false, sourceSpan: SourceSpan.Synthetic());
         BoundProgram program = IrTestFactory.CreateBoundProgram(
-            constructorStatements:
+            entryPointStatements:
             [
                 new BoundVariableDeclarationStatement(symbol, new BoundLiteralExpression(new RuntimeBladeValue(BuiltinTypes.U32, 1L), new TextSpan(0, 0)), new TextSpan(0, 0)),
             ]);

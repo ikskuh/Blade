@@ -56,6 +56,28 @@ internal static class IrTestFactory
 
     public static LirBlockRef LirBlockRef(string name) => new();
 
+    public static FunctionDeclarationSyntax CreateFunctionDeclarationSyntax(string name)
+    {
+        TextSpan span = new(0, 0);
+        Token fnKeyword = new(TokenKind.FnKeyword, span, "fn");
+        Token identifier = new(TokenKind.Identifier, span, name);
+        Token openParen = new(TokenKind.OpenParen, span, "(");
+        Token closeParen = new(TokenKind.CloseParen, span, ")");
+        Token openBrace = new(TokenKind.OpenBrace, span, "{");
+        Token closeBrace = new(TokenKind.CloseBrace, span, "}");
+        BlockStatementSyntax body = new(openBrace, [], closeBrace);
+        return new FunctionDeclarationSyntax(
+            [],
+            fnKeyword,
+            identifier,
+            openParen,
+            new SeparatedSyntaxList<ParameterSyntax>([]),
+            closeParen,
+            arrow: null,
+            returnSpec: null,
+            body);
+    }
+
     public static MirFunction CreateMirFunction(
         string name,
         bool isEntryPoint,
@@ -66,7 +88,7 @@ internal static class IrTestFactory
         IReadOnlyDictionary<MirValueId, MirFlag>? flagValues = null)
     {
         return new MirFunction(
-            new FunctionSymbol(name, kind, isTopLevel: false),
+            new FunctionSymbol(name, CreateFunctionDeclarationSyntax(name), kind, isTopLevel: false),
             isEntryPoint,
             returnTypes,
             blocks,
@@ -177,36 +199,39 @@ internal static class IrTestFactory
 
     public static BoundModule CreateBoundModule(
         string resolvedFilePath = "/tmp/test.blade",
-        IReadOnlyList<BoundStatement>? constructorStatements = null,
         IReadOnlyList<GlobalVariableSymbol>? globalVariables = null,
         IReadOnlyList<BoundFunctionMember>? functions = null,
         IReadOnlyDictionary<string, Symbol>? exportedSymbols = null)
     {
-        BoundFunctionMember constructor = CreateConstructor(constructorStatements);
         IReadOnlyList<BoundFunctionMember> functionMembers = functions ?? [];
         return new BoundModule(
             resolvedFilePath,
             new CompilationUnitSyntax([], new Token(TokenKind.EndOfFile, new TextSpan(0, 0), string.Empty)),
-            constructor,
             globalVariables ?? [],
-            [constructor, .. functionMembers],
+            functionMembers,
             exportedSymbols ?? CreateExports(globalVariables, functionMembers));
     }
 
     public static BoundProgram CreateBoundProgram(
         string resolvedFilePath = "/tmp/test.blade",
-        IReadOnlyList<BoundStatement>? constructorStatements = null,
+        IReadOnlyList<BoundStatement>? entryPointStatements = null,
         IReadOnlyList<GlobalVariableSymbol>? globalVariables = null,
         IReadOnlyList<BoundFunctionMember>? functions = null,
         IReadOnlyDictionary<string, Symbol>? exportedSymbols = null,
         IReadOnlyList<BoundModule>? modules = null)
     {
+        BoundFunctionMember entryPointFunction = CreateEntryPoint(entryPointStatements);
+        TaskSymbol entryPoint = CreateEntryTask(entryPointFunction.Symbol);
+        Dictionary<string, Symbol> rootExports = new(StringComparer.Ordinal);
+        foreach ((string name, Symbol symbol) in exportedSymbols ?? CreateExports(globalVariables, functions))
+            rootExports.Add(name, symbol);
+        rootExports[entryPoint.Name] = entryPoint;
+
         BoundModule rootModule = CreateBoundModule(
             resolvedFilePath,
-            constructorStatements,
             globalVariables,
-            functions,
-            exportedSymbols);
+            [entryPointFunction, .. functions ?? []],
+            rootExports);
         IReadOnlyList<BoundModule> effectiveModules = modules ?? [rootModule];
         List<GlobalVariableSymbol> effectiveGlobals = [];
         List<BoundFunctionMember> effectiveFunctions = [];
@@ -216,17 +241,34 @@ internal static class IrTestFactory
             effectiveFunctions.AddRange(module.Functions);
         }
 
+        if (!effectiveFunctions.Any(function => ReferenceEquals(function.Symbol, entryPoint.EntryFunction)))
+            effectiveFunctions.Insert(0, entryPointFunction);
+
         return new BoundProgram(
             rootModule,
+            entryPoint,
+            entryPointFunction,
             effectiveModules,
             effectiveGlobals,
             effectiveFunctions);
     }
 
-    public static BoundFunctionMember CreateConstructor(IReadOnlyList<BoundStatement>? statements = null)
+    public static BoundFunctionMember CreateEntryPoint(IReadOnlyList<BoundStatement>? statements = null)
     {
         BoundBlockStatement body = new(statements ?? [], new TextSpan(0, 0));
-        return new BoundFunctionMember(new FunctionSymbol("$init", FunctionKind.Default, isTopLevel: true), body, body.Span);
+        FunctionSymbol entryFunction = new(
+            "main",
+            CreateFunctionDeclarationSyntax("main"),
+            FunctionKind.Default,
+            isTopLevel: false,
+            FunctionInliningPolicy.Default,
+            SourceSpan.Synthetic());
+        return new BoundFunctionMember(entryFunction, body, body.Span);
+    }
+
+    public static TaskSymbol CreateEntryTask(FunctionSymbol entryFunction)
+    {
+        return new TaskSymbol("main", Requires.NotNull(entryFunction), VariableStorageClass.Cog, SourceSpan.Synthetic());
     }
 
     public static IReadOnlyDictionary<string, Symbol> CreateExports(

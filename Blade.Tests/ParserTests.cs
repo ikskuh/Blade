@@ -94,6 +94,112 @@ public class ParserTests
         Assert.That(func.ReturnSpec!.Count, Is.EqualTo(1));
     }
 
+    [Test]
+    public void EmptyLayout_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("layout Empty { }");
+        AssertNoDiagnostics(diag);
+
+        Assert.That(unit.Members, Has.Count.EqualTo(1));
+        Assert.That(unit.Members[0], Is.TypeOf<LayoutDeclarationSyntax>());
+
+        LayoutDeclarationSyntax layout = (LayoutDeclarationSyntax)unit.Members[0];
+        Assert.That(layout.Name.Text, Is.EqualTo("Empty"));
+        Assert.That(layout.ParentLayouts, Is.Null);
+        Assert.That(layout.Declarations, Is.Empty);
+    }
+
+    [Test]
+    public void DerivedLayout_ParsesParentListAndVariableDeclarations()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("layout Derived : Basic, Empty { lut var bar: u32; }");
+        AssertNoDiagnostics(diag);
+
+        LayoutDeclarationSyntax layout = (LayoutDeclarationSyntax)unit.Members[0];
+        Assert.That(layout.ParentLayouts, Is.Not.Null);
+        Assert.That(layout.ParentLayouts!.Count, Is.EqualTo(2));
+        Assert.That(layout.ParentLayouts[0], Is.TypeOf<NamedTypeSyntax>());
+        Assert.That(layout.ParentLayouts[1], Is.TypeOf<NamedTypeSyntax>());
+        Assert.That(((NamedTypeSyntax)layout.ParentLayouts[0]).Name.Text, Is.EqualTo("Basic"));
+        Assert.That(((NamedTypeSyntax)layout.ParentLayouts[1]).Name.Text, Is.EqualTo("Empty"));
+        Assert.That(layout.Declarations, Has.Count.EqualTo(1));
+        Assert.That(layout.Declarations[0].StorageClassKeyword?.Kind, Is.EqualTo(TokenKind.LutKeyword));
+    }
+
+    [Test]
+    public void DerivedLayout_WithQualifiedParent_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("layout Derived : ex.Base { }");
+
+        Assert.That(unit.Members, Has.Count.EqualTo(1));
+        Assert.That(unit.Members[0], Is.TypeOf<LayoutDeclarationSyntax>());
+
+        LayoutDeclarationSyntax layout = (LayoutDeclarationSyntax)unit.Members[0];
+        Assert.That(layout.ParentLayouts, Is.Not.Null);
+        Assert.That(layout.ParentLayouts!.Count, Is.EqualTo(1));
+        Assert.That(layout.ParentLayouts[0], Is.TypeOf<QualifiedTypeSyntax>());
+
+        QualifiedTypeSyntax qualifiedParent = (QualifiedTypeSyntax)layout.ParentLayouts[0];
+        Assert.That(qualifiedParent.Parts.Select(static part => part.Text), Is.EqualTo(new[] { "ex", "Base" }));
+        Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0101_UnexpectedToken), Is.False);
+    }
+
+    [Test]
+    public void TaskWithoutParameter_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog task main { print(\"Hello, Multicore!\"); }");
+        AssertNoDiagnostics(diag);
+
+        Assert.That(unit.Members, Has.Count.EqualTo(1));
+        Assert.That(unit.Members[0], Is.TypeOf<TaskDeclarationSyntax>());
+
+        TaskDeclarationSyntax task = (TaskDeclarationSyntax)unit.Members[0];
+        Assert.That(task.StorageClassKeyword.Kind, Is.EqualTo(TokenKind.CogKeyword));
+        Assert.That(task.Name.Text, Is.EqualTo("main"));
+        Assert.That(task.Parameter, Is.Null);
+        Assert.That(task.ParentLayouts, Is.Null);
+        Assert.That(task.Body.Items, Has.Count.EqualTo(1));
+        Assert.That(task.Body.Items[0], Is.TypeOf<ExpressionStatementSyntax>());
+    }
+
+    [Test]
+    public void TaskWithSingleParameterAndParents_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("lut task derived4(param: u32) : Basic, Empty { type Alias = u32; fn helper() void { } return; }");
+        AssertNoDiagnostics(diag);
+
+        TaskDeclarationSyntax task = (TaskDeclarationSyntax)unit.Members[0];
+        Assert.That(task.StorageClassKeyword.Kind, Is.EqualTo(TokenKind.LutKeyword));
+        Assert.That(task.Name.Text, Is.EqualTo("derived4"));
+        Assert.That(task.Parameter, Is.Not.Null);
+        Assert.That(task.Parameter!.Name.Text, Is.EqualTo("param"));
+        Assert.That(task.ParentLayouts, Is.Not.Null);
+        Assert.That(task.ParentLayouts!.Count, Is.EqualTo(2));
+        Assert.That(task.ParentLayouts[0], Is.TypeOf<NamedTypeSyntax>());
+        Assert.That(task.ParentLayouts[1], Is.TypeOf<NamedTypeSyntax>());
+        Assert.That(((NamedTypeSyntax)task.ParentLayouts[0]).Name.Text, Is.EqualTo("Basic"));
+        Assert.That(((NamedTypeSyntax)task.ParentLayouts[1]).Name.Text, Is.EqualTo("Empty"));
+        Assert.That(task.Body.Items, Has.Count.EqualTo(3));
+        Assert.That(task.Body.Items[0], Is.TypeOf<TypeAliasDeclarationSyntax>());
+        Assert.That(task.Body.Items[1], Is.TypeOf<FunctionDeclarationSyntax>());
+        Assert.That(task.Body.Items[2], Is.TypeOf<ReturnStatementSyntax>());
+    }
+
+    [Test]
+    public void TaskWithQualifiedParent_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog task worker() : ex.Base { return; }");
+        AssertNoDiagnostics(diag);
+
+        TaskDeclarationSyntax task = (TaskDeclarationSyntax)unit.Members[0];
+        Assert.That(task.ParentLayouts, Is.Not.Null);
+        Assert.That(task.ParentLayouts!.Count, Is.EqualTo(1));
+        Assert.That(task.ParentLayouts[0], Is.TypeOf<QualifiedTypeSyntax>());
+
+        QualifiedTypeSyntax qualifiedParent = (QualifiedTypeSyntax)task.ParentLayouts[0];
+        Assert.That(qualifiedParent.Parts.Select(static part => part.Text), Is.EqualTo(new[] { "ex", "Base" }));
+    }
+
     // ── Expression precedence ──
 
     [Test]
@@ -441,13 +547,21 @@ public class ParserTests
     }
 
     [Test]
-    public void TopLevelTypedConst_ParsesAsGlobalStatementVariableDeclaration()
+    public void TopLevelTypedConst_ParsesAsVariableDeclaration()
     {
         (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("const BuildInfo: u32 = 1;");
         AssertNoDiagnostics(diag);
 
-        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
-        Assert.That(global.Statement, Is.TypeOf<VariableDeclarationStatementSyntax>());
+        Assert.That(unit.Members[0], Is.TypeOf<VariableDeclarationSyntax>());
+    }
+
+    [Test]
+    public void TopLevelIfStatement_ReportsUnexpectedToken()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("if (flag) { return; }");
+
+        Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0101_UnexpectedToken), Is.True);
+        Assert.That(unit.Members[0], Is.TypeOf<GlobalStatementSyntax>());
     }
 
     [Test]

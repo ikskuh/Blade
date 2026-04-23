@@ -19,6 +19,9 @@ public sealed class Binder
     private readonly Dictionary<string, TypeSymbol> _typeAliases = new(StringComparer.Ordinal);
     private readonly Dictionary<TypeSymbol, TypeAliasDeclarationSyntax> _typeAliasDeclarations = [];
     private readonly HashSet<string> _typeAliasResolutionStack = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, LayoutSymbol> _layouts = new(StringComparer.Ordinal);
+    private readonly Dictionary<LayoutSymbol, MemberSyntax> _layoutDeclarations = [];
+    private readonly Dictionary<LayoutSymbol, IReadOnlyDictionary<string, IReadOnlyList<LayoutMemberBinding>>> _layoutVisibleMemberCache = [];
     private readonly Dictionary<string, FunctionSymbol> _functions = new(StringComparer.Ordinal);
     private readonly Dictionary<string, BoundModule> _importedModules = new(StringComparer.Ordinal);
     private readonly Dictionary<FunctionSymbol, BoundBlockStatement> _boundFunctionBodies = new();
@@ -33,10 +36,15 @@ public sealed class Binder
     private readonly int _comptimeFuel;
     private int _anonymousStructIndex;
     private bool _suppressPointerStorageClassDiagnostics;
+    private LayoutSymbol? _currentImplicitLayout;
 
     private static readonly EnumTypeSymbol MemorySpaceType = new("MemorySpace", BuiltinTypes.U32,
         new Dictionary<string, long>(StringComparer.Ordinal) { ["cog"] = 0, ["lut"] = 1, ["hub"] = 2, ["_cog"] = 0, ["_lut"] = 1, ["_hub"] = 2 },
         isOpen: false);
+
+    private readonly record struct LayoutMemberBinding(LayoutSymbol Layout, GlobalVariableSymbol Variable);
+    private readonly record struct StoredLayoutMemberBinding(VariableDeclarationSyntax Declaration, GlobalVariableSymbol Symbol);
+    private readonly record struct TaskLocalFunctionBinding(FunctionSymbol Symbol, SyntaxNode Syntax);
 
     private Binder(
         DiagnosticBag diagnostics,
@@ -54,7 +62,7 @@ public sealed class Binder
         _currentScope = _globalScope;
     }
 
-    internal static BoundProgram Bind(
+    internal static BoundProgram? Bind(
         LoadedCompilation compilation,
         DiagnosticBag diagnostics,
         int comptimeFuel = 250)
@@ -69,6 +77,7 @@ public sealed class Binder
         Dictionary<string, BoundModule> moduleDefinitionCache = new(PathIdentity.Comparer);
         Binder binder = new(diagnostics, compilation, moduleBindingStack, moduleDefinitionCache, comptimeFuel);
         BoundModule rootModule = binder.BindCompilationUnit(compilation.RootModule);
+        using IDisposable _ = diagnostics.UseSource(compilation.RootModule.Source);
         return binder.CreateBoundProgram(rootModule);
     }
 
@@ -81,8 +90,11 @@ public sealed class Binder
 
         BindImports(module);
         CollectTopLevelTypes(unit);
+        CollectTopLevelLayouts(unit);
         CollectTopLevelFunctions(unit);
         ResolveFunctionSignatures();
+        ResolveTaskSignatures();
+        ResolveLayoutParents();
         DeclareTopLevelVariables(unit);
         ResolveAllTypeAliases();
 
@@ -93,6 +105,24 @@ public sealed class Binder
         {
             switch (member)
             {
+                case VariableDeclarationSyntax variable when MapStorageClass(variable.StorageClassKeyword) is not null:
+                    _currentScope = _globalScope;
+                    boundGlobals.Add(BindGlobalVariable(variable));
+                    break;
+
+                case LayoutDeclarationSyntax layoutDeclaration:
+                    if (_layouts.TryGetValue(layoutDeclaration.Name.Text, out LayoutSymbol? boundLayout))
+                        BindLayoutDeclaration(Requires.NotNull(boundLayout), layoutDeclaration, boundGlobals);
+                    break;
+
+                case TaskDeclarationSyntax taskDeclaration:
+                    if (_layouts.TryGetValue(taskDeclaration.Name.Text, out LayoutSymbol? taskLayout)
+                        && taskLayout is TaskSymbol taskSymbol)
+                    {
+                        BindTaskDeclaration(taskSymbol, taskDeclaration, boundGlobals, ordinaryFunctions);
+                    }
+                    break;
+
                 case FunctionDeclarationSyntax function:
                     if (_functions.ContainsKey(function.Name.Text))
                         ordinaryFunctions.Add(BindFunction(function));
@@ -105,24 +135,24 @@ public sealed class Binder
             }
         }
 
-        List<StatementSyntax> constructorStatements = CollectConstructorStatements(unit, boundGlobals);
-        BoundFunctionMember constructor = BindConstructor(constructorStatements);
-        List<BoundFunctionMember> boundFunctions = [constructor, .. ordinaryFunctions];
-
         Dictionary<string, Symbol> exportedSymbols = CreateExportedSymbols();
 
         return new BoundModule(
             module.FullPath,
             unit,
-            constructor,
             boundGlobals,
-            boundFunctions,
+            ordinaryFunctions,
             exportedSymbols);
     }
 
-    private BoundProgram CreateBoundProgram(BoundModule rootModule)
+    private BoundProgram? CreateBoundProgram(BoundModule rootModule)
     {
         Requires.NotNull(rootModule);
+        if (!TryResolveProgramEntryPoint(rootModule, out TaskSymbol? entryPoint, out BoundFunctionMember? entryPointFunction))
+            return null;
+
+        TaskSymbol requiredEntryPoint = Requires.NotNull(entryPoint);
+        BoundFunctionMember requiredEntryPointFunction = Requires.NotNull(entryPointFunction);
 
         List<BoundModule> modules = [rootModule];
         foreach (BoundModule module in _moduleDefinitionCache
@@ -142,7 +172,41 @@ public sealed class Binder
             functions.AddRange(module.Functions);
         }
 
-        return new BoundProgram(rootModule, modules, globalVariables, functions);
+        if (!functions.Any(function => ReferenceEquals(function.Symbol, requiredEntryPoint.EntryFunction)))
+            functions.Insert(0, requiredEntryPointFunction);
+
+        return new BoundProgram(rootModule, requiredEntryPoint, requiredEntryPointFunction, modules, globalVariables, functions);
+    }
+
+    private bool TryResolveProgramEntryPoint(BoundModule rootModule, out TaskSymbol? entryPoint, out BoundFunctionMember? entryPointFunction)
+    {
+        Requires.NotNull(rootModule);
+        if (!rootModule.ExportedSymbols.TryGetValue("main", out Symbol? symbol)
+            || symbol is not TaskSymbol task)
+        {
+            _diagnostics.ReportMissingMainTask(rootModule.Syntax.EndOfFileToken.Span);
+            entryPoint = null;
+            entryPointFunction = null;
+            return false;
+        }
+
+        if (task.StorageClass != VariableStorageClass.Cog)
+            _diagnostics.ReportMainTaskMustBeCog(task.SourceSpan.Span, task.Name, task.StorageClass);
+
+        foreach (BoundFunctionMember function in rootModule.Functions)
+        {
+            if (ReferenceEquals(function.Symbol, task.EntryFunction))
+            {
+                entryPoint = task;
+                entryPointFunction = function;
+                return true;
+            }
+        }
+
+        Assert.Unreachable($"Entry task '{task.Name}' must have a bound function body in the root module."); // pragma: force-coverage
+        entryPoint = Assert.UnreachableValue<TaskSymbol>(); // pragma: force-coverage
+        entryPointFunction = Assert.UnreachableValue<BoundFunctionMember>(); // pragma: force-coverage
+        return false; // pragma: force-coverage
     }
 
     private void BindImports(LoadedModule module)
@@ -204,13 +268,11 @@ public sealed class Binder
     private static BoundModule CreateEmptyImportedModule(string resolvedPath, CompilationUnitSyntax? syntax = null)
     {
         CompilationUnitSyntax effectiveSyntax = syntax ?? new CompilationUnitSyntax([], new Token(TokenKind.EndOfFile, new TextSpan(0, 0), string.Empty));
-        BoundFunctionMember constructor = CreateSyntheticConstructor();
         return new BoundModule(
             resolvedPath,
             effectiveSyntax,
-            constructor,
             [],
-            [constructor],
+            [],
             new Dictionary<string, Symbol>());
     }
 
@@ -225,13 +287,11 @@ public sealed class Binder
         };
 
         CompilationUnitSyntax emptySyntax = new([], new Token(TokenKind.EndOfFile, new TextSpan(0, 0), string.Empty));
-        BoundFunctionMember constructor = CreateSyntheticConstructor();
         BoundModule builtinModule = new(
             BuiltinModulePath,
             emptySyntax,
-            constructor,
             [],
-            [constructor],
+            [],
             exportedSymbols);
 
         _moduleDefinitionCache[BuiltinModulePath] = builtinModule;
@@ -272,49 +332,6 @@ public sealed class Binder
         return exportedSymbols;
     }
 
-    private List<StatementSyntax> CollectConstructorStatements(CompilationUnitSyntax unit, ICollection<GlobalVariableSymbol> boundGlobals)
-    {
-        List<StatementSyntax> statements = new();
-        foreach (MemberSyntax member in unit.Members)
-        {
-            switch (member)
-            {
-                case VariableDeclarationSyntax variable:
-                    if (MapStorageClass(variable.StorageClassKeyword) is null)
-                    {
-                        statements.Add(new VariableDeclarationStatementSyntax(variable));
-                    }
-                    else
-                    {
-                        _currentScope = _globalScope;
-                        boundGlobals.Add(BindGlobalVariable(variable));
-                    }
-                    break;
-
-                case GlobalStatementSyntax globalStatement:
-                    statements.Add(globalStatement.Statement);
-                    break;
-            }
-        }
-
-        _currentScope = _globalScope;
-        return statements;
-    }
-
-    private BoundFunctionMember BindConstructor(IReadOnlyList<StatementSyntax> statements)
-    {
-        FunctionSymbol constructor = new("$init", FunctionKind.Default, isTopLevel: true);
-        BlockStatementSyntax bodySyntax = CreateSyntheticBlockStatement(statements);
-        return BindBlockFunction(constructor, bodySyntax, bodySyntax.Span, bodySyntax.Span);
-    }
-
-    private static BoundFunctionMember CreateSyntheticConstructor()
-    {
-        BlockStatementSyntax bodySyntax = CreateSyntheticBlockStatement([]);
-        BoundBlockStatement body = new([], bodySyntax.Span);
-        return new BoundFunctionMember(new FunctionSymbol("$init", FunctionKind.Default, isTopLevel: true), body, bodySyntax.Span);
-    }
-
     private static BlockStatementSyntax CreateSyntheticBlockStatement(IReadOnlyList<StatementSyntax> statements)
     {
         Requires.NotNull(statements);
@@ -348,6 +365,55 @@ public sealed class Binder
             {
                 _typeAliases.Remove(symbol.Name);
                 _typeAliasDeclarations.Remove(symbol);
+            }
+        }
+    }
+
+    private void CollectTopLevelLayouts(CompilationUnitSyntax unit)
+    {
+        _currentScope = _globalScope;
+        foreach (MemberSyntax member in unit.Members)
+        {
+            LayoutSymbol? layoutSymbol = null;
+            TextSpan span;
+
+            switch (member)
+            {
+                case LayoutDeclarationSyntax layoutDeclaration:
+                    layoutSymbol = new LayoutSymbol(layoutDeclaration.Name.Text, CreateSourceSpan(layoutDeclaration.Name.Span));
+                    span = layoutDeclaration.Name.Span;
+                    break;
+
+                case TaskDeclarationSyntax taskDeclaration:
+                    VariableStorageClass? storageClass = MapStorageClass(taskDeclaration.StorageClassKeyword);
+                    Assert.Invariant(storageClass.HasValue, "Tasks must declare an explicit storage class.");
+
+                    FunctionSymbol entryFunction = new(
+                        taskDeclaration.Name.Text,
+                        taskDeclaration,
+                        FunctionKind.Default,
+                        isTopLevel: false,
+                        FunctionInliningPolicy.Default,
+                        CreateSourceSpan(taskDeclaration.Name.Span));
+                    layoutSymbol = new TaskSymbol(taskDeclaration.Name.Text, entryFunction, storageClass.Value, CreateSourceSpan(taskDeclaration.Name.Span));
+                    span = taskDeclaration.Name.Span;
+                    break;
+
+                default:
+                    continue;
+            }
+
+            if (!_layouts.TryAdd(layoutSymbol.Name, layoutSymbol))
+            {
+                _diagnostics.ReportSymbolAlreadyDeclared(span, layoutSymbol.Name);
+                continue;
+            }
+
+            _layoutDeclarations.Add(layoutSymbol, member);
+            if (!TryDeclareSymbol(_globalScope, layoutSymbol, span))
+            {
+                _layouts.Remove(layoutSymbol.Name);
+                _layoutDeclarations.Remove(layoutSymbol);
             }
         }
     }
@@ -392,72 +458,486 @@ public sealed class Binder
         }
     }
 
-    private void ResolveFunctionSignatures()
+    private void ResolveTaskSignatures()
     {
-        foreach ((_, FunctionSymbol function) in _functions)
+        _currentScope = _globalScope;
+        foreach (LayoutSymbol layout in _layouts.Values)
         {
-            List<ParameterVariableSymbol> parameters = new();
-            HashSet<string> parameterNames = new(StringComparer.Ordinal);
+            if (layout is TaskSymbol task)
+                ResolveFunctionSignature(task.EntryFunction);
+        }
+    }
 
-            foreach (ParameterSyntax param in function.Syntax.Parameters)
+    private void ResolveLayoutParents()
+    {
+        foreach ((LayoutSymbol layout, MemberSyntax member) in _layoutDeclarations)
+        {
+            SeparatedSyntaxList<TypeSyntax>? parentLayouts = member switch
             {
-                BladeType parameterType = BindType(param.Type);
-                if (param.StorageClassKeyword is Token storageClassKeyword)
-                    _diagnostics.ReportInvalidParameterStorageClass(storageClassKeyword.Span, storageClassKeyword.Text);
+                LayoutDeclarationSyntax layoutDeclaration => layoutDeclaration.ParentLayouts,
+                TaskDeclarationSyntax taskDeclaration => taskDeclaration.ParentLayouts,
+                _ => null,
+            };
 
-                if (!parameterNames.Add(param.Name.Text))
+            if (parentLayouts is null)
+            {
+                layout.SetParents([]);
+                continue;
+            }
+
+            List<LayoutSymbol> resolvedParents = new();
+            HashSet<string> parentNames = new(StringComparer.Ordinal);
+            foreach (TypeSyntax parentLayout in parentLayouts)
+            {
+                if (!TryResolveParentLayoutReference(parentLayout, out string parentName, out TextSpan parentSpan, out LayoutSymbol? resolvedParent))
                 {
-                    _diagnostics.ReportSymbolAlreadyDeclared(param.Name.Span, param.Name.Text);
                     continue;
                 }
 
-                parameters.Add(new ParameterVariableSymbol(param.Name.Text, parameterType, CreateSourceSpan(param.Name.Span)));
-            }
-
-            List<ReturnSlot> returnSlots = new();
-            if (function.Syntax.ReturnSpec is not null)
-            {
-                foreach (ReturnItemSyntax returnItem in function.Syntax.ReturnSpec)
+                if (!parentNames.Add(parentName))
                 {
-                    BladeType returnType = BindType(returnItem.Type);
-                    ReturnPlacement placement = ReturnPlacement.Register;
-                    if (returnItem.FlagAnnotation is not null)
-                    {
-                        placement = returnItem.FlagAnnotation.Flag.Text.ToUpperInvariant() switch
-                        {
-                            "C" => ReturnPlacement.FlagC,
-                            "Z" => ReturnPlacement.FlagZ,
-                            _ => ReturnPlacement.Register,
-                        };
-                    }
-
-                    returnSlots.Add(new ReturnSlot(returnType, placement));
+                    _diagnostics.ReportSymbolAlreadyDeclared(parentSpan, parentName);
+                    continue;
                 }
-            }
 
-            if (returnSlots.Count == 1 && returnSlots[0].Type is VoidTypeSymbol)
-                returnSlots.Clear();
-
-            // Auto-assign flag placements for multi-return: slot 1 -> FlagC, slot 2 -> FlagZ
-            // when the slot has no explicit annotation and is bool/bit.
-            if (returnSlots.Count > 1)
-            {
-                ReturnPlacement nextFlag = ReturnPlacement.FlagC;
-                for (int i = 1; i < returnSlots.Count; i++)
+                Assert.Invariant(resolvedParent is not null, "Parent layout resolution must provide a symbol when it succeeds.");
+                if (resolvedParent.IsTaskLayout)
                 {
-                    ReturnSlot slot = returnSlots[i];
-                    if (slot.Placement == ReturnPlacement.Register
-                        && (slot.Type is BoolTypeSymbol || slot.Type == BuiltinTypes.Bit))
-                    {
-                        returnSlots[i] = new ReturnSlot(slot.Type, nextFlag);
-                        nextFlag = nextFlag == ReturnPlacement.FlagC ? ReturnPlacement.FlagZ : nextFlag;
-                    }
+                    _diagnostics.ReportTaskLayoutCannotBeInherited(parentSpan, resolvedParent.Name);
+                    continue;
                 }
+
+                resolvedParents.Add(Requires.NotNull(resolvedParent));
             }
 
-            function.Parameters = parameters;
-            function.ReturnSlots = returnSlots;
+            layout.SetParents(resolvedParents);
         }
+    }
+
+    private bool TryResolveParentLayoutReference(TypeSyntax parentLayout, out string parentName, out TextSpan parentSpan, out LayoutSymbol? resolvedParent)
+    {
+        Requires.NotNull(parentLayout);
+
+        switch (parentLayout)
+        {
+            case NamedTypeSyntax namedType:
+                parentName = namedType.Name.Text;
+                parentSpan = namedType.Name.Span;
+                if (!_layouts.TryGetValue(parentName, out resolvedParent))
+                {
+                    _diagnostics.ReportUndefinedName(parentSpan, parentName);
+                    return false;
+                }
+
+                return true;
+
+            case QualifiedTypeSyntax qualifiedType:
+                parentName = string.Join('.', qualifiedType.Parts.Select(static part => part.Text));
+                parentSpan = qualifiedType.Span;
+                if (!TryResolveQualifiedLayoutSymbol(qualifiedType, out resolvedParent))
+                {
+                    _diagnostics.ReportUndefinedName(parentSpan, parentName);
+                    return false;
+                }
+
+                return true;
+
+            default:
+                Assert.Unreachable($"Unexpected parent layout syntax '{parentLayout.GetType().Name}'."); // pragma: force-coverage
+                parentName = string.Empty; // pragma: force-coverage
+                parentSpan = parentLayout.Span; // pragma: force-coverage
+                resolvedParent = null; // pragma: force-coverage
+                return false; // pragma: force-coverage
+        }
+    }
+
+    private bool TryResolveQualifiedLayoutSymbol(QualifiedTypeSyntax qualifiedType, out LayoutSymbol? resolvedLayout)
+    {
+        Token root = qualifiedType.Parts[0];
+        if (!_globalScope.TryLookup(root.Text, out Symbol? symbol) || symbol is not ModuleSymbol moduleSymbol)
+        {
+            resolvedLayout = null;
+            return false;
+        }
+
+        BoundModule module = moduleSymbol.Module;
+        for (int i = 1; i < qualifiedType.Parts.Count - 1; i++)
+        {
+            Token segment = qualifiedType.Parts[i];
+            if (!module.ExportedSymbols.TryGetValue(segment.Text, out Symbol? nestedSymbol)
+                || nestedSymbol is not ModuleSymbol nestedModule)
+            {
+                resolvedLayout = null;
+                return false;
+            }
+
+            module = nestedModule.Module;
+        }
+
+        Token finalSegment = qualifiedType.Parts[^1];
+        if (!module.ExportedSymbols.TryGetValue(finalSegment.Text, out Symbol? resolvedSymbol)
+            || resolvedSymbol is not LayoutSymbol layoutSymbol)
+        {
+            resolvedLayout = null;
+            return false;
+        }
+
+        resolvedLayout = layoutSymbol;
+        return true;
+    }
+
+    private void BindLayoutDeclaration(LayoutSymbol layout, LayoutDeclarationSyntax layoutDeclaration, ICollection<GlobalVariableSymbol> boundGlobals)
+    {
+        IReadOnlyList<StoredLayoutMemberBinding> members = CollectStoredLayoutMembers(layout, layoutDeclaration.Declarations);
+        BindStoredLayoutMembers(members, bindingScope: _globalScope, implicitLayout: null, boundGlobals);
+    }
+
+    private void BindTaskDeclaration(
+        TaskSymbol task,
+        TaskDeclarationSyntax taskDeclaration,
+        ICollection<GlobalVariableSymbol> boundGlobals,
+        ICollection<BoundFunctionMember> boundFunctions)
+    {
+        Scope previousScope = _currentScope;
+        _currentScope = new Scope(_globalScope);
+        Scope taskScope = _currentScope;
+
+        List<TypeSymbol> localTypeAliases = CollectTaskLocalTypeAliases(taskDeclaration, taskScope);
+        foreach (TypeSymbol localTypeAlias in localTypeAliases)
+            _ = ResolveTypeAlias(localTypeAlias, localTypeAlias.SourceSpan.Span);
+
+        List<TaskLocalFunctionBinding> localFunctions = CollectTaskLocalFunctions(taskDeclaration, taskScope);
+        foreach (TaskLocalFunctionBinding localFunction in localFunctions)
+            ResolveFunctionSignature(localFunction.Symbol);
+
+        IReadOnlyList<StoredLayoutMemberBinding> members = CollectStoredLayoutMembers(task, GetTaskStoredDeclarations(taskDeclaration));
+        BindStoredLayoutMembers(members, taskScope, task, boundGlobals);
+
+        boundFunctions.Add(BindTaskEntryFunction(task, taskDeclaration, taskScope));
+        foreach (TaskLocalFunctionBinding localFunction in localFunctions)
+            boundFunctions.Add(BindTaskLocalFunction(task, localFunction, taskScope));
+
+        _currentScope = previousScope;
+    }
+
+    private List<TypeSymbol> CollectTaskLocalTypeAliases(TaskDeclarationSyntax taskDeclaration, Scope taskScope)
+    {
+        List<TypeSymbol> aliases = [];
+        foreach (SyntaxNode item in taskDeclaration.Body.Items)
+        {
+            if (item is not TypeAliasDeclarationSyntax typeAlias)
+                continue;
+
+            TypeSymbol symbol = new(typeAlias.Name.Text, sourceSpan: CreateSourceSpan(typeAlias.Name.Span));
+            if (!TryDeclareSymbol(taskScope, symbol, typeAlias.Name.Span))
+                continue;
+
+            _typeAliasDeclarations.Add(symbol, typeAlias);
+            aliases.Add(symbol);
+        }
+
+        return aliases;
+    }
+
+    private List<TaskLocalFunctionBinding> CollectTaskLocalFunctions(TaskDeclarationSyntax taskDeclaration, Scope taskScope)
+    {
+        List<TaskLocalFunctionBinding> localFunctions = [];
+        foreach (SyntaxNode item in taskDeclaration.Body.Items)
+        {
+            FunctionSymbol? symbol = item switch
+            {
+                FunctionDeclarationSyntax functionDeclaration => CreateTaskLocalFunctionSymbol(functionDeclaration),
+                AsmFunctionDeclarationSyntax asmFunctionDeclaration => CreateTaskLocalAsmFunctionSymbol(asmFunctionDeclaration),
+                _ => null,
+            };
+
+            if (symbol is null)
+                continue;
+
+            if (!TryDeclareSymbol(taskScope, symbol, symbol.SignatureNameSpan))
+                continue;
+
+            localFunctions.Add(new TaskLocalFunctionBinding(symbol, item));
+        }
+
+        return localFunctions;
+    }
+
+    private FunctionSymbol CreateTaskLocalFunctionSymbol(FunctionDeclarationSyntax functionDeclaration)
+    {
+        (FunctionKind kind, FunctionInliningPolicy inliningPolicy) = GetFunctionModifiers(functionDeclaration.Modifiers);
+        return new FunctionSymbol(
+            functionDeclaration.Name.Text,
+            functionDeclaration,
+            kind,
+            isTopLevel: false,
+            inliningPolicy,
+            CreateSourceSpan(functionDeclaration.Name.Span));
+    }
+
+    private FunctionSymbol CreateTaskLocalAsmFunctionSymbol(AsmFunctionDeclarationSyntax asmFunctionDeclaration)
+    {
+        return new FunctionSymbol(
+            asmFunctionDeclaration.Name.Text,
+            asmFunctionDeclaration,
+            FunctionKind.Leaf,
+            isTopLevel: false,
+            FunctionInliningPolicy.Default,
+            CreateSourceSpan(asmFunctionDeclaration.Name.Span));
+    }
+
+    private static IReadOnlyList<VariableDeclarationSyntax> GetTaskStoredDeclarations(TaskDeclarationSyntax taskDeclaration)
+    {
+        List<VariableDeclarationSyntax> declarations = [];
+        foreach (SyntaxNode item in taskDeclaration.Body.Items)
+        {
+            if (item is VariableDeclarationSyntax declaration && MapStorageClass(declaration.StorageClassKeyword) is not null)
+                declarations.Add(declaration);
+        }
+
+        return declarations;
+    }
+
+    private IReadOnlyList<StoredLayoutMemberBinding> CollectStoredLayoutMembers(LayoutSymbol layout, IReadOnlyList<VariableDeclarationSyntax> declarations)
+    {
+        List<StoredLayoutMemberBinding> storedMembers = [];
+        foreach (VariableDeclarationSyntax declaration in declarations)
+        {
+            if (MapStorageClass(declaration.StorageClassKeyword) is null)
+            {
+                _diagnostics.ReportUnsupportedStorageClass(declaration.Name.Span, declaration.Name.Text);
+                continue;
+            }
+
+            _suppressPointerStorageClassDiagnostics = true;
+            BladeType variableType = BindType(declaration.Type);
+            _suppressPointerStorageClassDiagnostics = false;
+
+            GlobalVariableSymbol symbol = CreateGlobalVariableSymbol(declaration, variableType);
+            if (HasInheritedLayoutMember(layout, symbol.Name))
+                _diagnostics.ReportLayoutMemberShadowsParentMember(declaration.Name.Span, layout.Name, symbol.Name);
+
+            if (!layout.TryDeclareMember(symbol))
+            {
+                _diagnostics.ReportSymbolAlreadyDeclared(declaration.Name.Span, symbol.Name);
+                continue;
+            }
+
+            storedMembers.Add(new StoredLayoutMemberBinding(declaration, symbol));
+        }
+
+        _layoutVisibleMemberCache.Clear();
+
+        return storedMembers;
+    }
+
+    private void BindStoredLayoutMembers(
+        IReadOnlyList<StoredLayoutMemberBinding> storedMembers,
+        Scope bindingScope,
+        LayoutSymbol? implicitLayout,
+        ICollection<GlobalVariableSymbol> boundGlobals)
+    {
+        Scope previousScope = _currentScope;
+        LayoutSymbol? previousImplicitLayout = _currentImplicitLayout;
+
+        _currentScope = bindingScope;
+        _currentImplicitLayout = implicitLayout;
+
+        foreach (StoredLayoutMemberBinding storedMember in storedMembers)
+        {
+            BindStoredLayoutMember(storedMember.Declaration, storedMember.Symbol);
+            boundGlobals.Add(storedMember.Symbol);
+        }
+
+        _currentImplicitLayout = previousImplicitLayout;
+        _currentScope = previousScope;
+    }
+
+    private void BindStoredLayoutMember(VariableDeclarationSyntax declaration, GlobalVariableSymbol variableSymbol)
+    {
+        ResolveLayoutMetadata(declaration, variableSymbol);
+
+        BoundExpression? initializer = null;
+        if (declaration.Initializer is not null)
+        {
+            if (variableSymbol.IsExtern)
+            {
+                _diagnostics.ReportExternCannotHaveInitializer(declaration.Initializer.Span, variableSymbol.Name);
+            }
+            else
+            {
+                initializer = BindExpression(declaration.Initializer, variableSymbol.Type);
+                initializer = RequireComptimeExpression(initializer, declaration.Initializer.Span);
+            }
+        }
+
+        variableSymbol.SetInitializer(initializer);
+    }
+
+    private BoundFunctionMember BindTaskEntryFunction(TaskSymbol task, TaskDeclarationSyntax taskDeclaration, Scope taskScope)
+    {
+        List<StatementSyntax> statements = [];
+        foreach (SyntaxNode item in taskDeclaration.Body.Items)
+        {
+            switch (item)
+            {
+                case StatementSyntax statement:
+                    statements.Add(statement);
+                    break;
+
+                case VariableDeclarationSyntax declaration when MapStorageClass(declaration.StorageClassKeyword) is null:
+                    statements.Add(new VariableDeclarationStatementSyntax(declaration));
+                    break;
+            }
+        }
+
+        BlockStatementSyntax bodySyntax = CreateSyntheticBlockStatement(statements);
+        return BindBlockFunction(task.EntryFunction, bodySyntax, taskDeclaration.Span, bodySyntax.Span, taskScope, task);
+    }
+
+    private BoundFunctionMember BindTaskLocalFunction(TaskSymbol task, TaskLocalFunctionBinding localFunction, Scope taskScope)
+    {
+        return localFunction.Syntax switch
+        {
+            FunctionDeclarationSyntax functionDeclaration => BindBlockFunction(
+                localFunction.Symbol,
+                functionDeclaration.Body,
+                functionDeclaration.Span,
+                functionDeclaration.Body.CloseBrace.Span,
+                taskScope,
+                task),
+            AsmFunctionDeclarationSyntax asmFunctionDeclaration => BindAsmFunction(localFunction.Symbol, asmFunctionDeclaration, taskScope, task),
+            _ => Assert.UnreachableValue<BoundFunctionMember>(), // pragma: force-coverage
+        };
+    }
+
+    private bool HasInheritedLayoutMember(LayoutSymbol layout, string memberName)
+    {
+        foreach (LayoutSymbol parent in layout.Parents)
+        {
+            if (GetVisibleLayoutMembers(parent).ContainsKey(memberName))
+                return true;
+        }
+
+        return false;
+    }
+
+    private IReadOnlyDictionary<string, IReadOnlyList<LayoutMemberBinding>> GetVisibleLayoutMembers(LayoutSymbol layout)
+    {
+        return GetVisibleLayoutMembers(layout, new HashSet<LayoutSymbol>());
+    }
+
+    private IReadOnlyDictionary<string, IReadOnlyList<LayoutMemberBinding>> GetVisibleLayoutMembers(LayoutSymbol layout, HashSet<LayoutSymbol> activeLayouts)
+    {
+        if (_layoutVisibleMemberCache.TryGetValue(layout, out IReadOnlyDictionary<string, IReadOnlyList<LayoutMemberBinding>>? cachedMembers))
+            return cachedMembers;
+
+        if (!activeLayouts.Add(layout))
+            return new Dictionary<string, IReadOnlyList<LayoutMemberBinding>>(StringComparer.Ordinal);
+
+        Dictionary<string, List<LayoutMemberBinding>> visibleMembers = new(StringComparer.Ordinal);
+        foreach (LayoutSymbol parent in layout.Parents)
+        {
+            IReadOnlyDictionary<string, IReadOnlyList<LayoutMemberBinding>> parentMembers = GetVisibleLayoutMembers(parent, activeLayouts);
+            foreach ((string name, IReadOnlyList<LayoutMemberBinding> bindings) in parentMembers)
+            {
+                if (!visibleMembers.TryGetValue(name, out List<LayoutMemberBinding>? existingBindings))
+                {
+                    existingBindings = [];
+                    visibleMembers.Add(name, existingBindings);
+                }
+
+                foreach (LayoutMemberBinding binding in bindings)
+                {
+                    if (existingBindings.Any(existing => ReferenceEquals(existing.Layout, binding.Layout) && ReferenceEquals(existing.Variable, binding.Variable)))
+                        continue;
+
+                    existingBindings.Add(binding);
+                }
+            }
+        }
+
+        foreach ((string name, GlobalVariableSymbol symbol) in layout.DeclaredMembers)
+            visibleMembers[name] = [new LayoutMemberBinding(layout, symbol)];
+
+        activeLayouts.Remove(layout);
+
+        Dictionary<string, IReadOnlyList<LayoutMemberBinding>> frozenMembers = new(StringComparer.Ordinal);
+        foreach ((string name, List<LayoutMemberBinding> bindings) in visibleMembers)
+            frozenMembers.Add(name, bindings);
+
+        _layoutVisibleMemberCache[layout] = frozenMembers;
+        return frozenMembers;
+    }
+
+    private void ResolveFunctionSignatures()
+    {
+        _currentScope = _globalScope;
+        foreach ((_, FunctionSymbol function) in _functions)
+            ResolveFunctionSignature(function);
+    }
+
+    private void ResolveFunctionSignature(FunctionSymbol function)
+    {
+        List<ParameterVariableSymbol> parameters = new();
+        HashSet<string> parameterNames = new(StringComparer.Ordinal);
+
+        foreach (ParameterSyntax param in function.SignatureParameters)
+        {
+            BladeType parameterType = BindType(param.Type);
+            if (param.StorageClassKeyword is Token storageClassKeyword)
+                _diagnostics.ReportInvalidParameterStorageClass(storageClassKeyword.Span, storageClassKeyword.Text);
+
+            if (!parameterNames.Add(param.Name.Text))
+            {
+                _diagnostics.ReportSymbolAlreadyDeclared(param.Name.Span, param.Name.Text);
+                continue;
+            }
+
+            parameters.Add(new ParameterVariableSymbol(param.Name.Text, parameterType, CreateSourceSpan(param.Name.Span)));
+        }
+
+        List<ReturnSlot> returnSlots = new();
+        if (function.SignatureReturnSpec is not null)
+        {
+            foreach (ReturnItemSyntax returnItem in function.SignatureReturnSpec)
+            {
+                BladeType returnType = BindType(returnItem.Type);
+                ReturnPlacement placement = ReturnPlacement.Register;
+                if (returnItem.FlagAnnotation is not null)
+                {
+                    placement = returnItem.FlagAnnotation.Flag.Text.ToUpperInvariant() switch
+                    {
+                        "C" => ReturnPlacement.FlagC,
+                        "Z" => ReturnPlacement.FlagZ,
+                        _ => ReturnPlacement.Register,
+                    };
+                }
+
+                returnSlots.Add(new ReturnSlot(returnType, placement));
+            }
+        }
+
+        if (returnSlots.Count == 1 && returnSlots[0].Type is VoidTypeSymbol)
+            returnSlots.Clear();
+
+        if (returnSlots.Count > 1)
+        {
+            ReturnPlacement nextFlag = ReturnPlacement.FlagC;
+            for (int i = 1; i < returnSlots.Count; i++)
+            {
+                ReturnSlot slot = returnSlots[i];
+                if (slot.Placement == ReturnPlacement.Register
+                    && (slot.Type is BoolTypeSymbol || slot.Type == BuiltinTypes.Bit))
+                {
+                    returnSlots[i] = new ReturnSlot(slot.Type, nextFlag);
+                    nextFlag = nextFlag == ReturnPlacement.FlagC ? ReturnPlacement.FlagZ : nextFlag;
+                }
+            }
+        }
+
+        function.Parameters = parameters;
+        function.ReturnSlots = returnSlots;
     }
 
     private void DeclareTopLevelVariables(CompilationUnitSyntax unit)
@@ -526,23 +1006,29 @@ public sealed class Binder
             Requires.NotNull(function),
             functionSyntax.Body,
             functionSyntax.Span,
-            functionSyntax.Body.CloseBrace.Span);
+            functionSyntax.Body.CloseBrace.Span,
+            _globalScope,
+            implicitLayout: null);
     }
 
     private BoundFunctionMember BindBlockFunction(
         FunctionSymbol function,
         BlockStatementSyntax bodySyntax,
         TextSpan memberSpan,
-        TextSpan missingReturnSpan)
+        TextSpan missingReturnSpan,
+        Scope parentScope,
+        LayoutSymbol? implicitLayout)
     {
         Scope previousScope = _currentScope;
         FunctionSymbol? previousFunction = _currentFunction;
+        LayoutSymbol? previousImplicitLayout = _currentImplicitLayout;
 
-        _currentScope = new Scope(_globalScope);
+        _currentScope = new Scope(parentScope);
         _currentFunction = function;
+        _currentImplicitLayout = implicitLayout;
 
         foreach (ParameterVariableSymbol parameter in function.Parameters)
-            _ = TryDeclareSymbol(_currentScope, parameter, function.Syntax.Name.Span, preserveLocalBindingOnShadowing: true);
+            _ = TryDeclareSymbol(_currentScope, parameter, function.SignatureNameSpan, preserveLocalBindingOnShadowing: true);
 
         BoundBlockStatement body = BindBlockStatement(bodySyntax, createScope: false);
 
@@ -550,6 +1036,7 @@ public sealed class Binder
             _diagnostics.ReportMissingReturnValue(missingReturnSpan, function.Name);
 
         _currentFunction = previousFunction;
+        _currentImplicitLayout = previousImplicitLayout;
         _currentScope = previousScope;
         _boundFunctionBodies[function] = body;
 
@@ -560,15 +1047,25 @@ public sealed class Binder
     {
         bool found = _functions.TryGetValue(asmSyntax.Name.Text, out FunctionSymbol? function);
         Assert.Invariant(found && function is not null, "CollectTopLevelFunctions must register every asm function before binding.");
+        return BindAsmFunction(Requires.NotNull(function), asmSyntax, _globalScope, implicitLayout: null);
+    }
 
+    private BoundFunctionMember BindAsmFunction(
+        FunctionSymbol function,
+        AsmFunctionDeclarationSyntax asmSyntax,
+        Scope parentScope,
+        LayoutSymbol? implicitLayout)
+    {
         Scope previousScope = _currentScope;
         FunctionSymbol? previousFunction = _currentFunction;
+        LayoutSymbol? previousImplicitLayout = _currentImplicitLayout;
 
-        _currentScope = new Scope(_globalScope);
+        _currentScope = new Scope(parentScope);
         _currentFunction = function;
+        _currentImplicitLayout = implicitLayout;
 
         foreach (ParameterVariableSymbol parameter in function.Parameters)
-            _ = TryDeclareSymbol(_currentScope, parameter, function.Syntax.Name.Span, preserveLocalBindingOnShadowing: true);
+            _ = TryDeclareSymbol(_currentScope, parameter, function.SignatureNameSpan, preserveLocalBindingOnShadowing: true);
 
         // For asm fn, the "return" keyword is a valid binding name referencing the return value.
         // Add a synthetic variable so the validator accepts {return} references.
@@ -622,6 +1119,7 @@ public sealed class Binder
         BoundBlockStatement body = new(bodyStatements, asmSyntax.Span);
 
         _currentFunction = previousFunction;
+        _currentImplicitLayout = previousImplicitLayout;
         _currentScope = previousScope;
         _boundFunctionBodies[function] = body;
 
@@ -1227,6 +1725,15 @@ public sealed class Binder
             scope = scope.Parent;
         }
 
+        if (_currentImplicitLayout is not null)
+        {
+            foreach ((string name, IReadOnlyList<LayoutMemberBinding> bindings) in GetVisibleLayoutMembers(_currentImplicitLayout))
+            {
+                if (bindings.Count == 1 && !availableSymbols.ContainsKey(name))
+                    availableSymbols[name] = bindings[0].Variable;
+            }
+        }
+
         if (_currentFunction is not null)
         {
             foreach (ParameterVariableSymbol param in _currentFunction.Parameters)
@@ -1510,28 +2017,27 @@ public sealed class Binder
         return isBreak ? new BoundBreakStatement(keywordToken.Span) : new BoundContinueStatement(keywordToken.Span);
     }
 
-    private BoundYieldtoStatement BindYieldtoStatement(YieldtoStatementSyntax yieldtoStatement)
+    private BoundStatement BindYieldtoStatement(YieldtoStatementSyntax yieldtoStatement)
     {
         if (!IsYieldtoContextAllowed())
             _diagnostics.ReportInvalidYieldto(yieldtoStatement.YieldtoKeyword.Span);
 
-        FunctionSymbol? target = null;
         if (_functions.TryGetValue(yieldtoStatement.Target.Text, out FunctionSymbol? targetFunction))
         {
-            target = targetFunction;
-            if (target.Kind != FunctionKind.Coro)
+            if (targetFunction.Kind != FunctionKind.Coro)
+            {
                 _diagnostics.ReportInvalidYieldtoTarget(yieldtoStatement.Target.Span, yieldtoStatement.Target.Text);
-        }
-        else
-        {
-            _diagnostics.ReportUndefinedName(yieldtoStatement.Target.Span, yieldtoStatement.Target.Text);
+                _ = BindArgumentsLoose(yieldtoStatement.Arguments);
+                return new BoundErrorStatement(yieldtoStatement.Span);
+            }
+
+            IReadOnlyList<BoundExpression> arguments = BindCallArguments(targetFunction, yieldtoStatement.Arguments, yieldtoStatement.Target.Span);
+            return new BoundYieldtoStatement(targetFunction, arguments, yieldtoStatement.Span);
         }
 
-        List<BoundExpression> arguments = target is null
-            ? BindArgumentsLoose(yieldtoStatement.Arguments)
-            : BindCallArguments(target, yieldtoStatement.Arguments, yieldtoStatement.Target.Span);
-
-        return new BoundYieldtoStatement(target, arguments, yieldtoStatement.Span);
+        _diagnostics.ReportUndefinedName(yieldtoStatement.Target.Span, yieldtoStatement.Target.Text);
+        _ = BindArgumentsLoose(yieldtoStatement.Arguments);
+        return new BoundErrorStatement(yieldtoStatement.Span);
     }
 
     private BoundAssignmentTarget BindAssignmentTarget(ExpressionSyntax target)
@@ -1554,6 +2060,42 @@ public sealed class Binder
                         }
 
                         _diagnostics.ReportUndefinedName(memberAccess.Member.Span, memberAccess.Member.Text);
+                        return new BoundSymbolAssignmentTarget(
+                            new LocalVariableSymbol(
+                                memberAccess.Member.Text,
+                                BuiltinTypes.Unknown,
+                                isConst: false,
+                                sourceSpan: CreateSourceSpan(memberAccess.Member.Span)),
+                            target.Span,
+                            BuiltinTypes.Unknown);
+                    }
+
+                    if (receiver.Type is LayoutTypeSymbol layoutType)
+                    {
+                        if (TryResolveQualifiedLayoutMember(layoutType.Layout, memberAccess.Member.Text, memberAccess.Member.Span, out GlobalVariableSymbol? variable)
+                            && variable is not null)
+                        {
+                            return new BoundSymbolAssignmentTarget(variable, target.Span, variable.Type);
+                        }
+
+                        return new BoundSymbolAssignmentTarget(
+                            new LocalVariableSymbol(
+                                memberAccess.Member.Text,
+                                BuiltinTypes.Unknown,
+                                isConst: false,
+                                sourceSpan: CreateSourceSpan(memberAccess.Member.Span)),
+                            target.Span,
+                            BuiltinTypes.Unknown);
+                    }
+
+                    if (receiver.Type is TaskTypeSymbol taskType)
+                    {
+                        if (TryResolveQualifiedTaskMember(taskType.Task, memberAccess.Member.Text, memberAccess.Member.Span, out GlobalVariableSymbol? variable)
+                            && variable is not null)
+                        {
+                            return new BoundSymbolAssignmentTarget(variable, target.Span, variable.Type);
+                        }
+
                         return new BoundSymbolAssignmentTarget(
                             new LocalVariableSymbol(
                                 memberAccess.Member.Text,
@@ -1625,7 +2167,7 @@ public sealed class Binder
         if (nameExpression.Name.Text == "_")
             return new BoundDiscardAssignmentTarget(nameExpression.Span, expectedType ?? BuiltinTypes.Unknown);
 
-        if (!_currentScope.TryLookup(nameExpression.Name.Text, out Symbol? symbol) || symbol is null)
+        if (!TryResolveAccessibleName(nameExpression.Name.Text, nameExpression.Name.Span, out Symbol? symbol) || symbol is null)
         {
             _diagnostics.ReportUndefinedName(nameExpression.Name.Span, nameExpression.Name.Text);
             return new BoundErrorAssignmentTarget(nameExpression.Span);
@@ -1739,7 +2281,7 @@ public sealed class Binder
             return new BoundErrorExpression(nameExpression.Span);
         }
 
-        if (!_currentScope.TryLookup(nameExpression.Name.Text, out Symbol? symbol) || symbol is null)
+        if (!TryResolveAccessibleName(nameExpression.Name.Text, nameExpression.Name.Span, out Symbol? symbol) || symbol is null)
         {
             _diagnostics.ReportUndefinedName(nameExpression.Name.Span, nameExpression.Name.Text);
             return new BoundErrorExpression(nameExpression.Span);
@@ -1755,14 +2297,121 @@ public sealed class Binder
         if (symbol is TypeSymbol typeSymbol)
         {
             if (!typeSymbol.IsResolved)
-                _ = ResolveTypeAlias(typeSymbol.Name, nameExpression.Name.Span);
+                _ = ResolveTypeAlias(typeSymbol, nameExpression.Name.Span);
 
             return new BoundSymbolExpression(typeSymbol, nameExpression.Span, new TypeValueTypeSymbol(typeSymbol.Type));
         }
 
-        Assert.Invariant(symbol is ModuleSymbol, "Name expressions should only resolve to variables, parameters, functions, modules, or types.");
+        if (symbol is TaskSymbol task)
+            return new BoundSymbolExpression(task, nameExpression.Span, new TaskTypeSymbol(task));
+
+        if (symbol is LayoutSymbol layout)
+            return new BoundSymbolExpression(layout, nameExpression.Span, new LayoutTypeSymbol(layout));
+
+        Assert.Invariant(symbol is ModuleSymbol, "Name expressions should only resolve to variables, parameters, functions, layouts, modules, or types.");
         ModuleSymbol module = (ModuleSymbol)Requires.NotNull(symbol as ModuleSymbol);
         return new BoundSymbolExpression(module, nameExpression.Span, new ModuleTypeSymbol(module));
+    }
+
+    private bool TryResolveAccessibleName(string name, TextSpan span, out Symbol? symbol)
+    {
+        Symbol? lexicalSymbol = TryGetAccessibleLexicalSymbol(name);
+        IReadOnlyList<LayoutMemberBinding> layoutBindings = GetImplicitLayoutBindings(name);
+
+        if (lexicalSymbol is VariableSymbol && layoutBindings.Count > 0)
+        {
+            _diagnostics.ReportLexicalNameConflictsWithLayoutMember(span, name, GetLayoutBindingNames(layoutBindings));
+            symbol = lexicalSymbol;
+            return true;
+        }
+
+        if (lexicalSymbol is not null)
+        {
+            symbol = lexicalSymbol;
+            return true;
+        }
+
+        if (layoutBindings.Count == 1)
+        {
+            symbol = layoutBindings[0].Variable;
+            return true;
+        }
+
+        if (layoutBindings.Count > 1)
+        {
+            _diagnostics.ReportAmbiguousLayoutMemberAccess(span, name, GetLayoutBindingNames(layoutBindings));
+            symbol = null;
+            return false;
+        }
+
+        symbol = null;
+        return false;
+    }
+
+    private Symbol? TryGetAccessibleLexicalSymbol(string name)
+    {
+        if (!_currentScope.TryLookup(name, out Symbol? symbol) || symbol is null)
+            return null;
+
+        return symbol;
+    }
+
+    private bool CanAccessTaskLayout(TaskSymbol task)
+    {
+        return _currentImplicitLayout is not null
+            && ReferenceEquals(_currentImplicitLayout, task);
+    }
+
+    private bool TryResolveQualifiedTaskMember(TaskSymbol task, string memberName, TextSpan span, out GlobalVariableSymbol? symbol)
+    {
+        if (!CanAccessTaskLayout(task))
+        {
+            _diagnostics.ReportUndefinedName(span, memberName);
+            symbol = null;
+            return false;
+        }
+
+        return TryResolveQualifiedLayoutMember(task, memberName, span, out symbol);
+    }
+
+    private IReadOnlyList<LayoutMemberBinding> GetImplicitLayoutBindings(string name)
+    {
+        if (_currentImplicitLayout is null)
+            return [];
+
+        return GetVisibleLayoutMembers(_currentImplicitLayout).TryGetValue(name, out IReadOnlyList<LayoutMemberBinding>? bindings)
+            ? bindings
+            : [];
+    }
+
+    private static List<string> GetLayoutBindingNames(IReadOnlyList<LayoutMemberBinding> bindings)
+    {
+        return bindings
+            .Select(static binding => binding.Layout.Name)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(static name => name, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    private bool TryResolveQualifiedLayoutMember(LayoutSymbol layout, string memberName, TextSpan span, out GlobalVariableSymbol? symbol)
+    {
+        if (!GetVisibleLayoutMembers(layout).TryGetValue(memberName, out IReadOnlyList<LayoutMemberBinding>? bindings)
+            || bindings.Count == 0)
+        {
+            _diagnostics.ReportUndefinedName(span, memberName);
+            symbol = null;
+            return false;
+        }
+
+        if (bindings.Count > 1)
+        {
+            _diagnostics.ReportAmbiguousLayoutMemberAccess(span, memberName, GetLayoutBindingNames(bindings));
+            symbol = null;
+            return false;
+        }
+
+        symbol = bindings[0].Variable;
+        return true;
     }
 
     private void ObserveVariableForTopLevelStoreLoadElision(VariableSymbol variable)
@@ -1857,7 +2506,7 @@ public sealed class Binder
             return new BoundErrorExpression(unary.Span);
         }
 
-        if (!_currentScope.TryLookup(nameExpression.Name.Text, out Symbol? symbol) || symbol is null)
+        if (!TryResolveAccessibleName(nameExpression.Name.Text, nameExpression.Name.Span, out Symbol? symbol) || symbol is null)
         {
             _diagnostics.ReportUndefinedName(nameExpression.Name.Span, nameExpression.Name.Text);
             return new BoundErrorExpression(unary.Span);
@@ -2163,6 +2812,30 @@ public sealed class Binder
     {
         BoundExpression receiver = BindExpression(memberAccess.Expression);
 
+        if (receiver.Type is LayoutTypeSymbol layoutType)
+        {
+            if (TryResolveQualifiedLayoutMember(layoutType.Layout, memberAccess.Member.Text, memberAccess.Member.Span, out GlobalVariableSymbol? variable)
+                && variable is not null)
+            {
+                ObserveVariableForTopLevelStoreLoadElision(variable);
+                return new BoundSymbolExpression(variable, memberAccess.Span, variable.Type);
+            }
+
+            return new BoundErrorExpression(memberAccess.Span);
+        }
+
+        if (receiver.Type is TaskTypeSymbol taskType)
+        {
+            if (TryResolveQualifiedTaskMember(taskType.Task, memberAccess.Member.Text, memberAccess.Member.Span, out GlobalVariableSymbol? variable)
+                && variable is not null)
+            {
+                ObserveVariableForTopLevelStoreLoadElision(variable);
+                return new BoundSymbolExpression(variable, memberAccess.Span, variable.Type);
+            }
+
+            return new BoundErrorExpression(memberAccess.Span);
+        }
+
         if (TryGetAggregateMember(receiver.Type, memberAccess.Member.Text, out AggregateMemberSymbol? member)
             && member is not null)
         {
@@ -2190,8 +2863,14 @@ public sealed class Binder
 
                     case TypeSymbol exportedType:
                         if (!exportedType.IsResolved)
-                            _ = ResolveTypeAlias(exportedType.Name, memberAccess.Member.Span);
+                            _ = ResolveTypeAlias(exportedType, memberAccess.Member.Span);
                         return new BoundSymbolExpression(exportedType, memberAccess.Span, new TypeValueTypeSymbol(exportedType.Type));
+
+                    case TaskSymbol exportedTask:
+                        return new BoundSymbolExpression(exportedTask, memberAccess.Span, new TaskTypeSymbol(exportedTask));
+
+                    case LayoutSymbol exportedLayout:
+                        return new BoundSymbolExpression(exportedLayout, memberAccess.Span, new LayoutTypeSymbol(exportedLayout));
 
                     case ModuleSymbol nestedModule:
                         return new BoundSymbolExpression(nestedModule, memberAccess.Span, new ModuleTypeSymbol(nestedModule));
@@ -2298,14 +2977,6 @@ public sealed class Binder
     private BoundExpression BindCallExpression(CallExpressionSyntax callExpression)
     {
         BoundExpression callee = BindExpression(callExpression.Callee);
-        if (callee.Type is ModuleTypeSymbol moduleType)
-        {
-            if (callExpression.Arguments.Count != 0)
-                _diagnostics.ReportArgumentCountMismatch(callExpression.Span, moduleType.Module.Name, 0, callExpression.Arguments.Count);
-            _ = BindArgumentsLoose(callExpression.Arguments);
-            return new BoundModuleCallExpression(moduleType.Module.Module, callExpression.Span);
-        }
-
         if (!TryGetFunctionSymbol(callee, out FunctionSymbol? maybeFunction) || maybeFunction is null)
         {
             _diagnostics.ReportNotCallable(callExpression.Callee.Span, callee.Type.Name);
@@ -2485,10 +3156,6 @@ public sealed class Binder
 
             case BoundCallExpression call:
                 failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, call.Span, $"call to '{call.Function.Name}' must be folded before it can appear in a comptime-required context.");
-                return false;
-
-            case BoundModuleCallExpression moduleCall:
-                failure = new ComptimeFailure(ComptimeFailureKind.UnsupportedConstruct, moduleCall.Span, "module calls are not supported in comptime-required contexts.");
                 return false;
 
             case BoundIntrinsicCallExpression intrinsic:
@@ -2977,7 +3644,7 @@ public sealed class Binder
 
         string name = namedType.Name.Text;
 
-        if (!_currentScope.TryLookup(name, out Symbol? symbol) || symbol is null)
+        if (!TryResolveAccessibleName(name, namedType.Name.Span, out Symbol? symbol) || symbol is null)
         {
             _diagnostics.ReportUndefinedName(namedType.Name.Span, name);
             return new BoundErrorExpression(query.Span);
@@ -3149,6 +3816,7 @@ public sealed class Binder
 
                     continue;
                 }
+
 
                 reordered[parameterIndex] = boundValue;
                 filled[parameterIndex] = true;
@@ -3692,6 +4360,11 @@ public sealed class Binder
     {
         bool isBuiltinTypeName = BuiltinTypes.TryGet(namedType.Name.Text, out _);
         Assert.Invariant(!isBuiltinTypeName, "Builtin type keywords should bind as PrimitiveTypeSyntax, not NamedTypeSyntax.");
+
+        Symbol? resolvedSymbol = TryGetAccessibleLexicalSymbol(namedType.Name.Text);
+        if (resolvedSymbol is TypeSymbol typeSymbol)
+            return ResolveTypeAlias(typeSymbol, namedType.Name.Span);
+
         return ResolveTypeAlias(namedType.Name.Text, namedType.Name.Span);
     }
 
@@ -3728,9 +4401,29 @@ public sealed class Binder
         }
 
         if (!resolvedType.IsResolved)
-            _ = ResolveTypeAlias(resolvedType.Name, finalSegment.Span);
+            _ = ResolveTypeAlias(resolvedType, finalSegment.Span);
 
         return resolvedType.Type;
+    }
+
+    private BladeType ResolveTypeAlias(TypeSymbol alias, TextSpan span)
+    {
+        Requires.NotNull(alias);
+
+        if (alias.IsResolved)
+            return alias.Type;
+
+        if (!_typeAliasResolutionStack.Add(alias.Name))
+        {
+            _diagnostics.ReportUndefinedType(span, alias.Name);
+            return BuiltinTypes.Unknown;
+        }
+
+        Assert.Invariant(_typeAliasDeclarations.TryGetValue(alias, out TypeAliasDeclarationSyntax? aliasSyntax), $"Type alias '{alias.Name}' must retain its declaration syntax until resolved.");
+        BladeType boundType = BindType(Requires.NotNull(aliasSyntax).Type, aliasSyntax.Name.Text);
+        _typeAliasResolutionStack.Remove(alias.Name);
+        alias.Resolve(boundType);
+        return alias.Type;
     }
 
     private BladeType ResolveTypeAlias(string aliasName, TextSpan span)
@@ -3741,20 +4434,7 @@ public sealed class Binder
             return BuiltinTypes.Unknown;
         }
 
-        if (alias.IsResolved)
-            return alias.Type;
-
-        if (!_typeAliasResolutionStack.Add(aliasName))
-        {
-            _diagnostics.ReportUndefinedType(span, aliasName);
-            return BuiltinTypes.Unknown;
-        }
-
-        Assert.Invariant(_typeAliasDeclarations.TryGetValue(alias, out TypeAliasDeclarationSyntax? aliasSyntax), $"Type alias '{aliasName}' must retain its declaration syntax until resolved.");
-        BladeType boundType = BindType(aliasSyntax.Type, aliasSyntax.Name.Text);
-        _typeAliasResolutionStack.Remove(aliasName);
-        alias.Resolve(boundType);
-        return alias.Type;
+        return ResolveTypeAlias(alias, span);
     }
 
     private static BladeType BestNumericType(BladeType left, BladeType right)

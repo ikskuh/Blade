@@ -44,7 +44,7 @@ public class MirModelTests
         Assert.That(unary.RewriteUses(new Dictionary<MirValueId, MirValueId>()), Is.SameAs(unary));
         Assert.That(((MirUnaryInstruction)unary.RewriteUses(mapping)).Operand, Is.EqualTo(mapping[v1]));
 
-        MirCallInstruction call = new(v0, BuiltinTypes.U32, new FunctionSymbol("callee", FunctionKind.Default, isTopLevel: false), [v1, v2], Span);
+        MirCallInstruction call = new(v0, BuiltinTypes.U32, new FunctionSymbol("callee", IrTestFactory.CreateFunctionDeclarationSyntax("callee"), FunctionKind.Default, isTopLevel: false), [v1, v2], Span);
         Assert.That(call.RewriteUses(new Dictionary<MirValueId, MirValueId>()), Is.SameAs(call));
         Assert.That(((MirCallInstruction)call.RewriteUses(mapping)).Arguments, Is.EqualTo(new[] { mapping[v1], mapping[v2] }));
 
@@ -56,7 +56,7 @@ public class MirModelTests
         Assert.That(updatePlace.RewriteUses(new Dictionary<MirValueId, MirValueId>()), Is.SameAs(updatePlace));
         Assert.That(((MirUpdatePlaceInstruction)updatePlace.RewriteUses(mapping)).Value, Is.EqualTo(mapping[v1]));
 
-        MirYieldToInstruction yieldTo = new(new FunctionSymbol("pin", FunctionKind.Default, isTopLevel: false), [v1, v2], Span);
+        MirYieldToInstruction yieldTo = new(new FunctionSymbol("pin", IrTestFactory.CreateFunctionDeclarationSyntax("pin"), FunctionKind.Default, isTopLevel: false), [v1, v2], Span);
         Assert.That(yieldTo.RewriteUses(new Dictionary<MirValueId, MirValueId>()), Is.SameAs(yieldTo));
         Assert.That(((MirYieldToInstruction)yieldTo.RewriteUses(mapping)).Arguments, Is.EqualTo(new[] { mapping[v1], mapping[v2] }));
     }

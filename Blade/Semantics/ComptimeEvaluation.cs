@@ -368,9 +368,6 @@ internal sealed class ComptimeFunctionSupportAnalyzer
             case BoundIntrinsicCallExpression:
                 return Unsupported(expression.Span, "intrinsic calls are not supported during comptime evaluation.");
 
-            case BoundModuleCallExpression:
-                return Unsupported(expression.Span, "module calls are not supported during comptime evaluation.");
-
             case BoundArrayLiteralExpression:
                 return Unsupported(expression.Span, "array literals are not supported during comptime evaluation.");
 

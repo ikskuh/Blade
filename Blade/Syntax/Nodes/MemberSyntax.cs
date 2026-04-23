@@ -14,8 +14,8 @@ public abstract class MemberSyntax(TextSpan span) : SyntaxNode(span)
 
 /// <summary>
 /// Common interface for function declaration syntax nodes that carry a signature
-/// (name, parameters, return spec). Implemented by both <see cref="FunctionDeclarationSyntax"/>
-/// and <see cref="AsmFunctionDeclarationSyntax"/>.
+/// (name, parameters, return spec). Implemented by <see cref="FunctionDeclarationSyntax"/>,
+/// <see cref="AsmFunctionDeclarationSyntax"/>, and <see cref="TaskDeclarationSyntax"/>.
 /// </summary>
 public interface IFunctionSignatureSyntax
 {
@@ -120,6 +120,137 @@ public sealed class AsmFunctionDeclarationSyntax(Token asmKeyword, Token? volati
     public Token? Arrow { get; } = arrow;
     public SeparatedSyntaxList<ReturnItemSyntax>? ReturnSpec { get; } = returnSpec;
     public InlineAsmBodySyntax Body { get; } = body;
+}
+
+/// <summary>
+/// Syntax node for a top-level layout declaration.
+/// </summary>
+public sealed class LayoutDeclarationSyntax(
+    Token layoutKeyword,
+    Token name,
+    Token? colon,
+    SeparatedSyntaxList<TypeSyntax>? parentLayouts,
+    Token openBrace,
+    IReadOnlyList<VariableDeclarationSyntax> declarations,
+    Token closeBrace) : MemberSyntax(TextSpan.FromBounds(layoutKeyword.Span.Start, closeBrace.Span.End))
+{
+    /// <summary>
+    /// Gets the <c>layout</c> keyword token.
+    /// </summary>
+    [ExcludeFromCodeCoverage]
+    public Token LayoutKeyword { get; } = layoutKeyword;
+
+    /// <summary>
+    /// Gets the identifier token that names the layout.
+    /// </summary>
+    public Token Name { get; } = name;
+
+    /// <summary>
+    /// Gets the colon token that introduces the parent-layout list, when present.
+    /// </summary>
+    public Token? Colon { get; } = colon;
+
+    /// <summary>
+    /// Gets the parent layouts named by this declaration, when present.
+    /// </summary>
+    public SeparatedSyntaxList<TypeSyntax>? ParentLayouts { get; } = parentLayouts;
+
+    /// <summary>
+    /// Gets the opening brace token of the layout body.
+    /// </summary>
+    [ExcludeFromCodeCoverage]
+    public Token OpenBrace { get; } = openBrace;
+
+    /// <summary>
+    /// Gets the storage declarations contained in the layout body.
+    /// </summary>
+    public IReadOnlyList<VariableDeclarationSyntax> Declarations { get; } = Requires.NotNull(declarations);
+
+    /// <summary>
+    /// Gets the closing brace token of the layout body.
+    /// </summary>
+    [ExcludeFromCodeCoverage]
+    public Token CloseBrace { get; } = closeBrace;
+}
+
+/// <summary>
+/// Syntax node for a top-level task declaration.
+/// </summary>
+public sealed class TaskDeclarationSyntax(
+    Token storageClassKeyword,
+    Token taskKeyword,
+    Token name,
+    Token? openParen,
+    ParameterSyntax? parameter,
+    Token? closeParen,
+    Token? colon,
+    SeparatedSyntaxList<TypeSyntax>? parentLayouts,
+    TaskBodySyntax body) : MemberSyntax(TextSpan.FromBounds(storageClassKeyword.Span.Start, Requires.NotNull(body).Span.End)), IFunctionSignatureSyntax
+{
+    /// <summary>
+    /// Gets the storage-class token that declares where the task executes.
+    /// </summary>
+    public Token StorageClassKeyword { get; } = storageClassKeyword;
+
+    /// <summary>
+    /// Gets the <c>task</c> keyword token.
+    /// </summary>
+    [ExcludeFromCodeCoverage]
+    public Token TaskKeyword { get; } = taskKeyword;
+
+    /// <summary>
+    /// Gets the identifier token that names the task.
+    /// </summary>
+    public Token Name { get; } = name;
+
+    /// <summary>
+    /// Gets the opening parenthesis token of the optional startup-parameter list.
+    /// </summary>
+    [ExcludeFromCodeCoverage]
+    public Token? OpenParen { get; } = openParen;
+
+    /// <summary>
+    /// Gets the optional startup parameter declared by the task.
+    /// </summary>
+    public ParameterSyntax? Parameter { get; } = parameter;
+
+    /// <summary>
+    /// Gets the task startup parameter in signature-list form.
+    /// </summary>
+    public SeparatedSyntaxList<ParameterSyntax> Parameters { get; } = parameter is null
+        ? new SeparatedSyntaxList<ParameterSyntax>([])
+        : new SeparatedSyntaxList<ParameterSyntax>([parameter]);
+
+    /// <summary>
+    /// Gets the task return-arrow token, which is always absent because tasks do not declare return values.
+    /// </summary>
+    public Token? Arrow => null;
+
+    /// <summary>
+    /// Gets the task return specification, which is always absent because tasks do not declare return values.
+    /// </summary>
+    public SeparatedSyntaxList<ReturnItemSyntax>? ReturnSpec => null;
+
+    /// <summary>
+    /// Gets the closing parenthesis token of the optional startup-parameter list.
+    /// </summary>
+    [ExcludeFromCodeCoverage]
+    public Token? CloseParen { get; } = closeParen;
+
+    /// <summary>
+    /// Gets the colon token that introduces the parent-layout list, when present.
+    /// </summary>
+    public Token? Colon { get; } = colon;
+
+    /// <summary>
+    /// Gets the layouts imported into this task, when present.
+    /// </summary>
+    public SeparatedSyntaxList<TypeSyntax>? ParentLayouts { get; } = parentLayouts;
+
+    /// <summary>
+    /// Gets the mixed declaration-and-statement body of the task.
+    /// </summary>
+    public TaskBodySyntax Body { get; } = body;
 }
 
 public sealed class GlobalStatementSyntax(StatementSyntax statement) : MemberSyntax(Requires.NotNull(statement).Span)

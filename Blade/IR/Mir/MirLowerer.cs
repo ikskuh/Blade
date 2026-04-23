@@ -28,7 +28,7 @@ public static class MirLowerer
 
         foreach (BoundFunctionMember functionMember in program.Functions)
         {
-            if (!ReferenceEquals(functionMember, program.EntryPoint))
+            if (!ReferenceEquals(functionMember, program.EntryPointFunction))
                 functions.Add(LowerFunction(functionMember, storagePlacesBySymbol, storageDefinitions));
         }
 
@@ -41,13 +41,13 @@ public static class MirLowerer
         IReadOnlyList<StorageDefinition> storageDefinitions)
     {
         FunctionLoweringContext context = new(
-            program.EntryPoint.Symbol,
+            program.EntryPoint.EntryFunction,
             isEntryPoint: true,
-            program.EntryPoint.Symbol.ReturnTypes,
+            program.EntryPoint.EntryFunction.ReturnTypes,
             storagePlacesBySymbol,
             storageDefinitions,
-            program.EntryPoint.Symbol.ReturnSlots);
-        context.LowerEntryPointBody(program.GlobalVariables, program.EntryPoint.Body);
+            program.EntryPoint.EntryFunction.ReturnSlots);
+        context.LowerEntryPointBody(program.GlobalVariables, program.EntryPointFunction.Body);
         return context.Build();
     }
 
@@ -281,9 +281,6 @@ public static class MirLowerer
             case BoundCallExpression call:
                 foreach (BoundExpression argument in call.Arguments)
                     CollectAddressTakenSymbols(argument, symbols);
-                break;
-            case BoundModuleCallExpression moduleCall:
-                CollectAddressTakenSymbols(moduleCall.Module.Constructor.Body, symbols);
                 break;
             case BoundIntrinsicCallExpression intrinsic:
                 foreach (BoundExpression argument in intrinsic.Arguments)
@@ -563,8 +560,7 @@ public static class MirLowerer
                     foreach (BoundExpression argument in yieldtoStatement.Arguments)
                         arguments.Add(LowerExpression(argument));
 
-                    FunctionSymbol target = yieldtoStatement.Target ?? new FunctionSymbol("<error>", FunctionKind.Default, isTopLevel: false);
-                    _currentBlock.Instructions.Add(new MirYieldToInstruction(target, arguments, yieldtoStatement.Span));
+                    _currentBlock.Instructions.Add(new MirYieldToInstruction(yieldtoStatement.Target, arguments, yieldtoStatement.Span));
                     break;
                 }
 
@@ -1184,13 +1180,6 @@ public static class MirLowerer
 
                 case BoundCallExpression callExpression:
                     return LowerCallExpression(callExpression);
-
-                case BoundModuleCallExpression moduleCallExpression:
-                    return LowerCallExpression(new BoundCallExpression(
-                        moduleCallExpression.Module.Constructor.Symbol,
-                        [],
-                        moduleCallExpression.Span,
-                        moduleCallExpression.Type));
 
                 case BoundIntrinsicCallExpression intrinsicCall:
                 {
