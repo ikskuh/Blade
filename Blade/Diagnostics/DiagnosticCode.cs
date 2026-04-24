@@ -108,6 +108,7 @@ public enum DiagnosticCode
     E0277_UnsupportedGlobalStorage = 277,
 
     E0278_ReturnFromCoroutine = 278,
+    E0279_InvalidSpawnTarget = 279,
 
     // Inline assembly errors
     E0301_InlineAsmUnknownInstruction = 301,

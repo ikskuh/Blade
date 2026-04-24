@@ -80,6 +80,39 @@ public sealed class CallExpressionSyntax(ExpressionSyntax callee, Token openPare
     public Token CloseParen { get; } = closeParen;
 }
 
+/// <summary>
+/// Represents a task-spawning prefix expression.
+/// </summary>
+public sealed class SpawnExpressionSyntax(Token keyword, ExpressionSyntax target, Token openParen, ExpressionSyntax? argument, Token closeParen) : ExpressionSyntax(TextSpan.FromBounds(keyword, closeParen))
+{
+    /// <summary>
+    /// Gets the operator keyword token (`spawn` or `spawnpair`).
+    /// </summary>
+    public Token Keyword { get; } = keyword;
+
+    /// <summary>
+    /// Gets the task name or qualified task name being spawned.
+    /// </summary>
+    public ExpressionSyntax Target { get; } = Requires.NotNull(target);
+
+    /// <summary>
+    /// Gets the opening parenthesis for the startup-argument list.
+    /// </summary>
+    [ExcludeFromCodeCoverage]
+    public Token OpenParen { get; } = openParen;
+
+    /// <summary>
+    /// Gets the optional startup argument expression.
+    /// </summary>
+    public ExpressionSyntax? Argument { get; } = argument;
+
+    /// <summary>
+    /// Gets the closing parenthesis for the startup-argument list.
+    /// </summary>
+    [ExcludeFromCodeCoverage]
+    public Token CloseParen { get; } = closeParen;
+}
+
 public sealed class IntrinsicCallExpressionSyntax(Token atToken, Token name, Token openParen, SeparatedSyntaxList<ExpressionSyntax> arguments, Token closeParen) : ExpressionSyntax(TextSpan.FromBounds(atToken.Span.Start, closeParen.Span.End))
 {
     [ExcludeFromCodeCoverage]

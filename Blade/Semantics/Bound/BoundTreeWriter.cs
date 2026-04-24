@@ -79,6 +79,13 @@ public static class BoundTreeWriter
                 WriteExpression(sb, indent + 1, assignment.Value);
                 break;
 
+            case BoundMultiAssignmentStatement multiAssignment:
+                AppendLine(sb, indent, "MultiAssign");
+                foreach (BoundAssignmentTarget target in multiAssignment.Targets)
+                    WriteAssignmentTarget(sb, indent + 1, target);
+                WriteExpression(sb, indent + 1, multiAssignment.Producer);
+                break;
+
             case BoundExpressionStatement expressionStatement:
                 AppendLine(sb, indent, "ExprStmt");
                 WriteExpression(sb, indent + 1, expressionStatement.Expression);
@@ -200,6 +207,12 @@ public static class BoundTreeWriter
             case BoundCallExpression call:
                 AppendLine(sb, indent, $"Call<{call.Type.Name}> {call.Function.Name}");
                 foreach (BoundExpression arg in call.Arguments)
+                    WriteExpression(sb, indent + 1, arg);
+                break;
+
+            case BoundSpawnExpression spawn:
+                AppendLine(sb, indent, $"{spawn.ResultSourceName}<{spawn.Type.Name}> {spawn.Task.Name} [{spawn.RequestedResultCount}]");
+                foreach (BoundExpression arg in spawn.Arguments)
                     WriteExpression(sb, indent + 1, arg);
                 break;
 

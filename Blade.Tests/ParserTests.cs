@@ -518,6 +518,36 @@ public class ParserTests
     }
 
     [Test]
+    public void SpawnExpressionStatement_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog task main { spawn worker(); }");
+        AssertNoDiagnostics(diag);
+
+        TaskDeclarationSyntax task = (TaskDeclarationSyntax)unit.Members[0];
+        ExpressionStatementSyntax statement = (ExpressionStatementSyntax)task.Body.Items[0];
+        SpawnExpressionSyntax spawn = (SpawnExpressionSyntax)statement.Expression;
+
+        Assert.That(spawn.Keyword.Kind, Is.EqualTo(TokenKind.SpawnKeyword));
+        Assert.That(spawn.Target, Is.TypeOf<NameExpressionSyntax>());
+        Assert.That(spawn.Argument, Is.Null);
+    }
+
+    [Test]
+    public void SpawnpairQualifiedTask_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog task main { spawnpair support.worker(7); }");
+        AssertNoDiagnostics(diag);
+
+        TaskDeclarationSyntax task = (TaskDeclarationSyntax)unit.Members[0];
+        ExpressionStatementSyntax statement = (ExpressionStatementSyntax)task.Body.Items[0];
+        SpawnExpressionSyntax spawn = (SpawnExpressionSyntax)statement.Expression;
+
+        Assert.That(spawn.Keyword.Kind, Is.EqualTo(TokenKind.SpawnpairKeyword));
+        Assert.That(spawn.Target, Is.TypeOf<MemberAccessExpressionSyntax>());
+        Assert.That(spawn.Argument, Is.TypeOf<LiteralExpressionSyntax>());
+    }
+
+    [Test]
     public void DuplicateAlignClause_ReportsDiagnosticAndKeepsFirstClause()
     {
         (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog var table: u32 align(4) align(8);");

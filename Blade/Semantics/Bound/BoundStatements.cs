@@ -27,10 +27,10 @@ public sealed class BoundAssignmentStatement(BoundAssignmentTarget target, Bound
     public TokenKind OperatorKind { get; } = operatorKind;
 }
 
-public sealed class BoundMultiAssignmentStatement(IReadOnlyList<BoundAssignmentTarget> targets, BoundCallExpression call, TextSpan span) : BoundStatement(BoundNodeKind.MultiAssignmentStatement, span)
+public sealed class BoundMultiAssignmentStatement(IReadOnlyList<BoundAssignmentTarget> targets, BoundMultiResultProducerExpression producer, TextSpan span) : BoundStatement(BoundNodeKind.MultiAssignmentStatement, span)
 {
     public IReadOnlyList<BoundAssignmentTarget> Targets { get; } = targets;
-    public BoundCallExpression Call { get; } = call;
+    public BoundMultiResultProducerExpression Producer { get; } = producer;
 }
 
 public sealed class BoundExpressionStatement(BoundExpression expression, TextSpan span) : BoundStatement(BoundNodeKind.ExpressionStatement, span)

@@ -1,0 +1,25 @@
+// EXPECT: xfail
+// DIAGNOSTICS: E0401
+// NOTE:
+//   Refactoring-phase fixture for spawn result-consumption modes.
+//   Flip this to pass once spawn lowering is implemented.
+
+cog task worker() {
+}
+
+cog task with_arg(step: u32) {
+    _ = step;
+}
+
+cog task main {
+    var id: u32 = spawn worker();
+    var id2: u32 = spawn with_arg(10);
+    var ok: bool = undefined;
+
+    id, ok = spawn worker();
+    id2, ok = spawn with_arg(10);
+
+    _ = id;
+    _ = id2;
+    _ = ok;
+}

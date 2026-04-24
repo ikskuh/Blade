@@ -1,0 +1,14 @@
+// EXPECT: xfail
+// DIAGNOSTICS: E0401
+// NOTE:
+//   Refactoring-phase fixture for module-qualified task targets.
+
+import "./spawn_support.mod" as support;
+
+cog task main {
+    spawn support.worker();
+
+    var id: u32 = spawn support.worker_with_arg(7);
+
+    _ = id;
+}

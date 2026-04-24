@@ -66,6 +66,8 @@ public enum TokenKind
     TypeKeyword,
     LayoutKeyword,
     TaskKeyword,
+    SpawnKeyword,
+    SpawnpairKeyword,
     BitcastKeyword,
     UndefinedKeyword,
     AlignKeyword,

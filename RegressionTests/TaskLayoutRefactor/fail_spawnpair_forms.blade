@@ -1,0 +1,21 @@
+// EXPECT: xfail
+// DIAGNOSTICS: E0401
+// NOTE:
+//   Refactoring-phase fixture for spawnpair using the same statement, single-result,
+//   and dual-result forms planned for spawn.
+
+cog task pair_worker(step: u32) {
+    _ = step;
+}
+
+cog task main {
+    spawnpair pair_worker(1);
+
+    var low: u32 = spawnpair pair_worker(2);
+    var ok: bool = undefined;
+
+    low, ok = spawnpair pair_worker(3);
+
+    _ = low;
+    _ = ok;
+}

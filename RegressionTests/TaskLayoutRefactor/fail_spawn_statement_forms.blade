@@ -1,0 +1,17 @@
+// EXPECT: xfail
+// DIAGNOSTICS: E0401
+// NOTE:
+//   Refactoring-phase fixture for the planned spawn prefix operator.
+//   Flip this to pass once spawn lowering is implemented.
+
+cog task worker() {
+}
+
+cog task with_arg(step: u32) {
+    _ = step;
+}
+
+cog task main {
+    spawn worker();
+    spawn with_arg(10);
+}

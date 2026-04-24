@@ -1413,7 +1413,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
     }
 
     private static bool IsValidExpressionStatement(ExpressionSyntax expression)
-        => expression is CallExpressionSyntax or IntrinsicCallExpressionSyntax;
+        => expression is CallExpressionSyntax or IntrinsicCallExpressionSyntax or SpawnExpressionSyntax;
 
     // ──────────────────────────────────────────
     //  Types
@@ -1832,6 +1832,10 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
             case TokenKind.At:
                 return ParseIntrinsicCall();
 
+            case TokenKind.SpawnKeyword:
+            case TokenKind.SpawnpairKeyword:
+                return ParseSpawnExpression();
+
             case TokenKind.Dot:
                 if (SyntaxFacts.IsIdentifierLike(Peek(1).Kind))
                     return ParseEnumLiteral();
@@ -1879,6 +1883,33 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
         Token closeBracket = MatchToken(TokenKind.CloseBracket);
         return new ArrayLiteralExpressionSyntax(openBracket,
             new SeparatedSyntaxList<ArrayElementSyntax>(elementsAndSeparators), closeBracket);
+    }
+
+    private SpawnExpressionSyntax ParseSpawnExpression()
+    {
+        Token keyword = NextToken();
+        ExpressionSyntax target = ParseQualifiedNameExpression();
+        Token openParen = MatchToken(TokenKind.OpenParen);
+
+        ExpressionSyntax? argument = null;
+        if (Current.Kind != TokenKind.CloseParen && Current.Kind != TokenKind.EndOfFile)
+            argument = ParseExpression();
+
+        Token closeParen = MatchToken(TokenKind.CloseParen);
+        return new SpawnExpressionSyntax(keyword, target, openParen, argument, closeParen);
+    }
+
+    private ExpressionSyntax ParseQualifiedNameExpression()
+    {
+        ExpressionSyntax expression = new NameExpressionSyntax(MatchToken(TokenKind.Identifier));
+        while (Current.Kind == TokenKind.Dot && Peek(1).Kind == TokenKind.Identifier)
+        {
+            Token dot = NextToken();
+            Token member = NextToken();
+            expression = new MemberAccessExpressionSyntax(expression, dot, member);
+        }
+
+        return expression;
     }
 
     private EnumLiteralExpressionSyntax ParseEnumLiteral()

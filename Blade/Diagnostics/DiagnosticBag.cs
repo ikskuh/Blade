@@ -419,15 +419,15 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
         Report(
             DiagnosticCode.E0246_MultiAssignmentRequiresCall,
             span,
-            "Multi-target assignment requires a function call on the right-hand side.");
+            "Multi-target assignment requires a function call or spawn expression on the right-hand side.");
     }
 
-    public void ReportMultiAssignmentTargetCountMismatch(TextSpan span, string functionName, int expected, int actual)
+        public void ReportMultiAssignmentTargetCountMismatch(TextSpan span, string expressionName, int expected, int actual)
     {
         Report(
             DiagnosticCode.E0247_MultiAssignmentTargetCountMismatch,
             span,
-            $"Function '{functionName}' returns {expected} value(s), but {actual} assignment target(s) provided.");
+            $"Expression '{expressionName}' returns {expected} value(s), but {actual} assignment target(s) provided.");
     }
 
     public void ReportDiscardInExpression(TextSpan span)
@@ -502,7 +502,7 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
 
     public void ReportExpressionNotAStatement(TextSpan span)
     {
-        Report(DiagnosticCode.E0259_ExpressionNotAStatement, span, "An expression is not a statement. Only function calls are allowed as standalone statements.");
+        Report(DiagnosticCode.E0259_ExpressionNotAStatement, span, "An expression is not a statement. Only function calls and spawn expressions are allowed as standalone statements.");
     }
 
     public void ReportRangeIterationRequiresBinding(TextSpan span)
@@ -570,6 +570,14 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
     public void ReportTaskLayoutCannotBeInherited(TextSpan span, string taskName)
     {
         Report(DiagnosticCode.E0268_TaskLayoutCannotBeInherited, span, $"Task layout '{taskName}' cannot be inherited.");
+    }
+
+    /// <summary>
+    /// Reports that a spawn expression targets something other than a task.
+    /// </summary>
+    public void ReportInvalidSpawnTarget(TextSpan span, string targetName)
+    {
+        Report(DiagnosticCode.E0279_InvalidSpawnTarget, span, $"Spawn target '{targetName}' is not a task.");
     }
 
     /// <summary>

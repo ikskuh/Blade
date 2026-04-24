@@ -47,7 +47,9 @@
       "BoundYieldStatement",
       "BoundYieldtoStatement"
     ],
-    "uncovered": []
+    "uncovered": [
+      "BoundSpawnExpression"
+    ]
   },
   "mir": {
     "covered": [

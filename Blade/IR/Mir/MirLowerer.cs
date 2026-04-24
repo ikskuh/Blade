@@ -214,7 +214,13 @@ public static class MirLowerer
                 CollectAddressTakenSymbols(assignment.Value, symbols);
                 break;
             case BoundMultiAssignmentStatement multiAssignment:
-                foreach (BoundExpression argument in multiAssignment.Call.Arguments)
+                IEnumerable<BoundExpression> arguments = multiAssignment.Producer switch
+                {
+                    BoundCallExpression call => call.Arguments,
+                    BoundSpawnExpression spawn => spawn.Arguments,
+                    _ => []
+                };
+                foreach (BoundExpression argument in arguments)
                     CollectAddressTakenSymbols(argument, symbols);
                 break;
             case BoundExpressionStatement expressionStatement:
@@ -677,7 +683,8 @@ public static class MirLowerer
 
         private void LowerMultiAssignmentStatement(BoundMultiAssignmentStatement multiAssignment)
         {
-            BoundCallExpression callExpression = multiAssignment.Call;
+            if (multiAssignment.Producer is not BoundCallExpression callExpression)
+                throw new NotSupportedException("Spawn multi-assignment lowering is not implemented.");
 
             // Lower call arguments
             List<MirValueId> arguments = [];

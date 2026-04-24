@@ -10,6 +10,22 @@ public abstract class BoundExpression(BoundNodeKind kind, TextSpan span, BladeTy
     public BladeType Type { get; } = type;
 }
 
+/// <summary>
+/// Represents an expression that can produce one or more assignment results.
+/// </summary>
+public abstract class BoundMultiResultProducerExpression(BoundNodeKind kind, TextSpan span, BladeType type) : BoundExpression(kind, span, type)
+{
+    /// <summary>
+    /// Gets the logical result types produced by this expression.
+    /// </summary>
+    public abstract IReadOnlyList<BladeType> ResultTypes { get; }
+
+    /// <summary>
+    /// Gets the user-facing name used in diagnostics for this expression.
+    /// </summary>
+    public abstract string ResultSourceName { get; }
+}
+
 public sealed class BoundLiteralExpression(BladeValue value, TextSpan span) : BoundExpression(BoundNodeKind.LiteralExpression, span, Requires.NotNull(value).Type)
 {
     public BladeValue Value { get; } = Requires.NotNull(value);
@@ -131,10 +147,67 @@ public sealed class BoundBinaryExpression(BoundExpression left, BoundBinaryOpera
     public BoundExpression Right { get; } = right;
 }
 
-public sealed class BoundCallExpression(FunctionSymbol function, IReadOnlyList<BoundExpression> arguments, TextSpan span, BladeType type) : BoundExpression(BoundNodeKind.CallExpression, span, type)
+public sealed class BoundCallExpression(FunctionSymbol function, IReadOnlyList<BoundExpression> arguments, TextSpan span, BladeType type) : BoundMultiResultProducerExpression(BoundNodeKind.CallExpression, span, type)
 {
     public FunctionSymbol Function { get; } = function;
     public IReadOnlyList<BoundExpression> Arguments { get; } = arguments;
+    public override IReadOnlyList<BladeType> ResultTypes => Function.ReturnTypes;
+    public override string ResultSourceName => Function.Name;
+}
+
+/// <summary>
+/// Identifies the task-spawn operator used by a bound spawn expression.
+/// </summary>
+public enum BoundSpawnOperatorKind
+{
+    Spawn,
+    SpawnPair,
+}
+
+/// <summary>
+/// Represents a bound task-spawning expression.
+/// </summary>
+public sealed class BoundSpawnExpression(BoundSpawnOperatorKind operatorKind, TaskSymbol task, IReadOnlyList<BoundExpression> arguments, int requestedResultCount, TextSpan span, BladeType type) : BoundMultiResultProducerExpression(BoundNodeKind.SpawnExpression, span, type)
+{
+    private static readonly IReadOnlyList<BladeType> NoResultTypes = [];
+    private static readonly IReadOnlyList<BladeType> SingleResultTypes = [BuiltinTypes.U32];
+    private static readonly IReadOnlyList<BladeType> PairResultTypes = [BuiltinTypes.U32, BuiltinTypes.Bool];
+
+    /// <summary>
+    /// Gets which spawn operator was used.
+    /// </summary>
+    public BoundSpawnOperatorKind OperatorKind { get; } = operatorKind;
+
+    /// <summary>
+    /// Gets the task being launched.
+    /// </summary>
+    public TaskSymbol Task { get; } = task;
+
+    /// <summary>
+    /// Gets the bound startup arguments passed to the task.
+    /// </summary>
+    public IReadOnlyList<BoundExpression> Arguments { get; } = Requires.NotNull(arguments);
+
+    /// <summary>
+    /// Gets the number of logical results requested by the consumer.
+    /// </summary>
+    public int RequestedResultCount { get; } = requestedResultCount;
+
+    /// <summary>
+    /// Gets the logical result types made visible by this spawn expression.
+    /// </summary>
+    public override IReadOnlyList<BladeType> ResultTypes => RequestedResultCount switch
+    {
+        0 => NoResultTypes,
+        1 => SingleResultTypes,
+        2 => PairResultTypes,
+        _ => Assert.UnreachableValue<IReadOnlyList<BladeType>>("spawn expressions only support 0, 1, or 2 requested results"), // pragma: force-coverage
+    };
+
+    /// <summary>
+    /// Gets the diagnostic display name for the spawn operator.
+    /// </summary>
+    public override string ResultSourceName => OperatorKind == BoundSpawnOperatorKind.Spawn ? "spawn" : "spawnpair";
 }
 
 public sealed class BoundIntrinsicCallExpression(P2Mnemonic mnemonic, IReadOnlyList<BoundExpression> arguments, TextSpan span, BladeType type) : BoundExpression(BoundNodeKind.IntrinsicCallExpression, span, type)

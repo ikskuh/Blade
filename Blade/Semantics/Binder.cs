@@ -1465,7 +1465,9 @@ public sealed class Binder
 
             case ExpressionStatementSyntax expressionStatement:
                 {
-                    BoundExpression expr = BindExpression(expressionStatement.Expression);
+                    BoundExpression expr = expressionStatement.Expression is SpawnExpressionSyntax spawnExpression
+                        ? BindSpawnExpression(spawnExpression, requestedResultCount: 0)
+                        : BindExpression(expressionStatement.Expression);
                     return new BoundExpressionStatement(expr, expressionStatement.Span);
                 }
 
@@ -2224,8 +2226,10 @@ public sealed class Binder
 
     private BoundStatement BindMultiAssignmentStatement(MultiAssignmentStatementSyntax multiAssignment)
     {
-        BoundExpression rhs = BindExpression(multiAssignment.Value);
-        if (rhs is not BoundCallExpression call)
+        BoundExpression rhs = multiAssignment.Value is SpawnExpressionSyntax spawnExpression
+            ? BindSpawnExpression(spawnExpression, requestedResultCount: 2)
+            : BindExpression(multiAssignment.Value);
+        if (rhs is not BoundMultiResultProducerExpression producer)
         {
             _diagnostics.ReportMultiAssignmentRequiresCall(multiAssignment.Value.Span);
             // Bind targets anyway to get diagnostics flowing
@@ -2234,13 +2238,12 @@ public sealed class Binder
             return new BoundExpressionStatement(rhs, multiAssignment.Span);
         }
 
-        FunctionSymbol function = call.Function;
-        IReadOnlyList<BladeType> returnTypes = function.ReturnTypes;
+        IReadOnlyList<BladeType> returnTypes = producer.ResultTypes;
         int targetCount = multiAssignment.Targets.Count;
         if (targetCount != returnTypes.Count)
         {
             _diagnostics.ReportMultiAssignmentTargetCountMismatch(
-                multiAssignment.Operator.Span, function.Name, returnTypes.Count, targetCount);
+                multiAssignment.Operator.Span, producer.ResultSourceName, returnTypes.Count, targetCount);
         }
 
         List<BoundAssignmentTarget> targets = new();
@@ -2273,7 +2276,7 @@ public sealed class Binder
                 targets.Add(BindAssignmentTarget(targetSyntax));
         }
 
-        return new BoundMultiAssignmentStatement(targets, call, multiAssignment.Span);
+        return new BoundMultiAssignmentStatement(targets, producer, multiAssignment.Span);
     }
 
     private BoundStatement BindBreakOrContinueStatement(Token keywordToken, bool isBreak)
@@ -2508,6 +2511,9 @@ public sealed class Binder
 
             case CallExpressionSyntax call:
                 return BindCallExpression(call);
+
+            case SpawnExpressionSyntax spawn:
+                return BindSpawnExpression(spawn, requestedResultCount: 1);
 
             case IntrinsicCallExpressionSyntax intrinsic:
                 return BindIntrinsicCallExpression(intrinsic);
@@ -3340,6 +3346,65 @@ public sealed class Binder
         return call;
     }
 
+    private BoundExpression BindSpawnExpression(SpawnExpressionSyntax spawnExpression, int requestedResultCount)
+    {
+        BoundExpression target = BindExpression(spawnExpression.Target);
+        if (target is not BoundSymbolExpression { Symbol: TaskSymbol task })
+        {
+            if (target is not BoundErrorExpression)
+                _diagnostics.ReportInvalidSpawnTarget(spawnExpression.Target.Span, GetSpawnTargetDisplayName(spawnExpression.Target));
+
+            if (spawnExpression.Argument is not null)
+                _ = BindExpression(spawnExpression.Argument);
+
+            return new BoundErrorExpression(spawnExpression.Span);
+        }
+
+        IReadOnlyList<BoundExpression> arguments = BindSpawnArguments(task, spawnExpression);
+
+        BladeType resultType = requestedResultCount switch
+        {
+            0 => BuiltinTypes.Void,
+            1 => BuiltinTypes.U32,
+            2 => BuiltinTypes.Unknown,
+            _ => Assert.UnreachableValue<BladeType>("spawn expressions only support 0, 1, or 2 requested results"), // pragma: force-coverage
+        };
+
+        BoundSpawnOperatorKind operatorKind = spawnExpression.Keyword.Kind == TokenKind.SpawnpairKeyword
+            ? BoundSpawnOperatorKind.SpawnPair
+            : BoundSpawnOperatorKind.Spawn;
+
+        _diagnostics.ReportUnsupportedLowering(spawnExpression.Keyword.Span, operatorKind == BoundSpawnOperatorKind.Spawn ? "spawn" : "spawnpair");
+        return new BoundSpawnExpression(operatorKind, task, arguments, requestedResultCount, spawnExpression.Span, resultType);
+    }
+
+    private IReadOnlyList<BoundExpression> BindSpawnArguments(TaskSymbol task, SpawnExpressionSyntax spawnExpression)
+    {
+        IReadOnlyList<ParameterVariableSymbol> parameters = task.EntryFunction.Parameters;
+        int expectedCount = parameters.Count;
+        int actualCount = spawnExpression.Argument is null ? 0 : 1;
+        if (expectedCount != actualCount)
+            _diagnostics.ReportArgumentCountMismatch(spawnExpression.OpenParen.Span, task.Name, expectedCount, actualCount);
+
+        if (spawnExpression.Argument is null)
+            return [];
+
+        if (parameters.Count == 1)
+            return [BindExpression(spawnExpression.Argument, parameters[0].Type)];
+
+        return [BindExpression(spawnExpression.Argument)];
+    }
+
+    private static string GetSpawnTargetDisplayName(ExpressionSyntax expression)
+    {
+        return expression switch
+        {
+            NameExpressionSyntax name => name.Name.Text,
+            MemberAccessExpressionSyntax memberAccess => $"{GetSpawnTargetDisplayName(memberAccess.Expression)}.{memberAccess.Member.Text}",
+            _ => "<invalid>"
+        };
+    }
+
     private void ValidateFunctionLayoutSubset(FunctionSymbol callee, TextSpan span)
     {
         IReadOnlyList<LayoutSymbol> callerLayouts = _currentFunction is null
@@ -3518,6 +3583,10 @@ public sealed class Binder
                 failure = new ComptimeFailure(ComptimeFailureKind.NotEvaluable, call.Span, $"call to '{call.Function.Name}' must be folded before it can appear in a comptime-required context.");
                 return false;
 
+            case BoundSpawnExpression spawn:
+                failure = new ComptimeFailure(ComptimeFailureKind.UnsupportedConstruct, spawn.Span, $"{spawn.ResultSourceName} expressions are not supported in comptime-required contexts.");
+                return false;
+
             case BoundIntrinsicCallExpression intrinsic:
                 failure = new ComptimeFailure(ComptimeFailureKind.UnsupportedConstruct, intrinsic.Span, "intrinsic calls are not supported in comptime-required contexts.");
                 return false;
@@ -3563,6 +3632,15 @@ public sealed class Binder
 
             case BoundCallExpression call:
                 foreach (BoundExpression argument in call.Arguments)
+                {
+                    if (ContainsErrorExpression(argument))
+                        return true;
+                }
+
+                return false;
+
+            case BoundSpawnExpression spawn:
+                foreach (BoundExpression argument in spawn.Arguments)
                 {
                     if (ContainsErrorExpression(argument))
                         return true;

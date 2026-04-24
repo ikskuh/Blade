@@ -5,6 +5,7 @@ using Blade.Semantics;
 using Blade.Semantics.Bound;
 using Blade.Syntax;
 using Blade.Syntax.Nodes;
+using BoundDiagnosticBag = System.Collections.Generic.IReadOnlyList<Blade.Diagnostics.Diagnostic>;
 using DiagnosticBag = System.Collections.Generic.IReadOnlyList<Blade.Diagnostics.Diagnostic>;
 
 namespace Blade.Tests;
@@ -319,6 +320,88 @@ public class BinderTests
 
         BoundFunctionMember helper = GetFunction(program, "helper");
         Assert.That(helper.Symbol.AssociatedLayouts, Is.Empty);
+    }
+
+    [Test]
+    public void SpawnExpressionStatement_BindsVoidSpawnExpression()
+    {
+        (_, BoundProgram program, BoundDiagnosticBag diagnostics) = Bind("""
+            cog task worker() {
+            }
+
+            cog task main() {
+                spawn worker();
+            }
+            """);
+
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.True);
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0101_UnexpectedToken), Is.False);
+
+        BoundExpressionStatement statement = (BoundExpressionStatement)program.EntryPointFunction.Body.Statements[0];
+        BoundSpawnExpression spawn = (BoundSpawnExpression)statement.Expression;
+        Assert.That(spawn.OperatorKind, Is.EqualTo(BoundSpawnOperatorKind.Spawn));
+        Assert.That(spawn.Type, Is.EqualTo(BuiltinTypes.Void));
+        Assert.That(spawn.ResultTypes, Is.Empty);
+        Assert.That(spawn.Task.Name, Is.EqualTo("worker"));
+    }
+
+    [Test]
+    public void SpawnAssignment_BindsSingleResultSpawnExpression()
+    {
+        (_, BoundProgram program, BoundDiagnosticBag diagnostics) = Bind("""
+            cog task worker() {
+            }
+
+            cog task main() {
+                var id: u32 = spawn worker();
+                _ = id;
+            }
+            """);
+
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.True);
+
+        BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)program.EntryPointFunction.Body.Statements[0];
+        BoundSpawnExpression spawn = (BoundSpawnExpression)declaration.Initializer!;
+        Assert.That(spawn.Type, Is.EqualTo(BuiltinTypes.U32));
+        Assert.That(spawn.ResultTypes.Select(static type => type.Name), Is.EqualTo([BuiltinTypes.U32.Name]));
+    }
+
+    [Test]
+    public void SpawnMultiAssignment_BindsTwoResultSpawnExpression()
+    {
+        (_, BoundProgram program, BoundDiagnosticBag diagnostics) = Bind("""
+            cog task worker() {
+            }
+
+            cog task main() {
+                var id: u32 = 0;
+                var ok: bool = false;
+                id, ok = spawn worker();
+            }
+            """);
+
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.True);
+
+        BoundMultiAssignmentStatement statement = (BoundMultiAssignmentStatement)program.EntryPointFunction.Body.Statements[2];
+        BoundSpawnExpression spawn = (BoundSpawnExpression)statement.Producer;
+        Assert.That(spawn.Type, Is.EqualTo(BuiltinTypes.Unknown));
+        Assert.That(spawn.ResultTypes.Select(static type => type.Name), Is.EqualTo([BuiltinTypes.U32.Name, BuiltinTypes.Bool.Name]));
+    }
+
+    [Test]
+    public void SpawnNonTaskTarget_ReportsDiagnostic()
+    {
+        (_, _, BoundDiagnosticBag diagnostics) = Bind("""
+            fn helper() {
+            }
+
+            cog task main() {
+                spawn helper();
+            }
+            """);
+
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0279_InvalidSpawnTarget), Is.True);
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.False);
     }
 
     [Test]
