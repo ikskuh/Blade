@@ -1,0 +1,9 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - E0212
+
+fn returns_void() {
+    return 10; // must emit E0212
+}
+
+cog task main {}
