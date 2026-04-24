@@ -19,6 +19,7 @@ namespace Blade.Regressions;
 public sealed class RegressionRunOptions
 {
     public string? RepositoryRootPath { get; init; }
+    public string? ConfigPath { get; init; }
     public IReadOnlyList<string> Filters { get; init; } = [];
     public bool WriteFailureArtifacts { get; init; } = true;
     public string? HardwarePort { get; init; }
@@ -93,8 +94,6 @@ public enum RegressionFixtureKind
 {
     Blade,
     BladeCrash,
-    Spin2,
-    Pasm2,
 }
 
 public enum RegressionExpectationKind
@@ -149,6 +148,64 @@ public sealed class RegressionFixture
     public string Text { get; }
     public string BodyText { get; }
     public RegressionExpectation Expectation { get; }
+}
+
+internal enum RegressionPoolExpectation
+{
+    Accept,
+    Reject,
+    Encoded,
+}
+
+internal sealed class RegressionPoolConfiguration
+{
+    public RegressionPoolConfiguration(string absolutePath, string relativePath, RegressionPoolExpectation expectation)
+    {
+        AbsolutePath = absolutePath;
+        RelativePath = relativePath;
+        Expectation = expectation;
+    }
+
+    public string AbsolutePath { get; }
+    public string RelativePath { get; }
+    public RegressionPoolExpectation Expectation { get; }
+}
+
+internal sealed class DiscoveredRegressionFixture
+{
+    public DiscoveredRegressionFixture(string absolutePath, string relativePath, RegressionPoolExpectation poolExpectation)
+    {
+        AbsolutePath = absolutePath;
+        RelativePath = relativePath;
+        PoolExpectation = poolExpectation;
+    }
+
+    public string AbsolutePath { get; }
+    public string RelativePath { get; }
+    public RegressionPoolExpectation PoolExpectation { get; }
+}
+
+internal sealed class RegressionSuiteConfiguration
+{
+    public RegressionSuiteConfiguration(
+        string repositoryRootPath,
+        string configPath,
+        IReadOnlyList<RegressionPoolConfiguration> pools,
+        string? hardwareRuntimePath,
+        string? irCoverageGuardPath)
+    {
+        RepositoryRootPath = repositoryRootPath;
+        ConfigPath = configPath;
+        Pools = pools;
+        HardwareRuntimePath = hardwareRuntimePath;
+        IrCoverageGuardPath = irCoverageGuardPath;
+    }
+
+    public string RepositoryRootPath { get; }
+    public string ConfigPath { get; }
+    public IReadOnlyList<RegressionPoolConfiguration> Pools { get; }
+    public string? HardwareRuntimePath { get; }
+    public string? IrCoverageGuardPath { get; }
 }
 
 public enum SnippetKind
@@ -287,23 +344,24 @@ public static class RegressionRunner
     public static RegressionRunResult Run(RegressionRunOptions? options = null)
     {
         RegressionRunOptions effectiveOptions = options ?? new RegressionRunOptions();
-        string repositoryRootPath = RepositoryLayout.FindRepositoryRoot(effectiveOptions.RepositoryRootPath);
+        RegressionSuiteConfiguration configuration = RegressionConfigurationLoader.Load(effectiveOptions);
+        string repositoryRootPath = configuration.RepositoryRootPath;
         string? hardwarePort = HardwarePortResolver.Resolve(effectiveOptions.HardwarePort);
         HardwareLoaderKind hardwareLoader = HardwareLoaderSettings.ResolveLoader(effectiveOptions.HardwareLoader);
         bool hardwareTurbopropNoVersionCheck = HardwareLoaderSettings.ResolveTurbopropNoVersionCheck(effectiveOptions.HardwareTurbopropNoVersionCheck);
         bool isFullRun = effectiveOptions.Filters.Count == 0;
 
         FlexspinProbeResult flexspinProbe = FlexspinRunner.ProbeAvailability();
-        List<string> fixturePaths = DiscoverFixturePaths(repositoryRootPath, effectiveOptions.Filters);
+        List<DiscoveredRegressionFixture> fixtures = DiscoverFixtures(configuration, effectiveOptions.Filters);
         List<RegressionFixtureResult> fixtureResults = [];
         ArtifactWriter artifactWriter = new(repositoryRootPath, effectiveOptions.WriteFailureArtifacts);
-        RegressionIrCoverageSession? irCoverageSession = RegressionIrCoverageSession.TryCreate(repositoryRootPath, isFullRun);
+        RegressionIrCoverageSession? irCoverageSession = RegressionIrCoverageSession.TryCreate(configuration.IrCoverageGuardPath, isFullRun);
 
-        foreach (string fixturePath in fixturePaths)
+        foreach (DiscoveredRegressionFixture fixture in fixtures)
         {
             RegressionFixtureResult result = EvaluateFixture(
-                repositoryRootPath,
-                fixturePath,
+                configuration,
+                fixture,
                 artifactWriter,
                 flexspinProbe,
                 irCoverageSession,
@@ -317,43 +375,52 @@ public static class RegressionRunner
         return new RegressionRunResult(repositoryRootPath, fixtureResults, irCoverageReport);
     }
 
-    private static List<string> DiscoverFixturePaths(string repositoryRootPath, IReadOnlyList<string> filters)
+    private static List<DiscoveredRegressionFixture> DiscoverFixtures(
+        RegressionSuiteConfiguration configuration,
+        IReadOnlyList<string> filters)
     {
-        List<string> paths = [];
-        AddFixturePaths(paths, Path.Combine(repositoryRootPath, "Examples"), "*.blade");
-        AddFixturePaths(paths, Path.Combine(repositoryRootPath, "Examples"), "*.blade.crash");
-        AddFixturePaths(paths, Path.Combine(repositoryRootPath, "Demonstrators"), "*.blade");
-        AddFixturePaths(paths, Path.Combine(repositoryRootPath, "Demonstrators"), "*.blade.crash");
-        AddFixturePaths(paths, Path.Combine(repositoryRootPath, "RegressionTests"), "*.blade");
-        AddFixturePaths(paths, Path.Combine(repositoryRootPath, "RegressionTests"), "*.blade.crash");
-        AddFixturePaths(paths, Path.Combine(repositoryRootPath, "RegressionTests"), "*.spin2");
-        AddFixturePaths(paths, Path.Combine(repositoryRootPath, "RegressionTests"), "*.pasm2");
+        Dictionary<string, DiscoveredRegressionFixture> fixturesByPath = new(PathComparer.Instance);
+        foreach (RegressionPoolConfiguration pool in configuration.Pools)
+        {
+            AddFixturePaths(fixturesByPath, configuration.RepositoryRootPath, pool, "*.blade");
+            AddFixturePaths(fixturesByPath, configuration.RepositoryRootPath, pool, "*.blade.crash");
+        }
 
-        IEnumerable<string> filteredPaths = paths;
+        IEnumerable<DiscoveredRegressionFixture> filteredPaths = fixturesByPath.Values;
         if (filters.Count > 0)
         {
             filteredPaths = filteredPaths.Where(path =>
-            {
-                string relativePath = Path.GetRelativePath(repositoryRootPath, path).Replace('\\', '/');
-                return filters.Any(filter => relativePath.Contains(filter, StringComparison.OrdinalIgnoreCase));
-            });
+                filters.Any(filter => path.RelativePath.Contains(filter, StringComparison.OrdinalIgnoreCase)));
         }
 
-        return filteredPaths.OrderBy(path => path, StringComparer.Ordinal).ToList();
+        return filteredPaths
+            .OrderBy(path => path.RelativePath, StringComparer.Ordinal)
+            .ToList();
     }
 
-    private static void AddFixturePaths(List<string> paths, string directoryPath, string searchPattern)
+    private static void AddFixturePaths(
+        Dictionary<string, DiscoveredRegressionFixture> fixturesByPath,
+        string repositoryRootPath,
+        RegressionPoolConfiguration pool,
+        string searchPattern)
     {
-        if (!Directory.Exists(directoryPath))
-            return;
-
-        string[] discovered = Directory.GetFiles(directoryPath, searchPattern, SearchOption.AllDirectories);
-        paths.AddRange(discovered);
+        string[] discovered = Directory.GetFiles(pool.AbsolutePath, searchPattern, SearchOption.AllDirectories);
+        foreach (string fixturePath in discovered)
+        {
+            string absolutePath = Path.GetFullPath(fixturePath);
+            string relativePath = Path.GetRelativePath(repositoryRootPath, absolutePath).Replace('\\', '/');
+            DiscoveredRegressionFixture fixture = new(absolutePath, relativePath, pool.Expectation);
+            if (!fixturesByPath.TryAdd(absolutePath, fixture))
+            {
+                throw new InvalidOperationException(FormattableString.Invariant(
+                    $"Fixture '{relativePath}' was discovered more than once. Check for overlapping regression pools."));
+            }
+        }
     }
 
     private static RegressionFixtureResult EvaluateFixture(
-        string repositoryRootPath,
-        string fixturePath,
+        RegressionSuiteConfiguration configuration,
+        DiscoveredRegressionFixture discoveredFixture,
         ArtifactWriter artifactWriter,
         FlexspinProbeResult flexspinProbe,
         RegressionIrCoverageSession? irCoverageSession,
@@ -361,19 +428,21 @@ public static class RegressionRunner
         HardwareLoaderKind hardwareLoader,
         bool hardwareTurbopropNoVersionCheck)
     {
-        string relativePath = Path.GetRelativePath(repositoryRootPath, fixturePath).Replace('\\', '/');
+        string repositoryRootPath = configuration.RepositoryRootPath;
+        string fixturePath = discoveredFixture.AbsolutePath;
+        string relativePath = discoveredFixture.RelativePath;
         RegressionFixture? fixture = null;
 
         try
         {
-            fixture = RegressionFixtureParser.Parse(repositoryRootPath, fixturePath);
+            fixture = RegressionFixtureParser.Parse(discoveredFixture);
             if (fixture.Kind == RegressionFixtureKind.BladeCrash)
             {
                 _ = ExecuteBladeCrashFixture(fixture);
                 return new RegressionFixtureResult(relativePath, RegressionFixtureOutcome.Pass, "passed", [], null);
             }
 
-            EvaluatedFixture evaluatedFixture = ExecuteFixture(repositoryRootPath, fixture, irCoverageSession);
+            EvaluatedFixture evaluatedFixture = ExecuteFixture(configuration, fixture, irCoverageSession);
             List<string> issues = [];
             bool hardwareAttempted = false;
 
@@ -465,26 +534,24 @@ public static class RegressionRunner
     }
 
     private static EvaluatedFixture ExecuteFixture(
-        string repositoryRootPath,
+        RegressionSuiteConfiguration configuration,
         RegressionFixture fixture,
         RegressionIrCoverageSession? irCoverageSession)
     {
         return fixture.Kind switch
         {
-            RegressionFixtureKind.Blade => ExecuteBladeFixture(repositoryRootPath, fixture, irCoverageSession),
+            RegressionFixtureKind.Blade => ExecuteBladeFixture(configuration, fixture, irCoverageSession),
             RegressionFixtureKind.BladeCrash => ExecuteBladeCrashFixture(fixture),
-            RegressionFixtureKind.Pasm2 => EvaluatedFixture.ForAssembly(fixture.BodyText),
-            RegressionFixtureKind.Spin2 => EvaluatedFixture.ForAssembly(fixture.BodyText),
             _ => throw new InvalidOperationException($"Unknown fixture kind '{fixture.Kind}'."),
         };
     }
 
     private static EvaluatedFixture ExecuteBladeFixture(
-        string repositoryRootPath,
+        RegressionSuiteConfiguration configuration,
         RegressionFixture fixture,
         RegressionIrCoverageSession? irCoverageSession)
     {
-        CompilationOptions options = BuildCompilationOptions(repositoryRootPath, fixture.Expectation, fixture.AbsolutePath);
+        CompilationOptions options = BuildCompilationOptions(configuration.HardwareRuntimePath, fixture.Expectation, fixture.AbsolutePath);
         CompilationResult compilation = CompilerDriver.Compile(fixture.Text, fixture.AbsolutePath, options);
         List<ActualDiagnostic> diagnostics = compilation.Diagnostics
             .Select(diag =>
@@ -563,7 +630,7 @@ public static class RegressionRunner
     }
 
     private static CompilationOptions BuildCompilationOptions(
-        string repositoryRootPath,
+        string? defaultHardwareRuntimePath,
         RegressionExpectation expectation,
         string fixturePath)
     {
@@ -572,8 +639,13 @@ public static class RegressionRunner
                 || expectation.ExpectationKind == RegressionExpectationKind.XFailHw)
             && !effectiveArgs.Any(static arg => arg.StartsWith("--runtime=", StringComparison.Ordinal)))
         {
-            string runtimePath = Path.Combine(repositoryRootPath, "Blade.HwTestRunner", "Runtime.spin2");
-            effectiveArgs.Add($"--runtime={runtimePath}");
+            if (string.IsNullOrWhiteSpace(defaultHardwareRuntimePath))
+            {
+                throw new InvalidOperationException(
+                    "Hardware fixtures require --runtime=... in ARGS or a configured hardwareRuntimePath.");
+            }
+
+            effectiveArgs.Add($"--runtime={defaultHardwareRuntimePath}");
         }
 
         string baseDirectory = Path.GetDirectoryName(fixturePath) ?? Environment.CurrentDirectory;
@@ -652,27 +724,26 @@ public static class RegressionRunner
         if (!expectation.HasCodeAssertions)
             return issues;
 
-        if (fixture.Kind == RegressionFixtureKind.Blade)
+        if (fixture.Kind != RegressionFixtureKind.Blade)
         {
-            if (expectation.Stage is null)
-            {
-                issues.Add("fixture has code assertions but no STAGE");
-                return issues;
-            }
-
-            if (!evaluatedFixture.StageOutputs.TryGetValue(expectation.Stage.Value, out string? actualText))
-            {
-                issues.Add($"requested stage '{StageName(expectation.Stage.Value)}' is unavailable");
-                return issues;
-            }
-
-            string normalizedActual = CodeNormalizer.NormalizeBladeStage(expectation.Stage.Value, actualText);
-            issues.AddRange(EvaluateNormalizedAssertions(expectation, normalizedActual, expectation.Stage.Value));
+            issues.Add("only .blade fixtures support code assertions");
             return issues;
         }
 
-        string normalizedAssembly = CodeNormalizer.NormalizeAssemblyText(evaluatedFixture.BodyText);
-        issues.AddRange(EvaluateNormalizedAssertions(expectation, normalizedAssembly, null));
+        if (expectation.Stage is null)
+        {
+            issues.Add("fixture has code assertions but no STAGE");
+            return issues;
+        }
+
+        if (!evaluatedFixture.StageOutputs.TryGetValue(expectation.Stage.Value, out string? actualText))
+        {
+            issues.Add($"requested stage '{StageName(expectation.Stage.Value)}' is unavailable");
+            return issues;
+        }
+
+        string normalizedActual = CodeNormalizer.NormalizeBladeStage(expectation.Stage.Value, actualText);
+        issues.AddRange(EvaluateNormalizedAssertions(expectation, normalizedActual, expectation.Stage.Value));
         return issues;
     }
 
@@ -837,28 +908,14 @@ public static class RegressionRunner
         if (!ShouldRunFlexspin(fixture))
             return issues;
 
-        string? sourceText = fixture.Kind switch
-        {
-            RegressionFixtureKind.Blade => evaluatedFixture.FinalAssemblyText,
-            RegressionFixtureKind.Pasm2 => PasmWrapper.Wrap(fixture.BodyText),
-            RegressionFixtureKind.Spin2 => fixture.BodyText,
-            _ => null,
-        };
-
+        string? sourceText = evaluatedFixture.FinalAssemblyText;
         if (string.IsNullOrWhiteSpace(sourceText))
         {
             issues.Add("FlexSpin validation was required, but no assembly text was available");
             return issues;
         }
 
-        string fileExtension = fixture.Kind switch
-        {
-            RegressionFixtureKind.Blade => ".spin2",
-            RegressionFixtureKind.Pasm2 => ".spin2",
-            RegressionFixtureKind.Spin2 => ".spin2",
-            _ => ".spin2",
-        };
-        FlexspinResult result = FlexspinRunner.Run(sourceText, fileExtension);
+        FlexspinResult result = FlexspinRunner.Run(sourceText);
         if (!result.Succeeded)
         {
             issues.Add("FlexSpin failed:");
@@ -1001,8 +1058,7 @@ public static class RegressionRunner
         {
             FlexspinExpectation.Required => true,
             FlexspinExpectation.Forbidden => false,
-            FlexspinExpectation.Auto => fixture.Kind != RegressionFixtureKind.Blade
-                || fixture.Expectation.ExpectationKind == RegressionExpectationKind.Pass
+            FlexspinExpectation.Auto => fixture.Expectation.ExpectationKind == RegressionExpectationKind.Pass
                 || fixture.Expectation.ExpectationKind == RegressionExpectationKind.PassHw
                 || fixture.Expectation.ExpectationKind == RegressionExpectationKind.XFailHw,
             _ => false,
@@ -1157,93 +1213,54 @@ internal static class RegressionFixtureParser
         @"^\[(?<parameters>[^\]]*)\]\s*=\s*(?<expected>.+)$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    public static RegressionFixture Parse(string repositoryRootPath, string fixturePath)
+    public static RegressionFixture Parse(DiscoveredRegressionFixture discoveredFixture)
     {
-        RegressionFixtureKind kind = DetermineFixtureKind(fixturePath);
-        string relativePath = Path.GetRelativePath(repositoryRootPath, fixturePath).Replace('\\', '/');
-
+        RegressionFixtureKind kind = DetermineFixtureKind(discoveredFixture.AbsolutePath);
         if (kind == RegressionFixtureKind.BladeCrash)
         {
+            if (discoveredFixture.PoolExpectation != RegressionPoolExpectation.Encoded)
+                throw new InvalidOperationException(".blade.crash fixtures are only valid in encoded pools.");
+
             return new RegressionFixture(
-                fixturePath,
-                relativePath,
+                discoveredFixture.AbsolutePath,
+                discoveredFixture.RelativePath,
                 kind,
                 string.Empty,
                 string.Empty,
-                new RegressionExpectation(
-                    RegressionExpectationKind.Pass,
-                    null,
-                    [],
-                    [],
-                    null,
-                    [],
-                    [],
-                    FlexspinExpectation.Forbidden,
-                    [],
-                    []));
+                CreateDefaultExpectation(RegressionExpectationKind.Pass));
         }
 
-        string text = File.ReadAllText(fixturePath);
-        HeaderScanResult headerScan = HeaderScanResult.Scan(text, kind);
+        string text = File.ReadAllText(discoveredFixture.AbsolutePath);
+        RegressionExpectation expectation;
+        string bodyText;
 
-        if (relativePath.StartsWith("Examples/", StringComparison.Ordinal) && headerScan.HasDirectiveHeader)
-            throw new InvalidOperationException("Examples fixtures must not contain expectation headers.");
-
-        RegressionExpectation expectation = headerScan.HasDirectiveHeader
-            ? ParseExpectation(headerScan, kind)
-            : new RegressionExpectation(
-                RegressionExpectationKind.Pass,
-                null,
-                [],
-                [],
-                null,
-                [],
-                [],
-                FlexspinExpectation.Auto,
-                [],
-                []);
-
-        if (kind != RegressionFixtureKind.Blade && expectation.HasDiagnosticAssertions)
-            throw new InvalidOperationException("Assembly fixtures do not support DIAGNOSTICS assertions.");
-
-        if (kind == RegressionFixtureKind.Blade && expectation.HasCodeAssertions && expectation.Stage is null)
-            throw new InvalidOperationException("Blade fixtures with code assertions must specify STAGE.");
-
-        if (kind != RegressionFixtureKind.Blade && expectation.Stage is not null)
-            throw new InvalidOperationException("STAGE is only valid for .blade fixtures.");
-
-        if (kind != RegressionFixtureKind.Blade && expectation.CompilerArgs.Count > 0)
-            throw new InvalidOperationException("ARGS is only valid for .blade fixtures.");
-
-        if (kind != RegressionFixtureKind.Blade && expectation.HardwareRuns.Count > 0)
-            throw new InvalidOperationException("RUNS is only valid for .blade fixtures.");
-
-        if (expectation.ExpectationKind != RegressionExpectationKind.PassHw
-                && expectation.ExpectationKind != RegressionExpectationKind.XFailHw
-                && expectation.HardwareRuns.Count > 0)
-            throw new InvalidOperationException("RUNS is only valid with EXPECT: pass-hw or EXPECT: xfail-hw.");
-
-        if (expectation.ExpectationKind == RegressionExpectationKind.PassHw && expectation.HardwareRuns.Count == 0)
-            throw new InvalidOperationException("EXPECT: pass-hw requires RUNS.");
-
-        if (expectation.ExpectationKind == RegressionExpectationKind.XFailHw && expectation.HardwareRuns.Count == 0)
-            throw new InvalidOperationException("EXPECT: xfail-hw requires RUNS.");
-
-        bool isHwTestFixture = fixturePath.Contains(
-            $"{Path.DirectorySeparatorChar}HwTest{Path.DirectorySeparatorChar}",
-            StringComparison.OrdinalIgnoreCase);
-        if (isHwTestFixture && expectation.ExpectationKind == RegressionExpectationKind.Pass)
-            throw new InvalidOperationException("EXPECT: pass is not permitted in the HwTest folder. Use pass-hw or xfail-hw.");
-
-        if ((expectation.ExpectationKind == RegressionExpectationKind.Pass
-                || expectation.ExpectationKind == RegressionExpectationKind.PassHw
-                || expectation.ExpectationKind == RegressionExpectationKind.XFailHw)
-            && EnumerateExpectedDiagnosticCodes(expectation).Any(code => code.StartsWith('E')))
+        switch (discoveredFixture.PoolExpectation)
         {
-            throw new InvalidOperationException($"EXPECT: {ExpectationName(expectation.ExpectationKind)} cannot be combined with error diagnostic expectations.");
+            case RegressionPoolExpectation.Accept:
+                expectation = CreateDefaultExpectation(RegressionExpectationKind.Pass);
+                bodyText = text;
+                break;
+
+            case RegressionPoolExpectation.Reject:
+                expectation = CreateDefaultExpectation(RegressionExpectationKind.Fail);
+                bodyText = text;
+                break;
+
+            case RegressionPoolExpectation.Encoded:
+                HeaderScanResult headerScan = HeaderScanResult.Scan(text);
+                expectation = headerScan.HasDirectiveHeader
+                    ? ParseExpectation(headerScan)
+                    : CreateDefaultExpectation(RegressionExpectationKind.Pass);
+                bodyText = headerScan.BodyText;
+                break;
+
+            default:
+                throw new InvalidOperationException(FormattableString.Invariant(
+                    $"Unsupported regression pool expectation '{discoveredFixture.PoolExpectation}'."));
         }
 
-        return new RegressionFixture(fixturePath, relativePath, kind, text, headerScan.BodyText, expectation);
+        ValidateExpectation(expectation);
+        return new RegressionFixture(discoveredFixture.AbsolutePath, discoveredFixture.RelativePath, kind, text, bodyText, expectation);
     }
 
     private static IEnumerable<string> EnumerateExpectedDiagnosticCodes(RegressionExpectation expectation)
@@ -1263,13 +1280,51 @@ internal static class RegressionFixtureParser
         return extension switch
         {
             ".blade" => RegressionFixtureKind.Blade,
-            ".spin2" => RegressionFixtureKind.Spin2,
-            ".pasm2" => RegressionFixtureKind.Pasm2,
             _ => throw new InvalidOperationException($"Unsupported regression fixture extension '{extension}'."),
         };
     }
 
-    private static RegressionExpectation ParseExpectation(HeaderScanResult headerScan, RegressionFixtureKind kind)
+    private static RegressionExpectation CreateDefaultExpectation(RegressionExpectationKind expectationKind)
+    {
+        return new RegressionExpectation(
+            expectationKind,
+            null,
+            [],
+            [],
+            null,
+            [],
+            [],
+            FlexspinExpectation.Auto,
+            [],
+            []);
+    }
+
+    private static void ValidateExpectation(RegressionExpectation expectation)
+    {
+        if (expectation.HasCodeAssertions && expectation.Stage is null)
+            throw new InvalidOperationException("Blade fixtures with code assertions must specify STAGE.");
+
+        if (expectation.ExpectationKind != RegressionExpectationKind.PassHw
+                && expectation.ExpectationKind != RegressionExpectationKind.XFailHw
+                && expectation.HardwareRuns.Count > 0)
+            throw new InvalidOperationException("RUNS is only valid with EXPECT: pass-hw or EXPECT: xfail-hw.");
+
+        if (expectation.ExpectationKind == RegressionExpectationKind.PassHw && expectation.HardwareRuns.Count == 0)
+            throw new InvalidOperationException("EXPECT: pass-hw requires RUNS.");
+
+        if (expectation.ExpectationKind == RegressionExpectationKind.XFailHw && expectation.HardwareRuns.Count == 0)
+            throw new InvalidOperationException("EXPECT: xfail-hw requires RUNS.");
+
+        if ((expectation.ExpectationKind == RegressionExpectationKind.Pass
+                || expectation.ExpectationKind == RegressionExpectationKind.PassHw
+                || expectation.ExpectationKind == RegressionExpectationKind.XFailHw)
+            && EnumerateExpectedDiagnosticCodes(expectation).Any(code => code.StartsWith('E')))
+        {
+            throw new InvalidOperationException($"EXPECT: {ExpectationName(expectation.ExpectationKind)} cannot be combined with error diagnostic expectations.");
+        }
+    }
+
+    private static RegressionExpectation ParseExpectation(HeaderScanResult headerScan)
     {
         RegressionExpectationKind expectationKind = RegressionExpectationKind.Pass;
         RegressionStage? stage = null;
@@ -1433,9 +1488,6 @@ internal static class RegressionFixtureParser
                     throw new InvalidOperationException($"Unknown header block '{activeBlock.Value}'.");
             }
         }
-
-        if (kind != RegressionFixtureKind.Blade)
-            stage = null;
 
         string? exact = exactText?.ToString().TrimEnd();
         return new RegressionExpectation(
@@ -1606,7 +1658,7 @@ internal static class RegressionFixtureParser
         public string BodyText { get; }
         public bool HasDirectiveHeader { get; }
 
-        public static HeaderScanResult Scan(string text, RegressionFixtureKind kind)
+        public static HeaderScanResult Scan(string text)
         {
             string[] lines = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
             List<HeaderLine> headerLines = [];
@@ -1622,7 +1674,7 @@ internal static class RegressionFixtureParser
                     continue;
                 }
 
-                if (TryStripCommentPrefix(line, kind, out string? content))
+                if (TryStripCommentPrefix(line, out string? content))
                 {
                     headerLines.Add(new HeaderLine(true, content));
                     bodyStartIndex++;
@@ -1637,7 +1689,7 @@ internal static class RegressionFixtureParser
                 && ExpectDirectiveRegex.IsMatch(line.Content.TrimStart()));
 
             bool startsWithExpectDirective = lines.Length > 0
-                && TryStripCommentPrefix(lines[0], kind, out string? firstLineContent)
+                && TryStripCommentPrefix(lines[0], out string? firstLineContent)
                 && ExpectDirectiveRegex.IsMatch(firstLineContent.TrimStart());
 
             if (hasExpectDirective && !startsWithExpectDirective)
@@ -1651,32 +1703,16 @@ internal static class RegressionFixtureParser
             return new HeaderScanResult(headerLines, bodyText, hasDirectiveHeader);
         }
 
-        private static bool TryStripCommentPrefix(string line, RegressionFixtureKind kind, out string content)
+        private static bool TryStripCommentPrefix(string line, out string content)
         {
-            if (kind == RegressionFixtureKind.Blade)
+            string trimmedStart = line.TrimStart();
+            if (trimmedStart.StartsWith("//", StringComparison.Ordinal))
             {
-                string trimmedStart = line.TrimStart();
-                if (trimmedStart.StartsWith("//", StringComparison.Ordinal))
-                {
-                    int prefixIndex = line.IndexOf("//", StringComparison.Ordinal);
-                    content = line[(prefixIndex + 2)..];
-                    if (content.StartsWith(' '))
-                        content = content[1..];
-                    return true;
-                }
-            }
-            else
-            {
-                string trimmedStart = line.TrimStart();
-                if (trimmedStart.StartsWith('\'')
-                    || trimmedStart.StartsWith(';'))
-                {
-                    int prefixIndex = line.IndexOf(trimmedStart[0], StringComparison.Ordinal);
-                    content = line[(prefixIndex + 1)..];
-                    if (content.StartsWith(' '))
-                        content = content[1..];
-                    return true;
-                }
+                int prefixIndex = line.IndexOf("//", StringComparison.Ordinal);
+                content = line[(prefixIndex + 2)..];
+                if (content.StartsWith(' '))
+                    content = content[1..];
+                return true;
             }
 
             content = string.Empty;
@@ -1971,13 +2007,192 @@ internal sealed class ArtifactWriter
     }
 }
 
+internal static class RegressionConfigurationLoader
+{
+    private static readonly JsonDocumentOptions JsonOptions = new()
+    {
+        AllowTrailingCommas = true,
+        CommentHandling = JsonCommentHandling.Skip,
+    };
+
+    public static RegressionSuiteConfiguration Load(RegressionRunOptions options)
+    {
+        string repositoryRootPath = RepositoryLayout.FindRepositoryRoot(options.RepositoryRootPath, options.ConfigPath);
+        string configPath = RepositoryLayout.FindConfigurationPath(repositoryRootPath, options.ConfigPath);
+        if (!File.Exists(configPath))
+            throw new InvalidOperationException($"Regression config file was not found: {configPath}");
+
+        byte[] jsonBytes = File.ReadAllBytes(configPath);
+        ReadOnlyMemory<byte> jsonMemory = jsonBytes;
+        if (jsonBytes.Length >= 3
+            && jsonBytes[0] == 0xEF
+            && jsonBytes[1] == 0xBB
+            && jsonBytes[2] == 0xBF)
+        {
+            jsonMemory = jsonBytes.AsMemory(3);
+        }
+
+        using JsonDocument document = JsonDocument.Parse(jsonMemory, JsonOptions);
+
+        JsonElement root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Object)
+            throw new InvalidOperationException("Regression config root must be a JSON object.");
+
+        string configDirectoryPath = Path.GetDirectoryName(configPath)
+            ?? throw new InvalidOperationException("Regression config path has no parent directory.");
+
+        List<RegressionPoolConfiguration> pools = LoadPools(root, configDirectoryPath, repositoryRootPath);
+        string? hardwareRuntimePath = LoadOptionalFilePath(root, "hardwareRuntimePath", configDirectoryPath);
+        string? irCoverageGuardPath = LoadOptionalFilePath(root, "irCoverageGuardPath", configDirectoryPath);
+
+        return new RegressionSuiteConfiguration(
+            repositoryRootPath,
+            configPath,
+            pools,
+            hardwareRuntimePath,
+            irCoverageGuardPath);
+    }
+
+    private static List<RegressionPoolConfiguration> LoadPools(
+        JsonElement root,
+        string configDirectoryPath,
+        string repositoryRootPath)
+    {
+        if (!root.TryGetProperty("pools", out JsonElement poolsElement))
+            throw new InvalidOperationException("Regression config is missing required property 'pools'.");
+        if (poolsElement.ValueKind != JsonValueKind.Array)
+            throw new InvalidOperationException("Regression config property 'pools' must be an array.");
+
+        List<RegressionPoolConfiguration> pools = [];
+        HashSet<string> seenPaths = new(PathComparer.Instance);
+        int index = 0;
+        foreach (JsonElement poolElement in poolsElement.EnumerateArray())
+        {
+            if (poolElement.ValueKind != JsonValueKind.Object)
+            {
+                throw new InvalidOperationException(FormattableString.Invariant(
+                    $"Regression pool at index {index} must be an object."));
+            }
+
+            string path = ReadRequiredString(poolElement, "path", index);
+            string expect = ReadRequiredString(poolElement, "expect", index);
+            string absolutePath = ResolveDirectoryPath(path, configDirectoryPath, index);
+            if (!seenPaths.Add(absolutePath))
+            {
+                throw new InvalidOperationException(FormattableString.Invariant(
+                    $"Regression pool path '{path}' is duplicated in regressions.cfg.json."));
+            }
+
+            pools.Add(new RegressionPoolConfiguration(
+                absolutePath,
+                Path.GetRelativePath(repositoryRootPath, absolutePath).Replace('\\', '/'),
+                ParsePoolExpectation(expect, index)));
+            index++;
+        }
+
+        return pools;
+    }
+
+    private static string ReadRequiredString(JsonElement element, string propertyName, int index)
+    {
+        if (!element.TryGetProperty(propertyName, out JsonElement property))
+        {
+            throw new InvalidOperationException(FormattableString.Invariant(
+                $"Regression pool at index {index} is missing required property '{propertyName}'."));
+        }
+
+        if (property.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(property.GetString()))
+        {
+            throw new InvalidOperationException(FormattableString.Invariant(
+                $"Regression pool at index {index} property '{propertyName}' must be a non-empty string."));
+        }
+
+        return property.GetString()!;
+    }
+
+    private static RegressionPoolExpectation ParsePoolExpectation(string expect, int index)
+    {
+        return expect switch
+        {
+            "accept" => RegressionPoolExpectation.Accept,
+            "reject" => RegressionPoolExpectation.Reject,
+            "encoded" => RegressionPoolExpectation.Encoded,
+            _ => throw new InvalidOperationException(FormattableString.Invariant(
+                $"Regression pool at index {index} has unsupported expect value '{expect}'.")),
+        };
+    }
+
+    private static string ResolveDirectoryPath(string path, string configDirectoryPath, int index)
+    {
+        string absolutePath = Path.GetFullPath(Path.IsPathRooted(path)
+            ? path
+            : Path.Combine(configDirectoryPath, path));
+
+        if (!Directory.Exists(absolutePath))
+        {
+            throw new InvalidOperationException(FormattableString.Invariant(
+                $"Regression pool at index {index} points to a missing directory: {path}"));
+        }
+
+        return absolutePath;
+    }
+
+    private static string? LoadOptionalFilePath(JsonElement root, string propertyName, string configDirectoryPath)
+    {
+        if (!root.TryGetProperty(propertyName, out JsonElement property))
+            return null;
+
+        if (property.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(property.GetString()))
+        {
+            throw new InvalidOperationException(FormattableString.Invariant(
+                $"Regression config property '{propertyName}' must be a non-empty string when present."));
+        }
+
+        string configuredPath = property.GetString()!;
+        string absolutePath = Path.GetFullPath(Path.IsPathRooted(configuredPath)
+            ? configuredPath
+            : Path.Combine(configDirectoryPath, configuredPath));
+
+        if (!File.Exists(absolutePath))
+        {
+            throw new InvalidOperationException(FormattableString.Invariant(
+                $"Regression config property '{propertyName}' points to a missing file: {configuredPath}"));
+        }
+
+        return absolutePath;
+    }
+}
+
 internal static class RepositoryLayout
 {
-    public static string FindRepositoryRoot(string? explicitRootPath)
+    private const string DefaultConfigFileName = "regressions.cfg.json";
+
+    public static string FindRepositoryRoot(string? explicitRootPath, string? explicitConfigPath)
     {
         if (explicitRootPath is not null)
             return Path.GetFullPath(explicitRootPath);
 
+        if (explicitConfigPath is not null)
+        {
+            string configPath = Path.GetFullPath(explicitConfigPath);
+            return Path.GetDirectoryName(configPath)
+                ?? throw new InvalidOperationException("Configured regression config path has no parent directory.");
+        }
+
+        string configPathFromSearch = FindDefaultConfigurationPath();
+        return Path.GetDirectoryName(configPathFromSearch)
+            ?? throw new InvalidOperationException("Located regression config path has no parent directory.");
+    }
+
+    public static string FindConfigurationPath(string repositoryRootPath, string? explicitConfigPath)
+    {
+        return explicitConfigPath is not null
+            ? Path.GetFullPath(explicitConfigPath)
+            : Path.Combine(repositoryRootPath, DefaultConfigFileName);
+    }
+
+    private static string FindDefaultConfigurationPath()
+    {
         string[] candidates =
         [
             Environment.CurrentDirectory,
@@ -1989,30 +2204,39 @@ internal static class RepositoryLayout
             string? current = Path.GetFullPath(candidate);
             while (current is not null)
             {
-                if (LooksLikeRepositoryRoot(current))
-                    return current;
+                string configPath = Path.Combine(current, DefaultConfigFileName);
+                if (File.Exists(configPath))
+                    return configPath;
+
                 DirectoryInfo? parent = Directory.GetParent(current);
                 current = parent?.FullName;
             }
         }
 
-        throw new InvalidOperationException("Unable to locate the Blade repository root.");
-    }
-
-    private static bool LooksLikeRepositoryRoot(string path)
-    {
-        return File.Exists(Path.Combine(path, "justfile"))
-            && Directory.Exists(Path.Combine(path, "Blade"))
-            && Directory.Exists(Path.Combine(path, "Examples"))
-            && Directory.Exists(Path.Combine(path, "Blade.Tests"));
+        throw new InvalidOperationException("Unable to locate regressions.cfg.json.");
     }
 }
 
-internal static class PasmWrapper
+internal sealed class PathComparer : IEqualityComparer<string>
 {
-    public static string Wrap(string bodyText)
+    public static PathComparer Instance { get; } = new();
+
+    private readonly StringComparer comparer = OperatingSystem.IsWindows()
+        ? StringComparer.OrdinalIgnoreCase
+        : StringComparer.Ordinal;
+
+    private PathComparer()
     {
-        return $"DAT{Environment.NewLine}    org 0{Environment.NewLine}{bodyText}";
+    }
+
+    public bool Equals(string? x, string? y)
+    {
+        return comparer.Equals(x, y);
+    }
+
+    public int GetHashCode(string obj)
+    {
+        return comparer.GetHashCode(obj);
     }
 }
 
@@ -2092,9 +2316,9 @@ internal static class FlexspinRunner
         }
     }
 
-    public static FlexspinResult Run(string sourceText, string fileExtension)
+    public static FlexspinResult Run(string sourceText)
     {
-        return RunCore(sourceText, fileExtension);
+        return RunCore(sourceText);
     }
 
     public static FlexspinBinaryResult BuildBinary(string sourceText)
@@ -2127,11 +2351,11 @@ internal static class FlexspinRunner
         return new FlexspinBinaryResult(process.ExitCode == 0, outputLines, binaryBytes);
     }
 
-    private static FlexspinResult RunCore(string sourceText, string fileExtension)
+    private static FlexspinResult RunCore(string sourceText)
     {
         string tempDirectoryPath = Path.Combine(Path.GetTempPath(), "blade-regressions", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDirectoryPath);
-        string sourcePath = Path.Combine(tempDirectoryPath, $"fixture{fileExtension}");
+        string sourcePath = Path.Combine(tempDirectoryPath, "fixture.spin2");
         File.WriteAllText(sourcePath, sourceText);
 
         ProcessStartInfo startInfo = CreateStartInfo();
@@ -2421,6 +2645,7 @@ internal static class RegressionCommandLine
     public static RegressionRunOptions Parse(string[] args)
     {
         string? repositoryRootPath = null;
+        string? configPath = null;
         string? hardwarePort = null;
         HardwareLoaderKind? hardwareLoader = null;
         bool? turbopropNoVersionCheck = null;
@@ -2437,6 +2662,12 @@ internal static class RegressionCommandLine
                     if (i + 1 >= args.Length)
                         throw new InvalidOperationException("Missing value for --repo-root.");
                     repositoryRootPath = args[++i];
+                    break;
+
+                case "--config":
+                    if (i + 1 >= args.Length)
+                        throw new InvalidOperationException("Missing value for --config.");
+                    configPath = args[++i];
                     break;
 
                 case "--no-artifacts":
@@ -2476,6 +2707,7 @@ internal static class RegressionCommandLine
         return new RegressionRunOptions
         {
             RepositoryRootPath = repositoryRootPath,
+            ConfigPath = configPath,
             Filters = filters,
             WriteFailureArtifacts = writeFailureArtifacts,
             HardwarePort = HardwarePortResolver.Resolve(hardwarePort),

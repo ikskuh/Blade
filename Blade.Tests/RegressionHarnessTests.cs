@@ -61,7 +61,7 @@ public sealed class RegressionHarnessTests
     public void RegressionReportFormatter_SkipsZeroCountSummaryEntriesAndDoesNotExpandSkips()
     {
         RegressionFixtureResult skipResult = new(
-            "RegressionTests/Assembly/raw_exact.pasm2",
+            "RegressionTests/raw_exact.blade",
             RegressionFixtureOutcome.Skipped,
             "skipped",
             [
@@ -132,10 +132,14 @@ public sealed class RegressionHarnessTests
     }
 
     [Test]
-    public void FullRegressionSuite_Passes()
+    public void ConfigDrivenRegressionSuite_Passes()
     {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+
         RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
         {
+            RepositoryRootPath = temp.Path,
             WriteFailureArtifacts = true,
         });
 
@@ -146,7 +150,7 @@ public sealed class RegressionHarnessTests
     }
 
     [Test]
-    public void PassHwFixture_WithoutConfiguredPort_UsesImplicitHardwareRuntimeAndPasses()
+    public void PassHwFixture_WithoutConfiguredPort_UsesConfiguredHardwareRuntimeAndPasses()
     {
         using TempDirectory temp = new();
         WriteMinimalRegressionRepository(temp);
@@ -163,7 +167,9 @@ public sealed class RegressionHarnessTests
         extern cog var rt_result: u32;
         extern cog var rt_param0: u32;
         extern cog var rt_param1: i32;
-        rt_result = rt_param0 + bitcast(u32, rt_param1);
+        cog task main {
+            rt_result = rt_param0 + bitcast(u32, rt_param1);
+        }
         """);
 
         RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
@@ -184,7 +190,7 @@ public sealed class RegressionHarnessTests
     }
 
     [Test]
-    public void PassHwFixture_WithExplicitRuntime_KeepsExplicitRuntimeInsteadOfImplicitHardwareRuntime()
+    public void PassHwFixture_WithExplicitRuntime_KeepsExplicitRuntimeInsteadOfConfiguredRuntime()
     {
         using TempDirectory temp = new();
         WriteMinimalRegressionRepository(temp);
@@ -209,7 +215,10 @@ public sealed class RegressionHarnessTests
         // CONTAINS:
         // - custom_marker LONG 0
         // ! rt_result LONG 0
-        var x: u32 = 1;
+        cog task main {
+            var x: u32 = 1;
+            _ = x;
+        }
         """);
 
         RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
@@ -306,37 +315,6 @@ public sealed class RegressionHarnessTests
             Assert.That(result.Succeeded, Is.False);
             Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
             Assert.That(fixtureResult.Details, Has.Some.Contains("Unsupported header directive 'OUTPUT'."));
-        });
-    }
-
-    [Test]
-    public void RunsDirective_IsRejectedForAssemblyFixture()
-    {
-        using TempDirectory temp = new();
-        WriteMinimalRegressionRepository(temp);
-        temp.WriteFile("RegressionTests/runs_on_assembly.spin2", """
-        ' EXPECT: pass-hw
-        ' RUNS:
-        ' - [] = 0
-        DAT
-            org 0
-        entry
-            ret
-        """);
-
-        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
-        {
-            RepositoryRootPath = temp.Path,
-            WriteFailureArtifacts = false,
-        });
-
-        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(result =>
-            result.RelativePath == "RegressionTests/runs_on_assembly.spin2");
-        Assert.Multiple(() =>
-        {
-            Assert.That(result.Succeeded, Is.False);
-            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
-            Assert.That(fixtureResult.Details, Has.Some.Contains("RUNS is only valid for .blade fixtures."));
         });
     }
 
@@ -470,6 +448,139 @@ public sealed class RegressionHarnessTests
     }
 
     [Test]
+    public void RegressionCommandLine_ParsesConfigFlag()
+    {
+        RegressionRunOptions options = ParseRegressionCommandLine("--config", "custom-regressions.json");
+        Assert.That(options.ConfigPath, Is.EqualTo("custom-regressions.json"));
+    }
+
+    [Test]
+    public void RegressionRunner_UsesConfigPathOverride()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            ConfigPath = Path.Combine(temp.Path, "regressions.cfg.json"),
+            WriteFailureArtifacts = false,
+        });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.RepositoryRootPath, Is.EqualTo(temp.Path));
+            Assert.That(result.FixtureResults.Select(static item => item.RelativePath), Is.EqualTo(["Examples/smoke.blade"]));
+        });
+    }
+
+    [Test]
+    public void RegressionRunner_ConfigAcceptsCommentsAndTrailingCommas()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        WriteRegressionConfig(temp, """
+        {
+            // Parser options must allow comments and trailing commas.
+            "pools": [
+                {
+                    "path": "Examples",
+                    "expect": "accept",
+                },
+            ],
+        }
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(result.FixtureResults.Select(static item => item.RelativePath), Is.EqualTo(["Examples/smoke.blade"]));
+        });
+    }
+
+    [Test]
+    public void AcceptPool_IgnoresInFileExpectDirectivesAndRequiresCleanCompile()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Examples/header_is_ignored.blade", """
+        // EXPECT: fail
+        fn broken(
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(static result =>
+            result.RelativePath == "Examples/header_is_ignored.blade");
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
+            Assert.That(fixtureResult.Details, Has.Some.StartsWith("unexpected diagnostic:"));
+        });
+    }
+
+    [Test]
+    public void RejectPool_IgnoresLegacyFirstLineDiagnosticComments()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Blade.Tests/Reject/legacy_reject.blade", """
+        // E9999
+        fn demo() void {
+            missing();
+        }
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(static result =>
+            result.RelativePath == "Blade.Tests/Reject/legacy_reject.blade");
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Pass));
+        });
+    }
+
+    [Test]
+    public void BladeCrashFixture_IsRejectedOutsideEncodedPools()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Examples/not_encoded.blade.crash", new byte[] { 0x80 });
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(static result =>
+            result.RelativePath == "Examples/not_encoded.blade.crash");
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
+            Assert.That(fixtureResult.Details, Has.Some.Contains(".blade.crash fixtures are only valid in encoded pools."));
+        });
+    }
+
+    [Test]
     public void PassHwFixture_WithConfiguredPort_HwRunFails_IsHwFailed()
     {
         using TempDirectory temp = new();
@@ -480,7 +591,9 @@ public sealed class RegressionHarnessTests
         // RUNS:
         // - [] = 0x0
         extern cog var rt_result: u32;
-        rt_result = 0;
+        cog task main {
+            rt_result = 0;
+        }
         """);
 
         RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
@@ -514,7 +627,9 @@ public sealed class RegressionHarnessTests
         // RUNS:
         // - [] = 0x1
         extern cog var rt_result: u32;
-        rt_result = 0;
+        cog task main {
+            rt_result = 0;
+        }
         """);
 
         RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
@@ -548,7 +663,9 @@ public sealed class RegressionHarnessTests
         // RUNS:
         // - [] = 0x0
         extern cog var rt_result: u32;
-        rt_result = 0;
+        cog task main {
+            rt_result = 0;
+        }
         """);
 
         RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
@@ -647,7 +764,9 @@ public sealed class RegressionHarnessTests
         // - [ 0 ] = 1234
         // - [ 0, -10, 0x12345 ] = -1
         extern cog var rt_result: u32;
-        rt_result = 1234;
+        cog task main {
+            rt_result = 1234;
+        }
         """);
 
         RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
@@ -789,7 +908,9 @@ public sealed class RegressionHarnessTests
         // RUNS:
         // - [] = 0x1
         extern cog var rt_result: u32;
-        rt_result = 1;
+        cog task main {
+            rt_result = 1;
+        }
         """);
 
         RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
@@ -842,37 +963,9 @@ public sealed class RegressionHarnessTests
         temp.MakeDir("Demonstrators/Binder");
         temp.WriteFile("Demonstrators/Binder/fail_control_flow_contexts.blade", """
         // EXPECT: xfail
-        // DIAGNOSTICS: E0202, E0208, E0209, E0210, E0211, E0212, E0213, E0214
-        fn helper() {
-        }
-
-        coro fn worker(seed: u32) {
-            loop {
-                yieldto worker(seed);
-            }
-        }
-
-        return 1;
-        break;
-        continue;
-
-        rep for(4) -> i {
-            break;
-        }
-
-        fn bad_yield() {
-            yield;
-        }
-
-        fn bad_context() {
-            yieldto worker(1);
-        }
-
-        yieldto helper();
-        yieldto missing();
-
-        fn wrong_return() -> u32 {
-            return;
+        // DIAGNOSTICS: E0202
+        cog task main {
+            missing();
         }
         """);
 
@@ -901,8 +994,7 @@ public sealed class RegressionHarnessTests
         temp.WriteFile("Demonstrators/xfail_resolved.blade", """
         // EXPECT: xfail
         // DIAGNOSTICS: E0202
-        fn main() -> u32 {
-            return 1;
+        cog task main {
         }
         """);
 
@@ -920,33 +1012,6 @@ public sealed class RegressionHarnessTests
             Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.UnexpectedPass));
             Assert.That(fixtureResult.Summary, Is.EqualTo("unexpected pass"));
             Assert.That(fixtureResult.Details, Has.Some.Contains("missing diagnostic code E0202: expected at least 1, got 0"));
-        });
-    }
-
-    [Test]
-    public void HwTestFolder_RejectsPlainPassExpectation()
-    {
-        using TempDirectory temp = new();
-        WriteMinimalRegressionRepository(temp);
-        temp.MakeDir("Demonstrators/HwTest");
-        temp.WriteFile("Demonstrators/HwTest/plain_pass.blade", """
-        // EXPECT: pass
-        var x: u32 = 0;
-        """);
-
-        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
-        {
-            RepositoryRootPath = temp.Path,
-            WriteFailureArtifacts = false,
-        });
-
-        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(r =>
-            r.RelativePath == "Demonstrators/HwTest/plain_pass.blade");
-        Assert.Multiple(() =>
-        {
-            Assert.That(result.Succeeded, Is.False);
-            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
-            Assert.That(fixtureResult.Details, Has.Some.Contains("EXPECT: pass is not permitted in the HwTest folder."));
         });
     }
 
@@ -1035,15 +1100,13 @@ public sealed class RegressionHarnessTests
     public void BladeCrashFixture_PassesWhenCompilationProducesDiagnosticsButDoesNotThrow()
     {
         using TempDirectory temp = new();
-        temp.MakeDir("Examples");
-        temp.MakeDir("Demonstrators");
-        temp.MakeDir("Blade.Tests");
-        temp.WriteFile("justfile", "fuzz:\n    false\n");
+        WriteMinimalRegressionRepository(temp);
         temp.WriteFile("RegressionTests/syntax_failure.blade.crash", "fn main(");
 
         RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
         {
             RepositoryRootPath = temp.Path,
+            Filters = ["syntax_failure.blade.crash"],
             WriteFailureArtifacts = false,
         });
 
@@ -1062,15 +1125,13 @@ public sealed class RegressionHarnessTests
     public void BladeCrashFixture_PassesWhenSourceIsInvalidUtf8ButCompilerDoesNotThrow()
     {
         using TempDirectory temp = new();
-        temp.MakeDir("Examples");
-        temp.MakeDir("Demonstrators");
-        temp.MakeDir("Blade.Tests");
-        temp.WriteFile("justfile", "fuzz:\n    false\n");
+        WriteMinimalRegressionRepository(temp);
         temp.WriteFile("RegressionTests/invalid_utf8.blade.crash", new byte[] { 0x80, 0x61 });
 
         RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
         {
             RepositoryRootPath = temp.Path,
+            Filters = ["invalid_utf8.blade.crash"],
             WriteFailureArtifacts = false,
         });
 
@@ -1089,7 +1150,7 @@ public sealed class RegressionHarnessTests
     {
         using TempDirectory temp = new();
         WriteMinimalRegressionRepository(temp);
-        temp.WriteFile("RegressionTests/ir-regression-guard.json", """
+        WriteIrCoverageGuard(temp, """
         {
             "bound": {
                 "covered": [],
@@ -1135,11 +1196,11 @@ public sealed class RegressionHarnessTests
         // STAGE: bound
         // CONTAINS:
         // - ArrayLit<[3]<int-literal>>
-        fn demo() void {
+        cog task main {
             _ = [1, 2, 3];
         }
         """);
-        temp.WriteFile("RegressionTests/ir-regression-guard.json", """
+        WriteIrCoverageGuard(temp, """
         {
             "bound": {
                 "covered": [],
@@ -1181,7 +1242,7 @@ public sealed class RegressionHarnessTests
     {
         using TempDirectory temp = new();
         WriteMinimalRegressionRepository(temp);
-        temp.WriteFile("RegressionTests/ir-regression-guard.json", """
+        WriteIrCoverageGuard(temp, """
         {
             "bound": {
                 "covered": [],
@@ -1224,7 +1285,7 @@ public sealed class RegressionHarnessTests
     {
         using TempDirectory temp = new();
         WriteMinimalRegressionRepository(temp);
-        temp.WriteFile("RegressionTests/ir-regression-guard.json", """
+        WriteIrCoverageGuard(temp, """
         {
             "bound": {
                 "covered": [],
@@ -1265,9 +1326,12 @@ public sealed class RegressionHarnessTests
         temp.MakeDir("Examples");
         temp.MakeDir("Demonstrators");
         temp.MakeDir("Blade.Tests");
+        temp.MakeDir("Blade.Tests/Reject");
         temp.MakeDir("Blade");
+        temp.MakeDir("RegressionTests");
         temp.WriteFile("justfile", "fuzz:\n    false\n");
-        temp.WriteFile("Examples/smoke.blade", "fn inc(x: u32) -> u32 { return x + 1; }");
+        temp.WriteFile("Examples/smoke.blade", "cog task main { }");
+        WriteRegressionConfig(temp);
     }
 
     private static void WriteHardwareRuntime(TempDirectory temp)
@@ -1293,6 +1357,48 @@ public sealed class RegressionHarnessTests
         rt_result LONG 0
         ' <<BLADE_DAT>>
         """);
+        WriteRegressionConfig(temp);
+    }
+
+    private static void WriteIrCoverageGuard(TempDirectory temp, string content)
+    {
+        temp.WriteFile("RegressionTests/ir-regression-guard.json", content);
+        WriteRegressionConfig(temp);
+    }
+
+    private static void WriteRegressionConfig(TempDirectory temp)
+    {
+        bool hasHardwareRuntime = File.Exists(Path.Combine(temp.Path, "Blade.HwTestRunner", "Runtime.spin2"));
+        bool hasIrCoverageGuard = File.Exists(Path.Combine(temp.Path, "RegressionTests", "ir-regression-guard.json"));
+
+        string poolsProperty = """
+    "pools": [
+        { "path": "Examples", "expect": "accept" },
+        { "path": "Demonstrators", "expect": "encoded" },
+        { "path": "RegressionTests", "expect": "encoded" },
+        { "path": "Blade.Tests/Reject", "expect": "reject" }
+    ]
+""";
+
+        List<string> properties = [poolsProperty];
+        if (hasHardwareRuntime)
+            properties.Add("    \"hardwareRuntimePath\": \"Blade.HwTestRunner/Runtime.spin2\"");
+        if (hasIrCoverageGuard)
+            properties.Add("    \"irCoverageGuardPath\": \"RegressionTests/ir-regression-guard.json\"");
+
+        temp.WriteFile("regressions.cfg.json", BuildJsonObject(properties));
+    }
+
+    private static void WriteRegressionConfig(TempDirectory temp, string content)
+    {
+        temp.WriteFile("regressions.cfg.json", content);
+    }
+
+    private static string BuildJsonObject(IReadOnlyList<string> properties)
+    {
+        return "{\n"
+            + string.Join(",\n", properties)
+            + "\n}\n";
     }
 
     private static RegressionRunOptions ParseRegressionCommandLine(params string[] args)

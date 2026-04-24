@@ -5,23 +5,21 @@ Blade has two test layers:
 - `dotnet test` for unit and component tests in `Blade.Tests`
 - `just regressions` for the corpus-driven regression harness in `Blade.Regressions`
 
-The regression harness is the main compiler-quality gate. It runs over source fixtures, checks diagnostics, inspects generated intermediate/final code, and validates hand-written assembly with FlexSpin.
+The regression harness is the main compiler-quality gate. It runs over source fixtures, checks diagnostics, inspects generated intermediate/final code, and validates generated assembly with FlexSpin.
 
 ## Fixture discovery
 
-The runner discovers fixtures from:
+The runner discovers fixture pools from `regressions.cfg.json` in the repository root, or from a file passed via `--config`.
 
-- `Examples/**/*.blade`
-- `Demonstrators/**/*.blade`
-- `RegressionTests/**/*.blade`
-- `RegressionTests/**/*.spin2`
-- `RegressionTests/**/*.pasm2`
+Each pool declares a relative `path` plus an `expect` mode:
 
-`Examples/` is a pristine sample corpus. Do not add test expectation comments there. Every example must compile cleanly with zero diagnostics.
+- `accept` means the files are compiled without parsing in-file regression headers and must succeed with zero diagnostics
+- `reject` means the files are compiled without parsing in-file regression headers and must produce at least one error diagnostic
+- `encoded` means the files use the normal `EXPECT` header format described below
 
-`Demonstrators/` and `RegressionTests/` may contain explicit regression expectations.
+Only `*.blade` and `*.blade.crash` files are discovered. `.blade.crash` fixtures are only valid in `encoded` pools.
 
-Any `.blade` file without a harness header is treated as:
+Any `.blade` file in an `encoded` pool without a harness header is treated as:
 
 ```blade
 // EXPECT: pass
@@ -37,7 +35,6 @@ If a fixture uses `EXPECT`, that marker must be the first line of the file.
 Comment prefixes:
 
 - `.blade`: `//`
-- `.spin2` and `.pasm2`: `'` or `;`
 
 The supported directives are intentionally simple.
 Once an `EXPECT` header starts, every non-blank comment line must be either a supported directive or content inside a directive block such as `NOTE`.
@@ -131,7 +128,7 @@ The strict form supports these entry shapes:
 // STAGE: final-asm
 ```
 
-`STAGE` is only valid for `.blade` fixtures. `.spin2` and `.pasm2` fixtures always match against their raw code body.
+`STAGE` is only valid for `.blade` fixtures.
 
 ### `CONTAINS`
 
@@ -174,7 +171,7 @@ The listed snippets must appear in order after normalization. The same item pref
 
 ### Wildcards
 
-Wildcards are only active for assembly stages (`asmir-preopt`, `asmir`, `final-asm`) and raw assembly fixtures (`.pasm2`, `.spin2`). In IR stages (`bound`, `mir`, `lir` variants), `?` is treated as a literal because it is part of the ternary operator syntax.
+Wildcards are only active for assembly stages (`asmir-preopt`, `asmir`, `final-asm`). In IR stages (`bound`, `mir`, `lir` variants), `?` is treated as a literal because it is part of the ternary operator syntax.
 
 Use `?` in any snippet to match a single token (identifier, register name, etc.):
 
@@ -197,14 +194,14 @@ This matches `MOV PA, #0` followed by `ADD <anything>, PA` — `?1` captured `PA
 
 The fully normalized code must match exactly.
 
-```spin2
-' EXPECT: pass
-' FLEXSPIN: required
-' EXACT:
-'   OR OUTA, #16
-'   RET
-OR OUTA, #16
-RET
+```blade
+// EXPECT: pass
+// STAGE: final-asm
+// EXACT:
+//   OR OUTA, #16
+//   RET
+cog task main {
+}
 ```
 
 
@@ -228,7 +225,7 @@ Block form:
 
 Supported options are compiler optimization toggles, `-fno-mir-opt=single-callsite-inline`, module mappings via `--module=<name>=<path>`, and runtime templates via `--runtime=<path>` (resolved relative to the fixture file).
 
-For `EXPECT: pass-hw`, the regression harness implicitly injects `--runtime=<repo-root>/Blade.HwTestRunner/Runtime.spin2` unless the fixture already specifies an explicit `--runtime=...` in `ARGS`.
+For `EXPECT: pass-hw` and `EXPECT: xfail-hw`, the regression harness injects the configured `hardwareRuntimePath` from `regressions.cfg.json` unless the fixture already specifies an explicit `--runtime=...` in `ARGS`.
 
 ### `FLEXSPIN`
 
@@ -237,7 +234,6 @@ For `EXPECT: pass-hw`, the regression harness implicitly injects `--runtime=<rep
 // FLEXSPIN: forbidden
 ```
 
-- `.spin2` and `.pasm2` default to `required`
 - `.blade` defaults to automatic validation on passing fixtures that reach final assembly
 
 ## Normalization rules
@@ -255,28 +251,6 @@ They do not ignore or rewrite:
 - token order
 
 This keeps the harness strict enough to catch real codegen changes while still ignoring formatting and explanatory comments.
-
-## Hand-written assembly
-
-Use `.pasm2` for raw PASM2 fragments and `.spin2` for already-wrapped sources.
-
-- `.pasm2` fixtures are wrapped in a minimal `DAT / org 0` container before FlexSpin runs
-- `.spin2` fixtures are passed through unchanged
-
-Example `.spin2` fixture:
-
-```spin2
-' EXPECT: pass
-' FLEXSPIN: required
-' CONTAINS:
-' - OR OUTA, #16
-' - RET
-DAT
-    org 0
-entry
-    OR OUTA, #16
-    RET
-```
 
 ## Commands
 

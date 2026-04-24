@@ -14,39 +14,25 @@ using Blade.Semantics.Bound;
 
 namespace Blade.Regressions;
 
-public sealed class RegressionIrCoverageReport
+public sealed class RegressionIrCoverageReport(
+    IReadOnlyList<RegressionIrCoverageGroupResult> groups,
+    IReadOnlyList<string> regressionMessages)
 {
-    public RegressionIrCoverageReport(
-        IReadOnlyList<RegressionIrCoverageGroupResult> groups,
-        IReadOnlyList<string> regressionMessages)
-    {
-        Groups = groups;
-        RegressionMessages = regressionMessages;
-    }
-
-    public IReadOnlyList<RegressionIrCoverageGroupResult> Groups { get; }
-    public IReadOnlyList<string> RegressionMessages { get; }
+    public IReadOnlyList<RegressionIrCoverageGroupResult> Groups { get; } = groups;
+    public IReadOnlyList<string> RegressionMessages { get; } = regressionMessages;
     public bool HasRegressions => RegressionMessages.Count > 0;
 }
 
-public sealed class RegressionIrCoverageGroupResult
+public sealed class RegressionIrCoverageGroupResult(
+    string groupKey,
+    string displayName,
+    IReadOnlyList<string> coveredTypeNames,
+    IReadOnlyList<string> uncoveredTypeNames)
 {
-    public RegressionIrCoverageGroupResult(
-        string groupKey,
-        string displayName,
-        IReadOnlyList<string> coveredTypeNames,
-        IReadOnlyList<string> uncoveredTypeNames)
-    {
-        GroupKey = groupKey;
-        DisplayName = displayName;
-        CoveredTypeNames = coveredTypeNames;
-        UncoveredTypeNames = uncoveredTypeNames;
-    }
-
-    public string GroupKey { get; }
-    public string DisplayName { get; }
-    public IReadOnlyList<string> CoveredTypeNames { get; }
-    public IReadOnlyList<string> UncoveredTypeNames { get; }
+    public string GroupKey { get; } = groupKey;
+    public string DisplayName { get; } = displayName;
+    public IReadOnlyList<string> CoveredTypeNames { get; } = coveredTypeNames;
+    public IReadOnlyList<string> UncoveredTypeNames { get; } = uncoveredTypeNames;
 }
 
 internal sealed class RegressionIrCoverageSession
@@ -79,13 +65,11 @@ internal sealed class RegressionIrCoverageSession
         this.guardFile = guardFile;
     }
 
-    public static RegressionIrCoverageSession? TryCreate(string repositoryRootPath, bool isFullRun)
+    public static RegressionIrCoverageSession? TryCreate(string? guardFilePath, bool isFullRun)
     {
         if (!isFullRun)
             return null;
-
-        string guardFilePath = Path.Combine(repositoryRootPath, "RegressionTests", "ir-regression-guard.json");
-        if (!File.Exists(guardFilePath))
+        if (string.IsNullOrWhiteSpace(guardFilePath))
             return null;
 
         return new RegressionIrCoverageSession(guardFilePath, LoadGuardFile(guardFilePath));
@@ -352,32 +336,18 @@ internal enum IrCoverageGroup
     Asmir,
 }
 
-internal sealed class IrCoverageGroupSpec
+internal sealed class IrCoverageGroupSpec(IrCoverageGroup group, string jsonKey, string displayName, Type baseType)
 {
-    public IrCoverageGroupSpec(IrCoverageGroup group, string jsonKey, string displayName, Type baseType)
-    {
-        Group = group;
-        JsonKey = jsonKey;
-        DisplayName = displayName;
-        BaseType = baseType;
-    }
-
-    public IrCoverageGroup Group { get; }
-    public string JsonKey { get; }
-    public string DisplayName { get; }
-    public Type BaseType { get; }
+    public IrCoverageGroup Group { get; } = group;
+    public string JsonKey { get; } = jsonKey;
+    public string DisplayName { get; } = displayName;
+    public Type BaseType { get; } = baseType;
 }
 
-internal sealed class IrCoverageStageAccessor
+internal sealed class IrCoverageStageAccessor(PropertyInfo property, IrCoverageGroup group)
 {
-    public IrCoverageStageAccessor(PropertyInfo property, IrCoverageGroup group)
-    {
-        Property = property;
-        Group = group;
-    }
-
-    public PropertyInfo Property { get; }
-    public IrCoverageGroup Group { get; }
+    public PropertyInfo Property { get; } = property;
+    public IrCoverageGroup Group { get; } = group;
 }
 
 internal sealed class IrRegressionGuardFile
