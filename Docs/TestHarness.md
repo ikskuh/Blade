@@ -29,7 +29,7 @@ with an implied requirement of zero diagnostics.
 
 ## Header format
 
-The harness only looks at the leading contiguous comment block. Parsing stops at the first non-comment, non-blank line.
+The harness only looks at the leading contiguous comment block. After an `EXPECT` header starts, parsing stops at the first blank line, whitespace-only line, or non-comment line.
 If a fixture uses `EXPECT`, that marker must be the first line of the file.
 
 Comment prefixes:
@@ -37,7 +37,8 @@ Comment prefixes:
 - `.blade`: `//`
 
 The supported directives are intentionally simple.
-Once an `EXPECT` header starts, every non-blank comment line must be either a supported directive or content inside a directive block such as `NOTE`.
+Once an `EXPECT` header starts, every comment line before the terminating blank/non-comment line must be either a supported directive or content inside a directive block such as `NOTE`.
+Comments after that terminating line are ordinary source comments and are not part of the expectation block.
 
 ### `EXPECT`
 
@@ -50,7 +51,7 @@ Once an `EXPECT` header starts, every non-blank comment line must be either a su
 
 - `pass` means the fixture must satisfy all assertions and, unless `DIAGNOSTICS` says otherwise, emit zero diagnostics.
 - `pass-hw` means the fixture must satisfy the normal `pass` checks and, when hardware is configured, also pass real hardware execution using the hardware test runtime and `RUNS`.
-- `fail` means the fixture must fail in the way the header describes.
+- `fail` means the fixture must fail in the way the header describes and must define at least one `DIAGNOSTICS` expectation.
 - `xfail` means the current failure shape is intentional. If the fixture unexpectedly starts passing, the suite fails so the expectation can be revisited.
 
 ### `RUNS`
@@ -86,6 +87,7 @@ Each run entry supplies a parameter list followed by the expected output for tha
 ### `DIAGNOSTICS`
 
 Loose form: these codes must appear, but extra diagnostics are allowed.
+`EXPECT: fail` requires at least one diagnostic entry in either the loose or strict form.
 
 ```blade
 // EXPECT: fail

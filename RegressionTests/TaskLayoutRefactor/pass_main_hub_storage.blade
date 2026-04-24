@@ -1,0 +1,9 @@
+// EXPECT: pass
+// DIAGNOSTICS:
+// - W0269
+
+// This must emit a warning as a "hub task" is an inefficient entrypoint:
+hub task main 
+{
+
+}

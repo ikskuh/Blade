@@ -1,0 +1,22 @@
+{
+    "pools": [
+        {
+            "path": "Examples", // The file path relative to this configuration file
+            "expect": "accept", // The mode defines how these files shall be processed. All files must compile cleanly.
+        },
+        {
+            "path": "Demonstrators/",
+            "expect": "encoded", // "encoded" means we expect the file to encode the expectations in the file header (the normal mode)
+        },
+        {
+            "path": "RegressionTests/",
+            "expect": "encoded"
+        },
+        {
+            "path": "Blade.Tests/Reject",
+            "expect": "reject" // reject means the files must never be accepted and produce at least a single error diagnostic
+        }
+    ],
+    "hardwareRuntimePath": "Blade.HwTestRunner/Runtime.spin2",
+    "irCoverageGuardPath": "RegressionTests/ir-regression-guard.json"
+}

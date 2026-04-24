@@ -46,7 +46,6 @@ public class DiagnosticBagTests
         bag.ReportInvalidLocalStorageClass(Span, "hub");
         bag.ReportInvalidExternScope(Span);
         bag.ReportInvalidParameterStorageClass(Span, "hub");
-        bag.ReportUnsupportedStorageClass(Span, "hub");
         bag.ReportUnknownNamedArgument(Span, "f", "x");
         bag.ReportDuplicateNamedArgument(Span, "x");
         bag.ReportPositionalArgumentAfterNamed(Span, "f");
@@ -56,12 +55,15 @@ public class DiagnosticBagTests
         bag.ReportBitcastSizeMismatch(Span, "u32", "u16");
         bag.ReportAddressOfRecursiveLocal(Span, "x");
         bag.ReportMissingReturnValue(Span, "f");
+        bag.ReportReturnFromCoroutine(Span, "worker");
         bag.ReportExpressionNotAStatement(Span);
         bag.ReportRangeIterationRequiresBinding(Span);
         bag.ReportEnumLiteralRequiresContext(Span, "Idle");
         bag.ReportBitfieldWidthOverflow(Span, "Flags", "wide", 40, 32);
         bag.ReportArrayLiteralRequiresContext(Span);
         bag.ReportArrayLiteralSpreadMustBeLast(Span);
+        bag.ReportAccessToForeignLayout(Span, "State", "value");
+        bag.ReportUnsupportedGlobalStorage(Span, "cog");
         bag.ReportInlineAsmUnknownInstruction(Span, "BLAH");
         bag.ReportInlineAsmUndefinedVariable(Span, "x");
         bag.ReportInlineAsmEmptyInstruction(Span);
@@ -71,7 +73,7 @@ public class DiagnosticBagTests
         bag.ReportUnsupportedLowering(Span, "store.index");
         bag.ReportDuplicateVariableClause(Span, "@(...)");
 
-        Assert.That(bag.Count, Is.EqualTo(55));
+        Assert.That(bag.Count, Is.EqualTo(57));
         Assert.That(bag.HasErrors, Is.True);
         Assert.That(bag.Last().Code, Is.EqualTo(DiagnosticCode.E0108_DuplicateVariableClause));
     }

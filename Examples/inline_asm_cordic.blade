@@ -5,35 +5,38 @@
 // You issue a command (QMUL, QDIV, etc.) and retrieve results
 // with GETQX/GETQY after the pipeline completes.
 
-cog var multiplicand: u32 = 1000;
-cog var multiplier: u32 = 42;
-cog var product_lo: u32 = 0;
-cog var product_hi: u32 = 0;
+cog task main
+{
+    cog var multiplicand: u32 = 1000;
+    cog var multiplier: u32 = 42;
+    cog var product_lo: u32 = 0;
+    cog var product_hi: u32 = 0;
 
-fn unsigned_multiply(a: u32, b: u32) -> u32 {
-    var lo: u32 = 0;
-    asm {
-        QMUL  {a}, {b}
-        GETQX {lo}
-    };
-    return lo;
+    fn unsigned_multiply(a: u32, b: u32) -> u32 {
+        var lo: u32 = 0;
+        asm {
+            QMUL  {a}, {b}
+            GETQX {lo}
+        };
+        return lo;
+    }
+
+    fn unsigned_divide(dividend: u32, divisor: u32) -> u32 {
+        var quotient: u32 = 0;
+        asm {
+            QDIV   {dividend}, {divisor}
+            GETQX  {quotient}
+        };
+        return quotient;
+    }
+
+    fn get_random() -> u32 {
+        var rnd: u32 = 0;
+        asm {
+            GETRND {rnd}
+        };
+        return rnd;
+    }
+
+    product_lo = unsigned_multiply(multiplicand, multiplier);
 }
-
-fn unsigned_divide(dividend: u32, divisor: u32) -> u32 {
-    var quotient: u32 = 0;
-    asm {
-        QDIV   {dividend}, {divisor}
-        GETQX  {quotient}
-    };
-    return quotient;
-}
-
-fn get_random() -> u32 {
-    var rnd: u32 = 0;
-    asm {
-        GETRND {rnd}
-    };
-    return rnd;
-}
-
-product_lo = unsigned_multiply(multiplicand, multiplier);

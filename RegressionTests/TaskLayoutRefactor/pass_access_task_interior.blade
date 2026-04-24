@@ -1,0 +1,17 @@
+// EXPECT: pass
+
+cog task main
+{    
+    cog var local: u32 = 0;
+    
+    fn foo() { }
+    fn bar() {
+        local = 10; // scope lookup must be supported lexically
+    }
+
+
+    foo(); // "foo" is declared in the current scope
+    bar(); // "foo" is declared in the current scope
+
+    local = 10; // "local" is declaredin the current scope 
+}

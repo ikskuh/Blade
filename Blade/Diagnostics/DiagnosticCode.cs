@@ -1,3 +1,5 @@
+using System;
+
 namespace Blade.Diagnostics;
 
 /// <summary>
@@ -43,6 +45,7 @@ public enum DiagnosticCode
     E0215_InvalidLocalStorageClass = 215,
     E0216_InvalidExternScope = 216,
     E0217_InvalidParameterStorageClass = 217,
+    [Obsolete("This diagnostic is no longer applicable", error: true)]
     E0218_UnsupportedStorageClass = 218,
     E0219_UnknownNamedArgument = 219,
     E0220_DuplicateNamedArgument = 220,
@@ -101,6 +104,10 @@ public enum DiagnosticCode
     E0273_DuplicateFunctionAlignMetadata = 273,
     E0274_InvalidFunctionAlignment = 274,
     E0275_TaskLayoutNotAllowedInFunctionMetadata = 275,
+    E0276_AccessToForeignLayout = 276,
+    E0277_UnsupportedGlobalStorage = 277,
+
+    E0278_ReturnFromCoroutine = 278,
 
     // Inline assembly errors
     E0301_InlineAsmUnknownInstruction = 301,

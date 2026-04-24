@@ -1097,6 +1097,95 @@ public sealed class RegressionHarnessTests
     }
 
     [Test]
+    public void HeaderValidation_RejectsFailWithoutDiagnosticExpectation()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/fail_without_diagnostics.blade", """
+        // EXPECT: fail
+        cog task main {
+        }
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+            Filters = ["fail_without_diagnostics.blade"],
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
+            Assert.That(fixtureResult.Details, Has.Some.Contains("EXPECT: fail requires at least one DIAGNOSTICS expectation."));
+        });
+    }
+
+    [Test]
+    public void HeaderValidation_BlankLineTerminatesExpectationBlock()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/header_blank_line_terminates.blade", """
+        // EXPECT: pass
+        // DIAGNOSTICS:
+        // - W0269
+
+        // This comment documents the fixture and must not be parsed as a header directive.
+        hub task main {
+        }
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+            Filters = ["header_blank_line_terminates.blade"],
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Pass));
+            Assert.That(fixtureResult.Summary, Is.EqualTo("passed"));
+        });
+    }
+
+    [Test]
+    public void HeaderValidation_WhitespaceOnlyLineTerminatesExpectationBlock()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile(
+            "Demonstrators/header_whitespace_line_terminates.blade",
+            "// EXPECT: pass\n"
+            + "// DIAGNOSTICS:\n"
+            + "// - W0269\n"
+            + " \t \n"
+            + "// This comment documents the fixture and must not be parsed as a header directive.\n"
+            + "lut task main {\n"
+            + "}\n");
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+            Filters = ["header_whitespace_line_terminates.blade"],
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Pass));
+            Assert.That(fixtureResult.Summary, Is.EqualTo("passed"));
+        });
+    }
+
+    [Test]
     public void BladeCrashFixture_PassesWhenCompilationProducesDiagnosticsButDoesNotThrow()
     {
         using TempDirectory temp = new();

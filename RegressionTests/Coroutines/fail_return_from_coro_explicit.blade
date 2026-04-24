@@ -1,0 +1,9 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - E0278
+
+coro fn returns() {
+    return; // must be rejected
+}
+
+cog task main { } 

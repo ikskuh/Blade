@@ -1,0 +1,16 @@
+// EXPECT: pass
+// DIAGNOSTICS:
+// - W0266
+
+layout Container
+{
+    lut var global: i8 = 0;
+}
+
+hub var global: u32 = 0;
+
+cog task main : Container
+{
+    var local_1: u32 = global; // must resolve to 
+    var local_2: i8 = Container.global; // must resolve to the container variable
+}

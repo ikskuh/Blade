@@ -1,0 +1,18 @@
+// EXPECT: pass
+
+cog task main 
+{
+    coro fn ping() {
+        loop {
+            yieldto pong();
+        }
+    }
+
+    coro fn pong() {
+        loop {
+            yieldto ping();
+        }
+    }
+    
+    yieldto ping();
+}

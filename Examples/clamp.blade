@@ -8,8 +8,11 @@ fn clamp_to_limit(value: u32, limit: u32) -> u32 {
     return value;
 }
 
-var candidate: u32 = 250;
-cog var limit_value: u32 = 128;
-cog var clamped: u32 = 0;
+cog task main
+{
+    var candidate: u32 = 250;
+    cog var limit_value: u32 = 128;
+    cog var clamped: u32 = 0;
 
-clamped = clamp_to_limit(candidate, limit_value);
+    clamped = clamp_to_limit(candidate, limit_value);
+}

@@ -1233,6 +1233,7 @@ internal static class RegressionFixtureParser
         string text = File.ReadAllText(discoveredFixture.AbsolutePath);
         RegressionExpectation expectation;
         string bodyText;
+        bool requireFailDiagnosticAssertions = false;
 
         switch (discoveredFixture.PoolExpectation)
         {
@@ -1248,9 +1249,16 @@ internal static class RegressionFixtureParser
 
             case RegressionPoolExpectation.Encoded:
                 HeaderScanResult headerScan = HeaderScanResult.Scan(text);
-                expectation = headerScan.HasDirectiveHeader
-                    ? ParseExpectation(headerScan)
-                    : CreateDefaultExpectation(RegressionExpectationKind.Pass);
+                if (headerScan.HasDirectiveHeader)
+                {
+                    expectation = ParseExpectation(headerScan);
+                    requireFailDiagnosticAssertions = true;
+                }
+                else
+                {
+                    expectation = CreateDefaultExpectation(RegressionExpectationKind.Pass);
+                }
+
                 bodyText = headerScan.BodyText;
                 break;
 
@@ -1259,7 +1267,7 @@ internal static class RegressionFixtureParser
                     $"Unsupported regression pool expectation '{discoveredFixture.PoolExpectation}'."));
         }
 
-        ValidateExpectation(expectation);
+        ValidateExpectation(expectation, requireFailDiagnosticAssertions);
         return new RegressionFixture(discoveredFixture.AbsolutePath, discoveredFixture.RelativePath, kind, text, bodyText, expectation);
     }
 
@@ -1299,10 +1307,17 @@ internal static class RegressionFixtureParser
             []);
     }
 
-    private static void ValidateExpectation(RegressionExpectation expectation)
+    private static void ValidateExpectation(RegressionExpectation expectation, bool requireFailDiagnosticAssertions)
     {
         if (expectation.HasCodeAssertions && expectation.Stage is null)
             throw new InvalidOperationException("Blade fixtures with code assertions must specify STAGE.");
+
+        if (requireFailDiagnosticAssertions
+            && expectation.ExpectationKind == RegressionExpectationKind.Fail
+            && !expectation.HasDiagnosticAssertions)
+        {
+            throw new InvalidOperationException("EXPECT: fail requires at least one DIAGNOSTICS expectation.");
+        }
 
         if (expectation.ExpectationKind != RegressionExpectationKind.PassHw
                 && expectation.ExpectationKind != RegressionExpectationKind.XFailHw
@@ -1663,12 +1678,16 @@ internal static class RegressionFixtureParser
             string[] lines = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
             List<HeaderLine> headerLines = [];
             int bodyStartIndex = 0;
+            bool headerStarted = false;
 
             while (bodyStartIndex < lines.Length)
             {
                 string line = lines[bodyStartIndex];
                 if (string.IsNullOrWhiteSpace(line))
                 {
+                    if (headerStarted)
+                        break;
+
                     headerLines.Add(new HeaderLine(false, string.Empty));
                     bodyStartIndex++;
                     continue;
@@ -1677,6 +1696,7 @@ internal static class RegressionFixtureParser
                 if (TryStripCommentPrefix(line, out string? content))
                 {
                     headerLines.Add(new HeaderLine(true, content));
+                    headerStarted |= ExpectDirectiveRegex.IsMatch(content.TrimStart());
                     bodyStartIndex++;
                     continue;
                 }

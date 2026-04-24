@@ -1,0 +1,47 @@
+// EXPECT: pass
+
+layout Root
+{
+    lut var rootvar: u32 = 0;
+}
+
+layout Child : Root
+{
+    lut var childvar: u32 = 0;
+}
+
+layout SideCar
+{
+    lut var sidecar: u32 = 0;
+}
+
+layout Merged : Child, SideCar
+{
+
+}
+
+hub var global: u32 = 0;
+
+// The "main" task should see all variables in its private scope:
+cog task main : Merged
+{
+    cog var local: u32 = 0;
+
+    global = 1;
+    rootvar = 2;
+    childvar = 3;
+    sidecar = 4;
+    local = 5;
+}
+
+// The "split" task should still see all variables in its private scope:
+cog task split : Child, SideCar
+{
+    cog var local: u32 = 0;
+
+    global = 1;
+    rootvar = 2;
+    childvar = 3;
+    sidecar = 4;
+    local = 5;
+}

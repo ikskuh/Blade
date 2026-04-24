@@ -1,0 +1,9 @@
+// EXPECT: pass
+// DIAGNOSTICS:
+// - W0269
+
+// This must emit a warning as a "lut task" is an inefficient entrypoint:
+lut task main 
+{
+
+}

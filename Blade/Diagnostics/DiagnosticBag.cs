@@ -226,11 +226,6 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
         Report(DiagnosticCode.E0217_InvalidParameterStorageClass, span, $"Parameter storage class '{storageClass}' is not supported.");
     }
 
-    public void ReportUnsupportedStorageClass(TextSpan span, string storageClass)
-    {
-        Report(DiagnosticCode.E0218_UnsupportedStorageClass, span, $"Storage class '{storageClass}' is not supported yet.");
-    }
-
     public void ReportPointerStorageClassRequired(TextSpan span)
     {
         Report(DiagnosticCode.E0264_PointerStorageClassRequired, span, "Pointer types must explicitly declare a storage class.");
@@ -288,6 +283,11 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
     public void ReportMissingReturnValue(TextSpan span, string functionName)
     {
         Report(DiagnosticCode.E0227_MissingReturnValue, span, $"Function '{functionName}' must return a value on all control-flow paths.");
+    }
+
+    public void ReportReturnFromCoroutine(TextSpan span, string functionName)
+    {
+        Report(DiagnosticCode.E0278_ReturnFromCoroutine, span, $"Coroutine function '{functionName}' cannot return and must end in 'yieldto' on every control-flow path.");
     }
 
 
@@ -645,6 +645,28 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
     public void ReportTaskLayoutNotAllowedInFunctionMetadata(TextSpan span, string taskName)
     {
         Report(DiagnosticCode.E0275_TaskLayoutNotAllowedInFunctionMetadata, span, $"Task layout '{taskName}' cannot be referenced from function metadata.");
+    }
+
+    /// <summary>
+    /// Reports that a qualified layout member access targets a layout that is not visible in the current context.
+    /// </summary>
+    public void ReportAccessToForeignLayout(TextSpan span, string layoutName, string memberName)
+    {
+        Report(
+            DiagnosticCode.E0276_AccessToForeignLayout,
+            span,
+            $"Layout member '{layoutName}.{memberName}' is not accessible from this context because the layout is not declared here.");
+    }
+
+    /// <summary>
+    /// Reports that a plain top-level global used a storage class that is only meaningful inside a layout.
+    /// </summary>
+    public void ReportUnsupportedGlobalStorage(TextSpan span, string storageClass)
+    {
+        Report(
+            DiagnosticCode.E0277_UnsupportedGlobalStorage,
+            span,
+            $"Top-level global storage class '{storageClass}' is not supported here. Use 'hub' or move the declaration into a layout.");
     }
 
     // Inline assembly diagnostics

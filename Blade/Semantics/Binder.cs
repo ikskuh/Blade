@@ -109,7 +109,8 @@ public sealed class Binder
             {
                 case VariableDeclarationSyntax variable when MapStorageClass(variable.StorageClassKeyword) is not null:
                     _currentScope = _globalScope;
-                    boundGlobals.Add(BindGlobalVariable(variable));
+                    if (IsSupportedPlainTopLevelGlobal(variable, reportDiagnostic: true))
+                        boundGlobals.Add(BindGlobalVariable(variable));
                     break;
 
                 case LayoutDeclarationSyntax layoutDeclaration:
@@ -394,7 +395,7 @@ public sealed class Binder
                         taskDeclaration.Name.Text,
                         taskDeclaration,
                         FunctionKind.Default,
-                        isTopLevel: false,
+                        isTopLevel: true,
                         storageClass: storageClass,
                         FunctionInliningPolicy.Default,
                         CreateSourceSpan(taskDeclaration.Name.Span));
@@ -821,11 +822,7 @@ public sealed class Binder
         List<StoredLayoutMemberBinding> storedMembers = [];
         foreach (VariableDeclarationSyntax declaration in declarations)
         {
-            if (MapStorageClass(declaration.StorageClassKeyword) is null)
-            {
-                _diagnostics.ReportUnsupportedStorageClass(declaration.Name.Span, declaration.Name.Text);
-                continue;
-            }
+            Assert.NotNull(MapStorageClass(declaration.StorageClassKeyword));
 
             _suppressPointerStorageClassDiagnostics = true;
             BladeType variableType = BindType(declaration.Type);
@@ -1068,6 +1065,9 @@ public sealed class Binder
             if (MapStorageClass(variableDecl.StorageClassKeyword) is null)
                 continue;
 
+            if (!IsSupportedPlainTopLevelGlobal(variableDecl, reportDiagnostic: false))
+                continue;
+
             _suppressPointerStorageClassDiagnostics = true;
             BladeType variableType = BindType(variableDecl.Type);
             _suppressPointerStorageClassDiagnostics = false;
@@ -1151,6 +1151,13 @@ public sealed class Binder
             _ = TryDeclareSymbol(_currentScope, parameter, function.SignatureNameSpan, preserveLocalBindingOnShadowing: true);
 
         BoundBlockStatement body = BindBlockStatement(bodySyntax, createScope: false);
+
+        if (function.Kind == FunctionKind.Coro)
+        {
+            CoroutineExitAnalysis exitAnalysis = AnalyzeCoroutineExitPaths(body);
+            if (exitAnalysis.CanReachFunctionEnd)
+                _diagnostics.ReportReturnFromCoroutine(missingReturnSpan, function.Name);
+        }
 
         if (function.ReturnTypes.Count > 0 && !AlwaysReturns(body))
             _diagnostics.ReportMissingReturnValue(missingReturnSpan, function.Name);
@@ -1280,6 +1287,96 @@ public sealed class Binder
                 return false;
         }
     }
+
+    private static CoroutineExitAnalysis AnalyzeCoroutineExitPaths(BoundStatement statement)
+    {
+        switch (statement)
+        {
+            case BoundBlockStatement block:
+                {
+                    bool canContinue = true;
+                    bool hasExplicitReturn = false;
+                    bool canBreakLoop = false;
+
+                    foreach (BoundStatement child in block.Statements)
+                    {
+                        if (!canContinue)
+                            break;
+
+                        CoroutineExitAnalysis childAnalysis = AnalyzeCoroutineExitPaths(child);
+                        hasExplicitReturn |= childAnalysis.HasExplicitReturn;
+                        canBreakLoop |= childAnalysis.CanBreakLoop;
+                        canContinue = childAnalysis.CanReachFunctionEnd;
+                    }
+
+                    return new CoroutineExitAnalysis(canContinue, hasExplicitReturn, canBreakLoop);
+                }
+
+            case BoundIfStatement ifStatement:
+                {
+                    CoroutineExitAnalysis thenAnalysis = AnalyzeCoroutineExitPaths(ifStatement.ThenBody);
+                    if (ifStatement.ElseBody is null)
+                        return new CoroutineExitAnalysis(CanReachFunctionEnd: true, thenAnalysis.HasExplicitReturn, thenAnalysis.CanBreakLoop);
+
+                    CoroutineExitAnalysis elseAnalysis = AnalyzeCoroutineExitPaths(ifStatement.ElseBody);
+                    return new CoroutineExitAnalysis(
+                        thenAnalysis.CanReachFunctionEnd || elseAnalysis.CanReachFunctionEnd,
+                        thenAnalysis.HasExplicitReturn || elseAnalysis.HasExplicitReturn,
+                        thenAnalysis.CanBreakLoop || elseAnalysis.CanBreakLoop);
+                }
+
+            case BoundNoirqStatement noirqStatement:
+                return AnalyzeCoroutineExitPaths(noirqStatement.Body);
+
+            case BoundLoopStatement loopStatement:
+                {
+                    CoroutineExitAnalysis bodyAnalysis = AnalyzeCoroutineExitPaths(loopStatement.Body);
+                    return new CoroutineExitAnalysis(bodyAnalysis.CanBreakLoop, bodyAnalysis.HasExplicitReturn, CanBreakLoop: false);
+                }
+
+            case BoundRepLoopStatement repLoopStatement:
+                {
+                    CoroutineExitAnalysis bodyAnalysis = AnalyzeCoroutineExitPaths(repLoopStatement.Body);
+                    return new CoroutineExitAnalysis(bodyAnalysis.CanBreakLoop, bodyAnalysis.HasExplicitReturn, CanBreakLoop: false);
+                }
+
+            case BoundWhileStatement whileStatement:
+                {
+                    CoroutineExitAnalysis bodyAnalysis = AnalyzeCoroutineExitPaths(whileStatement.Body);
+                    return new CoroutineExitAnalysis(CanReachFunctionEnd: true, bodyAnalysis.HasExplicitReturn, CanBreakLoop: false);
+                }
+
+            case BoundForStatement forStatement:
+                {
+                    CoroutineExitAnalysis bodyAnalysis = AnalyzeCoroutineExitPaths(forStatement.Body);
+                    return new CoroutineExitAnalysis(CanReachFunctionEnd: true, bodyAnalysis.HasExplicitReturn, CanBreakLoop: false);
+                }
+
+            case BoundRepForStatement repForStatement:
+                {
+                    CoroutineExitAnalysis bodyAnalysis = AnalyzeCoroutineExitPaths(repForStatement.Body);
+                    return new CoroutineExitAnalysis(CanReachFunctionEnd: true, bodyAnalysis.HasExplicitReturn, CanBreakLoop: false);
+                }
+
+            case BoundReturnStatement:
+                return new CoroutineExitAnalysis(CanReachFunctionEnd: false, HasExplicitReturn: true, CanBreakLoop: false);
+
+            case BoundYieldtoStatement:
+                return new CoroutineExitAnalysis(CanReachFunctionEnd: false, HasExplicitReturn: false, CanBreakLoop: false);
+
+            case BoundBreakStatement:
+                return new CoroutineExitAnalysis(CanReachFunctionEnd: false, HasExplicitReturn: false, CanBreakLoop: true);
+
+            case BoundContinueStatement:
+            case BoundErrorStatement:
+                return new CoroutineExitAnalysis(CanReachFunctionEnd: false, HasExplicitReturn: false, CanBreakLoop: false);
+
+            default:
+                return new CoroutineExitAnalysis(CanReachFunctionEnd: true, HasExplicitReturn: false, CanBreakLoop: false);
+        }
+    }
+
+    private readonly record struct CoroutineExitAnalysis(bool CanReachFunctionEnd, bool HasExplicitReturn, bool CanBreakLoop);
 
     private bool IsTopLevelContext()
     {
@@ -2049,6 +2146,18 @@ public sealed class Binder
             return new BoundReturnStatement(values, returnStatement.Span);
         }
 
+        if (_currentFunction.Kind == FunctionKind.Coro)
+        {
+            _diagnostics.ReportReturnFromCoroutine(returnStatement.ReturnKeyword.Span, _currentFunction.Name);
+            if (returnStatement.Values is not null)
+            {
+                foreach (ExpressionSyntax value in returnStatement.Values)
+                    values.Add(BindExpression(value));
+            }
+
+            return new BoundReturnStatement(values, returnStatement.Span);
+        }
+
         int expectedCount = _currentFunction.ReturnTypes.Count;
         int actualCount = returnStatement.Values?.Count ?? 0;
         if (expectedCount != actualCount)
@@ -2146,7 +2255,8 @@ public sealed class Binder
         if (!IsYieldtoContextAllowed())
             _diagnostics.ReportInvalidYieldto(yieldtoStatement.YieldtoKeyword.Span);
 
-        if (_functions.TryGetValue(yieldtoStatement.Target.Text, out FunctionSymbol? targetFunction))
+        if (TryResolveAccessibleName(yieldtoStatement.Target.Text, yieldtoStatement.Target.Span, out Symbol? resolvedSymbol)
+            && resolvedSymbol is FunctionSymbol targetFunction)
         {
             if (targetFunction.Kind != FunctionKind.Coro)
             {
@@ -2488,11 +2598,36 @@ public sealed class Binder
             && ReferenceEquals(_currentImplicitLayout, task);
     }
 
+    private bool CanAccessQualifiedLayout(LayoutSymbol layout)
+    {
+        foreach (LayoutSymbol effectiveLayout in _currentEffectiveLayouts)
+        {
+            if (IsReachableLayout(effectiveLayout, layout))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsReachableLayout(LayoutSymbol root, LayoutSymbol target)
+    {
+        if (ReferenceEquals(root, target))
+            return true;
+
+        foreach (LayoutSymbol parent in root.Parents)
+        {
+            if (IsReachableLayout(parent, target))
+                return true;
+        }
+
+        return false;
+    }
+
     private bool TryResolveQualifiedTaskMember(TaskSymbol task, string memberName, TextSpan span, out GlobalVariableSymbol? symbol)
     {
         if (!CanAccessTaskLayout(task))
         {
-            _diagnostics.ReportUndefinedName(span, memberName);
+            _diagnostics.ReportAccessToForeignLayout(span, task.Name, memberName);
             symbol = null;
             return false;
         }
@@ -2547,6 +2682,13 @@ public sealed class Binder
 
     private bool TryResolveQualifiedLayoutMember(LayoutSymbol layout, string memberName, TextSpan span, out GlobalVariableSymbol? symbol)
     {
+        if (!CanAccessQualifiedLayout(layout))
+        {
+            _diagnostics.ReportAccessToForeignLayout(span, layout.Name, memberName);
+            symbol = null;
+            return false;
+        }
+
         if (!GetVisibleLayoutMembers(layout).TryGetValue(memberName, out IReadOnlyList<LayoutMemberBinding>? bindings)
             || bindings.Count == 0)
         {
@@ -4262,6 +4404,24 @@ public sealed class Binder
             TokenKind.HubKeyword => VariableStorageClass.Hub,
             _ => null,
         };
+    }
+
+    private bool IsSupportedPlainTopLevelGlobal(VariableDeclarationSyntax declaration, bool reportDiagnostic)
+    {
+        VariableStorageClass? storageClass = MapStorageClass(declaration.StorageClassKeyword);
+        Assert.Invariant(storageClass.HasValue, "Stored top-level declarations must have an explicit storage class.");
+
+        if (storageClass == VariableStorageClass.Hub)
+            return true;
+
+        if (reportDiagnostic)
+        {
+            Assert.Invariant(declaration.StorageClassKeyword is not null, "Stored declarations must carry a storage-class token.");
+            Token storageClassKeyword = declaration.StorageClassKeyword!.Value;
+            _diagnostics.ReportUnsupportedGlobalStorage(storageClassKeyword.Span, storageClassKeyword.Text);
+        }
+
+        return false;
     }
 
     private VariableStorageClass BindPointerStorageClass(Token? storageClassKeyword, TextSpan span)

@@ -12,7 +12,10 @@ fn sum_to(limit: u32) -> u32 {
     return total;
 }
 
-var requested_limit: u32 = 8;
-cog var total_sum: u32 = 0;
+cog task main
+{
+    var requested_limit: u32 = 8;
+    cog var total_sum: u32 = 0;
 
-total_sum = sum_to(requested_limit);
+    total_sum = sum_to(requested_limit);
+}

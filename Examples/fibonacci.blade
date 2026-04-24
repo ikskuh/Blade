@@ -10,7 +10,10 @@ rec fn fibonacci(n: u32) -> u32 {
     return a + b;
 }
 
-cog var input: u32 = 10;
-cog var result: u32 = 0;
+cog task main
+{
+    cog var input: u32 = 10;
+    cog var result: u32 = 0;
 
-result = fibonacci(input);
+    result = fibonacci(input);
+}

@@ -4,25 +4,28 @@
 // to the C or Z flag. Combined with IF_C/IF_NC prefixes, this allows
 // branchless conditional logic — critical for deterministic-time code.
 
-cog var flags: u32 = 0;
-cog var pin_state: u32 = 0;
-cog var bit_result: u32 = 0;
+cog task main
+{
+    cog var flags: u32 = 0;
+    cog var pin_state: u32 = 0;
+    cog var bit_result: u32 = 0;
 
-fn test_and_set_bit(val: u32, bit_num: u32) -> u32 {
-    var out: u32 = 0;
-    asm {
-        MOV   {out}, {val}
-        TESTB {out}, {bit_num} WC
-        IF_NC BITH  {out}, {bit_num}
-    };
-    return out;
+    fn test_and_set_bit(val: u32, bit_num: u32) -> u32 {
+        var out: u32 = 0;
+        asm {
+            MOV   {out}, {val}
+            TESTB {out}, {bit_num} WC
+            IF_NC BITH  {out}, {bit_num}
+        };
+        return out;
+    }
+
+    fn read_pin_to_carry(pin: u32) -> bool@C {
+        asm {
+            TESTP {pin} WC
+        } -> result: bool@C;
+        return result;
+    }
+
+    flags = test_and_set_bit(flags, 5);
 }
-
-fn read_pin_to_carry(pin: u32) -> bool@C {
-    asm {
-        TESTP {pin} WC
-    } -> result: bool@C;
-    return result;
-}
-
-flags = test_and_set_bit(flags, 5);
