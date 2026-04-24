@@ -284,9 +284,35 @@ public sealed class Binder
         if (_moduleDefinitionCache.TryGetValue(BuiltinModulePath, out BoundModule? cached))
             return cached;
 
+        LayoutSymbol intRegsLayout = new("IntRegs");
+        AddBuiltinLayoutMember(intRegsLayout, "IJMP3", isConst: false, address: 0x1F0);
+        AddBuiltinLayoutMember(intRegsLayout, "IRET3", isConst: false, address: 0x1F1);
+        AddBuiltinLayoutMember(intRegsLayout, "IJMP2", isConst: false, address: 0x1F2);
+        AddBuiltinLayoutMember(intRegsLayout, "IRET2", isConst: false, address: 0x1F3);
+        AddBuiltinLayoutMember(intRegsLayout, "IJMP1", isConst: false, address: 0x1F4);
+        AddBuiltinLayoutMember(intRegsLayout, "IRET1", isConst: false, address: 0x1F5);
+
+        LayoutSymbol ioLayout = new("IO");
+        AddBuiltinLayoutMember(ioLayout, "DIRA", isConst: false, address: 0x1FA);
+        AddBuiltinLayoutMember(ioLayout, "DIRB", isConst: false, address: 0x1FB);
+        AddBuiltinLayoutMember(ioLayout, "OUTA", isConst: false, address: 0x1FC);
+        AddBuiltinLayoutMember(ioLayout, "OUTB", isConst: false, address: 0x1FD);
+        AddBuiltinLayoutMember(ioLayout, "INA", isConst: true, address: 0x1FE);
+        AddBuiltinLayoutMember(ioLayout, "INB", isConst: true, address: 0x1FF);
+
+        LayoutSymbol sfrLayout = new("SFR");
+        sfrLayout.SetParents([ioLayout, intRegsLayout]);
+        AddBuiltinLayoutMember(sfrLayout, "PA", isConst: false, address: 0x1F6);
+        AddBuiltinLayoutMember(sfrLayout, "PB", isConst: false, address: 0x1F7);
+        AddBuiltinLayoutMember(sfrLayout, "PTRA", isConst: false, address: 0x1F8);
+        AddBuiltinLayoutMember(sfrLayout, "PTRB", isConst: false, address: 0x1F9);
+
         Dictionary<string, Symbol> exportedSymbols = new(StringComparer.Ordinal)
         {
             ["MemorySpace"] = new TypeSymbol("MemorySpace", MemorySpaceType),
+            ["IntRegs"] = intRegsLayout,
+            ["IO"] = ioLayout,
+            ["SFR"] = sfrLayout,
         };
 
         CompilationUnitSyntax emptySyntax = new([], new Token(TokenKind.EndOfFile, new TextSpan(0, 0), string.Empty));
@@ -299,6 +325,20 @@ public sealed class Binder
 
         _moduleDefinitionCache[BuiltinModulePath] = builtinModule;
         return builtinModule;
+    }
+
+    private static void AddBuiltinLayoutMember(LayoutSymbol layout, string name, bool isConst, int address)
+    {
+        GlobalVariableSymbol member = new(
+            name,
+            BuiltinTypes.U32,
+            isConst,
+            VariableStorageClass.Cog,
+            isExtern: true,
+            fixedAddress: address,
+            alignment: null);
+        bool added = layout.TryDeclareMember(member);
+        Assert.Invariant(added, $"Builtin layout '{layout.Name}' must not contain duplicate member '{name}'.");
     }
 
     private bool TryDeclareSymbol(Scope scope, Symbol symbol, TextSpan span, bool preserveLocalBindingOnShadowing = false)

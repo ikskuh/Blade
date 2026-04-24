@@ -1,16 +1,5 @@
-layout IO 
-{
-    extern cog var   PA:   u32 @(0x1F6);
-    extern cog var   PB:   u32 @(0x1F7);
-    extern cog var   PTRA: u32 @(0x1F8); // free for user (hub data access)
-    extern cog var   PTRB: u32 @(0x1F9); // reserved for rec fn stack
-    extern cog var   DIRA: u32 @(0x1FA);
-    extern cog var   DIRB: u32 @(0x1FB);
-    extern cog var   OUTA: u32 @(0x1FC);
-    extern cog var   OUTB: u32 @(0x1FD);
-    extern cog const INA:  u32 @(0x1FE);
-    extern cog const INB:  u32 @(0x1FF);
-}
+
+import builtin;
 
 fn wait(cnt: u32) {
     asm {
@@ -18,7 +7,7 @@ fn wait(cnt: u32) {
     };
 }
 
-cog task main : IO
+cog task main : builtin.IO
 {
     while(true) {
         OUTA |= 0x10;

@@ -1,0 +1,25 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - E0271
+
+layout Container
+{
+    lut var global: i8 = 0;
+}
+
+layout Other
+{
+    lut var magic: i8 = 0;
+}
+
+fn func_wrong_layout() : layout(Other)
+{
+    magic = 1;
+}
+
+fn func_no_layout() : layout(Container)
+{
+    func_wrong_layout();
+}
+
+cog task main { }

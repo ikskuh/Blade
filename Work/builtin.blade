@@ -1,0 +1,56 @@
+layout IntRegs
+{
+    // INT3 call address
+    extern cog var IJMP3: u32 @(0x1F0);
+
+    // INT3 return address
+    extern cog var IRET3: u32 @(0x1F1);
+
+    // INT2 call address
+    extern cog var IJMP2: u32 @(0x1F2);
+
+    // INT2 return address
+    extern cog var IRET2: u32 @(0x1F3);
+
+    // INT1 call address
+    extern cog var IJMP1: u32 @(0x1F4);
+
+    // INT1 return address
+    extern cog var IRET1: u32 @(0x1F5);
+}
+
+layout IO
+{
+    // I/O port A direction register
+    extern cog var DIRA: u32 @(0x1FA);
+
+    // I/O port B direction register
+    extern cog var DIRB: u32 @(0x1FB);
+
+    // I/O port A output register
+    extern cog var OUTA: u32 @(0x1FC);
+
+    // I/O port B output register
+    extern cog var OUTB: u32 @(0x1FD);
+
+    // I/O port A input register
+    extern cog const INA: u32 @(0x1FE);
+
+    // I/O port B input register
+    extern cog const INB: u32 @(0x1FF);
+}
+
+layout SFR : IO, IntRegs
+{
+    // Used with CALLPA, CALLD and LOC
+    extern cog var PA: u32 @(0x1F6);
+    
+    // Used with CALLPB, CALLD and LOC
+    extern cog var PB: u32 @(0x1F7);
+
+    // Pointer A register
+    extern cog var PTRA: u32 @(0x1F8);
+
+    // Pointer B register
+    extern cog var PTRB: u32 @(0x1F9);
+}

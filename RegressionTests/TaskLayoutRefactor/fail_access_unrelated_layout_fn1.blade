@@ -1,0 +1,15 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - E0276
+
+layout Container
+{
+    lut var global: i8 = 0;
+}
+
+fn func_no_layout()
+{
+    Container.global = 1; // must be rejected as the task does not inherit the layout
+}
+
+cog task main { }

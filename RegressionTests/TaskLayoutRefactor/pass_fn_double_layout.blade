@@ -1,0 +1,22 @@
+// EXPECT: pass
+// DIAGNOSTICS:
+// - W0272
+
+layout First
+{
+    cog var first: u32 = 0;
+}
+
+layout Second
+{
+    cog var second: u32 = 0;
+}
+
+fn double_user() : layout(First), layout(Second)
+{
+    first = 1;
+    second = 2;
+}
+
+cog task main { }
+

@@ -1,0 +1,32 @@
+// EXPECT: pass
+
+import builtin;
+
+fn general_sfr() : layout(builtin.SFR) {
+    PA = 1;
+    PB = 2;
+    PTRA = 3;
+    PTRB = 4;
+
+    DIRA = 5;
+    IJMP3 = 6;
+}
+
+fn io_regs() : layout(builtin.IO) {
+    DIRA = 0;
+    DIRB = 0;
+    OUTA = INA;
+    OUTB = INB;
+}
+
+fn irq_reg() : layout(builtin.IntRegs) {
+    IJMP3 = 0;
+    IRET3 = 0;
+    IJMP2 = 0;
+    IRET2 = 0;
+    IJMP1 = 0;
+    IRET1 = 0;
+}
+
+cog task main {
+}

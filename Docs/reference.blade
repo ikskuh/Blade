@@ -673,6 +673,31 @@ import builtin; // see "Module Subsystem" for explanations
 //          hub,
 //      };
 //
+//      layout IntRegs {
+//          extern cog var IJMP3: u32 @(0x1F0);
+//          extern cog var IRET3: u32 @(0x1F1);
+//          extern cog var IJMP2: u32 @(0x1F2);
+//          extern cog var IRET2: u32 @(0x1F3);
+//          extern cog var IJMP1: u32 @(0x1F4);
+//          extern cog var IRET1: u32 @(0x1F5);
+//      }
+//
+//      layout IO {
+//          extern cog var DIRA: u32 @(0x1FA);
+//          extern cog var DIRB: u32 @(0x1FB);
+//          extern cog var OUTA: u32 @(0x1FC);
+//          extern cog var OUTB: u32 @(0x1FD);
+//          extern cog const INA: u32 @(0x1FE);
+//          extern cog const INB: u32 @(0x1FF);
+//      }
+//
+//      layout SFR : IO, IntRegs {
+//          extern cog var PA: u32 @(0x1F6);
+//          extern cog var PB: u32 @(0x1F7);
+//          extern cog var PTRA: u32 @(0x1F8);
+//          extern cog var PTRB: u32 @(0x1F9);
+//      }
+//
 // <end contents of "builtin" module>
 
 //////////////////////////////////////////////////////////////////////////////

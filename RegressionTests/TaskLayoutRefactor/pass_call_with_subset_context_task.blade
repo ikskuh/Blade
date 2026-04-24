@@ -1,0 +1,23 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - E0271
+
+layout First
+{
+    cog var first: u32 = 0;
+}
+
+layout Second
+{
+    cog var second: u32 = 0;
+}
+
+fn second_user() : layout(Second)
+{
+    second = 2;
+}
+
+cog task main : First, Second
+{
+    second_user();
+}
