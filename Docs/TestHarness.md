@@ -46,17 +46,32 @@ Comments after that terminating line are ordinary source comments and are not pa
 // EXPECT: pass
 // EXPECT: fail
 // EXPECT: xfail
+// EXPECT: xpass
 // EXPECT: pass-hw
+// EXPECT: xfail-hw
 ```
 
-- `pass` means the fixture must satisfy all assertions and, unless `DIAGNOSTICS` says otherwise, emit zero diagnostics.
+- `pass` means compilation must be accepted and all assertions must match.
+- `fail` means compilation must be rejected and all assertions must match. Encoded fixtures must define at least one `DIAGNOSTICS` expectation.
+- `xfail` means the `pass` contract is currently expected to be broken. It succeeds when compilation is rejected or any assertion in the `pass` contract fails. It is reported as `XFAIL` once that expected failure is observed.
+- `xpass` means the `fail` contract is currently expected to be broken. It succeeds when compilation is accepted or any assertion in the `fail` contract fails. Encoded fixtures must define at least one `DIAGNOSTICS` expectation. It is reported as `XPASS` once that expected non-failure is observed.
 - `pass-hw` means the fixture must satisfy the normal `pass` checks and, when hardware is configured, also pass real hardware execution using the hardware test runtime and `RUNS`.
-- `fail` means the fixture must fail in the way the header describes and must define at least one `DIAGNOSTICS` expectation.
-- `xfail` means the current failure shape is intentional. If the fixture unexpectedly starts passing, the suite fails so the expectation can be revisited.
+- `xfail-hw` uses the same compile-side contract as `pass-hw`, but a hardware result mismatch is the expected successful result when a run is attempted. If hardware is not configured, it behaves like `pass` on the compile side.
+
+Fixture outcomes are reported as:
+
+- `OK` when the fixture matched its `EXPECT` contract and all required checks.
+- `XFAIL` when an `EXPECT: xfail` or `EXPECT: xfail-hw` fixture failed in the expected way.
+- `XPASS` when an `EXPECT: xpass` fixture did not fail in the expected way.
+- `FAIL` when the fixture did not meet its expectation contract, including malformed encoded headers.
+- `HW FAIL` when the compile-side contract matched, but a hardware run produced the wrong result.
+- `HW ERR` when the compile-side contract matched, but hardware execution failed for a technical reason such as load, transport, or runner failure.
+
+If FlexSpin is unavailable, fixtures that require it are still reported as `SKIP`.
 
 ### `RUNS`
 
-`RUNS` is only valid for `.blade` fixtures with `EXPECT: pass-hw` and is required there.
+`RUNS` is only valid for `.blade` fixtures with `EXPECT: pass-hw` or `EXPECT: xfail-hw` and is required for both.
 
 ```blade
 // EXPECT: pass-hw
@@ -87,7 +102,7 @@ Each run entry supplies a parameter list followed by the expected output for tha
 ### `DIAGNOSTICS`
 
 Loose form: these codes must appear, but extra diagnostics are allowed.
-`EXPECT: fail` requires at least one diagnostic entry in either the loose or strict form.
+`EXPECT: fail` and `EXPECT: xpass` require at least one diagnostic entry in either the loose or strict form.
 
 ```blade
 // EXPECT: fail
@@ -238,6 +253,8 @@ For `EXPECT: pass-hw` and `EXPECT: xfail-hw`, the regression harness injects the
 
 - `.blade` defaults to automatic validation on passing fixtures that reach final assembly
 
+`EXPECT: pass`, `EXPECT: pass-hw`, and `EXPECT: xfail-hw` cannot be combined with expected error diagnostics because those modes describe fixtures whose compile-side contract must be accepted.
+
 ## Normalization rules
 
 Code comparisons ignore:
@@ -257,7 +274,7 @@ This keeps the harness strict enough to catch real codegen changes while still i
 ## Commands
 
 - `just regressions` runs the full regression corpus
-- `just regressions -- --hw-port <port>` runs the full regression corpus and enables real hardware execution for `EXPECT: pass-hw` fixtures
+- `just regressions -- --hw-port <port>` runs the full regression corpus and enables real hardware execution for `EXPECT: pass-hw` and `EXPECT: xfail-hw` fixtures
 - `just regressions -- --hw-loader turboprop --hw-port <port>` forces the hardware runner to use `turboprop`
 - `just regressions -- --hw-turboprop-no-version-check --hw-port <port>` passes `--no-version-check` when `turboprop` is selected
 - `just coverage` runs `dotnet test --collect:"XPlat Code Coverage"`

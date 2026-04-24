@@ -16,8 +16,8 @@ public sealed class RegressionHarnessTests
     {
         RegressionFixtureResult passResult = new(
             "Demonstrators/Asm/asm_label.blade",
-            RegressionFixtureOutcome.Pass,
-            "passed",
+            RegressionFixtureOutcome.Ok,
+            "ok",
             [],
             artifactDirectoryPath: null);
         RegressionFixtureResult failResult = new(
@@ -32,7 +32,7 @@ public sealed class RegressionHarnessTests
         RegressionFixtureResult xfailResult = new(
             "RegressionTests/ExpectedFailures/hub_string_walk.blade",
             RegressionFixtureOutcome.XFail,
-            "expected failure observed",
+            "failed as expected",
             [
                 "missing diagnostic code E0202: expected at least 1, got 0",
             ],
@@ -42,11 +42,11 @@ public sealed class RegressionHarnessTests
         string report = RegressionReportFormatter.Format(result);
         string[] lines = report.Split(Environment.NewLine, StringSplitOptions.None);
 
-        Assert.That(lines[0], Is.EqualTo("PASS           Demonstrators/Asm/asm_label.blade"));
+        Assert.That(lines[0], Is.EqualTo("OK             Demonstrators/Asm/asm_label.blade"));
         Assert.That(lines[1], Is.EqualTo("FAIL           Demonstrators/Language/integer_literals.blade"));
         Assert.That(lines[2], Is.EqualTo("XFAIL          RegressionTests/ExpectedFailures/hub_string_walk.blade"));
-        Assert.That(report, Does.Not.Contain("PASS           Demonstrators/Asm/asm_label.blade" + Environment.NewLine + "  passed"));
-        Assert.That(report, Does.Not.Contain("XFAIL          RegressionTests/ExpectedFailures/hub_string_walk.blade" + Environment.NewLine + "  expected failure observed"));
+        Assert.That(report, Does.Not.Contain("OK             Demonstrators/Asm/asm_label.blade" + Environment.NewLine + "  ok"));
+        Assert.That(report, Does.Not.Contain("XFAIL          RegressionTests/ExpectedFailures/hub_string_walk.blade" + Environment.NewLine + "  failed as expected"));
         Assert.That(report, Does.Contain(Environment.NewLine + "---" + Environment.NewLine + Environment.NewLine + "FAIL           Demonstrators/Language/integer_literals.blade"));
         Assert.That(report, Does.Contain("  unexpected diagnostic: L5, E0101: Expected ';', got '456'."));
         Assert.That(report, Does.Contain("  FlexSpin validation was required, but no assembly text was available"));
@@ -54,7 +54,7 @@ public sealed class RegressionHarnessTests
         Assert.That(
             report.Split(Environment.NewLine).Count(line => line.Contains("unexpected diagnostic: L5, E0101: Expected ';', got '456'.", StringComparison.Ordinal)),
             Is.EqualTo(1));
-        Assert.That(report.TrimEnd(), Does.EndWith("1 failed, 1 xfailed, 1 passed, 3 total"));
+        Assert.That(report.TrimEnd(), Does.EndWith("1 fail, 1 xfail, 1 ok, 3 total"));
     }
 
     [Test]
@@ -103,17 +103,17 @@ public sealed class RegressionHarnessTests
     }
 
     [Test]
-    public void RegressionReportFormatter_HwFailed_IsLabelledAndExpandedButDoesNotAffectSucceeded()
+    public void RegressionReportFormatter_HwErr_IsLabelledAndExpandedAndMarksRunUnsuccessful()
     {
         RegressionFixtureResult passResult = new(
             "Demonstrators/simple.blade",
-            RegressionFixtureOutcome.Pass,
-            "passed",
+            RegressionFixtureOutcome.Ok,
+            "ok",
             [],
             artifactDirectoryPath: null);
         RegressionFixtureResult hwFailedResult = new(
             "Demonstrators/HwTest/hw_exec.blade",
-            RegressionFixtureOutcome.HwFailed,
+            RegressionFixtureOutcome.HwErr,
             "hardware run 1 [] failed: port not found",
             ["hardware run 1 [] failed: port not found"],
             artifactDirectoryPath: null);
@@ -123,11 +123,11 @@ public sealed class RegressionHarnessTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(result.Succeeded, Is.True);
-            Assert.That(result.HwFailedCount, Is.EqualTo(1));
-            Assert.That(report, Does.Contain("HW FAILED"));
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(result.HwErrCount, Is.EqualTo(1));
+            Assert.That(report, Does.Contain("HW ERR"));
             Assert.That(report, Does.Contain("hardware run 1 [] failed: port not found"));
-            Assert.That(report.TrimEnd(), Does.EndWith("1 hw-failed, 1 passed, 2 total"));
+            Assert.That(report.TrimEnd(), Does.EndWith("1 hw err, 1 ok, 2 total"));
         });
     }
 
@@ -164,11 +164,9 @@ public sealed class RegressionHarnessTests
         // - rt_result LONG 0
         // - rt_param0 LONG 0
         // - rt_param1 LONG 0
-        extern cog var rt_result: u32;
-        extern cog var rt_param0: u32;
-        extern cog var rt_param1: i32;
         cog task main {
-            rt_result = rt_param0 + bitcast(u32, rt_param1);
+            var x: u32 = 0;
+            _ = x;
         }
         """);
 
@@ -184,8 +182,8 @@ public sealed class RegressionHarnessTests
         Assert.Multiple(() =>
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Pass));
-            Assert.That(fixtureResult.Summary, Is.EqualTo("passed"));
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Ok));
+            Assert.That(fixtureResult.Summary, Is.EqualTo("ok"));
         });
     }
 
@@ -233,7 +231,7 @@ public sealed class RegressionHarnessTests
         Assert.Multiple(() =>
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Pass));
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Ok));
         });
     }
 
@@ -553,7 +551,7 @@ public sealed class RegressionHarnessTests
         Assert.Multiple(() =>
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Pass));
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Ok));
         });
     }
 
@@ -581,7 +579,7 @@ public sealed class RegressionHarnessTests
     }
 
     [Test]
-    public void PassHwFixture_WithConfiguredPort_HwRunFails_IsHwFailed()
+    public void PassHwFixture_WithConfiguredPort_HwRunFails_IsHwErr()
     {
         using TempDirectory temp = new();
         WriteMinimalRegressionRepository(temp);
@@ -590,9 +588,9 @@ public sealed class RegressionHarnessTests
         // EXPECT: pass-hw
         // RUNS:
         // - [] = 0x0
-        extern cog var rt_result: u32;
         cog task main {
-            rt_result = 0;
+            var x: u32 = 0;
+            _ = x;
         }
         """);
 
@@ -610,14 +608,14 @@ public sealed class RegressionHarnessTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(result.Succeeded, Is.True);
-            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.HwFailed));
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.HwErr));
             Assert.That(fixtureResult.Details, Has.Some.StartsWith("hardware run 1 [] failed:"));
         });
     }
 
     [Test]
-    public void XFailHwFixture_WithConfiguredPort_HwRunFails_IsHwFailed()
+    public void XFailHwFixture_WithConfiguredPort_HwRunFails_IsHwErr()
     {
         using TempDirectory temp = new();
         WriteMinimalRegressionRepository(temp);
@@ -626,9 +624,9 @@ public sealed class RegressionHarnessTests
         // EXPECT: xfail-hw
         // RUNS:
         // - [] = 0x1
-        extern cog var rt_result: u32;
         cog task main {
-            rt_result = 0;
+            var x: u32 = 0;
+            _ = x;
         }
         """);
 
@@ -646,14 +644,14 @@ public sealed class RegressionHarnessTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(result.Succeeded, Is.True);
-            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.HwFailed));
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.HwErr));
             Assert.That(fixtureResult.Details, Has.Some.StartsWith("hardware run 1 [] failed:"));
         });
     }
 
     [Test]
-    public void HwFailedFixture_WritesArtifactsWhenEnabled()
+    public void HwErrFixture_WritesArtifactsWhenEnabled()
     {
         using TempDirectory temp = new();
         WriteMinimalRegressionRepository(temp);
@@ -662,9 +660,9 @@ public sealed class RegressionHarnessTests
         // EXPECT: pass-hw
         // RUNS:
         // - [] = 0x0
-        extern cog var rt_result: u32;
         cog task main {
-            rt_result = 0;
+            var x: u32 = 0;
+            _ = x;
         }
         """);
 
@@ -682,7 +680,7 @@ public sealed class RegressionHarnessTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.HwFailed));
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.HwErr));
             Assert.That(fixtureResult.HardwareAttempted, Is.True);
             Assert.That(fixtureResult.ArtifactDirectoryPath, Is.Not.Null);
             Assert.That(File.Exists(Path.Combine(fixtureResult.ArtifactDirectoryPath!, "issues.txt")), Is.True);
@@ -694,7 +692,7 @@ public sealed class RegressionHarnessTests
     {
         RegressionFixtureResult fixtureResult = new(
             "Demonstrators/hw.blade",
-            RegressionFixtureOutcome.HwFailed,
+            RegressionFixtureOutcome.HwErr,
             "failed",
             ["detail"],
             artifactDirectoryPath: "/repo/.artifacts/regressions/run/fail",
@@ -706,8 +704,8 @@ public sealed class RegressionHarnessTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(document.RootElement.GetProperty("succeeded").GetBoolean(), Is.True);
-            Assert.That(fixture.GetProperty("outcome").GetString(), Is.EqualTo("hwFailed"));
+            Assert.That(document.RootElement.GetProperty("succeeded").GetBoolean(), Is.False);
+            Assert.That(fixture.GetProperty("outcome").GetString(), Is.EqualTo("hwErr"));
             Assert.That(fixture.GetProperty("hardwareAttempted").GetBoolean(), Is.True);
             Assert.That(fixture.GetProperty("artifactDirectoryPath").GetString(), Is.EqualTo("/repo/.artifacts/regressions/run/fail"));
         });
@@ -763,9 +761,9 @@ public sealed class RegressionHarnessTests
         // - [] = 1234
         // - [ 0 ] = 1234
         // - [ 0, -10, 0x12345 ] = -1
-        extern cog var rt_result: u32;
         cog task main {
-            rt_result = 1234;
+            var x: u32 = 1234;
+            _ = x;
         }
         """);
 
@@ -781,7 +779,7 @@ public sealed class RegressionHarnessTests
         Assert.Multiple(() =>
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Pass));
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Ok));
         });
     }
 
@@ -898,7 +896,7 @@ public sealed class RegressionHarnessTests
     }
 
     [Test]
-    public void XFailHwFixture_WithoutHardwarePort_IsXFail()
+    public void XFailHwFixture_WithoutHardwarePort_IsPass()
     {
         using TempDirectory temp = new();
         WriteMinimalRegressionRepository(temp);
@@ -907,9 +905,9 @@ public sealed class RegressionHarnessTests
         // EXPECT: xfail-hw
         // RUNS:
         // - [] = 0x1
-        extern cog var rt_result: u32;
         cog task main {
-            rt_result = 1;
+            var x: u32 = 1;
+            _ = x;
         }
         """);
 
@@ -917,7 +915,7 @@ public sealed class RegressionHarnessTests
         {
             RepositoryRootPath = temp.Path,
             WriteFailureArtifacts = false,
-            HardwarePort = "",  // disable hardware; xfail-hw without a run attempt is XFail
+            HardwarePort = "",  // disable hardware; xfail-hw falls back to compile-side pass semantics
         });
 
         RegressionFixtureResult fixtureResult = result.FixtureResults.Single(r =>
@@ -925,7 +923,7 @@ public sealed class RegressionHarnessTests
         Assert.Multiple(() =>
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.XFail));
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Ok));
         });
     }
 
@@ -956,7 +954,7 @@ public sealed class RegressionHarnessTests
     }
 
     [Test]
-    public void XFailFixture_WithMatchingDiagnostics_IsUnexpectedPass()
+    public void XFailFixture_WithMatchingDiagnostics_IsXFail()
     {
         using TempDirectory temp = new();
         WriteMinimalRegressionRepository(temp);
@@ -979,15 +977,15 @@ public sealed class RegressionHarnessTests
             r.RelativePath == "Demonstrators/Binder/fail_control_flow_contexts.blade");
         Assert.Multiple(() =>
         {
-            Assert.That(result.Succeeded, Is.False);
-            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.UnexpectedPass));
-            Assert.That(fixtureResult.Summary, Is.EqualTo("unexpected pass"));
-            Assert.That(fixtureResult.Details, Is.Empty);
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.XFail));
+            Assert.That(fixtureResult.Summary, Is.EqualTo("failed as expected"));
+            Assert.That(fixtureResult.Details, Has.Some.Contains("expected compilation to succeed, but it produced error diagnostics"));
         });
     }
 
     [Test]
-    public void XFailFixture_WhenExpectedDiagnosticsDisappear_IsUnexpectedPass()
+    public void XFailFixture_WhenExpectedDiagnosticsDisappear_IsXFail()
     {
         using TempDirectory temp = new();
         WriteMinimalRegressionRepository(temp);
@@ -1008,10 +1006,68 @@ public sealed class RegressionHarnessTests
             r.RelativePath == "Demonstrators/xfail_resolved.blade");
         Assert.Multiple(() =>
         {
-            Assert.That(result.Succeeded, Is.False);
-            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.UnexpectedPass));
-            Assert.That(fixtureResult.Summary, Is.EqualTo("unexpected pass"));
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.XFail));
+            Assert.That(fixtureResult.Summary, Is.EqualTo("failed as expected"));
             Assert.That(fixtureResult.Details, Has.Some.Contains("missing diagnostic code E0202: expected at least 1, got 0"));
+        });
+    }
+
+    [Test]
+    public void XPassFixture_WhenCompilationUnexpectedlySucceeds_IsXPass()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/xpass_accepts.blade", """
+        // EXPECT: xpass
+        // DIAGNOSTICS: E0202
+        cog task main {
+        }
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(r =>
+            r.RelativePath == "Demonstrators/xpass_accepts.blade");
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.XPass));
+            Assert.That(fixtureResult.Summary, Is.EqualTo("did not fail as expected"));
+            Assert.That(fixtureResult.Details, Has.Some.Contains("expected compilation to fail, but it completed without error diagnostics"));
+        });
+    }
+
+    [Test]
+    public void XPassFixture_WhenExpectedFailureStillOccurs_IsUnexpected()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/xpass_still_fails.blade", """
+        // EXPECT: xpass
+        // DIAGNOSTICS: E0202
+        cog task main {
+            missing();
+        }
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(r =>
+            r.RelativePath == "Demonstrators/xpass_still_fails.blade");
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
+            Assert.That(fixtureResult.Summary, Is.EqualTo("did not meet expectations"));
         });
     }
 
@@ -1124,6 +1180,33 @@ public sealed class RegressionHarnessTests
     }
 
     [Test]
+    public void HeaderValidation_RejectsXPassWithoutDiagnosticExpectation()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/xpass_without_diagnostics.blade", """
+        // EXPECT: xpass
+        cog task main {
+        }
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+            Filters = ["xpass_without_diagnostics.blade"],
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
+            Assert.That(fixtureResult.Details, Has.Some.Contains("EXPECT: xpass requires at least one DIAGNOSTICS expectation."));
+        });
+    }
+
+    [Test]
     public void HeaderValidation_BlankLineTerminatesExpectationBlock()
     {
         using TempDirectory temp = new();
@@ -1149,8 +1232,8 @@ public sealed class RegressionHarnessTests
         Assert.Multiple(() =>
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Pass));
-            Assert.That(fixtureResult.Summary, Is.EqualTo("passed"));
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Ok));
+            Assert.That(fixtureResult.Summary, Is.EqualTo("ok"));
         });
     }
 
@@ -1180,8 +1263,8 @@ public sealed class RegressionHarnessTests
         Assert.Multiple(() =>
         {
             Assert.That(result.Succeeded, Is.True);
-            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Pass));
-            Assert.That(fixtureResult.Summary, Is.EqualTo("passed"));
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Ok));
+            Assert.That(fixtureResult.Summary, Is.EqualTo("ok"));
         });
     }
 
@@ -1204,8 +1287,8 @@ public sealed class RegressionHarnessTests
         {
             Assert.That(result.Succeeded, Is.True);
             Assert.That(fixtureResult.RelativePath, Is.EqualTo("RegressionTests/syntax_failure.blade.crash"));
-            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Pass));
-            Assert.That(fixtureResult.Summary, Is.EqualTo("passed"));
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Ok));
+            Assert.That(fixtureResult.Summary, Is.EqualTo("ok"));
             Assert.That(fixtureResult.Details, Is.Empty);
         });
     }
@@ -1229,8 +1312,8 @@ public sealed class RegressionHarnessTests
         {
             Assert.That(result.Succeeded, Is.True);
             Assert.That(fixtureResult.RelativePath, Is.EqualTo("RegressionTests/invalid_utf8.blade.crash"));
-            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Pass));
-            Assert.That(fixtureResult.Summary, Is.EqualTo("passed"));
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Ok));
+            Assert.That(fixtureResult.Summary, Is.EqualTo("ok"));
         });
     }
 
@@ -1321,8 +1404,8 @@ public sealed class RegressionHarnessTests
         {
             Assert.That(result.Succeeded, Is.True);
             Assert.That(result.IrCoverageReport, Is.Not.Null);
-            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Pass));
-            Assert.That(fixtureResult.Summary, Is.EqualTo("passed"));
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Ok));
+            Assert.That(fixtureResult.Summary, Is.EqualTo("ok"));
         });
     }
 
