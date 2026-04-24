@@ -67,6 +67,7 @@ internal static class IrTestFactory
         Token closeBrace = new(TokenKind.CloseBrace, span, "}");
         BlockStatementSyntax body = new(openBrace, [], closeBrace);
         return new FunctionDeclarationSyntax(
+            null,
             [],
             fnKeyword,
             identifier,
@@ -75,6 +76,7 @@ internal static class IrTestFactory
             closeParen,
             arrow: null,
             returnSpec: null,
+            metadata: null,
             body);
     }
 
@@ -88,7 +90,7 @@ internal static class IrTestFactory
         IReadOnlyDictionary<MirValueId, MirFlag>? flagValues = null)
     {
         return new MirFunction(
-            new FunctionSymbol(name, CreateFunctionDeclarationSyntax(name), kind, isTopLevel: false),
+            new FunctionSymbol(name, CreateFunctionDeclarationSyntax(name), kind, isTopLevel: false, storageClass: null, FunctionInliningPolicy.Default, SourceSpan.Synthetic()),
             isEntryPoint,
             returnTypes,
             blocks,
@@ -261,6 +263,7 @@ internal static class IrTestFactory
             CreateFunctionDeclarationSyntax("main"),
             FunctionKind.Default,
             isTopLevel: false,
+            VariableStorageClass.Cog,
             FunctionInliningPolicy.Default,
             SourceSpan.Synthetic());
         return new BoundFunctionMember(entryFunction, body, body.Span);

@@ -78,6 +78,41 @@ public sealed class AlignClauseSyntax(Token alignKeyword, Token openParen, Expre
     public Token CloseParen { get; } = closeParen;
 }
 
+public abstract class FunctionMetadataPropertySyntax(TextSpan span) : SyntaxNode(span)
+{
+}
+
+public sealed class FunctionLayoutPropertySyntax(
+    Token layoutKeyword,
+    Token openParen,
+    SeparatedSyntaxList<TypeSyntax> layouts,
+    Token closeParen) : FunctionMetadataPropertySyntax(TextSpan.FromBounds(layoutKeyword, closeParen))
+{
+    [ExcludeFromCodeCoverage]
+    public Token LayoutKeyword { get; } = layoutKeyword;
+
+    [ExcludeFromCodeCoverage]
+    public Token OpenParen { get; } = openParen;
+
+    public SeparatedSyntaxList<TypeSyntax> Layouts { get; } = Requires.NotNull(layouts);
+
+    [ExcludeFromCodeCoverage]
+    public Token CloseParen { get; } = closeParen;
+}
+
+public sealed class FunctionAlignPropertySyntax(AlignClauseSyntax alignClause) : FunctionMetadataPropertySyntax(Requires.NotNull(alignClause).Span)
+{
+    public AlignClauseSyntax AlignClause { get; } = Requires.NotNull(alignClause);
+}
+
+public sealed class FunctionMetadataSyntax(Token colon, SeparatedSyntaxList<FunctionMetadataPropertySyntax> properties) : SyntaxNode(TextSpan.FromBounds([colon, ..properties]))
+{
+    [ExcludeFromCodeCoverage]
+    public Token Colon { get; } = colon;
+
+    public SeparatedSyntaxList<FunctionMetadataPropertySyntax> Properties { get; } = Requires.NotNull(properties);
+}
+
 public sealed class ElseClauseSyntax(Token elseKeyword, StatementSyntax body) : SyntaxNode(TextSpan.FromBounds(elseKeyword.Span.Start, Requires.NotNull(body).Span.End))
 {
     [ExcludeFromCodeCoverage]

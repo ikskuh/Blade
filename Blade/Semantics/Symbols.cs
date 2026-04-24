@@ -218,20 +218,41 @@ public sealed class FunctionSymbol(
     IFunctionSignatureSyntax syntax,
     FunctionKind kind,
     bool isTopLevel,
-    FunctionInliningPolicy inliningPolicy = FunctionInliningPolicy.Default,
-    SourceSpan? sourceSpan = null) : Symbol(name, sourceSpan)
+    VariableStorageClass? storageClass,
+    FunctionInliningPolicy inliningPolicy,
+    SourceSpan? sourceSpan) : Symbol(name, sourceSpan)
 {
+    private int? _alignment;
+    private IReadOnlyList<LayoutSymbol> _associatedLayouts = [];
+    private LayoutSymbol? _implicitLayout;
+
+    internal IFunctionSignatureSyntax SignatureSyntax { get; } = Requires.NotNull(syntax);
     internal TextSpan SignatureNameSpan { get; } = Requires.NotNull(syntax).Name.Span;
     internal SeparatedSyntaxList<ParameterSyntax> SignatureParameters { get; } = syntax.Parameters;
     internal SeparatedSyntaxList<ReturnItemSyntax>? SignatureReturnSpec { get; } = syntax.ReturnSpec;
     public FunctionKind Kind { get; } = kind;
     public bool IsTopLevel { get; } = isTopLevel;
+    public VariableStorageClass? StorageClass { get; private set; } = storageClass;
     public FunctionInliningPolicy InliningPolicy { get; } = inliningPolicy;
+    public int? Alignment => _alignment;
+    public IReadOnlyList<LayoutSymbol> AssociatedLayouts => _associatedLayouts;
+    public LayoutSymbol? ImplicitLayout => _implicitLayout;
     public IReadOnlyList<ParameterVariableSymbol> Parameters { get; set; } = [];
     public IReadOnlyList<ReturnSlot> ReturnSlots { get; set; } = [];
     public IReadOnlyList<BladeType> ReturnTypes => System.Array.ConvertAll(
         ReturnSlots.ToArray(),
         static slot => slot.Type);
+
+    public void SetMetadata(int? alignment, IReadOnlyList<LayoutSymbol> associatedLayouts)
+    {
+        _alignment = alignment;
+        _associatedLayouts = Requires.NotNull(associatedLayouts);
+    }
+
+    public void SetImplicitLayout(LayoutSymbol? implicitLayout)
+    {
+        _implicitLayout = implicitLayout;
+    }
 }
 
 public sealed class ModuleSymbol(string name, BoundModule module, SourceSpan? sourceSpan = null) : Symbol(name, sourceSpan)

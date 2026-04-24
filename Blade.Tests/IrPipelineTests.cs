@@ -2313,7 +2313,7 @@ public class IrPipelineTests
         Assert.That(method.Invoke(null, nonConstantArgs), Is.EqualTo(false));
         Assert.That(nonConstantArgs[1], Is.EqualTo(0L));
 
-        FunctionSymbol function = new("helper", IrTestFactory.CreateFunctionDeclarationSyntax("helper"), FunctionKind.Default, isTopLevel: false);
+        FunctionSymbol function = new("helper", IrTestFactory.CreateFunctionDeclarationSyntax("helper"), FunctionKind.Default, isTopLevel: false, storageClass: null, FunctionInliningPolicy.Default, SourceSpan.Synthetic());
         object?[] callArgs = [new BoundCallExpression(function, [], span, BuiltinTypes.I32), 9L];
         Assert.That(method.Invoke(null, callArgs), Is.EqualTo(false));
         Assert.That(callArgs[1], Is.EqualTo(0L));

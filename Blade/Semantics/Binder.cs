@@ -37,6 +37,7 @@ public sealed class Binder
     private int _anonymousStructIndex;
     private bool _suppressPointerStorageClassDiagnostics;
     private LayoutSymbol? _currentImplicitLayout;
+    private IReadOnlyList<LayoutSymbol> _currentEffectiveLayouts = [];
 
     private static readonly EnumTypeSymbol MemorySpaceType = new("MemorySpace", BuiltinTypes.U32,
         new Dictionary<string, long>(StringComparer.Ordinal) { ["cog"] = 0, ["lut"] = 1, ["hub"] = 2, ["_cog"] = 0, ["_lut"] = 1, ["_hub"] = 2 },
@@ -92,6 +93,7 @@ public sealed class Binder
         CollectTopLevelTypes(unit);
         CollectTopLevelLayouts(unit);
         CollectTopLevelFunctions(unit);
+        ResolveFunctionMetadata(_functions.Values, _globalScope);
         ResolveFunctionSignatures();
         ResolveTaskSignatures();
         ResolveLayoutParents();
@@ -393,6 +395,7 @@ public sealed class Binder
                         taskDeclaration,
                         FunctionKind.Default,
                         isTopLevel: false,
+                        storageClass: storageClass,
                         FunctionInliningPolicy.Default,
                         CreateSourceSpan(taskDeclaration.Name.Span));
                     layoutSymbol = new TaskSymbol(taskDeclaration.Name.Text, entryFunction, storageClass.Value, CreateSourceSpan(taskDeclaration.Name.Span));
@@ -446,7 +449,7 @@ public sealed class Binder
 
             Assert.Invariant(!string.IsNullOrWhiteSpace(syntax.Name.Text), "Binder requires well-formed syntax. Parser errors must short-circuit before binding.");
 
-            FunctionSymbol function = new(syntax.Name.Text, syntax, kind, isTopLevel: false, inliningPolicy, CreateSourceSpan(syntax.Name.Span));
+            FunctionSymbol function = new(syntax.Name.Text, syntax, kind, isTopLevel: false, GetFunctionStorageClass(syntax), inliningPolicy, CreateSourceSpan(syntax.Name.Span));
             if (!_functions.TryAdd(function.Name, function))
             {
                 _diagnostics.ReportSymbolAlreadyDeclared(syntax.Name.Span, function.Name);
@@ -456,6 +459,114 @@ public sealed class Binder
             if (!TryDeclareSymbol(_globalScope, function, syntax.Name.Span))
                 _functions.Remove(function.Name);
         }
+    }
+
+    private void ResolveFunctionMetadata(IEnumerable<FunctionSymbol> functions, Scope bindingScope)
+    {
+        Scope previousScope = _currentScope;
+        _currentScope = bindingScope;
+
+        foreach (FunctionSymbol function in functions)
+        {
+            FunctionMetadataSyntax? metadata = GetFunctionMetadata(function.SignatureSyntax);
+            List<LayoutSymbol> associatedLayouts = [];
+            int? alignment = null;
+            bool sawLayoutProperty = false;
+            bool sawAlignProperty = false;
+
+            if (metadata is not null)
+            {
+                foreach (FunctionMetadataPropertySyntax property in metadata.Properties)
+                {
+                    switch (property)
+                    {
+                        case FunctionLayoutPropertySyntax layoutProperty:
+                            if (sawLayoutProperty)
+                                _diagnostics.ReportDuplicateFunctionLayoutMetadata(layoutProperty.Span);
+
+                            sawLayoutProperty = true;
+                            ResolveFunctionLayouts(layoutProperty, associatedLayouts);
+                            break;
+
+                        case FunctionAlignPropertySyntax alignProperty:
+                            if (sawAlignProperty)
+                            {
+                                _diagnostics.ReportDuplicateFunctionAlignMetadata(alignProperty.Span);
+                                break;
+                            }
+
+                            sawAlignProperty = true;
+                            alignment = BindFunctionAlignment(alignProperty);
+                            break;
+                    }
+                }
+            }
+
+            function.SetMetadata(alignment, associatedLayouts);
+        }
+
+        _currentScope = previousScope;
+    }
+
+    private int? BindFunctionAlignment(FunctionAlignPropertySyntax alignProperty)
+    {
+        int? alignment = BindRequiredConstantInt(alignProperty.AlignClause.Alignment, alignProperty.AlignClause.Alignment.Span);
+        if (alignment is null)
+            return null;
+
+        if (alignment <= 0 || !IsPowerOfTwo(alignment.Value))
+        {
+            _diagnostics.ReportInvalidFunctionAlignment(alignProperty.AlignClause.Alignment.Span, alignment.Value);
+            return null;
+        }
+
+        return alignment;
+    }
+
+    private void ResolveFunctionLayouts(FunctionLayoutPropertySyntax layoutProperty, ICollection<LayoutSymbol> associatedLayouts)
+    {
+        foreach (TypeSyntax layoutReference in layoutProperty.Layouts)
+        {
+            if (!TryResolveParentLayoutReference(layoutReference, out _, out _, out LayoutSymbol? resolvedLayout)
+                || resolvedLayout is null)
+            {
+                continue;
+            }
+
+            if (resolvedLayout.IsTaskLayout)
+            {
+                _diagnostics.ReportTaskLayoutNotAllowedInFunctionMetadata(layoutReference.Span, resolvedLayout.Name);
+                continue;
+            }
+
+            if (!associatedLayouts.Contains(resolvedLayout))
+                associatedLayouts.Add(resolvedLayout);
+        }
+    }
+
+    private static VariableStorageClass? GetFunctionStorageClass(IFunctionSignatureSyntax syntax)
+    {
+        return MapStorageClass(GetFunctionStorageClassKeyword(syntax));
+    }
+
+    private static Token? GetFunctionStorageClassKeyword(IFunctionSignatureSyntax syntax)
+    {
+        return syntax switch
+        {
+            FunctionDeclarationSyntax functionDeclaration => functionDeclaration.StorageClassKeyword,
+            AsmFunctionDeclarationSyntax asmFunctionDeclaration => asmFunctionDeclaration.StorageClassKeyword,
+            _ => null,
+        };
+    }
+
+    private static FunctionMetadataSyntax? GetFunctionMetadata(IFunctionSignatureSyntax syntax)
+    {
+        return syntax switch
+        {
+            FunctionDeclarationSyntax functionDeclaration => functionDeclaration.Metadata,
+            AsmFunctionDeclarationSyntax asmFunctionDeclaration => asmFunctionDeclaration.Metadata,
+            _ => null,
+        };
     }
 
     private void ResolveTaskSignatures()
@@ -607,6 +718,11 @@ public sealed class Binder
             _ = ResolveTypeAlias(localTypeAlias, localTypeAlias.SourceSpan.Span);
 
         List<TaskLocalFunctionBinding> localFunctions = CollectTaskLocalFunctions(taskDeclaration, taskScope);
+        task.EntryFunction.SetImplicitLayout(task);
+        foreach (TaskLocalFunctionBinding localFunction in localFunctions)
+            localFunction.Symbol.SetImplicitLayout(task);
+
+        ResolveFunctionMetadata(localFunctions.Select(static localFunction => localFunction.Symbol), taskScope);
         foreach (TaskLocalFunctionBinding localFunction in localFunctions)
             ResolveFunctionSignature(localFunction.Symbol);
 
@@ -671,6 +787,7 @@ public sealed class Binder
             functionDeclaration,
             kind,
             isTopLevel: false,
+            GetFunctionStorageClass(functionDeclaration),
             inliningPolicy,
             CreateSourceSpan(functionDeclaration.Name.Span));
     }
@@ -682,6 +799,7 @@ public sealed class Binder
             asmFunctionDeclaration,
             FunctionKind.Leaf,
             isTopLevel: false,
+            GetFunctionStorageClass(asmFunctionDeclaration),
             FunctionInliningPolicy.Default,
             CreateSourceSpan(asmFunctionDeclaration.Name.Span));
     }
@@ -1022,10 +1140,12 @@ public sealed class Binder
         Scope previousScope = _currentScope;
         FunctionSymbol? previousFunction = _currentFunction;
         LayoutSymbol? previousImplicitLayout = _currentImplicitLayout;
+        IReadOnlyList<LayoutSymbol> previousEffectiveLayouts = _currentEffectiveLayouts;
 
         _currentScope = new Scope(parentScope);
         _currentFunction = function;
         _currentImplicitLayout = implicitLayout;
+        _currentEffectiveLayouts = GetEffectiveLayouts(function, implicitLayout);
 
         foreach (ParameterVariableSymbol parameter in function.Parameters)
             _ = TryDeclareSymbol(_currentScope, parameter, function.SignatureNameSpan, preserveLocalBindingOnShadowing: true);
@@ -1037,6 +1157,7 @@ public sealed class Binder
 
         _currentFunction = previousFunction;
         _currentImplicitLayout = previousImplicitLayout;
+        _currentEffectiveLayouts = previousEffectiveLayouts;
         _currentScope = previousScope;
         _boundFunctionBodies[function] = body;
 
@@ -1059,10 +1180,12 @@ public sealed class Binder
         Scope previousScope = _currentScope;
         FunctionSymbol? previousFunction = _currentFunction;
         LayoutSymbol? previousImplicitLayout = _currentImplicitLayout;
+        IReadOnlyList<LayoutSymbol> previousEffectiveLayouts = _currentEffectiveLayouts;
 
         _currentScope = new Scope(parentScope);
         _currentFunction = function;
         _currentImplicitLayout = implicitLayout;
+        _currentEffectiveLayouts = GetEffectiveLayouts(function, implicitLayout);
 
         foreach (ParameterVariableSymbol parameter in function.Parameters)
             _ = TryDeclareSymbol(_currentScope, parameter, function.SignatureNameSpan, preserveLocalBindingOnShadowing: true);
@@ -1120,6 +1243,7 @@ public sealed class Binder
 
         _currentFunction = previousFunction;
         _currentImplicitLayout = previousImplicitLayout;
+        _currentEffectiveLayouts = previousEffectiveLayouts;
         _currentScope = previousScope;
         _boundFunctionBodies[function] = body;
 
@@ -2031,6 +2155,8 @@ public sealed class Binder
                 return new BoundErrorStatement(yieldtoStatement.Span);
             }
 
+            ValidateFunctionLayoutSubset(targetFunction, yieldtoStatement.Target.Span);
+
             IReadOnlyList<BoundExpression> arguments = BindCallArguments(targetFunction, yieldtoStatement.Arguments, yieldtoStatement.Target.Span);
             return new BoundYieldtoStatement(targetFunction, arguments, yieldtoStatement.Span);
         }
@@ -2376,12 +2502,33 @@ public sealed class Binder
 
     private IReadOnlyList<LayoutMemberBinding> GetImplicitLayoutBindings(string name)
     {
-        if (_currentImplicitLayout is null)
+        if (_currentEffectiveLayouts.Count == 0)
             return [];
 
-        return GetVisibleLayoutMembers(_currentImplicitLayout).TryGetValue(name, out IReadOnlyList<LayoutMemberBinding>? bindings)
-            ? bindings
-            : [];
+        List<LayoutMemberBinding> bindings = [];
+        foreach (LayoutSymbol layout in _currentEffectiveLayouts)
+        {
+            if (GetVisibleLayoutMembers(layout).TryGetValue(name, out IReadOnlyList<LayoutMemberBinding>? layoutBindings))
+                bindings.AddRange(layoutBindings);
+        }
+
+        return bindings;
+    }
+
+    private static IReadOnlyList<LayoutSymbol> GetEffectiveLayouts(FunctionSymbol function, LayoutSymbol? implicitLayout)
+    {
+        List<LayoutSymbol> effectiveLayouts = [];
+
+        if (implicitLayout is not null)
+            effectiveLayouts.Add(implicitLayout);
+
+        foreach (LayoutSymbol layout in function.AssociatedLayouts)
+        {
+            if (!effectiveLayouts.Contains(layout))
+                effectiveLayouts.Add(layout);
+        }
+
+        return effectiveLayouts;
     }
 
     private static List<string> GetLayoutBindingNames(IReadOnlyList<LayoutMemberBinding> bindings)
@@ -2391,6 +2538,11 @@ public sealed class Binder
             .Distinct(StringComparer.Ordinal)
             .OrderBy(static name => name, StringComparer.Ordinal)
             .ToList();
+    }
+
+    private static bool IsPowerOfTwo(int value)
+    {
+        return value > 0 && (value & (value - 1)) == 0;
     }
 
     private bool TryResolveQualifiedLayoutMember(LayoutSymbol layout, string memberName, TextSpan span, out GlobalVariableSymbol? symbol)
@@ -2985,6 +3137,7 @@ public sealed class Binder
         }
 
         FunctionSymbol function = maybeFunction;
+        ValidateFunctionLayoutSubset(function, callExpression.Callee.Span);
         List<BoundExpression> arguments = BindCallArguments(function, callExpression.Arguments, callExpression.Callee.Span);
         BladeType returnType = function.ReturnTypes.Count switch
         {
@@ -3003,6 +3156,31 @@ public sealed class Binder
         }
 
         return call;
+    }
+
+    private void ValidateFunctionLayoutSubset(FunctionSymbol callee, TextSpan span)
+    {
+        IReadOnlyList<LayoutSymbol> callerLayouts = _currentFunction is null
+            ? []
+            : GetEffectiveLayouts(_currentFunction, _currentFunction.ImplicitLayout);
+        IReadOnlyList<LayoutSymbol> calleeLayouts = GetEffectiveLayouts(callee, callee.ImplicitLayout);
+
+        if (calleeLayouts.Count == 0)
+            return;
+
+        foreach (LayoutSymbol layout in calleeLayouts)
+        {
+            if (!callerLayouts.Contains(layout))
+            {
+                _diagnostics.ReportFunctionLayoutSubsetViolation(
+                    span,
+                    _currentFunction?.Name ?? "<toplevel>",
+                    callee.Name,
+                    callerLayouts.Select(static layoutSymbol => layoutSymbol.Name).OrderBy(static name => name, StringComparer.Ordinal).ToList(),
+                    calleeLayouts.Select(static layoutSymbol => layoutSymbol.Name).OrderBy(static name => name, StringComparer.Ordinal).ToList());
+                return;
+            }
+        }
     }
 
     private BoundExpression RequireComptimeExpression(BoundExpression expression, TextSpan span)

@@ -88,6 +88,10 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
             case TokenKind.CogKeyword or TokenKind.LutKeyword or TokenKind.HubKeyword:
                 if (IsTaskDeclarationStart())
                     return ParseTaskDeclaration();
+
+                if (LooksLikeFunctionDeclarationStart())
+                    return ParseFunctionDeclaration(ParseFunctionPrefix());
+
                 return ParseVariableDeclaration(externKeyword: null);
 
             case TokenKind.VarKeyword:
@@ -100,14 +104,8 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
                 return ParseTypeAliasDeclaration();
 
             case TokenKind.FnKeyword:
-                return ParseFunctionDeclaration([]);
-
             case TokenKind.AsmKeyword:
-                // asm fn ... or asm volatile fn ... → asm function declaration
-                if (LooksLikeAsmFunctionDeclaration())
-                    return ParseAsmFunctionDeclaration();
-                return ParseUnexpectedTopLevelMember();
-
+            case TokenKind.VolatileKeyword:
             case TokenKind.ComptimeKeyword:
             case TokenKind.LeafKeyword:
             case TokenKind.InlineKeyword:
@@ -117,8 +115,9 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
             case TokenKind.Int1Keyword:
             case TokenKind.Int2Keyword:
             case TokenKind.Int3Keyword:
-                if (LooksLikeFunctionDeclarationWithModifiers())
-                    return ParseFunctionDeclaration(ParseFunctionModifiers());
+                if (LooksLikeFunctionDeclarationStart())
+                    return ParseFunctionDeclaration(ParseFunctionPrefix());
+
                 return ParseUnexpectedTopLevelMember();
 
             default:
@@ -140,13 +139,6 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
             or TokenKind.HubKeyword
             or TokenKind.VarKeyword
             or TokenKind.ConstKeyword;
-    }
-
-    private bool LooksLikeAsmFunctionDeclaration()
-    {
-        return Current.Kind == TokenKind.AsmKeyword
-            && (Peek(1).Kind == TokenKind.FnKeyword
-                || (Peek(1).Kind == TokenKind.VolatileKeyword && Peek(2).Kind == TokenKind.FnKeyword));
     }
 
     private MemberSyntax ParseUnexpectedTopLevelMember()
@@ -329,9 +321,6 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
                 return ParseImportDeclaration();
 
             case TokenKind.ExternKeyword:
-            case TokenKind.CogKeyword:
-            case TokenKind.LutKeyword:
-            case TokenKind.HubKeyword:
             case TokenKind.VarKeyword:
             case TokenKind.ConstKeyword:
                 {
@@ -339,17 +328,20 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
                     return ParseVariableDeclaration(externKeyword);
                 }
 
+            case TokenKind.CogKeyword:
+            case TokenKind.LutKeyword:
+            case TokenKind.HubKeyword:
+                if (LooksLikeFunctionDeclarationStart())
+                    return ParseFunctionDeclaration(ParseFunctionPrefix());
+
+                return ParseVariableDeclaration(externKeyword: null);
+
             case TokenKind.TypeKeyword:
                 return ParseTypeAliasDeclaration();
 
             case TokenKind.FnKeyword:
-                return ParseFunctionDeclaration([]);
-
             case TokenKind.AsmKeyword:
-                if (LooksLikeAsmFunctionDeclaration())
-                    return ParseAsmFunctionDeclaration();
-                return ParseStatement();
-
+            case TokenKind.VolatileKeyword:
             case TokenKind.ComptimeKeyword:
             case TokenKind.LeafKeyword:
             case TokenKind.InlineKeyword:
@@ -359,8 +351,9 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
             case TokenKind.Int1Keyword:
             case TokenKind.Int2Keyword:
             case TokenKind.Int3Keyword:
-                if (LooksLikeFunctionDeclarationWithModifiers())
-                    return ParseFunctionDeclaration(ParseFunctionModifiers());
+                if (LooksLikeFunctionDeclarationStart())
+                    return ParseFunctionDeclaration(ParseFunctionPrefix());
+
                 return ParseStatement();
 
             default:
@@ -385,16 +378,8 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
                 return;
 
             case TokenKind.FnKeyword:
-                ParseFunctionDeclaration([]);
-                return;
-
             case TokenKind.AsmKeyword:
-                if (LooksLikeAsmFunctionDeclaration())
-                    ParseAsmFunctionDeclaration();
-                else
-                    ParseStatement();
-                return;
-
+            case TokenKind.VolatileKeyword:
             case TokenKind.ComptimeKeyword:
             case TokenKind.LeafKeyword:
             case TokenKind.InlineKeyword:
@@ -404,10 +389,31 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
             case TokenKind.Int1Keyword:
             case TokenKind.Int2Keyword:
             case TokenKind.Int3Keyword:
-                if (LooksLikeFunctionDeclarationWithModifiers())
-                    ParseFunctionDeclaration(ParseFunctionModifiers());
-                else
-                    ParseStatement();
+                if (LooksLikeFunctionDeclarationStart())
+                {
+                    ParseFunctionDeclaration(ParseFunctionPrefix());
+                    return;
+                }
+
+                ParseStatement();
+                return;
+
+            case TokenKind.CogKeyword:
+            case TokenKind.LutKeyword:
+            case TokenKind.HubKeyword:
+                if (IsTaskDeclarationStart())
+                {
+                    ParseTaskDeclaration();
+                    return;
+                }
+
+                if (LooksLikeFunctionDeclarationStart())
+                {
+                    ParseFunctionDeclaration(ParseFunctionPrefix());
+                    return;
+                }
+
+                ParseVariableDeclaration(externKeyword: null);
                 return;
 
             default:
@@ -416,7 +422,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
         }
     }
 
-    private FunctionDeclarationSyntax ParseFunctionDeclaration(IReadOnlyList<Token> modifiers)
+    private MemberSyntax ParseFunctionDeclaration(FunctionPrefix prefix)
     {
         Token fnKw = MatchToken(TokenKind.FnKeyword);
         Token name = MatchToken(TokenKind.Identifier);
@@ -438,28 +444,91 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
             returnSpec = ParseReturnSpec();
         }
 
+        FunctionMetadataSyntax? metadata = ParseFunctionMetadata();
+
+        if (prefix.AsmKeyword is Token asmKeyword)
+        {
+            InlineAsmBodySyntax asmBody = ParseInlineAsmBody();
+            return new AsmFunctionDeclarationSyntax(
+                prefix.StorageClassKeyword,
+                prefix.Modifiers,
+                asmKeyword,
+                prefix.VolatileKeyword,
+                fnKw,
+                name,
+                openParen,
+                parameters,
+                closeParen,
+                arrow,
+                returnSpec,
+                metadata,
+                asmBody);
+        }
+
         BlockStatementSyntax body = ParseBlockStatement();
-        return new FunctionDeclarationSyntax(modifiers, fnKw, name, openParen, parameters, closeParen, arrow, returnSpec, body);
+        return new FunctionDeclarationSyntax(prefix.StorageClassKeyword, prefix.Modifiers, fnKw, name, openParen, parameters, closeParen, arrow, returnSpec, metadata, body);
     }
 
-    private bool LooksLikeFunctionDeclarationWithModifiers()
+    private bool LooksLikeFunctionDeclarationStart()
     {
         int offset = 0;
-        while (IsFunctionModifierKeyword(Peek(offset).Kind))
+        while (IsFunctionPrefixKeyword(Peek(offset).Kind))
             offset++;
 
         return Peek(offset).Kind == TokenKind.FnKeyword;
     }
 
-    private IReadOnlyList<Token> ParseFunctionModifiers()
+    private FunctionPrefix ParseFunctionPrefix()
     {
+        Token? storageClassKeyword = null;
+        Token? asmKeyword = null;
+        Token? volatileKeyword = null;
         List<Token> modifiers = [];
         Token? callingConventionModifier = null;
         Token? inliningModifier = null;
 
-        while (IsFunctionModifierKeyword(Current.Kind))
+        while (Current.Kind != TokenKind.FnKeyword && Current.Kind != TokenKind.EndOfFile)
         {
+            if (Current.Kind is TokenKind.CogKeyword or TokenKind.LutKeyword or TokenKind.HubKeyword)
+            {
+                Token storageClass = NextToken();
+                if (storageClassKeyword is null)
+                    storageClassKeyword = storageClass;
+                else
+                    Diagnostics.ReportUnexpectedToken(storageClass.Span, "'fn'", storageClass.Text);
+
+                continue;
+            }
+
+            if (Current.Kind == TokenKind.AsmKeyword)
+            {
+                Token asm = NextToken();
+                if (asmKeyword is null)
+                    asmKeyword = asm;
+                else
+                    Diagnostics.ReportUnexpectedToken(asm.Span, "'fn'", asm.Text);
+
+                continue;
+            }
+
+            if (Current.Kind == TokenKind.VolatileKeyword)
+            {
+                Token volatileToken = NextToken();
+                if (volatileKeyword is null)
+                    volatileKeyword = volatileToken;
+                else
+                    Diagnostics.ReportUnexpectedToken(volatileToken.Span, "'fn'", volatileToken.Text);
+
+                continue;
+            }
+
             Token modifier = NextToken();
+            if (!IsFunctionModifierKeyword(modifier.Kind))
+            {
+                Diagnostics.ReportUnexpectedToken(modifier.Span, "'fn'", modifier.Text);
+                continue;
+            }
+
             modifiers.Add(modifier);
 
             if (IsCallingConventionModifier(modifier.Kind))
@@ -485,8 +554,86 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
             Diagnostics.ReportUnexpectedToken(inliningModifier.Value.Span, "'fn'", inliningModifier.Value.Text);
         }
 
-        return modifiers;
+        if (volatileKeyword is not null && asmKeyword is null)
+            Diagnostics.ReportUnexpectedToken(volatileKeyword.Value.Span, "'fn'", volatileKeyword.Value.Text);
+
+        return new FunctionPrefix(storageClassKeyword, asmKeyword, volatileKeyword, modifiers);
     }
+
+    private FunctionMetadataSyntax? ParseFunctionMetadata()
+    {
+        if (Current.Kind != TokenKind.Colon)
+            return null;
+
+        Token colon = NextToken();
+        List<object> nodesAndSeparators = [];
+
+        while (Current.Kind != TokenKind.OpenBrace && Current.Kind != TokenKind.EndOfFile)
+        {
+            nodesAndSeparators.Add(ParseFunctionMetadataProperty());
+
+            if (Current.Kind != TokenKind.Comma)
+                break;
+
+            nodesAndSeparators.Add(NextToken());
+        }
+
+        return new FunctionMetadataSyntax(colon, new SeparatedSyntaxList<FunctionMetadataPropertySyntax>(nodesAndSeparators));
+    }
+
+    private FunctionMetadataPropertySyntax ParseFunctionMetadataProperty()
+    {
+        return Current.Kind switch
+        {
+            TokenKind.LayoutKeyword => ParseFunctionLayoutProperty(),
+            TokenKind.AlignKeyword => ParseFunctionAlignProperty(),
+            _ => ParseUnexpectedFunctionMetadataProperty(),
+        };
+    }
+
+    private FunctionLayoutPropertySyntax ParseFunctionLayoutProperty()
+    {
+        Token layoutKeyword = MatchToken(TokenKind.LayoutKeyword);
+        Token openParen = MatchToken(TokenKind.OpenParen);
+        List<object> layoutsAndSeparators = [];
+
+        while (Current.Kind != TokenKind.CloseParen && Current.Kind != TokenKind.EndOfFile)
+        {
+            layoutsAndSeparators.Add(ParseParentLayoutReference());
+
+            if (Current.Kind != TokenKind.Comma)
+                break;
+
+            layoutsAndSeparators.Add(NextToken());
+        }
+
+        Token closeParen = MatchToken(TokenKind.CloseParen);
+        return new FunctionLayoutPropertySyntax(layoutKeyword, openParen, new SeparatedSyntaxList<TypeSyntax>(layoutsAndSeparators), closeParen);
+    }
+
+    private FunctionAlignPropertySyntax ParseFunctionAlignProperty()
+    {
+        Token alignKeyword = MatchToken(TokenKind.AlignKeyword);
+        Token openParen = MatchToken(TokenKind.OpenParen);
+        ExpressionSyntax alignment = ParseExpression();
+        Token closeParen = MatchToken(TokenKind.CloseParen);
+        return new FunctionAlignPropertySyntax(new AlignClauseSyntax(alignKeyword, openParen, alignment, closeParen));
+    }
+
+    private FunctionMetadataPropertySyntax ParseUnexpectedFunctionMetadataProperty()
+    {
+        Diagnostics.ReportUnexpectedToken(Current.Span, "function metadata property", Current.Text);
+        Token unexpected = NextToken();
+        return new FunctionAlignPropertySyntax(new AlignClauseSyntax(unexpected, unexpected, new NameExpressionSyntax(unexpected), unexpected));
+    }
+
+    private static bool IsFunctionPrefixKeyword(TokenKind kind)
+        => kind is TokenKind.AsmKeyword
+            or TokenKind.VolatileKeyword
+            or TokenKind.CogKeyword
+            or TokenKind.LutKeyword
+            or TokenKind.HubKeyword
+            || IsFunctionModifierKeyword(kind);
 
     private static bool IsFunctionModifierKeyword(TokenKind kind)
         => IsCallingConventionModifier(kind) || IsInliningModifier(kind);
@@ -502,33 +649,6 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
 
     private static bool IsInliningModifier(TokenKind kind)
         => kind is TokenKind.InlineKeyword or TokenKind.NoinlineKeyword;
-
-    private AsmFunctionDeclarationSyntax ParseAsmFunctionDeclaration()
-    {
-        Token asmKw = MatchToken(TokenKind.AsmKeyword);
-        Token? volatileKw = null;
-        if (Current.Kind == TokenKind.VolatileKeyword)
-            volatileKw = NextToken();
-
-        Token fnKw = MatchToken(TokenKind.FnKeyword);
-        Token name = MatchToken(TokenKind.Identifier);
-        Token openParen = MatchToken(TokenKind.OpenParen);
-        SeparatedSyntaxList<ParameterSyntax> parameters = ParseParameterList();
-        Token closeParen = MatchToken(TokenKind.CloseParen);
-
-        Token? arrow = null;
-        SeparatedSyntaxList<ReturnItemSyntax>? returnSpec = null;
-
-        if (Current.Kind == TokenKind.Arrow)
-        {
-            arrow = NextToken();
-            returnSpec = ParseReturnSpec();
-        }
-
-        InlineAsmBodySyntax body = ParseInlineAsmBody();
-        return new AsmFunctionDeclarationSyntax(asmKw, volatileKw, fnKw, name, openParen, parameters, closeParen,
-                                                 arrow, returnSpec, body);
-    }
 
     private TypeAliasDeclarationSyntax ParseTypeAliasDeclaration()
     {
@@ -1905,4 +2025,10 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
 
         return new Parser(source, tokens, diagnostics);
     }
+
+    private readonly record struct FunctionPrefix(
+        Token? StorageClassKeyword,
+        Token? AsmKeyword,
+        Token? VolatileKeyword,
+        IReadOnlyList<Token> Modifiers);
 }

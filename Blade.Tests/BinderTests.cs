@@ -176,6 +176,152 @@ public class BinderTests
     }
 
     [Test]
+    public void FunctionMetadata_BindsOntoFunctionSymbol()
+    {
+        (_, BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
+            layout SharedState { }
+
+            hub fn helper() : layout(SharedState), align(16) {
+            }
+
+            cog task main() {
+            }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+
+        BoundFunctionMember helper = GetFunction(program, "helper");
+        Assert.That(helper.Symbol.StorageClass, Is.EqualTo(VariableStorageClass.Hub));
+        Assert.That(helper.Symbol.Alignment, Is.EqualTo(16));
+        Assert.That(helper.Symbol.AssociatedLayouts.Select(static layout => layout.Name), Is.EqualTo(["SharedState"]));
+    }
+
+    [Test]
+    public void FunctionLayoutMetadata_EnablesImplicitLayoutMemberLookup()
+    {
+        (_, BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
+            layout SharedState {
+                hub var value: u32 = 1;
+            }
+
+            fn helper() -> u32 : layout(SharedState) {
+                return value;
+            }
+
+            cog task main() {
+            }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
+
+        BoundFunctionMember helper = GetFunction(program, "helper");
+        BoundReturnStatement returnStatement = (BoundReturnStatement)helper.Body.Statements.Single();
+        BoundSymbolExpression symbol = (BoundSymbolExpression)returnStatement.Values!.Single();
+        Assert.That(symbol.Symbol.Name, Is.EqualTo("value"));
+    }
+
+    [Test]
+    public void FunctionCall_RequiresCalleeLayoutsToBeSubsetOfCallerLayouts()
+    {
+        (_, _, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
+            layout SharedState { }
+            layout OtherState { }
+
+            fn callee() : layout(SharedState) {
+            }
+
+            fn caller() : layout(OtherState) {
+                callee();
+            }
+
+            cog task main() {
+            }
+            """);
+
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0271_FunctionLayoutSubsetViolation), Is.True);
+    }
+
+    [Test]
+    public void FunctionLayoutMetadata_DuplicatePropertiesWarnAndMerge()
+    {
+        (_, BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
+            layout SharedState {
+                hub var shared_value: u32 = 1;
+            }
+
+            layout OtherState {
+                hub var other_value: u32 = 2;
+            }
+
+            fn helper() -> u32 : layout(SharedState), layout(OtherState) {
+                return shared_value + other_value;
+            }
+
+            cog task main() {
+            }
+            """);
+
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.W0272_DuplicateFunctionLayoutMetadata), Is.True);
+
+        BoundFunctionMember helper = GetFunction(program, "helper");
+        Assert.That(helper.Symbol.AssociatedLayouts.Select(static layout => layout.Name).OrderBy(static name => name), Is.EqualTo(["OtherState", "SharedState"]));
+    }
+
+    [Test]
+    public void FunctionAlignMetadata_DuplicatePropertyReportsDiagnostic()
+    {
+        (_, BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
+            fn helper() : align(8), align(16) {
+            }
+
+            cog task main() {
+            }
+            """);
+
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0273_DuplicateFunctionAlignMetadata), Is.True);
+
+        BoundFunctionMember helper = GetFunction(program, "helper");
+        Assert.That(helper.Symbol.Alignment, Is.EqualTo(8));
+    }
+
+    [Test]
+    public void FunctionAlignMetadata_InvalidValueReportsDiagnostic()
+    {
+        (_, BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
+            fn helper() : align(3) {
+            }
+
+            cog task main() {
+            }
+            """);
+
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0274_InvalidFunctionAlignment), Is.True);
+
+        BoundFunctionMember helper = GetFunction(program, "helper");
+        Assert.That(helper.Symbol.Alignment, Is.Null);
+    }
+
+    [Test]
+    public void FunctionLayoutMetadata_TaskLayoutReferenceReportsDiagnostic()
+    {
+        (_, BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
+            cog task worker() {
+            }
+
+            fn helper() : layout(worker) {
+            }
+
+            cog task main() {
+            }
+            """);
+
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0275_TaskLayoutNotAllowedInFunctionMetadata), Is.True);
+
+        BoundFunctionMember helper = GetFunction(program, "helper");
+        Assert.That(helper.Symbol.AssociatedLayouts, Is.Empty);
+    }
+
+    [Test]
     public void NonCogMainTask_ReportsWarning()
     {
         (_, BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("lut task main() { }");
@@ -1646,6 +1792,28 @@ public class BinderTests
         BoundFunctionMember worker = GetFunction(program, "worker");
         BoundYieldtoStatement yieldto = (BoundYieldtoStatement)worker.Body.Statements[0];
         Assert.That(yieldto.Target.Name, Is.EqualTo("worker"));
+    }
+
+    [Test]
+    public void Yieldto_RequiresCalleeLayoutsToBeSubsetOfCallerLayouts()
+    {
+        (_, _, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
+            layout SharedState { }
+            layout OtherState { }
+
+            coro fn callee() : layout(SharedState) {
+                yield;
+            }
+
+            coro fn worker() : layout(OtherState) {
+                yieldto callee();
+            }
+
+            cog task main() {
+            }
+            """);
+
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0271_FunctionLayoutSubsetViolation), Is.True);
     }
 
     [Test]

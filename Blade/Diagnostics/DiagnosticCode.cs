@@ -96,6 +96,11 @@ public enum DiagnosticCode
     E0268_TaskLayoutCannotBeInherited = 268,
     W0269_MainTaskMustBeCog = 269,
     E0270_MissingMainTask = 270,
+    E0271_FunctionLayoutSubsetViolation = 271,
+    W0272_DuplicateFunctionLayoutMetadata = 272,
+    E0273_DuplicateFunctionAlignMetadata = 273,
+    E0274_InvalidFunctionAlignment = 274,
+    E0275_TaskLayoutNotAllowedInFunctionMetadata = 275,
 
     // Inline assembly errors
     E0301_InlineAsmUnknownInstruction = 301,

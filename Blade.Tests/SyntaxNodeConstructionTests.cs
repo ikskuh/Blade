@@ -91,6 +91,8 @@ public class SyntaxNodeConstructionTests
             [],
             Tok(TokenKind.CloseBrace, 50, 1, "}"));
         AsmFunctionDeclarationSyntax asmFunction = new(
+            null,
+            [],
             Tok(TokenKind.AsmKeyword, 0, 3, "asm"),
             Tok(TokenKind.VolatileKeyword, 4, 8, "volatile"),
             Tok(TokenKind.FnKeyword, 13, 2, "fn"),
@@ -100,6 +102,7 @@ public class SyntaxNodeConstructionTests
             Tok(TokenKind.CloseParen, 21, 1, ")"),
             Tok(TokenKind.Arrow, 23, 2, "->"),
             new SeparatedSyntaxList<ReturnItemSyntax>([ret]),
+            null,
             body);
 
         Assert.That(asmFunction.AsmKeyword.Kind, Is.EqualTo(TokenKind.AsmKeyword));

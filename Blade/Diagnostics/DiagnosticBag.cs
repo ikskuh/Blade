@@ -599,6 +599,54 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
         Report(DiagnosticCode.E0270_MissingMainTask, span, "Root module must export a task named 'main'.");
     }
 
+    /// <summary>
+    /// Reports that a callee requires layouts that are not available to the caller.
+    /// </summary>
+    public void ReportFunctionLayoutSubsetViolation(TextSpan span, string callerName, string calleeName, IReadOnlyList<string> callerLayouts, IReadOnlyList<string> calleeLayouts)
+    {
+        Requires.NotNull(callerLayouts);
+        Requires.NotNull(calleeLayouts);
+
+        string callerLayoutText = callerLayouts.Count == 0 ? "<none>" : string.Join(", ", callerLayouts);
+        string calleeLayoutText = calleeLayouts.Count == 0 ? "<none>" : string.Join(", ", calleeLayouts);
+        Report(
+            DiagnosticCode.E0271_FunctionLayoutSubsetViolation,
+            span,
+            $"Function '{callerName}' cannot transfer control to '{calleeName}' because callee layouts [{calleeLayoutText}] are not a subset of caller layouts [{callerLayoutText}].");
+    }
+
+    /// <summary>
+    /// Reports that a function metadata block repeated the <c>layout(...)</c> property.
+    /// </summary>
+    public void ReportDuplicateFunctionLayoutMetadata(TextSpan span)
+    {
+        Report(DiagnosticCode.W0272_DuplicateFunctionLayoutMetadata, span, "Duplicate function metadata property 'layout(...)'; layouts are merged.");
+    }
+
+    /// <summary>
+    /// Reports that a function metadata block repeated the <c>align(...)</c> property.
+    /// </summary>
+    public void ReportDuplicateFunctionAlignMetadata(TextSpan span)
+    {
+        Report(DiagnosticCode.E0273_DuplicateFunctionAlignMetadata, span, "Duplicate function metadata property 'align(...)'.");
+    }
+
+    /// <summary>
+    /// Reports that a function metadata <c>align(...)</c> value is invalid.
+    /// </summary>
+    public void ReportInvalidFunctionAlignment(TextSpan span, int alignment)
+    {
+        Report(DiagnosticCode.E0274_InvalidFunctionAlignment, span, $"Function alignment must be a positive power of two; got '{alignment}'.");
+    }
+
+    /// <summary>
+    /// Reports that a function metadata <c>layout(...)</c> reference resolved to a task-private layout.
+    /// </summary>
+    public void ReportTaskLayoutNotAllowedInFunctionMetadata(TextSpan span, string taskName)
+    {
+        Report(DiagnosticCode.E0275_TaskLayoutNotAllowedInFunctionMetadata, span, $"Task layout '{taskName}' cannot be referenced from function metadata.");
+    }
+
     // Inline assembly diagnostics
 
     public void ReportInlineAsmUnknownInstruction(TextSpan span, string mnemonic)

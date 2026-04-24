@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Blade;
@@ -46,11 +47,13 @@ public sealed class ImportDeclarationSyntax(Token importKeyword, Token source, T
     public bool IsFileImport => Source.Kind == TokenKind.StringLiteral;
 }
 
-public sealed class FunctionDeclarationSyntax(IReadOnlyList<Token> modifiers, Token fnKeyword, Token name, Token openParen,
+public sealed class FunctionDeclarationSyntax(Token? storageClassKeyword, IReadOnlyList<Token> modifiers, Token fnKeyword, Token name, Token openParen,
                                   SeparatedSyntaxList<ParameterSyntax> parameters, Token closeParen,
                                   Token? arrow, SeparatedSyntaxList<ReturnItemSyntax>? returnSpec,
-                                  BlockStatementSyntax body) : MemberSyntax(TextSpan.FromBounds(GetStart(modifiers, fnKeyword), Requires.NotNull(body).Span.End)), IFunctionSignatureSyntax
+                                  FunctionMetadataSyntax? metadata,
+                                  BlockStatementSyntax body) : MemberSyntax(TextSpan.FromBounds([storageClassKeyword, ..modifiers, fnKeyword, Requires.NotNull(body)])), IFunctionSignatureSyntax
 {
+    public Token? StorageClassKeyword { get; } = storageClassKeyword;
     public IReadOnlyList<Token> Modifiers { get; } = Requires.NotNull(modifiers);
     [ExcludeFromCodeCoverage]
     public Token FnKeyword { get; } = fnKeyword;
@@ -62,13 +65,8 @@ public sealed class FunctionDeclarationSyntax(IReadOnlyList<Token> modifiers, To
     public Token CloseParen { get; } = closeParen;
     public Token? Arrow { get; } = arrow;
     public SeparatedSyntaxList<ReturnItemSyntax>? ReturnSpec { get; } = returnSpec;
+    public FunctionMetadataSyntax? Metadata { get; } = metadata;
     public BlockStatementSyntax Body { get; } = Requires.NotNull(body);
-
-    private static int GetStart(IReadOnlyList<Token> modifiers, Token fnKeyword)
-    {
-        IReadOnlyList<Token> checkedModifiers = Requires.NotNull(modifiers);
-        return checkedModifiers.Count > 0 ? checkedModifiers[0].Span.Start : fnKeyword.Span.Start;
-    }
 }
 
 public sealed class VariableDeclarationSyntax(Token? externKeyword, Token? storageClassKeyword, Token mutabilityKeyword,
@@ -102,11 +100,14 @@ public sealed class TypeAliasDeclarationSyntax(Token typeOrConstKeyword, Token n
     public Token Semicolon { get; } = semicolon;
 }
 
-public sealed class AsmFunctionDeclarationSyntax(Token asmKeyword, Token? volatileKeyword, Token fnKeyword, Token name,
+public sealed class AsmFunctionDeclarationSyntax(Token? storageClassKeyword, IReadOnlyList<Token> modifiers, Token asmKeyword, Token? volatileKeyword, Token fnKeyword, Token name,
                                     Token openParen, SeparatedSyntaxList<ParameterSyntax> parameters, Token closeParen,
                                     Token? arrow, SeparatedSyntaxList<ReturnItemSyntax>? returnSpec,
-                                    InlineAsmBodySyntax body) : MemberSyntax(TextSpan.FromBounds(asmKeyword.Span.Start, Requires.NotNull(body).Span.End)), IFunctionSignatureSyntax
+                                    FunctionMetadataSyntax? metadata,
+                                    InlineAsmBodySyntax body) : MemberSyntax(TextSpan.FromBounds([storageClassKeyword, ..modifiers, asmKeyword, volatileKeyword, fnKeyword, body])), IFunctionSignatureSyntax
 {
+    public Token? StorageClassKeyword { get; } = storageClassKeyword;
+    public IReadOnlyList<Token> Modifiers { get; } = Requires.NotNull(modifiers);
     public Token AsmKeyword { get; } = asmKeyword;
     public Token? VolatileKeyword { get; } = volatileKeyword;
     [ExcludeFromCodeCoverage]
@@ -119,6 +120,7 @@ public sealed class AsmFunctionDeclarationSyntax(Token asmKeyword, Token? volati
     public Token CloseParen { get; } = closeParen;
     public Token? Arrow { get; } = arrow;
     public SeparatedSyntaxList<ReturnItemSyntax>? ReturnSpec { get; } = returnSpec;
+    public FunctionMetadataSyntax? Metadata { get; } = metadata;
     public InlineAsmBodySyntax Body { get; } = body;
 }
 

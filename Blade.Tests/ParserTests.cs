@@ -92,6 +92,40 @@ public class ParserTests
         Assert.That(func.Parameters.Count, Is.EqualTo(2));
         Assert.That(func.ReturnSpec, Is.Not.Null);
         Assert.That(func.ReturnSpec!.Count, Is.EqualTo(1));
+        Assert.That(func.StorageClassKeyword, Is.Null);
+        Assert.That(func.Metadata, Is.Null);
+    }
+
+    [Test]
+    public void StoredFunctionDeclaration_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("hub fn add() { }");
+        AssertNoDiagnostics(diag);
+
+        FunctionDeclarationSyntax func = (FunctionDeclarationSyntax)unit.Members[0];
+        Assert.That(func.StorageClassKeyword?.Kind, Is.EqualTo(TokenKind.HubKeyword));
+        Assert.That(func.Modifiers, Is.Empty);
+    }
+
+    [Test]
+    public void FunctionMetadata_ParsesCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("fn configured() -> u32 : layout(BaseState, imported.OtherLayout), align(get_alignment(\"X\")) { return 1; }");
+        AssertNoDiagnostics(diag);
+
+        FunctionDeclarationSyntax func = (FunctionDeclarationSyntax)unit.Members[0];
+        Assert.That(func.Metadata, Is.Not.Null);
+        Assert.That(func.Metadata!.Properties.Count, Is.EqualTo(2));
+        Assert.That(func.Metadata.Properties[0], Is.TypeOf<FunctionLayoutPropertySyntax>());
+        Assert.That(func.Metadata.Properties[1], Is.TypeOf<FunctionAlignPropertySyntax>());
+
+        FunctionLayoutPropertySyntax layoutProperty = (FunctionLayoutPropertySyntax)func.Metadata.Properties[0];
+        Assert.That(layoutProperty.Layouts.Count, Is.EqualTo(2));
+        Assert.That(layoutProperty.Layouts[0], Is.TypeOf<NamedTypeSyntax>());
+        Assert.That(layoutProperty.Layouts[1], Is.TypeOf<QualifiedTypeSyntax>());
+
+        FunctionAlignPropertySyntax alignProperty = (FunctionAlignPropertySyntax)func.Metadata.Properties[1];
+        Assert.That(alignProperty.AlignClause.Alignment, Is.TypeOf<CallExpressionSyntax>());
     }
 
     [Test]
@@ -1147,6 +1181,8 @@ public class ParserTests
 
         AsmFunctionDeclarationSyntax function = (AsmFunctionDeclarationSyntax)unit.Members[0];
         Assert.That(function.Name.Text, Is.EqualTo("add_flags"));
+        Assert.That(function.StorageClassKeyword, Is.Null);
+        Assert.That(function.Modifiers, Is.Empty);
         Assert.That(function.VolatileKeyword, Is.Null);
         Assert.That(function.ReturnSpec, Is.Not.Null);
         Assert.That(function.ReturnSpec![0].FlagAnnotation?.Flag.Text, Is.EqualTo("C"));
@@ -1165,6 +1201,25 @@ public class ParserTests
         AsmFunctionDeclarationSyntax function = (AsmFunctionDeclarationSyntax)unit.Members[0];
         Assert.That(function.VolatileKeyword, Is.Not.Null);
         Assert.That(function.ReturnSpec![0].Type, Is.TypeOf<PrimitiveTypeSyntax>());
+    }
+
+    [Test]
+    public void AsmFunctionFlexiblePrefixAndMetadata_ParseCorrectly()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("""
+            volatile noinline hub asm fn read_value() : align(16) {
+                MOV {return}, #10
+            }
+            """);
+        AssertNoDiagnostics(diag);
+
+        AsmFunctionDeclarationSyntax function = (AsmFunctionDeclarationSyntax)unit.Members[0];
+        Assert.That(function.StorageClassKeyword?.Kind, Is.EqualTo(TokenKind.HubKeyword));
+        Assert.That(function.VolatileKeyword, Is.Not.Null);
+        Assert.That(function.Modifiers.Select(static modifier => modifier.Kind), Is.EqualTo([TokenKind.NoinlineKeyword]));
+        Assert.That(function.Metadata, Is.Not.Null);
+        Assert.That(function.Metadata!.Properties.Count, Is.EqualTo(1));
+        Assert.That(function.Metadata.Properties[0], Is.TypeOf<FunctionAlignPropertySyntax>());
     }
 
     [Test]
