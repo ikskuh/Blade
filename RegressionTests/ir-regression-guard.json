@@ -38,6 +38,7 @@
       "BoundRepForStatement",
       "BoundRepLoopStatement",
       "BoundReturnStatement",
+      "BoundSpawnExpression",
       "BoundStructLiteralExpression",
       "BoundSymbolAssignmentTarget",
       "BoundSymbolExpression",
@@ -47,9 +48,7 @@
       "BoundYieldStatement",
       "BoundYieldtoStatement"
     ],
-    "uncovered": [
-      "BoundSpawnExpression"
-    ]
+    "uncovered": []
   },
   "mir": {
     "covered": [
@@ -76,6 +75,7 @@
       "MirRepForSetupInstruction",
       "MirRepIterInstruction",
       "MirRepSetupInstruction",
+      "MirSpawnInstruction",
       "MirStoreDerefInstruction",
       "MirStoreIndexInstruction",
       "MirStorePlaceInstruction",
@@ -113,6 +113,7 @@
       "LirRepForSetupOperation",
       "LirRepIterOperation",
       "LirRepSetupOperation",
+      "LirSpawnOperation",
       "LirStoreDerefOperation",
       "LirStoreIndexOperation",
       "LirStorePlaceOperation",

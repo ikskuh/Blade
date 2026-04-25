@@ -334,7 +334,7 @@ public class BinderTests
             }
             """);
 
-        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.True);
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.False);
         Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0101_UnexpectedToken), Is.False);
 
         BoundExpressionStatement statement = (BoundExpressionStatement)program.EntryPointFunction.Body.Statements[0];
@@ -358,7 +358,7 @@ public class BinderTests
             }
             """);
 
-        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.True);
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.False);
 
         BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)program.EntryPointFunction.Body.Statements[0];
         BoundSpawnExpression spawn = (BoundSpawnExpression)declaration.Initializer!;
@@ -380,7 +380,7 @@ public class BinderTests
             }
             """);
 
-        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.True);
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.False);
 
         BoundMultiAssignmentStatement statement = (BoundMultiAssignmentStatement)program.EntryPointFunction.Body.Statements[2];
         BoundSpawnExpression spawn = (BoundSpawnExpression)statement.Producer;

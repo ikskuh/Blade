@@ -7,6 +7,7 @@ namespace Blade.IR;
 
 public sealed class IrBuildResult(
     BoundProgram boundProgram,
+    ImagePlan imagePlan,
     MirModule preOptimizationMirModule,
     MirModule mirModule,
     LirModule preOptimizationLirModule,
@@ -16,6 +17,7 @@ public sealed class IrBuildResult(
     string assemblyText)
 {
     public BoundProgram BoundProgram { get; } = boundProgram;
+    public ImagePlan ImagePlan { get; } = imagePlan;
     public MirModule PreOptimizationMirModule { get; } = preOptimizationMirModule;
     public MirModule MirModule { get; } = mirModule;
     public LirModule PreOptimizationLirModule { get; } = preOptimizationLirModule;

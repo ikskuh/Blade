@@ -1,0 +1,11 @@
+// EXPECT: pass
+
+layout SharedLut
+{
+    lut var table: [2]u32 = [1, 2];
+}
+
+cog task main : SharedLut
+{
+    _ = table[0];
+}

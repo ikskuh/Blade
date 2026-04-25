@@ -6,6 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <RestorePackages>false</RestorePackages>
   </PropertyGroup>
 
   <ItemGroup>
@@ -21,29 +22,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Reference Include="blade">
-      <HintPath>..\Blade\bin\$(Configuration)\net10.0\blade.dll</HintPath>
-      <Private>true</Private>
-    </Reference>
-    <Reference Include="Blade.HwTestRunner">
-      <HintPath>..\Blade.HwTestRunner\bin\$(Configuration)\net10.0\Blade.HwTestRunner.dll</HintPath>
-      <Private>true</Private>
-    </Reference>
-    <Reference Include="Blade.Regressions">
-      <HintPath>..\Blade.Regressions\bin\$(Configuration)\net10.0\Blade.Regressions.dll</HintPath>
-      <Private>true</Private>
-    </Reference>
-  </ItemGroup>
-
-  <Target Name="BuildExecutableReferences" BeforeTargets="ResolveReferences">
-    <MSBuild Projects="..\Blade\blade.csproj;..\Blade.Regressions\Blade.Regressions.csproj"
-             Targets="Build"
-             Properties="Configuration=$(Configuration);RunAnalyzers=false;UseSharedCompilation=false" />
-  </Target>
-
-  <ItemGroup>
     <None Include="Accept\**\*.blade" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Reject\**\*.blade" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Blade\blade.csproj" />
+    <ProjectReference Include="..\Blade.HwTestRunner\Blade.HwTestRunner.csproj" />
+    <ProjectReference Include="..\Blade.Regressions\Blade.Regressions.csproj" />
   </ItemGroup>
 
 </Project>

@@ -378,6 +378,27 @@ public sealed class LirCallOperation(FunctionSymbol targetFunction) : LirOperati
     public override bool IsValidOperandCount(int operandCount) => operandCount == TargetFunction.Parameters.Count;
 }
 
+public sealed class LirSpawnOperation(BoundSpawnOperatorKind operatorKind, TaskSymbol targetTask, int requestedResultCount) : LirOperation
+{
+    public BoundSpawnOperatorKind OperatorKind { get; } = operatorKind;
+    public TaskSymbol TargetTask { get; } = Requires.NotNull(targetTask);
+    public int RequestedResultCount { get; } = requestedResultCount;
+
+    public override string DisplayName => OperatorKind == BoundSpawnOperatorKind.Spawn ? "spawn" : "spawnpair";
+
+    public override bool IsValidResultType(BladeType? resultType)
+    {
+        return RequestedResultCount switch
+        {
+            0 => resultType is null,
+            1 or 2 => MatchesExpectedType(resultType, BuiltinTypes.U32),
+            _ => false,
+        };
+    }
+
+    public override bool IsValidOperandCount(int operandCount) => operandCount == TargetTask.EntryFunction.Parameters.Count;
+}
+
 public sealed class LirCallExtractFlagOperation(MirFlag flag) : LirOperation
 {
     public MirFlag Flag { get; } = flag;

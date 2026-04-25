@@ -154,6 +154,10 @@ public static class CallGraphAnalyzer
                 {
                     callees.Add(call.TargetFunction);
                 }
+                else if (instruction is LirOpInstruction { Operation: LirSpawnOperation spawn })
+                {
+                    callees.Add(spawn.TargetTask.EntryFunction);
+                }
                 else if (instruction is LirOpInstruction { Operation: LirYieldToOperation yieldTo })
                 {
                     callees.Add(yieldTo.TargetFunction);

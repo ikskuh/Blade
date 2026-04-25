@@ -71,12 +71,25 @@ public class WriterAndSymbolTests
         MirModule mir = new([], [], []);
         LirModule lir = new([]);
         AsmModule asm = new([], [], []);
-        IrBuildResult build = new(program, mir, mir, lir, lir, asm, asm, "DAT\n");
+        ImagePlan imagePlan = CreateSingleEntryImagePlan(program.EntryPoint);
+        IrBuildResult build = new(program, imagePlan, mir, mir, lir, lir, asm, asm, "DAT\n");
 
         Dictionary<string, string> dumps = DumpContentBuilder.Build(new DumpSelection(), build);
 
         Assert.That(dumps.Keys, Is.EqualTo(new[] { "40_final.spin2" }));
         Assert.That(dumps["40_final.spin2"], Is.EqualTo("DAT\n"));
+    }
+
+    private static ImagePlan CreateSingleEntryImagePlan(TaskSymbol task)
+    {
+        ImageDescriptor image = new(
+            task,
+            task.EntryFunction,
+            task.StorageClass,
+            isEntryImage: true,
+            [task.EntryFunction],
+            [.. task.DeclaredMembers.Values]);
+        return new ImagePlan([image], image);
     }
 
     [Test]

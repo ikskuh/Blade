@@ -91,8 +91,21 @@ public class RegisterAllocatorTests
     private static IrBuildResult CreateBuildResult(AsmModule asmModule)
     {
         BoundProgram program = IrTestFactory.CreateBoundProgram("/tmp/test.blade");
+        ImagePlan imagePlan = CreateSingleEntryImagePlan(program.EntryPoint);
         MirModule mirModule = new([], [], []);
         LirModule lirModule = new([]);
-        return new IrBuildResult(program, mirModule, mirModule, lirModule, lirModule, asmModule, asmModule, string.Empty);
+        return new IrBuildResult(program, imagePlan, mirModule, mirModule, lirModule, lirModule, asmModule, asmModule, string.Empty);
+    }
+
+    private static ImagePlan CreateSingleEntryImagePlan(TaskSymbol task)
+    {
+        ImageDescriptor image = new(
+            task,
+            task.EntryFunction,
+            task.StorageClass,
+            isEntryImage: true,
+            [task.EntryFunction],
+            [.. task.DeclaredMembers.Values]);
+        return new ImagePlan([image], image);
     }
 }

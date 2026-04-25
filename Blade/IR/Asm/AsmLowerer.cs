@@ -442,9 +442,11 @@ public static class AsmLowerer
                         StoragePlaceRegisterRole.InternalShared);
                 }
 
-                P2SpecialRegister transportRegister = functionTier == CallingConventionTier.Leaf
-                    ? P2SpecialRegister.PA
-                    : P2SpecialRegister.PB;
+                P2SpecialRegister transportRegister = IsTaskEntryFunction(function.Symbol)
+                    ? P2SpecialRegister.PTRA
+                    : functionTier == CallingConventionTier.Leaf
+                        ? P2SpecialRegister.PA
+                        : P2SpecialRegister.PB;
                 List<StoragePlace> returnPlaces = CreateSpecializedReturnPlaces(function, functionTier, storagePlaces);
                 specializedCallingConvention[function.Symbol] = new SpecializedCallingConventionInfo(transportRegister, parameterPlaces, returnPlaces);
             }
@@ -616,6 +618,12 @@ public static class AsmLowerer
         }
 
         return returnPlaces;
+    }
+
+    private static bool IsTaskEntryFunction(FunctionSymbol function)
+    {
+        return function.ImplicitLayout is TaskSymbol task
+            && ReferenceEquals(task.EntryFunction, function);
     }
 
     private static void AddInternalRegisterPlaces(
@@ -875,6 +883,9 @@ public static class AsmLowerer
                 break;
             case LirCallOperation:
                 LowerCall(nodes, op, ctx);
+                break;
+            case LirSpawnOperation:
+                LowerSpawn(nodes, op, ctx);
                 break;
             case LirCallExtractFlagOperation extractFlag:
                 LowerCallExtractFlag(nodes, op, extractFlag.Flag, ctx);
@@ -2040,6 +2051,40 @@ public static class AsmLowerer
                 Assert.Unreachable($"Unexpected callee tier: {calleeTier}"); // pragma: force-coverage
                 return; // pragma: force-coverage
         }
+    }
+
+    private static void LowerSpawn(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
+    {
+        LirSpawnOperation operation = (LirSpawnOperation)op.Operation;
+        AsmOperand startupValue = op.Operands.Count == 0
+            ? new AsmImmediateOperand(0)
+            : LowerOperand(op.Operands[0], ctx);
+        AsmSymbolOperand primaryCogSelector = new(P2SpecialRegister.PA);
+        AsmSymbolOperand imageStart = new(
+            new AsmFunctionReferenceSymbol(operation.TargetTask.EntryFunction),
+            AsmSymbolAddressingMode.Immediate);
+
+        EmitOneSpawn(nodes, startupValue, primaryCogSelector, imageStart);
+
+        if (operation.OperatorKind == BoundSpawnOperatorKind.SpawnPair)
+        {
+            AsmOperand secondaryCogSelector = new AsmSymbolOperand(P2SpecialRegister.PB);
+            EmitOneSpawn(nodes, startupValue, secondaryCogSelector, imageStart);
+        }
+
+        if (op.Destination is not null)
+            nodes.Add(Emit(P2Mnemonic.MOV, new AsmRegisterOperand(ctx.GetRegister(op.Destination)), primaryCogSelector));
+    }
+
+    private static void EmitOneSpawn(
+        ICollection<AsmNode> nodes,
+        AsmOperand startupValue,
+        AsmOperand cogSelector,
+        AsmSymbolOperand imageStart)
+    {
+        nodes.Add(Emit(P2Mnemonic.MOV, cogSelector, new AsmImmediateOperand(0x10)));
+        nodes.Add(Emit(P2Mnemonic.SETQ, startupValue));
+        nodes.Add(Emit(P2Mnemonic.COGINIT, cogSelector, imageStart, flagEffect: P2FlagEffect.WC));
     }
 
     private static void LowerSpecializedCall(

@@ -1,0 +1,12 @@
+// EXPECT: pass
+
+hub var observed_id: u32 = 0;
+hub var observed_ok: bool = false;
+
+cog task worker() {
+}
+
+cog task main {
+    observed_id = spawn worker();
+    observed_id, observed_ok = spawn worker();
+}

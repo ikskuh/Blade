@@ -683,8 +683,14 @@ public static class MirLowerer
 
         private void LowerMultiAssignmentStatement(BoundMultiAssignmentStatement multiAssignment)
         {
+            if (multiAssignment.Producer is BoundSpawnExpression spawnExpression)
+            {
+                LowerSpawnMultiAssignmentStatement(multiAssignment, spawnExpression);
+                return;
+            }
+
             if (multiAssignment.Producer is not BoundCallExpression callExpression)
-                throw new NotSupportedException("Spawn multi-assignment lowering is not implemented.");
+                throw new NotSupportedException("Multi-assignment producer lowering is not implemented.");
 
             // Lower call arguments
             List<MirValueId> arguments = [];
@@ -739,6 +745,40 @@ public static class MirLowerer
                     _flagValues[extraResults[i].Value] = MirFlag.C;
                 else if (placement == ReturnPlacement.FlagZ)
                     _flagValues[extraResults[i].Value] = MirFlag.Z;
+            }
+        }
+
+        private void LowerSpawnMultiAssignmentStatement(BoundMultiAssignmentStatement multiAssignment, BoundSpawnExpression spawnExpression)
+        {
+            List<MirValueId> arguments = [];
+            foreach (BoundExpression argument in spawnExpression.Arguments)
+                arguments.Add(LowerExpression(argument));
+
+            IReadOnlyList<BoundAssignmentTarget> targets = multiAssignment.Targets;
+            MirValueId? primaryResult = targets.Count > 0 ? NextValue() : null;
+            BladeType? primaryType = targets.Count > 0 ? BuiltinTypes.U32 : null;
+
+            List<(MirValueId Value, BladeType Type)> extraResults = [];
+            if (targets.Count > 1)
+                extraResults.Add((NextValue(), BuiltinTypes.Bool));
+
+            _currentBlock.Instructions.Add(new MirSpawnInstruction(
+                primaryResult,
+                primaryType,
+                spawnExpression.OperatorKind,
+                spawnExpression.Task,
+                arguments,
+                spawnExpression.RequestedResultCount,
+                spawnExpression.Span,
+                extraResults));
+
+            if (targets.Count > 0 && targets[0] is not BoundDiscardAssignmentTarget && primaryResult is not null)
+                LowerAssignmentTargetWrite(targets[0], primaryResult, multiAssignment.Span);
+
+            if (targets.Count > 1 && targets[1] is not BoundDiscardAssignmentTarget)
+            {
+                _flagValues[extraResults[0].Value] = MirFlag.NC;
+                LowerAssignmentTargetWrite(targets[1], extraResults[0].Value, multiAssignment.Span);
             }
         }
 
@@ -1188,6 +1228,9 @@ public static class MirLowerer
                 case BoundCallExpression callExpression:
                     return LowerCallExpression(callExpression);
 
+                case BoundSpawnExpression spawnExpression:
+                    return LowerSpawnExpression(spawnExpression);
+
                 case BoundIntrinsicCallExpression intrinsicCall:
                 {
                     List<MirValueId> arguments = [];
@@ -1419,6 +1462,25 @@ public static class MirLowerer
                 callExpression.Span));
 
             return result ?? EmitPlaceholderConstant(BuiltinTypes.Unknown, callExpression.Span);
+        }
+
+        private MirValueId LowerSpawnExpression(BoundSpawnExpression spawnExpression)
+        {
+            List<MirValueId> arguments = [];
+            foreach (BoundExpression argument in spawnExpression.Arguments)
+                arguments.Add(LowerExpression(argument));
+
+            MirValueId? result = spawnExpression.Type is VoidTypeSymbol ? null : NextValue();
+            _currentBlock.Instructions.Add(new MirSpawnInstruction(
+                result,
+                spawnExpression.Type is VoidTypeSymbol ? null : spawnExpression.Type,
+                spawnExpression.OperatorKind,
+                spawnExpression.Task,
+                arguments,
+                spawnExpression.RequestedResultCount,
+                spawnExpression.Span));
+
+            return result ?? EmitPlaceholderConstant(BuiltinTypes.Unknown, spawnExpression.Span);
         }
 
         private MirValueId LowerBinaryExpression(BoundBinaryExpression binaryExpression)

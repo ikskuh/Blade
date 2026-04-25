@@ -6,6 +6,14 @@ namespace Blade;
 
 public static class Requires
 {
+    public static void That(
+        bool invariant,
+        [CallerArgumentExpression(nameof(invariant))] string? invariantExpr = null)
+    {
+        if (!invariant)
+            throw new ArgumentException($"Condition {invariantExpr} did not hold!");
+    }
+
     public static T NotNull<T>(
         [NotNull] T? value,
         [CallerArgumentExpression("value")] string? parameterName = null)

@@ -77,6 +77,24 @@ public static class LirLowerer
                             instruction.Span));
                     }
                 }
+                else if (instruction is MirSpawnInstruction { ExtraResults.Count: > 0 } spawnInstr)
+                {
+                    for (int i = 0; i < spawnInstr.ExtraResults.Count; i++)
+                    {
+                        (MirValueId extraValue, BladeType extraType) = spawnInstr.ExtraResults[i];
+                        LirVirtualRegister extraDest = GetRegister(extraValue);
+                        instructions.Add(new LirOpInstruction(
+                            new LirCallExtractFlagOperation(MirFlag.NC),
+                            extraDest,
+                            extraType,
+                            [],
+                            hasSideEffects: true,
+                            predicate: null,
+                            writesC: false,
+                            writesZ: false,
+                            instruction.Span));
+                    }
+                }
             }
 
             LirTerminator terminator = LowerTerminator(mirBlock.Terminator, GetRegister, GetBlockRef);
@@ -271,6 +289,17 @@ public static class LirLowerer
                 writesC: false,
                 writesZ: false,
                 call.Span),
+
+            MirSpawnInstruction spawn => new LirOpInstruction(
+                new LirSpawnOperation(spawn.OperatorKind, spawn.Task, spawn.RequestedResultCount),
+                destination,
+                spawn.ResultType,
+                LowerOperands(spawn.Arguments, getRegister),
+                hasSideEffects: true,
+                predicate: null,
+                writesC: true,
+                writesZ: false,
+                spawn.Span),
 
             MirIntrinsicCallInstruction intrinsic => new LirOpInstruction(
                 new LirIntrinsicOperation(intrinsic.Mnemonic),

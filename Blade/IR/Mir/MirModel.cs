@@ -433,6 +433,63 @@ public sealed class MirCallInstruction(
     }
 }
 
+public sealed class MirSpawnInstruction(
+    MirValueId? result,
+    BladeType? resultType,
+    BoundSpawnOperatorKind operatorKind,
+    TaskSymbol task,
+    IReadOnlyList<MirValueId> arguments,
+    int requestedResultCount,
+    TextSpan span,
+    IReadOnlyList<(MirValueId Value, BladeType Type)>? extraResults = null)
+    : MirInstruction(result, resultType, span, hasSideEffects: true)
+{
+    public BoundSpawnOperatorKind OperatorKind { get; } = operatorKind;
+    public TaskSymbol Task { get; } = Requires.NotNull(task);
+    public IReadOnlyList<MirValueId> Arguments { get; } = arguments;
+    public int RequestedResultCount { get; } = requestedResultCount;
+    public IReadOnlyList<(MirValueId Value, BladeType Type)> ExtraResults { get; } = extraResults ?? [];
+
+    public override IReadOnlyList<MirValueId> Uses => Arguments;
+
+    public override MirInstruction RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping)
+    {
+        List<MirValueId> rewritten = new(Arguments.Count);
+        bool changed = false;
+        foreach (MirValueId arg in Arguments)
+        {
+            MirValueId mapped = mapping.TryGetValue(arg, out MirValueId value) ? value : arg;
+            rewritten.Add(mapped);
+            changed |= mapped != arg;
+        }
+
+        List<(MirValueId, BladeType)>? rewrittenExtra = null;
+        for (int i = 0; i < ExtraResults.Count; i++)
+        {
+            (MirValueId extraVal, BladeType extraType) = ExtraResults[i];
+            if (mapping.TryGetValue(extraVal, out MirValueId mappedExtra) && mappedExtra != extraVal)
+            {
+                if (rewrittenExtra is null)
+                {
+                    rewrittenExtra = new(ExtraResults.Count);
+                    for (int j = 0; j < i; j++)
+                        rewrittenExtra.Add(ExtraResults[j]);
+                }
+                rewrittenExtra.Add((mappedExtra, extraType));
+                changed = true;
+            }
+            else
+            {
+                rewrittenExtra?.Add(ExtraResults[i]);
+            }
+        }
+
+        return changed
+            ? new MirSpawnInstruction(Result, ResultType, OperatorKind, Task, rewritten, RequestedResultCount, Span, rewrittenExtra ?? ExtraResults)
+            : this;
+    }
+}
+
 public sealed class MirIntrinsicCallInstruction(
     MirValueId? result,
     BladeType? resultType,

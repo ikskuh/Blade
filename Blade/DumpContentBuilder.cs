@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text;
 using Blade.IR;
 using Blade.IR.Asm;
 using Blade.IR.Lir;
@@ -41,7 +42,10 @@ public static class DumpContentBuilder
         }
 
         if (selection.DumpBound)
+        {
             dumps["00_bound.ir"] = BoundTreeWriter.Write(buildResult.BoundProgram);
+            dumps["02_images.ir"] = WriteImagePlan(buildResult.ImagePlan);
+        }
         if (selection.DumpMirPreOptimization)
             dumps["05_mir_preopt.ir"] = MirTextWriter.Write(buildResult.PreOptimizationMirModule);
         if (selection.DumpMir)
@@ -57,5 +61,41 @@ public static class DumpContentBuilder
         if (selection.DumpFinalAsm)
             dumps["40_final.spin2"] = buildResult.AssemblyText;
         return dumps;
+    }
+
+    private static string WriteImagePlan(ImagePlan imagePlan)
+    {
+        StringBuilder sb = new();
+        sb.AppendLine("; Images v1");
+        foreach (ImageDescriptor image in imagePlan.Images)
+        {
+            sb.Append("image ");
+            sb.Append(image.Task.Name);
+            if (image.IsEntryImage)
+                sb.Append(" entry");
+            sb.Append(" mode=");
+            sb.AppendLine(image.ExecutionMode.ToString());
+
+            sb.AppendLine("{");
+            sb.AppendLine("  functions");
+            foreach (Blade.Semantics.FunctionSymbol function in image.Functions)
+            {
+                sb.Append("    ");
+                sb.AppendLine(function.Name);
+            }
+
+            sb.AppendLine("  storage");
+            foreach (Blade.Semantics.GlobalVariableSymbol storage in image.Storage)
+            {
+                sb.Append("    ");
+                sb.Append(storage.StorageClass);
+                sb.Append(' ');
+                sb.AppendLine(storage.Name);
+            }
+
+            sb.AppendLine("}");
+        }
+
+        return sb.ToString();
     }
 }

@@ -3374,7 +3374,6 @@ public sealed class Binder
             ? BoundSpawnOperatorKind.SpawnPair
             : BoundSpawnOperatorKind.Spawn;
 
-        _diagnostics.ReportUnsupportedLowering(spawnExpression.Keyword.Span, operatorKind == BoundSpawnOperatorKind.Spawn ? "spawn" : "spawnpair");
         return new BoundSpawnExpression(operatorKind, task, arguments, requestedResultCount, spawnExpression.Span, resultType);
     }
 
