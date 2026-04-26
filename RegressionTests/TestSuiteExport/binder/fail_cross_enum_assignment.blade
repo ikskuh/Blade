@@ -1,0 +1,10 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0205
+
+type First = enum (u8) { A = 0, };
+type Second = enum (u8) { A = 0, };
+
+cog task main() {
+    var first: First = .A;
+    var second: Second = first;
+}

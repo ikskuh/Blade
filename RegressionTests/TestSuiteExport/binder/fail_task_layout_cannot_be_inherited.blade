@@ -1,0 +1,10 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0268
+
+cog task worker() {
+}
+
+layout Derived : worker {
+}
+
+cog task main { }

@@ -1,0 +1,10 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0205
+
+type P = struct { x: u8, y: u32 };
+type Q = struct { x: u8, y: u32 };
+
+cog task main() {
+    var p: P = undefined;
+    var q: Q = p;
+}

@@ -1,0 +1,8 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0204
+
+hub const x: u32 = 1;
+
+cog task main() {
+    x = 2;
+}

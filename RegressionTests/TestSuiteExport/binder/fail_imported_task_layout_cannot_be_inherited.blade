@@ -1,0 +1,9 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0268
+
+import "./illegal_task_access_support.mod" as ex;
+
+cog task consumer() : ex.worker {
+}
+
+cog task main { }

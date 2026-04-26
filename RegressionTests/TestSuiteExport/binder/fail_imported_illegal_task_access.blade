@@ -1,0 +1,10 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0276
+
+import "./illegal_task_access_support.mod" as ex;
+
+fn bar() {
+    var copy: u32 = ex.worker.private_counter;
+}
+
+cog task main { }

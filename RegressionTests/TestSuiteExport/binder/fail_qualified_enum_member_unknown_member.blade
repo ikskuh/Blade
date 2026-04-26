@@ -1,0 +1,10 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0202
+
+type Mode = enum (u8) {
+    Idle = 0,
+};
+
+cog task main() {
+    var mode: Mode = Mode.Missing;
+}

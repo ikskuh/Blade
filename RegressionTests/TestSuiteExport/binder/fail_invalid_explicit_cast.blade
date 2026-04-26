@@ -1,0 +1,9 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0224
+
+fn demo(flag: bool) void {
+    var value: u8 = flag as u8;
+}
+
+cog task main() {
+}

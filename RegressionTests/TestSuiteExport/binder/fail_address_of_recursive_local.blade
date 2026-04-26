@@ -1,0 +1,10 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0226
+
+rec fn demo(bound: u32) void {
+    var x: u32 = bound;
+    var p: *cog u32 = &x;
+}
+
+cog task main() {
+}

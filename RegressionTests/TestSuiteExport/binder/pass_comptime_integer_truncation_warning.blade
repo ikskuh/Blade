@@ -1,0 +1,11 @@
+// EXPECT: pass
+// DIAGNOSTICS:
+// - W0261
+// - W0261
+
+hub const wide: u32 = 257;
+hub const implicit_small: u8 = wide;
+hub const explicit_small: u8 = 257 as u8;
+hub const exact_small: u8 = 255;
+
+cog task main { }

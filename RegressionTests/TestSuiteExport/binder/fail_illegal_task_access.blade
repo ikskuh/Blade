@@ -1,0 +1,12 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0276
+
+cog task worker() {
+    hub var private_counter: u32 = 0;
+}
+
+fn demo() {
+    _ = worker.private_counter;
+}
+
+cog task main { }

@@ -1,0 +1,8 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0301
+
+fn f() void {
+    asm {
+        IF_C
+    };
+}

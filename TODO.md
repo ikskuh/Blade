@@ -353,3 +353,22 @@ Right now `Demonstrators/HwTest/hw_struct_literal_lowering.blade` only tests the
 ## Improve struct load/store performance
 
 see generated code
+
+## Arbitrarily sized integers
+
+`cog var c: uint(5) = 0;` in `RegressionTests/TestSuiteExport/accept/types.blade` is not sanctioned right now.
+
+## Task/Layout Refactoring
+
+### Introduce true split-phase variables
+
+`cog var` and `lut var` have a true address in `cog` and `lut` addr space, but `cog var`s will also be placed inside their respective hub images, the same is true for functions.
+
+### Proper image size planning
+
+- The memory map does not contain the images themselves.
+  - Each `cog task` image is 504 long values (32 bit), so 2016 byte
+  - Each `lut task` image is (for now) also 512 long values large, so 2048 byte
+  - Each `hub task` image has zero size, but will (later) require additional memory allocations to cater for its initializer-function and `cog fn` loader.
+  => We can start by pretending each image is exactly 2048 byte large for the first implementation.
+- The entry point image for `cog task main` must be locateed at hub address 0. No `hub fn` must be located below hub address 0x400.

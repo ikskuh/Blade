@@ -1,0 +1,7 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0264
+
+cog task main() {
+    var single: *const u8 = undefined;
+    var many: [*]volatile u32 = undefined;
+}

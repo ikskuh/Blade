@@ -1,0 +1,7 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0225
+
+cog task main() {
+    var raw: u32 = 1;
+    var narrowed: u16 = bitcast(u16, raw);
+}

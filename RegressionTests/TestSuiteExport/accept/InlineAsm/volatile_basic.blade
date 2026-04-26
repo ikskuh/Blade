@@ -1,0 +1,14 @@
+// EXPECT: pass
+
+fn copy_once(a: u32) -> u32 {
+    var out: u32 = 0;
+    asm volatile {
+        MOV {out}, {a}
+    };
+    return out;
+}
+
+cog task main() {
+    cog var x: u32 = 0;
+    x = copy_once(1);
+}

@@ -1,0 +1,15 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0205
+
+type Left = bitfield (u32) {
+    low: nib,
+};
+
+type Right = bitfield (u32) {
+    low: nib,
+};
+
+cog task main() {
+    var left: Left = undefined;
+    var right: Right = left;
+}

@@ -1,0 +1,8 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0303
+
+fn f() void {
+    asm {
+        MOV %foo, #1
+    };
+}

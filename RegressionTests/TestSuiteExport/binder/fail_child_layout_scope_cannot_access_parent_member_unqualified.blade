@@ -1,0 +1,12 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0202
+
+layout BaseState {
+    hub var shared_counter: u32 = 100;
+}
+
+layout Child : BaseState {
+    hub var copied: u32 = shared_counter;
+}
+
+cog task main { }

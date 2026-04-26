@@ -1,0 +1,26 @@
+// EXPECT: pass
+
+fn add_values(a: u32, b: u32) -> u32 {
+    var result: u32 = 0;
+    asm {
+        MOV {result}, {a}
+        ADD {result}, {b}
+    };
+    return result;
+}
+
+fn bitwise_ops(val: u32, mask: u32) -> u32 {
+    var out: u32 = 0;
+    asm {
+        MOV {out}, {val}
+        AND {out}, {mask}
+    };
+    return out;
+}
+
+cog task main() {
+    cog var x: u32 = 0;
+    cog var y: u32 = 42;
+    x = add_values(10, 32);
+    y = bitwise_ops(x, 0xFF);
+}

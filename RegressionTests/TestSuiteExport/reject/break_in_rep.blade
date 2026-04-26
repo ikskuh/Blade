@@ -1,0 +1,11 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0209
+
+fn helper() {
+    rep loop {
+        break;
+    }
+}
+
+cog task main() {
+}

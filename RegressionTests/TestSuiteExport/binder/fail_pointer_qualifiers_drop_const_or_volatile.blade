@@ -1,0 +1,7 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0205
+
+cog task main() {
+    var source: *cog const volatile u32 = undefined;
+    var sink: *cog u32 = source;
+}

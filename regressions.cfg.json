@@ -11,10 +11,6 @@
         {
             "path": "RegressionTests/",
             "expect": "encoded"
-        },
-        {
-            "path": "Blade.Tests/Reject",
-            "expect": "reject" // reject means the files must never be accepted and produce at least a single error diagnostic
         }
     ],
     "hardwareRuntimePath": "Blade.HwTestRunner/Runtime.spin2",

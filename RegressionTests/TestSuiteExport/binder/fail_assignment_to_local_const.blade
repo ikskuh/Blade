@@ -1,0 +1,10 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0204
+
+fn demo(param: u32) void {
+    const x: u32 = param * 2;
+    x = 3;
+}
+
+cog task main() {
+}

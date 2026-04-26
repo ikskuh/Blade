@@ -1,0 +1,10 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0306
+
+fn f() -> u32 {
+    var out: u32 = 0;
+    asm {
+        MOV {out}, #target_label
+    };
+    return out;
+}

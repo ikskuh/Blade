@@ -1,0 +1,7 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0205
+
+cog task main() {
+    var source: *cog align(4) u32 = undefined;
+    var sink: *cog align(8) u32 = source;
+}

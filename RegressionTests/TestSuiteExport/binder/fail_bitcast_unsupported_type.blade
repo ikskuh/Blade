@@ -1,0 +1,9 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0224
+
+fn demo() void {
+    var raw: u32 = bitcast(u32, [1, 2]);
+}
+
+cog task main() {
+}

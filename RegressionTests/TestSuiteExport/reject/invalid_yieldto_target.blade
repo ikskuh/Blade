@@ -1,0 +1,12 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0214
+
+fn helper() {
+}
+
+coro fn worker() {
+    yieldto helper();
+}
+
+cog task main() {
+}

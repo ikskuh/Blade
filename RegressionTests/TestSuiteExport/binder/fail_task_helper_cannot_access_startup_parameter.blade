@@ -1,0 +1,10 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0202
+
+cog task worker(step: u32) {
+    fn helper() -> u32 {
+        return step;
+    }
+}
+
+cog task main { }

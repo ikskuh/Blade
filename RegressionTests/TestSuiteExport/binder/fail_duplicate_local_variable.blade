@@ -1,0 +1,10 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0201
+
+fn f() void {
+    var x: u32 = 0;
+    var x: u32 = 1;
+}
+
+cog task main() {
+}

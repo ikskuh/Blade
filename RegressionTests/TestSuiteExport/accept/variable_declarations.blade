@@ -1,0 +1,20 @@
+// EXPECT: pass
+
+hub const MASK: u32 = 0xFF00FF00;
+
+layout IO
+{
+    extern cog var DIRA: u32 @(0x1FA);
+}
+
+layout State
+{
+    cog var counter: u32 = 0;
+    cog var aligned_buf: [16]u32 align(16) = undefined;
+}
+
+cog task main : State, IO
+{
+    counter = DIRA & MASK;
+    aligned_buf[0] = counter;
+}

@@ -1,0 +1,17 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0205
+
+type First = union {
+    lo: u32,
+    hi: u32,
+};
+
+type Second = union {
+    lo: u32,
+    hi: u32,
+};
+
+cog task main() {
+    var first: First = undefined;
+    var second: Second = first;
+}

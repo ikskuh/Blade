@@ -1,0 +1,10 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0207
+
+fn add(a: u32, b: u32) -> u32 {
+    return a + b;
+}
+
+cog task main() {
+    var x: u32 = add(1);
+}

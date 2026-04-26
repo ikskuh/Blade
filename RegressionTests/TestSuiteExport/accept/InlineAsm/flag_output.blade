@@ -1,0 +1,22 @@
+// EXPECT: pass
+
+fn test_bit(val: u32, pos: u32) -> bool@C {
+    asm {
+        TESTB {val}, {pos} WC
+    } -> result: bool@C;
+    return result;
+}
+
+fn check_zero(val: u32) -> bool@Z {
+    asm {
+        CMP {val}, #0 WZ
+    } -> result: bool@Z;
+    return result;
+}
+
+cog task main() {
+    cog var value: u32 = 0xAB;
+    cog var bit_pos: u32 = 3;
+    var carry: bool = test_bit(value, bit_pos);
+    var zero: bool = check_zero(value);
+}

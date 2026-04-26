@@ -1,0 +1,34 @@
+// EXPECT: pass
+
+type Pair = struct { left: u32, right: u32 };
+
+coro fn worker(seed: u32) {
+    loop {
+        var pair: Pair = Pair { .left = seed, .right = seed };
+        var arr: [2]u32 = undefined;
+        var ptr: *cog u32 = undefined;
+        var sink: u32 = 0;
+
+        sink = pair.left;
+        pair.right = sink;
+        sink = arr[0];
+        arr[1] = sink;
+        sink = ptr.*;
+        ptr.* = sink;
+        sink = if (true) pair.left else pair.right;
+        @encod(sink);
+        for (1..<2) -> i { sink = sink + i; }
+        yieldto worker(seed);
+    }
+}
+
+coro fn kickoff() {
+    yieldto worker(1);
+}
+
+int1 fn irq() void {
+    yield;
+}
+
+cog task main() {
+}

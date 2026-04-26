@@ -1,0 +1,9 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0202
+
+type P = struct { x: u32 };
+
+cog task main() {
+    var p: P = P { .x = 1 };
+    var y: u32 = p.missing;
+}

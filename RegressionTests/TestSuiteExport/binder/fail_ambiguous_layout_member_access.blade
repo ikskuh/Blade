@@ -1,0 +1,16 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0265
+
+layout A {
+    cog var x: u32 = 1;
+}
+
+layout B {
+    cog var x: u32 = 2;
+}
+
+cog task worker() : A, B {
+    var value: u32 = x;
+}
+
+cog task main { }

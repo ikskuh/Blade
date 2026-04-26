@@ -1,0 +1,10 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0219
+
+fn pair(x: u32, y: u32) -> u32 {
+    return x + y;
+}
+
+cog task main() {
+    var result: u32 = pair(z=10, y=20);
+}
