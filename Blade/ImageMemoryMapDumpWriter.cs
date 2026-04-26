@@ -147,6 +147,18 @@ internal static class ImageMemoryMapDumpWriter
         {
             if (!rows.TryGetValue(rowIndex, out List<(int StartByteOffset, int EndByteOffsetExclusive, LayoutSlot Slot, string InitialValue)>? fragments))
             {
+                int freeRunStart = rowIndex;
+                while ((rowIndex + 1) < rowCount && !rows.ContainsKey(rowIndex + 1))
+                    rowIndex++;
+
+                int freeRunLength = rowIndex - freeRunStart + 1;
+                if (freeRunLength == 1)
+                {
+                    WriteRow(sb, freeRunStart, "free", "-", "-");
+                    continue;
+                }
+
+                sb.AppendLine("*");
                 WriteRow(sb, rowIndex, "free", "-", "-");
                 continue;
             }

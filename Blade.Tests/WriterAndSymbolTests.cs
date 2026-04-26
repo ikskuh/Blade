@@ -132,6 +132,36 @@ public class WriterAndSymbolTests
         Assert.That(dumps[0].Content, Does.Contain("image main entry mode=Cog"));
     }
 
+    [Test]
+    public void DumpBundleBuilder_DumpMemoryMapCompressesFreeHubRows()
+    {
+        CompilationResult compilation = CompilerDriver.Compile("""
+            layout Shared {
+                hub var flag: u32 @(0x2000) = 3;
+                hub var counter: [2]u16 align(8) = [4, 5];
+            }
+
+            cog task main() : Shared {
+            }
+            """, "<input>");
+
+        Assert.That(compilation.Diagnostics, Is.Empty);
+        IrBuildResult build = Requires.NotNull(compilation.IrBuildResult);
+
+        IReadOnlyList<DumpArtifact> dumps = DumpBundleBuilder.Build(new DumpSelection
+        {
+            DumpMemoryMap = true,
+        }, build);
+
+        string content = dumps.Single().Content;
+        string sharedHubSection = content[..content.IndexOf("\nimage ", StringComparison.Ordinal)];
+        Assert.That(sharedHubSection, Does.Contain("$000  allocated  -      Shared.counter"));
+        Assert.That(sharedHubSection, Does.Contain("*"));
+        Assert.That(sharedHubSection, Does.Contain("$7FF  free       -      -"));
+        Assert.That(sharedHubSection, Does.Contain("$800  allocated  3      Shared.flag"));
+        Assert.That(sharedHubSection, Does.Not.Contain("$001  free       -      -"));
+    }
+
     private static ImagePlan CreateSingleEntryImagePlan(TaskSymbol task)
     {
         ImageDescriptor image = new(
