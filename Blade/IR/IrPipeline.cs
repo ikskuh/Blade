@@ -1,8 +1,10 @@
+using System.Collections.Generic;
 using System.Linq;
-using Blade.Diagnostics;
 using Blade.IR.Asm;
+using Blade.Diagnostics;
 using Blade.IR.Lir;
 using Blade.IR.Mir;
+using Blade.Semantics;
 using Blade.Semantics.Bound;
 
 namespace Blade.IR;
@@ -15,7 +17,7 @@ public static class IrPipeline
 
         ImagePlan imagePlan = ImagePlanner.Build(boundProgram);
         ImagePlacement imagePlacement = ImagePlacer.Place(imagePlan);
-        LayoutSolution layoutSolution = LayoutSolver.Solve(boundProgram, imagePlacement, diagnostics);
+        LayoutSolution layoutSolution = LayoutSolver.SolveStableLayouts(boundProgram, imagePlacement, diagnostics);
         MirModule mirModule = MirLowerer.Lower(boundProgram, layoutSolution);
 
         bool enableSingleCallsiteInlining = options.EnableSingleCallsiteInlining
@@ -44,14 +46,24 @@ public static class IrPipeline
                 options.EnabledLirOptimizations);
         }
 
-        AsmModule asmModule = AsmLowerer.Lower(lirModule, diagnostics);
+        AsmModule asmModule = AsmLowerer.Lower(lirModule, imagePlan, diagnostics);
         AsmModule preOptimizationAsmModule = asmModule;
+
+        CogResourceLayout placeholderEntryLayout = new(imagePlan.EntryImage, 0, [], []);
+        CogResourceLayoutSet placeholderCogResourceLayouts = new(
+            [placeholderEntryLayout],
+            placeholderEntryLayout,
+            new Dictionary<IAsmSymbol, int>(),
+            new Dictionary<FunctionSymbol, CogResourceLayout>(),
+            new Dictionary<StoragePlace, CogResourceLayout>(),
+            0);
 
         IrBuildResult preEmit = new(
             boundProgram,
             imagePlan,
             imagePlacement,
             layoutSolution,
+            placeholderCogResourceLayouts,
             preOptimizationMirModule,
             mirModule,
             preOptimizationLirModule,
@@ -63,12 +75,13 @@ public static class IrPipeline
         {
             EnabledAsmirOptimizations = options.EnabledAsmirOptimizations,
             RuntimeTemplate = options.RuntimeTemplate,
-        });
+        }, diagnostics);
         return new IrBuildResult(
             boundProgram,
             imagePlan,
             imagePlacement,
             layoutSolution,
+            emitResult.CogResourceLayouts,
             preOptimizationMirModule,
             mirModule,
             preOptimizationLirModule,

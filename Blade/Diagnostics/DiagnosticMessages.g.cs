@@ -115,6 +115,7 @@ public abstract partial class DiagnosticMessage
             "InvalidLayoutAddress" => (DiagnosticSeverity.Error, 281),
             "LayoutAddressConflict" => (DiagnosticSeverity.Error, 282),
             "LayoutAllocationFailed" => (DiagnosticSeverity.Error, 283),
+            "CogResourceLayoutFailed" => (DiagnosticSeverity.Error, 284),
             "InlineAsmUnknownInstruction" => (DiagnosticSeverity.Error, 301),
             "InlineAsmUndefinedVariable" => (DiagnosticSeverity.Error, 302),
             "InlineAsmEmptyInstruction" => (DiagnosticSeverity.Error, 303),
@@ -229,6 +230,7 @@ public abstract partial class DiagnosticMessage
             281 => "InvalidLayoutAddress",
             282 => "LayoutAddressConflict",
             283 => "LayoutAllocationFailed",
+            284 => "CogResourceLayoutFailed",
             301 => "InlineAsmUnknownInstruction",
             302 => "InlineAsmUndefinedVariable",
             303 => "InlineAsmEmptyInstruction",
@@ -343,6 +345,7 @@ public abstract partial class DiagnosticMessage
             281 => DiagnosticSeverity.Error,
             282 => DiagnosticSeverity.Error,
             283 => DiagnosticSeverity.Error,
+            284 => DiagnosticSeverity.Error,
             301 => DiagnosticSeverity.Error,
             302 => DiagnosticSeverity.Error,
             303 => DiagnosticSeverity.Error,
@@ -457,6 +460,7 @@ public abstract partial class DiagnosticMessage
             "InvalidLayoutAddress" => DiagnosticSeverity.Error,
             "LayoutAddressConflict" => DiagnosticSeverity.Error,
             "LayoutAllocationFailed" => DiagnosticSeverity.Error,
+            "CogResourceLayoutFailed" => DiagnosticSeverity.Error,
             "InlineAsmUnknownInstruction" => DiagnosticSeverity.Error,
             "InlineAsmUndefinedVariable" => DiagnosticSeverity.Error,
             "InlineAsmEmptyInstruction" => DiagnosticSeverity.Error,
@@ -1389,6 +1393,18 @@ public sealed class LayoutAllocationFailedError(SourceText source, TextSpan span
     protected override global::System.FormattableString GetFormattableMessage()
     {
         return $"Layout solver could not place '{LayoutName}.{MemberName}' in {StorageName} space with size '{SizeInAddressUnits}' and alignment '{AlignmentInAddressUnits}'.";
+    }
+}
+
+public sealed class CogResourceLayoutFailedError(SourceText source, TextSpan span, string ownerName, string reason)
+    : LocatedDiagnosticMessage(source, span, "CogResourceLayoutFailed", DiagnosticSeverity.Error, 284)
+{
+    public string OwnerName { get; } = ownerName;
+    public string Reason { get; } = reason;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"COG resource layout failed for '{OwnerName}': {Reason}.";
     }
 }
 

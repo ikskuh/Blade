@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Blade.IR;
+using Blade.IR.Asm;
 using Blade.IR.Mir;
 using Blade.Semantics;
 
@@ -79,9 +80,10 @@ internal static class ImageMemoryMapModelBuilder
         foreach (ImagePlacementEntry placement in buildResult.ImagePlacement.Images)
         {
             IReadOnlyList<LayoutSymbol> imageLayouts = CollectLayoutsForImage(placement.Image);
+            CogResourceLayout cogLayout = buildResult.CogResourceLayouts.Images.Single(layout => ReferenceEquals(layout.Image, placement.Image));
             images.Add(new ImageMemoryMapImage(
                 placement,
-                BuildCogRows(),
+                BuildCogRows(buildResult.AsmModule, buildResult.CogResourceLayouts, cogLayout, initialValues),
                 BuildLutRows(buildResult.LayoutSolution, imageLayouts, initialValues)));
         }
 
@@ -200,16 +202,89 @@ internal static class ImageMemoryMapModelBuilder
         return rows;
     }
 
-    private static IReadOnlyList<MemoryMapRow> BuildCogRows()
+    private static IReadOnlyList<MemoryMapRow> BuildCogRows(
+        AsmModule asmModule,
+        CogResourceLayoutSet cogResourceLayouts,
+        CogResourceLayout imageLayout,
+        IReadOnlyDictionary<GlobalVariableSymbol, RuntimeBladeValue> initialValues)
     {
+        Dictionary<int, MemoryMapRow> rowsByAddress = [];
         List<MemoryMapRow> rows = [];
+        for (int rowIndex = 0; rowIndex < imageLayout.CodeSizeLongs; rowIndex++)
+        {
+            rowsByAddress[rowIndex] = new MemoryMapRow(rowIndex, MemoryMapState.Allocated, "-", "code");
+        }
+
+        foreach (AsmAllocatedStorageDefinition definition in asmModule.DataBlocks
+                     .Where(static block => block.Kind is AsmDataBlockKind.Register or AsmDataBlockKind.Constant)
+                     .SelectMany(static block => block.Definitions.OfType<AsmAllocatedStorageDefinition>())
+                     .OrderBy(static definition => definition.Symbol.Name, System.StringComparer.Ordinal))
+        {
+            if (!TryGetCogDefinitionAddress(definition.Symbol, cogResourceLayouts, out int address))
+                continue;
+
+            bool belongsToImage = definition.Symbol switch
+            {
+                StoragePlace place => imageLayout.ContainsStableSymbol(place),
+                AsmSharedConstantSymbol constant => imageLayout.ContainsStableSymbol(constant),
+                AsmSpillSlotSymbol => false,
+                _ => false,
+            };
+            if (!belongsToImage)
+                continue;
+
+            string initialValue = definition.Symbol is StoragePlace storagePlace
+                && initialValues.TryGetValue(storagePlace.Symbol, out RuntimeBladeValue? value)
+                    ? value.Format()
+                    : definition.InitialValues?.Count > 0
+                        ? definition.InitialValues[0].Format()
+                        : "-";
+            string owner = definition.Symbol switch
+            {
+                StoragePlace ownerPlace => ownerPlace.Symbol.DeclaringLayout is LayoutSymbol layout
+                    ? $"{layout.Name}.{ownerPlace.Symbol.Name}"
+                    : ownerPlace.Symbol.Name,
+                _ => definition.Symbol.Name,
+            };
+
+            for (int rowIndex = address; rowIndex < address + definition.Count; rowIndex++)
+            {
+                rowsByAddress[rowIndex] = new MemoryMapRow(rowIndex, MemoryMapState.Allocated, initialValue, owner);
+            }
+        }
+
         for (int rowIndex = 0; rowIndex < CogLongCount; rowIndex++)
         {
-            MemoryMapState state = rowIndex >= CogUsableLongCount ? MemoryMapState.Reserved : MemoryMapState.Free;
-            rows.Add(new MemoryMapRow(rowIndex, state, "-", "-"));
+            if (!rowsByAddress.TryGetValue(rowIndex, out MemoryMapRow? row))
+            {
+                MemoryMapState state = rowIndex >= CogUsableLongCount ? MemoryMapState.Reserved : MemoryMapState.Free;
+                row = new MemoryMapRow(rowIndex, state, "-", "-");
+            }
+
+            rows.Add(row);
         }
 
         return rows;
+    }
+
+    private static bool TryGetCogDefinitionAddress(IAsmSymbol symbol, CogResourceLayoutSet cogResourceLayouts, out int address)
+    {
+        Requires.NotNull(symbol);
+        Requires.NotNull(cogResourceLayouts);
+
+        if (symbol is StoragePlace { ResolvedLayoutSlot: LayoutSlot { StorageClass: VariableStorageClass.Cog } slot })
+        {
+            address = slot.Address;
+            return true;
+        }
+
+        if (symbol is AsmSpillSlotSymbol spillSlot)
+        {
+            address = spillSlot.Slot;
+            return true;
+        }
+
+        return cogResourceLayouts.TryGetStableAddress(symbol, out address);
     }
 
     private static IReadOnlyList<MemoryMapRow> BuildLutRows(

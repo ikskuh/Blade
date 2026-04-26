@@ -999,7 +999,7 @@ public class IrPipelineTests
                 ]),
             ]);
 
-        string assembly = FinalAssemblyWriter.Write(module);
+        string assembly = FinalAssemblyWriter.Write(module, IrTestFactory.CreateSimpleCogResourceLayouts(module));
 
         Assert.That(assembly, Does.Contain("' inline asm typed begin"));
         Assert.That(assembly, Does.Contain("MOV _r4, #42"));
@@ -1031,7 +1031,7 @@ public class IrPipelineTests
                 ]),
             ]);
 
-        string assembly = FinalAssemblyWriter.Write(module);
+        string assembly = FinalAssemblyWriter.Write(module, IrTestFactory.CreateSimpleCogResourceLayouts(module));
 
         Assert.That(assembly, Does.Contain("  f_step"));
         Assert.That(assembly, Does.Contain("    CALLB #f_step"));
@@ -2185,7 +2185,7 @@ public class IrPipelineTests
         Assert.That(diagnostics.Count, Is.EqualTo(0));
 
         ImagePlacement imagePlacement = ImagePlacer.Place(ImagePlanner.Build(program));
-        MirModule mirModule = MirLowerer.Lower(program, LayoutSolver.Solve(program, imagePlacement));
+        MirModule mirModule = MirLowerer.Lower(program, LayoutSolver.SolveStableLayouts(program, imagePlacement));
         string mir = MirTextWriter.Write(mirModule);
 
         Assert.That(mir, Does.Contain("load.index.cog"));
@@ -2223,7 +2223,7 @@ public class IrPipelineTests
         Assert.That(diagnostics.Count, Is.EqualTo(0));
 
         ImagePlacement imagePlacement = ImagePlacer.Place(ImagePlanner.Build(program));
-        MirModule mirModule = MirLowerer.Lower(program, LayoutSolver.Solve(program, imagePlacement));
+        MirModule mirModule = MirLowerer.Lower(program, LayoutSolver.SolveStableLayouts(program, imagePlacement));
         string mir = MirTextWriter.Write(mirModule);
 
         Assert.That(mir, Does.Contain("load.member.value"));
@@ -2254,7 +2254,7 @@ public class IrPipelineTests
         Assert.That(diagnostics.Count, Is.EqualTo(0));
 
         ImagePlacement imagePlacement = ImagePlacer.Place(ImagePlanner.Build(program));
-        MirModule mirModule = MirLowerer.Lower(program, LayoutSolver.Solve(program, imagePlacement));
+        MirModule mirModule = MirLowerer.Lower(program, LayoutSolver.SolveStableLayouts(program, imagePlacement));
         string mir = MirTextWriter.Write(mirModule);
 
         Assert.That(Regex.Matches(mir, @"\[flag:Z\]").Count, Is.EqualTo(1), mir);
@@ -2342,7 +2342,7 @@ public class IrPipelineTests
         Assert.That(diagnostics.Count, Is.EqualTo(0));
 
         ImagePlacement imagePlacement = ImagePlacer.Place(ImagePlanner.Build(program));
-        MirModule mirModule = MirLowerer.Lower(program, LayoutSolver.Solve(program, imagePlacement));
+        MirModule mirModule = MirLowerer.Lower(program, LayoutSolver.SolveStableLayouts(program, imagePlacement));
         string mir = MirTextWriter.Write(mirModule);
 
         Assert.That(mir, Does.Contain("load.member.value.4"));
@@ -2370,7 +2370,7 @@ public class IrPipelineTests
         Assert.That(diagnostics.Count, Is.EqualTo(0));
 
         ImagePlacement imagePlacement = ImagePlacer.Place(ImagePlanner.Build(program));
-        MirModule mirModule = MirLowerer.Lower(program, LayoutSolver.Solve(program, imagePlacement));
+        MirModule mirModule = MirLowerer.Lower(program, LayoutSolver.SolveStableLayouts(program, imagePlacement));
         string mir = MirTextWriter.Write(mirModule);
 
         Assert.That(mir, Does.Contain("insert.member.value.0"));
@@ -2392,7 +2392,7 @@ public class IrPipelineTests
         Assert.That(diagnostics.Count, Is.EqualTo(0));
 
         ImagePlacement imagePlacement = ImagePlacer.Place(ImagePlanner.Build(program));
-        MirModule mirModule = MirLowerer.Lower(program, LayoutSolver.Solve(program, imagePlacement));
+        MirModule mirModule = MirLowerer.Lower(program, LayoutSolver.SolveStableLayouts(program, imagePlacement));
         string mir = MirTextWriter.Write(mirModule);
 
         Assert.That(mir, Does.Contain("insert.member.value.0"));
@@ -2415,7 +2415,7 @@ public class IrPipelineTests
         Assert.That(diagnostics.Count, Is.EqualTo(0));
 
         ImagePlacement imagePlacement = ImagePlacer.Place(ImagePlanner.Build(program));
-        MirModule mirModule = MirLowerer.Lower(program, LayoutSolver.Solve(program, imagePlacement));
+        MirModule mirModule = MirLowerer.Lower(program, LayoutSolver.SolveStableLayouts(program, imagePlacement));
         string mir = MirTextWriter.Write(mirModule);
 
         Assert.That(mir, Does.Contain("insert.member.value.0"));
@@ -2459,7 +2459,7 @@ public class IrPipelineTests
                     new LirReturnTerminator([], span)),
             ]);
 
-        AsmModule asmModule = AsmLowerer.Lower(new LirModule([function]));
+        AsmModule asmModule = AsmLowerer.Lower(new LirModule([function]), IrTestFactory.CreateSingleEntryImagePlan(function.Symbol));
         string asmir = AsmTextWriter.Write(asmModule);
 
         Assert.That(asmir, Does.Contain("unhandled aligned fallback for bitfield.insert.2.5"));
@@ -2545,7 +2545,7 @@ public class IrPipelineTests
                     new LirReturnTerminator([], span)),
             ]);
 
-        AsmModule asmModule = AsmLowerer.Lower(new LirModule([accumulatorPlace], [], [function]));
+        AsmModule asmModule = AsmLowerer.Lower(new LirModule([accumulatorPlace], [], [function]), IrTestFactory.CreateSingleEntryImagePlan(function.Symbol));
         string asmir = AsmTextWriter.Write(asmModule);
 
         Assert.That(asmir, Does.Contain("QMUL"));
@@ -2655,7 +2655,7 @@ public class IrPipelineTests
                     new LirReturnTerminator([], span)),
             ]);
 
-        AsmModule asmModule = AsmLowerer.Lower(new LirModule([function]));
+        AsmModule asmModule = AsmLowerer.Lower(new LirModule([function]), IrTestFactory.CreateSingleEntryImagePlan(function.Symbol));
         string asmir = AsmTextWriter.Write(asmModule);
 
         Assert.That(asmir, Does.Contain("SETBYTE"));
@@ -2740,7 +2740,7 @@ public class IrPipelineTests
                     new LirReturnTerminator([], span)),
             ]);
 
-        AsmModule asmModule = AsmLowerer.Lower(new LirModule([function]));
+        AsmModule asmModule = AsmLowerer.Lower(new LirModule([function]), IrTestFactory.CreateSingleEntryImagePlan(function.Symbol));
         string asmir = AsmTextWriter.Write(asmModule);
 
         Assert.That(asmir, Does.Contain("unhandled: load.member.value.1"));
@@ -2878,7 +2878,7 @@ public class IrPipelineTests
             ]);
 
         ImagePlacement imagePlacement = ImagePlacer.Place(ImagePlanner.Build(program));
-        MirModule mirModule = MirLowerer.Lower(program, LayoutSolver.Solve(program, imagePlacement));
+        MirModule mirModule = MirLowerer.Lower(program, LayoutSolver.SolveStableLayouts(program, imagePlacement));
 
         Assert.That(mirModule.StoragePlaces.Any(place => place.Symbol is VariableSymbol { Name: "local" }), Is.False);
     }
@@ -2894,7 +2894,7 @@ public class IrPipelineTests
         BoundProgram program = IrTestFactory.CreateBoundProgram(globalVariables: [shared, shared]);
 
         ImagePlacement imagePlacement = ImagePlacer.Place(ImagePlanner.Build(program));
-        MirModule mirModule = MirLowerer.Lower(program, LayoutSolver.Solve(program, imagePlacement));
+        MirModule mirModule = MirLowerer.Lower(program, LayoutSolver.SolveStableLayouts(program, imagePlacement));
 
         Assert.That(mirModule.StoragePlaces.Count(place => ReferenceEquals(place.Symbol, shared)), Is.EqualTo(1));
     }

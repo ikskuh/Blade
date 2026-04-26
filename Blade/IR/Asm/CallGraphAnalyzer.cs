@@ -67,9 +67,10 @@ public static class CallGraphAnalyzer
     /// <summary>
     /// Analyze the call graph, assign CC tiers, and identify dead functions.
     /// </summary>
-    public static CallGraphResult Analyze(LirModule module)
+    public static CallGraphResult Analyze(LirModule module, ImagePlan imagePlan)
     {
         Requires.NotNull(module);
+        Requires.NotNull(imagePlan);
 
         // Build maps
         Dictionary<FunctionSymbol, LirFunction> functionMap = new(module.Functions.Count);
@@ -82,7 +83,7 @@ public static class CallGraphAnalyzer
             callGraph[function.Symbol] = CollectCallees(function);
 
         // Compute reachability from entry points and interrupt handlers
-        HashSet<FunctionSymbol> reachable = ComputeReachable(module, callGraph);
+        HashSet<FunctionSymbol> reachable = ComputeReachable(module, imagePlan, callGraph);
 
         // Identify dead functions
         HashSet<FunctionSymbol> deadFunctions = [];
@@ -110,19 +111,25 @@ public static class CallGraphAnalyzer
     /// </summary>
     private static HashSet<FunctionSymbol> ComputeReachable(
         LirModule module,
+        ImagePlan imagePlan,
         Dictionary<FunctionSymbol, HashSet<FunctionSymbol>> callGraph)
     {
         HashSet<FunctionSymbol> reachable = [];
         Queue<FunctionSymbol> worklist = new();
 
-        // Seed: entry points and interrupt handlers are always reachable
+        // Seed: every required task entry image and interrupt handler is reachable.
+        foreach (ImageDescriptor image in imagePlan.Images)
+        {
+            if (reachable.Add(image.EntryFunction))
+                worklist.Enqueue(image.EntryFunction);
+        }
+
         foreach (LirFunction function in module.Functions)
         {
-            if (function.IsEntryPoint
-                || function.Kind is FunctionKind.Int1 or FunctionKind.Int2 or FunctionKind.Int3)
+            if (function.Kind is FunctionKind.Int1 or FunctionKind.Int2 or FunctionKind.Int3
+                && reachable.Add(function.Symbol))
             {
-                if (reachable.Add(function.Symbol))
-                    worklist.Enqueue(function.Symbol);
+                worklist.Enqueue(function.Symbol);
             }
         }
 
@@ -153,10 +160,6 @@ public static class CallGraphAnalyzer
                 if (instruction is LirOpInstruction { Operation: LirCallOperation call })
                 {
                     callees.Add(call.TargetFunction);
-                }
-                else if (instruction is LirOpInstruction { Operation: LirSpawnOperation spawn })
-                {
-                    callees.Add(spawn.TargetTask.EntryFunction);
                 }
                 else if (instruction is LirOpInstruction { Operation: LirYieldToOperation yieldTo })
                 {

@@ -1,11 +1,12 @@
 using System.Collections.Generic;
+using Blade.Diagnostics;
 using Blade.IR.Asm;
 
 namespace Blade.IR;
 
 public static class CodegenPipeline
 {
-    public static EmitResult Emit(IrBuildResult buildResult, EmitOptions? options = null)
+    public static EmitResult Emit(IrBuildResult buildResult, EmitOptions? options = null, DiagnosticBag? diagnostics = null)
     {
         Requires.NotNull(buildResult);
 
@@ -16,10 +17,23 @@ public static class CodegenPipeline
         if (options.EnableAsmOptimization)
             asmModule = AsmOptimizer.Optimize(asmModule, options.EnabledAsmirOptimizations);
 
+        // Legalization before COG resource layout fixes the code size seen by the planner.
+        if (options.EnableLegalization)
+            asmModule = AsmLegalizer.Legalize(asmModule);
+
+        CogResourceLayoutSet cogResourceLayouts = CogResourcePlanner.Build(
+            asmModule,
+            buildResult.ImagePlan,
+            buildResult.LayoutSolution,
+            includeDefaultBladeHalt: options.RuntimeTemplate is null,
+            diagnostics);
+        if (diagnostics?.HasErrors == true)
+            return new EmitResult(asmModule, cogResourceLayouts, string.Empty);
+
         // Register allocation: virtual → physical
         if (options.EnableRegisterAllocation)
         {
-            asmModule = RegisterAllocator.Allocate(asmModule);
+            asmModule = RegisterAllocator.AllocateWithinImage(asmModule, cogResourceLayouts);
 
             // Register coalescing can turn a useful virtual-register move into
             // a physical self-move (`MOV _rN, _rN`). Run post-regalloc-eligible
@@ -38,11 +52,7 @@ public static class CodegenPipeline
             }
         }
 
-        // Legalization: AUGS/AUGD for large immediates, size checks
-        if (options.EnableLegalization)
-            asmModule = AsmLegalizer.Legalize(asmModule);
-
-        FinalAssembly finalAssembly = FinalAssemblyWriter.Build(asmModule, options.RuntimeTemplate);
-        return new EmitResult(asmModule, finalAssembly.Text);
+        FinalAssembly finalAssembly = FinalAssemblyWriter.Build(asmModule, cogResourceLayouts, options.RuntimeTemplate);
+        return new EmitResult(asmModule, cogResourceLayouts, finalAssembly.Text);
     }
 }

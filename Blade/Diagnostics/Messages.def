@@ -409,6 +409,11 @@ located LayoutAllocationFailed: E0283
     param:   int sizeInAddressUnits
     param:   int alignmentInAddressUnits
 
+located CogResourceLayoutFailed: E0284
+    message: $"COG resource layout failed for '{ownerName}': {reason}."
+    param:   string ownerName
+    param:   string reason
+
 located InlineAsmUnknownInstruction: E0301
     message: $"Unknown P2 instruction '{mnemonic}' in inline assembly."
     param:   string mnemonic

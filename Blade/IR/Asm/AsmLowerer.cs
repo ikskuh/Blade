@@ -30,12 +30,13 @@ public static class AsmLowerer
 
     private readonly record struct UnsupportedLoweringKey(TextSpan Span, UnsupportedLoweringKind Kind);
 
-    public static AsmModule Lower(LirModule module, DiagnosticBag? diagnostics = null)
+    public static AsmModule Lower(LirModule module, ImagePlan imagePlan, DiagnosticBag? diagnostics = null)
     {
         Requires.NotNull(module);
+        Requires.NotNull(imagePlan);
 
         // Run call graph analysis to determine CC tiers and dead functions
-        CallGraphResult cgResult = CallGraphAnalyzer.Analyze(module);
+        CallGraphResult cgResult = CallGraphAnalyzer.Analyze(module, imagePlan);
         (
             IReadOnlyList<StoragePlace> storagePlaces,
             Dictionary<FunctionSymbol, SpecializedCallingConventionInfo> specializedCallingConvention,

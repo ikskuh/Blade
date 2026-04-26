@@ -9,8 +9,9 @@ using Blade.Semantics;
 namespace Blade.IR.Asm;
 
 /// <summary>
-/// Whole-program register allocator that uses liveness analysis and bottom-up
-/// call graph coloring to minimize COG register usage.
+/// Image-aware register allocator that uses liveness analysis and bottom-up call-graph
+/// coloring to minimize COG register usage while honoring each image's concrete free
+/// COG register addresses.
 ///
 /// The algorithm:
 /// 1. Intra-function liveness analysis → interference graph per function
@@ -26,25 +27,26 @@ public static class RegisterAllocator
 {
     private enum AllocatedLocationKind
     {
-        SpillSlot,
+        RegisterAddress,
         PhysicalRegister,
         StoragePlace,
     }
 
     private readonly record struct AllocatedLocation(
         AllocatedLocationKind Kind,
-        int SpillSlot,
+        int Address,
         P2Register? PhysicalRegister,
         StoragePlace? StoragePlace)
     {
-        public static AllocatedLocation ForSlot(int slot) => new(AllocatedLocationKind.SpillSlot, slot, null, null);
-        public static AllocatedLocation ForPhysicalRegister(P2Register register) => new(AllocatedLocationKind.PhysicalRegister, 0, register, null);
-        public static AllocatedLocation ForStoragePlace(StoragePlace place) => new(AllocatedLocationKind.StoragePlace, 0, null, place);
+        public static AllocatedLocation ForRegisterAddress(int address) => new(AllocatedLocationKind.RegisterAddress, Requires.InRange(address, 0, 0x1FF), null, null);
+        public static AllocatedLocation ForPhysicalRegister(P2Register register) => new(AllocatedLocationKind.PhysicalRegister, register.Address, register, null);
+        public static AllocatedLocation ForStoragePlace(StoragePlace place, int address) => new(AllocatedLocationKind.StoragePlace, Requires.InRange(address, 0, 0x1FF), null, place);
     }
 
-    public static AsmModule Allocate(AsmModule module)
+    public static AsmModule AllocateWithinImage(AsmModule module, CogResourceLayoutSet cogResourceLayouts)
     {
         Requires.NotNull(module);
+        Requires.NotNull(cogResourceLayouts);
 
         if (module.Functions.Count == 0)
             return module;
@@ -75,6 +77,7 @@ public static class RegisterAllocator
             Dictionary<AsmFunction, Dictionary<VirtualAsmRegister, AllocatedLocation>> registerLocationMap,
             Dictionary<StoragePlace, AllocatedLocation> placeLocationMap) = PackRegisters(
                 module,
+                cogResourceLayouts,
                 callGraph,
                 coloringMap,
                 functionColorCounts,
@@ -521,6 +524,7 @@ public static class RegisterAllocator
         Dictionary<StoragePlace, AllocatedLocation> PlaceLocations)
         PackRegisters(
         AsmModule module,
+        CogResourceLayoutSet cogResourceLayouts,
         Dictionary<AsmFunction, HashSet<AsmFunction>> callGraph,
         Dictionary<AsmFunction, Dictionary<VirtualAsmRegister, int>> coloringMap,
         Dictionary<AsmFunction, int> functionColorCounts,
@@ -536,18 +540,33 @@ public static class RegisterAllocator
         // Compute topological order (reverse = leaves first)
         List<AsmFunction> order = TopologicalSort(module.Functions.ToList(), callGraph);
 
-        // Track per-function: which spill slots are used
+        Dictionary<CogResourceLayout, HashSet<int>> imageReservedDedicatedAddresses = [];
+        foreach (CogResourceLayout imageLayout in cogResourceLayouts.Images)
+            imageReservedDedicatedAddresses.Add(imageLayout, []);
+
+        // Track per-function: which concrete COG addresses are used
         Dictionary<AsmFunction, HashSet<int>> functionGlobalSlots = [];
 
         // Pre-assign dedicated register-backed storage places.
-        int nextGlobalSlot = 0;
-        HashSet<int> dedicatedRegisterSlots = [];
         Dictionary<StoragePlace, AllocatedLocation> placeLocations = [];
         foreach (StoragePlace place in module.StoragePlaces.Where(static p => p.IsDedicatedRegisterSlot))
         {
-            placeLocations[place] = AllocatedLocation.ForSlot(nextGlobalSlot);
-            dedicatedRegisterSlots.Add(nextGlobalSlot);
-            nextGlobalSlot++;
+            if (place.RegisterRole == StoragePlaceRegisterRole.Global)
+            {
+                bool foundStableAddress = cogResourceLayouts.TryGetStableAddress(place, out int stableAddress);
+                Assert.Invariant(foundStableAddress, $"Global storage place '{place.Symbol.Name}' must have a stable COG address before register allocation.");
+                placeLocations[place] = AllocatedLocation.ForStoragePlace(place, stableAddress);
+                continue;
+            }
+
+            bool foundOwningLayout = cogResourceLayouts.TryGetOwningLayout(place, out CogResourceLayout? owningLayout);
+            Assert.Invariant(foundOwningLayout, $"Dedicated image-local place '{place.Symbol.Name}' must belong to one image layout.");
+
+            int assignedAddress = FindHighestAvailableAddress(
+                Assert.NotNull(owningLayout),
+                imageReservedDedicatedAddresses[owningLayout!]);
+            placeLocations[place] = AllocatedLocation.ForRegisterAddress(assignedAddress);
+            imageReservedDedicatedAddresses[owningLayout!].Add(assignedAddress);
         }
 
         // Map: functionName -> (intra-function color -> allocated location)
@@ -560,6 +579,15 @@ public static class RegisterAllocator
             FunctionLiveness liveness = livenessMap[function];
             Dictionary<VirtualAsmRegister, int> coloring = coloringMap[function];
             Dictionary<int, AsmRegisterConstraint> colorConstraints = functionColorConstraints.GetValueOrDefault(function) ?? [];
+            bool foundLayout = cogResourceLayouts.TryGetLayout(function.Symbol, out CogResourceLayout? functionLayout);
+            if (!foundLayout)
+            {
+                // Skip functions that aren't referenced in the program.
+                Console.Error.WriteLine("TODO: Fix RegisterAllocator trying to handle functions that aren't compiled at all.");
+                continue;
+            }
+            Assert.Invariant(foundLayout, $"Function '{function.Symbol.Name}' must belong to one image layout.");
+            CogResourceLayout layout = Assert.NotNull(functionLayout);
 
             // Determine which colors are live across calls
             HashSet<int> colorsLiveAcrossCall = [];
@@ -589,7 +617,7 @@ public static class RegisterAllocator
             HashSet<int> usedByThisFunction = [];
 
             // All slots that cannot be used by ANY color in this function
-            HashSet<int> alwaysForbidden = new(dedicatedRegisterSlots);
+            HashSet<int> alwaysForbidden = new(imageReservedDedicatedAddresses[layout]);
             if (isInterrupt)
             {
                 // Interrupt handlers must be disjoint from everything
@@ -615,8 +643,18 @@ public static class RegisterAllocator
                         : null;
                     if (preferredRegister is { } physicalRegister)
                     {
-                        placeLocations[place] = AllocatedLocation.ForPhysicalRegister(physicalRegister);
-                        continue;
+                        bool preferredIsFree = physicalRegister.IsSpecial
+                            || (layout.IsRegisterAddressAvailable(physicalRegister.Address)
+                                && !alwaysForbidden.Contains(physicalRegister.Address)
+                                && !usedByThisFunction.Contains(physicalRegister.Address)
+                                && !calleeSlots.Contains(physicalRegister.Address));
+                        if (preferredIsFree)
+                        {
+                            placeLocations[place] = AllocatedLocation.ForPhysicalRegister(physicalRegister);
+                            if (!physicalRegister.IsSpecial)
+                                usedByThisFunction.Add(physicalRegister.Address);
+                            continue;
+                        }
                     }
                 }
 
@@ -626,14 +664,9 @@ public static class RegisterAllocator
                 foreach (int calleeSlot in calleeSlots)
                     forbidden.Add(calleeSlot);
 
-                int assignedSlot = 0;
-                while (forbidden.Contains(assignedSlot))
-                    assignedSlot++;
-
-                placeLocations[place] = AllocatedLocation.ForSlot(assignedSlot);
-                usedByThisFunction.Add(assignedSlot);
-                if (assignedSlot >= nextGlobalSlot)
-                    nextGlobalSlot = assignedSlot + 1;
+                int assignedAddress = FindHighestAvailableAddress(layout, forbidden);
+                placeLocations[place] = AllocatedLocation.ForRegisterAddress(assignedAddress);
+                usedByThisFunction.Add(assignedAddress);
             }
 
             for (int color = 0; color < colorCount; color++)
@@ -648,12 +681,7 @@ public static class RegisterAllocator
                     };
 
                     colorToLocation[color] = constrainedLocation;
-                    if (constrainedLocation.Kind == AllocatedLocationKind.SpillSlot)
-                    {
-                        usedByThisFunction.Add(constrainedLocation.SpillSlot);
-                        if (constrainedLocation.SpillSlot >= nextGlobalSlot)
-                            nextGlobalSlot = constrainedLocation.SpillSlot + 1;
-                    }
+                    TrackAllocatedAddress(usedByThisFunction, constrainedLocation);
 
                     continue;
                 }
@@ -671,16 +699,9 @@ public static class RegisterAllocator
                         forbidden.Add(calleeSlot);
                 }
 
-                // Find lowest available slot
-                int assignedSlot = 0;
-                while (forbidden.Contains(assignedSlot))
-                    assignedSlot++;
-
-                colorToLocation[color] = AllocatedLocation.ForSlot(assignedSlot);
-                usedByThisFunction.Add(assignedSlot);
-
-                if (assignedSlot >= nextGlobalSlot)
-                    nextGlobalSlot = assignedSlot + 1;
+                int assignedAddress = FindHighestAvailableAddress(layout, forbidden);
+                colorToLocation[color] = AllocatedLocation.ForRegisterAddress(assignedAddress);
+                usedByThisFunction.Add(assignedAddress);
             }
 
             functionColorToLocation[function] = colorToLocation;
@@ -736,6 +757,45 @@ public static class RegisterAllocator
         }
 
         return places;
+    }
+
+    private static void TrackAllocatedAddress(ISet<int> usedByThisFunction, AllocatedLocation location)
+    {
+        Requires.NotNull(usedByThisFunction);
+
+        switch (location.Kind)
+        {
+            case AllocatedLocationKind.RegisterAddress:
+                usedByThisFunction.Add(location.Address);
+                break;
+
+            case AllocatedLocationKind.StoragePlace:
+                usedByThisFunction.Add(location.Address);
+                break;
+
+            case AllocatedLocationKind.PhysicalRegister:
+                if (!location.PhysicalRegister!.Value.IsSpecial)
+                    usedByThisFunction.Add(location.Address);
+                break;
+
+            default:
+                Assert.Unreachable($"Unexpected allocated location kind '{location.Kind}'."); // pragma: force-coverage
+                break; // pragma: force-coverage
+        }
+    }
+
+    private static int FindHighestAvailableAddress(CogResourceLayout layout, IReadOnlySet<int> forbidden)
+    {
+        Requires.NotNull(layout);
+        Requires.NotNull(forbidden);
+
+        foreach (int address in layout.AvailableRegisterAddresses)
+        {
+            if (!forbidden.Contains(address))
+                return address;
+        }
+
+        return Assert.UnreachableValue<int>($"Image '{layout.Image.Task.Name}' ran out of allocatable COG registers."); // pragma: force-coverage
     }
 
     /// <summary>
@@ -811,18 +871,18 @@ public static class RegisterAllocator
                 switch (node)
                 {
                     case AsmInstructionNode instruction:
-                    {
-                        List<AsmOperand> operands = new(instruction.Operands.Count);
-                        foreach (AsmOperand operand in instruction.Operands)
-                            operands.Add(RewriteOperand(operand, regToLocation, placeLocationMap, GetSlotSymbol));
-                        rewrittenNodes.Add(new AsmInstructionNode(
-                            instruction.Mnemonic,
-                            operands,
-                            instruction.Condition,
-                            instruction.FlagEffect,
-                            instruction.IsNonElidable));
-                        break;
-                    }
+                        {
+                            List<AsmOperand> operands = new(instruction.Operands.Count);
+                            foreach (AsmOperand operand in instruction.Operands)
+                                operands.Add(RewriteOperand(operand, regToLocation, placeLocationMap, GetSlotSymbol));
+                            rewrittenNodes.Add(new AsmInstructionNode(
+                                instruction.Mnemonic,
+                                operands,
+                                instruction.Condition,
+                                instruction.FlagEffect,
+                                instruction.IsNonElidable));
+                            break;
+                        }
 
                     default:
                         rewrittenNodes.Add(node);
@@ -920,9 +980,6 @@ public static class RegisterAllocator
         if (placeLocations.TryGetValue(place, out AllocatedLocation location))
             return location;
 
-        if (place.RegisterRole == StoragePlaceRegisterRole.Global)
-            return AllocatedLocation.ForStoragePlace(place);
-
         return Assert.UnreachableValue<AllocatedLocation>($"Missing allocated location for internal register place '{place.Symbol.Name}'."); // pragma: force-coverage
     }
 
@@ -930,7 +987,7 @@ public static class RegisterAllocator
     {
         return location.Kind switch
         {
-            AllocatedLocationKind.SpillSlot => new AsmSymbolOperand(getSlotSymbol(location.SpillSlot), AsmSymbolAddressingMode.Register),
+            AllocatedLocationKind.RegisterAddress => new AsmSymbolOperand(getSlotSymbol(location.Address), AsmSymbolAddressingMode.Register),
             AllocatedLocationKind.PhysicalRegister => new AsmPhysicalRegisterOperand(location.PhysicalRegister!.Value),
             AllocatedLocationKind.StoragePlace => new AsmSymbolOperand(location.StoragePlace!, AsmSymbolAddressingMode.Register),
             _ => Assert.UnreachableValue<AsmOperand>(), // pragma: force-coverage

@@ -7,11 +7,11 @@ using Blade.Semantics.Bound;
 namespace Blade.IR;
 
 /// <summary>
-/// Represents the program-wide solved addresses for layout-backed storage.
+/// Represents the program-wide solved addresses for stable layout-backed storage.
 /// A layout solution is shared across every image so that a given layout member keeps the
-/// same physical address whenever that layout is imported. The current implementation solves
-/// only hub and LUT layout members after image placement has reserved the hub image arena;
-/// cog/register-space solving will be added later.
+/// same physical address whenever that layout is imported. The solver owns only stable
+/// layout-member addresses; image-local COG occupancy that depends on final code size is
+/// modeled later by the per-image COG resource layout.
 /// </summary>
 public sealed class LayoutSolution
 {
@@ -95,6 +95,8 @@ public sealed class LayoutSlot(
 /// </summary>
 public static class LayoutSolver
 {
+    private const int FirstSpecialCogAddress = 0x1F0;
+    private const int CogAddressSpaceSize = 0x200;
     private const int LutAddressSpaceSize = 0x200;
 
     private readonly record struct LayoutCandidate(
@@ -106,16 +108,17 @@ public static class LayoutSolver
     private readonly record struct OccupiedAddressRange(int StartAddress, int EndAddressExclusive);
 
     /// <summary>
-    /// Solves the program's current layout-backed hub and LUT storage after image placement
-    /// has reserved hub-memory ranges for every required image.
+    /// Solves the program's stable layout-backed storage after image placement has reserved
+    /// hub-memory ranges for every required image.
     /// </summary>
-    public static LayoutSolution Solve(BoundProgram program, ImagePlacement imagePlacement, DiagnosticBag? diagnostics = null)
+    public static LayoutSolution SolveStableLayouts(BoundProgram program, ImagePlacement imagePlacement, DiagnosticBag? diagnostics = null)
     {
         Requires.NotNull(program);
         Requires.NotNull(imagePlacement);
 
         IReadOnlyList<LayoutSymbol> layouts = CollectLayouts(program);
         List<LayoutSlot> slots = [];
+        slots.AddRange(SolveStorageClass(layouts, VariableStorageClass.Cog, [], diagnostics));
         slots.AddRange(SolveStorageClass(layouts, VariableStorageClass.Lut, [], diagnostics));
         slots.AddRange(SolveStorageClass(layouts, VariableStorageClass.Hub, CreateReservedHubRanges(imagePlacement), diagnostics));
         return new LayoutSolution(slots);
@@ -156,12 +159,21 @@ public static class LayoutSolver
             slots.Add(slot);
         }
 
-        foreach (LayoutCandidate candidate in candidates.Where(static candidate => !candidate.Symbol.FixedAddress.HasValue))
+        IEnumerable<LayoutCandidate> floatingCandidates = storageClass == VariableStorageClass.Cog
+            ? candidates.Where(static candidate => !candidate.Symbol.FixedAddress.HasValue)
+                .OrderByDescending(static candidate => candidate.Shape.SizeInAddressUnits)
+                .ThenBy(static candidate => candidate.Layout.Name, System.StringComparer.Ordinal)
+                .ThenBy(static candidate => candidate.Symbol.Name, System.StringComparer.Ordinal)
+            : candidates.Where(static candidate => !candidate.Symbol.FixedAddress.HasValue);
+
+        foreach (LayoutCandidate candidate in floatingCandidates)
         {
             if (!TryValidateAlignment(candidate, diagnostics))
                 continue;
 
-            int? address = FindFirstFitAddress(candidate, occupied, reservedRanges);
+            int? address = candidate.Symbol.StorageClass == VariableStorageClass.Cog
+                ? FindHighestFitAddress(candidate, occupied)
+                : FindFirstFitAddress(candidate, occupied, reservedRanges);
             if (!address.HasValue)
             {
                 diagnostics?.ReportLayoutAllocationFailed(
@@ -323,6 +335,36 @@ public static class LayoutSolver
             return false;
         }
 
+        if (candidate.Symbol.StorageClass == VariableStorageClass.Cog)
+        {
+            int endAddress = checked(fixedAddress + candidate.Shape.SizeInAddressUnits);
+            if (endAddress > CogAddressSpaceSize)
+            {
+                diagnostics?.ReportInvalidLayoutAddress(
+                    candidate.Symbol.SourceSpan.Span,
+                    candidate.Layout.Name,
+                    candidate.Symbol.Name,
+                    candidate.Symbol.StorageClass,
+                    fixedAddress,
+                    candidate.Shape.SizeInAddressUnits);
+                return false;
+            }
+
+            bool overlapsSpecialTail = fixedAddress < CogAddressSpaceSize
+                && endAddress > FirstSpecialCogAddress;
+            if (overlapsSpecialTail && !candidate.Symbol.IsExtern)
+            {
+                diagnostics?.ReportInvalidLayoutAddress(
+                    candidate.Symbol.SourceSpan.Span,
+                    candidate.Layout.Name,
+                    candidate.Symbol.Name,
+                    candidate.Symbol.StorageClass,
+                    fixedAddress,
+                    candidate.Shape.SizeInAddressUnits);
+                return false;
+            }
+        }
+
         if (candidate.Symbol.StorageClass == VariableStorageClass.Hub)
         {
             int endAddress = checked(fixedAddress + candidate.Shape.SizeInAddressUnits);
@@ -382,6 +424,37 @@ public static class LayoutSolver
         }
     }
 
+    private static int? FindHighestFitAddress(
+        LayoutCandidate candidate,
+        IReadOnlyList<LayoutSlot> occupied)
+    {
+        int address = 0x1EF - candidate.Shape.SizeInAddressUnits + 1;
+        while (address >= 0)
+        {
+            address = AlignDown(address, candidate.AlignmentInAddressUnits);
+            if (address < 0)
+                return null;
+
+            int endAddress = checked(address + candidate.Shape.SizeInAddressUnits);
+            if (endAddress > FirstSpecialCogAddress)
+            {
+                address = FirstSpecialCogAddress - candidate.Shape.SizeInAddressUnits;
+                continue;
+            }
+
+            LayoutSlot? overlappingSlot = occupied
+                .OrderByDescending(static slot => slot.Address)
+                .FirstOrDefault(slot => slot.StorageClass == VariableStorageClass.Cog
+                    && RangesOverlap(address, endAddress, slot.Address, slot.EndAddressExclusive));
+            if (overlappingSlot is null)
+                return address;
+
+            address = overlappingSlot.Address - candidate.Shape.SizeInAddressUnits;
+        }
+
+        return null;
+    }
+
     private static bool TryAddOccupiedSlot(LayoutSlot slot, ICollection<LayoutSlot> occupied, DiagnosticBag? diagnostics)
     {
         foreach (LayoutSlot existing in occupied)
@@ -416,5 +489,15 @@ public static class LayoutSolver
         Requires.Positive(alignment);
         int remainder = value % alignment;
         return remainder == 0 ? value : checked(value + (alignment - remainder));
+    }
+
+    private static int AlignDown(int value, int alignment)
+    {
+        Requires.Positive(alignment);
+        if (value < 0)
+            return value;
+
+        int remainder = value % alignment;
+        return remainder == 0 ? value : checked(value - remainder);
     }
 }

@@ -91,23 +91,14 @@ public class RegisterAllocatorTests
     private static IrBuildResult CreateBuildResult(AsmModule asmModule)
     {
         BoundProgram program = IrTestFactory.CreateBoundProgram("/tmp/test.blade");
-        ImagePlan imagePlan = CreateSingleEntryImagePlan(program.EntryPoint);
+        FunctionSymbol entryFunction = asmModule.Functions.FirstOrDefault(static function => function.IsEntryPoint)?.Symbol
+            ?? asmModule.Functions.First().Symbol;
+        ImagePlan imagePlan = IrTestFactory.CreateSingleEntryImagePlan(entryFunction);
         ImagePlacement imagePlacement = ImagePlacer.Place(imagePlan);
-        LayoutSolution layoutSolution = LayoutSolver.Solve(program, imagePlacement);
+        LayoutSolution layoutSolution = LayoutSolver.SolveStableLayouts(program, imagePlacement);
+        CogResourceLayoutSet cogResourceLayouts = IrTestFactory.CreateSimpleCogResourceLayouts(asmModule, imagePlan, includeDefaultBladeHalt: false);
         MirModule mirModule = new([], [], []);
         LirModule lirModule = new([]);
-        return new IrBuildResult(program, imagePlan, imagePlacement, layoutSolution, mirModule, mirModule, lirModule, lirModule, asmModule, asmModule, string.Empty);
-    }
-
-    private static ImagePlan CreateSingleEntryImagePlan(TaskSymbol task)
-    {
-        ImageDescriptor image = new(
-            task,
-            task.EntryFunction,
-            task.StorageClass,
-            isEntryImage: true,
-            [task.EntryFunction],
-            [.. task.DeclaredMembers.Values]);
-        return new ImagePlan([image], image);
+        return new IrBuildResult(program, imagePlan, imagePlacement, layoutSolution, cogResourceLayouts, mirModule, mirModule, lirModule, lirModule, asmModule, asmModule, string.Empty);
     }
 }

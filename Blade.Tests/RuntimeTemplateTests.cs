@@ -102,9 +102,10 @@ public sealed class RuntimeTemplateTests
                     ]),
             ]);
 
+        CogResourceLayoutSet cogResourceLayouts = IrTestFactory.CreateSimpleCogResourceLayouts(module, includeDefaultBladeHalt: false);
         string conSectionContents = FinalAssemblyWriter.WriteConSectionContents(module);
-        string datSectionContents = FinalAssemblyWriter.WriteDatSectionContents(module);
-        FinalAssembly assembly = FinalAssemblyWriter.Build(module, runtimeTemplate);
+        string datSectionContents = FinalAssemblyWriter.WriteDatSectionContents(module, cogResourceLayouts);
+        FinalAssembly assembly = FinalAssemblyWriter.Build(module, cogResourceLayouts, runtimeTemplate);
 
         Assert.That(conSectionContents, Does.Not.Contain("CON"));
         Assert.That(conSectionContents, Does.Contain("LED_PORT = $1FC"));
@@ -152,10 +153,11 @@ public sealed class RuntimeTemplateTests
                     ]),
             ]);
 
-        string text = FinalAssemblyWriter.Build(module).Text;
+        CogResourceLayoutSet cogResourceLayouts = IrTestFactory.CreateSimpleCogResourceLayouts(module, includeDefaultBladeHalt: true);
+        string text = FinalAssemblyWriter.Build(module, cogResourceLayouts).Text;
 
         int haltIndex = text.IndexOf("blade_halt", StringComparison.Ordinal);
-        int constantFileIndex = text.IndexOf("' --- constant file ---", StringComparison.Ordinal);
+        int constantFileIndex = text.IndexOf("' --- cog data file ---", StringComparison.Ordinal);
         Assert.That(haltIndex, Is.GreaterThanOrEqualTo(0), text);
         Assert.That(constantFileIndex, Is.GreaterThan(haltIndex), text);
     }

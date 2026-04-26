@@ -275,6 +275,86 @@ internal static class IrTestFactory
         return new TaskSymbol("main", Requires.NotNull(entryFunction), VariableStorageClass.Cog, SourceSpan.Synthetic());
     }
 
+    public static ImagePlan CreateSingleEntryImagePlan(FunctionSymbol entryFunction)
+    {
+        Requires.NotNull(entryFunction);
+
+        TaskSymbol task = CreateEntryTask(entryFunction);
+        ImageDescriptor image = new(
+            task,
+            entryFunction,
+            VariableStorageClass.Cog,
+            isEntryImage: true,
+            [entryFunction],
+            []);
+        return new ImagePlan([image], image);
+    }
+
+    public static ImagePlan CreateSingleEntryImagePlan(TaskSymbol task)
+    {
+        Requires.NotNull(task);
+
+        ImageDescriptor image = new(
+            task,
+            task.EntryFunction,
+            task.StorageClass,
+            isEntryImage: true,
+            [task.EntryFunction],
+            []);
+        return new ImagePlan([image], image);
+    }
+
+    public static CogResourceLayoutSet CreateEmptyCogResourceLayouts(ImagePlan imagePlan)
+    {
+        Requires.NotNull(imagePlan);
+
+        List<int> availableRegisters = [];
+        for (int address = 0x1EF; address >= 0; address--)
+            availableRegisters.Add(address);
+
+        CogResourceLayout entryLayout = new(imagePlan.EntryImage, 0, availableRegisters, []);
+        Dictionary<FunctionSymbol, CogResourceLayout> layoutsByFunction = [];
+        foreach (ImageDescriptor image in imagePlan.Images)
+        {
+            foreach (FunctionSymbol function in image.Functions)
+                layoutsByFunction[function] = entryLayout;
+        }
+
+        return new CogResourceLayoutSet(
+            [entryLayout],
+            entryLayout,
+            new Dictionary<IAsmSymbol, int>(),
+            layoutsByFunction,
+            new Dictionary<StoragePlace, CogResourceLayout>(),
+            0);
+    }
+
+    public static CogResourceLayoutSet CreateSimpleCogResourceLayouts(AsmModule module)
+    {
+        Requires.NotNull(module);
+        Requires.That(module.Functions.Count > 0);
+
+        FunctionSymbol entryFunction = module.Functions.First(static function => function.IsEntryPoint).Symbol;
+        return CreateSimpleCogResourceLayouts(module, CreateSingleEntryImagePlan(entryFunction), includeDefaultBladeHalt: false);
+    }
+
+    public static CogResourceLayoutSet CreateSimpleCogResourceLayouts(AsmModule module, bool includeDefaultBladeHalt)
+    {
+        Requires.NotNull(module);
+        Requires.That(module.Functions.Count > 0);
+
+        FunctionSymbol entryFunction = module.Functions.First(static function => function.IsEntryPoint).Symbol;
+        return CreateSimpleCogResourceLayouts(module, CreateSingleEntryImagePlan(entryFunction), includeDefaultBladeHalt);
+    }
+
+    public static CogResourceLayoutSet CreateSimpleCogResourceLayouts(AsmModule module, ImagePlan imagePlan, bool includeDefaultBladeHalt)
+    {
+        Requires.NotNull(module);
+        Requires.NotNull(imagePlan);
+
+        return CogResourcePlanner.Build(module, imagePlan, new LayoutSolution([]), includeDefaultBladeHalt, diagnostics: null);
+    }
+
     public static IReadOnlyDictionary<string, Symbol> CreateExports(
         IReadOnlyList<GlobalVariableSymbol>? globalVariables = null,
         IReadOnlyList<BoundFunctionMember>? functions = null,

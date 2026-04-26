@@ -1,0 +1,12 @@
+// EXPECT: fail
+// DIAGNOSTICS: CogResourceLayoutFailed
+
+layout Broken {
+    cog var pinned: u32 @(0x001) = 1;
+}
+
+cog task main() : Broken {
+    pinned = 1;
+    pinned = 2;
+    pinned = 3;
+}

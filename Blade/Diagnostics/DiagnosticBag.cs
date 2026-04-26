@@ -144,6 +144,15 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
     }
 
     /// <summary>
+    /// Reports a failed COG resource layout after the image-local planner detects that code
+    /// and COG-backed storage cannot coexist within the allocatable COG address range.
+    /// </summary>
+    public void ReportCogResourceLayoutFailed(TextSpan span, string ownerName, string reason)
+    {
+        Report(new CogResourceLayoutFailedError(CurrentSource, span, ownerName, reason));
+    }
+
+    /// <summary>
     /// Enumerates all collected diagnostics.
     /// </summary>
     public IEnumerator<Diagnostic> GetEnumerator() => _diagnostics.GetEnumerator();

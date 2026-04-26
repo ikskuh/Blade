@@ -72,10 +72,11 @@ public class WriterAndSymbolTests
         MirModule mir = new([], [], []);
         LirModule lir = new([]);
         AsmModule asm = new([], [], []);
-        ImagePlan imagePlan = CreateSingleEntryImagePlan(program.EntryPoint);
+        ImagePlan imagePlan = IrTestFactory.CreateSingleEntryImagePlan(program.EntryPoint);
         ImagePlacement imagePlacement = ImagePlacer.Place(imagePlan);
-        LayoutSolution layoutSolution = LayoutSolver.Solve(program, imagePlacement);
-        IrBuildResult build = new(program, imagePlan, imagePlacement, layoutSolution, mir, mir, lir, lir, asm, asm, "DAT\n");
+        LayoutSolution layoutSolution = LayoutSolver.SolveStableLayouts(program, imagePlacement);
+        CogResourceLayoutSet cogResourceLayouts = IrTestFactory.CreateEmptyCogResourceLayouts(imagePlan);
+        IrBuildResult build = new(program, imagePlan, imagePlacement, layoutSolution, cogResourceLayouts, mir, mir, lir, lir, asm, asm, "DAT\n");
 
         IReadOnlyList<DumpArtifact> dumps = DumpBundleBuilder.Build(new DumpSelection(), build);
 
@@ -91,10 +92,11 @@ public class WriterAndSymbolTests
         MirModule mir = new([], [], []);
         LirModule lir = new([]);
         AsmModule asm = new([], [], []);
-        ImagePlan imagePlan = CreateSingleEntryImagePlan(program.EntryPoint);
+        ImagePlan imagePlan = IrTestFactory.CreateSingleEntryImagePlan(program.EntryPoint);
         ImagePlacement imagePlacement = ImagePlacer.Place(imagePlan);
-        LayoutSolution layoutSolution = LayoutSolver.Solve(program, imagePlacement);
-        IrBuildResult build = new(program, imagePlan, imagePlacement, layoutSolution, mir, mir, lir, lir, asm, asm, "DAT\n");
+        LayoutSolution layoutSolution = LayoutSolver.SolveStableLayouts(program, imagePlacement);
+        CogResourceLayoutSet cogResourceLayouts = IrTestFactory.CreateEmptyCogResourceLayouts(imagePlan);
+        IrBuildResult build = new(program, imagePlan, imagePlacement, layoutSolution, cogResourceLayouts, mir, mir, lir, lir, asm, asm, "DAT\n");
 
         IReadOnlyList<DumpArtifact> dumps = DumpBundleBuilder.Build(new DumpSelection
         {
@@ -168,20 +170,10 @@ public class WriterAndSymbolTests
         Assert.That(sharedHubSection, Does.Contain("$02000  03 00 00 00  Shared.flag"));
         Assert.That(sharedHubSection, Does.Contain("$80000  -- -- -- --  -"));
         Assert.That(sharedHubSection, Does.Not.Contain("$00004  -- -- -- --  -"));
-        Assert.That(imageSection, Does.Contain("cog\naddr  state      init   owner\n$000  free       -      -\n*\n$1EF  free       -      -\n$1F0  reserved   -      -\n*\n$1FF  reserved   -      -"));
+        Assert.That(imageSection, Does.Contain("cog\naddr  state      init   owner\n$000  allocated  -      code"));
+        Assert.That(imageSection, Does.Contain("$009  free       -      -"));
+        Assert.That(imageSection, Does.Contain("$1F0  reserved   -      -\n*\n$1FF  reserved   -      -"));
         Assert.That(imageSection, Does.Contain("lut\naddr  state      init   owner\n$000  free       -      -\n*\n$1FF  free       -      -"));
-    }
-
-    private static ImagePlan CreateSingleEntryImagePlan(TaskSymbol task)
-    {
-        ImageDescriptor image = new(
-            task,
-            task.EntryFunction,
-            task.StorageClass,
-            isEntryImage: true,
-            [task.EntryFunction],
-            [.. task.DeclaredMembers.Values]);
-        return new ImagePlan([image], image);
     }
 
     [Test]

@@ -10,6 +10,7 @@ public sealed class IrBuildResult(
     ImagePlan imagePlan,
     ImagePlacement imagePlacement,
     LayoutSolution layoutSolution,
+    CogResourceLayoutSet cogResourceLayouts,
     MirModule preOptimizationMirModule,
     MirModule mirModule,
     LirModule preOptimizationLirModule,
@@ -30,6 +31,11 @@ public sealed class IrBuildResult(
     /// Gets the program-wide solved addresses for layout-backed storage.
     /// </summary>
     public LayoutSolution LayoutSolution { get; } = layoutSolution;
+
+    /// <summary>
+    /// Gets the stable COG-backed data addresses and per-image allocatable register pools.
+    /// </summary>
+    public CogResourceLayoutSet CogResourceLayouts { get; } = cogResourceLayouts;
     public MirModule PreOptimizationMirModule { get; } = preOptimizationMirModule;
     public MirModule MirModule { get; } = mirModule;
     public LirModule PreOptimizationLirModule { get; } = preOptimizationLirModule;
@@ -39,8 +45,9 @@ public sealed class IrBuildResult(
     public string AssemblyText { get; } = assemblyText;
 }
 
-public sealed class EmitResult(AsmModule asmModule, string assemblyText)
+public sealed class EmitResult(AsmModule asmModule, CogResourceLayoutSet cogResourceLayouts, string assemblyText)
 {
     public AsmModule AsmModule { get; } = asmModule;
+    public CogResourceLayoutSet CogResourceLayouts { get; } = cogResourceLayouts;
     public string AssemblyText { get; } = assemblyText;
 }

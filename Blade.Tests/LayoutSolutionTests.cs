@@ -60,6 +60,40 @@ public class LayoutSolutionTests
     }
 
     [Test]
+    public void LayoutSolution_SolvesCogMembersBackToFront_AndEmissionUsesExplicitCogOrigins()
+    {
+        CompilationResult result = CompilerDriver.Compile("""
+            layout Shared {
+                cog var pair: [2]u32 = [2, 3];
+                cog var head: u32 = 1;
+            }
+
+            cog task main() : Shared {
+                head = pair[0];
+            }
+            """, filePath: "<input>");
+
+        Assert.That(result.Diagnostics, Is.Empty, string.Join(Environment.NewLine, result.Diagnostics));
+
+        IrBuildResult build = Requires.NotNull(result.IrBuildResult);
+        LayoutSlot pair = build.LayoutSolution.Slots.Single(slot => slot.Symbol.Name == "pair");
+        LayoutSlot head = build.LayoutSolution.Slots.Single(slot => slot.Symbol.Name == "head");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(pair.Address, Is.EqualTo(0x1EE));
+            Assert.That(pair.SizeInAddressUnits, Is.EqualTo(2));
+            Assert.That(head.Address, Is.EqualTo(0x1ED));
+            Assert.That(build.CogResourceLayouts.MaximumCodeSizeLongs, Is.LessThan(head.Address));
+        });
+
+        Assert.That(build.AssemblyText, Does.Contain("org $1EC"));
+        Assert.That(build.AssemblyText, Does.Contain("fit $1F0"));
+        Assert.That(build.AssemblyText, Does.Match(@"g_head\s+LONG\s+1"));
+        Assert.That(build.AssemblyText, Does.Match(@"g_pair\s+LONG\s+0\[2\]"));
+    }
+
+    [Test]
     public void InvalidLayoutAlignment_ReportsE0280()
     {
         CompilationResult result = CompilerDriver.Compile("""
@@ -134,5 +168,23 @@ public class LayoutSolutionTests
             """, filePath: "<input>");
 
         Assert.That(result.Diagnostics.Any(diagnostic => diagnostic.Code == "E0283"), Is.True);
+    }
+
+    [Test]
+    public void LowFixedCogAddressThatCollidesWithCode_ReportsE0284()
+    {
+        CompilationResult result = CompilerDriver.Compile("""
+            layout Broken {
+                cog var pinned: u32 @(0x001) = 1;
+            }
+
+            cog task main() : Broken {
+                pinned = 1;
+                pinned = 2;
+                pinned = 3;
+            }
+            """, filePath: "<input>");
+
+        Assert.That(result.Diagnostics.Any(diagnostic => diagnostic.Code == "E0284"), Is.True);
     }
 }

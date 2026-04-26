@@ -11,17 +11,18 @@ namespace Blade.IR.Asm;
 
 public static class FinalAssemblyWriter
 {
-    public static string Write(AsmModule module)
+    public static string Write(AsmModule module, CogResourceLayoutSet cogResourceLayouts)
     {
-        return Build(module).Text;
+        return Build(module, cogResourceLayouts).Text;
     }
 
-    public static FinalAssembly Build(AsmModule module, RuntimeTemplate? runtimeTemplate = null)
+    public static FinalAssembly Build(AsmModule module, CogResourceLayoutSet cogResourceLayouts, RuntimeTemplate? runtimeTemplate = null)
     {
         Requires.NotNull(module);
+        Requires.NotNull(cogResourceLayouts);
 
         string conSectionContents = WriteConSectionContents(module);
-        string datSectionContents = WriteDatSectionContents(module, includeDefaultBladeHalt: runtimeTemplate is null);
+        string datSectionContents = WriteDatSectionContents(module, cogResourceLayouts, includeDefaultBladeHalt: runtimeTemplate is null);
         return FinalAssemblyComposer.Compose(conSectionContents, datSectionContents, runtimeTemplate);
     }
 
@@ -50,14 +51,15 @@ public static class FinalAssemblyWriter
         return sb.ToString();
     }
 
-    public static string WriteDatSectionContents(AsmModule module)
+    public static string WriteDatSectionContents(AsmModule module, CogResourceLayoutSet cogResourceLayouts)
     {
-        return WriteDatSectionContents(module, includeDefaultBladeHalt: false);
+        return WriteDatSectionContents(module, cogResourceLayouts, includeDefaultBladeHalt: false);
     }
 
-    private static string WriteDatSectionContents(AsmModule module, bool includeDefaultBladeHalt)
+    private static string WriteDatSectionContents(AsmModule module, CogResourceLayoutSet cogResourceLayouts, bool includeDefaultBladeHalt)
     {
         Requires.NotNull(module);
+        Requires.NotNull(cogResourceLayouts);
 
         IReadOnlyDictionary<FunctionSymbol, string> functionIdentifiers = BuildFunctionIdentifiers(module.Functions);
         StringBuilder sb = new();
@@ -80,7 +82,7 @@ public static class FinalAssemblyWriter
                 WriteDefaultBladeHalt(sb);
         }
 
-        WriteDataBlocks(sb, module.DataBlocks, functionIdentifiers);
+        WriteDataBlocks(sb, module.DataBlocks, functionIdentifiers, cogResourceLayouts);
         return sb.ToString();
     }
 
@@ -121,35 +123,74 @@ public static class FinalAssemblyWriter
         sb.AppendLine("    NOP");
     }
 
-    private static void WriteDataBlocks(StringBuilder sb, IReadOnlyList<AsmDataBlock> dataBlocks, IReadOnlyDictionary<FunctionSymbol, string> functionIdentifiers)
+    private static void WriteDataBlocks(
+        StringBuilder sb,
+        IReadOnlyList<AsmDataBlock> dataBlocks,
+        IReadOnlyDictionary<FunctionSymbol, string> functionIdentifiers,
+        CogResourceLayoutSet cogResourceLayouts)
     {
-        foreach (AsmDataBlockKind kind in new[] { AsmDataBlockKind.Register, AsmDataBlockKind.Constant, AsmDataBlockKind.Lut, AsmDataBlockKind.External, AsmDataBlockKind.Hub })
-        {
-            AsmDataBlock? block = dataBlocks.FirstOrDefault(candidate => candidate.Kind == kind);
-            if (block is null)
-                continue;
+        AsmDataBlock? registerBlock = dataBlocks.FirstOrDefault(static candidate => candidate.Kind == AsmDataBlockKind.Register);
+        AsmDataBlock? constantBlock = dataBlocks.FirstOrDefault(static candidate => candidate.Kind == AsmDataBlockKind.Constant);
+        WriteCogStorageBlocks(sb, registerBlock, constantBlock, functionIdentifiers, cogResourceLayouts);
 
-            switch (kind)
-            {
-                case AsmDataBlockKind.Register:
-                    WriteAllocatedBlock(sb, block, "' --- register file ---", functionIdentifiers);
-                    break;
-                case AsmDataBlockKind.Constant:
-                    WriteAllocatedBlock(sb, block, "' --- constant file ---", functionIdentifiers);
-                    break;
-                case AsmDataBlockKind.Lut:
-                    sb.AppendLine();
-                    sb.AppendLine("    fit $200");
-                    WriteStorageBlock(sb, block, "' --- lut file ---", functionIdentifiers, VariableStorageClass.Lut);
-                    break;
-                case AsmDataBlockKind.External:
-                    break;
-                case AsmDataBlockKind.Hub:
-                    sb.AppendLine();
-                    WriteStorageBlock(sb, block, "' --- hub file ---", functionIdentifiers, VariableStorageClass.Hub);
-                    break;
-            }
+        AsmDataBlock? lutBlock = dataBlocks.FirstOrDefault(static candidate => candidate.Kind == AsmDataBlockKind.Lut);
+        if (lutBlock is not null)
+        {
+            sb.AppendLine();
+            sb.AppendLine("    fit $200");
+            WriteStorageBlock(sb, lutBlock, "' --- lut file ---", functionIdentifiers, VariableStorageClass.Lut);
         }
+
+        AsmDataBlock? hubBlock = dataBlocks.FirstOrDefault(static candidate => candidate.Kind == AsmDataBlockKind.Hub);
+        if (hubBlock is not null)
+        {
+            sb.AppendLine();
+            WriteStorageBlock(sb, hubBlock, "' --- hub file ---", functionIdentifiers, VariableStorageClass.Hub);
+        }
+    }
+
+    private static void WriteCogStorageBlocks(
+        StringBuilder sb,
+        AsmDataBlock? registerBlock,
+        AsmDataBlock? constantBlock,
+        IReadOnlyDictionary<FunctionSymbol, string> functionIdentifiers,
+        CogResourceLayoutSet cogResourceLayouts)
+    {
+        List<AsmAllocatedStorageDefinition> definitions = [];
+        if (registerBlock is not null)
+            definitions.AddRange(registerBlock.Definitions.OfType<AsmAllocatedStorageDefinition>());
+        if (constantBlock is not null)
+            definitions.AddRange(constantBlock.Definitions.OfType<AsmAllocatedStorageDefinition>());
+
+        sb.AppendLine();
+        sb.AppendLine("    ' --- cog data file ---");
+
+        if (definitions.Count == 0)
+        {
+            sb.AppendLine("    fit $1F0");
+            return;
+        }
+
+        definitions = definitions
+            .OrderBy(definition => ResolveCogAddress(definition.Symbol, cogResourceLayouts))
+            .ThenBy(definition => FormatSymbol(definition.Symbol, functionIdentifiers), StringComparer.Ordinal)
+            .ToList();
+
+        int maxLabelWidth = definitions.Max(definition => FormatSymbol(definition.Symbol, functionIdentifiers).Length);
+        int maxDirectiveWidth = definitions.Max(static definition => FormatDataDirective(definition.Directive).Length);
+
+        int? previousEndAddress = null;
+        foreach (AsmAllocatedStorageDefinition definition in definitions)
+        {
+            int address = ResolveCogAddress(definition.Symbol, cogResourceLayouts);
+            if (previousEndAddress != address)
+                WriteCogOriginDirective(sb, address);
+
+            WriteAllocatedDefinition(sb, definition, functionIdentifiers, maxLabelWidth, maxDirectiveWidth);
+            previousEndAddress = address + GetDefinitionSizeInAddressUnits(definition);
+        }
+
+        sb.AppendLine("    fit $1F0");
     }
 
     private static void WriteStorageBlock(
@@ -319,6 +360,30 @@ public static class FinalAssemblyWriter
                 Assert.Unreachable($"Unexpected storage origin class '{storageClass}'."); // pragma: force-coverage
                 break; // pragma: force-coverage
         }
+    }
+
+    private static void WriteCogOriginDirective(StringBuilder sb, int address)
+    {
+        Requires.NotNull(sb);
+        Requires.InRange(address, 0, 0x1FF);
+
+        sb.Append("    org $");
+        sb.AppendLine(address.ToString("X", CultureInfo.InvariantCulture));
+    }
+
+    private static int ResolveCogAddress(IAsmSymbol symbol, CogResourceLayoutSet cogResourceLayouts)
+    {
+        Requires.NotNull(symbol);
+        Requires.NotNull(cogResourceLayouts);
+
+        return symbol switch
+        {
+            StoragePlace { ResolvedLayoutSlot: LayoutSlot { StorageClass: VariableStorageClass.Cog } slot } => slot.Address,
+            StoragePlace place when cogResourceLayouts.TryGetStableAddress(place, out int stableAddress) => stableAddress,
+            AsmSpillSlotSymbol spillSlot => spillSlot.Slot,
+            AsmSharedConstantSymbol constant when cogResourceLayouts.TryGetStableAddress(constant, out int constantAddress) => constantAddress,
+            _ => Assert.UnreachableValue<int>($"Missing COG address for symbol '{symbol.Name}'."), // pragma: force-coverage
+        };
     }
 
     private static int GetDefinitionSizeInAddressUnits(AsmAllocatedStorageDefinition definition)

@@ -1,0 +1,8 @@
+layout Shared {
+    cog var pair: [2]u32 = [2, 3];
+    cog var head: u32 = 1;
+}
+
+cog task main() : Shared {
+    head = pair[0];
+}
