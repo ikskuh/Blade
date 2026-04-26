@@ -82,7 +82,7 @@ coverage-report-regression: coverage-regressions
     @echo "$PWD/coverage/regression-results/index.html"
 
 regressions:
-    BLADE_TEST_PORT="{{BLADE_TEST_PORT}}" {{dotnet}} run --project Blade.Regressions --
+    BLADE_TEST_PORT="{{BLADE_TEST_PORT}}" {{dotnet}} run --no-restore --project Blade.Regressions --
 
 # Runs the fuzzer suite
 fuzz:

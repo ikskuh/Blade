@@ -9,16 +9,18 @@
 //   Verifies that a comparison used only as a branch condition emits
 //   CMP + predicated JMP without materializing to a register.
 
-cog var a: u32 = 0;
-cog var b: u32 = 0;
+cog task main {
+    cog var a: u32 = 0;
+    cog var b: u32 = 0;
 
-if(a == b) {
-    asm volatile { 
-        COGATN #1 
-    };
-}
-else {
-    asm volatile { 
-        COGATN #2
-    };
+    if(a == b) {
+        asm volatile { 
+            COGATN #1 
+        };
+    }
+    else {
+        asm volatile { 
+            COGATN #2
+        };
+    }
 }

@@ -1,0 +1,56 @@
+// EXPECT: pass
+// NOTE:
+//   Comprehensive runtime arithmetic exercising AsmLowerer paths.
+//   Covers multiply, divide, modulo, shifts, rotates, and bitwise ops.
+
+cog task main {
+    cog var sink: u32 = 0;
+    cog var a: u32 = 100;
+    cog var b: u32 = 7;
+
+    fn multiply(x: u32, y: u32) -> u32 {
+        return x * y;
+    }
+
+    fn divide(x: u32, y: u32) -> u32 {
+        return x / y;
+    }
+
+    fn modulo(x: u32, y: u32) -> u32 {
+        return x % y;
+    }
+
+    fn shift_left(x: u32, y: u32) -> u32 {
+        return x << y;
+    }
+
+    fn shift_right(x: u32, y: u32) -> u32 {
+        return x >> y;
+    }
+
+    fn arith_shift_left(x: u32, y: u32) -> u32 {
+        return x <<< y;
+    }
+
+    fn rotate_left(x: u32, y: u32) -> u32 {
+        return x <%< y;
+    }
+
+    fn rotate_right(x: u32, y: u32) -> u32 {
+        return x >%> y;
+    }
+
+    fn no_param_return() -> u32 {
+        return 42;
+    }
+
+    sink = multiply(a, b);
+    sink = divide(a, b);
+    sink = modulo(a, b);
+    sink = shift_left(a, b);
+    sink = shift_right(a, b);
+    sink = arith_shift_left(a, b);
+    sink = rotate_left(a, b);
+    sink = rotate_right(a, b);
+    sink = no_param_return();
+}

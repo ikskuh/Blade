@@ -11,21 +11,23 @@
 //   should stay a zeroed register-file entry, while logical negation lowers via BITNOT.
 //   CMP + predicated JMP for comparison branch without WRZ materialization.
 
-extern cog var OUTA: u32 @(0x1FC);
-cog var t: bool = false;
-cog var a: u32 = 5;
-cog var b: u32 = 10;
-
 noinline fn negate_bool(x: bool) -> bool {
     return !x;
 }
 
-if (a == b) {
-    asm volatile { COGATN #1 };
-}
-else {
-    asm volatile { COGATN #2 };
-}
+cog task main {
+    extern cog var OUTA: u32 @(0x1FC);
+    cog var t: bool = false;
+    cog var a: u32 = 5;
+    cog var b: u32 = 10;
 
-t = negate_bool(t);
-OUTA = if (t) 1 else 0;
+    if (a == b) {
+        asm volatile { COGATN #1 };
+    }
+    else {
+        asm volatile { COGATN #2 };
+    }
+
+    t = negate_bool(t);
+    OUTA = if (t) 1 else 0;
+}

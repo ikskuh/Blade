@@ -12,19 +12,22 @@
 //   Exercises comparison materialization where the bool result is stored
 //   to a hub variable, forcing BITZ/BITNZ/BITC/BITNC.
 
-extern cog var OUTA: u32 @(0x1FC);
 hub var eq_out: bool = false;
 hub var ne_out: bool = false;
 hub var lt_out: bool = false;
 hub var ge_out: bool = false;
 
-noinline fn materialize_comparisons(a: u32, b: u32) {
-    eq_out = a == b;
-    ne_out = a != b;
-    lt_out = a < b;
-    ge_out = a >= b;
-}
+cog task main {
+    extern cog var OUTA: u32 @(0x1FC);
 
-cog var x: u32 = 5;
-cog var y: u32 = 10;
-materialize_comparisons(x, y);
+    noinline fn materialize_comparisons(a: u32, b: u32) {
+        eq_out = a == b;
+        ne_out = a != b;
+        lt_out = a < b;
+        ge_out = a >= b;
+    }
+
+    cog var x: u32 = 5;
+    cog var y: u32 = 10;
+    materialize_comparisons(x, y);
+}
