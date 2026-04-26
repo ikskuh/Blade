@@ -68,16 +68,15 @@ public static class Program
 
     private static void WriteMessageClass(TextWriter writer, Message message)
     {
-        string baseClass = message.Kind == MessageKind.Located
-            ? "LocatedDiagnosticMessage"
-            : "DiagnosticMessage";
+        string baseClass = GetBaseClass(message);
         string ctorParameters = GetConstructorParameters(message);
         string baseArguments = GetBaseArguments(message);
+        string messageExpression = GetFormattedMessageExpression(message);
 
         writer.WriteLine("public sealed class {0}({1})", message.ClassName, ctorParameters);
         writer.WriteLine("    : {0}({1})", baseClass, baseArguments);
         writer.WriteLine("{");
-        if (message.Kind == MessageKind.Generic)
+        if (message.Kind == MessageKind.Generic && !message.Text.IsInterpolated)
         {
             writer.WriteLine("    public override bool IsLocated => false;");
             if (message.Parameters.Count > 0)
@@ -87,6 +86,23 @@ public static class Program
         foreach (MessageParameter parameter in message.Parameters)
         {
             writer.WriteLine("    public {0} {1} {{ get; }} = {2};", parameter.Type, ToPropertyName(parameter.Name), parameter.Name);
+        }
+
+        if (message.Text.IsInterpolated)
+        {
+            if (message.Parameters.Count > 0)
+                writer.WriteLine();
+
+            if (message.Kind == MessageKind.Generic)
+            {
+                writer.WriteLine("    public override bool IsLocated => false;");
+                writer.WriteLine();
+            }
+
+            writer.WriteLine("    protected override global::System.FormattableString GetFormattableMessage()");
+            writer.WriteLine("    {");
+            writer.WriteLine("        return {0};", messageExpression);
+            writer.WriteLine("    }");
         }
 
         writer.WriteLine("}");
@@ -110,12 +126,67 @@ public static class Program
         string common = "\"" + message.Name + "\", "
             + GetSeverityExpression(message)
             + ", "
-            + GetNumericCode(message).ToString(System.Globalization.CultureInfo.InvariantCulture)
-            + ", "
-            + message.Text.Expression;
+            + GetNumericCode(message).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (!message.Text.IsInterpolated)
+            common += ", " + message.Text.Expression;
         if (message.Kind == MessageKind.Generic)
             return common;
         return "source, span, " + common;
+    }
+
+    private static string GetBaseClass(Message message)
+    {
+        return message.Kind == MessageKind.Located
+            ? "LocatedDiagnosticMessage"
+            : "DiagnosticMessage";
+    }
+
+    private static string GetFormattedMessageExpression(Message message)
+    {
+        string expression = message.Text.Expression;
+        StringBuilder builder = new();
+        int index = 0;
+        while (index < expression.Length)
+        {
+            if (expression[index] == '{'
+                && index + 1 < expression.Length
+                && expression[index + 1] != '{')
+            {
+                int end = expression.IndexOf('}', index + 1);
+                if (end < 0)
+                    break;
+
+                string interpolation = expression[(index + 1)..end];
+                builder.Append('{');
+                builder.Append(RewriteIdentifiers(interpolation, message));
+                builder.Append('}');
+                index = end + 1;
+                continue;
+            }
+
+            builder.Append(expression[index]);
+            index++;
+        }
+
+        if (index < expression.Length)
+            builder.Append(expression[index..]);
+
+        return builder.ToString();
+    }
+
+    private static string RewriteIdentifiers(string interpolation, Message message)
+    {
+        string rewritten = interpolation;
+        foreach (MessageParameter parameter in message.Parameters)
+        {
+            string propertyName = ToPropertyName(parameter.Name);
+            rewritten = System.Text.RegularExpressions.Regex.Replace(
+                rewritten,
+                $@"\b{System.Text.RegularExpressions.Regex.Escape(parameter.Name)}\b",
+                propertyName);
+        }
+
+        return rewritten;
     }
 
     private static void WriteLookupHelpers(TextWriter writer, Model model)

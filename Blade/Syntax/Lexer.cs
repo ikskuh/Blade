@@ -156,7 +156,7 @@ public sealed class Lexer(SourceText source, DiagnosticBag diagnostics)
         if (depth > 0)
         {
             TextSpan span = TextSpan.FromBounds(commentStart, _position);
-            Diagnostics.ReportUnterminatedBlockComment(span);
+            Diagnostics.Report(new UnterminatedBlockCommentError(Diagnostics.CurrentSource, span));
         }
     }
 
@@ -237,7 +237,7 @@ public sealed class Lexer(SourceText source, DiagnosticBag diagnostics)
         if (TryParseIntegerLiteralText(text, prefixLength, radix, out long value))
             return MakeToken(TokenKind.IntegerLiteral, BladeValue.IntegerLiteral(value));
 
-        Diagnostics.ReportInvalidNumberLiteral(span, text);
+        Diagnostics.Report(new InvalidNumberLiteralError(Diagnostics.CurrentSource, span, text));
         return MakeToken(TokenKind.IntegerLiteral, BladeValue.IntegerLiteral(0L));
     }
 
@@ -294,7 +294,7 @@ public sealed class Lexer(SourceText source, DiagnosticBag diagnostics)
         if (_position >= _source.Length || Current != '"')
         {
             TextSpan span = new(_start, _position - _start);
-            Diagnostics.ReportUnterminatedString(span);
+            Diagnostics.Report(new UnterminatedStringError(Diagnostics.CurrentSource, span));
             TokenKind errorKind = zeroTerminated ? TokenKind.ZeroTerminatedStringLiteral : TokenKind.StringLiteral;
             return MakeToken(errorKind, BladeValue.U8Array([]));
         }
@@ -327,7 +327,7 @@ public sealed class Lexer(SourceText source, DiagnosticBag diagnostics)
         else if (Current == '\'' || Current == '\0')
         {
             TextSpan span = new(_start, _position - _start);
-            Diagnostics.ReportUnterminatedString(span);
+            Diagnostics.Report(new UnterminatedStringError(Diagnostics.CurrentSource, span));
             return MakeToken(TokenKind.CharLiteral, BladeValue.IntegerLiteral(0L));
         }
         else
@@ -346,7 +346,7 @@ public sealed class Lexer(SourceText source, DiagnosticBag diagnostics)
                 Advance();
 
             TextSpan span = new(_start, _position - _start);
-            Diagnostics.ReportInvalidCharacterLiteral(span);
+            Diagnostics.Report(new InvalidCharacterLiteralError(Diagnostics.CurrentSource, span));
             return MakeToken(TokenKind.CharLiteral, BladeValue.IntegerLiteral(value));
         }
 
@@ -390,7 +390,7 @@ public sealed class Lexer(SourceText source, DiagnosticBag diagnostics)
                     }
 
                     TextSpan span = TextSpan.FromBounds(escapeStart, _position);
-                    Diagnostics.ReportInvalidEscapeSequence(span);
+                    Diagnostics.Report(new InvalidEscapeSequenceError(Diagnostics.CurrentSource, span));
                     return -1;
                 }
 
@@ -400,7 +400,7 @@ public sealed class Lexer(SourceText source, DiagnosticBag diagnostics)
                     if (Current != '{')
                     {
                         TextSpan span = TextSpan.FromBounds(escapeStart, _position);
-                        Diagnostics.ReportInvalidEscapeSequence(span);
+                        Diagnostics.Report(new InvalidEscapeSequenceError(Diagnostics.CurrentSource, span));
                         return -1;
                     }
 
@@ -415,7 +415,7 @@ public sealed class Lexer(SourceText source, DiagnosticBag diagnostics)
                     if (digitCount == 0 || digitCount > 6 || Current != '}')
                     {
                         TextSpan span = TextSpan.FromBounds(escapeStart, _position);
-                        Diagnostics.ReportInvalidEscapeSequence(span);
+                        Diagnostics.Report(new InvalidEscapeSequenceError(Diagnostics.CurrentSource, span));
                         if (Current == '}')
                             Advance();
                         return -1;
@@ -427,7 +427,7 @@ public sealed class Lexer(SourceText source, DiagnosticBag diagnostics)
                     if (!IsValidUnicodeScalar(codepoint))
                     {
                         TextSpan span = TextSpan.FromBounds(escapeStart, _position);
-                        Diagnostics.ReportInvalidEscapeSequence(span);
+                        Diagnostics.Report(new InvalidEscapeSequenceError(Diagnostics.CurrentSource, span));
                         return -1;
                     }
 
@@ -437,7 +437,7 @@ public sealed class Lexer(SourceText source, DiagnosticBag diagnostics)
             default:
                 {
                     TextSpan span = TextSpan.FromBounds(escapeStart, _position);
-                    Diagnostics.ReportInvalidEscapeSequence(span);
+                    Diagnostics.Report(new InvalidEscapeSequenceError(Diagnostics.CurrentSource, span));
                     return -1;
                 }
         }
@@ -573,7 +573,7 @@ public sealed class Lexer(SourceText source, DiagnosticBag diagnostics)
             default:
                 Advance();
                 TextSpan span = new(_start, 1);
-                Diagnostics.ReportUnexpectedCharacter(span, c);
+                Diagnostics.Report(new UnexpectedCharacterError(Diagnostics.CurrentSource, span, c));
                 return MakeToken(TokenKind.Bad);
         }
     }

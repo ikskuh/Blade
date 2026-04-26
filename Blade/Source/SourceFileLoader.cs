@@ -24,7 +24,7 @@ public static class SourceFileLoader
         {
             source = new SourceText(string.Empty, filePath);
             using IDisposable _ = diagnostics.UseSource(source);
-            diagnostics.ReportInvalidUtf8(new TextSpan(0, 0));
+            diagnostics.Report(new InvalidUtf8Error(diagnostics.CurrentSource, new TextSpan(0, 0)));
             return false;
         }
 
@@ -50,7 +50,7 @@ public static class SourceFileLoader
 
             if (char.IsControl(current))
             {
-                diagnostics.ReportInvalidControlCharacter(new TextSpan(i, 1), current);
+                diagnostics.Report(new InvalidControlCharacterError(diagnostics.CurrentSource, new TextSpan(i, 1), current));
                 isValid = false;
             }
         }

@@ -5,7 +5,9 @@
 #nullable enable
 
 using Blade;
+using Blade.Semantics;
 using Blade.Source;
+using System.Collections.Generic;
 
 namespace Blade.Diagnostics;
 
@@ -469,9 +471,14 @@ public abstract partial class DiagnosticMessage
 }
 
 public sealed class UnexpectedCharacterError(SourceText source, TextSpan span, char character)
-    : LocatedDiagnosticMessage(source, span, "UnexpectedCharacter", DiagnosticSeverity.Error, 1, $"Unexpected character '{character}'.")
+    : LocatedDiagnosticMessage(source, span, "UnexpectedCharacter", DiagnosticSeverity.Error, 1)
 {
     public char Character { get; } = character;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Unexpected character '{Character}'.";
+    }
 }
 
 public sealed class UnterminatedStringError(SourceText source, TextSpan span)
@@ -480,9 +487,14 @@ public sealed class UnterminatedStringError(SourceText source, TextSpan span)
 }
 
 public sealed class InvalidNumberLiteralError(SourceText source, TextSpan span, string text)
-    : LocatedDiagnosticMessage(source, span, "InvalidNumberLiteral", DiagnosticSeverity.Error, 3, $"Invalid number literal '{text}'.")
+    : LocatedDiagnosticMessage(source, span, "InvalidNumberLiteral", DiagnosticSeverity.Error, 3)
 {
     public string Text { get; } = text;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Invalid number literal '{Text}'.";
+    }
 }
 
 public sealed class UnterminatedBlockCommentError(SourceText source, TextSpan span)
@@ -506,16 +518,26 @@ public sealed class InvalidUtf8Error(SourceText source, TextSpan span)
 }
 
 public sealed class InvalidControlCharacterError(SourceText source, TextSpan span, char character)
-    : LocatedDiagnosticMessage(source, span, "InvalidControlCharacter", DiagnosticSeverity.Error, 8, $"Control character U+{(int)character:X4} is not allowed in Blade source files.")
+    : LocatedDiagnosticMessage(source, span, "InvalidControlCharacter", DiagnosticSeverity.Error, 8)
 {
     public char Character { get; } = character;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Control character U+{(int)Character:X4} is not allowed in Blade source files.";
+    }
 }
 
 public sealed class UnexpectedTokenError(SourceText source, TextSpan span, string expected, string actual)
-    : LocatedDiagnosticMessage(source, span, "UnexpectedToken", DiagnosticSeverity.Error, 101, $"Expected {expected}, got '{actual}'.")
+    : LocatedDiagnosticMessage(source, span, "UnexpectedToken", DiagnosticSeverity.Error, 101)
 {
     public string Expected { get; } = expected;
     public string Actual { get; } = actual;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Expected {Expected}, got '{Actual}'.";
+    }
 }
 
 public sealed class ExpectedExpressionError(SourceText source, TextSpan span)
@@ -549,60 +571,105 @@ public sealed class ExpectedSemicolonError(SourceText source, TextSpan span)
 }
 
 public sealed class DuplicateVariableClauseError(SourceText source, TextSpan span, string clauseName)
-    : LocatedDiagnosticMessage(source, span, "DuplicateVariableClause", DiagnosticSeverity.Error, 108, $"Duplicate variable clause '{clauseName}'.")
+    : LocatedDiagnosticMessage(source, span, "DuplicateVariableClause", DiagnosticSeverity.Error, 108)
 {
     public string ClauseName { get; } = clauseName;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Duplicate variable clause '{ClauseName}'.";
+    }
 }
 
 public sealed class SymbolAlreadyDeclaredError(SourceText source, TextSpan span, string name)
-    : LocatedDiagnosticMessage(source, span, "SymbolAlreadyDeclared", DiagnosticSeverity.Error, 201, $"Symbol '{name}' is already declared.")
+    : LocatedDiagnosticMessage(source, span, "SymbolAlreadyDeclared", DiagnosticSeverity.Error, 201)
 {
     public string ParameterName { get; } = name;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Symbol '{ParameterName}' is already declared.";
+    }
 }
 
 public sealed class UndefinedNameError(SourceText source, TextSpan span, string name)
-    : LocatedDiagnosticMessage(source, span, "UndefinedName", DiagnosticSeverity.Error, 202, $"Name '{name}' does not exist in the current scope.")
+    : LocatedDiagnosticMessage(source, span, "UndefinedName", DiagnosticSeverity.Error, 202)
 {
     public string ParameterName { get; } = name;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Name '{ParameterName}' does not exist in the current scope.";
+    }
 }
 
 public sealed class UndefinedTypeError(SourceText source, TextSpan span, string name)
-    : LocatedDiagnosticMessage(source, span, "UndefinedType", DiagnosticSeverity.Error, 203, $"Type '{name}' is not defined.")
+    : LocatedDiagnosticMessage(source, span, "UndefinedType", DiagnosticSeverity.Error, 203)
 {
     public string ParameterName { get; } = name;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Type '{ParameterName}' is not defined.";
+    }
 }
 
 public sealed class CannotAssignToConstantError(SourceText source, TextSpan span, string name)
-    : LocatedDiagnosticMessage(source, span, "CannotAssignToConstant", DiagnosticSeverity.Error, 204, $"Cannot assign to constant '{name}'.")
+    : LocatedDiagnosticMessage(source, span, "CannotAssignToConstant", DiagnosticSeverity.Error, 204)
 {
     public string ParameterName { get; } = name;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Cannot assign to constant '{ParameterName}'.";
+    }
 }
 
 public sealed class TypeMismatchError(SourceText source, TextSpan span, string expected, string actual)
-    : LocatedDiagnosticMessage(source, span, "TypeMismatch", DiagnosticSeverity.Error, 205, $"Type mismatch: expected '{expected}', got '{actual}'.")
+    : LocatedDiagnosticMessage(source, span, "TypeMismatch", DiagnosticSeverity.Error, 205)
 {
     public string Expected { get; } = expected;
     public string Actual { get; } = actual;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Type mismatch: expected '{Expected}', got '{Actual}'.";
+    }
 }
 
 public sealed class NotCallableError(SourceText source, TextSpan span, string typeName)
-    : LocatedDiagnosticMessage(source, span, "NotCallable", DiagnosticSeverity.Error, 206, $"Expression of type '{typeName}' is not callable.")
+    : LocatedDiagnosticMessage(source, span, "NotCallable", DiagnosticSeverity.Error, 206)
 {
     public string TypeName { get; } = typeName;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Expression of type '{TypeName}' is not callable.";
+    }
 }
 
 public sealed class ArgumentCountMismatchError(SourceText source, TextSpan span, string functionName, int expected, int actual)
-    : LocatedDiagnosticMessage(source, span, "ArgumentCountMismatch", DiagnosticSeverity.Error, 207, $"Function '{functionName}' expects {expected} argument(s), but got {actual}.")
+    : LocatedDiagnosticMessage(source, span, "ArgumentCountMismatch", DiagnosticSeverity.Error, 207)
 {
     public string FunctionName { get; } = functionName;
     public int Expected { get; } = expected;
     public int Actual { get; } = actual;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Function '{FunctionName}' expects {Expected} argument(s), but got {Actual}.";
+    }
 }
 
 public sealed class InvalidLoopControlError(SourceText source, TextSpan span, string keyword)
-    : LocatedDiagnosticMessage(source, span, "InvalidLoopControl", DiagnosticSeverity.Error, 208, $"'{keyword}' can only be used inside a loop.")
+    : LocatedDiagnosticMessage(source, span, "InvalidLoopControl", DiagnosticSeverity.Error, 208)
 {
     public string Keyword { get; } = keyword;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"'{Keyword}' can only be used inside a loop.";
+    }
 }
 
 public sealed class InvalidBreakInRepLoopError(SourceText source, TextSpan span)
@@ -621,11 +688,16 @@ public sealed class InvalidYieldtoUsageError(SourceText source, TextSpan span)
 }
 
 public sealed class ReturnValueCountMismatchError(SourceText source, TextSpan span, string functionName, int expected, int actual)
-    : LocatedDiagnosticMessage(source, span, "ReturnValueCountMismatch", DiagnosticSeverity.Error, 212, $"Function '{functionName}' returns {expected} value(s), but got {actual}.")
+    : LocatedDiagnosticMessage(source, span, "ReturnValueCountMismatch", DiagnosticSeverity.Error, 212)
 {
     public string FunctionName { get; } = functionName;
     public int Expected { get; } = expected;
     public int Actual { get; } = actual;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Function '{FunctionName}' returns {Expected} value(s), but got {Actual}.";
+    }
 }
 
 public sealed class ReturnOutsideFunctionError(SourceText source, TextSpan span)
@@ -634,15 +706,25 @@ public sealed class ReturnOutsideFunctionError(SourceText source, TextSpan span)
 }
 
 public sealed class InvalidYieldtoTargetError(SourceText source, TextSpan span, string target)
-    : LocatedDiagnosticMessage(source, span, "InvalidYieldtoTarget", DiagnosticSeverity.Error, 214, $"'{target}' is not a coroutine function.")
+    : LocatedDiagnosticMessage(source, span, "InvalidYieldtoTarget", DiagnosticSeverity.Error, 214)
 {
     public string Target { get; } = target;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"'{Target}' is not a coroutine function.";
+    }
 }
 
 public sealed class InvalidLocalStorageClassError(SourceText source, TextSpan span, string storageClass)
-    : LocatedDiagnosticMessage(source, span, "InvalidLocalStorageClass", DiagnosticSeverity.Error, 215, $"Storage class '{storageClass}' is only allowed for top-level storage declarations.")
+    : LocatedDiagnosticMessage(source, span, "InvalidLocalStorageClass", DiagnosticSeverity.Error, 215)
 {
     public string StorageClass { get; } = storageClass;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Storage class '{StorageClass}' is only allowed for top-level storage declarations.";
+    }
 }
 
 public sealed class InvalidExternScopeError(SourceText source, TextSpan span)
@@ -651,9 +733,14 @@ public sealed class InvalidExternScopeError(SourceText source, TextSpan span)
 }
 
 public sealed class InvalidParameterStorageClassError(SourceText source, TextSpan span, string storageClass)
-    : LocatedDiagnosticMessage(source, span, "InvalidParameterStorageClass", DiagnosticSeverity.Error, 217, $"Parameter storage class '{storageClass}' is not supported.")
+    : LocatedDiagnosticMessage(source, span, "InvalidParameterStorageClass", DiagnosticSeverity.Error, 217)
 {
     public string StorageClass { get; } = storageClass;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Parameter storage class '{StorageClass}' is not supported.";
+    }
 }
 
 public sealed class PointerStorageClassRequiredError(SourceText source, TextSpan span)
@@ -662,28 +749,48 @@ public sealed class PointerStorageClassRequiredError(SourceText source, TextSpan
 }
 
 public sealed class UnknownNamedArgumentError(SourceText source, TextSpan span, string functionName, string parameterName)
-    : LocatedDiagnosticMessage(source, span, "UnknownNamedArgument", DiagnosticSeverity.Error, 219, $"Function '{functionName}' does not have a parameter named '{parameterName}'.")
+    : LocatedDiagnosticMessage(source, span, "UnknownNamedArgument", DiagnosticSeverity.Error, 219)
 {
     public string FunctionName { get; } = functionName;
     public string ParameterName { get; } = parameterName;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Function '{FunctionName}' does not have a parameter named '{ParameterName}'.";
+    }
 }
 
 public sealed class DuplicateNamedArgumentError(SourceText source, TextSpan span, string parameterName)
-    : LocatedDiagnosticMessage(source, span, "DuplicateNamedArgument", DiagnosticSeverity.Error, 220, $"Named argument '{parameterName}' is specified more than once.")
+    : LocatedDiagnosticMessage(source, span, "DuplicateNamedArgument", DiagnosticSeverity.Error, 220)
 {
     public string ParameterName { get; } = parameterName;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Named argument '{ParameterName}' is specified more than once.";
+    }
 }
 
 public sealed class PositionalArgumentAfterNamedError(SourceText source, TextSpan span, string functionName)
-    : LocatedDiagnosticMessage(source, span, "PositionalArgumentAfterNamed", DiagnosticSeverity.Error, 221, $"Function '{functionName}' does not allow positional arguments after named arguments.")
+    : LocatedDiagnosticMessage(source, span, "PositionalArgumentAfterNamed", DiagnosticSeverity.Error, 221)
 {
     public string FunctionName { get; } = functionName;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Function '{FunctionName}' does not allow positional arguments after named arguments.";
+    }
 }
 
 public sealed class NamedArgumentConflictsWithPositionalError(SourceText source, TextSpan span, string parameterName)
-    : LocatedDiagnosticMessage(source, span, "NamedArgumentConflictsWithPositional", DiagnosticSeverity.Error, 222, $"Named argument '{parameterName}' conflicts with a positional argument.")
+    : LocatedDiagnosticMessage(source, span, "NamedArgumentConflictsWithPositional", DiagnosticSeverity.Error, 222)
 {
     public string ParameterName { get; } = parameterName;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Named argument '{ParameterName}' conflicts with a positional argument.";
+    }
 }
 
 public sealed class InvalidAddressOfTargetError(SourceText source, TextSpan span)
@@ -692,35 +799,60 @@ public sealed class InvalidAddressOfTargetError(SourceText source, TextSpan span
 }
 
 public sealed class InvalidExplicitCastError(SourceText source, TextSpan span, string sourceType, string targetType)
-    : LocatedDiagnosticMessage(source, span, "InvalidExplicitCast", DiagnosticSeverity.Error, 224, $"Cannot explicitly cast from '{sourceType}' to '{targetType}'.")
+    : LocatedDiagnosticMessage(source, span, "InvalidExplicitCast", DiagnosticSeverity.Error, 224)
 {
     public string SourceType { get; } = sourceType;
     public string TargetType { get; } = targetType;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Cannot explicitly cast from '{SourceType}' to '{TargetType}'.";
+    }
 }
 
 public sealed class BitcastSizeMismatchError(SourceText source, TextSpan span, string sourceType, string targetType)
-    : LocatedDiagnosticMessage(source, span, "BitcastSizeMismatch", DiagnosticSeverity.Error, 225, $"Cannot bitcast from '{sourceType}' to '{targetType}' because their sizes differ.")
+    : LocatedDiagnosticMessage(source, span, "BitcastSizeMismatch", DiagnosticSeverity.Error, 225)
 {
     public string SourceType { get; } = sourceType;
     public string TargetType { get; } = targetType;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Cannot bitcast from '{SourceType}' to '{TargetType}' because their sizes differ.";
+    }
 }
 
 public sealed class AddressOfRecursiveLocalError(SourceText source, TextSpan span, string name)
-    : LocatedDiagnosticMessage(source, span, "AddressOfRecursiveLocal", DiagnosticSeverity.Error, 226, $"Cannot take the address of local '{name}' inside a recursive function.")
+    : LocatedDiagnosticMessage(source, span, "AddressOfRecursiveLocal", DiagnosticSeverity.Error, 226)
 {
     public string ParameterName { get; } = name;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Cannot take the address of local '{ParameterName}' inside a recursive function.";
+    }
 }
 
 public sealed class MissingReturnValueError(SourceText source, TextSpan span, string functionName)
-    : LocatedDiagnosticMessage(source, span, "MissingReturnValue", DiagnosticSeverity.Error, 227, $"Function '{functionName}' must return a value on all control-flow paths.")
+    : LocatedDiagnosticMessage(source, span, "MissingReturnValue", DiagnosticSeverity.Error, 227)
 {
     public string FunctionName { get; } = functionName;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Function '{FunctionName}' must return a value on all control-flow paths.";
+    }
 }
 
 public sealed class ReturnFromCoroutineError(SourceText source, TextSpan span, string functionName)
-    : LocatedDiagnosticMessage(source, span, "ReturnFromCoroutine", DiagnosticSeverity.Error, 278, $"Coroutine function '{functionName}' cannot return and must end in 'yieldto' on every control-flow path.")
+    : LocatedDiagnosticMessage(source, span, "ReturnFromCoroutine", DiagnosticSeverity.Error, 278)
 {
     public string FunctionName { get; } = functionName;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Coroutine function '{FunctionName}' cannot return and must end in 'yieldto' on every control-flow path.";
+    }
 }
 
 public sealed class FileImportAliasRequiredError(SourceText source, TextSpan span)
@@ -729,36 +861,61 @@ public sealed class FileImportAliasRequiredError(SourceText source, TextSpan spa
 }
 
 public sealed class UnknownNamedModuleError(SourceText source, TextSpan span, string moduleName)
-    : LocatedDiagnosticMessage(source, span, "UnknownNamedModule", DiagnosticSeverity.Error, 229, $"Named module '{moduleName}' is not defined.")
+    : LocatedDiagnosticMessage(source, span, "UnknownNamedModule", DiagnosticSeverity.Error, 229)
 {
     public string ModuleName { get; } = moduleName;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Named module '{ModuleName}' is not defined.";
+    }
 }
 
 public sealed class ImportFileNotFoundError(SourceText source, TextSpan span, string path)
-    : LocatedDiagnosticMessage(source, span, "ImportFileNotFound", DiagnosticSeverity.Error, 230, $"Imported file '{path}' was not found.")
+    : LocatedDiagnosticMessage(source, span, "ImportFileNotFound", DiagnosticSeverity.Error, 230)
 {
     public string Path { get; } = path;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Imported file '{Path}' was not found.";
+    }
 }
 
 public sealed class CircularImportError(SourceText source, TextSpan span, string path)
-    : LocatedDiagnosticMessage(source, span, "CircularImport", DiagnosticSeverity.Error, 231, $"Circular import detected at '{path}'.")
+    : LocatedDiagnosticMessage(source, span, "CircularImport", DiagnosticSeverity.Error, 231)
 {
     public string Path { get; } = path;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Circular import detected at '{Path}'.";
+    }
 }
 
 public sealed class EnumLiteralRequiresContextError(SourceText source, TextSpan span, string memberName)
-    : LocatedDiagnosticMessage(source, span, "EnumLiteralRequiresContext", DiagnosticSeverity.Error, 232, $"Enum literal '.{memberName}' requires an expected enum type.")
+    : LocatedDiagnosticMessage(source, span, "EnumLiteralRequiresContext", DiagnosticSeverity.Error, 232)
 {
     public string MemberName { get; } = memberName;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Enum literal '.{MemberName}' requires an expected enum type.";
+    }
 }
 
 public sealed class BitfieldWidthOverflowError(SourceText source, TextSpan span, string bitfieldName, string fieldName, int usedBits, int backingBits)
-    : LocatedDiagnosticMessage(source, span, "BitfieldWidthOverflow", DiagnosticSeverity.Error, 233, $"Bitfield '{bitfieldName}' field '{fieldName}' uses {usedBits} bits, exceeding backing width {backingBits}.")
+    : LocatedDiagnosticMessage(source, span, "BitfieldWidthOverflow", DiagnosticSeverity.Error, 233)
 {
     public string BitfieldName { get; } = bitfieldName;
     public string FieldName { get; } = fieldName;
     public int UsedBits { get; } = usedBits;
     public int BackingBits { get; } = backingBits;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Bitfield '{BitfieldName}' field '{FieldName}' uses {UsedBits} bits, exceeding backing width {BackingBits}.";
+    }
 }
 
 public sealed class ArrayLiteralRequiresContextError(SourceText source, TextSpan span)
@@ -772,30 +929,50 @@ public sealed class ArrayLiteralSpreadMustBeLastError(SourceText source, TextSpa
 }
 
 public sealed class StructUnknownFieldError(SourceText source, TextSpan span, string structName, string fieldName)
-    : LocatedDiagnosticMessage(source, span, "StructUnknownField", DiagnosticSeverity.Error, 236, $"Struct '{structName}' does not have a field named '{fieldName}'.")
+    : LocatedDiagnosticMessage(source, span, "StructUnknownField", DiagnosticSeverity.Error, 236)
 {
     public string StructName { get; } = structName;
     public string FieldName { get; } = fieldName;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Struct '{StructName}' does not have a field named '{FieldName}'.";
+    }
 }
 
 public sealed class StructMissingFieldsError(SourceText source, TextSpan span, string structName, string missingFields)
-    : LocatedDiagnosticMessage(source, span, "StructMissingFields", DiagnosticSeverity.Error, 237, $"Struct literal for '{structName}' is missing field(s): {missingFields}.")
+    : LocatedDiagnosticMessage(source, span, "StructMissingFields", DiagnosticSeverity.Error, 237)
 {
     public string StructName { get; } = structName;
     public string MissingFields { get; } = missingFields;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Struct literal for '{StructName}' is missing field(s): {MissingFields}.";
+    }
 }
 
 public sealed class StructDuplicateFieldError(SourceText source, TextSpan span, string fieldName)
-    : LocatedDiagnosticMessage(source, span, "StructDuplicateField", DiagnosticSeverity.Error, 238, $"Field '{fieldName}' is specified more than once.")
+    : LocatedDiagnosticMessage(source, span, "StructDuplicateField", DiagnosticSeverity.Error, 238)
 {
     public string FieldName { get; } = fieldName;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Field '{FieldName}' is specified more than once.";
+    }
 }
 
 public sealed class StringLengthMismatchError(SourceText source, TextSpan span, int expectedLength, int actualLength)
-    : LocatedDiagnosticMessage(source, span, "StringLengthMismatch", DiagnosticSeverity.Error, 239, $"String length {actualLength} does not match array length {expectedLength}.")
+    : LocatedDiagnosticMessage(source, span, "StringLengthMismatch", DiagnosticSeverity.Error, 239)
 {
     public int ExpectedLength { get; } = expectedLength;
     public int ActualLength { get; } = actualLength;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"String length {ActualLength} does not match array length {ExpectedLength}.";
+    }
 }
 
 public sealed class StringToNonConstPointerError(SourceText source, TextSpan span)
@@ -809,15 +986,25 @@ public sealed class ComptimeValueRequiredError(SourceText source, TextSpan span)
 }
 
 public sealed class ComptimeUnsupportedConstructError(SourceText source, TextSpan span, string detail)
-    : LocatedDiagnosticMessage(source, span, "ComptimeUnsupportedConstruct", DiagnosticSeverity.Error, 242, $"Construct is not supported during comptime evaluation: {detail}")
+    : LocatedDiagnosticMessage(source, span, "ComptimeUnsupportedConstruct", DiagnosticSeverity.Error, 242)
 {
     public string Detail { get; } = detail;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Construct is not supported during comptime evaluation: {Detail}";
+    }
 }
 
 public sealed class ComptimeForbiddenSymbolAccessError(SourceText source, TextSpan span, string detail)
-    : LocatedDiagnosticMessage(source, span, "ComptimeForbiddenSymbolAccess", DiagnosticSeverity.Error, 243, $"Comptime evaluation cannot access this symbol: {detail}")
+    : LocatedDiagnosticMessage(source, span, "ComptimeForbiddenSymbolAccess", DiagnosticSeverity.Error, 243)
 {
     public string Detail { get; } = detail;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Comptime evaluation cannot access this symbol: {Detail}";
+    }
 }
 
 public sealed class ComptimeFuelExhaustedError(SourceText source, TextSpan span)
@@ -826,11 +1013,16 @@ public sealed class ComptimeFuelExhaustedError(SourceText source, TextSpan span)
 }
 
 public sealed class DuplicateNamedModuleRootError(SourceText source, TextSpan span, string firstModuleName, string secondModuleName, string path)
-    : LocatedDiagnosticMessage(source, span, "DuplicateNamedModuleRoot", DiagnosticSeverity.Error, 245, $"Named modules '{firstModuleName}' and '{secondModuleName}' both resolve to '{path}'.")
+    : LocatedDiagnosticMessage(source, span, "DuplicateNamedModuleRoot", DiagnosticSeverity.Error, 245)
 {
     public string FirstModuleName { get; } = firstModuleName;
     public string SecondModuleName { get; } = secondModuleName;
     public string Path { get; } = path;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Named modules '{FirstModuleName}' and '{SecondModuleName}' both resolve to '{Path}'.";
+    }
 }
 
 public sealed class MultiAssignmentRequiresCallError(SourceText source, TextSpan span)
@@ -839,11 +1031,16 @@ public sealed class MultiAssignmentRequiresCallError(SourceText source, TextSpan
 }
 
 public sealed class MultiAssignmentTargetCountMismatchError(SourceText source, TextSpan span, string expressionName, int expected, int actual)
-    : LocatedDiagnosticMessage(source, span, "MultiAssignmentTargetCountMismatch", DiagnosticSeverity.Error, 247, $"Expression '{expressionName}' returns {expected} value(s), but {actual} assignment target(s) provided.")
+    : LocatedDiagnosticMessage(source, span, "MultiAssignmentTargetCountMismatch", DiagnosticSeverity.Error, 247)
 {
     public string ExpressionName { get; } = expressionName;
     public int Expected { get; } = expected;
     public int Actual { get; } = actual;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Expression '{ExpressionName}' returns {Expected} value(s), but {Actual} assignment target(s) provided.";
+    }
 }
 
 public sealed class DiscardInExpressionError(SourceText source, TextSpan span)
@@ -852,9 +1049,14 @@ public sealed class DiscardInExpressionError(SourceText source, TextSpan span)
 }
 
 public sealed class ExternCannotHaveInitializerError(SourceText source, TextSpan span, string name)
-    : LocatedDiagnosticMessage(source, span, "ExternCannotHaveInitializer", DiagnosticSeverity.Error, 249, $"Extern variable '{name}' cannot have an initializer.")
+    : LocatedDiagnosticMessage(source, span, "ExternCannotHaveInitializer", DiagnosticSeverity.Error, 249)
 {
     public string ParameterName { get; } = name;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Extern variable '{ParameterName}' cannot have an initializer.";
+    }
 }
 
 public sealed class MemoryofRequiresVariableError(SourceText source, TextSpan span)
@@ -863,23 +1065,38 @@ public sealed class MemoryofRequiresVariableError(SourceText source, TextSpan sp
 }
 
 public sealed class QueryRequiresMemorySpaceError(SourceText source, TextSpan span, string operatorName)
-    : LocatedDiagnosticMessage(source, span, "QueryRequiresMemorySpace", DiagnosticSeverity.Error, 251, $"'{operatorName}' of a type requires a memory space argument.")
+    : LocatedDiagnosticMessage(source, span, "QueryRequiresMemorySpace", DiagnosticSeverity.Error, 251)
 {
     public string OperatorName { get; } = operatorName;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"'{OperatorName}' of a type requires a memory space argument.";
+    }
 }
 
 public sealed class QueryUnsupportedTypeError(SourceText source, TextSpan span, string operatorName, string typeName)
-    : LocatedDiagnosticMessage(source, span, "QueryUnsupportedType", DiagnosticSeverity.Error, 252, $"Cannot determine size/alignment for type '{typeName}' in '{operatorName}'.")
+    : LocatedDiagnosticMessage(source, span, "QueryUnsupportedType", DiagnosticSeverity.Error, 252)
 {
     public string OperatorName { get; } = operatorName;
     public string TypeName { get; } = typeName;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Cannot determine size/alignment for type '{TypeName}' in '{OperatorName}'.";
+    }
 }
 
 public sealed class QueryAutomaticLocalError(SourceText source, TextSpan span, string operatorName, string variableName)
-    : LocatedDiagnosticMessage(source, span, "QueryAutomaticLocal", DiagnosticSeverity.Error, 253, $"'{operatorName}' cannot be applied to automatic local variable '{variableName}'.")
+    : LocatedDiagnosticMessage(source, span, "QueryAutomaticLocal", DiagnosticSeverity.Error, 253)
 {
     public string OperatorName { get; } = operatorName;
     public string VariableName { get; } = variableName;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"'{OperatorName}' cannot be applied to automatic local variable '{VariableName}'.";
+    }
 }
 
 public sealed class InvalidMemorySpaceArgumentError(SourceText source, TextSpan span)
@@ -888,28 +1105,48 @@ public sealed class InvalidMemorySpaceArgumentError(SourceText source, TextSpan 
 }
 
 public sealed class AssertionFailedError(SourceText source, TextSpan span, string assertionMessage)
-    : LocatedDiagnosticMessage(source, span, "AssertionFailed", DiagnosticSeverity.Error, 255, $"{assertionMessage}")
+    : LocatedDiagnosticMessage(source, span, "AssertionFailed", DiagnosticSeverity.Error, 255)
 {
     public string AssertionMessage { get; } = assertionMessage;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"{AssertionMessage}";
+    }
 }
 
 public sealed class UnknownBuiltinError(SourceText source, TextSpan span, string name)
-    : LocatedDiagnosticMessage(source, span, "UnknownBuiltin", DiagnosticSeverity.Error, 256, $"Unknown builtin '@{name}'.")
+    : LocatedDiagnosticMessage(source, span, "UnknownBuiltin", DiagnosticSeverity.Error, 256)
 {
     public string ParameterName { get; } = name;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Unknown builtin '@{ParameterName}'.";
+    }
 }
 
 public sealed class InvalidPointerArithmeticError(SourceText source, TextSpan span, string operation)
-    : LocatedDiagnosticMessage(source, span, "InvalidPointerArithmetic", DiagnosticSeverity.Error, 257, $"Invalid pointer arithmetic for '{operation}'. Only '[*]' pointers support '+', '-', '+=', and '-=' with integer deltas.")
+    : LocatedDiagnosticMessage(source, span, "InvalidPointerArithmetic", DiagnosticSeverity.Error, 257)
 {
     public string Operation { get; } = operation;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Invalid pointer arithmetic for '{Operation}'. Only '[*]' pointers support '+', '-', '+=', and '-=' with integer deltas.";
+    }
 }
 
 public sealed class IncompatiblePointerSubtractionError(SourceText source, TextSpan span, string leftType, string rightType)
-    : LocatedDiagnosticMessage(source, span, "IncompatiblePointerSubtraction", DiagnosticSeverity.Error, 258, $"Pointer subtraction requires matching '[*]' pointer element types and memory spaces, but got '{leftType}' and '{rightType}'.")
+    : LocatedDiagnosticMessage(source, span, "IncompatiblePointerSubtraction", DiagnosticSeverity.Error, 258)
 {
     public string LeftType { get; } = leftType;
     public string RightType { get; } = rightType;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Pointer subtraction requires matching '[*]' pointer element types and memory spaces, but got '{LeftType}' and '{RightType}'.";
+    }
 }
 
 public sealed class ExpressionNotAStatementError(SourceText source, TextSpan span)
@@ -928,57 +1165,97 @@ public sealed class RangeExpressionOutsideForLoopError(SourceText source, TextSp
 }
 
 public sealed class ComptimeIntegerTruncationWarning(SourceText source, TextSpan span, string value, string targetType, string truncatedValue)
-    : LocatedDiagnosticMessage(source, span, "ComptimeIntegerTruncation", DiagnosticSeverity.Warning, 261, $"Compile-time integer value {value} is truncated to {truncatedValue} when converted to '{targetType}'.")
+    : LocatedDiagnosticMessage(source, span, "ComptimeIntegerTruncation", DiagnosticSeverity.Warning, 261)
 {
     public string Value { get; } = value;
     public string TargetType { get; } = targetType;
     public string TruncatedValue { get; } = truncatedValue;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Compile-time integer value {Value} is truncated to {TruncatedValue} when converted to '{TargetType}'.";
+    }
 }
 
 public sealed class AddressOfParameterError(SourceText source, TextSpan span, string name)
-    : LocatedDiagnosticMessage(source, span, "AddressOfParameter", DiagnosticSeverity.Error, 262, $"Cannot take the address of parameter '{name}'.")
+    : LocatedDiagnosticMessage(source, span, "AddressOfParameter", DiagnosticSeverity.Error, 262)
 {
     public string ParameterName { get; } = name;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Cannot take the address of parameter '{ParameterName}'.";
+    }
 }
 
 public sealed class AmbiguousLayoutMemberAccessError(SourceText source, TextSpan span, string name, string layoutNamesText)
-    : LocatedDiagnosticMessage(source, span, "AmbiguousLayoutMemberAccess", DiagnosticSeverity.Error, 265, $"Name '{name}' is provided by multiple layouts ({layoutNamesText}). Use 'Layout.member' to disambiguate.")
+    : LocatedDiagnosticMessage(source, span, "AmbiguousLayoutMemberAccess", DiagnosticSeverity.Error, 265)
 {
     public string ParameterName { get; } = name;
     public string LayoutNamesText { get; } = layoutNamesText;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Name '{ParameterName}' is provided by multiple layouts ({LayoutNamesText}). Use 'Layout.member' to disambiguate.";
+    }
 }
 
 public sealed class LexicalNameConflictsWithLayoutMemberWarning(SourceText source, TextSpan span, string name, string layoutNamesText)
-    : LocatedDiagnosticMessage(source, span, "LexicalNameConflictsWithLayoutMember", DiagnosticSeverity.Warning, 266, $"Name '{name}' is visible both lexically and through layout members ({layoutNamesText}). The lexical name wins.")
+    : LocatedDiagnosticMessage(source, span, "LexicalNameConflictsWithLayoutMember", DiagnosticSeverity.Warning, 266)
 {
     public string ParameterName { get; } = name;
     public string LayoutNamesText { get; } = layoutNamesText;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Name '{ParameterName}' is visible both lexically and through layout members ({LayoutNamesText}). The lexical name wins.";
+    }
 }
 
 public sealed class LayoutMemberShadowsParentMemberWarning(SourceText source, TextSpan span, string layoutName, string memberName)
-    : LocatedDiagnosticMessage(source, span, "LayoutMemberShadowsParentMember", DiagnosticSeverity.Warning, 267, $"Layout '{layoutName}' declares member '{memberName}', which shadows an inherited layout member.")
+    : LocatedDiagnosticMessage(source, span, "LayoutMemberShadowsParentMember", DiagnosticSeverity.Warning, 267)
 {
     public string LayoutName { get; } = layoutName;
     public string MemberName { get; } = memberName;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Layout '{LayoutName}' declares member '{MemberName}', which shadows an inherited layout member.";
+    }
 }
 
 public sealed class TaskLayoutCannotBeInheritedError(SourceText source, TextSpan span, string taskName)
-    : LocatedDiagnosticMessage(source, span, "TaskLayoutCannotBeInherited", DiagnosticSeverity.Error, 268, $"Task layout '{taskName}' cannot be inherited.")
+    : LocatedDiagnosticMessage(source, span, "TaskLayoutCannotBeInherited", DiagnosticSeverity.Error, 268)
 {
     public string TaskName { get; } = taskName;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Task layout '{TaskName}' cannot be inherited.";
+    }
 }
 
 public sealed class InvalidSpawnTargetError(SourceText source, TextSpan span, string targetName)
-    : LocatedDiagnosticMessage(source, span, "InvalidSpawnTarget", DiagnosticSeverity.Error, 279, $"Spawn target '{targetName}' is not a task.")
+    : LocatedDiagnosticMessage(source, span, "InvalidSpawnTarget", DiagnosticSeverity.Error, 279)
 {
     public string TargetName { get; } = targetName;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Spawn target '{TargetName}' is not a task.";
+    }
 }
 
 public sealed class MainTaskMustBeCogWarning(SourceText source, TextSpan span, string taskName, string storageClassKeyword)
-    : LocatedDiagnosticMessage(source, span, "MainTaskMustBeCog", DiagnosticSeverity.Warning, 269, $"Entry task '{taskName}' should be declared as 'cog task'; found '{storageClassKeyword} task'.")
+    : LocatedDiagnosticMessage(source, span, "MainTaskMustBeCog", DiagnosticSeverity.Warning, 269)
 {
     public string TaskName { get; } = taskName;
     public string StorageClassKeyword { get; } = storageClassKeyword;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Entry task '{TaskName}' should be declared as 'cog task'; found '{StorageClassKeyword} task'.";
+    }
 }
 
 public sealed class MissingMainTaskError(SourceText source, TextSpan span)
@@ -986,13 +1263,18 @@ public sealed class MissingMainTaskError(SourceText source, TextSpan span)
 {
 }
 
-public sealed class FunctionLayoutSubsetViolationError(SourceText source, TextSpan span, string callerName, string calleeName, string callerLayoutText, string calleeLayoutText)
-    : LocatedDiagnosticMessage(source, span, "FunctionLayoutSubsetViolation", DiagnosticSeverity.Error, 271, $"Function '{callerName}' cannot transfer control to '{calleeName}' because callee layouts [{calleeLayoutText}] are not a subset of caller layouts [{callerLayoutText}].")
+public sealed class FunctionLayoutSubsetViolationError(SourceText source, TextSpan span, FunctionSymbol caller, FunctionSymbol callee, ICollection<LayoutSymbol> callerLayouts, ICollection<LayoutSymbol> calleeLayouts)
+    : LocatedDiagnosticMessage(source, span, "FunctionLayoutSubsetViolation", DiagnosticSeverity.Error, 271)
 {
-    public string CallerName { get; } = callerName;
-    public string CalleeName { get; } = calleeName;
-    public string CallerLayoutText { get; } = callerLayoutText;
-    public string CalleeLayoutText { get; } = calleeLayoutText;
+    public FunctionSymbol Caller { get; } = caller;
+    public FunctionSymbol Callee { get; } = callee;
+    public ICollection<LayoutSymbol> CallerLayouts { get; } = callerLayouts;
+    public ICollection<LayoutSymbol> CalleeLayouts { get; } = calleeLayouts;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Function '{Caller.Name}' cannot transfer control to '{Callee.Name}' because callee layouts [{CalleeLayouts}] are not a subset of caller layouts [{CallerLayouts}].";
+    }
 }
 
 public sealed class DuplicateFunctionLayoutMetadataWarning(SourceText source, TextSpan span)
@@ -1006,50 +1288,80 @@ public sealed class DuplicateFunctionAlignMetadataError(SourceText source, TextS
 }
 
 public sealed class InvalidFunctionAlignmentError(SourceText source, TextSpan span, int alignment)
-    : LocatedDiagnosticMessage(source, span, "InvalidFunctionAlignment", DiagnosticSeverity.Error, 274, $"Function alignment must be a positive power of two; got '{alignment}'.")
+    : LocatedDiagnosticMessage(source, span, "InvalidFunctionAlignment", DiagnosticSeverity.Error, 274)
 {
     public int Alignment { get; } = alignment;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Function alignment must be a positive power of two; got '{Alignment}'.";
+    }
 }
 
 public sealed class TaskLayoutNotAllowedInFunctionMetadataError(SourceText source, TextSpan span, string taskName)
-    : LocatedDiagnosticMessage(source, span, "TaskLayoutNotAllowedInFunctionMetadata", DiagnosticSeverity.Error, 275, $"Task layout '{taskName}' cannot be referenced from function metadata.")
+    : LocatedDiagnosticMessage(source, span, "TaskLayoutNotAllowedInFunctionMetadata", DiagnosticSeverity.Error, 275)
 {
     public string TaskName { get; } = taskName;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Task layout '{TaskName}' cannot be referenced from function metadata.";
+    }
 }
 
 public sealed class AccessToForeignLayoutError(SourceText source, TextSpan span, string layoutName, string memberName)
-    : LocatedDiagnosticMessage(source, span, "AccessToForeignLayout", DiagnosticSeverity.Error, 276, $"Layout member '{layoutName}.{memberName}' is not accessible from this context because the layout is not declared here.")
+    : LocatedDiagnosticMessage(source, span, "AccessToForeignLayout", DiagnosticSeverity.Error, 276)
 {
     public string LayoutName { get; } = layoutName;
     public string MemberName { get; } = memberName;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Layout member '{LayoutName}.{MemberName}' is not accessible from this context because the layout is not declared here.";
+    }
 }
 
 public sealed class UnsupportedGlobalStorageError(SourceText source, TextSpan span, string storageClass)
-    : LocatedDiagnosticMessage(source, span, "UnsupportedGlobalStorage", DiagnosticSeverity.Error, 277, $"Top-level global storage class '{storageClass}' is not supported here. Use 'hub' or move the declaration into a layout.")
+    : LocatedDiagnosticMessage(source, span, "UnsupportedGlobalStorage", DiagnosticSeverity.Error, 277)
 {
     public string StorageClass { get; } = storageClass;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Top-level global storage class '{StorageClass}' is not supported here. Use 'hub' or move the declaration into a layout.";
+    }
 }
 
 public sealed class InvalidLayoutAlignmentError(SourceText source, TextSpan span, string layoutName, string memberName, int alignment)
-    : LocatedDiagnosticMessage(source, span, "InvalidLayoutAlignment", DiagnosticSeverity.Error, 280, $"Layout member '{layoutName}.{memberName}' has invalid alignment '{alignment}'. Alignment must be a positive power of two.")
+    : LocatedDiagnosticMessage(source, span, "InvalidLayoutAlignment", DiagnosticSeverity.Error, 280)
 {
     public string LayoutName { get; } = layoutName;
     public string MemberName { get; } = memberName;
     public int Alignment { get; } = alignment;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Layout member '{LayoutName}.{MemberName}' has invalid alignment '{Alignment}'. Alignment must be a positive power of two.";
+    }
 }
 
 public sealed class InvalidLayoutAddressError(SourceText source, TextSpan span, string layoutName, string memberName, string storageName, int address, int sizeInAddressUnits)
-    : LocatedDiagnosticMessage(source, span, "InvalidLayoutAddress", DiagnosticSeverity.Error, 281, $"Layout member '{layoutName}.{memberName}' cannot be placed at {storageName} address '{address}' with size '{sizeInAddressUnits}'.")
+    : LocatedDiagnosticMessage(source, span, "InvalidLayoutAddress", DiagnosticSeverity.Error, 281)
 {
     public string LayoutName { get; } = layoutName;
     public string MemberName { get; } = memberName;
     public string StorageName { get; } = storageName;
     public int Address { get; } = address;
     public int SizeInAddressUnits { get; } = sizeInAddressUnits;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Layout member '{LayoutName}.{MemberName}' cannot be placed at {StorageName} address '{Address}' with size '{SizeInAddressUnits}'.";
+    }
 }
 
 public sealed class LayoutAddressConflictError(SourceText source, TextSpan span, string layoutName, string memberName, string storageName, int address, string conflictingLayoutName, string conflictingMemberName, int conflictingAddress)
-    : LocatedDiagnosticMessage(source, span, "LayoutAddressConflict", DiagnosticSeverity.Error, 282, $"Layout member '{layoutName}.{memberName}' at {storageName} address '{address}' overlaps '{conflictingLayoutName}.{conflictingMemberName}' at address '{conflictingAddress}'.")
+    : LocatedDiagnosticMessage(source, span, "LayoutAddressConflict", DiagnosticSeverity.Error, 282)
 {
     public string LayoutName { get; } = layoutName;
     public string MemberName { get; } = memberName;
@@ -1058,28 +1370,48 @@ public sealed class LayoutAddressConflictError(SourceText source, TextSpan span,
     public string ConflictingLayoutName { get; } = conflictingLayoutName;
     public string ConflictingMemberName { get; } = conflictingMemberName;
     public int ConflictingAddress { get; } = conflictingAddress;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Layout member '{LayoutName}.{MemberName}' at {StorageName} address '{Address}' overlaps '{ConflictingLayoutName}.{ConflictingMemberName}' at address '{ConflictingAddress}'.";
+    }
 }
 
 public sealed class LayoutAllocationFailedError(SourceText source, TextSpan span, string layoutName, string memberName, string storageName, int sizeInAddressUnits, int alignmentInAddressUnits)
-    : LocatedDiagnosticMessage(source, span, "LayoutAllocationFailed", DiagnosticSeverity.Error, 283, $"Layout solver could not place '{layoutName}.{memberName}' in {storageName} space with size '{sizeInAddressUnits}' and alignment '{alignmentInAddressUnits}'.")
+    : LocatedDiagnosticMessage(source, span, "LayoutAllocationFailed", DiagnosticSeverity.Error, 283)
 {
     public string LayoutName { get; } = layoutName;
     public string MemberName { get; } = memberName;
     public string StorageName { get; } = storageName;
     public int SizeInAddressUnits { get; } = sizeInAddressUnits;
     public int AlignmentInAddressUnits { get; } = alignmentInAddressUnits;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Layout solver could not place '{LayoutName}.{MemberName}' in {StorageName} space with size '{SizeInAddressUnits}' and alignment '{AlignmentInAddressUnits}'.";
+    }
 }
 
 public sealed class InlineAsmUnknownInstructionError(SourceText source, TextSpan span, string mnemonic)
-    : LocatedDiagnosticMessage(source, span, "InlineAsmUnknownInstruction", DiagnosticSeverity.Error, 301, $"Unknown P2 instruction '{mnemonic}' in inline assembly.")
+    : LocatedDiagnosticMessage(source, span, "InlineAsmUnknownInstruction", DiagnosticSeverity.Error, 301)
 {
     public string Mnemonic { get; } = mnemonic;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Unknown P2 instruction '{Mnemonic}' in inline assembly.";
+    }
 }
 
 public sealed class InlineAsmUndefinedVariableError(SourceText source, TextSpan span, string name)
-    : LocatedDiagnosticMessage(source, span, "InlineAsmUndefinedVariable", DiagnosticSeverity.Error, 302, $"Undefined variable '{name}' referenced in inline assembly.")
+    : LocatedDiagnosticMessage(source, span, "InlineAsmUndefinedVariable", DiagnosticSeverity.Error, 302)
 {
     public string ParameterName { get; } = name;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Undefined variable '{ParameterName}' referenced in inline assembly.";
+    }
 }
 
 public sealed class InlineAsmEmptyInstructionError(SourceText source, TextSpan span)
@@ -1088,33 +1420,58 @@ public sealed class InlineAsmEmptyInstructionError(SourceText source, TextSpan s
 }
 
 public sealed class InlineAsmInvalidFlagOutputError(SourceText source, TextSpan span, string flag)
-    : LocatedDiagnosticMessage(source, span, "InlineAsmInvalidFlagOutput", DiagnosticSeverity.Error, 304, $"Invalid flag output '@{flag}' in inline assembly. Expected '@C' or '@Z'.")
+    : LocatedDiagnosticMessage(source, span, "InlineAsmInvalidFlagOutput", DiagnosticSeverity.Error, 304)
 {
     public string Flag { get; } = flag;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Invalid flag output '@{Flag}' in inline assembly. Expected '@C' or '@Z'.";
+    }
 }
 
 public sealed class InlineAsmInvalidInstructionFormError(SourceText source, TextSpan span, string mnemonic, int operandCount)
-    : LocatedDiagnosticMessage(source, span, "InlineAsmInvalidInstructionForm", DiagnosticSeverity.Error, 305, $"Instruction '{mnemonic}' does not support {operandCount} operand(s) in inline assembly.")
+    : LocatedDiagnosticMessage(source, span, "InlineAsmInvalidInstructionForm", DiagnosticSeverity.Error, 305)
 {
     public string Mnemonic { get; } = mnemonic;
     public int OperandCount { get; } = operandCount;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Instruction '{Mnemonic}' does not support {OperandCount} operand(s) in inline assembly.";
+    }
 }
 
 public sealed class InlineAsmUndefinedLabelError(SourceText source, TextSpan span, string name)
-    : LocatedDiagnosticMessage(source, span, "InlineAsmUndefinedLabel", DiagnosticSeverity.Error, 306, $"Inline assembly references undefined label '{name}'. Only labels defined within the same asm block are accessible.")
+    : LocatedDiagnosticMessage(source, span, "InlineAsmUndefinedLabel", DiagnosticSeverity.Error, 306)
 {
     public string ParameterName { get; } = name;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Inline assembly references undefined label '{ParameterName}'. Only labels defined within the same asm block are accessible.";
+    }
 }
 
 public sealed class InlineAsmTempReadBeforeWriteWarning(SourceText source, TextSpan span, string name)
-    : LocatedDiagnosticMessage(source, span, "InlineAsmTempReadBeforeWrite", DiagnosticSeverity.Warning, 307, $"Inline assembly temporary '{name}' is read before any prior write in the same asm block. The register contents are unspecified.")
+    : LocatedDiagnosticMessage(source, span, "InlineAsmTempReadBeforeWrite", DiagnosticSeverity.Warning, 307)
 {
     public string ParameterName { get; } = name;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Inline assembly temporary '{ParameterName}' is read before any prior write in the same asm block. The register contents are unspecified.";
+    }
 }
 
 public sealed class UnsupportedLoweringError(SourceText source, TextSpan span, string lowering)
-    : LocatedDiagnosticMessage(source, span, "UnsupportedLowering", DiagnosticSeverity.Error, 401, $"Backend lowering for '{lowering}' is not implemented yet.")
+    : LocatedDiagnosticMessage(source, span, "UnsupportedLowering", DiagnosticSeverity.Error, 401)
 {
     public string Lowering { get; } = lowering;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Backend lowering for '{Lowering}' is not implemented yet.";
+    }
 }
 

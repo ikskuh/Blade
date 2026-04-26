@@ -169,8 +169,9 @@ public class DiagnosticGenTests
         Assert.That(exitCode, Is.EqualTo(0));
         Assert.That(generated, Does.Contain("using Blade.Source;"));
         Assert.That(generated, Does.Contain("public sealed class UnexpectedCharacterError(SourceText source, TextSpan span, char character)"));
-        Assert.That(generated, Does.Contain(": LocatedDiagnosticMessage(source, span, \"UnexpectedCharacter\", DiagnosticSeverity.Error, 1, $\"Unexpected character '{character}'\")"));
+        Assert.That(generated, Does.Contain(": LocatedDiagnosticMessage(source, span, \"UnexpectedCharacter\", DiagnosticSeverity.Error, 1)"));
         Assert.That(generated, Does.Contain("public char Character { get; } = character;"));
+        Assert.That(generated, Does.Contain("protected override global::System.FormattableString GetFormattableMessage()"));
     }
 
     [Test]

@@ -245,11 +245,16 @@ public static class LayoutSolver
             return true;
         }
 
-        diagnostics?.ReportInvalidLayoutAlignment(
-            candidate.Symbol.SourceSpan.Span,
-            candidate.Layout.Name,
-            candidate.Symbol.Name,
-            candidate.AlignmentInAddressUnits);
+        if (diagnostics is not null)
+        {
+            diagnostics.Report(new InvalidLayoutAlignmentError(
+                diagnostics.CurrentSource,
+                candidate.Symbol.SourceSpan.Span,
+                candidate.Layout.Name,
+                candidate.Symbol.Name,
+                candidate.AlignmentInAddressUnits));
+        }
+
         return false;
     }
 

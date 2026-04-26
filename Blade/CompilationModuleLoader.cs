@@ -85,7 +85,7 @@ internal static class CompilationModuleLoader
             using IDisposable _ = diagnostics.UseSource(source);
 
             if (import.IsFileImport && import.Alias is null)
-                diagnostics.ReportFileImportAliasRequired(import.Source.Span);
+                diagnostics.Report(new FileImportAliasRequiredError(diagnostics.CurrentSource, import.Source.Span));
 
             string alias = import.Alias?.Text ?? import.Source.Text;
             string sourceName = import.IsFileImport
@@ -140,7 +140,7 @@ internal static class CompilationModuleLoader
         {
             if (!namedModuleRoots.TryGetValue(sourceName, out string? namedModulePath))
             {
-                diagnostics.ReportUnknownNamedModule(import.Source.Span, sourceName);
+                diagnostics.Report(new UnknownNamedModuleError(diagnostics.CurrentSource, import.Source.Span, sourceName));
                 return null;
             }
 
@@ -149,7 +149,7 @@ internal static class CompilationModuleLoader
             {
                 if (!string.Equals(ownerName, sourceName, StringComparison.Ordinal))
                 {
-                    diagnostics.ReportDuplicateNamedModuleRoot(import.Source.Span, ownerName, sourceName, resolvedFullPath);
+                    diagnostics.Report(new DuplicateNamedModuleRootError(diagnostics.CurrentSource, import.Source.Span, ownerName, sourceName, resolvedFullPath));
                     return null;
                 }
             }
@@ -161,7 +161,7 @@ internal static class CompilationModuleLoader
 
         if (!File.Exists(resolvedFullPath))
         {
-            diagnostics.ReportImportFileNotFound(import.Source.Span, resolvedFullPath);
+            diagnostics.Report(new ImportFileNotFoundError(diagnostics.CurrentSource, import.Source.Span, resolvedFullPath));
             return null;
         }
 

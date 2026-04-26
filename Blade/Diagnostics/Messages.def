@@ -1,4 +1,6 @@
+using System.Collections.Generic
 using Blade
+using Blade.Semantics
 using Blade.Source
 
 located UnexpectedCharacter: E0001
@@ -346,11 +348,11 @@ located MissingMainTask: E0270
     message: "Root module must export a task named 'main'."
 
 located FunctionLayoutSubsetViolation: E0271
-    message: $"Function '{callerName}' cannot transfer control to '{calleeName}' because callee layouts [{calleeLayoutText}] are not a subset of caller layouts [{callerLayoutText}]."
-    param:   string callerName
-    param:   string calleeName
-    param:   string callerLayoutText
-    param:   string calleeLayoutText
+    message: $"Function '{caller.Name}' cannot transfer control to '{callee.Name}' because callee layouts [{calleeLayouts}] are not a subset of caller layouts [{callerLayouts}]."
+    param:   FunctionSymbol caller
+    param:   FunctionSymbol callee
+    param:   ICollection<LayoutSymbol> callerLayouts
+    param:   ICollection<LayoutSymbol> calleeLayouts
 
 located DuplicateFunctionLayoutMetadata: W0272
     message: "Duplicate function metadata property 'layout(...)'; layouts are merged."

@@ -2873,7 +2873,7 @@ public static class AsmLowerer
         if (!ctx.ReportedUnsupportedLowerings.Add(key))
             return;
 
-        ctx.Diagnostics.ReportUnsupportedLowering(span, GetUnsupportedLoweringName(lowering));
+        ctx.Diagnostics.Report(new UnsupportedLoweringError(ctx.Diagnostics.CurrentSource, span, GetUnsupportedLoweringName(lowering)));
     }
 
     private static UnsupportedLoweringKind GetUnsupportedLoweringKind(LirOperation operation)

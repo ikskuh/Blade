@@ -187,7 +187,7 @@ public sealed class Binder
         if (!rootModule.ExportedSymbols.TryGetValue("main", out Symbol? symbol)
             || symbol is not TaskSymbol task)
         {
-            _diagnostics.ReportMissingMainTask(rootModule.Syntax.EndOfFileToken.Span);
+            _diagnostics.Report(new MissingMainTaskError(_diagnostics.CurrentSource, rootModule.Syntax.EndOfFileToken.Span));
             entryPoint = null;
             entryPointFunction = null;
             return false;
@@ -248,7 +248,7 @@ public sealed class Binder
 
         if (_moduleBindingStack.Contains(resolvedFullPath))
         {
-            _diagnostics.ReportCircularImport(importSiteSpan, resolvedFullPath);
+            _diagnostics.Report(new CircularImportError(_diagnostics.CurrentSource, importSiteSpan, resolvedFullPath));
             return CreateEmptyImportedModule(resolvedFullPath, imported.Syntax);
         }
 
@@ -347,7 +347,7 @@ public sealed class Binder
         if (scope.TryDeclare(symbol))
             return true;
 
-        _diagnostics.ReportSymbolAlreadyDeclared(span, symbol.Name);
+        _diagnostics.Report(new SymbolAlreadyDeclaredError(_diagnostics.CurrentSource, span, symbol.Name));
 
         if (preserveLocalBindingOnShadowing && !scope.ContainsInCurrentScope(symbol.Name))
             scope.DeclareInCurrentScope(symbol);
@@ -399,7 +399,7 @@ public sealed class Binder
             TypeSymbol symbol = new(typeAlias.Name.Text, sourceSpan: CreateSourceSpan(typeAlias.Name.Span));
             if (!_typeAliases.TryAdd(symbol.Name, symbol))
             {
-                _diagnostics.ReportSymbolAlreadyDeclared(typeAlias.Name.Span, symbol.Name);
+                _diagnostics.Report(new SymbolAlreadyDeclaredError(_diagnostics.CurrentSource, typeAlias.Name.Span, symbol.Name));
                 continue;
             }
 
@@ -450,7 +450,7 @@ public sealed class Binder
 
             if (!_layouts.TryAdd(layoutSymbol.Name, layoutSymbol))
             {
-                _diagnostics.ReportSymbolAlreadyDeclared(span, layoutSymbol.Name);
+                _diagnostics.Report(new SymbolAlreadyDeclaredError(_diagnostics.CurrentSource, span, layoutSymbol.Name));
                 continue;
             }
 
@@ -494,7 +494,7 @@ public sealed class Binder
             FunctionSymbol function = new(syntax.Name.Text, syntax, kind, isTopLevel: false, GetFunctionStorageClass(syntax), inliningPolicy, CreateSourceSpan(syntax.Name.Span));
             if (!_functions.TryAdd(function.Name, function))
             {
-                _diagnostics.ReportSymbolAlreadyDeclared(syntax.Name.Span, function.Name);
+                _diagnostics.Report(new SymbolAlreadyDeclaredError(_diagnostics.CurrentSource, syntax.Name.Span, function.Name));
                 continue;
             }
 
@@ -524,7 +524,7 @@ public sealed class Binder
                     {
                         case FunctionLayoutPropertySyntax layoutProperty:
                             if (sawLayoutProperty)
-                                _diagnostics.ReportDuplicateFunctionLayoutMetadata(layoutProperty.Span);
+                                _diagnostics.Report(new DuplicateFunctionLayoutMetadataWarning(_diagnostics.CurrentSource, layoutProperty.Span));
 
                             sawLayoutProperty = true;
                             ResolveFunctionLayouts(layoutProperty, associatedLayouts);
@@ -533,7 +533,7 @@ public sealed class Binder
                         case FunctionAlignPropertySyntax alignProperty:
                             if (sawAlignProperty)
                             {
-                                _diagnostics.ReportDuplicateFunctionAlignMetadata(alignProperty.Span);
+                                _diagnostics.Report(new DuplicateFunctionAlignMetadataError(_diagnostics.CurrentSource, alignProperty.Span));
                                 break;
                             }
 
@@ -558,7 +558,7 @@ public sealed class Binder
 
         if (alignment <= 0 || !IsPowerOfTwo(alignment.Value))
         {
-            _diagnostics.ReportInvalidFunctionAlignment(alignProperty.AlignClause.Alignment.Span, alignment.Value);
+            _diagnostics.Report(new InvalidFunctionAlignmentError(_diagnostics.CurrentSource, alignProperty.AlignClause.Alignment.Span, alignment.Value));
             return null;
         }
 
@@ -577,7 +577,7 @@ public sealed class Binder
 
             if (resolvedLayout.IsTaskLayout)
             {
-                _diagnostics.ReportTaskLayoutNotAllowedInFunctionMetadata(layoutReference.Span, resolvedLayout.Name);
+                _diagnostics.Report(new TaskLayoutNotAllowedInFunctionMetadataError(_diagnostics.CurrentSource, layoutReference.Span, resolvedLayout.Name));
                 continue;
             }
 
@@ -649,14 +649,14 @@ public sealed class Binder
 
                 if (!parentNames.Add(parentName))
                 {
-                    _diagnostics.ReportSymbolAlreadyDeclared(parentSpan, parentName);
+                    _diagnostics.Report(new SymbolAlreadyDeclaredError(_diagnostics.CurrentSource, parentSpan, parentName));
                     continue;
                 }
 
                 Assert.Invariant(resolvedParent is not null, "Parent layout resolution must provide a symbol when it succeeds.");
                 if (resolvedParent.IsTaskLayout)
                 {
-                    _diagnostics.ReportTaskLayoutCannotBeInherited(parentSpan, resolvedParent.Name);
+                    _diagnostics.Report(new TaskLayoutCannotBeInheritedError(_diagnostics.CurrentSource, parentSpan, resolvedParent.Name));
                     continue;
                 }
 
@@ -678,7 +678,7 @@ public sealed class Binder
                 parentSpan = namedType.Name.Span;
                 if (!_layouts.TryGetValue(parentName, out resolvedParent))
                 {
-                    _diagnostics.ReportUndefinedName(parentSpan, parentName);
+                    _diagnostics.Report(new UndefinedNameError(_diagnostics.CurrentSource, parentSpan, parentName));
                     return false;
                 }
 
@@ -689,7 +689,7 @@ public sealed class Binder
                 parentSpan = qualifiedType.Span;
                 if (!TryResolveQualifiedLayoutSymbol(qualifiedType, out resolvedParent))
                 {
-                    _diagnostics.ReportUndefinedName(parentSpan, parentName);
+                    _diagnostics.Report(new UndefinedNameError(_diagnostics.CurrentSource, parentSpan, parentName));
                     return false;
                 }
 
@@ -871,11 +871,11 @@ public sealed class Binder
 
             GlobalVariableSymbol symbol = CreateGlobalVariableSymbol(declaration, variableType, layout);
             if (HasInheritedLayoutMember(layout, symbol.Name))
-                _diagnostics.ReportLayoutMemberShadowsParentMember(declaration.Name.Span, layout.Name, symbol.Name);
+                _diagnostics.Report(new LayoutMemberShadowsParentMemberWarning(_diagnostics.CurrentSource, declaration.Name.Span, layout.Name, symbol.Name));
 
             if (!layout.TryDeclareMember(symbol))
             {
-                _diagnostics.ReportSymbolAlreadyDeclared(declaration.Name.Span, symbol.Name);
+                _diagnostics.Report(new SymbolAlreadyDeclaredError(_diagnostics.CurrentSource, declaration.Name.Span, symbol.Name));
                 continue;
             }
 
@@ -918,7 +918,7 @@ public sealed class Binder
         {
             if (variableSymbol.IsExtern)
             {
-                _diagnostics.ReportExternCannotHaveInitializer(declaration.Initializer.Span, variableSymbol.Name);
+                _diagnostics.Report(new ExternCannotHaveInitializerError(_diagnostics.CurrentSource, declaration.Initializer.Span, variableSymbol.Name));
             }
             else
             {
@@ -1042,11 +1042,11 @@ public sealed class Binder
         {
             BladeType parameterType = BindType(param.Type);
             if (param.StorageClassKeyword is Token storageClassKeyword)
-                _diagnostics.ReportInvalidParameterStorageClass(storageClassKeyword.Span, storageClassKeyword.Text);
+                _diagnostics.Report(new InvalidParameterStorageClassError(_diagnostics.CurrentSource, storageClassKeyword.Span, storageClassKeyword.Text));
 
             if (!parameterNames.Add(param.Name.Text))
             {
-                _diagnostics.ReportSymbolAlreadyDeclared(param.Name.Span, param.Name.Text);
+                _diagnostics.Report(new SymbolAlreadyDeclaredError(_diagnostics.CurrentSource, param.Name.Span, param.Name.Text));
                 continue;
             }
 
@@ -1144,7 +1144,7 @@ public sealed class Binder
         {
             if (variableSymbol.IsExtern)
             {
-                _diagnostics.ReportExternCannotHaveInitializer(variable.Initializer.Span, variableSymbol.Name);
+                _diagnostics.Report(new ExternCannotHaveInitializerError(_diagnostics.CurrentSource, variable.Initializer.Span, variableSymbol.Name));
             }
             else
             {
@@ -1197,11 +1197,11 @@ public sealed class Binder
         {
             CoroutineExitAnalysis exitAnalysis = AnalyzeCoroutineExitPaths(body);
             if (exitAnalysis.CanReachFunctionEnd)
-                _diagnostics.ReportReturnFromCoroutine(missingReturnSpan, function.Name);
+                _diagnostics.Report(new ReturnFromCoroutineError(_diagnostics.CurrentSource, missingReturnSpan, function.Name));
         }
 
         if (function.ReturnTypes.Count > 0 && !AlwaysReturns(body))
-            _diagnostics.ReportMissingReturnValue(missingReturnSpan, function.Name);
+            _diagnostics.Report(new MissingReturnValueError(_diagnostics.CurrentSource, missingReturnSpan, function.Name));
 
         _currentFunction = previousFunction;
         _currentImplicitLayout = previousImplicitLayout;
@@ -1591,7 +1591,7 @@ public sealed class Binder
                             and not FunctionKind.Int2
                             and not FunctionKind.Int3))
                     {
-                        _diagnostics.ReportInvalidYield(yieldStatement.YieldKeyword.Span);
+                        _diagnostics.Report(new InvalidYieldUsageError(_diagnostics.CurrentSource, yieldStatement.YieldKeyword.Span));
                     }
 
                     return new BoundYieldStatement(yieldStatement.Span);
@@ -1609,7 +1609,7 @@ public sealed class Binder
                         string flag = asm.OutputBinding.FlagAnnotation?.Flag.Text ?? "";
                         if (flag is not ("C" or "Z"))
                         {
-                            _diagnostics.ReportInlineAsmInvalidFlagOutput(asm.OutputBinding.Span, flag);
+                            _diagnostics.Report(new InlineAsmInvalidFlagOutputError(_diagnostics.CurrentSource, asm.OutputBinding.Span, flag));
                         }
 
                         flagOutput = flag switch
@@ -1746,7 +1746,7 @@ public sealed class Binder
         {
             if (!P2InstructionMetadata.TryParseConditionCode(conditionToken.Text, out P2ConditionCode parsedCondition))
             {
-                _diagnostics.ReportInlineAsmUnknownInstruction(blockSpan, conditionToken.Text);
+                _diagnostics.Report(new InlineAsmUnknownInstructionError(_diagnostics.CurrentSource, blockSpan, conditionToken.Text));
                 return null;
             }
             condition = parsedCondition;
@@ -1754,7 +1754,7 @@ public sealed class Binder
 
         if (!P2InstructionMetadata.TryParseMnemonic(instructionLine.Mnemonic.Text, out P2Mnemonic mnemonic))
         {
-            _diagnostics.ReportInlineAsmUnknownInstruction(blockSpan, instructionLine.Mnemonic.Text);
+            _diagnostics.Report(new InlineAsmUnknownInstructionError(_diagnostics.CurrentSource, blockSpan, instructionLine.Mnemonic.Text));
             return null;
         }
 
@@ -1770,7 +1770,7 @@ public sealed class Binder
 
         if (!P2InstructionMetadata.TryGetInstructionForm(mnemonic, operands.Count, out _))
         {
-            _diagnostics.ReportInlineAsmInvalidInstructionForm(blockSpan, P2InstructionMetadata.GetMnemonicText(mnemonic), operands.Count);
+            _diagnostics.Report(new InlineAsmInvalidInstructionFormError(_diagnostics.CurrentSource, blockSpan, P2InstructionMetadata.GetMnemonicText(mnemonic), operands.Count));
             return null;
         }
 
@@ -1779,7 +1779,7 @@ public sealed class Binder
         {
             if (!P2InstructionMetadata.TryParseFlagEffect(flagToken.Text, out P2FlagEffect parsedFlagEffect))
             {
-                _diagnostics.ReportInlineAsmUnknownInstruction(blockSpan, flagToken.Text);
+                _diagnostics.Report(new InlineAsmUnknownInstructionError(_diagnostics.CurrentSource, blockSpan, flagToken.Text));
                 return null;
             }
             flagEffect = parsedFlagEffect;
@@ -1803,7 +1803,7 @@ public sealed class Binder
                     string name = string.Join(".", varBinding.Path.Select(static p => p.Text));
                     if (!availableBindings.TryGetValue(name, out InlineAsmVarBindingSlot? slot))
                     {
-                        _diagnostics.ReportInlineAsmUndefinedVariable(blockSpan, name);
+                        _diagnostics.Report(new InlineAsmUndefinedVariableError(_diagnostics.CurrentSource, blockSpan, name));
                         return null;
                     }
                     referencedVarBindings.Add(slot);
@@ -1830,7 +1830,7 @@ public sealed class Binder
                 return new InlineAsmCurrentAddressOperand(InlineAsmAddressingMode.Direct);
 
             case InlineAsmIntegerLiteralOperandSyntax:
-                _diagnostics.ReportInlineAsmUndefinedLabel(blockSpan, operandSyntax.Span.Length > 0 ? "integer" : "");
+                _diagnostics.Report(new InlineAsmUndefinedLabelError(_diagnostics.CurrentSource, blockSpan, operandSyntax.Span.Length > 0 ? "integer" : ""));
                 return null;
 
             case InlineAsmSymbolOperandSyntax symbol:
@@ -1867,12 +1867,12 @@ public sealed class Binder
                     if (labels.TryGetValue(name, out ControlFlowLabelSymbol? label))
                         return new InlineAsmLabelOperand(label, InlineAsmAddressingMode.Immediate);
 
-                    _diagnostics.ReportInlineAsmUndefinedLabel(blockSpan, name);
+                    _diagnostics.Report(new InlineAsmUndefinedLabelError(_diagnostics.CurrentSource, blockSpan, name));
                     return null;
                 }
 
             default:
-                _diagnostics.ReportInlineAsmUndefinedLabel(blockSpan, "#");
+                _diagnostics.Report(new InlineAsmUndefinedLabelError(_diagnostics.CurrentSource, blockSpan, "#"));
                 return null;
         }
     }
@@ -1896,7 +1896,7 @@ public sealed class Binder
             return new InlineAsmBindingRefOperand(binding);
         }
 
-        _diagnostics.ReportInlineAsmUndefinedLabel(blockSpan, name);
+        _diagnostics.Report(new InlineAsmUndefinedLabelError(_diagnostics.CurrentSource, blockSpan, name));
         return null;
     }
 
@@ -1931,7 +1931,7 @@ public sealed class Binder
                     instruction.Operands.Count,
                     operandIndex);
                 if (access is P2OperandAccess.Read or P2OperandAccess.ReadWrite)
-                    _diagnostics.ReportInlineAsmTempReadBeforeWrite(blockSpan, tempBinding.PlaceholderText);
+                    _diagnostics.Report(new InlineAsmTempReadBeforeWriteWarning(_diagnostics.CurrentSource, blockSpan, tempBinding.PlaceholderText));
             }
         }
     }
@@ -1951,7 +1951,7 @@ public sealed class Binder
             if (!ContainsErrorExpression(condition))
             {
                 if (failure.Kind is ComptimeFailureKind.NotEvaluable or ComptimeFailureKind.ForbiddenSymbolAccess)
-                    _diagnostics.ReportComptimeValueRequired(assertStatement.Condition.Span);
+                    _diagnostics.Report(new ComptimeValueRequiredError(_diagnostics.CurrentSource, assertStatement.Condition.Span));
                 else
                     ReportComptimeFailure(failure);
             }
@@ -2087,7 +2087,7 @@ public sealed class Binder
                 // for(count) -> index: the binding variable is an index
                 if (itemIsMutable)
                 {
-                    _diagnostics.ReportTypeMismatch(binding.Ampersand!.Value.Span, "array", iterable.Type.Name);
+                    _diagnostics.Report(new TypeMismatchError(_diagnostics.CurrentSource, binding.Ampersand!.Value.Span, "array", iterable.Type.Name));
                 }
 
                 indexVariable = new LocalVariableSymbol(
@@ -2102,7 +2102,7 @@ public sealed class Binder
                 // for(start..<end) -> index: the binding variable is the range index
                 if (itemIsMutable)
                 {
-                    _diagnostics.ReportTypeMismatch(binding.Ampersand!.Value.Span, "range", iterable.Type.Name);
+                    _diagnostics.Report(new TypeMismatchError(_diagnostics.CurrentSource, binding.Ampersand!.Value.Span, "range", iterable.Type.Name));
                 }
 
                 indexVariable = new LocalVariableSymbol(
@@ -2114,7 +2114,7 @@ public sealed class Binder
             }
             else
             {
-                _diagnostics.ReportTypeMismatch(forStatement.Iterable.Span, "integer, array, or range", iterable.Type.Name);
+                _diagnostics.Report(new TypeMismatchError(_diagnostics.CurrentSource, forStatement.Iterable.Span, "integer, array, or range", iterable.Type.Name));
             }
         }
         else if (isIntegerIteration || isArrayIteration)
@@ -2129,7 +2129,7 @@ public sealed class Binder
         }
         else if (isRangeIteration)
         {
-            _diagnostics.ReportRangeIterationRequiresBinding(forStatement.Iterable.Span);
+            _diagnostics.Report(new RangeIterationRequiresBindingError(_diagnostics.CurrentSource, forStatement.Iterable.Span));
             // Create synthetic index so lowering has something to work with
             indexVariable = new LocalVariableSymbol(
                 "__for_index",
@@ -2140,7 +2140,7 @@ public sealed class Binder
         }
         else if (iterable.Type is not UnknownTypeSymbol)
         {
-            _diagnostics.ReportTypeMismatch(forStatement.Iterable.Span, "integer, array, or range", iterable.Type.Name);
+            _diagnostics.Report(new TypeMismatchError(_diagnostics.CurrentSource, forStatement.Iterable.Span, "integer, array, or range", iterable.Type.Name));
         }
 
         PushLoop(LoopContext.Regular);
@@ -2179,7 +2179,7 @@ public sealed class Binder
 
         if (_currentFunction is null || IsTopLevelContext())
         {
-            _diagnostics.ReportReturnOutsideFunction(returnStatement.ReturnKeyword.Span);
+            _diagnostics.Report(new ReturnOutsideFunctionError(_diagnostics.CurrentSource, returnStatement.ReturnKeyword.Span));
             if (returnStatement.Values is not null)
             {
                 foreach (ExpressionSyntax value in returnStatement.Values)
@@ -2191,7 +2191,7 @@ public sealed class Binder
 
         if (_currentFunction.Kind == FunctionKind.Coro)
         {
-            _diagnostics.ReportReturnFromCoroutine(returnStatement.ReturnKeyword.Span, _currentFunction.Name);
+            _diagnostics.Report(new ReturnFromCoroutineError(_diagnostics.CurrentSource, returnStatement.ReturnKeyword.Span, _currentFunction.Name));
             if (returnStatement.Values is not null)
             {
                 foreach (ExpressionSyntax value in returnStatement.Values)
@@ -2205,11 +2205,7 @@ public sealed class Binder
         int actualCount = returnStatement.Values?.Count ?? 0;
         if (expectedCount != actualCount)
         {
-            _diagnostics.ReportReturnValueCountMismatch(
-                returnStatement.ReturnKeyword.Span,
-                _currentFunction.Name,
-                expectedCount,
-                actualCount);
+            _diagnostics.Report(new ReturnValueCountMismatchError(_diagnostics.CurrentSource, returnStatement.ReturnKeyword.Span, _currentFunction.Name, expectedCount, actualCount));
         }
 
         if (returnStatement.Values is not null)
@@ -2232,7 +2228,7 @@ public sealed class Binder
             : BindExpression(multiAssignment.Value);
         if (rhs is not BoundMultiResultProducerExpression producer)
         {
-            _diagnostics.ReportMultiAssignmentRequiresCall(multiAssignment.Value.Span);
+            _diagnostics.Report(new MultiAssignmentRequiresCallError(_diagnostics.CurrentSource, multiAssignment.Value.Span));
             // Bind targets anyway to get diagnostics flowing
             foreach (ExpressionSyntax target in multiAssignment.Targets)
                 BindAssignmentTarget(target);
@@ -2243,8 +2239,7 @@ public sealed class Binder
         int targetCount = multiAssignment.Targets.Count;
         if (targetCount != returnTypes.Count)
         {
-            _diagnostics.ReportMultiAssignmentTargetCountMismatch(
-                multiAssignment.Operator.Span, producer.ResultSourceName, returnTypes.Count, targetCount);
+            _diagnostics.Report(new MultiAssignmentTargetCountMismatchError(_diagnostics.CurrentSource, multiAssignment.Operator.Span, producer.ResultSourceName, returnTypes.Count, targetCount));
         }
 
         List<BoundAssignmentTarget> targets = new();
@@ -2284,11 +2279,11 @@ public sealed class Binder
     {
         if (_loopStack.Count == 0)
         {
-            _diagnostics.ReportInvalidLoopControl(keywordToken.Span, keywordToken.Text);
+            _diagnostics.Report(new InvalidLoopControlError(_diagnostics.CurrentSource, keywordToken.Span, keywordToken.Text));
         }
         else if (isBreak && _loopStack.Peek() == LoopContext.Rep)
         {
-            _diagnostics.ReportInvalidBreakInRep(keywordToken.Span);
+            _diagnostics.Report(new InvalidBreakInRepLoopError(_diagnostics.CurrentSource, keywordToken.Span));
         }
 
         return isBreak ? new BoundBreakStatement(keywordToken.Span) : new BoundContinueStatement(keywordToken.Span);
@@ -2297,14 +2292,14 @@ public sealed class Binder
     private BoundStatement BindYieldtoStatement(YieldtoStatementSyntax yieldtoStatement)
     {
         if (!IsYieldtoContextAllowed())
-            _diagnostics.ReportInvalidYieldto(yieldtoStatement.YieldtoKeyword.Span);
+            _diagnostics.Report(new InvalidYieldtoUsageError(_diagnostics.CurrentSource, yieldtoStatement.YieldtoKeyword.Span));
 
         if (TryResolveAccessibleName(yieldtoStatement.Target.Text, yieldtoStatement.Target.Span, out Symbol? resolvedSymbol)
             && resolvedSymbol is FunctionSymbol targetFunction)
         {
             if (targetFunction.Kind != FunctionKind.Coro)
             {
-                _diagnostics.ReportInvalidYieldtoTarget(yieldtoStatement.Target.Span, yieldtoStatement.Target.Text);
+                _diagnostics.Report(new InvalidYieldtoTargetError(_diagnostics.CurrentSource, yieldtoStatement.Target.Span, yieldtoStatement.Target.Text));
                 _ = BindArgumentsLoose(yieldtoStatement.Arguments);
                 return new BoundErrorStatement(yieldtoStatement.Span);
             }
@@ -2315,7 +2310,7 @@ public sealed class Binder
             return new BoundYieldtoStatement(targetFunction, arguments, yieldtoStatement.Span);
         }
 
-        _diagnostics.ReportUndefinedName(yieldtoStatement.Target.Span, yieldtoStatement.Target.Text);
+        _diagnostics.Report(new UndefinedNameError(_diagnostics.CurrentSource, yieldtoStatement.Target.Span, yieldtoStatement.Target.Text));
         _ = BindArgumentsLoose(yieldtoStatement.Arguments);
         return new BoundErrorStatement(yieldtoStatement.Span);
     }
@@ -2339,7 +2334,7 @@ public sealed class Binder
                             return new BoundSymbolAssignmentTarget(variable, target.Span, variable.Type);
                         }
 
-                        _diagnostics.ReportUndefinedName(memberAccess.Member.Span, memberAccess.Member.Text);
+                        _diagnostics.Report(new UndefinedNameError(_diagnostics.CurrentSource, memberAccess.Member.Span, memberAccess.Member.Text));
                         return new BoundSymbolAssignmentTarget(
                             new LocalVariableSymbol(
                                 memberAccess.Member.Text,
@@ -2400,7 +2395,7 @@ public sealed class Binder
 
                     if (receiver.Type is StructTypeSymbol or UnionTypeSymbol or BitfieldTypeSymbol)
                     {
-                        _diagnostics.ReportUndefinedName(memberAccess.Member.Span, memberAccess.Member.Text);
+                        _diagnostics.Report(new UndefinedNameError(_diagnostics.CurrentSource, memberAccess.Member.Span, memberAccess.Member.Text));
                     }
 
                     return new BoundMemberAssignmentTarget(
@@ -2414,7 +2409,7 @@ public sealed class Binder
                     BoundExpression expression = BindExpression(index.Expression);
                     BoundExpression indexExpr = BindExpression(index.Index);
                     if (indexExpr.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
-                        _diagnostics.ReportTypeMismatch(index.Index.Span, "integer", indexExpr.Type.Name);
+                        _diagnostics.Report(new TypeMismatchError(_diagnostics.CurrentSource, index.Index.Span, "integer", indexExpr.Type.Name));
 
                     BladeType type = expression.Type switch
                     {
@@ -2424,7 +2419,7 @@ public sealed class Binder
                     };
 
                     if (expression.Type is PointerTypeSymbol)
-                        _diagnostics.ReportTypeMismatch(index.Expression.Span, "array or [*]pointer", expression.Type.Name);
+                        _diagnostics.Report(new TypeMismatchError(_diagnostics.CurrentSource, index.Expression.Span, "array or [*]pointer", expression.Type.Name));
 
                     return new BoundIndexAssignmentTarget(expression, indexExpr, target.Span, type);
                 }
@@ -2437,7 +2432,7 @@ public sealed class Binder
                 }
 
             default:
-                _diagnostics.ReportInvalidAssignmentTarget(target.Span);
+                _diagnostics.Report(new InvalidAssignmentTargetError(_diagnostics.CurrentSource, target.Span));
                 return new BoundErrorAssignmentTarget(target.Span);
         }
     }
@@ -2449,25 +2444,25 @@ public sealed class Binder
 
         if (!TryResolveAccessibleName(nameExpression.Name.Text, nameExpression.Name.Span, out Symbol? symbol) || symbol is null)
         {
-            _diagnostics.ReportUndefinedName(nameExpression.Name.Span, nameExpression.Name.Text);
+            _diagnostics.Report(new UndefinedNameError(_diagnostics.CurrentSource, nameExpression.Name.Span, nameExpression.Name.Text));
             return new BoundErrorAssignmentTarget(nameExpression.Span);
         }
 
         if (symbol is FunctionSymbol)
         {
-            _diagnostics.ReportInvalidAssignmentTarget(nameExpression.Span);
+            _diagnostics.Report(new InvalidAssignmentTargetError(_diagnostics.CurrentSource, nameExpression.Span));
             return new BoundErrorAssignmentTarget(nameExpression.Span);
         }
 
         if (symbol is VariableSymbol variable)
         {
             if (variable.IsConst)
-                _diagnostics.ReportCannotAssignToConstant(nameExpression.Name.Span, nameExpression.Name.Text);
+                _diagnostics.Report(new CannotAssignToConstantError(_diagnostics.CurrentSource, nameExpression.Name.Span, nameExpression.Name.Text));
             ObserveVariableForTopLevelStoreLoadElision(variable);
             return new BoundSymbolAssignmentTarget(symbol, nameExpression.Span, variable.Type);
         }
 
-        _diagnostics.ReportInvalidAssignmentTarget(nameExpression.Span);
+        _diagnostics.Report(new InvalidAssignmentTargetError(_diagnostics.CurrentSource, nameExpression.Span));
         return new BoundErrorAssignmentTarget(nameExpression.Span);
     }
 
@@ -2560,13 +2555,13 @@ public sealed class Binder
     {
         if (nameExpression.Name.Text == "_")
         {
-            _diagnostics.ReportDiscardInExpression(nameExpression.Name.Span);
+            _diagnostics.Report(new DiscardInExpressionError(_diagnostics.CurrentSource, nameExpression.Name.Span));
             return new BoundErrorExpression(nameExpression.Span);
         }
 
         if (!TryResolveAccessibleName(nameExpression.Name.Text, nameExpression.Name.Span, out Symbol? symbol) || symbol is null)
         {
-            _diagnostics.ReportUndefinedName(nameExpression.Name.Span, nameExpression.Name.Text);
+            _diagnostics.Report(new UndefinedNameError(_diagnostics.CurrentSource, nameExpression.Name.Span, nameExpression.Name.Text));
             return new BoundErrorExpression(nameExpression.Span);
         }
 
@@ -2674,7 +2669,7 @@ public sealed class Binder
     {
         if (!CanAccessTaskLayout(task))
         {
-            _diagnostics.ReportAccessToForeignLayout(span, task.Name, memberName);
+            _diagnostics.Report(new AccessToForeignLayoutError(_diagnostics.CurrentSource, span, task.Name, memberName));
             symbol = null;
             return false;
         }
@@ -2731,7 +2726,7 @@ public sealed class Binder
     {
         if (!CanAccessQualifiedLayout(layout))
         {
-            _diagnostics.ReportAccessToForeignLayout(span, layout.Name, memberName);
+            _diagnostics.Report(new AccessToForeignLayoutError(_diagnostics.CurrentSource, span, layout.Name, memberName));
             symbol = null;
             return false;
         }
@@ -2739,7 +2734,7 @@ public sealed class Binder
         if (!GetVisibleLayoutMembers(layout).TryGetValue(memberName, out IReadOnlyList<LayoutMemberBinding>? bindings)
             || bindings.Count == 0)
         {
-            _diagnostics.ReportUndefinedName(span, memberName);
+            _diagnostics.Report(new UndefinedNameError(_diagnostics.CurrentSource, span, memberName));
             symbol = null;
             return false;
         }
@@ -2820,7 +2815,7 @@ public sealed class Binder
                 {
                     BoundExpression operand = BindExpression(unary.Operand);
                     if (operand.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
-                        _diagnostics.ReportTypeMismatch(unary.Operand.Span, "integer", operand.Type.Name);
+                        _diagnostics.Report(new TypeMismatchError(_diagnostics.CurrentSource, unary.Operand.Span, "integer", operand.Type.Name));
                     return new BoundUnaryExpression(
                         unaryOperator,
                         operand,
@@ -2842,21 +2837,21 @@ public sealed class Binder
 
         if (unary.Operand is not NameExpressionSyntax nameExpression)
         {
-            _diagnostics.ReportInvalidAddressOfTarget(unary.Operand.Span);
+            _diagnostics.Report(new InvalidAddressOfTargetError(_diagnostics.CurrentSource, unary.Operand.Span));
             _ = BindExpression(unary.Operand);
             return new BoundErrorExpression(unary.Span);
         }
 
         if (!TryResolveAccessibleName(nameExpression.Name.Text, nameExpression.Name.Span, out Symbol? symbol) || symbol is null)
         {
-            _diagnostics.ReportUndefinedName(nameExpression.Name.Span, nameExpression.Name.Text);
+            _diagnostics.Report(new UndefinedNameError(_diagnostics.CurrentSource, nameExpression.Name.Span, nameExpression.Name.Text));
             return new BoundErrorExpression(unary.Span);
         }
 
         if (symbol is VariableSymbol variable)
             return BindAddressOfVariable(unary, op, variable);
 
-        _diagnostics.ReportInvalidAddressOfTarget(unary.Operand.Span);
+        _diagnostics.Report(new InvalidAddressOfTargetError(_diagnostics.CurrentSource, unary.Operand.Span));
         return new BoundErrorExpression(unary.Span);
     }
 
@@ -2869,13 +2864,13 @@ public sealed class Binder
 
         if (_currentFunction?.Kind == FunctionKind.Rec && TryGetRecursiveAddressOfName(index.Expression, out string? recursiveName))
         {
-            _diagnostics.ReportAddressOfRecursiveLocal(unary.Operand.Span, Requires.NotNull(recursiveName));
+            _diagnostics.Report(new AddressOfRecursiveLocalError(_diagnostics.CurrentSource, unary.Operand.Span, Requires.NotNull(recursiveName)));
             return new BoundErrorExpression(unary.Span);
         }
 
         if (index.Expression is BoundSymbolExpression { Symbol: ParameterVariableSymbol param } && param.Type is ArrayTypeSymbol)
         {
-            _diagnostics.ReportAddressOfParameter(unary.Operand.Span, param.Name);
+            _diagnostics.Report(new AddressOfParameterError(_diagnostics.CurrentSource, unary.Operand.Span, param.Name));
             return new BoundErrorExpression(unary.Span);
         }
 
@@ -2891,7 +2886,7 @@ public sealed class Binder
 
         if (_currentFunction?.Kind == FunctionKind.Rec && variable is AutomaticVariableSymbol)
         {
-            _diagnostics.ReportAddressOfRecursiveLocal(unary.Operand.Span, variable.Name);
+            _diagnostics.Report(new AddressOfRecursiveLocalError(_diagnostics.CurrentSource, unary.Operand.Span, variable.Name));
             return new BoundErrorExpression(unary.Span);
         }
 
@@ -2998,7 +2993,7 @@ public sealed class Binder
         if (binaryOperator.IsComparison)
         {
             if (!IsComparable(left.Type, right.Type))
-                _diagnostics.ReportTypeMismatch(binary.Span, left.Type.Name, right.Type.Name);
+                _diagnostics.Report(new TypeMismatchError(_diagnostics.CurrentSource, binary.Span, left.Type.Name, right.Type.Name));
 
             if (left.Type is IntegerLiteralTypeSymbol or IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol
                 && right.Type is IntegerLiteralTypeSymbol or IntegerTypeSymbol or EnumTypeSymbol or BitfieldTypeSymbol)
@@ -3014,7 +3009,7 @@ public sealed class Binder
         if (binaryOperator.Kind is BoundBinaryOperatorKind.LogicalAnd or BoundBinaryOperatorKind.LogicalOr)
         {
             if (left.Type is not BoolTypeSymbol || right.Type is not BoolTypeSymbol)
-                _diagnostics.ReportTypeMismatch(binary.Span, "bool", $"{left.Type.Name}, {right.Type.Name}");
+                _diagnostics.Report(new TypeMismatchError(_diagnostics.CurrentSource, binary.Span, "bool", $"{left.Type.Name}, {right.Type.Name}"));
             left = BindConversion(left, BuiltinTypes.Bool, left.Span, reportMismatch: false);
             right = BindConversion(right, BuiltinTypes.Bool, right.Span, reportMismatch: false);
             return new BoundBinaryExpression(left, binaryOperator, right, binary.Span, BuiltinTypes.Bool);
@@ -3023,12 +3018,12 @@ public sealed class Binder
         if (left.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol
             || right.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
         {
-            _diagnostics.ReportTypeMismatch(binary.Span, "integer", $"{left.Type.Name}, {right.Type.Name}");
+            _diagnostics.Report(new TypeMismatchError(_diagnostics.CurrentSource, binary.Span, "integer", $"{left.Type.Name}, {right.Type.Name}"));
         }
 
         if (left.Type is EnumTypeSymbol || right.Type is EnumTypeSymbol)
         {
-            _diagnostics.ReportTypeMismatch(binary.Span, "integer", $"{left.Type.Name}, {right.Type.Name}");
+            _diagnostics.Report(new TypeMismatchError(_diagnostics.CurrentSource, binary.Span, "integer", $"{left.Type.Name}, {right.Type.Name}"));
             BladeType fallbackType = left.Type is EnumTypeSymbol ? left.Type : right.Type;
             return new BoundBinaryExpression(left, binaryOperator, right, binary.Span, fallbackType);
         }
@@ -3058,7 +3053,7 @@ public sealed class Binder
     private BoundExpression BindInvalidPointerAssignmentValue(ExpressionSyntax valueSyntax, TextSpan span, string operatorText)
     {
         _ = BindExpression(valueSyntax);
-        _diagnostics.ReportInvalidPointerArithmetic(span, operatorText);
+        _diagnostics.Report(new InvalidPointerArithmeticError(_diagnostics.CurrentSource, span, operatorText));
         return new BoundErrorExpression(span);
     }
 
@@ -3080,7 +3075,7 @@ public sealed class Binder
 
         if (left.Type is not MultiPointerTypeSymbol leftPointer)
         {
-            _diagnostics.ReportInvalidPointerArithmetic(binary.Span, operatorText);
+            _diagnostics.Report(new InvalidPointerArithmeticError(_diagnostics.CurrentSource, binary.Span, operatorText));
             bound = new BoundErrorExpression(binary.Span);
             return true;
         }
@@ -3089,7 +3084,7 @@ public sealed class Binder
         {
             if (rightIsPointer)
             {
-                _diagnostics.ReportInvalidPointerArithmetic(binary.Span, operatorText);
+                _diagnostics.Report(new InvalidPointerArithmeticError(_diagnostics.CurrentSource, binary.Span, operatorText));
                 bound = new BoundErrorExpression(binary.Span);
                 return true;
             }
@@ -3112,14 +3107,14 @@ public sealed class Binder
 
         if (right.Type is not MultiPointerTypeSymbol rightPointer)
         {
-            _diagnostics.ReportInvalidPointerArithmetic(binary.Span, operatorText);
+            _diagnostics.Report(new InvalidPointerArithmeticError(_diagnostics.CurrentSource, binary.Span, operatorText));
             bound = new BoundErrorExpression(binary.Span);
             return true;
         }
 
         if (!AreCompatiblePointerSubtractionOperands(leftPointer, rightPointer))
         {
-            _diagnostics.ReportIncompatiblePointerSubtraction(binary.Span, left.Type.Name, right.Type.Name);
+            _diagnostics.Report(new IncompatiblePointerSubtractionError(_diagnostics.CurrentSource, binary.Span, left.Type.Name, right.Type.Name));
             bound = new BoundErrorExpression(binary.Span);
             return true;
         }
@@ -3142,7 +3137,7 @@ public sealed class Binder
         if (expression.Type is PointerLikeTypeSymbol
             || expression.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
         {
-            _diagnostics.ReportInvalidPointerArithmetic(span, operatorText);
+            _diagnostics.Report(new InvalidPointerArithmeticError(_diagnostics.CurrentSource, span, operatorText));
             return new BoundErrorExpression(span);
         }
 
@@ -3218,12 +3213,12 @@ public sealed class Binder
                 }
             }
 
-            _diagnostics.ReportUndefinedName(memberAccess.Member.Span, memberAccess.Member.Text);
+            _diagnostics.Report(new UndefinedNameError(_diagnostics.CurrentSource, memberAccess.Member.Span, memberAccess.Member.Text));
             return new BoundErrorExpression(memberAccess.Span);
         }
 
         if (receiver.Type is StructTypeSymbol or UnionTypeSymbol or BitfieldTypeSymbol)
-            _diagnostics.ReportUndefinedName(memberAccess.Member.Span, memberAccess.Member.Text);
+            _diagnostics.Report(new UndefinedNameError(_diagnostics.CurrentSource, memberAccess.Member.Span, memberAccess.Member.Text));
 
         return new BoundMemberAccessExpression(
             receiver,
@@ -3243,7 +3238,7 @@ public sealed class Binder
         if (expressionType is PointerTypeSymbol pointerType)
             return pointerType.PointeeType;
 
-        _diagnostics.ReportTypeMismatch(span, "pointer", expressionType.Name);
+        _diagnostics.Report(new TypeMismatchError(_diagnostics.CurrentSource, span, "pointer", expressionType.Name));
         return BuiltinTypes.Unknown;
     }
 
@@ -3252,7 +3247,7 @@ public sealed class Binder
         BoundExpression expression = BindExpression(indexExpression.Expression);
         BoundExpression index = BindExpression(indexExpression.Index);
         if (index.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
-            _diagnostics.ReportTypeMismatch(indexExpression.Index.Span, "integer", index.Type.Name);
+            _diagnostics.Report(new TypeMismatchError(_diagnostics.CurrentSource, indexExpression.Index.Span, "integer", index.Type.Name));
 
         BladeType type = expression.Type switch
         {
@@ -3262,7 +3257,7 @@ public sealed class Binder
         };
 
         if (expression.Type is PointerTypeSymbol)
-            _diagnostics.ReportTypeMismatch(indexExpression.Expression.Span, "array or [*]pointer", expression.Type.Name);
+            _diagnostics.Report(new TypeMismatchError(_diagnostics.CurrentSource, indexExpression.Expression.Span, "array or [*]pointer", expression.Type.Name));
 
         return new BoundIndexExpression(expression, index, indexExpression.Span, type);
     }
@@ -3271,13 +3266,13 @@ public sealed class Binder
     {
         if (expectedType is not EnumTypeSymbol enumType)
         {
-            _diagnostics.ReportEnumLiteralRequiresContext(enumLiteral.Span, enumLiteral.MemberName.Text);
+            _diagnostics.Report(new EnumLiteralRequiresContextError(_diagnostics.CurrentSource, enumLiteral.Span, enumLiteral.MemberName.Text));
             return new BoundErrorExpression(enumLiteral.Span);
         }
 
         if (!enumType.Members.TryGetValue(enumLiteral.MemberName.Text, out long value))
         {
-            _diagnostics.ReportUndefinedName(enumLiteral.MemberName.Span, enumLiteral.MemberName.Text);
+            _diagnostics.Report(new UndefinedNameError(_diagnostics.CurrentSource, enumLiteral.MemberName.Span, enumLiteral.MemberName.Text));
             return new BoundErrorExpression(enumLiteral.Span);
         }
 
@@ -3288,7 +3283,7 @@ public sealed class Binder
     {
         if (!enumType.Members.TryGetValue(memberAccess.Member.Text, out long value))
         {
-            _diagnostics.ReportUndefinedName(memberAccess.Member.Span, memberAccess.Member.Text);
+            _diagnostics.Report(new UndefinedNameError(_diagnostics.CurrentSource, memberAccess.Member.Span, memberAccess.Member.Text));
             return new BoundErrorExpression(memberAccess.Span);
         }
 
@@ -3320,7 +3315,7 @@ public sealed class Binder
         BoundExpression callee = BindExpression(callExpression.Callee);
         if (!TryGetFunctionSymbol(callee, out FunctionSymbol? maybeFunction) || maybeFunction is null)
         {
-            _diagnostics.ReportNotCallable(callExpression.Callee.Span, callee.Type.Name);
+            _diagnostics.Report(new NotCallableError(_diagnostics.CurrentSource, callExpression.Callee.Span, callee.Type.Name));
             _ = BindArgumentsLoose(callExpression.Arguments);
             return new BoundErrorExpression(callExpression.Span);
         }
@@ -3353,7 +3348,7 @@ public sealed class Binder
         if (target is not BoundSymbolExpression { Symbol: TaskSymbol task })
         {
             if (target is not BoundErrorExpression)
-                _diagnostics.ReportInvalidSpawnTarget(spawnExpression.Target.Span, GetSpawnTargetDisplayName(spawnExpression.Target));
+                _diagnostics.Report(new InvalidSpawnTargetError(_diagnostics.CurrentSource, spawnExpression.Target.Span, GetSpawnTargetDisplayName(spawnExpression.Target)));
 
             if (spawnExpression.Argument is not null)
                 _ = BindExpression(spawnExpression.Argument);
@@ -3384,7 +3379,7 @@ public sealed class Binder
         int expectedCount = parameters.Count;
         int actualCount = spawnExpression.Argument is null ? 0 : 1;
         if (expectedCount != actualCount)
-            _diagnostics.ReportArgumentCountMismatch(spawnExpression.OpenParen.Span, task.Name, expectedCount, actualCount);
+            _diagnostics.Report(new ArgumentCountMismatchError(_diagnostics.CurrentSource, spawnExpression.OpenParen.Span, task.Name, expectedCount, actualCount));
 
         if (spawnExpression.Argument is null)
             return [];
@@ -3419,12 +3414,13 @@ public sealed class Binder
         {
             if (!callerLayouts.Contains(layout))
             {
-                _diagnostics.ReportFunctionLayoutSubsetViolation(
+                _diagnostics.Report(new FunctionLayoutSubsetViolationError(
+                    _diagnostics.CurrentSource,
                     span,
-                    _currentFunction?.Name ?? "<toplevel>",
-                    callee.Name,
-                    callerLayouts.Select(static layoutSymbol => layoutSymbol.Name).OrderBy(static name => name, StringComparer.Ordinal).ToList(),
-                    calleeLayouts.Select(static layoutSymbol => layoutSymbol.Name).OrderBy(static name => name, StringComparer.Ordinal).ToList());
+                    _currentFunction!,
+                    callee,
+                    callerLayouts.ToArray(),
+                    calleeLayouts.ToArray()));
                 return;
             }
         }
@@ -3774,19 +3770,19 @@ public sealed class Binder
         switch (failure.Kind)
         {
             case ComptimeFailureKind.NotEvaluable:
-                _diagnostics.ReportComptimeValueRequired(failure.Span);
+                _diagnostics.Report(new ComptimeValueRequiredError(_diagnostics.CurrentSource, failure.Span));
                 break;
 
             case ComptimeFailureKind.UnsupportedConstruct:
-                _diagnostics.ReportComptimeUnsupportedConstruct(failure.Span, failure.Detail);
+                _diagnostics.Report(new ComptimeUnsupportedConstructError(_diagnostics.CurrentSource, failure.Span, failure.Detail));
                 break;
 
             case ComptimeFailureKind.ForbiddenSymbolAccess:
-                _diagnostics.ReportComptimeForbiddenSymbolAccess(failure.Span, failure.Detail);
+                _diagnostics.Report(new ComptimeForbiddenSymbolAccessError(_diagnostics.CurrentSource, failure.Span, failure.Detail));
                 break;
 
             case ComptimeFailureKind.FuelExhausted:
-                _diagnostics.ReportComptimeFuelExhausted(failure.Span);
+                _diagnostics.Report(new ComptimeFuelExhaustedError(_diagnostics.CurrentSource, failure.Span));
                 break;
         }
     }
@@ -3795,7 +3791,7 @@ public sealed class Binder
     {
         if (!P2InstructionMetadata.TryParseMnemonic(intrinsic.Name.Text, out P2Mnemonic mnemonic))
         {
-            _diagnostics.ReportUnknownBuiltin(intrinsic.Name.Span, intrinsic.Name.Text);
+            _diagnostics.Report(new UnknownBuiltinError(_diagnostics.CurrentSource, intrinsic.Name.Span, intrinsic.Name.Text));
             return new BoundErrorExpression(intrinsic.Span);
         }
 
@@ -3814,7 +3810,7 @@ public sealed class Binder
         if (resolvedType is not StructTypeSymbol structType)
         {
             if (resolvedType is not UnknownTypeSymbol)
-                _diagnostics.ReportTypeMismatch(nameExpr.Name.Span, "struct", resolvedType.Name);
+                _diagnostics.Report(new TypeMismatchError(_diagnostics.CurrentSource, nameExpr.Name.Span, "struct", resolvedType.Name));
             return new BoundErrorExpression(syntax.Span);
         }
 
@@ -3827,14 +3823,14 @@ public sealed class Binder
 
             if (!seen.Add(fieldName))
             {
-                _diagnostics.ReportStructDuplicateField(initializer.Name.Span, fieldName);
+                _diagnostics.Report(new StructDuplicateFieldError(_diagnostics.CurrentSource, initializer.Name.Span, fieldName));
                 BindExpression(initializer.Value);
                 continue;
             }
 
             if (!structType.Fields.TryGetValue(fieldName, out BladeType? fieldType))
             {
-                _diagnostics.ReportStructUnknownField(initializer.Name.Span, structType.Name, fieldName);
+                _diagnostics.Report(new StructUnknownFieldError(_diagnostics.CurrentSource, initializer.Name.Span, structType.Name, fieldName));
                 BindExpression(initializer.Value);
                 continue;
             }
@@ -3853,7 +3849,7 @@ public sealed class Binder
 
         if (missing is not null)
         {
-            _diagnostics.ReportStructMissingFields(syntax.CloseBrace.Span, structType.Name, string.Join(", ", missing));
+            _diagnostics.Report(new StructMissingFieldsError(_diagnostics.CurrentSource, syntax.CloseBrace.Span, structType.Name, string.Join(", ", missing)));
         }
 
         return new BoundStructLiteralExpression(initializers, syntax.Span, structType);
@@ -3874,14 +3870,14 @@ public sealed class Binder
 
             Token spreadToken = element.Spread.Value;
             if (i != arrayLiteral.Elements.Count - 1)
-                _diagnostics.ReportArrayLiteralSpreadMustBeLast(spreadToken.Span);
+                _diagnostics.Report(new ArrayLiteralSpreadMustBeLastError(_diagnostics.CurrentSource, spreadToken.Span));
             else
                 lastElementIsSpread = true;
         }
 
         if ((arrayLiteral.Elements.Count == 0 || lastElementIsSpread) && expectedLength is null)
         {
-            _diagnostics.ReportArrayLiteralRequiresContext(arrayLiteral.Span);
+            _diagnostics.Report(new ArrayLiteralRequiresContextError(_diagnostics.CurrentSource, arrayLiteral.Span));
             foreach (ArrayElementSyntax element in arrayLiteral.Elements)
                 _ = BindExpression(element.Value, elementType);
             return new BoundErrorExpression(arrayLiteral.Span);
@@ -3941,13 +3937,13 @@ public sealed class Binder
             return new BoundIfExpression(condition, thenExpression, elseExpression, ifExpression.Span, elseExpression.Type);
         }
 
-        _diagnostics.ReportTypeMismatch(ifExpression.Span, thenExpression.Type.Name, elseExpression.Type.Name);
+        _diagnostics.Report(new TypeMismatchError(_diagnostics.CurrentSource, ifExpression.Span, thenExpression.Type.Name, elseExpression.Type.Name));
         return new BoundIfExpression(condition, thenExpression, elseExpression, ifExpression.Span, BuiltinTypes.Unknown);
     }
 
     private BoundExpression BindRangeExpression(RangeExpressionSyntax rangeExpression)
     {
-        _diagnostics.ReportRangeExpressionOutsideForLoop(rangeExpression.Span);
+        _diagnostics.Report(new RangeExpressionOutsideForLoopError(_diagnostics.CurrentSource, rangeExpression.Span));
         _ = BindExpression(rangeExpression.Start);
         _ = BindExpression(rangeExpression.End);
         return new BoundErrorExpression(rangeExpression.Span);
@@ -3966,9 +3962,9 @@ public sealed class Binder
     private void ValidateRangeEndpoints(RangeExpressionSyntax rangeExpression, BoundExpression start, BoundExpression end)
     {
         if (start.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
-            _diagnostics.ReportTypeMismatch(rangeExpression.Start.Span, "integer", start.Type.Name);
+            _diagnostics.Report(new TypeMismatchError(_diagnostics.CurrentSource, rangeExpression.Start.Span, "integer", start.Type.Name));
         if (end.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
-            _diagnostics.ReportTypeMismatch(rangeExpression.End.Span, "integer", end.Type.Name);
+            _diagnostics.Report(new TypeMismatchError(_diagnostics.CurrentSource, rangeExpression.End.Span, "integer", end.Type.Name));
     }
 
     private BoundExpression BindCastExpression(CastExpressionSyntax castExpression)
@@ -3978,7 +3974,7 @@ public sealed class Binder
 
         if (!CanExplicitlyCast(expression.Type, targetType))
         {
-            _diagnostics.ReportInvalidExplicitCast(castExpression.Span, expression.Type.Name, targetType.Name);
+            _diagnostics.Report(new InvalidExplicitCastError(_diagnostics.CurrentSource, castExpression.Span, expression.Type.Name, targetType.Name));
             return new BoundErrorExpression(castExpression.Span);
         }
 
@@ -4001,13 +3997,13 @@ public sealed class Binder
         if (sourceWidth is not int knownSourceWidth
             || targetType is not RuntimeTypeSymbol { IsScalarCastType: true, ScalarWidthBits: int targetWidth })
         {
-            _diagnostics.ReportInvalidExplicitCast(bitcastExpression.Span, expression.Type.Name, targetType.Name);
+            _diagnostics.Report(new InvalidExplicitCastError(_diagnostics.CurrentSource, bitcastExpression.Span, expression.Type.Name, targetType.Name));
             return new BoundErrorExpression(bitcastExpression.Span);
         }
 
         if (knownSourceWidth != targetWidth)
         {
-            _diagnostics.ReportBitcastSizeMismatch(bitcastExpression.Span, expression.Type.Name, targetType.Name);
+            _diagnostics.Report(new BitcastSizeMismatchError(_diagnostics.CurrentSource, bitcastExpression.Span, expression.Type.Name, targetType.Name));
             return new BoundErrorExpression(bitcastExpression.Span);
         }
 
@@ -4028,7 +4024,7 @@ public sealed class Binder
     {
         if (query.Keyword.Kind == TokenKind.MemoryofKeyword)
         {
-            _diagnostics.ReportMemoryofRequiresVariable(query.Span);
+            _diagnostics.Report(new MemoryofRequiresVariableError(_diagnostics.CurrentSource, query.Span));
             return new BoundErrorExpression(query.Span);
         }
 
@@ -4043,7 +4039,7 @@ public sealed class Binder
         {
             if (type is not RuntimeTypeSymbol runtimeType)
             {
-                _diagnostics.ReportQueryUnsupportedType(query.Subject.Span, operatorName, type.Name);
+                _diagnostics.Report(new QueryUnsupportedTypeError(_diagnostics.CurrentSource, query.Subject.Span, operatorName, type.Name));
                 return new BoundErrorExpression(query.Span);
             }
 
@@ -4055,7 +4051,7 @@ public sealed class Binder
 
         if (type is not RuntimeTypeSymbol runtimeTypeForAlignment)
         {
-            _diagnostics.ReportQueryUnsupportedType(query.Subject.Span, operatorName, type.Name);
+            _diagnostics.Report(new QueryUnsupportedTypeError(_diagnostics.CurrentSource, query.Subject.Span, operatorName, type.Name));
             return new BoundErrorExpression(query.Span);
         }
 
@@ -4072,11 +4068,11 @@ public sealed class Binder
             // Subject is a primitive type keyword or complex type — not a variable name.
             if (query.Keyword.Kind == TokenKind.MemoryofKeyword)
             {
-                _diagnostics.ReportMemoryofRequiresVariable(query.Subject.Span);
+                _diagnostics.Report(new MemoryofRequiresVariableError(_diagnostics.CurrentSource, query.Subject.Span));
                 return new BoundErrorExpression(query.Span);
             }
 
-            _diagnostics.ReportQueryRequiresMemorySpace(query.Subject.Span, operatorName);
+            _diagnostics.Report(new QueryRequiresMemorySpaceError(_diagnostics.CurrentSource, query.Subject.Span, operatorName));
             return new BoundErrorExpression(query.Span);
         }
 
@@ -4084,13 +4080,13 @@ public sealed class Binder
 
         if (!TryResolveAccessibleName(name, namedType.Name.Span, out Symbol? symbol) || symbol is null)
         {
-            _diagnostics.ReportUndefinedName(namedType.Name.Span, name);
+            _diagnostics.Report(new UndefinedNameError(_diagnostics.CurrentSource, namedType.Name.Span, name));
             return new BoundErrorExpression(query.Span);
         }
 
         if (symbol is AutomaticVariableSymbol)
         {
-            _diagnostics.ReportQueryAutomaticLocal(query.Subject.Span, operatorName, name);
+            _diagnostics.Report(new QueryAutomaticLocalError(_diagnostics.CurrentSource, query.Subject.Span, operatorName, name));
             return new BoundErrorExpression(query.Span);
         }
 
@@ -4102,11 +4098,11 @@ public sealed class Binder
         // Symbol is not a variable (could be a function, module, or type alias).
         if (query.Keyword.Kind == TokenKind.MemoryofKeyword)
         {
-            _diagnostics.ReportMemoryofRequiresVariable(query.Subject.Span);
+            _diagnostics.Report(new MemoryofRequiresVariableError(_diagnostics.CurrentSource, query.Subject.Span));
             return new BoundErrorExpression(query.Span);
         }
 
-        _diagnostics.ReportQueryRequiresMemorySpace(query.Subject.Span, operatorName);
+        _diagnostics.Report(new QueryRequiresMemorySpaceError(_diagnostics.CurrentSource, query.Subject.Span, operatorName));
         return new BoundErrorExpression(query.Span);
     }
 
@@ -4131,7 +4127,7 @@ public sealed class Binder
         {
             if (variable.Type is not RuntimeTypeSymbol runtimeVariableType)
             {
-                _diagnostics.ReportQueryUnsupportedType(query.Subject.Span, operatorName, variable.Type.Name);
+                _diagnostics.Report(new QueryUnsupportedTypeError(_diagnostics.CurrentSource, query.Subject.Span, operatorName, variable.Type.Name));
                 return new BoundErrorExpression(query.Span);
             }
 
@@ -4143,7 +4139,7 @@ public sealed class Binder
 
         if (variable.Type is not RuntimeTypeSymbol runtimeVariableTypeForAlignment)
         {
-            _diagnostics.ReportQueryUnsupportedType(query.Subject.Span, operatorName, variable.Type.Name);
+            _diagnostics.Report(new QueryUnsupportedTypeError(_diagnostics.CurrentSource, query.Subject.Span, operatorName, variable.Type.Name));
             return new BoundErrorExpression(query.Span);
         }
 
@@ -4176,13 +4172,13 @@ public sealed class Binder
             };
         }
 
-        _diagnostics.ReportInvalidMemorySpaceArgument(span);
+        _diagnostics.Report(new InvalidMemorySpaceArgumentError(_diagnostics.CurrentSource, span));
         return null;
     }
 
     private VariableStorageClass? ReportInvalidMemorySpace(TextSpan span)
     {
-        _diagnostics.ReportInvalidMemorySpaceArgument(span);
+        _diagnostics.Report(new InvalidMemorySpaceArgumentError(_diagnostics.CurrentSource, span));
         return null;
     }
 
@@ -4205,7 +4201,7 @@ public sealed class Binder
         {
             if (arguments.Count != function.Parameters.Count)
             {
-                _diagnostics.ReportArgumentCountMismatch(callSiteSpan, function.Name, function.Parameters.Count, arguments.Count);
+                _diagnostics.Report(new ArgumentCountMismatchError(_diagnostics.CurrentSource, callSiteSpan, function.Name, function.Parameters.Count, arguments.Count));
             }
 
             List<BoundExpression> positionalArguments = new(arguments.Count);
@@ -4234,7 +4230,7 @@ public sealed class Binder
                 int parameterIndex = FindParameterIndex(function, namedArgument.Name.Text);
                 if (parameterIndex < 0)
                 {
-                    _diagnostics.ReportUnknownNamedArgument(namedArgument.Name.Span, function.Name, namedArgument.Name.Text);
+                    _diagnostics.Report(new UnknownNamedArgumentError(_diagnostics.CurrentSource, namedArgument.Name.Span, function.Name, namedArgument.Name.Text));
                     _ = BindExpression(namedArgument.Value);
                     continue;
                 }
@@ -4245,11 +4241,11 @@ public sealed class Binder
                 {
                     if (filledByNamed[parameterIndex])
                     {
-                        _diagnostics.ReportDuplicateNamedArgument(namedArgument.Name.Span, namedArgument.Name.Text);
+                        _diagnostics.Report(new DuplicateNamedArgumentError(_diagnostics.CurrentSource, namedArgument.Name.Span, namedArgument.Name.Text));
                     }
                     else
                     {
-                        _diagnostics.ReportNamedArgumentConflictsWithPositional(namedArgument.Name.Span, namedArgument.Name.Text);
+                        _diagnostics.Report(new NamedArgumentConflictsWithPositionalError(_diagnostics.CurrentSource, namedArgument.Name.Span, namedArgument.Name.Text));
                     }
 
                     continue;
@@ -4265,7 +4261,7 @@ public sealed class Binder
 
             if (sawNamedArgument)
             {
-                _diagnostics.ReportPositionalArgumentAfterNamed(argument.Span, function.Name);
+                _diagnostics.Report(new PositionalArgumentAfterNamedError(_diagnostics.CurrentSource, argument.Span, function.Name));
                 _ = BindExpression(argument);
                 continue;
             }
@@ -4286,7 +4282,7 @@ public sealed class Binder
 
         if (filledCount != function.Parameters.Count)
         {
-            _diagnostics.ReportArgumentCountMismatch(callSiteSpan, function.Name, function.Parameters.Count, filledCount);
+            _diagnostics.Report(new ArgumentCountMismatchError(_diagnostics.CurrentSource, callSiteSpan, function.Name, function.Parameters.Count, filledCount));
         }
 
         List<BoundExpression> boundArguments = new(function.Parameters.Count);
@@ -4349,7 +4345,7 @@ public sealed class Binder
         {
             if (!targetPointer.IsConst)
             {
-                _diagnostics.ReportStringToNonConstPointer(span);
+                _diagnostics.Report(new StringToNonConstPointerError(_diagnostics.CurrentSource, span));
                 return new BoundErrorExpression(span);
             }
 
@@ -4359,7 +4355,7 @@ public sealed class Binder
         if (!IsAssignable(targetType, expression.Type))
         {
             if (reportMismatch)
-                _diagnostics.ReportTypeMismatch(span, targetType.Name, expression.Type.Name);
+                _diagnostics.Report(new TypeMismatchError(_diagnostics.CurrentSource, span, targetType.Name, expression.Type.Name));
             return new BoundErrorExpression(span);
         }
 
@@ -4389,11 +4385,7 @@ public sealed class Binder
         if (BladeValue.TryConvert(BladeValue.IntegerLiteral(exactValue), targetType, out BladeValue truncatedValue) != EvaluationError.None)
             return;
 
-        _diagnostics.ReportComptimeIntegerTruncation(
-            span,
-            exactValue.ToString(CultureInfo.InvariantCulture),
-            targetType.Name,
-            truncatedValue.Format());
+        _diagnostics.Report(new ComptimeIntegerTruncationWarning(_diagnostics.CurrentSource, span, exactValue.ToString(CultureInfo.InvariantCulture), targetType.Name, truncatedValue.Format()));
     }
 
     private static bool TryGetCompileTimeIntegerWidth(BladeType type, out int width)
@@ -4485,10 +4477,10 @@ public sealed class Binder
     {
         bool isConst = declaration.MutabilityKeyword.Kind == TokenKind.ConstKeyword;
         if (declaration.ExternKeyword is Token externKeyword)
-            _diagnostics.ReportInvalidExternScope(externKeyword.Span);
+            _diagnostics.Report(new InvalidExternScopeError(_diagnostics.CurrentSource, externKeyword.Span));
 
         if (declaration.StorageClassKeyword is Token storageClassKeyword)
-            _diagnostics.ReportInvalidLocalStorageClass(storageClassKeyword.Span, storageClassKeyword.Text);
+            _diagnostics.Report(new InvalidLocalStorageClassError(_diagnostics.CurrentSource, storageClassKeyword.Span, storageClassKeyword.Text));
 
         return new LocalVariableSymbol(
             declaration.Name.Text,
@@ -4539,7 +4531,7 @@ public sealed class Binder
         {
             Assert.Invariant(declaration.StorageClassKeyword is not null, "Stored declarations must carry a storage-class token.");
             Token storageClassKeyword = declaration.StorageClassKeyword!.Value;
-            _diagnostics.ReportUnsupportedGlobalStorage(storageClassKeyword.Span, storageClassKeyword.Text);
+            _diagnostics.Report(new UnsupportedGlobalStorageError(_diagnostics.CurrentSource, storageClassKeyword.Span, storageClassKeyword.Text));
         }
 
         return false;
@@ -4552,7 +4544,7 @@ public sealed class Binder
             return explicitStorageClass;
 
         if (!_suppressPointerStorageClassDiagnostics)
-            _diagnostics.ReportPointerStorageClassRequired(span);
+            _diagnostics.Report(new PointerStorageClassRequiredError(_diagnostics.CurrentSource, span));
         return VariableStorageClass.Cog;
     }
 
@@ -4573,7 +4565,7 @@ public sealed class Binder
         bound = RequireComptimeExpression(bound, span);
         int? value = TryEvaluateConstantInt(bound);
         if (value is null && bound is not BoundErrorExpression)
-            _diagnostics.ReportTypeMismatch(span, "comptime integer", bound.Type.Name);
+            _diagnostics.Report(new TypeMismatchError(_diagnostics.CurrentSource, span, "comptime integer", bound.Type.Name));
         return value;
     }
 
@@ -4643,7 +4635,7 @@ public sealed class Binder
         if (BuiltinTypes.TryGet(keywordToken.Text, out BladeType type))
             return type;
 
-        _diagnostics.ReportUndefinedType(keywordToken.Span, keywordToken.Text);
+        _diagnostics.Report(new UndefinedTypeError(_diagnostics.CurrentSource, keywordToken.Span, keywordToken.Text));
         return BuiltinTypes.Unknown;
     }
 
@@ -4651,7 +4643,7 @@ public sealed class Binder
     {
         BoundExpression width = BindExpression(genericType.Width);
         if (width.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
-            _diagnostics.ReportTypeMismatch(genericType.Width.Span, "integer", width.Type.Name);
+            _diagnostics.Report(new TypeMismatchError(_diagnostics.CurrentSource, genericType.Width.Span, "integer", width.Type.Name));
 
         return genericType.Keyword.Kind == TokenKind.UintKeyword ? BuiltinTypes.Uint : BuiltinTypes.Int;
     }
@@ -4660,7 +4652,7 @@ public sealed class Binder
     {
         BoundExpression size = BindExpression(arrayType.Size);
         if (size.Type is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
-            _diagnostics.ReportTypeMismatch(arrayType.Size.Span, "integer", size.Type.Name);
+            _diagnostics.Report(new TypeMismatchError(_diagnostics.CurrentSource, arrayType.Size.Span, "integer", size.Type.Name));
 
         BladeType elementType = BindType(arrayType.ElementType);
         return new ArrayTypeSymbol(elementType, TryEvaluateConstantInt(size));
@@ -4677,7 +4669,7 @@ public sealed class Binder
             BladeType fieldType = BindType(field.Type);
             if (!fields.TryAdd(field.Name.Text, fieldType))
             {
-                _diagnostics.ReportSymbolAlreadyDeclared(field.Name.Span, field.Name.Text);
+                _diagnostics.Report(new SymbolAlreadyDeclaredError(_diagnostics.CurrentSource, field.Name.Span, field.Name.Text));
                 continue;
             }
 
@@ -4706,7 +4698,7 @@ public sealed class Binder
             BladeType fieldType = BindType(field.Type);
             if (!fields.TryAdd(field.Name.Text, fieldType))
             {
-                _diagnostics.ReportSymbolAlreadyDeclared(field.Name.Span, field.Name.Text);
+                _diagnostics.Report(new SymbolAlreadyDeclaredError(_diagnostics.CurrentSource, field.Name.Span, field.Name.Text));
                 continue;
             }
 
@@ -4725,7 +4717,7 @@ public sealed class Binder
     {
         BladeType backingType = BindType(enumTypeSyntax.BackingType);
         if (backingType is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
-            _diagnostics.ReportTypeMismatch(enumTypeSyntax.BackingType.Span, "integer", backingType.Name);
+            _diagnostics.Report(new TypeMismatchError(_diagnostics.CurrentSource, enumTypeSyntax.BackingType.Span, "integer", backingType.Name));
 
         Dictionary<string, long> members = new(StringComparer.Ordinal);
         long nextValue = 0;
@@ -4742,7 +4734,7 @@ public sealed class Binder
 
             if (members.ContainsKey(member.Name.Text))
             {
-                _diagnostics.ReportSymbolAlreadyDeclared(member.Name.Span, member.Name.Text);
+                _diagnostics.Report(new SymbolAlreadyDeclaredError(_diagnostics.CurrentSource, member.Name.Span, member.Name.Text));
                 continue;
             }
 
@@ -4754,7 +4746,7 @@ public sealed class Binder
                 int? constantValue = TryEvaluateConstantInt(boundValue);
                 if (constantValue is null)
                 {
-                    _diagnostics.ReportTypeMismatch(member.Value.Span, "comptime integer", boundValue.Type.Name);
+                    _diagnostics.Report(new TypeMismatchError(_diagnostics.CurrentSource, member.Value.Span, "comptime integer", boundValue.Type.Name));
                     value = nextValue;
                 }
                 else
@@ -4782,7 +4774,7 @@ public sealed class Binder
     {
         BladeType backingType = BindType(bitfieldTypeSyntax.BackingType);
         if (backingType is not IntegerLiteralTypeSymbol and not IntegerTypeSymbol and not EnumTypeSymbol and not BitfieldTypeSymbol)
-            _diagnostics.ReportTypeMismatch(bitfieldTypeSyntax.BackingType.Span, "integer", backingType.Name);
+            _diagnostics.Report(new TypeMismatchError(_diagnostics.CurrentSource, bitfieldTypeSyntax.BackingType.Span, "integer", backingType.Name));
 
         Dictionary<string, BladeType> fields = new(StringComparer.Ordinal);
         Dictionary<string, AggregateMemberSymbol> members = new(StringComparer.Ordinal);
@@ -4794,18 +4786,18 @@ public sealed class Binder
             BladeType fieldType = BindType(field.Type);
             if (!fields.TryAdd(field.Name.Text, fieldType))
             {
-                _diagnostics.ReportSymbolAlreadyDeclared(field.Name.Span, field.Name.Text);
+                _diagnostics.Report(new SymbolAlreadyDeclaredError(_diagnostics.CurrentSource, field.Name.Span, field.Name.Text));
                 continue;
             }
 
             if (fieldType is not RuntimeTypeSymbol { BitfieldFieldWidthBits: int fieldWidth })
             {
-                _diagnostics.ReportTypeMismatch(field.Type.Span, "bitfield scalar", fieldType.Name);
+                _diagnostics.Report(new TypeMismatchError(_diagnostics.CurrentSource, field.Type.Span, "bitfield scalar", fieldType.Name));
                 fieldWidth = 0;
             }
 
             if (bitOffset + fieldWidth > backingWidth)
-                _diagnostics.ReportBitfieldWidthOverflow(field.Span, aliasName ?? "<anon-bitfield>", field.Name.Text, bitOffset + fieldWidth, backingWidth);
+                _diagnostics.Report(new BitfieldWidthOverflowError(_diagnostics.CurrentSource, field.Span, aliasName ?? "<anon-bitfield>", field.Name.Text, bitOffset + fieldWidth, backingWidth));
 
             members[field.Name.Text] = new AggregateMemberSymbol(field.Name.Text, fieldType, byteOffset: 0, bitOffset, fieldWidth, isBitfield: true);
             bitOffset += fieldWidth;
@@ -4833,7 +4825,7 @@ public sealed class Binder
         Token root = qualifiedType.Parts[0];
         if (!_globalScope.TryLookup(root.Text, out Symbol? symbol) || symbol is not ModuleSymbol moduleSymbol)
         {
-            _diagnostics.ReportUndefinedType(qualifiedType.Span, qualifiedName);
+            _diagnostics.Report(new UndefinedTypeError(_diagnostics.CurrentSource, qualifiedType.Span, qualifiedName));
             return BuiltinTypes.Unknown;
         }
 
@@ -4844,7 +4836,7 @@ public sealed class Binder
             if (!module.ExportedSymbols.TryGetValue(segment.Text, out Symbol? nestedSymbol)
                 || nestedSymbol is not ModuleSymbol nestedModule)
             {
-                _diagnostics.ReportUndefinedType(segment.Span, qualifiedName);
+                _diagnostics.Report(new UndefinedTypeError(_diagnostics.CurrentSource, segment.Span, qualifiedName));
                 return BuiltinTypes.Unknown;
             }
 
@@ -4855,7 +4847,7 @@ public sealed class Binder
         if (!module.ExportedSymbols.TryGetValue(finalSegment.Text, out Symbol? resolvedSymbol)
             || resolvedSymbol is not TypeSymbol resolvedType)
         {
-            _diagnostics.ReportUndefinedType(finalSegment.Span, qualifiedName);
+            _diagnostics.Report(new UndefinedTypeError(_diagnostics.CurrentSource, finalSegment.Span, qualifiedName));
             return BuiltinTypes.Unknown;
         }
 
@@ -4874,7 +4866,7 @@ public sealed class Binder
 
         if (!_typeAliasResolutionStack.Add(alias.Name))
         {
-            _diagnostics.ReportUndefinedType(span, alias.Name);
+            _diagnostics.Report(new UndefinedTypeError(_diagnostics.CurrentSource, span, alias.Name));
             return BuiltinTypes.Unknown;
         }
 
@@ -4889,7 +4881,7 @@ public sealed class Binder
     {
         if (!_typeAliases.TryGetValue(aliasName, out TypeSymbol? alias))
         {
-            _diagnostics.ReportUndefinedType(span, aliasName);
+            _diagnostics.Report(new UndefinedTypeError(_diagnostics.CurrentSource, span, aliasName));
             return BuiltinTypes.Unknown;
         }
 

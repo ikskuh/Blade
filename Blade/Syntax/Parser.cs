@@ -44,7 +44,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
             return NextToken();
 
         string expected = SyntaxFacts.GetText(kind) ?? kind.ToString();
-        Diagnostics.ReportUnexpectedToken(Current.Span, $"'{expected}'", Current.Text);
+        Diagnostics.Report(new UnexpectedTokenError(Diagnostics.CurrentSource, Current.Span, $"'{expected}'", Current.Text));
         return new Token(kind, new TextSpan(Current.Span.Start, 0), "");
     }
 
@@ -143,7 +143,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
 
     private MemberSyntax ParseUnexpectedTopLevelMember()
     {
-        Diagnostics.ReportUnexpectedToken(Current.Span, "top-level declaration", Current.Text);
+        Diagnostics.Report(new UnexpectedTokenError(Diagnostics.CurrentSource, Current.Span, "top-level declaration", Current.Text));
         return ParseGlobalStatement();
     }
 
@@ -192,7 +192,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
             }
             else
             {
-                Diagnostics.ReportUnexpectedToken(Current.Span, "variable declaration", Current.Text);
+                Diagnostics.Report(new UnexpectedTokenError(Diagnostics.CurrentSource, Current.Span, "variable declaration", Current.Text));
                 SkipInvalidLayoutBodyItem();
             }
 
@@ -224,7 +224,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
                 while (Current.Kind == TokenKind.Comma)
                 {
                     Token extraComma = NextToken();
-                    Diagnostics.ReportUnexpectedToken(extraComma.Span, "')'", extraComma.Text);
+                    Diagnostics.Report(new UnexpectedTokenError(Diagnostics.CurrentSource, extraComma.Span, "')'", extraComma.Text));
                     ParseTaskParameter();
                 }
             }
@@ -305,13 +305,13 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
     {
         if (Current.Kind == TokenKind.LayoutKeyword)
         {
-            Diagnostics.ReportUnexpectedToken(Current.Span, "statement or task declaration item", Current.Text);
+            Diagnostics.Report(new UnexpectedTokenError(Diagnostics.CurrentSource, Current.Span, "statement or task declaration item", Current.Text));
             return ParseLayoutDeclaration();
         }
 
         if (IsTaskDeclarationStart())
         {
-            Diagnostics.ReportUnexpectedToken(Current.Span, "statement or task declaration item", Current.Text);
+            Diagnostics.Report(new UnexpectedTokenError(Diagnostics.CurrentSource, Current.Span, "statement or task declaration item", Current.Text));
             return ParseTaskDeclaration();
         }
 
@@ -495,7 +495,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
                 if (storageClassKeyword is null)
                     storageClassKeyword = storageClass;
                 else
-                    Diagnostics.ReportUnexpectedToken(storageClass.Span, "'fn'", storageClass.Text);
+                    Diagnostics.Report(new UnexpectedTokenError(Diagnostics.CurrentSource, storageClass.Span, "'fn'", storageClass.Text));
 
                 continue;
             }
@@ -506,7 +506,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
                 if (asmKeyword is null)
                     asmKeyword = asm;
                 else
-                    Diagnostics.ReportUnexpectedToken(asm.Span, "'fn'", asm.Text);
+                    Diagnostics.Report(new UnexpectedTokenError(Diagnostics.CurrentSource, asm.Span, "'fn'", asm.Text));
 
                 continue;
             }
@@ -517,7 +517,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
                 if (volatileKeyword is null)
                     volatileKeyword = volatileToken;
                 else
-                    Diagnostics.ReportUnexpectedToken(volatileToken.Span, "'fn'", volatileToken.Text);
+                    Diagnostics.Report(new UnexpectedTokenError(Diagnostics.CurrentSource, volatileToken.Span, "'fn'", volatileToken.Text));
 
                 continue;
             }
@@ -525,7 +525,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
             Token modifier = NextToken();
             if (!IsFunctionModifierKeyword(modifier.Kind))
             {
-                Diagnostics.ReportUnexpectedToken(modifier.Span, "'fn'", modifier.Text);
+                Diagnostics.Report(new UnexpectedTokenError(Diagnostics.CurrentSource, modifier.Span, "'fn'", modifier.Text));
                 continue;
             }
 
@@ -534,7 +534,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
             if (IsCallingConventionModifier(modifier.Kind))
             {
                 if (callingConventionModifier is not null)
-                    Diagnostics.ReportUnexpectedToken(modifier.Span, "'fn'", modifier.Text);
+                    Diagnostics.Report(new UnexpectedTokenError(Diagnostics.CurrentSource, modifier.Span, "'fn'", modifier.Text));
                 else
                     callingConventionModifier = modifier;
             }
@@ -542,7 +542,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
             {
                 Assert.Invariant(IsInliningModifier(modifier.Kind), "Function modifier must be calling-convention or inlining related.");
                 if (inliningModifier is not null)
-                    Diagnostics.ReportUnexpectedToken(modifier.Span, "'fn'", modifier.Text);
+                    Diagnostics.Report(new UnexpectedTokenError(Diagnostics.CurrentSource, modifier.Span, "'fn'", modifier.Text));
                 else
                     inliningModifier = modifier;
             }
@@ -551,11 +551,11 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
         if (inliningModifier?.Kind == TokenKind.InlineKeyword
             && callingConventionModifier is not null)
         {
-            Diagnostics.ReportUnexpectedToken(inliningModifier.Value.Span, "'fn'", inliningModifier.Value.Text);
+            Diagnostics.Report(new UnexpectedTokenError(Diagnostics.CurrentSource, inliningModifier.Value.Span, "'fn'", inliningModifier.Value.Text));
         }
 
         if (volatileKeyword is not null && asmKeyword is null)
-            Diagnostics.ReportUnexpectedToken(volatileKeyword.Value.Span, "'fn'", volatileKeyword.Value.Text);
+            Diagnostics.Report(new UnexpectedTokenError(Diagnostics.CurrentSource, volatileKeyword.Value.Span, "'fn'", volatileKeyword.Value.Text));
 
         return new FunctionPrefix(storageClassKeyword, asmKeyword, volatileKeyword, modifiers);
     }
@@ -622,7 +622,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
 
     private FunctionMetadataPropertySyntax ParseUnexpectedFunctionMetadataProperty()
     {
-        Diagnostics.ReportUnexpectedToken(Current.Span, "function metadata property", Current.Text);
+        Diagnostics.Report(new UnexpectedTokenError(Diagnostics.CurrentSource, Current.Span, "function metadata property", Current.Text));
         Token unexpected = NextToken();
         return new FunctionAlignPropertySyntax(new AlignClauseSyntax(unexpected, unexpected, new NameExpressionSyntax(unexpected), unexpected));
     }
@@ -768,7 +768,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
                     if (atClause is null)
                         atClause = parsedAtClause;
                     else
-                        Diagnostics.ReportDuplicateVariableClause(parsedAtClause.Span, "@(...)");
+                        Diagnostics.Report(new DuplicateVariableClauseError(Diagnostics.CurrentSource, parsedAtClause.Span, "@(...)"));
                     break;
                 }
                 case TokenKind.AlignKeyword:
@@ -781,7 +781,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
                     if (alignClause is null)
                         alignClause = parsedAlignClause;
                     else
-                        Diagnostics.ReportDuplicateVariableClause(parsedAlignClause.Span, "align(...)");
+                        Diagnostics.Report(new DuplicateVariableClauseError(Diagnostics.CurrentSource, parsedAlignClause.Span, "align(...)"));
                     break;
                 }
                 case TokenKind.Equal:
@@ -796,7 +796,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
                     else
                     {
                         TextSpan span = TextSpan.FromBounds(parsedEqualsToken.Span.Start, parsedInitializer.Span.End);
-                        Diagnostics.ReportDuplicateVariableClause(span, "= ...");
+                        Diagnostics.Report(new DuplicateVariableClauseError(Diagnostics.CurrentSource, span, "= ..."));
                     }
                     break;
                 }
@@ -1031,7 +1031,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
             }
             else
             {
-                Diagnostics.ReportUnexpectedToken(Current.Span, "string literal", Current.Text);
+                Diagnostics.Report(new UnexpectedTokenError(Diagnostics.CurrentSource, Current.Span, "string literal", Current.Text));
                 if (Current.Kind is not TokenKind.Semicolon and not TokenKind.EndOfFile)
                     NextToken();
             }
@@ -1245,7 +1245,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
             TextSpan span = tokens.Count > 0
                 ? TextSpan.FromBounds(tokens[0].Span.Start, tokens[^1].Span.End)
                 : new TextSpan(0, 0);
-            Diagnostics.ReportInlineAsmEmptyInstruction(span);
+            Diagnostics.Report(new InlineAsmEmptyInstructionError(Diagnostics.CurrentSource, span));
             return null;
         }
 
@@ -1282,7 +1282,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
 
         if (i != tokens.Count)
         {
-            Diagnostics.ReportInlineAsmEmptyInstruction(tokens[i].Span);
+            Diagnostics.Report(new InlineAsmEmptyInstructionError(Diagnostics.CurrentSource, tokens[i].Span));
             return null;
         }
 
@@ -1294,7 +1294,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
         consumed = 0;
         if (index >= tokens.Count)
         {
-            Diagnostics.ReportInlineAsmEmptyInstruction(tokens[^1].Span);
+            Diagnostics.Report(new InlineAsmEmptyInstructionError(Diagnostics.CurrentSource, tokens[^1].Span));
             return null;
         }
 
@@ -1308,7 +1308,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
                 List<Token> path = [];
                 if (j >= tokens.Count || tokens[j].Text.Length == 0)
                 {
-                    Diagnostics.ReportInlineAsmEmptyInstruction(first.Span);
+                    Diagnostics.Report(new InlineAsmEmptyInstructionError(Diagnostics.CurrentSource, first.Span));
                     return null;
                 }
                 path.Add(tokens[j++]);
@@ -1319,7 +1319,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
                 }
                 if (j >= tokens.Count || tokens[j].Kind != TokenKind.CloseBrace)
                 {
-                    Diagnostics.ReportInlineAsmEmptyInstruction(first.Span);
+                    Diagnostics.Report(new InlineAsmEmptyInstructionError(Diagnostics.CurrentSource, first.Span));
                     return null;
                 }
                 consumed = (j - index) + 1;
@@ -1330,7 +1330,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
             {
                 if (index + 1 >= tokens.Count || tokens[index + 1].Kind != TokenKind.IntegerLiteral)
                 {
-                    Diagnostics.ReportInlineAsmEmptyInstruction(first.Span);
+                    Diagnostics.Report(new InlineAsmEmptyInstructionError(Diagnostics.CurrentSource, first.Span));
                     return null;
                 }
                 consumed = 2;
@@ -1355,7 +1355,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
             {
                 if (index + 1 >= tokens.Count || tokens[index + 1].Kind != TokenKind.IntegerLiteral)
                 {
-                    Diagnostics.ReportInlineAsmEmptyInstruction(first.Span);
+                    Diagnostics.Report(new InlineAsmEmptyInstructionError(Diagnostics.CurrentSource, first.Span));
                     return null;
                 }
                 consumed = 2;
@@ -1371,7 +1371,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
                 return new InlineAsmSymbolOperandSyntax(first);
 
             default:
-                Diagnostics.ReportInlineAsmEmptyInstruction(first.Span);
+                Diagnostics.Report(new InlineAsmEmptyInstructionError(Diagnostics.CurrentSource, first.Span));
                 return null;
         }
     }
@@ -1407,7 +1407,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
 
         Token semicolon = MatchToken(TokenKind.Semicolon);
         if (!IsValidExpressionStatement(expression))
-            Diagnostics.ReportExpressionNotAStatement(expression.Span);
+            Diagnostics.Report(new ExpressionNotAStatementError(Diagnostics.CurrentSource, expression.Span));
 
         return new ExpressionStatementSyntax(expression, semicolon);
     }
@@ -1475,7 +1475,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
             }
 
             default:
-                Diagnostics.ReportExpectedTypeName(Current.Span);
+                Diagnostics.Report(new ExpectedTypeNameError(Diagnostics.CurrentSource, Current.Span));
                 return new NamedTypeSyntax(new Token(TokenKind.Identifier, new TextSpan(Current.Span.Start, 0), ""));
         }
     }
@@ -1853,7 +1853,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
                 return ParseIfExpression();
 
             default:
-                Diagnostics.ReportExpectedExpression(Current.Span);
+                Diagnostics.Report(new ExpectedExpressionError(Diagnostics.CurrentSource, Current.Span));
                 return new LiteralExpressionSyntax(
                     new Token(TokenKind.IntegerLiteral, new TextSpan(Current.Span.Start, 0), "", BladeValue.IntegerLiteral(0L)));
         }
