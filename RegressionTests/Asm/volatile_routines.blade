@@ -1,0 +1,37 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - SETQ _r492
+// - XINIT _r491, #0
+// SEQUENCE:
+// - WAITX _r492
+// - NOP
+// - NOP
+// NOTE:
+//   asm volatile is useful when the exact instruction text and ordering must be preserved.
+
+cog task main {
+    cog var mode_word: u32 = 0x1234;
+    cog var transfer_count: u32 = 4;
+    cog var pulse_width: u32 = 32;
+
+    fn start_streamer(mode: u32, count: u32) void {
+        asm volatile {
+            // Keep this exact sequence as written.
+            SETQ  {count}
+            XINIT {mode}, #0
+        };
+    }
+
+    fn fixed_delay(cycles: u32) void {
+        asm volatile {
+            // Hand-written timing pad; preserve spacing and comments.
+            WAITX {cycles}
+            NOP
+            NOP
+        };
+    }
+
+    start_streamer(mode_word, transfer_count);
+    fixed_delay(pulse_width);
+}

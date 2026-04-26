@@ -1,0 +1,24 @@
+// EXPECT: pass
+// STAGE: final-asm
+// SEQUENCE:
+// - MOV
+// - ADD
+// - MOV
+// NOTE:
+//   Inline asm `%N` temporaries act as block-local scratch registers.
+
+cog task main {
+    fn build_value() -> u32 {
+        var out: u32 = 0;
+        asm {
+            MOV %0, #10
+            ADD %0, #20
+            MOV %1, %0
+            MOV {out}, %1
+        };
+        return out;
+    }
+
+    cog var result: u32 = 0;
+    result = build_value();
+}

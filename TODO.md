@@ -354,6 +354,11 @@ Right now `Demonstrators/HwTest/hw_struct_literal_lowering.blade` only tests the
 
 see generated code
 
+## Rework total semantics of test fixtures
+
+- `SEQUENCE:` mus allow `?` and `?n`
+- Multiple `SEQUENCE:` must be allowed and validated independently
+
 ## Arbitrarily sized integers
 
 `cog var c: uint(5) = 0;` in `RegressionTests/TestSuiteExport/accept/types.blade` is not sanctioned right now.

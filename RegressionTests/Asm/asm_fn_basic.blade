@@ -9,17 +9,19 @@
 //   and volatile with no parameters or return.
 //   Both functions are single-caller leaves, so they get inlined into $top.
 
-cog var result: u32 = 0;
+cog task main {
+    cog var result: u32 = 0;
 
-asm fn add_vals(a: u32, b: u32) -> u32 {
-    MOV {return}, {a}
-    ADD {return}, {b}
+    asm fn add_vals(a: u32, b: u32) -> u32 {
+        MOV {return}, {a}
+        ADD {return}, {b}
+    }
+
+    asm volatile fn nop_pad() {
+        NOP
+        NOP
+    }
+
+    result = add_vals(10, 20);
+    nop_pad();
 }
-
-asm volatile fn nop_pad() {
-    NOP
-    NOP
-}
-
-result = add_vals(10, 20);
-nop_pad();

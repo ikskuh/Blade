@@ -7,11 +7,13 @@
 //   Covers inline asm lowering with labels and comments.
 //   Exercises AsmLowerer L918-923 (label lowering with comments).
 
-asm {
-    // comment before label
-    NOP
-  loop_start:
-    // comment after label
-    NOP
-    JMP #loop_start
-};
+cog task main {
+  asm {
+      // comment before label
+      NOP
+    loop_start:
+      // comment after label
+      NOP
+      JMP #loop_start
+  };
+}

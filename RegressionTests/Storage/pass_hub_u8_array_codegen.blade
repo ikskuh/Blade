@@ -7,7 +7,10 @@
 //   Hub u8 array access uses RDBYTE/WRBYTE (no index scaling needed for byte-sized elements).
 
 hub var buf: [8]u8 = undefined;
-cog var sink: u32 = 0;
 
-sink = buf[3];
-buf[0] = 0xFF;
+cog task main {
+    cog var sink: u32 = 0;
+
+    sink = buf[3];
+    buf[0] = 0xFF;
+}

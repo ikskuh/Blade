@@ -5,7 +5,10 @@
 // NOTE:
 //   lut const variables may be folded directly into immediates.
 
-lut const table: u32 = 0xFF;
-cog var sink: u32 = 0;
 
-sink = table;
+cog task main {
+    lut const table: u32 = 0xFF;
+    cog var sink: u32 = 0;
+
+    sink = table;
+}

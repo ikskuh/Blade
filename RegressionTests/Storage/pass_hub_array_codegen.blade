@@ -9,7 +9,10 @@
 //   Uses undefined init because array literal lowering is not yet implemented.
 
 hub var data: [4]u32 = undefined;
-cog var sink: u32 = 0;
 
-sink = data[2];
-data[0] = 42;
+cog task main {
+    cog var sink: u32 = 0;
+
+    sink = data[2];
+    data[0] = 42;
+}

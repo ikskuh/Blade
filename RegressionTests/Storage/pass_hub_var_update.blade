@@ -9,4 +9,6 @@
 
 hub var counter: u32 = 0;
 
-counter += 1;
+cog task main {
+    counter += 1;
+}

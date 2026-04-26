@@ -6,6 +6,9 @@
 //   hub const variables may be folded directly into immediates.
 
 hub const config: u32 = 0xDEAD;
-cog var sink: u32 = 0;
 
-sink = config;
+cog task main {
+    cog var sink: u32 = 0;
+
+    sink = config;
+}

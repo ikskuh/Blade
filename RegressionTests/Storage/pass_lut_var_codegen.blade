@@ -6,8 +6,11 @@
 // NOTE:
 //   Basic lut var read and write emit RDLUT/WRLUT instructions.
 
-lut var buffer: u32 = 42;
-cog var sink: u32 = 0;
 
-sink = buffer;
-buffer = 7;
+cog task main {
+    lut var buffer: u32 = 42;
+    cog var sink: u32 = 0;
+
+    sink = buffer;
+    buffer = 7;
+}
