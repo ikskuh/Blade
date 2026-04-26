@@ -1,9 +1,9 @@
 // EXPECT: fail
-// DIAGNOSTICS: E0260, E0205
+// DIAGNOSTICS: RangeIterationRequiresBinding, TypeMismatch
 // NOTE:
-//   Covers range iteration without binding (E0260) and mutable range binding (E0205).
+//   Covers range iteration without binding (RangeIterationRequiresBinding) and mutable range binding (TypeMismatch).
 
-// Range iteration without a binding variable requires E0260
+// Range iteration without a binding variable requires RangeIterationRequiresBinding
 fn test_range_no_binding() {
     for(0..<10) {
     }

@@ -1,5 +1,5 @@
 // EXPECT: fail
-// DIAGNOSTICS: E0250, E0251, E0253, E0254
+// DIAGNOSTICS: MemoryofRequiresVariable, QueryRequiresMemorySpace, QueryAutomaticLocal, InvalidMemorySpaceArgument
 // NOTE:
 //   Covers query expression edge cases for sizeof, alignof, memoryof.
 //   Exercises uncovered branches in BindOneArgQueryExpression and BindTwoArgQueryExpression.
@@ -32,17 +32,17 @@ fn test_sizeof_invalid_memspace() -> u32 {
     return sizeof(u32, 99);
 }
 
-// alignof of type requires a memory space argument (E0251)
+// alignof of type requires a memory space argument (QueryRequiresMemorySpace)
 fn test_alignof_type_no_memspace() -> u32 {
     return alignof(u32);
 }
 
-// sizeof on a parameter (automatic, E0253)
+// sizeof on a parameter (automatic, QueryAutomaticLocal)
 fn test_sizeof_param(p: u32) -> u32 {
     return sizeof(p);
 }
 
-// memoryof on a non-variable symbol (function name, E0250)
+// memoryof on a non-variable symbol (function name, MemoryofRequiresVariable)
 fn some_func() -> u32 {
     return 0;
 }

@@ -1,9 +1,9 @@
 // EXPECT: fail
-// DIAGNOSTICS: E0255, E0241
+// DIAGNOSTICS: AssertionFailed, ComptimeValueRequired
 // NOTE:
 //   Covers assert failure and non-evaluable assert paths.
-//   E0255 = static assertion that evaluates to false.
-//   E0241 = assert with runtime value that can't be evaluated at compile time.
+//   AssertionFailed = static assertion that evaluates to false.
+//   ComptimeValueRequired = assert with runtime value that can't be evaluated at compile time.
 
 // Static assertion that fails
 assert(1 == 2);

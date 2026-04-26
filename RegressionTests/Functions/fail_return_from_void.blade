@@ -1,9 +1,9 @@
 // EXPECT: fail
 // DIAGNOSTICS:
-// - E0212
+// - ReturnValueCountMismatch
 
 fn returns_void() {
-    return 10; // must emit E0212
+    return 10; // must emit ReturnValueCountMismatch
 }
 
 cog task main {}

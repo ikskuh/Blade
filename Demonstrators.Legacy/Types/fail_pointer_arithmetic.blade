@@ -1,9 +1,9 @@
 // EXPECT: fail
 // DIAGNOSTICS:
-// - L12, E0257
-// - L13, E0257
-// - L14, E0258
-// - L15, E0257
+// - L12, InvalidPointerArithmetic
+// - L13, InvalidPointerArithmetic
+// - L14, IncompatiblePointerSubtraction
+// - L15, InvalidPointerArithmetic
 // NOTE:
 //   Pointer arithmetic is limited to '[*]' pointers with integer deltas, and
 //   pointer subtraction requires matching element types and memory spaces.

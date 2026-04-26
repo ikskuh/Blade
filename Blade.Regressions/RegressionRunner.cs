@@ -275,7 +275,7 @@ public sealed class RegressionExpectation
         IReadOnlyList<SnippetItem> containsSnippets,
         IReadOnlyList<SnippetItem> sequenceSnippets,
         string? exactText,
-        IReadOnlyList<string> looseDiagnosticCodes,
+        IReadOnlyList<string> looseDiagnosticNames,
         IReadOnlyList<ExpectedDiagnostic> exactDiagnostics,
         FlexspinExpectation flexspinExpectation,
         IReadOnlyList<string> compilerArgs,
@@ -286,7 +286,7 @@ public sealed class RegressionExpectation
         ContainsSnippets = containsSnippets;
         SequenceSnippets = sequenceSnippets;
         ExactText = exactText;
-        LooseDiagnosticCodes = looseDiagnosticCodes;
+        LooseDiagnosticNames = looseDiagnosticNames;
         ExactDiagnostics = exactDiagnostics;
         FlexspinExpectation = flexspinExpectation;
         CompilerArgs = compilerArgs;
@@ -298,25 +298,25 @@ public sealed class RegressionExpectation
     public IReadOnlyList<SnippetItem> ContainsSnippets { get; }
     public IReadOnlyList<SnippetItem> SequenceSnippets { get; }
     public string? ExactText { get; }
-    public IReadOnlyList<string> LooseDiagnosticCodes { get; }
+    public IReadOnlyList<string> LooseDiagnosticNames { get; }
     public IReadOnlyList<ExpectedDiagnostic> ExactDiagnostics { get; }
     public FlexspinExpectation FlexspinExpectation { get; }
     public IReadOnlyList<string> CompilerArgs { get; }
     public IReadOnlyList<HardwareRunExpectation> HardwareRuns { get; }
     public bool HasCodeAssertions => ContainsSnippets.Count > 0 || SequenceSnippets.Count > 0 || ExactText is not null;
-    public bool HasDiagnosticAssertions => LooseDiagnosticCodes.Count > 0 || ExactDiagnostics.Count > 0;
+    public bool HasDiagnosticAssertions => LooseDiagnosticNames.Count > 0 || ExactDiagnostics.Count > 0;
 }
 
 public sealed class ExpectedDiagnostic
 {
-    public ExpectedDiagnostic(string code, int? line, string? message)
+    public ExpectedDiagnostic(string name, int? line, string? message)
     {
-        Code = code;
+        Name = name;
         Line = line;
         Message = message;
     }
 
-    public string Code { get; }
+    public string Name { get; }
     public int? Line { get; }
     public string? Message { get; }
 
@@ -325,7 +325,7 @@ public sealed class ExpectedDiagnostic
         List<string> parts = [];
         if (Line is not null)
             parts.Add($"L{Line.Value}");
-        parts.Add(Code);
+        parts.Add(Name);
         string joined = string.Join(", ", parts);
         if (Message is null)
             return joined;
@@ -335,18 +335,20 @@ public sealed class ExpectedDiagnostic
 
 public sealed class ActualDiagnostic
 {
-    public ActualDiagnostic(string code, int line, string message)
+    public ActualDiagnostic(string name, DiagnosticSeverity severity, int line, string message)
     {
-        Code = code;
+        Name = name;
+        Severity = severity;
         Line = line;
         Message = message;
     }
 
-    public string Code { get; }
+    public string Name { get; }
+    public DiagnosticSeverity Severity { get; }
     public int Line { get; }
     public string Message { get; }
 
-    public string Display() => $"L{Line}, {Code}: {Message}";
+    public string Display() => $"L{Line}, {Name}: {Message}";
 }
 
 public static class RegressionRunner
@@ -634,7 +636,7 @@ public static class RegressionRunner
             .Select(diag =>
             {
                 SourceLocation location = diag.GetLocation();
-                return new ActualDiagnostic(diag.FormatCode(), location.Line, diag.Message);
+                return new ActualDiagnostic(diag.Name, diag.Severity, location.Line, diag.Message);
             })
             .ToList();
 
@@ -754,14 +756,14 @@ public static class RegressionRunner
             return issues;
         }
 
-        if (expectation.LooseDiagnosticCodes.Count > 0)
+        if (expectation.LooseDiagnosticNames.Count > 0)
         {
-            foreach (IGrouping<string, string> group in expectation.LooseDiagnosticCodes.GroupBy(code => code, StringComparer.Ordinal))
+            foreach (IGrouping<string, string> group in expectation.LooseDiagnosticNames.GroupBy(name => name, StringComparer.Ordinal))
             {
-                int actualCount = diagnostics.Count(diag => diag.Code.Equals(group.Key, StringComparison.Ordinal));
+                int actualCount = diagnostics.Count(diag => diag.Name.Equals(group.Key, StringComparison.Ordinal));
                 if (actualCount < group.Count())
                 {
-                    issues.Add($"missing diagnostic code {group.Key}: expected at least {group.Count()}, got {actualCount}");
+                    issues.Add($"missing diagnostic {group.Key}: expected at least {group.Count()}, got {actualCount}");
                 }
             }
 
@@ -777,7 +779,8 @@ public static class RegressionRunner
                 issues.Add($"unexpected diagnostic: {diagnostic.Display()}");
         }
 
-        if (expectation.ExpectationKind == RegressionExpectationKind.Fail && !diagnostics.Any(diag => diag.Code.StartsWith('E')))
+        if (expectation.ExpectationKind == RegressionExpectationKind.Fail
+            && !diagnostics.Any(static diag => diag.Severity == DiagnosticSeverity.Error))
             issues.Add("expected at least one error diagnostic, but compilation was clean");
 
         return issues;
@@ -785,7 +788,7 @@ public static class RegressionRunner
 
     private static bool MatchesExpectedDiagnostic(ActualDiagnostic actual, ExpectedDiagnostic expected)
     {
-        if (!actual.Code.Equals(expected.Code, StringComparison.Ordinal))
+        if (!actual.Name.Equals(expected.Name, StringComparison.Ordinal))
             return false;
         if (expected.Line is not null && actual.Line != expected.Line.Value)
             return false;
@@ -1149,7 +1152,7 @@ public static class RegressionRunner
 
     private static RegressionCompileStatus DetermineCompileStatus(IReadOnlyList<ActualDiagnostic> diagnostics)
     {
-        return diagnostics.Any(static diagnostic => diagnostic.Code.StartsWith('E'))
+        return diagnostics.Any(static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
             ? RegressionCompileStatus.Rejected
             : RegressionCompileStatus.Accepted;
     }
@@ -1386,7 +1389,7 @@ internal static class RegressionFixtureParser
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex ExactDiagnosticRegex = new(
-        @"^(?:L(?<line>\d+)\s*,\s*)?(?<code>[EWI]\d{4})(?:\s*:\s*(?<message>.+))?$",
+        @"^(?:L(?<line>\d+)\s*,\s*)?(?<name>[A-Za-z_][A-Za-z0-9_]*)(?:\s*:\s*(?<message>.+))?$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex HardwareRunRegex = new(
@@ -1451,12 +1454,12 @@ internal static class RegressionFixtureParser
         return new RegressionFixture(discoveredFixture.AbsolutePath, discoveredFixture.RelativePath, kind, text, bodyText, expectation);
     }
 
-    private static IEnumerable<string> EnumerateExpectedDiagnosticCodes(RegressionExpectation expectation)
+    private static IEnumerable<string> EnumerateExpectedDiagnosticNames(RegressionExpectation expectation)
     {
-        foreach (string code in expectation.LooseDiagnosticCodes)
-            yield return code;
+        foreach (string name in expectation.LooseDiagnosticNames)
+            yield return name;
         foreach (ExpectedDiagnostic diagnostic in expectation.ExactDiagnostics)
-            yield return diagnostic.Code;
+            yield return diagnostic.Name;
     }
 
     private static RegressionFixtureKind DetermineFixtureKind(string fixturePath)
@@ -1520,7 +1523,8 @@ internal static class RegressionFixtureParser
         if ((expectation.ExpectationKind == RegressionExpectationKind.Pass
                 || expectation.ExpectationKind == RegressionExpectationKind.PassHw
                 || expectation.ExpectationKind == RegressionExpectationKind.XFailHw)
-            && EnumerateExpectedDiagnosticCodes(expectation).Any(code => code.StartsWith('E')))
+            && EnumerateExpectedDiagnosticNames(expectation)
+                .Any(static name => DiagnosticMessage.GetSeverity(name) == DiagnosticSeverity.Error))
         {
             throw new InvalidOperationException($"EXPECT: {ExpectationName(expectation.ExpectationKind)} cannot be combined with error diagnostic expectations.");
         }
@@ -1532,7 +1536,7 @@ internal static class RegressionFixtureParser
         RegressionStage? stage = null;
         List<SnippetItem> containsSnippets = [];
         List<SnippetItem> sequenceSnippets = [];
-        List<string> looseDiagnosticCodes = [];
+        List<string> looseDiagnosticNames = [];
         List<ExpectedDiagnostic> exactDiagnostics = [];
         FlexspinExpectation flexspinExpectation = FlexspinExpectation.Auto;
         List<string> compilerArgs = [];
@@ -1594,7 +1598,7 @@ internal static class RegressionFixtureParser
 
                     case "DIAGNOSTICS":
                         if (directiveValue.Length > 0)
-                            looseDiagnosticCodes.AddRange(ParseLooseDiagnosticCodes(directiveValue));
+                            looseDiagnosticNames.AddRange(ParseLooseDiagnosticNames(directiveValue));
                         break;
 
                     case "STAGE":
@@ -1699,7 +1703,7 @@ internal static class RegressionFixtureParser
             containsSnippets,
             sequenceSnippets,
             exact,
-            looseDiagnosticCodes,
+            looseDiagnosticNames,
             exactDiagnostics,
             flexspinExpectation,
             compilerArgs,
@@ -1725,13 +1729,13 @@ internal static class RegressionFixtureParser
         return text.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
-    private static IReadOnlyList<string> ParseLooseDiagnosticCodes(string text)
+    private static IReadOnlyList<string> ParseLooseDiagnosticNames(string text)
     {
         string[] parts = text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         foreach (string part in parts)
         {
-            if (!Regex.IsMatch(part, @"^[EWI]\d{4}$", RegexOptions.CultureInvariant))
-                throw new InvalidOperationException($"Invalid diagnostic code '{part}'.");
+            if (DiagnosticMessage.GetByName(part) is null)
+                throw new InvalidOperationException($"Invalid diagnostic name '{part}'.");
         }
 
         return parts;
@@ -1782,7 +1786,11 @@ internal static class RegressionFixtureParser
         if (match.Groups["message"].Success)
             message = match.Groups["message"].Value;
 
-        return new ExpectedDiagnostic(match.Groups["code"].Value, line, message);
+        string name = match.Groups["name"].Value;
+        if (DiagnosticMessage.GetByName(name) is null)
+            throw new InvalidOperationException($"Invalid diagnostic name '{name}'.");
+
+        return new ExpectedDiagnostic(name, line, message);
     }
 
     private static HardwareRunExpectation ParseHardwareRunExpectation(string text)

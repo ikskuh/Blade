@@ -1,9 +1,9 @@
 // EXPECT: fail
 // DIAGNOSTICS:
-// - E0227
+// - MissingReturnValue
 
 fn returns_u32() -> u32 {
-    // must emit E0227
+    // must emit MissingReturnValue
 }
  
 cog task main {}

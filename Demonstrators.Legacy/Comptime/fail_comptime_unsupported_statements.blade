@@ -1,10 +1,10 @@
 // EXPECT: fail
 // DIAGNOSTICS:
-// - E0242
-// - E0243
+// - ComptimeUnsupportedConstruct
+// - ComptimeForbiddenSymbolAccess
 // NOTE:
 //   Covers ComptimeFunctionSupportAnalyzer rejection paths for unsupported statements:
-//   inline asm (E0242) and non-local variable write (E0243).
+//   inline asm (ComptimeUnsupportedConstruct) and non-local variable write (ComptimeForbiddenSymbolAccess).
 
 cog var global_sink: u32 = 0;
 

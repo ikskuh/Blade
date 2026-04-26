@@ -1,16 +1,16 @@
 // EXPECT: fail
 // DIAGNOSTICS:
-// - L28, E0216
-// - L29, E0215
-// - L33, E0236
-// - L33, E0238
-// - L33, E0237
-// - L38, E0203
-// - L39, E0203
-// - L40, E0203
-// - L41, E0205
-// - L42, E0236
-// - L42, E0237
+// - L28, InvalidExternScope
+// - L29, InvalidLocalStorageClass
+// - L33, StructUnknownField
+// - L33, StructDuplicateField
+// - L33, StructMissingFields
+// - L38, UndefinedType
+// - L39, UndefinedType
+// - L40, UndefinedType
+// - L41, TypeMismatch
+// - L42, StructUnknownField
+// - L42, StructMissingFields
 // NOTE:
 //   Covers local storage validation, qualified-type resolution, typed-struct rejection
 //   for non-struct aliases, and inferred duplicate fields.

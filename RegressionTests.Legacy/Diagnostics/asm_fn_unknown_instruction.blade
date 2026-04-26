@@ -1,7 +1,7 @@
 // EXPECT: fail
-// DIAGNOSTICS: E0301
+// DIAGNOSTICS: InlineAsmUnknownInstruction
 // NOTE:
-//   asm fn with an unknown P2 instruction should report E0301.
+//   asm fn with an unknown P2 instruction should report InlineAsmUnknownInstruction.
 asm fn bad_insn(a: u32) -> u32 {
     FAKEINSTR {a}
 }

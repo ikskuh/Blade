@@ -1,8 +1,8 @@
 // EXPECT: fail
 // ARGS: --comptime-fuel=2
 // DIAGNOSTICS:
-// - E0244
-// - E0242
+// - ComptimeFuelExhausted
+// - ComptimeUnsupportedConstruct
 // NOTE:
 //   Forces comptime evaluation to fail while computing an assignment RHS, so the
 //   evaluator takes the assignment-value failure path. The exhausted call also

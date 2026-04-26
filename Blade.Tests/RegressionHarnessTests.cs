@@ -23,9 +23,9 @@ public sealed class RegressionHarnessTests
         RegressionFixtureResult failResult = new(
             "Demonstrators/Language/integer_literals.blade",
             RegressionFixtureOutcome.Fail,
-            "unexpected diagnostic: L5, E0101: Expected ';', got '456'.",
+            "unexpected diagnostic: L5, UnexpectedToken: Expected ';', got '456'.",
             [
-                "unexpected diagnostic: L5, E0101: Expected ';', got '456'.",
+                "unexpected diagnostic: L5, UnexpectedToken: Expected ';', got '456'.",
                 "FlexSpin validation was required, but no assembly text was available",
             ],
             artifactDirectoryPath: "/repo/.artifacts/regressions/run/fail");
@@ -34,7 +34,7 @@ public sealed class RegressionHarnessTests
             RegressionFixtureOutcome.XFail,
             "failed as expected",
             [
-                "missing diagnostic code E0202: expected at least 1, got 0",
+                "missing diagnostic UndefinedName: expected at least 1, got 0",
             ],
             artifactDirectoryPath: null);
         RegressionRunResult result = new("/repo", [passResult, failResult, xfailResult]);
@@ -48,11 +48,11 @@ public sealed class RegressionHarnessTests
         Assert.That(report, Does.Not.Contain("OK             Demonstrators/Asm/asm_label.blade" + Environment.NewLine + "  ok"));
         Assert.That(report, Does.Not.Contain("XFAIL          RegressionTests/ExpectedFailures/hub_string_walk.blade" + Environment.NewLine + "  failed as expected"));
         Assert.That(report, Does.Contain(Environment.NewLine + "---" + Environment.NewLine + Environment.NewLine + "FAIL           Demonstrators/Language/integer_literals.blade"));
-        Assert.That(report, Does.Contain("  unexpected diagnostic: L5, E0101: Expected ';', got '456'."));
+        Assert.That(report, Does.Contain("  unexpected diagnostic: L5, UnexpectedToken: Expected ';', got '456'."));
         Assert.That(report, Does.Contain("  FlexSpin validation was required, but no assembly text was available"));
         Assert.That(report, Does.Contain("  artifacts: .artifacts/regressions/run/fail"));
         Assert.That(
-            report.Split(Environment.NewLine).Count(line => line.Contains("unexpected diagnostic: L5, E0101: Expected ';', got '456'.", StringComparison.Ordinal)),
+            report.Split(Environment.NewLine).Count(line => line.Contains("unexpected diagnostic: L5, UnexpectedToken: Expected ';', got '456'.", StringComparison.Ordinal)),
             Is.EqualTo(1));
         Assert.That(report.TrimEnd(), Does.EndWith("1 fail, 1 xfail, 1 ok, 3 total"));
     }
@@ -961,7 +961,7 @@ public sealed class RegressionHarnessTests
         temp.MakeDir("Demonstrators/Binder");
         temp.WriteFile("Demonstrators/Binder/fail_control_flow_contexts.blade", """
         // EXPECT: xfail
-        // DIAGNOSTICS: E0202
+        // DIAGNOSTICS: UndefinedName
         cog task main {
             missing();
         }
@@ -991,7 +991,7 @@ public sealed class RegressionHarnessTests
         WriteMinimalRegressionRepository(temp);
         temp.WriteFile("Demonstrators/xfail_resolved.blade", """
         // EXPECT: xfail
-        // DIAGNOSTICS: E0202
+        // DIAGNOSTICS: UndefinedName
         cog task main {
         }
         """);
@@ -1009,7 +1009,7 @@ public sealed class RegressionHarnessTests
             Assert.That(result.Succeeded, Is.True);
             Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.XFail));
             Assert.That(fixtureResult.Summary, Is.EqualTo("failed as expected"));
-            Assert.That(fixtureResult.Details, Has.Some.Contains("missing diagnostic code E0202: expected at least 1, got 0"));
+            Assert.That(fixtureResult.Details, Has.Some.Contains("missing diagnostic UndefinedName: expected at least 1, got 0"));
         });
     }
 
@@ -1020,7 +1020,7 @@ public sealed class RegressionHarnessTests
         WriteMinimalRegressionRepository(temp);
         temp.WriteFile("Demonstrators/xpass_accepts.blade", """
         // EXPECT: xpass
-        // DIAGNOSTICS: E0202
+        // DIAGNOSTICS: UndefinedName
         cog task main {
         }
         """);
@@ -1049,7 +1049,7 @@ public sealed class RegressionHarnessTests
         WriteMinimalRegressionRepository(temp);
         temp.WriteFile("Demonstrators/xpass_still_fails.blade", """
         // EXPECT: xpass
-        // DIAGNOSTICS: E0202
+        // DIAGNOSTICS: UndefinedName
         cog task main {
             missing();
         }
@@ -1214,7 +1214,7 @@ public sealed class RegressionHarnessTests
         temp.WriteFile("Demonstrators/header_blank_line_terminates.blade", """
         // EXPECT: pass
         // DIAGNOSTICS:
-        // - W0269
+        // - MainTaskMustBeCog
 
         // This comment documents the fixture and must not be parsed as a header directive.
         hub task main {
@@ -1246,7 +1246,7 @@ public sealed class RegressionHarnessTests
             "Demonstrators/header_whitespace_line_terminates.blade",
             "// EXPECT: pass\n"
             + "// DIAGNOSTICS:\n"
-            + "// - W0269\n"
+            + "// - MainTaskMustBeCog\n"
             + " \t \n"
             + "// This comment documents the fixture and must not be parsed as a header directive.\n"
             + "lut task main {\n"

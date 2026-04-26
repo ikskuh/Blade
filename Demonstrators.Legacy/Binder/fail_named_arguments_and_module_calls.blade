@@ -1,7 +1,7 @@
 // EXPECT: fail
 // ARGS:
 // - --module=extmod=../Modules/extmod.blade
-// DIAGNOSTICS: E0207, E0219, E0220, E0221, E0222
+// DIAGNOSTICS: ArgumentCountMismatch, UnknownNamedArgument, DuplicateNamedArgument, PositionalArgumentAfterNamed, NamedArgumentConflictsWithPositional
 // NOTE:
 //   Covers named-argument reordering failures plus module call argument checking.
 

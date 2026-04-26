@@ -101,21 +101,23 @@ Each run entry supplies a parameter list followed by the expected output for tha
 
 ### `DIAGNOSTICS`
 
-Loose form: these codes must appear, but extra diagnostics are allowed.
+Loose form: these diagnostics must appear by name, but extra diagnostics are allowed.
 `EXPECT: fail` and `EXPECT: xpass` require at least one diagnostic entry in either the loose or strict form.
 
 ```blade
 // EXPECT: fail
-// DIAGNOSTICS: E0218, E0205
-hub var counter: u32 = 0;
+// DIAGNOSTICS: UndefinedName
+fn load() -> u32 {
+    return missing;
+}
 ```
 
-Strict block form: the diagnostics must match exactly. Each entry must include a diagnostic code and may also include a line number and/or exact message.
+Strict block form: the diagnostics must match exactly. Each entry must include a diagnostic name and may also include a line number and/or exact message.
 
 ```blade
 // EXPECT: fail
 // DIAGNOSTICS:
-// - L5, E0202: Name 'missing' does not exist in the current scope.
+// - L5, UndefinedName: Name 'missing' does not exist in the current scope.
 fn load() -> u32 {
     return missing;
 }
@@ -124,10 +126,10 @@ fn load() -> u32 {
 The strict form supports these entry shapes:
 
 ```text
-- L30, W1234: This thing is potentially bad
-- L32, E2345: This is not possible
-- L10, W2222
-- E9999: Over nine thousand!
+- L30, ComptimeIntegerTruncation: This thing is potentially bad
+- L32, TypeMismatch: This is not possible
+- L10, UnusedLayout
+- MissingMainTask: Program has no main task.
 ```
 
 ### `STAGE`

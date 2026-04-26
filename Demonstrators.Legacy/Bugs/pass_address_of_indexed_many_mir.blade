@@ -5,7 +5,7 @@
 // - ptr.offset.Add[1]
 // NOTE:
 //   Taking the address of an indexed [*] pointer element should reuse the
-//   pointer value directly and add the index without the old E0223 rejection.
+//   pointer value directly and add the index without the old InvalidAddressOfTarget rejection.
 
 cog var values: [4]u32 = undefined;
 cog var sink: u32 = 0;

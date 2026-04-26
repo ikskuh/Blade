@@ -1,21 +1,21 @@
 // EXPECT: fail
 // DIAGNOSTICS:
-// - E0202
-// - E0253
-// - E0205
-// - E0254
+// - UndefinedName
+// - QueryAutomaticLocal
+// - TypeMismatch
+// - InvalidMemorySpaceArgument
 // NOTE:
 //   Covers one-arg sizeof with undefined variable name,
 //   sizeof on automatic local variable, and invalid memory space.
 
 fn test() {
-    // sizeof with undefined variable → E0202
+    // sizeof with undefined variable → UndefinedName
     var s1: u32 = sizeof(nonexistent_var);
 
-    // sizeof on automatic local variable → E0253
+    // sizeof on automatic local variable → QueryAutomaticLocal
     var local: u32 = 0;
     var s2: u32 = sizeof(local);
 
-    // sizeof with invalid integer memory space → E0254 (plus E0205 type mismatch)
+    // sizeof with invalid integer memory space → InvalidMemorySpaceArgument (plus TypeMismatch type mismatch)
     var s3: u32 = sizeof(u32, 5);
 }

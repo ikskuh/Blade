@@ -1,7 +1,7 @@
 // EXPECT: fail
-// DIAGNOSTICS: E0257, E0258
+// DIAGNOSTICS: InvalidPointerArithmetic, IncompatiblePointerSubtraction
 // NOTE:
-//   Covers invalid pointer arithmetic (E0257) and incompatible pointer subtraction (E0258).
+//   Covers invalid pointer arithmetic (InvalidPointerArithmetic) and incompatible pointer subtraction (IncompatiblePointerSubtraction).
 //   Exercises the uncovered paths in TryBindPointerArithmetic.
 
 hub var buf_u32: [10]u32 = undefined;

@@ -1,12 +1,12 @@
 // EXPECT: fail
 // DIAGNOSTICS:
-// - E0242
-// - E0242
-// - E0243
+// - ComptimeUnsupportedConstruct
+// - ComptimeUnsupportedConstruct
+// - ComptimeForbiddenSymbolAccess
 // NOTE:
 //   Covers ComptimeFunctionSupportAnalyzer rejection paths for unsupported constructs:
-//   pointer dereference (E0242), member assignment to global (E0244),
-//   and multi-return call (E0242).
+//   pointer dereference (ComptimeUnsupportedConstruct), member assignment to global (ComptimeFuelExhausted),
+//   and multi-return call (ComptimeUnsupportedConstruct).
 
 cog var global_sink: u32 = 0;
 
