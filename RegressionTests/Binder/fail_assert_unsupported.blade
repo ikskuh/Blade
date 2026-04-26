@@ -1,0 +1,12 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - ComptimeValueRequired
+// NOTE:
+//   Covers assert with a non-comptime-evaluable expression.
+//   Exercises the comptime failure reporting path in BindAssertStatement.
+cog task main {
+    
+    fn test(x: u32) {
+        assert x != 0;
+    }
+}

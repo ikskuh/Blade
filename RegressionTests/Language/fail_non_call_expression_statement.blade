@@ -1,0 +1,12 @@
+// EXPECT: fail
+// DIAGNOSTICS: ExpressionNotAStatement
+// NOTE:
+//   Verifies that non-call expressions as standalone statements are rejected.
+cog task main {
+    
+    fn demo(x: u32, y: u32) -> u32 {
+        x;
+        x + y;
+        return 0;
+    }
+}

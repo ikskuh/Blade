@@ -1,0 +1,53 @@
+// EXPECT: fail
+// DIAGNOSTICS: MemoryofRequiresVariable, QueryRequiresMemorySpace, QueryAutomaticLocal, InvalidMemorySpaceArgument
+// NOTE:
+//   Covers query expression edge cases for sizeof, alignof, memoryof.
+//   Exercises uncovered branches in BindOneArgQueryExpression and BindTwoArgQueryExpression.
+cog task main {
+    
+    import builtin;
+    
+    // memoryof requires a variable, not a type
+    fn test_memoryof_type() -> u32 {
+        return memoryof(u32);
+    }
+    
+    // sizeof of a type requires a memory space argument
+    fn test_sizeof_type_no_memspace() -> u32 {
+        return sizeof(u32);
+    }
+    
+    // sizeof with automatic local
+    fn test_sizeof_automatic_local() -> u32 {
+        var x: u32 = 0;
+        return sizeof(x);
+    }
+    
+    // memoryof with automatic local - parameters count as automatic
+    fn test_memoryof_param(p: u32) -> u32 {
+        return memoryof(p);
+    }
+    
+    // sizeof with invalid memory space argument
+    fn test_sizeof_invalid_memspace() -> u32 {
+        return sizeof(u32, 99);
+    }
+    
+    // alignof of type requires a memory space argument (QueryRequiresMemorySpace)
+    fn test_alignof_type_no_memspace() -> u32 {
+        return alignof(u32);
+    }
+    
+    // sizeof on a parameter (automatic, QueryAutomaticLocal)
+    fn test_sizeof_param(p: u32) -> u32 {
+        return sizeof(p);
+    }
+    
+    // memoryof on a non-variable symbol (function name, MemoryofRequiresVariable)
+    fn some_func() -> u32 {
+        return 0;
+    }
+    fn test_memoryof_function() -> u32 {
+        return memoryof(some_func);
+    }
+}

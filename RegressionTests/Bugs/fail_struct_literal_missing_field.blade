@@ -1,0 +1,17 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - StructMissingFields
+// NOTE:
+//   Struct literals must report semantic missing-field errors
+//   before the lowering pipeline runs.
+cog task main {
+    
+    type Pair = struct {
+        left: u32,
+        right: u32,
+    };
+    
+    var pair: Pair = Pair {
+        .left = 1,
+    };
+}

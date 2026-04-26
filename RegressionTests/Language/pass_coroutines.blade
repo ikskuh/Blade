@@ -1,0 +1,24 @@
+// NOTE:
+//   Exercises coroutine (coro fn) and yieldto lowering.
+cog task main {
+    
+    extern cog var OUTA: u32 @(0x1FC);
+    
+    cog var shared: u32 = 0;
+    
+    coro fn producer() {
+        loop {
+            shared = shared + 1;
+            yieldto consumer();
+        }
+    }
+    
+    coro fn consumer() {
+        loop {
+            OUTA = shared;
+            yieldto producer();
+        }
+    }
+    
+    yieldto producer();
+}

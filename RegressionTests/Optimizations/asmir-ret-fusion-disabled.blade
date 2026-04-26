@@ -1,0 +1,22 @@
+// EXPECT: pass
+// STAGE: asmir
+// ARGS:
+// - -fno-mir-opt=*
+// - -fno-lir-opt=*
+// - -fno-asmir-opt=*
+// CONTAINS:
+// - RET
+// ! _RET_ MOV #PA, #_r1
+// NOTE:
+//   Negative case for ASMIR ret-fusion: the leaf return stays as a standalone RET.
+cog task main {
+    
+    cog var sink: u32 = 0;
+    var input: u32 = 1;
+    
+    noinline fn add1(x: u32) -> u32 {
+        return x + 1;
+    }
+    
+    sink = add1(input);
+}

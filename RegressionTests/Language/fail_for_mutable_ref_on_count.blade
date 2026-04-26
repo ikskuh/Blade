@@ -1,0 +1,10 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - TypeMismatch
+// NOTE:
+//   Mutable reference binding (&) is not valid for integer iteration.
+cog task main {
+    
+    cog var count: u32 = 4;
+    for (count) -> &i { }
+}

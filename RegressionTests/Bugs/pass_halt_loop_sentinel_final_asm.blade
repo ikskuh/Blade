@@ -1,0 +1,29 @@
+// EXPECT: pass
+// STAGE: final-asm
+// ARGS:
+// - -fno-asmir-opt=*
+// - -fasmir-opt=elide-nops
+// CONTAINS:
+// - RDLONG
+// - WRLONG
+// SEQUENCE:
+// - JMP #blade_halt
+// - blade_halt
+// - REP #1, #0
+// - NOP
+// NOTE:
+//   End-to-end codegen must route entry-point exit through the runtime halt hook
+//   and still emit the default raw-runtime halt body when no custom runtime is
+//   selected. The sample performs hub loads and stores so final assembly shape is
+//   validated after lowering, allocation, legalization, and writing.
+cog task main {
+    
+    hub var source: u32 = 7;
+    hub var dest: u32 = 0;
+    
+    var value: u32 = source;
+    asm {
+      ADD {value}, #0
+    };
+    dest = value;
+}

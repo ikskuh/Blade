@@ -1,0 +1,29 @@
+// EXPECT: pass-hw
+// RUNS:
+// - [ 0 ] = 1
+// - [ 1 ] = 1
+// - [ 4 ] = 24
+// - [ 6 ] = 720
+// NOTE:
+//   Regression for recursive call result preservation across CALLB spill restore.
+//   Tests rec fn calling convention (hub-based stack via PB).
+//   factorial(n): if n<2 return 1; else return n*factorial(n-1)
+//   Run 1: factorial(0) = 1 (base case)
+//   Run 2: factorial(1) = 1 (base case)
+//   Run 3: factorial(4) = 24
+//   Run 4: factorial(6) = 720
+cog task main {
+    
+    extern cog var rt_result: u32;
+    extern cog var rt_param0: u32;
+    
+    rec fn factorial(n: u32) -> u32 {
+        if (n < 2) {
+            return 1;
+        } else {
+            return n * factorial(n - 1);
+        }
+    }
+    
+    rt_result = factorial(rt_param0);
+}

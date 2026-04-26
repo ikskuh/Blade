@@ -1,0 +1,539 @@
+FAIL           RegressionTests/Binder/fail_comptime_validation_edges.blade
+  Unhandled regression runner error: Object reference not set to an instance of an object.
+  fixture evaluation crashed
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Binder_fail_comptime_validation_edges.blade
+
+FAIL           RegressionTests/Binder/fail_struct_literals_qualified_types_and_storage.blade
+  missing diagnostic: L28, InvalidExternScope
+  missing diagnostic: L29, InvalidLocalStorageClass
+  missing diagnostic: L33, StructUnknownField
+  missing diagnostic: L33, StructDuplicateField
+  missing diagnostic: L33, StructMissingFields
+  missing diagnostic: L38, UndefinedType
+  missing diagnostic: L39, UndefinedType
+  missing diagnostic: L40, UndefinedType
+  missing diagnostic: L41, TypeMismatch
+  missing diagnostic: L42, StructUnknownField
+  missing diagnostic: L42, StructMissingFields
+  unexpected diagnostic: L17, ImportFileNotFound: Imported file '/home/felix/projects/nerdgruppe/blade/RegressionTests/Binder/support/qualified/root.mod' was not found.
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Binder_fail_struct_literals_qualified_types_and_storage.blade
+
+FAIL           RegressionTests/Binder/pass_constant_int_paths.bound.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L12, LayoutAddressConflict: Layout member 'main.A3' at cog address '255' overlaps 'main.A2' at address '255'.
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Binder_pass_constant_int_paths.bound.blade
+
+FAIL           RegressionTests/Binder/pass_nested_imported_comptime.bound.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L9, UndefinedName: Name 'root' does not exist in the current scope.
+  unexpected diagnostic: L9, NotCallable: Expression of type '<unknown>' is not callable.
+  unexpected diagnostic: L10, UndefinedName: Name 'root' does not exist in the current scope.
+  unexpected diagnostic: L10, NotCallable: Expression of type '<unknown>' is not callable.
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Binder_pass_nested_imported_comptime.bound.blade
+
+FAIL           RegressionTests/Bugs/fail_enum_literal_non_enum_peer_comparison.blade
+  missing diagnostic: L14, EnumLiteralRequiresContext
+  unexpected diagnostic: L15, UndefinedName: Name 'raw' does not exist in the current scope.
+  unexpected diagnostic: L16, UndefinedName: Name 'raw' does not exist in the current scope.
+  unexpected diagnostic: L16, EnumLiteralRequiresContext: Enum literal '.Off' requires an expected enum type.
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Bugs_fail_enum_literal_non_enum_peer_comparison.blade
+
+FAIL           RegressionTests/Bugs/fail_indexed_address_of_non_indexable_value.blade
+  missing diagnostic: L9, TypeMismatch
+  unexpected diagnostic: L10, TypeMismatch: Type mismatch: expected 'array or [*]pointer', got '*hub u32'.
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Bugs_fail_indexed_address_of_non_indexable_value.blade
+
+FAIL           RegressionTests/Bugs/fail_recursive_indexed_address_of.blade
+  missing diagnostic: L9, AddressOfRecursiveLocal
+  unexpected diagnostic: L10, AddressOfRecursiveLocal: Cannot take the address of local 'values' inside a recursive function.
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Bugs_fail_recursive_indexed_address_of.blade
+
+FAIL           RegressionTests/Bugs/fail_recursive_local_indexed_address_of.blade
+  missing diagnostic: L10, AddressOfRecursiveLocal
+  unexpected diagnostic: L11, AddressOfRecursiveLocal: Cannot take the address of local 'values' inside a recursive function.
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Bugs_fail_recursive_local_indexed_address_of.blade
+
+FAIL           RegressionTests/Bugs/fail_string_invalid_unicode_scalar.blade
+  missing diagnostic: L10, InvalidEscapeSequence
+  unexpected diagnostic: L12, InvalidEscapeSequence: Invalid escape sequence.
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Bugs_fail_string_invalid_unicode_scalar.blade
+
+FAIL           RegressionTests/Bugs/fail_struct_literal_missing_field.blade
+  missing diagnostic: StructMissingFields
+  unexpected diagnostic: L14, UndefinedType: Type 'Pair' is not defined.
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Bugs_fail_struct_literal_missing_field.blade
+
+FAIL           RegressionTests/Bugs/pass_folded_extern_addresses_final_asm.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L18, LayoutAddressConflict: Layout member 'main.FOLDED_A3' at cog address '255' overlaps 'main.FOLDED_A2' at address '255'.
+  missing snippet: FOLDED_A0 = $1
+  missing snippet: FOLDED_A1 = $3
+  missing snippet: FOLDED_A2 = $FF
+  missing snippet: FOLDED_A3 = $FF
+  missing snippet: FOLDED_A4 = $5
+  missing snippet: FOLDED_A5 = $1FF
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Bugs_pass_folded_extern_addresses_final_asm.blade
+
+FAIL           RegressionTests/Bugs/pass_rep_for_indexed_final_asm.blade
+  expected 1 occurrence(s) of snippet, found 0: ADD _r1, #1
+  expected 1 occurrence(s) of snippet, found 0: MOV _r3, _r2
+  missing ordered snippet: MOV _r3, _r2
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Bugs_pass_rep_for_indexed_final_asm.blade
+
+FAIL           RegressionTests/Bugs/struct_literal_lowering.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L19, UndefinedType: Type 'Pair' is not defined.
+  requested stage 'final-asm' is unavailable
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Bugs_struct_literal_lowering.blade
+
+FAIL           RegressionTests/Bugs/waitx_intrinsic_large_immediate.blade
+  missing ordered snippet: MOV _r0, #488
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Bugs_waitx_intrinsic_large_immediate.blade
+
+FAIL           RegressionTests/Comptime/fail_comptime_assignment_rhs_if_false.blade
+  Unhandled regression runner error: Object reference not set to an instance of an object.
+  fixture evaluation crashed
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_fail_comptime_assignment_rhs_if_false.blade
+
+FAIL           RegressionTests/Comptime/fail_comptime_assignment_value_fuel.blade
+  Unhandled regression runner error: Object reference not set to an instance of an object.
+  fixture evaluation crashed
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_fail_comptime_assignment_value_fuel.blade
+
+FAIL           RegressionTests/Comptime/fail_comptime_compound_modulo_zero.blade
+  Unhandled regression runner error: Object reference not set to an instance of an object.
+  fixture evaluation crashed
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_fail_comptime_compound_modulo_zero.blade
+
+FAIL           RegressionTests/Comptime/fail_comptime_division_by_zero.blade
+  Unhandled regression runner error: Object reference not set to an instance of an object.
+  fixture evaluation crashed
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_fail_comptime_division_by_zero.blade
+
+FAIL           RegressionTests/Comptime/fail_comptime_for_not_integer.blade
+  Unhandled regression runner error: Object reference not set to an instance of an object.
+  fixture evaluation crashed
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_fail_comptime_for_not_integer.blade
+
+FAIL           RegressionTests/Comptime/fail_comptime_rep_loop_zero_fuel.blade
+  Unhandled regression runner error: Object reference not set to an instance of an object.
+  fixture evaluation crashed
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_fail_comptime_rep_loop_zero_fuel.blade
+
+FAIL           RegressionTests/Comptime/fail_comptime_while_fuel.blade
+  Unhandled regression runner error: Object reference not set to an instance of an object.
+  fixture evaluation crashed
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_fail_comptime_while_fuel.blade
+
+FAIL           RegressionTests/Comptime/fail_fuel_exhausted.blade
+  Unhandled regression runner error: Object reference not set to an instance of an object.
+  fixture evaluation crashed
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_fail_fuel_exhausted.blade
+
+FAIL           RegressionTests/Comptime/fail_global_storage_access.blade
+  Unhandled regression runner error: Object reference not set to an instance of an object.
+  fixture evaluation crashed
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_fail_global_storage_access.blade
+
+FAIL           RegressionTests/Comptime/fail_inline_asm_in_foldable_function.blade
+  Unhandled regression runner error: Object reference not set to an instance of an object.
+  fixture evaluation crashed
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_fail_inline_asm_in_foldable_function.blade
+
+FAIL           RegressionTests/Comptime/fail_pointer_participation.blade
+  Unhandled regression runner error: Object reference not set to an instance of an object.
+  fixture evaluation crashed
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_fail_pointer_participation.blade
+
+FAIL           RegressionTests/Comptime/fail_symbolic_pointer_observation.blade
+  Unhandled regression runner error: Object reference not set to an instance of an object.
+  fixture evaluation crashed
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_fail_symbolic_pointer_observation.blade
+
+FAIL           RegressionTests/Comptime/pass_comptime_bare_if.bound.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L46, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L47, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L48, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  requested stage 'bound' is unavailable
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_comptime_bare_if.bound.blade
+
+FAIL           RegressionTests/Comptime/pass_comptime_binary_ops.bound.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L29, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L30, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L31, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L32, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L33, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  requested stage 'bound' is unavailable
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_comptime_binary_ops.bound.blade
+
+FAIL           RegressionTests/Comptime/pass_comptime_bitwise_ops.bound.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L29, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L30, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L31, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L32, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L33, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  requested stage 'bound' is unavailable
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_comptime_bitwise_ops.bound.blade
+
+FAIL           RegressionTests/Comptime/pass_comptime_cast_edges.bound.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L16, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L17, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_comptime_cast_edges.bound.blade
+
+FAIL           RegressionTests/Comptime/pass_comptime_comparison_ops.bound.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L28, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L29, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L30, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L31, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L32, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L33, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  requested stage 'bound' is unavailable
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_comptime_comparison_ops.bound.blade
+
+FAIL           RegressionTests/Comptime/pass_comptime_compound_assign.bound.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L25, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  requested stage 'bound' is unavailable
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_comptime_compound_assign.bound.blade
+
+FAIL           RegressionTests/Comptime/pass_comptime_control_flow.bound.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L28, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  requested stage 'bound' is unavailable
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_comptime_control_flow.bound.blade
+
+FAIL           RegressionTests/Comptime/pass_comptime_for_loop.bound.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L24, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  requested stage 'bound' is unavailable
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_comptime_for_loop.bound.blade
+
+FAIL           RegressionTests/Comptime/pass_comptime_if_expression.bound.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L15, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  requested stage 'bound' is unavailable
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_comptime_if_expression.bound.blade
+
+FAIL           RegressionTests/Comptime/pass_comptime_logical_ops.bound.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L29, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  requested stage 'bound' is unavailable
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_comptime_logical_ops.bound.blade
+
+FAIL           RegressionTests/Comptime/pass_comptime_logical_shortcircuit.bound.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L24, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L25, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L26, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L27, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_comptime_logical_shortcircuit.bound.blade
+
+FAIL           RegressionTests/Comptime/pass_comptime_loop_and_break.bound.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L49, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L51, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  requested stage 'bound' is unavailable
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_comptime_loop_and_break.bound.blade
+
+FAIL           RegressionTests/Comptime/pass_comptime_loop_break.bound.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L26, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  requested stage 'bound' is unavailable
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_comptime_loop_break.bound.blade
+
+FAIL           RegressionTests/Comptime/pass_comptime_loop_returns.bound.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L40, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L41, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L42, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  requested stage 'bound' is unavailable
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_comptime_loop_returns.bound.blade
+
+FAIL           RegressionTests/Comptime/pass_comptime_loop_statement.bound.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L19, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_comptime_loop_statement.bound.blade
+
+FAIL           RegressionTests/Comptime/pass_comptime_nit_uint_int.bound.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L13, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_comptime_nit_uint_int.bound.blade
+
+FAIL           RegressionTests/Comptime/pass_comptime_noirq.bound.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L19, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  requested stage 'bound' is unavailable
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_comptime_noirq.bound.blade
+
+FAIL           RegressionTests/Comptime/pass_comptime_parameter_assignment.bound.blade
+  Unhandled regression runner error: Object reference not set to an instance of an object.
+  fixture evaluation crashed
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_comptime_parameter_assignment.bound.blade
+
+FAIL           RegressionTests/Comptime/pass_comptime_pointer_ops.bound.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L29, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L30, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L31, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_comptime_pointer_ops.bound.blade
+
+FAIL           RegressionTests/Comptime/pass_comptime_rep_for.bound.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L31, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L32, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  requested stage 'bound' is unavailable
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_comptime_rep_for.bound.blade
+
+FAIL           RegressionTests/Comptime/pass_comptime_rep_loop.bound.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L25, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  requested stage 'bound' is unavailable
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_comptime_rep_loop.bound.blade
+
+FAIL           RegressionTests/Comptime/pass_comptime_rotate_ops.bound.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L17, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L18, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L19, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L20, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  requested stage 'bound' is unavailable
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_comptime_rotate_ops.bound.blade
+
+FAIL           RegressionTests/Comptime/pass_comptime_small_int_types.bound.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L38, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L39, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L40, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L41, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L42, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_comptime_small_int_types.bound.blade
+
+FAIL           RegressionTests/Comptime/pass_comptime_statement_edges.bound.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L66, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L67, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L68, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L69, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  requested stage 'bound' is unavailable
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_comptime_statement_edges.bound.blade
+
+FAIL           RegressionTests/Comptime/pass_comptime_unary_ops.bound.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L21, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L22, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L23, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  requested stage 'bound' is unavailable
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_comptime_unary_ops.bound.blade
+
+FAIL           RegressionTests/Comptime/pass_comptime_while_loop.bound.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L34, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  unexpected diagnostic: L35, ComptimeValueRequired: Expression must be compile-time evaluable in this context.
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_comptime_while_loop.bound.blade
+
+FAIL           RegressionTests/Comptime/pass_pure_function_fold.bound.blade
+  missing snippet: Literal<u32> 3
+  unexpected snippet present: Call<u32> add
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_pure_function_fold.bound.blade
+
+FAIL           RegressionTests/Comptime/pass_static_storage_const_reads.blade
+  Unhandled regression runner error: Object reference not set to an instance of an object.
+  fixture evaluation crashed
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_static_storage_const_reads.blade
+
+FAIL           RegressionTests/Comptime/pass_symbolic_pointer_difference.blade
+  Unhandled regression runner error: Object reference not set to an instance of an object.
+  fixture evaluation crashed
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_pass_symbolic_pointer_difference.blade
+
+FAIL           RegressionTests/Comptime/warn_implicit_truncation.blade
+  expected compilation to succeed, but it produced error diagnostics
+  missing diagnostic ComptimeIntegerTruncation: expected at least 1, got 0
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Comptime_warn_implicit_truncation.blade
+
+FAIL           RegressionTests/HwTest/hw_modules.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L17, UndefinedName: Name 'lib' does not exist in the current scope.
+  unexpected diagnostic: L17, NotCallable: Expression of type '<unknown>' is not callable.
+  unexpected diagnostic: L18, UndefinedName: Name 'lib' does not exist in the current scope.
+  unexpected diagnostic: L18, NotCallable: Expression of type '<unknown>' is not callable.
+  unexpected diagnostic: L20, UndefinedName: Name 'lib' does not exist in the current scope.
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_HwTest_hw_modules.blade
+
+FAIL           RegressionTests/HwTest/hw_struct_hub_ping_pong.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L23, UndefinedType: Type 'Packet' is not defined.
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_HwTest_hw_struct_hub_ping_pong.blade
+
+FAIL           RegressionTests/HwTest/hw_struct_literal_lowering.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L28, UndefinedType: Type 'Packet' is not defined.
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_HwTest_hw_struct_literal_lowering.blade
+
+FAIL           RegressionTests/HwTest/hw_struct_lut_ping_pong.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L23, UndefinedType: Type 'Packet' is not defined.
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_HwTest_hw_struct_lut_ping_pong.blade
+
+FAIL           RegressionTests/HwTest/hw_struct_reg_ping_pong.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L23, UndefinedType: Type 'Packet' is not defined.
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_HwTest_hw_struct_reg_ping_pong.blade
+
+FAIL           RegressionTests/HwTest/hw_struct_single_word.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L21, UndefinedType: Type 'Pair' is not defined.
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_HwTest_hw_struct_single_word.blade
+
+FAIL           RegressionTests/Language/casts_and_bitcasts.blade
+  missing snippet: MOV g_roundtrip_bits, #509
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Language_casts_and_bitcasts.blade
+
+FAIL           RegressionTests/Language/fail_array_literal_bool_type_mismatch.blade
+  missing diagnostic: L5, TypeMismatch
+  unexpected diagnostic: L6, TypeMismatch: Type mismatch: expected 'bool', got '<int-literal>'.
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Language_fail_array_literal_bool_type_mismatch.blade
+
+FAIL           RegressionTests/Language/fail_array_literal_requires_context.blade
+  missing diagnostic: L6, ArrayLiteralRequiresContext
+  unexpected diagnostic: L8, ArrayLiteralRequiresContext: Array literal requires an expected array type.
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Language_fail_array_literal_requires_context.blade
+
+FAIL           RegressionTests/Language/fail_pointer_extended_compound_assign.blade
+  missing diagnostic: L14, InvalidPointerArithmetic
+  unexpected diagnostic: L20, InvalidPointerArithmetic: Invalid pointer arithmetic for '>%>='. Only '[*]' pointers support '+', '-', '+=', and '-=' with integer deltas.
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Language_fail_pointer_extended_compound_assign.blade
+
+FAIL           RegressionTests/Language/pass_builtin_module.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L13, UndefinedType: Type 'builtin.MemorySpace' is not defined.
+  unexpected diagnostic: L13, EnumLiteralRequiresContext: Enum literal '.hub' requires an expected enum type.
+  requested stage 'bound' is unavailable
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Language_pass_builtin_module.blade
+
+FAIL           RegressionTests/Language/pass_builtin_module_alias.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L11, UndefinedType: Type 'b.MemorySpace' is not defined.
+  unexpected diagnostic: L11, EnumLiteralRequiresContext: Enum literal '.lut' requires an expected enum type.
+  requested stage 'bound' is unavailable
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Language_pass_builtin_module_alias.blade
+
+FAIL           RegressionTests/Language/pass_interrupt_handler.blade
+  Unhandled regression runner error: AsmRegisterOperand cannot be formatted directly.
+  fixture evaluation crashed
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Language_pass_interrupt_handler.blade
+
+FAIL           RegressionTests/Language/pass_memoryof.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L18, UndefinedType: Type 'builtin.MemorySpace' is not defined.
+  unexpected diagnostic: L19, UndefinedType: Type 'builtin.MemorySpace' is not defined.
+  unexpected diagnostic: L20, UndefinedType: Type 'builtin.MemorySpace' is not defined.
+  unexpected diagnostic: L18, UndefinedName: Name 'rv' does not exist in the current scope.
+  unexpected diagnostic: L19, UndefinedName: Name 'lv' does not exist in the current scope.
+  unexpected diagnostic: L20, UndefinedName: Name 'hv' does not exist in the current scope.
+  requested stage 'bound' is unavailable
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Language_pass_memoryof.blade
+
+FAIL           RegressionTests/Language/pass_recursive_zero_arg_fn.blade
+  missing snippet: MOV _r1, PB
+  missing snippet: MOV OUTA, _r1
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Language_pass_recursive_zero_arg_fn.blade
+
+FAIL           RegressionTests/Language/pass_sizeof_alignof.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L21, UndefinedName: Name 'rv' does not exist in the current scope.
+  unexpected diagnostic: L21, TypeMismatch: Type mismatch: expected 'integer', got '<int-literal>, <unknown>'.
+  unexpected diagnostic: L26, UndefinedName: Name 'rv' does not exist in the current scope.
+  unexpected diagnostic: L26, TypeMismatch: Type mismatch: expected 'integer', got '<int-literal>, <unknown>'.
+  requested stage 'bound' is unavailable
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Language_pass_sizeof_alignof.blade
+
+FAIL           RegressionTests/Modules/pass_diamond_root.blade
+  expected compilation to succeed, but it produced error diagnostics
+  unexpected diagnostic: L5, UndefinedName: Name 'read_a' does not exist in the current scope.
+  unexpected diagnostic: L5, NotCallable: Expression of type '<unknown>' is not callable.
+  unexpected diagnostic: L5, UndefinedName: Name 'read_b' does not exist in the current scope.
+  unexpected diagnostic: L5, NotCallable: Expression of type '<unknown>' is not callable.
+  unexpected diagnostic: L5, TypeMismatch: Type mismatch: expected 'integer', got '<unknown>, <unknown>'.
+  FlexSpin validation was required, but no assembly text was available
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Modules_pass_diamond_root.blade
+
+FAIL           RegressionTests/Modules/pass_imported_global_persists.blade
+  missing ordered snippet: ADD g_seed, #1
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Modules_pass_imported_global_persists.blade
+
+FAIL           RegressionTests/Optimizations/asmir-cleanup-self-mov-disabled.blade
+  missing snippet: MOV _r1, _r1
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Optimizations_asmir-cleanup-self-mov-disabled.blade
+
+FAIL           RegressionTests/Optimizations/asmir-dce-reg-disabled.blade
+  missing snippet: ADD ?1, #1
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Optimizations_asmir-dce-reg-disabled.blade
+
+FAIL           RegressionTests/Optimizations/asmir-elide-nops-disabled.blade
+  missing snippet: OR ?1, #0
+  missing snippet: ADD ?1, #0
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Optimizations_asmir-elide-nops-disabled.blade
+
+FAIL           RegressionTests/Optimizations/asmir-muxc-fusion-disabled.blade
+  missing snippet: IF_NC ANDN ?1, ?2
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Optimizations_asmir-muxc-fusion-disabled.blade
+
+FAIL           RegressionTests/Optimizations/mir-const-prop-ops-enabled.blade
+  Unhandled regression runner error: reached unreachable code in FindHighestAvailableAddress (/home/felix/projects/nerdgruppe/blade/Blade/IR/Asm/RegisterAllocator.cs:798): Image 'main' ran out of allocatable COG registers.
+  fixture evaluation crashed
+  artifacts: .artifacts/regressions/20260426T215605913Z/RegressionTests_Optimizations_mir-const-prop-ops-enabled.blade
+
+0 uncovered Bound Nodes
+0 uncovered MIR Nodes
+0 uncovered LIR Nodes
+0 uncovered ASMIR Nodes
+
+IR coverage regressions:
+  regression detected: BoundContinueStatement is not covered by the regression suite anymore
+
+79 fail, 2 xfail, 428 ok, 509 total

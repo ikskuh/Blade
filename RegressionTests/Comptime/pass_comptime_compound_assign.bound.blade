@@ -1,0 +1,26 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - VarDecl result: u32
+// - Literal<u32> 9
+// ! Call<u32> ct_compound
+// NOTE:
+//   Exercises compound assignment operators (+=, -=, %=, &=, |=, ^=, <<=, >>=)
+//   in comptime evaluation.
+cog task main {
+    
+    comptime fn ct_compound() -> u32 {
+        var x: u32 = 10;
+        x += 5;
+        x -= 3;
+        x &= 0xFF;
+        x |= 0;
+        x ^= 5;
+        x <<= 1;
+        x >>= 1;
+        x %= 10;
+        return x;
+    }
+    
+    var result: u32 = ct_compound();
+}

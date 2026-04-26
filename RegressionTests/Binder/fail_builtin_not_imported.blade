@@ -1,0 +1,8 @@
+// EXPECT: fail
+// DIAGNOSTICS: UndefinedType
+// NOTE:
+//   builtin.MemorySpace requires an explicit import of the builtin module.
+cog task main {
+    
+    cog var cls: builtin.MemorySpace = .cog;
+}

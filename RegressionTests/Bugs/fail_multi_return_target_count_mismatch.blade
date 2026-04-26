@@ -1,0 +1,16 @@
+// EXPECT: fail
+// DIAGNOSTICS: MultiAssignmentTargetCountMismatch
+// NOTE:
+//   Multi-return assignments must consume every return slot or use '_'. A
+//   target-count mismatch must fail instead of silently discarding results.
+cog task main {
+    
+    fn get_pair() -> u32, bool {
+        return 1, true;
+    }
+    
+    cog var value: u32 = 0;
+    cog var state: bool = false;
+    
+    value, state, _ = get_pair();
+}

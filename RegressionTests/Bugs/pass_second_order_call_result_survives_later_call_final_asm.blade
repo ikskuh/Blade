@@ -1,0 +1,39 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - CALLPB g_left, #f_wrap_inc
+// - CALLPB g_right, #f_wrap_dec
+// - MOV ?, PB
+// ! ADD PB, PB
+// SEQUENCE:
+// - CALLPB g_left, #f_wrap_inc
+// - MOV ?1, PB
+// - CALLPB g_right, #f_wrap_dec
+// ! ADD PB, PB
+// NOTE:
+//   Covers two second-order calls in one expression. The first result must be
+//   copied out of PB before the later CALLPB clobbers the transport register.
+cog task main {
+    
+    noinline leaf fn leaf_inc(value: u32) -> u32 {
+        return value + 1;
+    }
+    
+    noinline leaf fn leaf_dec(value: u32) -> u32 {
+        return value - 1;
+    }
+    
+    noinline fn wrap_inc(value: u32) -> u32 {
+        return leaf_inc(value);
+    }
+    
+    noinline fn wrap_dec(value: u32) -> u32 {
+        return leaf_dec(value);
+    }
+    
+    cog var left: u32 = 10;
+    cog var right: u32 = 7;
+    cog var sink: u32 = 0;
+    
+    sink = wrap_inc(left) + wrap_dec(right);
+}

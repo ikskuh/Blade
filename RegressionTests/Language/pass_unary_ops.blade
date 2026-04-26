@@ -1,0 +1,21 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - NEG
+// - NOT
+// NOTE:
+//   Exercises unary negation, bitwise NOT, and unary plus through codegen.
+cog task main {
+    
+    extern cog var OUTA: u32 @(0x1FC);
+    
+    noinline fn unary_ops(x: i32) -> i32 {
+        var neg: i32 = -x;
+        var plus: i32 = +x;
+        var bitnot: i32 = ~x;
+        return neg + plus + bitnot;
+    }
+    
+    cog var input_x: i32 = 42;
+    OUTA = bitcast(u32, unary_ops(input_x));
+}

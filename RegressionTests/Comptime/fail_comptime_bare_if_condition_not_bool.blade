@@ -1,0 +1,16 @@
+// EXPECT: fail
+// DIAGNOSTICS: TypeMismatch
+// NOTE:
+//   Bare comptime if statements still require a bool condition.
+cog task main {
+    
+    comptime fn bad_condition() -> u32 {
+        if (1) {
+            return 1;
+        }
+    
+        return 0;
+    }
+    
+    var value: u32 = bad_condition();
+}

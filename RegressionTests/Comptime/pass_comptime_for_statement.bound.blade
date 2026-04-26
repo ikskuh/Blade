@@ -1,0 +1,22 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - Literal<u32> 10
+// NOTE:
+//   Covers comptime for-loop execution path with index variable.
+cog task main {
+    
+    cog var sink: u32 = 0;
+    
+    comptime fn sum_for() -> u32 {
+        var sum: u32 = 0;
+        for(5) -> i {
+            sum = sum + i;
+        }
+        return sum;
+    }
+    
+    fn test() {
+        sink = sum_for();
+    }
+}

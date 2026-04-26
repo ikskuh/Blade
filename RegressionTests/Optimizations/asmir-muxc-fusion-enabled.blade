@@ -1,0 +1,22 @@
+// EXPECT: pass
+// STAGE: asmir
+// ARGS:
+// - -fno-asmir-opt=*
+// - -fasmir-opt=muxc-fusion
+// CONTAINS:
+// - MUXC ?1, ?2
+// ! IF_C OR ?1, ?2
+// ! IF_NC ANDN ?1, ?2
+// NOTE:
+//   Positive case for muxc-fusion: IF_C OR + IF_NC ANDN should fold to MUXC.
+cog task main {
+    
+    cog var sink: u32 = 0;
+    var x: u32 = 1;
+    var m: u32 = 2;
+    asm {
+      IF_C OR {x}, {m}
+      IF_NC ANDN {x}, {m}
+    };
+    sink = x;
+}

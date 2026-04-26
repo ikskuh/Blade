@@ -1,0 +1,28 @@
+// EXPECT: pass-hw
+// RUNS:
+// - [ -50, 30 ] = -50
+// - [ -10, -20 ] = -10
+// - [ 0, 0 ] = 0
+// - [ 100, 200 ] = 100
+// NOTE:
+//   Tests i32 signed arithmetic: add, sub, negate.
+//   f(a,b) = (a+b)+(a-b)+(-a)
+//   Run 1: -20+(-80)+50     = -50
+//   Run 2: -30+10+10        = -10
+//   Run 3: 0+0+0            = 0
+//   Run 4: 300+(-100)+(-100)= 100
+cog task main {
+    
+    extern cog var rt_result: u32;
+    extern cog var rt_param0: i32;
+    extern cog var rt_param1: i32;
+    
+    noinline fn signed_ops(a: i32, b: i32) -> i32 {
+        var sum: i32 = a + b;
+        var diff: i32 = a - b;
+        var neg: i32 = -a;
+        return sum + diff + neg;
+    }
+    
+    rt_result = bitcast(u32, signed_ops(rt_param0, rt_param1));
+}

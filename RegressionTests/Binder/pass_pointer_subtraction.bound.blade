@@ -1,0 +1,18 @@
+// EXPECT: pass
+// STAGE: bound
+// NOTE:
+//   Covers pointer subtraction with compatible pointer types (Binder L1865-1884).
+//   Exercises the non-pointer right operand path for subtraction.
+cog task main {
+    
+    fn test_pointer_sub_integer() {
+        var p1: [*]lut u32 = undefined;
+        var p2: [*]lut u32 = p1 - 3;
+    }
+    
+    fn test_pointer_sub_pointer() {
+        var p1: [*]lut u32 = undefined;
+        var p2: [*]lut u32 = undefined;
+        var diff: i32 = p2 - p1;
+    }
+}

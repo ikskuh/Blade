@@ -1,0 +1,30 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - VarDecl result: u32
+// - Literal<u32> 4
+// ! Call<u32> ct_logical
+// NOTE:
+//   Exercises logical AND/OR short-circuiting and bool equality in comptime.
+//   Uses bare if statements inside the comptime loop body.
+cog task main {
+    
+    comptime fn ct_logical(n: u32) -> u32 {
+        var result: u32 = 0;
+        var i: u32 = 0;
+        while (i < n) {
+            // LogicalAnd: true when i > 0 AND i < 3 (i=1,2)
+            if ((i > 0) and (i < 3)) {
+                result = result + 1;
+            }
+            // LogicalOr: true when i == 0 OR i >= 4 (i=0,4)
+            if ((i < 1) or (i > 3)) {
+                result = result + 1;
+            }
+            i = i + 1;
+        }
+        return result;
+    }
+    
+    var result: u32 = ct_logical(5);
+}

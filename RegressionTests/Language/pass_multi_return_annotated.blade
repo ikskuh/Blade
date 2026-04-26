@@ -1,0 +1,23 @@
+// EXPECT: pass
+// NOTE:
+//   This sample tests explicit placement annotations (@C, @Z)
+//   on multi-return functions.
+cog task main {
+    
+    // Explicit flag annotations on all three return slots:
+    fn get_three_explicit() -> u32, bool@C, bit@Z {
+        return 42, true, 1;
+    }
+    
+    // Two returns with explicit flag placement:
+    fn get_two_explicit() -> u32, bool@C {
+        return 7, false;
+    }
+    
+    cog var val: u32 = 0;
+    hub var flag_c: bool = false;
+    hub var flag_z: bit = 0;
+    
+    val, flag_c, flag_z = get_three_explicit();
+    val, flag_c = get_two_explicit();
+}

@@ -1,0 +1,20 @@
+// EXPECT: pass
+// STAGE: asmir
+// ARGS:
+// - -fasmir-opt=conditional-move-fusion
+// CONTAINS:
+// - IF_NZ MOV g_sink, #1
+// ! IF_Z JMP #__asm_0_0_done
+// NOTE:
+//   Inline asm provides a stable jump-over-single-instruction trigger, and the
+//   optimizer fuses it into a conditional MOV with the inverted predicate.
+cog task main {
+    
+    cog var sink: u32 = 0;
+    asm {
+      CMP {sink}, #0 WZ
+      IF_Z JMP #done
+      MOV {sink}, #1
+    done:
+    };
+}

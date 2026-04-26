@@ -1,0 +1,10 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - L7, ArrayLiteralRequiresContext
+// - L8, ArrayLiteralRequiresContext
+cog task main {
+    fn demo(count: u32) void {
+        var spread: [count]u32 = [0...];
+        var empty: [count]u32 = [];
+    }
+}

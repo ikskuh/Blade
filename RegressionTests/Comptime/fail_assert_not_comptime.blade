@@ -1,0 +1,8 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - ComptimeValueRequired
+cog task main {
+    
+    var x: u32 = 1;
+    assert x == 1;
+}

@@ -1,0 +1,11 @@
+// EXPECT: pass
+// DIAGNOSTICS: ComptimeIntegerTruncation
+// NOTE:
+//   Implicit narrowing of a compile-time-known value should warn when bits are lost.
+cog task main {
+    
+    cog const WIDE: u32 = 257;
+    cog const SMALL: u8 = WIDE;
+    
+    assert SMALL == 1;
+}

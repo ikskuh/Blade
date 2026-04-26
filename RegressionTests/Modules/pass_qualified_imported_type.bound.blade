@@ -1,0 +1,10 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - VarDecl mode: Mode
+// - Literal<Mode> 1
+import "./types.blade" as t;
+
+cog task main {
+    var mode: t.Mode = .On;
+}

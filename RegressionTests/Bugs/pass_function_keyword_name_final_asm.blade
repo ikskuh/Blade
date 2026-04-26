@@ -1,0 +1,20 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - f_step
+// - #f_step
+// ! #step
+// NOTE:
+//   Function names that collide with PASM mnemonics must be prefixed during
+//   final assembly emission so both labels and symbol references remain valid.
+cog task main {
+    
+    noinline fn step(value: u32) -> u32 {
+        return value + 1;
+    }
+    
+    cog var dirh: u32 = 41;
+    cog var wrlong: u32 = 0;
+    
+    wrlong = step(dirh);
+}

@@ -1,8 +1,0 @@
-// EXPECT: fail
-// NOTE:
-//   Anonymous struct literal syntax '.{ ... }' is not part of Blade.
-
-fn rejects_anonymous_literals() {
-    .{ .x = 1, .y = 2 };
-    .{ };
-}

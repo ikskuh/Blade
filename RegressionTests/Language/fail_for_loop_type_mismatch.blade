@@ -1,0 +1,10 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - TypeMismatch
+// NOTE:
+//   for-loop iterable must be an integer or array type.
+cog task main {
+    
+    var x: bool = true;
+    for (x) { }
+}

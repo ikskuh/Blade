@@ -1,0 +1,39 @@
+// EXPECT: fail
+// DIAGNOSTICS: SymbolAlreadyDeclared, UndefinedName, TypeMismatch, InvalidExplicitCast, BitcastSizeMismatch, EnumLiteralRequiresContext, BitfieldWidthOverflow
+// NOTE:
+//   Covers aggregate duplicate members, enum edge cases, invalid casts, and bitcast size checks.
+    
+type Pair = struct {
+    left: u32,
+    left: u16,
+};
+
+type Header = union {
+    lo: u32,
+    lo: u16,
+};
+
+type Flags = bitfield (u8) {
+    wide: u16,
+    nested: void,
+    nested: nib,
+};
+
+type Mode = enum (bool) {
+    Idle = 0,
+    Busy = 1,
+    Busy,
+};
+
+type ClosedState = enum (u8) {
+    Idle = 0,
+};
+    
+cog task main {
+    var raw: u32 = 1;
+    var narrowed: u16 = bitcast(u16, raw);
+    var cast_bad: u8 = false as u8;
+    var bare: u32 = .Idle;
+    var qualified_missing: ClosedState = ClosedState.Missing;
+    var contextual_missing: ClosedState = .Missing;
+}

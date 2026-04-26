@@ -1,0 +1,23 @@
+// EXPECT: pass
+// STAGE: lir
+// ARGS:
+// - -fno-mir-opt=*
+// - -fno-lir-opt=*
+// - -flir-opt=copy-prop
+// CONTAINS:
+// - %r1:u32 = mov %r0
+// - %r4:u32 = binary.Add %r0, %r3
+// NOTE:
+//   Unary plus materializes a LIR mov. Copy-prop rewrites the later add to use
+//   the original value directly, but does not itself remove the now-dead mov.
+cog task main {
+    
+    cog var sink: u32 = 0;
+    
+    noinline fn demo(x: u32) -> u32 {
+        var y: u32 = +x;
+        return y + 1;
+    }
+    
+    sink = demo(2);
+}

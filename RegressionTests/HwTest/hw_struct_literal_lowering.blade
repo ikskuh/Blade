@@ -1,0 +1,45 @@
+// EXPECT: pass-hw
+// RUNS:
+// - [ 1, 0xAB, 0x1234, 0x01020304, 0x11111111 ] = 0x0027BF14
+// - [ 0, 0, 0, 0, 0 ] = 0
+// - [ 3, 0x101, 0xFFFF, 0xFFFFFFFF, 1 ] = 0xFFFF0101
+// - [ 0, 0x55, 0x8000, 0xA5A5A5A5, 0x5A5A5A5A ] = 0x7FFFAAFF
+// NOTE:
+//   Tests runtime struct literal initializers, packed small fields, and
+//   multi-lane aggregate transport through a function boundary.
+cog task main {
+    
+    extern cog var rt_result: u32;
+    extern cog var rt_param0: u32;
+    extern cog var rt_param1: u32;
+    extern cog var rt_param2: u32;
+    extern cog var rt_param3: u32;
+    extern cog var rt_param4: u32;
+    
+    type Packet = struct {
+        flag: bool,
+        tag: u8,
+        count: u16,
+        left: u32,
+        right: u32,
+    };
+    
+    noinline fn make_packet(flag_raw: u32, tag_raw: u32, count_raw: u32, left: u32, right: u32) -> Packet {
+        return Packet {
+            .flag = (flag_raw & 1) != 0,
+            .tag = tag_raw as u8,
+            .count = count_raw as u16,
+            .left = left,
+            .right = right,
+        };
+    }
+    
+    noinline fn summarize(packet: Packet) -> u32 {
+        var small: u32 = (if (packet.flag) 1 else 0)
+            | ((packet.tag as u32) << 8)
+            | ((packet.count as u32) << 16);
+        return small ^ (packet.left + packet.right);
+    }
+    
+    rt_result = summarize(make_packet(rt_param0, rt_param1, rt_param2, rt_param3, rt_param4));
+}

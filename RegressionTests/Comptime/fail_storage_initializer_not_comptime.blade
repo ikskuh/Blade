@@ -1,0 +1,7 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - ComptimeValueRequired
+cog task main {
+    
+    cog const folded: u32 = 1 / 0;
+}

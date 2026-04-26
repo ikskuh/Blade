@@ -1,0 +1,16 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - ComptimeUnsupportedConstruct
+// NOTE:
+//   Symbolic pointers can fold address arithmetic, but comptime observation
+//   through dereference remains unsupported.
+cog task main {
+    
+    fn read_local() -> u32 {
+        var local: u32 = 1;
+        const ptr: *cog u32 = &local;
+        return ptr.*;
+    }
+    
+    cog const folded: u32 = read_local();
+}

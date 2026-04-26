@@ -1,0 +1,43 @@
+// EXPECT: pass
+// STAGE: bound
+// NOTE:
+//   Covers comptime evaluation with small integer types (nib, u8, i8, u16, i16).
+//   Exercises BladeValue factory methods and TryConvert paths for these types.
+cog task main {
+    
+    comptime fn nib_op() -> nib {
+        var x: nib = 5;
+        x += 3;
+        return x;
+    }
+    
+    comptime fn u8_op() -> u8 {
+        var x: u8 = 200;
+        x += 50;
+        return x;
+    }
+    
+    comptime fn i8_op() -> i8 {
+        var x: i8 = -100;
+        x += 50;
+        return x;
+    }
+    
+    comptime fn u16_op() -> u16 {
+        var x: u16 = 60000;
+        x += 1000;
+        return x;
+    }
+    
+    comptime fn i16_op() -> i16 {
+        var x: i16 = -30000;
+        x += 1000;
+        return x;
+    }
+    
+    var a: nib = nib_op();
+    var b: u8 = u8_op();
+    var c: i8 = i8_op();
+    var d: u16 = u16_op();
+    var e: i16 = i16_op();
+}

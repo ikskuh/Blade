@@ -1,0 +1,24 @@
+// EXPECT: pass
+// STAGE: mir
+// ARGS:
+// - -fno-mir-opt=*
+// - -fmir-opt=cost-inline
+// CONTAINS:
+// ! call add1(
+// ! call demo(
+// NOTE:
+//   Positive case for MIR cost-inline: the tiny helper and its caller should inline away.
+cog task main {
+    
+    cog var sink: u32 = 0;
+    
+    fn add1(x: u32) -> u32 {
+        return x + 1;
+    }
+    
+    fn demo(x: u32) -> u32 {
+        return add1(x);
+    }
+    
+    sink = demo(7);
+}

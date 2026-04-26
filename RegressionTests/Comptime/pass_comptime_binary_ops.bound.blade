@@ -1,0 +1,34 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - VarDecl sum_result: u32
+// - Literal<u32> 30
+// - VarDecl sub_result: u32
+// - Literal<u32> 10
+// - VarDecl mul_result: u32
+// - Literal<u32> 200
+// - VarDecl div_result: u32
+// - Literal<u32> 2
+// - VarDecl mod_result: u32
+// - Literal<u32> 1
+// ! Call<u32> ct_add
+// ! Call<u32> ct_sub
+// ! Call<u32> ct_mul
+// ! Call<u32> ct_div
+// ! Call<u32> ct_mod
+// NOTE:
+//   Exercises all arithmetic binary operators in comptime evaluation.
+cog task main {
+    
+    comptime fn ct_add(a: u32, b: u32) -> u32 { return a + b; }
+    comptime fn ct_sub(a: u32, b: u32) -> u32 { return a - b; }
+    comptime fn ct_mul(a: u32, b: u32) -> u32 { return a * b; }
+    comptime fn ct_div(a: u32, b: u32) -> u32 { return a / b; }
+    comptime fn ct_mod(a: u32, b: u32) -> u32 { return a % b; }
+    
+    var sum_result: u32 = ct_add(10, 20);
+    var sub_result: u32 = ct_sub(20, 10);
+    var mul_result: u32 = ct_mul(10, 20);
+    var div_result: u32 = ct_div(20, 10);
+    var mod_result: u32 = ct_mod(21, 10);
+}

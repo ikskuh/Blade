@@ -1,0 +1,30 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - Literal<u32> 111
+// - Literal<u32> 124
+// - Literal<u32> 131
+// - Literal<u32> 142
+// - Literal<u32> 211
+// - Literal<u32> 224
+// - Literal<u32> 232
+// - Literal<u32> 241
+// NOTE:
+//   Tests sizeof and alignof operators with both declaration and type+memoryspace forms.
+//   Reg/LUT are word-addressed (scalars always size 1, align 1).
+//   Hub is byte-addressed (u32 = 4 bytes, u16 = 2 bytes).
+cog task main {
+    
+    extern cog var rv: u32;
+    extern hub var hv: u32;
+    
+    cog var s1: u32 = 110 + sizeof(rv);
+    cog var s2: u32 = 120 + sizeof(u32, .hub);
+    cog var s3: u32 = 130 + sizeof(u32, .cog);
+    cog var s4: u32 = 140 + sizeof(u16, .hub);
+    
+    cog var a1: u32 = 210 + alignof(rv);
+    cog var a2: u32 = 220 + alignof(u32, .hub);
+    cog var a3: u32 = 230 + alignof(u16, .hub);
+    cog var a4: u32 = 240 + alignof(u32, .cog);
+}

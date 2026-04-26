@@ -1,0 +1,24 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - Literal<u32> 42
+// - Literal<u32> 7
+// NOTE:
+//   Covers comptime if-expression evaluation path.
+cog task main {
+    
+    cog var sink: u32 = 0;
+    
+    comptime fn if_true() -> u32 {
+        return if (true) 42 else 99;
+    }
+    
+    comptime fn if_false() -> u32 {
+        return if (false) 99 else 7;
+    }
+    
+    fn test() {
+        sink = if_true();
+        sink = if_false();
+    }
+}

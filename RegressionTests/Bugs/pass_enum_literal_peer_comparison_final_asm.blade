@@ -1,0 +1,37 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - g_mode BYTE 0
+// - g_eq_out BYTE 0
+// - g_ne_out BYTE 0
+// SEQUENCE:
+// - RDBYTE
+// - CMP
+// - BITZ
+// - WRBYTE
+// - RDBYTE
+// - CMP
+// - BITNZ
+// - WRBYTE
+// NOTE:
+//   Bare enum literals in == and != should infer their enum type from the
+//   opposite operand. The sample forces final codegen to load enum bytes from
+//   hub memory and store bool results back to hub memory.
+cog task main {
+    
+    type Mode = enum (u8) {
+        Off = 0,
+        On = 1,
+    };
+    
+    hub var mode: Mode = .Off;
+    hub var eq_out: bool = false;
+    hub var ne_out: bool = false;
+    
+    noinline fn compare_mode() {
+        eq_out = mode == .Off;
+        ne_out = .On != mode;
+    }
+    
+    compare_mode();
+}

@@ -1,0 +1,28 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - CMP
+// - IF_NZ
+// - IF_Z
+// - IF_NC
+// - IF_C
+// NOTE:
+//   Exercises comparison operators. Because each comparison result is used
+//   only as a branch condition, the compiler emits CMP + predicated JMP
+//   without materializing into a register (no WRZ/WRC).
+cog task main {
+    
+    extern cog var OUTA: u32 @(0x1FC);
+    
+    noinline fn compare_all(a: u32, b: u32) -> u32 {
+        var eq: u32 = if (a == b) 1 else 0;
+        var ne: u32 = if (a != b) 1 else 0;
+        var lt: u32 = if (a < b) 1 else 0;
+        var ge: u32 = if (a >= b) 1 else 0;
+        return eq + ne + lt + ge;
+    }
+    
+    cog var left_value: u32 = 5;
+    cog var right_value: u32 = 10;
+    OUTA = compare_all(left_value, right_value);
+}

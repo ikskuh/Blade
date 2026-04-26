@@ -1,0 +1,38 @@
+// EXPECT: fail
+// DIAGNOSTICS: UndefinedName, InvalidLoopControl, InvalidBreakInRepLoop, InvalidYieldUsage, InvalidYieldtoUsage, ReturnValueCountMismatch, ReturnOutsideFunction, InvalidYieldtoTarget
+// NOTE:
+//   Covers binder-only control-flow context checks.
+cog task main {
+    
+    fn helper() {
+    }
+    
+    coro fn worker(seed: u32) {
+        loop {
+            yieldto worker(seed);
+        }
+    }
+    
+    return 1;
+    break;
+    continue;
+    
+    rep for(4) -> i {
+        break;
+    }
+    
+    fn bad_yield() {
+        yield;
+    }
+    
+    fn bad_context() {
+        yieldto worker(1);
+    }
+    
+    yieldto helper();
+    yieldto missing();
+    
+    fn wrong_return() -> u32 {
+        return;
+    }
+}

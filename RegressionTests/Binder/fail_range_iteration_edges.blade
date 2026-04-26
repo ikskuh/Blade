@@ -1,0 +1,18 @@
+// EXPECT: fail
+// DIAGNOSTICS: RangeIterationRequiresBinding, TypeMismatch
+// NOTE:
+//   Covers range iteration without binding (RangeIterationRequiresBinding) and mutable range binding (TypeMismatch).
+cog task main {
+    
+    // Range iteration without a binding variable requires RangeIterationRequiresBinding
+    fn test_range_no_binding() {
+        for(0..<10) {
+        }
+    }
+    
+    // Mutable range binding is not allowed
+    fn test_range_mutable_binding() {
+        for(0..<10) -> &index {
+        }
+    }
+}

@@ -1,0 +1,10 @@
+// EXPECT: pass
+// ARGS:
+// - --module=extmod=extmod.blade
+import extmod as ext;
+
+cog task main {
+    // var local: u32 = ext.plus(3, 2);
+    var local: u32 = 0;
+    local = ext.seed;
+}

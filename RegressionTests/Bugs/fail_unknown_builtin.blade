@@ -1,0 +1,8 @@
+// EXPECT: fail
+// DIAGNOSTICS: UnknownBuiltin
+// NOTE:
+//   Unknown @builtin calls must be rejected during binding instead of reaching lowering.
+cog task main {
+    
+    @askdjsad(1);
+}

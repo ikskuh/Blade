@@ -1,0 +1,26 @@
+// EXPECT: pass
+// STAGE: mir
+// ARGS:
+// - -fno-mir-opt=*
+// - -fmir-opt=cfg-simplify
+// CONTAINS:
+// - branch %v0 ? bb2() : bb1(
+// ! branch %v0 ? bb2() : bb3()
+// NOTE:
+//   Positive case for MIR cfg-simplify: the trivial false-edge block should be threaded away.
+cog task main {
+    
+    cog var sink: u32 = 0;
+    cog var input: bool = false;
+    
+    noinline fn demo(x: bool) -> u32 {
+        var y: u32 = 1;
+        if (x) {
+            y = y + 1;
+        }
+    
+        return y;
+    }
+    
+    sink = demo(input);
+}

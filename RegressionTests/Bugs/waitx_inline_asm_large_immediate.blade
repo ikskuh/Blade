@@ -1,0 +1,13 @@
+// EXPECT: pass
+// STAGE: final-asm
+// SEQUENCE:
+// - AUGD #1000
+// - WAITX #488
+// NOTE:
+//   Direct WAITX immediates legalize through the D field metadata.
+cog task main {
+    
+    asm {
+        WAITX #1000
+    };
+}

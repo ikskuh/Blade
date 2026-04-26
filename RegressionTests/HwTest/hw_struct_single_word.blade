@@ -1,0 +1,29 @@
+// EXPECT: pass-hw
+// RUNS:
+// - [ 0x12345678 ] = 0x12345678
+// - [ 0 ] = 0
+// - [ 0xFFFFFFFF ] = 0xFFFFFFFF
+// - [ 0xA5A5A5A5 ] = 0xA5A5A5A5
+// NOTE:
+//   Tests single-word struct literal construction, field write, and field read.
+//   Uses a hub-backed struct with a single u32 field.
+//   store_load(val): writes val to stored.value, reads it back.
+//   Result must equal the input (write-then-read identity).
+type Pair = struct {
+    value: u32,
+};
+
+cog task main {
+    extern cog var rt_result: u32;
+    extern cog var rt_param0: u32;
+    
+    
+    hub var stored: Pair = Pair { .value = 0 };
+    
+    noinline fn store_load(val: u32) -> u32 {
+        stored.value = val;
+        return stored.value;
+    }
+    
+    rt_result = store_load(rt_param0);
+}

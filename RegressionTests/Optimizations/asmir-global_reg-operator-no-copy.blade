@@ -1,0 +1,12 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - ADD g_shared, #1
+// ! MOV ?, g_shared
+// ! MOV g_shared, ?
+cog task main {
+    
+    cog var shared: u32 = 0;
+    
+    shared = shared + 1; // Must be optimized to 'ADD g_shared, #1'
+}

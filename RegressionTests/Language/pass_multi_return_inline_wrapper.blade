@@ -1,0 +1,26 @@
+// EXPECT: pass
+// NOTE:
+//   Tests that a multi-return noinline call inside an inlined function
+//   is correctly cloned during inlining.
+cog task main {
+    
+    noinline fn get_pair(a: u32) -> u32, bool {
+        if (a > 10) {
+            return a, true;
+        }
+        else {
+            return 0, false;
+        }
+    }
+    
+    cog var val: u32 = 0;
+    cog var flag: bool = false;
+    
+    fn wrapper(x: u32) {
+        val, flag = get_pair(x);
+    }
+    
+    cog const input: u32 = 42;
+    
+    wrapper(input);
+}

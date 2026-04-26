@@ -1,0 +1,13 @@
+// EXPECT: fail
+// DIAGNOSTICS: MissingReturnValue
+cog task main {
+    
+    fn read_pin_to_carry(pin: u32) -> bool@C {
+        asm {
+            TESTP {pin} WC
+        } -> result: bool@C;
+    }
+    
+    cog var foo: bool = false;
+    foo = read_pin_to_carry(1);
+}

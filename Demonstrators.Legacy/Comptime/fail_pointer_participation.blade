@@ -1,9 +1,0 @@
-// EXPECT: fail
-// DIAGNOSTICS:
-// - ComptimeUnsupportedConstruct
-
-fn deref_value(ptr: *cog u32) -> u32 {
-    return ptr.*;
-}
-
-cog const folded: u32 = deref_value(bitcast(*cog u32, 0));

@@ -1,0 +1,13 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - ComptimeForbiddenSymbolAccess
+cog task main {
+    
+    cog var base: u32 = 5;
+    
+    fn read_base(delta: u32) -> u32 {
+        return base + delta;
+    }
+    
+    cog const folded: u32 = read_base(1);
+}

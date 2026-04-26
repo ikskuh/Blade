@@ -1,0 +1,18 @@
+// EXPECT: pass
+// STAGE: bound
+// NOTE:
+//   Covers comptime cast and conversion edge cases.
+//   Exercises BladeValue.TryCast, TryConvert, TryBitCast paths.
+cog task main {
+    
+    comptime fn cast_u32_to_i32(x: u32) -> i32 {
+        return x as i32;
+    }
+    
+    comptime fn bitcast_u32_to_i32(x: u32) -> i32 {
+        return bitcast(i32, x);
+    }
+    
+    assert(cast_u32_to_i32(42) == 42);
+    assert(bitcast_u32_to_i32(0xFFFFFFFF) == -1);
+}

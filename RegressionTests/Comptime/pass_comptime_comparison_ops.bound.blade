@@ -1,0 +1,34 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - VarDecl eq_result: bool
+// - Literal<bool> true
+// - VarDecl ne_result: bool
+// - Literal<bool> true
+// - VarDecl lt_result: bool
+// - Literal<bool> true
+// - VarDecl le_result: bool
+// - Literal<bool> true
+// - VarDecl gt_result: bool
+// - Literal<bool> true
+// - VarDecl ge_result: bool
+// - Literal<bool> true
+// ! Call<bool> ct_eq
+// NOTE:
+//   Exercises all comparison operators in comptime evaluation.
+cog task main {
+    
+    comptime fn ct_eq(a: u32, b: u32) -> bool { return a == b; }
+    comptime fn ct_ne(a: u32, b: u32) -> bool { return a != b; }
+    comptime fn ct_lt(a: u32, b: u32) -> bool { return a < b; }
+    comptime fn ct_le(a: u32, b: u32) -> bool { return a <= b; }
+    comptime fn ct_gt(a: u32, b: u32) -> bool { return a > b; }
+    comptime fn ct_ge(a: u32, b: u32) -> bool { return a >= b; }
+    
+    var eq_result: bool = ct_eq(10, 10);
+    var ne_result: bool = ct_ne(10, 20);
+    var lt_result: bool = ct_lt(5, 10);
+    var le_result: bool = ct_le(10, 10);
+    var gt_result: bool = ct_gt(20, 10);
+    var ge_result: bool = ct_ge(10, 10);
+}

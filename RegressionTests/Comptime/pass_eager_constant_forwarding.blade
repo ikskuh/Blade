@@ -1,0 +1,16 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// 2x Literal<u32> 5000
+// ! Symbol<u32> ticks
+// NOTE:
+//   The compiler should forward constants directly as if they
+//   were literals.
+cog task main {
+    
+    cog const ticks: u32 = 5000;
+    
+    // must directly consume the immediate instead of loading
+    // the constant value first:
+    @WAITX(ticks); 
+}

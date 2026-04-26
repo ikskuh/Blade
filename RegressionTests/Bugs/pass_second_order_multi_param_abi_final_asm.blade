@@ -1,0 +1,35 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - MOV ?, g_right
+// - CALLPB ?, #f_wrap_sub
+// - MOV ?, PB
+// - MOV ?, ?
+// - CALLPA ?, #f_leaf_sub
+// - MOV ?, PA
+// - MOV PA, ?
+// - SUB PA, ?
+// - MOV PB, PA
+// - ADD PB, #1
+// ! SUB PA, PA
+// ! g_second_wrap_sub_arg1
+// ! g_leaf_leaf_sub_arg1
+// NOTE:
+//   Covers an auto-tiered second-order function that forwards a second
+//   parameter into a leaf callee while keeping PB as the transport/result slot.
+cog task main {
+    
+    noinline leaf fn leaf_sub(a: u32, b: u32) -> u32 {
+        return a - b;
+    }
+    
+    noinline fn wrap_sub(a: u32, b: u32) -> u32 {
+        return leaf_sub(a, b) + 1;
+    }
+    
+    cog var left: u32 = 10;
+    cog var right: u32 = 3;
+    cog var sink: u32 = 0;
+    
+    sink = wrap_sub(left, right);
+}

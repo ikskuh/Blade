@@ -1,0 +1,12 @@
+// EXPECT: pass
+// NOTE:
+//   Verifies that function calls are valid standalone statements.
+cog task main {
+    
+    fn noop() {
+    }
+    
+    fn demo() {
+        noop();
+    }
+}

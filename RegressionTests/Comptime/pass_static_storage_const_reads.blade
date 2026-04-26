@@ -1,0 +1,20 @@
+// EXPECT: pass
+// NOTE:
+//   Static constants from all storage classes should be readable during eager
+//   folding and from comptime functions.
+cog task main {
+    
+    cog const REG_RATE: u32 = 20_000_000;
+    lut const LUT_OFFSET: u32 = 2;
+    hub const HUB_OFFSET: u32 = 3;
+    
+    comptime fn total() -> u32 {
+        return REG_RATE / 1_000_000 + LUT_OFFSET + HUB_OFFSET;
+    }
+    
+    cog const DIRECT: u32 = REG_RATE / 1_000_000 + LUT_OFFSET + HUB_OFFSET;
+    cog const VIA_FN: u32 = total();
+    
+    assert DIRECT == 25;
+    assert VIA_FN == 25;
+}

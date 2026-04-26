@@ -1,0 +1,50 @@
+// EXPECT: pass
+// NOTE:
+//   Covers context-typed struct literals, same-type casts, function-typed if-expressions,
+//   and several assignability/comparability helpers.
+    
+type Mode = enum (u8) {
+    A = 0,
+    B = 1,
+};
+
+type Flags = bitfield (u8) {
+    low: u8,
+};
+
+type Pair = struct {
+    value: u32,
+};
+
+type Choice = union {
+    value: u32,
+    flag: bool,
+};
+    
+cog task main {
+    fn foo() -> u32 {
+        return 1;
+    }
+    
+    fn demo(flag: bool, value: u32, mode: Mode, flags: Flags, pair: Pair, choice: Choice) -> u32 {
+        var same_mode: Mode = mode as Mode;
+        var same_int: u32 = value as u32;
+        var direct_pair: Pair = Pair { .value = value };
+    
+        var chosen_bool: bool = if (flag) true else false;
+        var chosen_mode: Mode = if (flag) mode else mode;
+        var chosen_flags: Flags = if (flag) flags else flags;
+        var chosen_pair: Pair = if (flag) pair else pair;
+        var chosen_choice: Choice = if (flag) choice else choice;
+        var chosen_call: u32 = (if (flag) foo else foo)();
+        var sum: u32 = 1 + value;
+        var bool_cmp: bool = true == false;
+        var undef_cmp: bool = undefined == 1;
+    
+        if (bool_cmp or undef_cmp or chosen_bool) {
+            return chosen_call + sum + direct_pair.value;
+        }
+    
+        return same_int + chosen_call + sum + chosen_flags.low + chosen_pair.value + chosen_choice.value;
+    }
+}

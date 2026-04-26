@@ -1,0 +1,16 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - VarDecl folded: u32
+// - Literal<u32> 3
+// ! Call<u32> add
+// NOTE:
+//   Pure ordinary functions should fold eagerly when all inputs are compile-time values.
+cog task main {
+    
+    fn add(a: u32, b: u32) -> u32 {
+        return a + b;
+    }
+    
+    var folded: u32 = add(1, 2);
+}

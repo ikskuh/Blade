@@ -1,0 +1,17 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - L14, EnumLiteralRequiresContext
+// - L15, EnumLiteralRequiresContext
+// NOTE:
+//   Peer typing for bare enum literals is limited to enum-vs-enum comparisons.
+cog task main {
+    
+    type Mode = enum (u8) {
+        Off = 0,
+        On = 1,
+    };
+    
+    cog var raw: u8 = 0;
+    cog var eq_bad: bool = .Off == raw;
+    cog var ne_bad: bool = raw != .Off;
+}

@@ -1,0 +1,26 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - VarDecl result: u32
+// - Literal<u32> 3
+// ! Call<u32> ct_rep_loop_return
+// NOTE:
+//   Exercises rep loop inside comptime evaluation. Since break is forbidden
+//   in rep loops, termination uses return from inside the loop body.
+cog task main {
+    
+    comptime fn ct_rep_loop_return(limit: u32) -> u32 {
+        var i: u32 = 0;
+        rep loop {
+            i = i + 1;
+            if (i >= limit) {
+                return i;
+            } else {
+                i = i;
+            }
+        }
+        return 0;
+    }
+    
+    var result: u32 = ct_rep_loop_return(3);
+}

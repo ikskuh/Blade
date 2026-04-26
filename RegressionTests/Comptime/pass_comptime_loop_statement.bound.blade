@@ -1,0 +1,20 @@
+// EXPECT: pass
+// STAGE: bound
+// NOTE:
+//   Covers comptime loop statement with break.
+//   Exercises ComptimeEvaluator TryExecuteLoopStatement.
+cog task main {
+    
+    comptime fn loop_with_break() -> u32 {
+        var i: u32 = 0;
+        loop {
+            i += 1;
+            if (i >= 5) {
+                break;
+            }
+        }
+        return i;
+    }
+    
+    var result: u32 = loop_with_break();
+}

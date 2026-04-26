@@ -1,0 +1,28 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - ComptimeUnsupportedConstruct
+// - ComptimeForbiddenSymbolAccess
+// NOTE:
+//   Covers ComptimeFunctionSupportAnalyzer rejection paths for unsupported statements:
+//   inline asm (ComptimeUnsupportedConstruct) and non-local variable write (ComptimeForbiddenSymbolAccess).
+cog task main {
+    
+    cog var global_sink: u32 = 0;
+    
+    comptime fn use_inline_asm() -> u32 {
+        asm volatile {
+            NOP
+        };
+        return 0;
+    }
+    
+    comptime fn write_non_local() -> u32 {
+        global_sink = 99;
+        return 0;
+    }
+    
+    fn test() {
+        var a: u32 = use_inline_asm();
+        var b: u32 = write_non_local();
+    }
+}

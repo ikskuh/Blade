@@ -1,0 +1,10 @@
+// EXPECT: xfail
+// NOTE:
+//   Currently fails because the inline asm cannot actually access "root.child.Foo.touched".
+
+import "./nested/root.mod" as root;
+
+cog task main : root.child.Foo {
+    root.child.Foo.touched = 2;
+    asm { MOV {root.child.Foo.touched}, #1 };
+}

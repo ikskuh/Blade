@@ -1,0 +1,13 @@
+// EXPECT: fail
+// DIAGNOSTICS: InvalidAddressOfTarget
+// NOTE:
+//   Covers address-of operator edge cases in BindAddressOfExpression.
+//   Taking address of non-variable/parameter targets.
+cog task main {
+    
+    fn test_addressof_literal() -> u32 {
+        // Taking address of a non-lvalue
+        var p: *cog u32 = &42;
+        return 0;
+    }
+}

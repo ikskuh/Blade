@@ -1,0 +1,35 @@
+// EXPECT: pass
+// STAGE: mir
+// CONTAINS:
+// - ptr.offset.Add[1]
+// - ptr.offset.Add[2]
+// NOTE:
+//   Exercises hub indexed address-of for byte- and word-sized elements so MIR
+//   covers the size-selection branches used for offset scaling.
+cog task main {
+    
+    hub var bytes: [4]u8 = undefined;
+    hub var words: [4]u16 = undefined;
+    cog var index: u32 = 1;
+    cog var sink: u32 = 0;
+    
+    noinline fn capture_byte(slot: u32) -> u32 {
+        var ptr: *hub u8 = &bytes[slot];
+        var bits: u32 = 0;
+        asm volatile {
+            MOV {bits}, {ptr}
+        };
+        return bits;
+    }
+    
+    noinline fn capture_word(slot: u32) -> u32 {
+        var ptr: *hub u16 = &words[slot];
+        var bits: u32 = 0;
+        asm volatile {
+            MOV {bits}, {ptr}
+        };
+        return bits;
+    }
+    
+    sink = capture_byte(index) + capture_word(index);
+}

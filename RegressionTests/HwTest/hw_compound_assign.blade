@@ -1,0 +1,32 @@
+// EXPECT: pass-hw
+// RUNS:
+// - [ 0x1234 ] = 3128
+// - [ 0 ] = 1080
+// - [ 0xFFFFFFFF ] = 14392
+// - [ 0xDEADBEEF ] = 15416
+// - [ 0x5A5A5A5A ] = 11320
+// NOTE:
+//   Tests compound assignment operators: |=, &=, ^=, <<=, >>=
+//   f(x): r=x; r|=0xFF; r&=0x0F0F; r^=0x0101; r<<=4; r>>=2
+//   Run 1: 0x1234 -> 0x12FF -> 0x020F -> 0x030E -> 0x30E0 -> 0x0C38 = 3128
+//   Run 2: 0      -> 0xFF   -> 0x0F   -> 0x010E -> 0x10E0 -> 0x0438 = 1080
+//   Run 3: 0xFFFF…-> 0xFFFF…-> 0x0F0F -> 0x0E0E -> 0xE0E0 -> 0x3838 = 14392
+//   Run 4: 0xDEAD…-> 0xDEADBEFF -> 0x0E0F -> 0x0F0E -> 0xF0E0 -> 0x3C38 = 15416
+//   Run 5: 0x5A5A…-> 0x5A5A5AFF -> 0x0A0F -> 0x0B0E -> 0xB0E0 -> 0x2C38 = 11320
+cog task main {
+    
+    extern cog var rt_result: u32;
+    extern cog var rt_param0: u32;
+    
+    noinline fn compound(x: u32) -> u32 {
+        var r: u32 = x;
+        r |= 0xFF;
+        r &= 0x0F0F;
+        r ^= 0x0101;
+        r <<= 4;
+        r >>= 2;
+        return r;
+    }
+    
+    rt_result = compound(rt_param0);
+}

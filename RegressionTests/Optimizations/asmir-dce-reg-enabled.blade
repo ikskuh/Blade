@@ -1,0 +1,23 @@
+// EXPECT: pass
+// STAGE: asmir
+// ARGS:
+// - -fno-asmir-opt=*
+// - -fasmir-opt=dce-reg
+// CONTAINS:
+// ! MOV #_r1, #_r1
+// ! ADD #_r1, #1
+// NOTE:
+//   Positive case for ASMIR dce-reg: dead register-only instructions should be removed.
+cog task main {
+    
+    cog var sink: u32 = 0;
+    var x: u32 = 1;
+    var y: u32 = 2;
+    
+    asm {
+      MOV {x}, {y}
+      ADD {x}, #1
+    };
+    
+    sink = 0;
+}

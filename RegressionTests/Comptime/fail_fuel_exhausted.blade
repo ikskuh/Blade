@@ -1,0 +1,15 @@
+// EXPECT: fail
+// ARGS: --comptime-fuel=2
+// DIAGNOSTICS:
+// - ComptimeFuelExhausted
+cog task main {
+    
+    comptime fn spin_forever() -> u32 {
+        loop {
+        }
+    
+        return 0;
+    }
+    
+    cog const folded: u32 = spin_forever();
+}

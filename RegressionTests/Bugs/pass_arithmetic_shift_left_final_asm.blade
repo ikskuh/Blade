@@ -1,0 +1,20 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - SAL PA, ?
+// ! SHL
+// NOTE:
+//   Covers expression lowering for `<<<`. Arithmetic left shift must lower to
+//   SAL rather than SHL so the LSB is shifted in from the carry path.
+cog task main {
+    
+    noinline fn sal_expr(value: u32, amount: u32) -> u32 {
+        return value <<< amount;
+    }
+    
+    cog var input_value: u32 = 0x80000001;
+    cog var shift_amount: u32 = 4;
+    cog var sink: u32 = 0;
+    
+    sink = sal_expr(input_value, shift_amount);
+}

@@ -1,0 +1,31 @@
+// EXPECT: pass
+// FLEXSPIN: forbidden
+// STAGE: final-asm
+// CONTAINS:
+// - MOV g_sink, FOO
+// - MOV OUTA, g_sink
+// - MOV g_sink, INA
+// ! FOO LONG
+// NOTE:
+//   Exercises extern declarations across all storage classes.
+//   Extern variables must not allocate storage (no LONG directives).
+//   FlexSpin is forbidden because FOO is a truly external symbol.
+cog task main {
+    
+    extern cog var FOO: u32;
+    extern cog var OUTA: u32 @(0x1FC);
+    extern cog const INA: u32 @(0x1FE);
+    
+    extern lut var ext_lut: u32;
+    extern hub var ext_hub: u32;
+    
+    cog var sink: u32 = 0;
+    
+    fn use_extern() void {
+        sink = FOO;
+        OUTA = sink;
+        sink = INA;
+    }
+    
+    use_extern();
+}

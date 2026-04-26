@@ -1,0 +1,15 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - ComptimeValueRequired
+// NOTE:
+//   Forces the comptime compound-assignment evaluator down the modulo-by-zero path.
+cog task main {
+    
+    comptime fn bad_modulo() -> u32 {
+        var value: u32 = 7;
+        value %= 0;
+        return value;
+    }
+    
+    cog const folded: u32 = bad_modulo();
+}

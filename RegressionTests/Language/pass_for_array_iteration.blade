@@ -1,0 +1,13 @@
+// EXPECT: pass
+// NOTE:
+//   Exercises for-loop array iteration forms over cog-backed arrays so the
+//   backend uses the supported indexed load/store lowering paths.
+cog task main {
+    
+    cog var arr: [4]u32 = [1,2,3,4];
+    cog var sink: u32 = 0;
+    
+    for (arr) -> x { sink = sink + x; }
+    for (arr) -> &x { x = 10; }
+    for (arr) -> &x, i { x = i; }
+}

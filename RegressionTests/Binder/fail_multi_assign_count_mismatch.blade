@@ -1,0 +1,16 @@
+// EXPECT: fail
+// DIAGNOSTICS: MultiAssignmentTargetCountMismatch
+// NOTE:
+//   Target count must match function return count.
+cog task main {
+    
+    fn ret2() -> u32, bool {
+        return 10, true;
+    }
+    
+    cog var x: u32 = 0;
+    cog var a: bool = false;
+    cog var b: bool = false;
+    
+    x, a, b = ret2();
+}

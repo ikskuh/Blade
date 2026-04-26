@@ -1,0 +1,27 @@
+// EXPECT: pass
+// DIAGNOSTICS: ComptimeIntegerTruncation
+// STAGE: final-asm
+// CONTAINS:
+// - MOV g_narrowed_unsigned, #1
+// - MOV g_reinterpreted_signed, #1
+// - MOV g_roundtrip_bits, #509
+// NOTE:
+//   Explicit casts and bitcasts now fold aggressively when every operand is a
+//   compile-time constant, including the pointer round-trip through `u32`.
+cog task main {
+    
+    cog var narrowed_unsigned: u8 = 0;
+    cog var reinterpreted_signed: i8 = 0;
+    cog var roundtrip_bits: u32 = 0;
+    
+    noinline fn normalize(x: u32) -> u32 {
+        var lo: u8 = x as u8;
+        var hi: i8 = x as i8;
+        var pointer: *cog u32 = bitcast(*cog u32, x);
+        return (lo as u32) + (hi as u32) + bitcast(u32, pointer);
+    }
+    
+    narrowed_unsigned = 257 as u8;
+    reinterpreted_signed = bitcast(i8, 1 as u8);
+    roundtrip_bits = normalize(255);
+}

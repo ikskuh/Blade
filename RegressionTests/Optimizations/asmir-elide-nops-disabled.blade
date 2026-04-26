@@ -1,0 +1,24 @@
+// EXPECT: pass
+// STAGE: asmir
+// ARGS:
+// - -fno-asmir-opt=*
+// CONTAINS:
+// - MOV ?1, ?1
+// - OR ?1, #0
+// - ADD ?1, #0
+// SEQUENCE:
+// - JMP #blade_halt
+// NOTE:
+//   Negative case for elide-nops: with optimization disabled, the inline no-ops remain
+//   and the entry-point exit still targets the runtime halt hook.
+cog task main {
+    
+    cog var sink: u32 = 0;
+    var x: u32 = 1;
+    asm {
+      MOV {x}, {x}
+      OR {x}, #0
+      ADD {x}, #0
+    };
+    sink = x;
+}

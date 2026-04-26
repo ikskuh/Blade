@@ -1,0 +1,13 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - RangeExpressionOutsideForLoop
+// NOTE:
+//   Standalone range expressions are rejected in the binder.
+cog task main {
+    
+    fn demo() {
+        _ = 1..<2;
+    }
+    
+    demo();
+}

@@ -1,0 +1,49 @@
+// EXPECT: pass-hw
+// RUNS:
+// - [ 1, 42 ] = 0x002A0001
+// - [ 0, 0 ] = 0
+// - [ 2, 1 ] = 0x00010002
+// - [ 0, 255 ] = 0x00FF0000
+// NOTE:
+//   Tests closed enum member access, contextual literals (.name),
+//   and open enum round-trip cast.
+//   status = bitcast(Status, param0): idle=0, active=1, error=2
+//   mode = (param1 as u8) as Mode (open enum, round-trip identity)
+//   result = status_to_int(status) | (mode_val << 16)
+//   Run 1: active->1, mode=42->42:   1|(42<<16) = 0x002A0001
+//   Run 2: idle->0,   mode=0->0:     0
+//   Run 3: error->2,  mode=1->1:     2|(1<<16)  = 0x00010002
+//   Run 4: idle->0,   mode=255->255: 255<<16    = 0x00FF0000
+cog task main {
+    
+    extern cog var rt_result: u32;
+    extern cog var rt_param0: u32;
+    extern cog var rt_param1: u32;
+    
+    type Status = enum(u32) {
+        idle   = 0,
+        active = 1,
+        error  = 2,
+    };
+    
+    type Mode = enum(u8) {
+        normal = 0,
+        fast   = 1,
+        ...
+    };
+    
+    noinline fn status_to_int(s: Status) -> u32 {
+        if (s == .idle)   { return 0; }
+        if (s == .active) { return 1; }
+        if (s == .error)  { return 2; }
+        return 3;
+    }
+    
+    noinline fn mode_roundtrip(v: u32) -> u32 {
+        var m: Mode = (v as u8) as Mode;
+        return m as u8 as u32;
+    }
+    
+    var s: Status = bitcast(Status, rt_param0);
+    rt_result = status_to_int(s) | (mode_roundtrip(rt_param1) << 16);
+}

@@ -1,0 +1,25 @@
+// EXPECT: pass
+// STAGE: lir
+// ARGS:
+// - -fno-mir-opt=*
+// - -fno-lir-opt=*
+// CONTAINS:
+// - branch %r0 ? bb2() : bb3()
+// NOTE:
+//   Negative case for LIR cfg-simplify: the original branch fanout remains.
+cog task main {
+    
+    cog var sink: u32 = 0;
+    cog var input: bool = false;
+    
+    noinline fn demo(x: bool) -> u32 {
+        var y: u32 = 1;
+        if (x) {
+            y = y + 1;
+        }
+    
+        return y;
+    }
+    
+    sink = demo(input);
+}

@@ -1,0 +1,12 @@
+// EXPECT: pass
+// STAGE: bound
+// NOTE:
+//   Covers inclusive range iteration with binding (Binder L733-741).
+//   Exercises the inclusive range normalization path (end + 1).
+cog task main {
+    
+    fn test_inclusive_range() {
+        for(0..=9) -> index {
+        }
+    }
+}

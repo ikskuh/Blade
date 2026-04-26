@@ -1,0 +1,10 @@
+// EXPECT: fail
+// DIAGNOSTICS: UnexpectedToken
+// NOTE:
+//   Return annotations still require an identifier-like token after '@'.
+cog task main {
+    
+    fn broken() -> u32@123, bool@C {
+        return 1, false;
+    }
+}

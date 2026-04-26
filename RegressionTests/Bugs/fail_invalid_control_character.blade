@@ -1,0 +1,8 @@
+// EXPECT: fail
+// DIAGNOSTICS: InvalidControlCharacter
+// NOTE:
+//   Blade rejects control characters before lexing except LF, CR, TAB, and SP.
+cog task main {
+    
+    cog var x: u32 = 1;
+}

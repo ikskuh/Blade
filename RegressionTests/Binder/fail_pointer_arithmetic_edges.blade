@@ -1,0 +1,34 @@
+// EXPECT: fail
+// DIAGNOSTICS: InvalidPointerArithmetic, IncompatiblePointerSubtraction
+// NOTE:
+//   Covers invalid pointer arithmetic (InvalidPointerArithmetic) and incompatible pointer subtraction (IncompatiblePointerSubtraction).
+//   Exercises the uncovered paths in TryBindPointerArithmetic.
+cog task main {
+    
+    hub var buf_u32: [10]u32 = undefined;
+    hub var buf_u16: [10]u16 = undefined;
+    
+    fn test_pointer_add_two_pointers() -> u32 {
+        var p1: [*]hub u32 = &buf_u32[0];
+        var p2: [*]hub u32 = &buf_u32[1];
+        // Adding two pointers is invalid
+        var p3: [*]hub u32 = p1 + p2;
+        return 0;
+    }
+    
+    fn test_pointer_subtract_incompatible() -> u32 {
+        var p1: [*]hub u32 = &buf_u32[0];
+        var p2: [*]hub u16 = &buf_u16[0];
+        // Subtracting pointers with different element types is invalid
+        var diff: u32 = p1 - p2;
+        return 0;
+    }
+    
+    fn test_pointer_add_non_integer() -> u32 {
+        var p1: [*]hub u32 = &buf_u32[0];
+        var p2: [*]hub u32 = &buf_u32[1];
+        // Using a pointer as the delta is invalid
+        var p3: [*]hub u32 = p1 + p2;
+        return 0;
+    }
+}

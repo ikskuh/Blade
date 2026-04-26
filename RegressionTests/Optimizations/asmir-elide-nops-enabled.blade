@@ -1,0 +1,26 @@
+// EXPECT: pass
+// STAGE: asmir
+// ARGS:
+// - -fno-asmir-opt=*
+// - -fasmir-opt=elide-nops
+// CONTAINS:
+// - MOV g_sink
+// ! MOV #_r1, #_r1
+// ! OR #_r1, #0
+// ! ADD #_r1, #0
+// SEQUENCE:
+// - JMP #blade_halt
+// NOTE:
+//   Positive case for elide-nops: semantic no-ops inside asm must be removed
+//   without stripping the entry-point runtime halt jump.
+cog task main {
+    
+    cog var sink: u32 = 0;
+    var x: u32 = 1;
+    asm {
+      MOV {x}, {x}
+      OR {x}, #0
+      ADD {x}, #0
+    };
+    sink = x;
+}

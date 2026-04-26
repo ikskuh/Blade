@@ -1,0 +1,15 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - For
+// - For -> i
+// NOTE:
+//   Exercises for(count) and for(count) -> index forms.
+cog task main {
+    
+    cog var count: u32 = 4;
+    cog var sink: u32 = 0;
+    
+    for (count) { sink = sink + 1; }
+    for (count) -> i { sink = sink + i; }
+}

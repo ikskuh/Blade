@@ -1,9 +1,0 @@
-// EXPECT: fail
-// DIAGNOSTICS: MultiAssignmentRequiresCall
-// NOTE:
-//   Multi-target assignment requires a function call on the RHS.
-
-cog var x: u32 = 0;
-cog var y: u32 = 0;
-
-x, y = 42;

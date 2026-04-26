@@ -1,6 +1,0 @@
-// EXPECT: fail
-// DIAGNOSTICS: TypeMismatch
-// NOTE:
-//   Extern @() clauses still require a comptime integer value.
-
-extern cog var BAD_ADDR: u32 @(true);

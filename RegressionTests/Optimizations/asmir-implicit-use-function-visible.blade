@@ -1,0 +1,34 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - MOV g_sink, PB
+// - CALLPB g_sink, #f_general_use
+// ! CALLPB PB, #f_general_use
+// NOTE:
+//   Reading a register-backed global from a non-top-level function makes the
+//   intermediate store observable, so transport fusion must keep the
+//   store/reload chain through that variable.
+cog task main {
+    
+    noinline fn leaf_func(v: u32) -> u32 {
+        return v;
+    }
+    
+    noinline fn leaf2_func(v: u32) -> u32 {
+        return leaf_func(v);
+    }
+    
+    noinline fn general_use(a: u32) -> u32 {
+        return leaf2_func(a) + 2;
+    }
+    
+    cog var source: u32 = 0;
+    cog var sink: u32 = 0;
+    
+    noinline fn observe_sink() -> u32 {
+        return sink;
+    }
+    
+    sink = general_use(source);
+    sink = general_use(sink);
+}

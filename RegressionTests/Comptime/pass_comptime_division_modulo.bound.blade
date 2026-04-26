@@ -1,0 +1,24 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - Literal<u32> 5
+// - Literal<u32> 1
+// NOTE:
+//   Covers comptime division and modulo paths.
+cog task main {
+    
+    cog var sink: u32 = 0;
+    
+    comptime fn division() -> u32 {
+        return 10 / 2;
+    }
+    
+    comptime fn modulo() -> u32 {
+        return 11 % 2;
+    }
+    
+    fn test() {
+        sink = division();
+        sink = modulo();
+    }
+}

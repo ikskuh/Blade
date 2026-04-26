@@ -1,0 +1,9 @@
+// EXPECT: pass
+// DIAGNOSTICS: ComptimeIntegerTruncation
+// NOTE:
+//   Covers the integer truncation warning path in the Binder.
+//   Exercises ReportComptimeIntegerTruncation.
+cog task main {
+    
+    cog var x: u8 = 256;
+}

@@ -1,0 +1,40 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - MOV PB, g_input_n
+// - CALLB #f_factorial
+// - MOV ?1, PA
+// - MOV OUTA, ?1
+// - PUSHB
+// - POPB
+// - RETB
+// ! abi_rec_factorial_arg0
+// ! g_rec_factorial_ret0
+// ! WRLONG
+// ! RDLONG
+// SEQUENCE:
+// - factorial_bb2
+// - PUSHB PB
+// - MOV PB, PA
+// - CALLB #f_factorial
+// - MOV PA, PA
+// - POPB PB
+// NOTE:
+//   Exercises recursive function (rec fn) calling convention with
+//   PB as the shared argument slot, PA as the recursive return slot, and
+//   stack-backed preservation of the live caller value across the self-call.
+cog task main {
+    
+    extern cog var OUTA: u32 @(0x1FC);
+    
+    rec fn factorial(n: u32) -> u32 {
+        if (n < 2) {
+            return 1;
+        } else {
+            return n * factorial(n - 1);
+        }
+    }
+    
+    cog var input_n: u32 = 5;
+    OUTA = factorial(input_n);
+}

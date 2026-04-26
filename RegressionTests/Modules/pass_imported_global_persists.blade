@@ -1,0 +1,11 @@
+// EXPECT: pass
+// STAGE: final-asm
+// SEQUENCE:
+// - ADD g_seed, #1
+// - ADD g_seed, #1
+// - g_seed LONG 7
+// ARGS:
+// - --module=extmod=extmod.blade
+import extmod as ext;
+
+cog task main {}

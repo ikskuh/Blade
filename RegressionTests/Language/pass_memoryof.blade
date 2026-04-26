@@ -1,0 +1,21 @@
+// EXPECT: pass
+// STAGE: bound
+// CONTAINS:
+// - Literal<MemorySpace> 0
+// - Literal<MemorySpace> 1
+// - Literal<MemorySpace> 2
+// NOTE:
+//   Tests memoryof operator returning MemorySpace enum values
+//   for cog, lut, and hub variables.
+cog task main {
+    
+    import builtin;
+    
+    extern cog var rv: u32;
+    extern lut var lv: u32;
+    extern hub var hv: u32;
+    
+    cog var cls: builtin.MemorySpace = memoryof(rv);
+    cog var cls2: builtin.MemorySpace = memoryof(lv);
+    cog var cls3: builtin.MemorySpace = memoryof(hv);
+}

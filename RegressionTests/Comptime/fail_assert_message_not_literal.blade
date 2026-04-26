@@ -1,0 +1,8 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - UnexpectedToken
+cog task main {
+    
+    const msg: [4]u8 = "oops";
+    assert false, msg;
+}

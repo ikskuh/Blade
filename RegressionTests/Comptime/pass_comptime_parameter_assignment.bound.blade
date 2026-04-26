@@ -1,0 +1,14 @@
+// EXPECT: pass
+// NOTE:
+//   Parameters are ordinary automatic variables during comptime evaluation and
+//   can be reassigned without forcing a local alias.
+cog task main {
+    
+    comptime fn increment(p: u32) -> u32 {
+        p = p + 1;
+        return p;
+    }
+    
+    cog const result: u32 = increment(41);
+    assert result == 42;
+}

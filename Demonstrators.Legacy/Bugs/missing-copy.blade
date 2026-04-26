@@ -1,9 +1,0 @@
-
-
-fn consume(x: u32) {
-    asm volatile {
-        MOV INA, {x}
-    };
-}
-
-consume(13);

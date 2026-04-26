@@ -1,0 +1,22 @@
+// EXPECT: pass
+// STAGE: asmir
+// ARGS:
+// - -fno-asmir-opt=*
+// - -fasmir-opt=copy-prop
+// CONTAINS:
+// - MOV ?1, #1
+// ! MOV ?1, ?2
+// NOTE:
+//   Positive case for ASMIR copy-prop: the sink store should use the propagated source directly.
+cog task main {
+    
+    cog var sink: u32 = 0;
+    var src: u32 = 1;
+    var tmp: u32 = 0;
+    
+    asm {
+      MOV {tmp}, {src}
+    };
+    
+    sink = tmp;
+}

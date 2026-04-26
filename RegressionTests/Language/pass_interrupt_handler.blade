@@ -1,0 +1,16 @@
+// NOTE:
+//   Exercises interrupt handler (int1 fn) with yield and return.
+cog task main {
+    extern cog var OUTA: u32 @(0x1FC);
+    
+    cog var counter: u32 = 0;
+    
+    int1 fn on_interrupt() {
+        counter = counter + 1;
+        yield;
+        counter = counter + 1;
+        return;
+    }
+    
+    OUTA = counter;
+}

@@ -1,0 +1,15 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - g_OUTA LONG 0
+// - OR g_OUTA, #16
+// ! OR OUTA, #16
+// ! OUTA = $1FC
+// NOTE:
+//   A plain global named like a P2 special register must stay ordinary storage
+//   unless it is declared as an explicit fixed or extern alias.
+cog task main {
+    
+    cog var OUTA: u32 = 0;
+    OUTA |= 0x10;
+}

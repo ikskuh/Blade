@@ -1,0 +1,12 @@
+// EXPECT: fail
+// DIAGNOSTICS: InlineAsmInvalidFlagOutput
+// NOTE:
+//   Inline asm output bindings must specify `@C` or `@Z`; a plain typed output stays rejected.
+cog task main {
+    
+    fn read_pin(pin: u32) {
+        asm {
+            TESTP {pin} WC
+        } -> result: bool;
+    }
+}

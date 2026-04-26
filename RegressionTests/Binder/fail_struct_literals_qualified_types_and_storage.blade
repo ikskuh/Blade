@@ -1,0 +1,45 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - L28, InvalidExternScope
+// - L29, InvalidLocalStorageClass
+// - L33, StructUnknownField
+// - L33, StructDuplicateField
+// - L33, StructMissingFields
+// - L38, UndefinedType
+// - L39, UndefinedType
+// - L40, UndefinedType
+// - L41, TypeMismatch
+// - L42, StructUnknownField
+// - L42, StructMissingFields
+// NOTE:
+//   Covers local storage validation, qualified-type resolution, typed-struct rejection
+//   for non-struct aliases, and inferred duplicate fields.
+import "./support/qualified/root.mod" as root;
+
+type Local = u32;
+type Word = u32;
+type Pair = struct {
+    value: u32,
+};
+type Alias = root.child.Leaf;
+
+cog task main {
+    fn locals() {
+        extern var ext_local: u32 = 0;
+        cog var reg_local: u32 = 0;
+    }
+    
+    fn duplicate_fields(seed: u32) {
+        _ = Pair { .x = seed, .x = 0 };
+    }
+    
+    var ok_one: Alias = Alias { .value = 1 };
+    var ok_two: Alias = undefined;
+    var not_module: Local.Leaf = undefined;
+    var missing_nested: root.missing.Leaf = undefined;
+    var missing_leaf: root.child.Missing = undefined;
+    var wrong_struct: u32 = Word { .value = 1 };
+    var wrong_field: Pair = Pair { .missing = 1 };
+    
+    duplicate_fields(1);
+}

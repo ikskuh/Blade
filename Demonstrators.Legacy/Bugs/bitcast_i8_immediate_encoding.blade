@@ -1,8 +1,0 @@
-// EXPECT: pass
-// STAGE: final-asm
-// CONTAINS:
-// - MOV g_reinterpreted_signed, #511
-// ! MOV g_reinterpreted_signed, #-1
-
-cog var reinterpreted_signed: i8 = 0;
-reinterpreted_signed = bitcast(i8, 255 as u8);

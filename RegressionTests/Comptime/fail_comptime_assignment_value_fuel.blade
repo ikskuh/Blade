@@ -1,0 +1,27 @@
+// EXPECT: fail
+// ARGS: --comptime-fuel=2
+// DIAGNOSTICS:
+// - ComptimeFuelExhausted
+// - ComptimeUnsupportedConstruct
+// NOTE:
+//   Forces comptime evaluation to fail while computing an assignment RHS, so the
+//   evaluator takes the assignment-value failure path. The exhausted call also
+//   leaves an error expression at the assignment RHS, so the frontend reports
+//   the secondary unsupported-expression diagnostic as well.
+cog task main {
+    
+    comptime fn spin_forever() -> u32 {
+        loop {
+        }
+    
+        return 0;
+    }
+    
+    comptime fn assign_from_failing_call() -> u32 {
+        var value: u32 = 0;
+        value = spin_forever();
+        return value;
+    }
+    
+    cog const folded: u32 = assign_from_failing_call();
+}

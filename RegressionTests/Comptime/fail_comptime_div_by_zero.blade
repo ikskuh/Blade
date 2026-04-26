@@ -1,0 +1,21 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - ComptimeValueRequired
+// - ComptimeValueRequired
+// NOTE:
+//   Covers comptime division and modulo by zero error paths.
+cog task main {
+    
+    comptime fn div_by_zero() -> u32 {
+        return 10 / 0;
+    }
+    
+    comptime fn mod_by_zero() -> u32 {
+        return 10 % 0;
+    }
+    
+    fn test() {
+        var a: u32 = div_by_zero();
+        var b: u32 = mod_by_zero();
+    }
+}

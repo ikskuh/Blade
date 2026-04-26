@@ -1,0 +1,14 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - InvalidAddressOfTarget
+// NOTE:
+//   Covers taking address of a non-variable/non-parameter symbol (function name).
+//   The binder should report InvalidAddressOfTarget (invalid address-of target).
+cog task main {
+    
+    fn dummy() {}
+    
+    fn test() {
+        var p: *cog u32 = &dummy;
+    }
+}

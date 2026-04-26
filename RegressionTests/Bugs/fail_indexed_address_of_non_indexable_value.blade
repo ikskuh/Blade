@@ -1,0 +1,12 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - L9, TypeMismatch
+// NOTE:
+//   Single pointers remain non-indexable, so their "indexed element" cannot
+//   be addressed either.
+cog task main {
+    
+    fn demo(value: *hub u32) void {
+        var ptr: *hub u32 = &value[0];
+    }
+}

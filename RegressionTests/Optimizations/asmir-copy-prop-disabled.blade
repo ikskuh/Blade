@@ -1,0 +1,20 @@
+// EXPECT: pass
+// STAGE: asmir
+// ARGS:
+// - -fno-asmir-opt=*
+// CONTAINS:
+// - MOV ?1, ?2
+// NOTE:
+//   Negative case for ASMIR copy-prop: the temporary register copy chain remains.
+cog task main {
+    
+    cog var sink: u32 = 0;
+    var src: u32 = 1;
+    var tmp: u32 = 0;
+    
+    asm {
+      MOV {tmp}, {src}
+    };
+    
+    sink = tmp;
+}

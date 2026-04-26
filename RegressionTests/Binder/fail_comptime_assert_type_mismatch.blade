@@ -1,0 +1,15 @@
+// EXPECT: fail
+// DIAGNOSTICS: AssertionFailed, ComptimeValueRequired
+// NOTE:
+//   Covers assert failure and non-evaluable assert paths.
+//   AssertionFailed = static assertion that evaluates to false.
+//   ComptimeValueRequired = assert with runtime value that can't be evaluated at compile time.
+cog task main {
+    
+    // Static assertion that fails
+    assert(1 == 2);
+    
+    // Assert with runtime variable (non-evaluable)
+    cog var runtime_val: u32 = 0;
+    assert(runtime_val == 0);
+}

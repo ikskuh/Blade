@@ -1,0 +1,17 @@
+// EXPECT: fail
+// ARGS: --comptime-fuel=1
+// DIAGNOSTICS:
+// - ComptimeFuelExhausted
+// NOTE:
+//   Exercises the infinite rep loop branch until comptime fuel is exhausted.
+cog task main {
+    
+    comptime fn infinite_rep_loop() -> u32 {
+        rep loop {
+        }
+    
+        return 0;
+    }
+    
+    cog const folded: u32 = infinite_rep_loop();
+}
