@@ -17,7 +17,6 @@ type Flags = bitfield (u32) {
     flag: bool,
 };
 
-cog var output: u32 = 0;
 
 noinline fn demo(raw: u32) -> u32 {
     var flags: Flags = bitcast(Flags, raw);
@@ -30,4 +29,7 @@ noinline fn demo(raw: u32) -> u32 {
     return bitcast(u32, flags);
 }
 
-output = demo(0x1234_5678);
+cog task main {
+    cog var output: u32 = 0;
+    output = demo(0x1234_5678);
+}

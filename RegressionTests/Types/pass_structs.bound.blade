@@ -12,5 +12,7 @@ type Point = struct {
     y: u32,
 };
 
-var point: Point = Point { .x = 1, .y = 2 };
-var copy: Point = point;
+cog task main {
+    var point: Point = Point { .x = 1, .y = 2 };
+    var copy: Point = point;
+}

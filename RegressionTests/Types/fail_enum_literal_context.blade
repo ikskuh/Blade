@@ -1,6 +1,6 @@
 // EXPECT: fail
 // DIAGNOSTICS:
-// - L11, EnumLiteralRequiresContext
+// - L13, EnumLiteralRequiresContext
 // NOTE:
 //   Bare enum literals need an expected enum type from context.
 
@@ -8,4 +8,7 @@ type Mode = enum (u8) {
     Idle = 0,
 };
 
-_ = .Idle;
+
+cog task main {
+    _ = .Idle;
+}

@@ -15,9 +15,9 @@ type Header = union {
     hi: u32,
 };
 
-cog var header: Header = undefined;
+cog task main {
+    cog var header: Header = undefined;
 
-fn touch_union_members() {
     var first: u32 = header.lo;
     header.hi = first;
 }

@@ -7,5 +7,7 @@ type Header = union {
     low: u16,
 };
 
-var source: Header = undefined;
-var dest: Header = source;
+cog task main {
+    var source: Header = undefined;
+    var dest: Header = source;
+}

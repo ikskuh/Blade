@@ -1,0 +1,19 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - L12, TypeMismatch
+// - L15, TypeMismatch
+// - L18, TypeMismatch
+// NOTE:
+//   Reject qualifier dropping, weaker source alignment, and storage mismatch.
+
+
+cog task main {
+    var drop_qualifiers_src: *cog const volatile u32 = undefined;
+    var drop_qualifiers_dst: *cog u32 = drop_qualifiers_src;
+
+    var weak_align_src: *cog align(4) u32 = undefined;
+    var weak_align_dst: *cog align(8) u32 = weak_align_src;
+
+    var storage_src: *cog u32 = undefined;
+    var storage_dst: *hub u32 = storage_src;
+} 

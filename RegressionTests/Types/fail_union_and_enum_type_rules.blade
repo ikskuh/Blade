@@ -1,9 +1,9 @@
 // EXPECT: fail
 // DIAGNOSTICS:
-// - L25, UndefinedName
-// - L28, TypeMismatch
-// - L31, TypeMismatch
-// - L31, TypeMismatch
+// - L26, UndefinedName
+// - L29, TypeMismatch
+// - L32, TypeMismatch
+// - L32, TypeMismatch
 // NOTE:
 //   Unknown union members are rejected, enums do not assign across enum types,
 //   and enums do not participate in arithmetic.
@@ -21,12 +21,14 @@ type Right = enum (u8) {
     A = 0,
 };
 
-var header: Header = undefined;
-var missing: u32 = header.missing;
+cog task main {
+    var header: Header = undefined;
+    var missing: u32 = header.missing;
 
-cog var left: Left = .A;
-cog var right: Right = left;
+    var left: Left = .A;
+    var right: Right = left;
 
-fn demo(value: Left) -> u32 {
-    return value + 1;
+    fn demo(value: Left) -> u32 {
+        return value + 1;
+    }
 }

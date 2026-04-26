@@ -11,5 +11,7 @@ type Right = bitfield (u32) {
     low: nib,
 };
 
-var right: Right = undefined;
-var left: Left = right;
+cog task main {
+    var right: Right = undefined;
+    var left: Left = right;
+}
