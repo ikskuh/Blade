@@ -10,11 +10,11 @@
 // NOTE:
 //   Single-word struct literals and member updates lower end-to-end.
 //   The hub-backed struct update should emit a read-modify-write sequence.
+type Pair = struct {
+    value: u32,
+};
+
 cog task main {
-    
-    type Pair = struct {
-        value: u32,
-    };
     
     hub var pair: Pair = Pair {
         .value = 1,

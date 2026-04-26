@@ -7,6 +7,14 @@
 // NOTE:
 //   Tests runtime struct literal initializers, packed small fields, and
 //   multi-lane aggregate transport through a function boundary.
+type Packet = struct {
+    flag: bool,
+    tag: u8,
+    count: u16,
+    left: u32,
+    right: u32,
+};
+
 cog task main {
     
     extern cog var rt_result: u32;
@@ -15,14 +23,6 @@ cog task main {
     extern cog var rt_param2: u32;
     extern cog var rt_param3: u32;
     extern cog var rt_param4: u32;
-    
-    type Packet = struct {
-        flag: bool,
-        tag: u8,
-        count: u16,
-        left: u32,
-        right: u32,
-    };
     
     noinline fn make_packet(flag_raw: u32, tag_raw: u32, count_raw: u32, left: u32, right: u32) -> Packet {
         return Packet {

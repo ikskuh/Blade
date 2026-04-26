@@ -7,18 +7,18 @@
 // NOTE:
 //   Exercises mixed-width field stores plus a whole-struct snapshot load on
 //   hub-backed storage. The result packs each field into non-overlapping bits.
+type Packet = struct {
+    small: i8,
+    wide: u16,
+    signed: i32,
+    flag: bool,
+    digit: nib,
+};
+
 cog task main {
     
     extern cog var rt_result: u32;
     extern cog var rt_param0: u32;
-    
-    type Packet = struct {
-        small: i8,
-        wide: u16,
-        signed: i32,
-        flag: bool,
-        digit: nib,
-    };
     
     hub var stored: Packet = Packet {
         .small = 0,
