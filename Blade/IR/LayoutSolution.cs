@@ -10,7 +10,8 @@ namespace Blade.IR;
 /// Represents the program-wide solved addresses for layout-backed storage.
 /// A layout solution is shared across every image so that a given layout member keeps the
 /// same physical address whenever that layout is imported. The current implementation solves
-/// only hub and LUT layout members; cog/register-space solving will be added later.
+/// only hub and LUT layout members after image placement has reserved the hub image arena;
+/// cog/register-space solving will be added later.
 /// </summary>
 public sealed class LayoutSolution
 {
@@ -90,7 +91,7 @@ public sealed class LayoutSlot(
 }
 
 /// <summary>
-/// Solves stable storage addresses for layout-backed variables.
+/// Solves stable storage addresses for layout-backed variables after image placement.
 /// </summary>
 public static class LayoutSolver
 {
@@ -102,23 +103,28 @@ public static class LayoutSolver
         StorageLayoutShape Shape,
         int AlignmentInAddressUnits);
 
+    private readonly record struct OccupiedAddressRange(int StartAddress, int EndAddressExclusive);
+
     /// <summary>
-    /// Solves the program's current layout-backed hub and LUT storage.
+    /// Solves the program's current layout-backed hub and LUT storage after image placement
+    /// has reserved hub-memory ranges for every required image.
     /// </summary>
-    public static LayoutSolution Solve(BoundProgram program, DiagnosticBag? diagnostics = null)
+    public static LayoutSolution Solve(BoundProgram program, ImagePlacement imagePlacement, DiagnosticBag? diagnostics = null)
     {
         Requires.NotNull(program);
+        Requires.NotNull(imagePlacement);
 
         IReadOnlyList<LayoutSymbol> layouts = CollectLayouts(program);
         List<LayoutSlot> slots = [];
-        slots.AddRange(SolveStorageClass(layouts, VariableStorageClass.Lut, diagnostics));
-        slots.AddRange(SolveStorageClass(layouts, VariableStorageClass.Hub, diagnostics));
+        slots.AddRange(SolveStorageClass(layouts, VariableStorageClass.Lut, [], diagnostics));
+        slots.AddRange(SolveStorageClass(layouts, VariableStorageClass.Hub, CreateReservedHubRanges(imagePlacement), diagnostics));
         return new LayoutSolution(slots);
     }
 
     private static IReadOnlyList<LayoutSlot> SolveStorageClass(
         IReadOnlyList<LayoutSymbol> layouts,
         VariableStorageClass storageClass,
+        IReadOnlyList<OccupiedAddressRange> reservedRanges,
         DiagnosticBag? diagnostics)
     {
         List<LayoutCandidate> candidates = CollectCandidates(layouts, storageClass);
@@ -135,7 +141,7 @@ public static class LayoutSolver
             if (!TryValidateAlignment(candidate, diagnostics))
                 continue;
 
-            if (!TryValidateFixedAddress(candidate, fixedAddress, diagnostics))
+            if (!TryValidateFixedAddress(candidate, fixedAddress, reservedRanges, diagnostics))
                 continue;
 
             LayoutSlot slot = new(
@@ -155,7 +161,7 @@ public static class LayoutSolver
             if (!TryValidateAlignment(candidate, diagnostics))
                 continue;
 
-            int? address = FindFirstFitAddress(candidate, occupied);
+            int? address = FindFirstFitAddress(candidate, occupied, reservedRanges);
             if (!address.HasValue)
             {
                 diagnostics?.ReportLayoutAllocationFailed(
@@ -180,6 +186,22 @@ public static class LayoutSolver
         }
 
         return slots;
+    }
+
+    private static IReadOnlyList<OccupiedAddressRange> CreateReservedHubRanges(ImagePlacement imagePlacement)
+    {
+        Requires.NotNull(imagePlacement);
+
+        List<OccupiedAddressRange> ranges = [];
+        foreach (ImagePlacementEntry placement in imagePlacement.Images)
+        {
+            Assert.Invariant(
+                placement.SizeBytes == ImagePlacer.ReservedImageSizeBytes,
+                "The current image placement stage must reserve a uniform provisional image size.");
+            ranges.Add(new OccupiedAddressRange(placement.HubStartAddressBytes, placement.HubEndAddressExclusive));
+        }
+
+        return ranges;
     }
 
     private static List<LayoutCandidate> CollectCandidates(
@@ -258,7 +280,11 @@ public static class LayoutSolver
         return false;
     }
 
-    private static bool TryValidateFixedAddress(LayoutCandidate candidate, int fixedAddress, DiagnosticBag? diagnostics)
+    private static bool TryValidateFixedAddress(
+        LayoutCandidate candidate,
+        int fixedAddress,
+        IReadOnlyList<OccupiedAddressRange> reservedRanges,
+        DiagnosticBag? diagnostics)
     {
         if (fixedAddress < 0)
         {
@@ -297,10 +323,31 @@ public static class LayoutSolver
             return false;
         }
 
+        if (candidate.Symbol.StorageClass == VariableStorageClass.Hub)
+        {
+            int endAddress = checked(fixedAddress + candidate.Shape.SizeInAddressUnits);
+            OccupiedAddressRange overlap = reservedRanges
+                .FirstOrDefault(range => RangesOverlap(fixedAddress, endAddress, range.StartAddress, range.EndAddressExclusive));
+            if (overlap != default)
+            {
+                diagnostics?.ReportInvalidLayoutAddress(
+                    candidate.Symbol.SourceSpan.Span,
+                    candidate.Layout.Name,
+                    candidate.Symbol.Name,
+                    candidate.Symbol.StorageClass,
+                    fixedAddress,
+                    candidate.Shape.SizeInAddressUnits);
+                return false;
+            }
+        }
+
         return true;
     }
 
-    private static int? FindFirstFitAddress(LayoutCandidate candidate, IReadOnlyList<LayoutSlot> occupied)
+    private static int? FindFirstFitAddress(
+        LayoutCandidate candidate,
+        IReadOnlyList<LayoutSlot> occupied,
+        IReadOnlyList<OccupiedAddressRange> reservedRanges)
     {
         int address = 0;
         while (true)
@@ -313,13 +360,25 @@ public static class LayoutSolver
                 return null;
             }
 
-            LayoutSlot? overlapping = occupied
+            LayoutSlot? overlappingSlot = occupied
                 .OrderBy(static slot => slot.Address)
                 .FirstOrDefault(slot => RangesOverlap(address, endAddress, slot.Address, slot.EndAddressExclusive));
-            if (overlapping is null)
+
+            OccupiedAddressRange overlappingReservedRange = reservedRanges
+                .OrderBy(static range => range.StartAddress)
+                .FirstOrDefault(range => RangesOverlap(address, endAddress, range.StartAddress, range.EndAddressExclusive));
+
+            if (overlappingSlot is null && overlappingReservedRange == default)
                 return address;
 
-            address = overlapping.EndAddressExclusive;
+            if (overlappingSlot is not null
+                && (overlappingReservedRange == default || overlappingSlot.EndAddressExclusive <= overlappingReservedRange.EndAddressExclusive))
+            {
+                address = overlappingSlot.EndAddressExclusive;
+                continue;
+            }
+
+            address = overlappingReservedRange.EndAddressExclusive;
         }
     }
 

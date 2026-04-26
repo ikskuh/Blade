@@ -1,0 +1,9 @@
+// EXPECT: fail
+// DIAGNOSTICS: InvalidLayoutAddress
+
+layout Broken {
+    hub var value: u32 @(0x20) = 1;
+}
+
+cog task main() : Broken {
+}

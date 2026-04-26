@@ -73,8 +73,9 @@ public class WriterAndSymbolTests
         LirModule lir = new([]);
         AsmModule asm = new([], [], []);
         ImagePlan imagePlan = CreateSingleEntryImagePlan(program.EntryPoint);
-        LayoutSolution layoutSolution = LayoutSolver.Solve(program);
-        IrBuildResult build = new(program, imagePlan, layoutSolution, mir, mir, lir, lir, asm, asm, "DAT\n");
+        ImagePlacement imagePlacement = ImagePlacer.Place(imagePlan);
+        LayoutSolution layoutSolution = LayoutSolver.Solve(program, imagePlacement);
+        IrBuildResult build = new(program, imagePlan, imagePlacement, layoutSolution, mir, mir, lir, lir, asm, asm, "DAT\n");
 
         IReadOnlyList<DumpArtifact> dumps = DumpBundleBuilder.Build(new DumpSelection(), build);
 
@@ -91,8 +92,9 @@ public class WriterAndSymbolTests
         LirModule lir = new([]);
         AsmModule asm = new([], [], []);
         ImagePlan imagePlan = CreateSingleEntryImagePlan(program.EntryPoint);
-        LayoutSolution layoutSolution = LayoutSolver.Solve(program);
-        IrBuildResult build = new(program, imagePlan, layoutSolution, mir, mir, lir, lir, asm, asm, "DAT\n");
+        ImagePlacement imagePlacement = ImagePlacer.Place(imagePlan);
+        LayoutSolution layoutSolution = LayoutSolver.Solve(program, imagePlacement);
+        IrBuildResult build = new(program, imagePlan, imagePlacement, layoutSolution, mir, mir, lir, lir, asm, asm, "DAT\n");
 
         IReadOnlyList<DumpArtifact> dumps = DumpBundleBuilder.Build(new DumpSelection
         {
@@ -155,11 +157,19 @@ public class WriterAndSymbolTests
 
         string content = dumps.Single().Content;
         string sharedHubSection = content[..content.IndexOf("\nimage ", StringComparison.Ordinal)];
-        Assert.That(sharedHubSection, Does.Contain("$000  allocated  -      Shared.counter"));
+        string imageSection = content[content.IndexOf("\nimage ", StringComparison.Ordinal)..];
+        Assert.That(sharedHubSection, Does.Contain("addr    value        allocated"));
+        Assert.That(sharedHubSection, Does.Contain("$00000  ?? ?? ?? ??  image main"));
+        Assert.That(sharedHubSection, Does.Contain("$007FC  ?? ?? ?? ??  image main"));
+        Assert.That(sharedHubSection, Does.Contain("$00800  -- -- -- --  Shared.counter"));
+        Assert.That(sharedHubSection, Does.Contain("$00804  -- -- -- --  -"));
         Assert.That(sharedHubSection, Does.Contain("*"));
-        Assert.That(sharedHubSection, Does.Contain("$7FF  free       -      -"));
-        Assert.That(sharedHubSection, Does.Contain("$800  allocated  3      Shared.flag"));
-        Assert.That(sharedHubSection, Does.Not.Contain("$001  free       -      -"));
+        Assert.That(sharedHubSection, Does.Contain("$01FFC  -- -- -- --  -"));
+        Assert.That(sharedHubSection, Does.Contain("$02000  03 00 00 00  Shared.flag"));
+        Assert.That(sharedHubSection, Does.Contain("$80000  -- -- -- --  -"));
+        Assert.That(sharedHubSection, Does.Not.Contain("$00004  -- -- -- --  -"));
+        Assert.That(imageSection, Does.Contain("cog\naddr  state      init   owner\n$000  free       -      -\n*\n$1EF  free       -      -\n$1F0  reserved   -      -\n*\n$1FF  reserved   -      -"));
+        Assert.That(imageSection, Does.Contain("lut\naddr  state      init   owner\n$000  free       -      -\n*\n$1FF  free       -      -"));
     }
 
     private static ImagePlan CreateSingleEntryImagePlan(TaskSymbol task)

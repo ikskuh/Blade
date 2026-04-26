@@ -29,6 +29,7 @@ public class LayoutSolutionTests
         Assert.That(result.IrBuildResult, Is.Not.Null);
         IrBuildResult build = result.IrBuildResult!;
         LayoutSolution solution = build.LayoutSolution;
+        ImagePlacement placement = build.ImagePlacement;
 
         LayoutSlot head = solution.Slots.Single(slot => slot.Symbol.Name == "head");
         LayoutSlot tail = solution.Slots.Single(slot => slot.Symbol.Name == "tail");
@@ -37,10 +38,12 @@ public class LayoutSolutionTests
 
         Assert.Multiple(() =>
         {
+            Assert.That(placement.EntryImage.HubStartAddressBytes, Is.EqualTo(0));
+            Assert.That(placement.EntryImage.SizeBytes, Is.EqualTo(ImagePlacer.ReservedImageSizeBytes));
             Assert.That(head.Address, Is.EqualTo(0x100));
             Assert.That(tail.Address, Is.EqualTo(0));
             Assert.That(flag.Address, Is.EqualTo(0x2000));
-            Assert.That(counter.Address, Is.EqualTo(0));
+            Assert.That(counter.Address, Is.EqualTo(0x800));
             Assert.That(counter.AlignmentInAddressUnits, Is.EqualTo(8));
             Assert.That(counter.SizeInAddressUnits, Is.EqualTo(4));
         });
@@ -48,6 +51,7 @@ public class LayoutSolutionTests
         Assert.That(build.AssemblyText, Does.Contain("org $200"));
         Assert.That(build.AssemblyText, Does.Contain("org $300"));
         Assert.That(build.AssemblyText, Does.Contain("orgh"));
+        Assert.That(build.AssemblyText, Does.Contain("orgh $800"));
         Assert.That(build.AssemblyText, Does.Contain("orgh $2000"));
         Assert.That(build.AssemblyText, Does.Match(@"g_tail\s+LONG\s+2"));
         Assert.That(build.AssemblyText, Does.Match(@"g_head\s+LONG\s+1"));
@@ -76,6 +80,21 @@ public class LayoutSolutionTests
         CompilationResult result = CompilerDriver.Compile("""
             layout Broken {
                 lut var table: [2]u32 @(0x1FF) = [1, 2];
+            }
+
+            cog task main() : Broken {
+            }
+            """, filePath: "<input>");
+
+        Assert.That(result.Diagnostics.Any(diagnostic => diagnostic.Code == "E0281"), Is.True);
+    }
+
+    [Test]
+    public void FixedHubAddressInsideImageArena_ReportsE0281()
+    {
+        CompilationResult result = CompilerDriver.Compile("""
+            layout Broken {
+                hub var value: u32 @(0x20) = 1;
             }
 
             cog task main() : Broken {

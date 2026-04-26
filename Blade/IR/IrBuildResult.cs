@@ -8,6 +8,7 @@ namespace Blade.IR;
 public sealed class IrBuildResult(
     BoundProgram boundProgram,
     ImagePlan imagePlan,
+    ImagePlacement imagePlacement,
     LayoutSolution layoutSolution,
     MirModule preOptimizationMirModule,
     MirModule mirModule,
@@ -19,6 +20,11 @@ public sealed class IrBuildResult(
 {
     public BoundProgram BoundProgram { get; } = boundProgram;
     public ImagePlan ImagePlan { get; } = imagePlan;
+
+    /// <summary>
+    /// Gets the concrete hub-memory placement of the required images.
+    /// </summary>
+    public ImagePlacement ImagePlacement { get; } = imagePlacement;
 
     /// <summary>
     /// Gets the program-wide solved addresses for layout-backed storage.
