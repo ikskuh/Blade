@@ -45,9 +45,9 @@ public sealed class CompilationDriverTests
             EmitIr = false,
         });
 
-        Assert.That(result.Diagnostics.Any(d => d.Code == DiagnosticCode.E0231_CircularImport), Is.True);
+        Assert.That(result.Diagnostics.Any(d => d.Code == "E0231"), Is.True);
 
-        Diagnostic cycle = result.Diagnostics.First(d => d.Code == DiagnosticCode.E0231_CircularImport);
+        Diagnostic cycle = result.Diagnostics.First(d => d.Code == "E0231");
         Assert.That(cycle.Source.FilePath, Is.EqualTo(temp.GetFullPath("b.blade")));
         Assert.That(cycle.GetLocation().FilePath, Is.EqualTo(temp.GetFullPath("b.blade")));
     }

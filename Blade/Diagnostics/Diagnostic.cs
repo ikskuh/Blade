@@ -5,60 +5,121 @@ namespace Blade.Diagnostics;
 
 public enum DiagnosticSeverity
 {
-    Error,
+    Note,
     Warning,
-    Info,
+    Error,
 }
 
 /// <summary>
-/// A single diagnostic message with code, location, and human-readable text.
+/// A reported diagnostic message, optionally associated with a source location.
 /// </summary>
-public sealed class Diagnostic(SourceText source, DiagnosticCode code, TextSpan span, string message)
+public sealed class Diagnostic
 {
-    public SourceText Source { get; } = Requires.NotNull(source);
-    public DiagnosticCode Code { get; } = code;
-    public TextSpan Span { get; } = span;
-    public string Message { get; } = message;
+    private static readonly SourceText UnlocatedSource = new(string.Empty, "<diagnostic>");
 
-    public DiagnosticSeverity Severity => GetSeverity(Code);
+    /// <summary>
+    /// Creates a diagnostic from a typed diagnostic message.
+    /// </summary>
+    public Diagnostic(DiagnosticMessage message)
+    {
+        DiagnosticMessage = Requires.NotNull(message);
+        if (message is LocatedDiagnosticMessage located)
+        {
+            Source = located.Source;
+            Span = located.Span;
+            IsLocated = true;
+        }
+        else
+        {
+            Source = UnlocatedSource;
+            Span = new TextSpan(0, 0);
+            IsLocated = false;
+        }
+    }
+
+    /// <summary>
+    /// Gets the typed diagnostic message.
+    /// </summary>
+    public DiagnosticMessage DiagnosticMessage { get; }
+
+    /// <summary>
+    /// Gets the source text associated with the diagnostic, or a placeholder for generic diagnostics.
+    /// </summary>
+    public SourceText Source { get; }
+
+    /// <summary>
+    /// Gets the formatted diagnostic code.
+    /// </summary>
+    public string Code => FormatCode();
+
+    /// <summary>
+    /// Gets the diagnostic name without severity suffix.
+    /// </summary>
+    public string Name => DiagnosticMessage.Name;
+
+    /// <summary>
+    /// Gets the source span associated with the diagnostic, or an empty placeholder span for generic diagnostics.
+    /// </summary>
+    public TextSpan Span { get; }
+
+    /// <summary>
+    /// Gets the human-readable diagnostic text.
+    /// </summary>
+    public string Message => DiagnosticMessage.Message;
+
+    /// <summary>
+    /// Gets whether this diagnostic is associated with a source span.
+    /// </summary>
+    public bool IsLocated { get; }
+
+    /// <summary>
+    /// Gets the diagnostic severity derived from the diagnostic code prefix.
+    /// </summary>
+    public DiagnosticSeverity Severity => DiagnosticMessage.Severity;
+
+    /// <summary>
+    /// Gets whether the diagnostic severity is an error.
+    /// </summary>
     public bool IsError => Severity == DiagnosticSeverity.Error;
 
-    public SourceLocation GetLocation() => Source.GetLocation(Span.Start);
-
-    public string FormatCode()
+    /// <summary>
+    /// Gets the source location where this located diagnostic starts.
+    /// </summary>
+    public SourceLocation GetLocation()
     {
-        int numericCode = (int)Code;
-        return $"{GetSeverityPrefix(Code)}{numericCode:D4}";
+        Assert.Invariant(IsLocated, "Generic diagnostics do not have a source location.");
+        return Source.GetLocation(Span.Start);
     }
+
+    /// <summary>
+    /// Formats the diagnostic code with its severity prefix.
+    /// </summary>
+    public string FormatCode() => $"{GetSeverityPrefix(Severity)}{DiagnosticMessage.Code:D4}";
 
     public override string ToString() => $"{FormatCode()}: {Message}";
 
-    private static char GetSeverityPrefix(DiagnosticCode code)
+    /// <summary>
+    /// Gets the severity represented by a formatted diagnostic code.
+    /// </summary>
+    public static DiagnosticSeverity GetSeverity(string code)
     {
-        string? codeName = System.Enum.GetName(code);
-        if (!string.IsNullOrEmpty(codeName))
+        Requires.NotNullOrWhiteSpace(code);
+        return code[0] switch
         {
-            char prefix = codeName[0];
-            if (prefix is 'E' or 'W' or 'I')
-                return prefix;
-        }
-
-        return 'E';
+            'W' => DiagnosticSeverity.Warning,
+            'I' => DiagnosticSeverity.Note,
+            _ => DiagnosticSeverity.Error,
+        };
     }
 
-    public static DiagnosticSeverity GetSeverity(DiagnosticCode code)
+    private static char GetSeverityPrefix(DiagnosticSeverity severity)
     {
-        string? codeName = System.Enum.GetName(code);
-        if (!string.IsNullOrEmpty(codeName))
+        return severity switch
         {
-            return codeName[0] switch
-            {
-                'W' => DiagnosticSeverity.Warning,
-                'I' => DiagnosticSeverity.Info,
-                _ => DiagnosticSeverity.Error,
-            };
-        }
-
-        return DiagnosticSeverity.Error;
+            DiagnosticSeverity.Note => 'I',
+            DiagnosticSeverity.Warning => 'W',
+            DiagnosticSeverity.Error => 'E',
+            _ => Assert.UnreachableValue<char>(), // pragma: force-coverage
+        };
     }
 }

@@ -1,0 +1,440 @@
+using Blade
+using Blade.Source
+
+located UnexpectedCharacter: E0001
+    message: $"Unexpected character '{character}'."
+    param:   char character
+
+located UnterminatedString: E0002
+    message: "Unterminated string literal."
+
+located InvalidNumberLiteral: E0003
+    message: $"Invalid number literal '{text}'."
+    param:   string text
+
+located UnterminatedBlockComment: E0004
+    message: "Unterminated block comment."
+
+located InvalidCharacterLiteral: E0005
+    message: "Invalid character literal."
+
+located InvalidEscapeSequence: E0006
+    message: "Invalid escape sequence."
+
+located InvalidUtf8: E0007
+    message: "Source file is not valid UTF-8."
+
+located InvalidControlCharacter: E0008
+    message: $"Control character U+{(int)character:X4} is not allowed in Blade source files."
+    param:   char character
+
+located UnexpectedToken: E0101
+    message: $"Expected {expected}, got '{actual}'."
+    param:   string expected
+    param:   string actual
+
+located ExpectedExpression: E0102
+    message: "Expected expression."
+
+located ExpectedStatement: E0103
+    message: "Expected statement."
+
+located ExpectedTypeName: E0104
+    message: "Expected type name."
+
+located ExpectedIdentifier: E0105
+    message: "Expected identifier."
+
+located InvalidAssignmentTarget: E0106
+    message: "Invalid assignment target."
+
+located ExpectedSemicolon: E0107
+    message: "Expected ';'."
+
+located DuplicateVariableClause: E0108
+    message: $"Duplicate variable clause '{clauseName}'."
+    param:   string clauseName
+
+located SymbolAlreadyDeclared: E0201
+    message: $"Symbol '{name}' is already declared."
+    param:   string name
+
+located UndefinedName: E0202
+    message: $"Name '{name}' does not exist in the current scope."
+    param:   string name
+
+located UndefinedType: E0203
+    message: $"Type '{name}' is not defined."
+    param:   string name
+
+located CannotAssignToConstant: E0204
+    message: $"Cannot assign to constant '{name}'."
+    param:   string name
+
+located TypeMismatch: E0205
+    message: $"Type mismatch: expected '{expected}', got '{actual}'."
+    param:   string expected
+    param:   string actual
+
+located NotCallable: E0206
+    message: $"Expression of type '{typeName}' is not callable."
+    param:   string typeName
+
+located ArgumentCountMismatch: E0207
+    message: $"Function '{functionName}' expects {expected} argument(s), but got {actual}."
+    param:   string functionName
+    param:   int expected
+    param:   int actual
+
+located InvalidLoopControl: E0208
+    message: $"'{keyword}' can only be used inside a loop."
+    param:   string keyword
+
+located InvalidBreakInRepLoop: E0209
+    message: "'break' is not allowed inside 'rep' loops."
+
+located InvalidYieldUsage: E0210
+    message: "'yield' is only allowed inside int1/int2/int3 functions."
+
+located InvalidYieldtoUsage: E0211
+    message: "'yieldto' is not allowed in this context."
+
+located ReturnValueCountMismatch: E0212
+    message: $"Function '{functionName}' returns {expected} value(s), but got {actual}."
+    param:   string functionName
+    param:   int expected
+    param:   int actual
+
+located ReturnOutsideFunction: E0213
+    message: "'return' is only allowed inside a function."
+
+located InvalidYieldtoTarget: E0214
+    message: $"'{target}' is not a coroutine function."
+    param:   string target
+
+located InvalidLocalStorageClass: E0215
+    message: $"Storage class '{storageClass}' is only allowed for top-level storage declarations."
+    param:   string storageClass
+
+located InvalidExternScope: E0216
+    message: "automatic variable cannot be extern"
+
+located InvalidParameterStorageClass: E0217
+    message: $"Parameter storage class '{storageClass}' is not supported."
+    param:   string storageClass
+
+located PointerStorageClassRequired: E0264
+    message: "Pointer types must explicitly declare a storage class."
+
+located UnknownNamedArgument: E0219
+    message: $"Function '{functionName}' does not have a parameter named '{parameterName}'."
+    param:   string functionName
+    param:   string parameterName
+
+located DuplicateNamedArgument: E0220
+    message: $"Named argument '{parameterName}' is specified more than once."
+    param:   string parameterName
+
+located PositionalArgumentAfterNamed: E0221
+    message: $"Function '{functionName}' does not allow positional arguments after named arguments."
+    param:   string functionName
+
+located NamedArgumentConflictsWithPositional: E0222
+    message: $"Named argument '{parameterName}' conflicts with a positional argument."
+    param:   string parameterName
+
+located InvalidAddressOfTarget: E0223
+    message: "Address-of requires an addressable variable or parameter."
+
+located InvalidExplicitCast: E0224
+    message: $"Cannot explicitly cast from '{sourceType}' to '{targetType}'."
+    param:   string sourceType
+    param:   string targetType
+
+located BitcastSizeMismatch: E0225
+    message: $"Cannot bitcast from '{sourceType}' to '{targetType}' because their sizes differ."
+    param:   string sourceType
+    param:   string targetType
+
+located AddressOfRecursiveLocal: E0226
+    message: $"Cannot take the address of local '{name}' inside a recursive function."
+    param:   string name
+
+located MissingReturnValue: E0227
+    message: $"Function '{functionName}' must return a value on all control-flow paths."
+    param:   string functionName
+
+located ReturnFromCoroutine: E0278
+    message: $"Coroutine function '{functionName}' cannot return and must end in 'yieldto' on every control-flow path."
+    param:   string functionName
+
+located FileImportAliasRequired: E0228
+    message: "File imports require an alias: use 'import \"path\" as alias;'."
+
+located UnknownNamedModule: E0229
+    message: $"Named module '{moduleName}' is not defined."
+    param:   string moduleName
+
+located ImportFileNotFound: E0230
+    message: $"Imported file '{path}' was not found."
+    param:   string path
+
+located CircularImport: E0231
+    message: $"Circular import detected at '{path}'."
+    param:   string path
+
+located EnumLiteralRequiresContext: E0232
+    message: $"Enum literal '.{memberName}' requires an expected enum type."
+    param:   string memberName
+
+located BitfieldWidthOverflow: E0233
+    message: $"Bitfield '{bitfieldName}' field '{fieldName}' uses {usedBits} bits, exceeding backing width {backingBits}."
+    param:   string bitfieldName
+    param:   string fieldName
+    param:   int usedBits
+    param:   int backingBits
+
+located ArrayLiteralRequiresContext: E0234
+    message: "Array literal requires an expected array type."
+
+located ArrayLiteralSpreadMustBeLast: E0235
+    message: "Array literal spread element must be the last element."
+
+located StructUnknownField: E0236
+    message: $"Struct '{structName}' does not have a field named '{fieldName}'."
+    param:   string structName
+    param:   string fieldName
+
+located StructMissingFields: E0237
+    message: $"Struct literal for '{structName}' is missing field(s): {missingFields}."
+    param:   string structName
+    param:   string missingFields
+
+located StructDuplicateField: E0238
+    message: $"Field '{fieldName}' is specified more than once."
+    param:   string fieldName
+
+located StringLengthMismatch: E0239
+    message: $"String length {actualLength} does not match array length {expectedLength}."
+    param:   int expectedLength
+    param:   int actualLength
+
+located StringToNonConstPointer: E0240
+    message: "String literal cannot be assigned to a non-const pointer."
+
+located ComptimeValueRequired: E0241
+    message: "Expression must be compile-time evaluable in this context."
+
+located ComptimeUnsupportedConstruct: E0242
+    message: $"Construct is not supported during comptime evaluation: {detail}"
+    param:   string detail
+
+located ComptimeForbiddenSymbolAccess: E0243
+    message: $"Comptime evaluation cannot access this symbol: {detail}"
+    param:   string detail
+
+located ComptimeFuelExhausted: E0244
+    message: "Comptime evaluation ran out of fuel."
+
+located DuplicateNamedModuleRoot: E0245
+    message: $"Named modules '{firstModuleName}' and '{secondModuleName}' both resolve to '{path}'."
+    param:   string firstModuleName
+    param:   string secondModuleName
+    param:   string path
+
+located MultiAssignmentRequiresCall: E0246
+    message: "Multi-target assignment requires a function call or spawn expression on the right-hand side."
+
+located MultiAssignmentTargetCountMismatch: E0247
+    message: $"Expression '{expressionName}' returns {expected} value(s), but {actual} assignment target(s) provided."
+    param:   string expressionName
+    param:   int expected
+    param:   int actual
+
+located DiscardInExpression: E0248
+    message: "The discard '_' can only be used as an assignment target."
+
+located ExternCannotHaveInitializer: E0249
+    message: $"Extern variable '{name}' cannot have an initializer."
+    param:   string name
+
+located MemoryofRequiresVariable: E0250
+    message: "'memoryof' requires a variable declaration, not a type."
+
+located QueryRequiresMemorySpace: E0251
+    message: $"'{operatorName}' of a type requires a memory space argument."
+    param:   string operatorName
+
+located QueryUnsupportedType: E0252
+    message: $"Cannot determine size/alignment for type '{typeName}' in '{operatorName}'."
+    param:   string operatorName
+    param:   string typeName
+
+located QueryAutomaticLocal: E0253
+    message: $"'{operatorName}' cannot be applied to automatic local variable '{variableName}'."
+    param:   string operatorName
+    param:   string variableName
+
+located InvalidMemorySpaceArgument: E0254
+    message: "Expected a 'builtin.MemorySpace' value."
+
+located AssertionFailed: E0255
+    message: $"{assertionMessage}"
+    param:   string assertionMessage
+
+located UnknownBuiltin: E0256
+    message: $"Unknown builtin '@{name}'."
+    param:   string name
+
+located InvalidPointerArithmetic: E0257
+    message: $"Invalid pointer arithmetic for '{operation}'. Only '[*]' pointers support '+', '-', '+=', and '-=' with integer deltas."
+    param:   string operation
+
+located IncompatiblePointerSubtraction: E0258
+    message: $"Pointer subtraction requires matching '[*]' pointer element types and memory spaces, but got '{leftType}' and '{rightType}'."
+    param:   string leftType
+    param:   string rightType
+
+located ExpressionNotAStatement: E0259
+    message: "An expression is not a statement. Only function calls and spawn expressions are allowed as standalone statements."
+
+located RangeIterationRequiresBinding: E0260
+    message: "Range iteration requires an index binding '-> index'."
+
+located RangeExpressionOutsideForLoop: E0263
+    message: "Range expressions are only allowed as the iterable of a for/rep for statement."
+
+located ComptimeIntegerTruncation: W0261
+    message: $"Compile-time integer value {value} is truncated to {truncatedValue} when converted to '{targetType}'."
+    param:   string value
+    param:   string targetType
+    param:   string truncatedValue
+
+located AddressOfParameter: E0262
+    message: $"Cannot take the address of parameter '{name}'."
+    param:   string name
+
+located AmbiguousLayoutMemberAccess: E0265
+    message: $"Name '{name}' is provided by multiple layouts ({layoutNamesText}). Use 'Layout.member' to disambiguate."
+    param:   string name
+    param:   string layoutNamesText
+
+located LexicalNameConflictsWithLayoutMember: W0266
+    message: $"Name '{name}' is visible both lexically and through layout members ({layoutNamesText}). The lexical name wins."
+    param:   string name
+    param:   string layoutNamesText
+
+located LayoutMemberShadowsParentMember: W0267
+    message: $"Layout '{layoutName}' declares member '{memberName}', which shadows an inherited layout member."
+    param:   string layoutName
+    param:   string memberName
+
+located TaskLayoutCannotBeInherited: E0268
+    message: $"Task layout '{taskName}' cannot be inherited."
+    param:   string taskName
+
+located InvalidSpawnTarget: E0279
+    message: $"Spawn target '{targetName}' is not a task."
+    param:   string targetName
+
+located MainTaskMustBeCog: W0269
+    message: $"Entry task '{taskName}' should be declared as 'cog task'; found '{storageClassKeyword} task'."
+    param:   string taskName
+    param:   string storageClassKeyword
+
+located MissingMainTask: E0270
+    message: "Root module must export a task named 'main'."
+
+located FunctionLayoutSubsetViolation: E0271
+    message: $"Function '{callerName}' cannot transfer control to '{calleeName}' because callee layouts [{calleeLayoutText}] are not a subset of caller layouts [{callerLayoutText}]."
+    param:   string callerName
+    param:   string calleeName
+    param:   string callerLayoutText
+    param:   string calleeLayoutText
+
+located DuplicateFunctionLayoutMetadata: W0272
+    message: "Duplicate function metadata property 'layout(...)'; layouts are merged."
+
+located DuplicateFunctionAlignMetadata: E0273
+    message: "Duplicate function metadata property 'align(...)'."
+
+located InvalidFunctionAlignment: E0274
+    message: $"Function alignment must be a positive power of two; got '{alignment}'."
+    param:   int alignment
+
+located TaskLayoutNotAllowedInFunctionMetadata: E0275
+    message: $"Task layout '{taskName}' cannot be referenced from function metadata."
+    param:   string taskName
+
+located AccessToForeignLayout: E0276
+    message: $"Layout member '{layoutName}.{memberName}' is not accessible from this context because the layout is not declared here."
+    param:   string layoutName
+    param:   string memberName
+
+located UnsupportedGlobalStorage: E0277
+    message: $"Top-level global storage class '{storageClass}' is not supported here. Use 'hub' or move the declaration into a layout."
+    param:   string storageClass
+
+located InvalidLayoutAlignment: E0280
+    message: $"Layout member '{layoutName}.{memberName}' has invalid alignment '{alignment}'. Alignment must be a positive power of two."
+    param:   string layoutName
+    param:   string memberName
+    param:   int alignment
+
+located InvalidLayoutAddress: E0281
+    message: $"Layout member '{layoutName}.{memberName}' cannot be placed at {storageName} address '{address}' with size '{sizeInAddressUnits}'."
+    param:   string layoutName
+    param:   string memberName
+    param:   string storageName
+    param:   int address
+    param:   int sizeInAddressUnits
+
+located LayoutAddressConflict: E0282
+    message: $"Layout member '{layoutName}.{memberName}' at {storageName} address '{address}' overlaps '{conflictingLayoutName}.{conflictingMemberName}' at address '{conflictingAddress}'."
+    param:   string layoutName
+    param:   string memberName
+    param:   string storageName
+    param:   int address
+    param:   string conflictingLayoutName
+    param:   string conflictingMemberName
+    param:   int conflictingAddress
+
+located LayoutAllocationFailed: E0283
+    message: $"Layout solver could not place '{layoutName}.{memberName}' in {storageName} space with size '{sizeInAddressUnits}' and alignment '{alignmentInAddressUnits}'."
+    param:   string layoutName
+    param:   string memberName
+    param:   string storageName
+    param:   int sizeInAddressUnits
+    param:   int alignmentInAddressUnits
+
+located InlineAsmUnknownInstruction: E0301
+    message: $"Unknown P2 instruction '{mnemonic}' in inline assembly."
+    param:   string mnemonic
+
+located InlineAsmUndefinedVariable: E0302
+    message: $"Undefined variable '{name}' referenced in inline assembly."
+    param:   string name
+
+located InlineAsmEmptyInstruction: E0303
+    message: "Empty instruction in inline assembly block."
+
+located InlineAsmInvalidFlagOutput: E0304
+    message: $"Invalid flag output '@{flag}' in inline assembly. Expected '@C' or '@Z'."
+    param:   string flag
+
+located InlineAsmInvalidInstructionForm: E0305
+    message: $"Instruction '{mnemonic}' does not support {operandCount} operand(s) in inline assembly."
+    param:   string mnemonic
+    param:   int operandCount
+
+located InlineAsmUndefinedLabel: E0306
+    message: $"Inline assembly references undefined label '{name}'. Only labels defined within the same asm block are accessible."
+    param:   string name
+
+located InlineAsmTempReadBeforeWrite: W0307
+    message: $"Inline assembly temporary '{name}' is read before any prior write in the same asm block. The register contents are unspecified."
+    param:   string name
+
+located UnsupportedLowering: E0401
+    message: $"Backend lowering for '{lowering}' is not implemented yet."
+    param:   string lowering

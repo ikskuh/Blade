@@ -173,7 +173,7 @@ public class BinderTests
             EmitIr = false,
         });
 
-        Assert.That(result.Diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0270_MissingMainTask), Is.True);
+        Assert.That(result.Diagnostics.Any(diagnostic => diagnostic.Code == "E0270"), Is.True);
         Assert.That(result.BoundProgram, Is.Null);
     }
 
@@ -196,7 +196,7 @@ public class BinderTests
             EmitIr = false,
         });
 
-        Assert.That(result.Diagnostics.Any(d => d.Code == DiagnosticCode.E0270_MissingMainTask), Is.True);
+        Assert.That(result.Diagnostics.Any(d => d.Code == "E0270"), Is.True);
     }
 
     [Test]
@@ -262,7 +262,7 @@ public class BinderTests
             }
             """);
 
-        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0271_FunctionLayoutSubsetViolation), Is.True);
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == "E0271"), Is.True);
     }
 
     [Test]
@@ -278,7 +278,7 @@ public class BinderTests
             }
             """);
 
-        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.W0272_DuplicateFunctionLayoutMetadata), Is.True);
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == "W0272"), Is.True);
 
         BoundFunctionMember helper = GetFunction(program, "helper");
         Assert.That(helper.Symbol.AssociatedLayouts.Select(static layout => layout.Name).OrderBy(static name => name), Is.EqualTo(["OtherState", "SharedState"]));
@@ -295,7 +295,7 @@ public class BinderTests
             }
             """);
 
-        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0273_DuplicateFunctionAlignMetadata), Is.True);
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == "E0273"), Is.True);
 
         BoundFunctionMember helper = GetFunction(program, "helper");
         Assert.That(helper.Symbol.Alignment, Is.EqualTo(8));
@@ -312,7 +312,7 @@ public class BinderTests
             }
             """);
 
-        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0274_InvalidFunctionAlignment), Is.True);
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == "E0274"), Is.True);
 
         BoundFunctionMember helper = GetFunction(program, "helper");
         Assert.That(helper.Symbol.Alignment, Is.Null);
@@ -332,7 +332,7 @@ public class BinderTests
             }
             """);
 
-        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0275_TaskLayoutNotAllowedInFunctionMetadata), Is.True);
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == "E0275"), Is.True);
 
         BoundFunctionMember helper = GetFunction(program, "helper");
         Assert.That(helper.Symbol.AssociatedLayouts, Is.Empty);
@@ -350,8 +350,8 @@ public class BinderTests
             }
             """);
 
-        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.False);
-        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0101_UnexpectedToken), Is.False);
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == "E0401"), Is.False);
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == "E0101"), Is.False);
 
         BoundExpressionStatement statement = (BoundExpressionStatement)program.EntryPointFunction.Body.Statements[0];
         BoundSpawnExpression spawn = (BoundSpawnExpression)statement.Expression;
@@ -374,7 +374,7 @@ public class BinderTests
             }
             """);
 
-        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.False);
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == "E0401"), Is.False);
 
         BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)program.EntryPointFunction.Body.Statements[0];
         BoundSpawnExpression spawn = (BoundSpawnExpression)declaration.Initializer!;
@@ -396,7 +396,7 @@ public class BinderTests
             }
             """);
 
-        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.False);
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == "E0401"), Is.False);
 
         BoundMultiAssignmentStatement statement = (BoundMultiAssignmentStatement)program.EntryPointFunction.Body.Statements[2];
         BoundSpawnExpression spawn = (BoundSpawnExpression)statement.Producer;
@@ -416,8 +416,8 @@ public class BinderTests
             }
             """);
 
-        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0279_InvalidSpawnTarget), Is.True);
-        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.False);
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == "E0279"), Is.True);
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == "E0401"), Is.False);
     }
 
     [Test]
@@ -425,8 +425,8 @@ public class BinderTests
     {
         (_, BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("lut task main() { }");
 
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.W0269_MainTaskMustBeCog), Is.True);
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0270_MissingMainTask), Is.False);
+        Assert.That(diagnostics.Any(d => d.Code == "W0269"), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code == "E0270"), Is.False);
         Assert.That(program.EntryPoint.StorageClass, Is.EqualTo(VariableStorageClass.Lut));
     }
 
@@ -483,7 +483,7 @@ public class BinderTests
             }
             """);
 
-        Assert.That(diagnostics.Count(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.EqualTo(2));
+        Assert.That(diagnostics.Count(d => d.Code == "E0205"), Is.EqualTo(2));
     }
 
     [Test]
@@ -617,7 +617,7 @@ public class BinderTests
             type A = struct { y: u32, };
             """);
 
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0201_SymbolAlreadyDeclared), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code == "E0201"), Is.True);
     }
 
     [Test]
@@ -631,7 +631,7 @@ public class BinderTests
             }
             """);
 
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0202_UndefinedName), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code == "E0202"), Is.True);
     }
 
     [Test]
@@ -685,7 +685,7 @@ public class BinderTests
         };
 
         (_, _, DiagnosticBag diagnostics) = Bind("import extmod as ext; import extmod as ext;", sourcePath, namedModules);
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0201_SymbolAlreadyDeclared), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code == "E0201"), Is.True);
     }
 
     [Test]
@@ -713,7 +713,7 @@ public class BinderTests
         string sourcePath = temp.GetFullPath("main.blade");
 
         (_, _, DiagnosticBag diagnostics) = Bind("""import "./math.blade" as math; var y: u32 = math.missing;""", sourcePath);
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0202_UndefinedName), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code == "E0202"), Is.True);
     }
 
     [Test]
@@ -724,7 +724,7 @@ public class BinderTests
         string sourcePath = temp.GetFullPath("main.blade");
 
         (_, _, DiagnosticBag diagnostics) = Bind("""import "./math.blade" as math; math.missing = 1;""", sourcePath);
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0202_UndefinedName), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code == "E0202"), Is.True);
     }
 
     [Test]
@@ -741,7 +741,7 @@ public class BinderTests
                 math(1);
             }
             """, sourcePath);
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0206_NotCallable), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code == "E0206"), Is.True);
     }
 
     [Test]
@@ -751,7 +751,7 @@ public class BinderTests
             var value: bool = 1 and 2;
             """);
 
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code == "E0205"), Is.True);
     }
 
     [Test]
@@ -796,7 +796,7 @@ public class BinderTests
             }
             """);
 
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0202_UndefinedName), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code == "E0202"), Is.True);
     }
 
     [Test]
@@ -808,7 +808,7 @@ public class BinderTests
             }
             """);
 
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0226_AddressOfRecursiveLocal), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code == "E0226"), Is.True);
     }
 
     [Test]
@@ -820,7 +820,7 @@ public class BinderTests
             }
             """);
 
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code == "E0205"), Is.True);
     }
 
     [Test]
@@ -833,7 +833,7 @@ public class BinderTests
             }
             """);
 
-        Assert.That(diagnostics.Count(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.GreaterThanOrEqualTo(2));
+        Assert.That(diagnostics.Count(d => d.Code == "E0205"), Is.GreaterThanOrEqualTo(2));
     }
 
     [Test]
@@ -845,7 +845,7 @@ public class BinderTests
             }
             """);
 
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code == "E0205"), Is.True);
     }
 
     [Test]
@@ -858,7 +858,7 @@ public class BinderTests
             demo = 1;
             """);
 
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0106_InvalidAssignmentTarget), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code == "E0106"), Is.True);
         string dump = BoundTreeWriter.Write(program);
         Assert.That(dump, Does.Contain("TargetError"));
     }
@@ -870,7 +870,7 @@ public class BinderTests
             1 = 2;
             """);
 
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0106_InvalidAssignmentTarget), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code == "E0106"), Is.True);
     }
 
     [Test]
@@ -944,7 +944,7 @@ public class BinderTests
             cog var x: u32 = .Idle;
             """);
 
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0232_EnumLiteralRequiresContext), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code == "E0232"), Is.True);
         string dump = BoundTreeWriter.Write(program);
         Assert.That(dump, Does.Contain("ErrorExpr"));
     }
@@ -968,7 +968,7 @@ public class BinderTests
             """);
 
         Assert.That(program.GlobalVariables.Single(global => global.Name == "raw").Initializer, Is.TypeOf<BoundLiteralExpression>());
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0224_InvalidExplicitCast), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code == "E0224"), Is.True);
     }
 
     [Test]
@@ -1003,7 +1003,7 @@ public class BinderTests
             };
             """);
 
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0201_SymbolAlreadyDeclared), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code == "E0201"), Is.True);
         EnumTypeSymbol mode = (EnumTypeSymbol)((TypeSymbol)program.RootModule.ExportedSymbols["Mode"]).Type;
         Assert.That(mode.Members["Idle"], Is.EqualTo(0));
         Assert.That(mode.Members["Busy"], Is.EqualTo(5));
@@ -1025,7 +1025,7 @@ public class BinderTests
             };
             """);
 
-        Assert.That(diagnostics.Count(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.GreaterThanOrEqualTo(2));
+        Assert.That(diagnostics.Count(d => d.Code == "E0205"), Is.GreaterThanOrEqualTo(2));
     }
 
     [Test]
@@ -1042,7 +1042,7 @@ public class BinderTests
             }
             """);
 
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code == "E0205"), Is.True);
     }
 
     [Test]
@@ -1133,7 +1133,7 @@ public class BinderTests
             };
             """);
 
-        Assert.That(diagnostics.Count(d => d.Code == DiagnosticCode.E0201_SymbolAlreadyDeclared), Is.EqualTo(2));
+        Assert.That(diagnostics.Count(d => d.Code == "E0201"), Is.EqualTo(2));
     }
 
     [Test]
@@ -1166,7 +1166,7 @@ public class BinderTests
             header.hi = 1;
             """);
 
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0202_UndefinedName), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code == "E0202"), Is.True);
     }
 
     [Test]
@@ -1178,7 +1178,7 @@ public class BinderTests
             };
             """);
 
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0233_BitfieldWidthOverflow), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code == "E0233"), Is.True);
     }
 
     [Test]
@@ -1194,7 +1194,7 @@ public class BinderTests
             };
             """);
 
-        Assert.That(diagnostics.Count(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.GreaterThanOrEqualTo(2));
+        Assert.That(diagnostics.Count(d => d.Code == "E0205"), Is.GreaterThanOrEqualTo(2));
     }
 
     [Test]
@@ -1224,7 +1224,7 @@ public class BinderTests
             }
             """);
 
-        Assert.That(diagnostics.Select(d => d.Code), Is.EqualTo(new[] { DiagnosticCode.E0259_ExpressionNotAStatement }));
+        Assert.That(diagnostics.Select(d => d.Code), Is.EqualTo(new[] { "E0259" }));
         Assert.That(GetFunction(program, "demo").Symbol.IsTopLevel, Is.True);
     }
 
@@ -1297,8 +1297,8 @@ public class BinderTests
 
         Assert.That(diagnostics.Select(d => d.Code), Is.EqualTo(new[]
         {
-            DiagnosticCode.E0259_ExpressionNotAStatement,
-            DiagnosticCode.E0259_ExpressionNotAStatement,
+            "E0259",
+            "E0259",
         }));
     }
 
@@ -1323,7 +1323,7 @@ public class BinderTests
             var p: Point = Point { .x = 10, .z = 20 };
             """);
 
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0236_StructUnknownField), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code == "E0236"), Is.True);
     }
 
     [Test]
@@ -1334,7 +1334,7 @@ public class BinderTests
             var p: Point = Point { .x = 10 };
             """);
 
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0237_StructMissingFields), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code == "E0237"), Is.True);
     }
 
     [Test]
@@ -1345,7 +1345,7 @@ public class BinderTests
             var p: Point = Point { .x = 1, .x = 2, .y = 3 };
             """);
 
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0238_StructDuplicateField), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code == "E0238"), Is.True);
     }
 
     [Test]
@@ -1357,7 +1357,7 @@ public class BinderTests
             }
             """);
 
-        Assert.That(diagnostics.Select(d => d.Code), Is.EqualTo(new[] { DiagnosticCode.E0263_RangeExpressionOutsideForLoop }));
+        Assert.That(diagnostics.Select(d => d.Code), Is.EqualTo(new[] { "E0263" }));
     }
 
     // --- CS-9: Character and string literal tests ---
@@ -1405,8 +1405,8 @@ public class BinderTests
         // Verify binding succeeds (even though backend lowering is not implemented)
         (_, _, DiagnosticBag diagnostics) = Bind("cog var s: [*]cog const u8 = \"hello\";");
         // Should not report type mismatch or string-to-non-const errors
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0205_TypeMismatch), Is.False);
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0240_StringToNonConstPointer), Is.False);
+        Assert.That(diagnostics.Any(d => d.Code == "E0205"), Is.False);
+        Assert.That(diagnostics.Any(d => d.Code == "E0240"), Is.False);
     }
 
     [Test]
@@ -1447,7 +1447,7 @@ public class BinderTests
             }
             """);
 
-        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0271_FunctionLayoutSubsetViolation), Is.True);
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == "E0271"), Is.True);
     }
 
     [Test]
@@ -1465,7 +1465,7 @@ public class BinderTests
             }
             """);
 
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0214_InvalidYieldtoTarget), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code == "E0214"), Is.True);
 
         BoundFunctionMember worker = GetFunction(program, "worker");
         Assert.That(worker.Body.Statements[0].Kind, Is.EqualTo(BoundNodeKind.ErrorStatement));
@@ -1514,7 +1514,7 @@ public class BinderTests
             }
             """);
 
-        Assert.That(diagnostics.Count(d => d.Code == DiagnosticCode.W0266_LexicalNameConflictsWithLayoutMember), Is.EqualTo(1));
+        Assert.That(diagnostics.Count(d => d.Code == "W0266"), Is.EqualTo(1));
 
         BoundFunctionMember task = GetFunction(program, "uses_layout");
         BoundVariableDeclarationStatement plainDeclaration = (BoundVariableDeclarationStatement)task.Body.Statements[0];
@@ -1698,7 +1698,7 @@ public class BinderTests
             }
             """);
 
-        Assert.That(diagnostics.Any(d => d.Code == DiagnosticCode.E0202_UndefinedName), Is.True);
+        Assert.That(diagnostics.Any(d => d.Code == "E0202"), Is.True);
     }
 
 

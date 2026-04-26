@@ -238,7 +238,7 @@ public sealed class ComptimeBinderHelperTests
     {
         (_, IReadOnlyList<Diagnostic> diagnostics) = Bind("extern cog var DIRA: u32 @(true);");
 
-        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0205_TypeMismatch), Is.True);
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == "E0205"), Is.True);
     }
 
     [Test]
@@ -505,10 +505,10 @@ public sealed class ComptimeBinderHelperTests
 
         Assert.That(diagnostics.Select(diagnostic => diagnostic.Code), Is.EqualTo(
         [
-            DiagnosticCode.E0241_ComptimeValueRequired,
-            DiagnosticCode.E0242_ComptimeUnsupportedConstruct,
-            DiagnosticCode.E0243_ComptimeForbiddenSymbolAccess,
-            DiagnosticCode.E0244_ComptimeFuelExhausted,
+            "E0241",
+            "E0242",
+            "E0243",
+            "E0244",
         ]));
     }
 }

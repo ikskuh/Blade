@@ -19,8 +19,15 @@ internal sealed class StdioOutputWriter : ICompilerOutputWriter
 
         foreach (Diagnostic diagnostic in compilation.Diagnostics)
         {
-            SourceLocation location = diagnostic.GetLocation();
-            Console.WriteLine($"{location}: {diagnostic}");
+            if (diagnostic.IsLocated)
+            {
+                SourceLocation location = diagnostic.GetLocation();
+                Console.WriteLine($"{location}: {diagnostic}");
+            }
+            else
+            {
+                Console.WriteLine(diagnostic);
+            }
         }
 
         if (errorCount > 0)

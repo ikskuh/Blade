@@ -9,21 +9,19 @@ public class DiagnosticTests
     private static readonly TextSpan Span = new(0, 0);
     private static readonly SourceText Source = new(string.Empty);
 
-    [TestCase(DiagnosticCode.E0001_UnexpectedCharacter, "E0001")]
-    [TestCase(DiagnosticCode.W9001_TestWarning, "W9001")]
-    [TestCase(DiagnosticCode.I9002_TestInfo, "I9002")]
-    public void FormatCode_UsesSeverityPrefixFromDiagnosticCodeName(DiagnosticCode code, string expected)
+    [Test]
+    public void FormatCode_UsesMessageCode()
     {
-        Diagnostic diagnostic = new(Source, code, Span, "message");
+        Diagnostic diagnostic = new(new UnexpectedCharacterError(Source, Span, '$'));
 
-        Assert.That(diagnostic.FormatCode(), Is.EqualTo(expected));
+        Assert.That(diagnostic.FormatCode(), Is.EqualTo("E0001"));
     }
 
-    [Test]
-    public void FormatCode_FallsBackToErrorPrefixForUnnamedCode()
+    [TestCase("E0001", DiagnosticSeverity.Error)]
+    [TestCase("W0307", DiagnosticSeverity.Warning)]
+    [TestCase("I9002", DiagnosticSeverity.Note)]
+    public void GetSeverity_UsesCodePrefix(string code, DiagnosticSeverity expected)
     {
-        Diagnostic diagnostic = new(Source, (DiagnosticCode)1234, Span, "message");
-
-        Assert.That(diagnostic.FormatCode(), Is.EqualTo("E1234"));
+        Assert.That(Diagnostic.GetSeverity(code), Is.EqualTo(expected));
     }
 }

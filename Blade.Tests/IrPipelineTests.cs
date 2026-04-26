@@ -253,7 +253,7 @@ public class IrPipelineTests
             cog var narrowed: u8 = 257 as u8;
             """);
 
-        Assert.That(diagnostics.Select(static diagnostic => diagnostic.Code), Is.EqualTo([DiagnosticCode.W0261_ComptimeIntegerTruncation]));
+        Assert.That(diagnostics.Select(static diagnostic => diagnostic.Code), Is.EqualTo(["W0261"]));
 
         IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
         {
@@ -697,7 +697,7 @@ public class IrPipelineTests
             """, "array_literal.blade");
 
         Assert.That(compilation.IrBuildResult, Is.Not.Null);
-        Assert.That(compilation.Diagnostics.Any(d => d.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.False);
+        Assert.That(compilation.Diagnostics.Any(d => d.Code == "E0401"), Is.False);
         Assert.That(compilation.IrBuildResult!.AssemblyText, Does.Contain("ALTD"));
     }
 
@@ -1322,7 +1322,7 @@ public class IrPipelineTests
             sink = read_temp();
             """, "asm_temp_warning.blade");
 
-        Assert.That(compilation.Diagnostics.Any(static diagnostic => diagnostic.Code == DiagnosticCode.W0307_InlineAsmTempReadBeforeWrite), Is.True);
+        Assert.That(compilation.Diagnostics.Any(static diagnostic => diagnostic.Code == "W0307"), Is.True);
         Assert.That(compilation.Diagnostics.Any(static diagnostic => diagnostic.IsError), Is.False, string.Join(Environment.NewLine, compilation.Diagnostics));
         Assert.That(compilation.IrBuildResult, Is.Not.Null);
         Assert.That(MirTextWriter.Write(compilation.IrBuildResult!.MirModule), Does.Not.Contain("const 0:u32"));
@@ -1980,7 +1980,7 @@ public class IrPipelineTests
             """, "advanced_semantics.blade");
 
         Assert.That(compilation.IrBuildResult, Is.Not.Null);
-        Assert.That(compilation.Diagnostics.Count(d => d.Code == DiagnosticCode.E0401_UnsupportedLowering), Is.EqualTo(0));
+        Assert.That(compilation.Diagnostics.Count(d => d.Code == "E0401"), Is.EqualTo(0));
     }
 
     [Test]

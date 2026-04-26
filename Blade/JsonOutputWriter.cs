@@ -74,11 +74,13 @@ internal static class JsonReportBuilder
         List<JsonDiagnostic> diagnostics = [];
         foreach (Diagnostic diagnostic in compilation.Diagnostics)
         {
-            SourceLocation location = diagnostic.GetLocation();
+            SourceLocation? location = diagnostic.IsLocated
+                ? diagnostic.GetLocation()
+                : null;
             diagnostics.Add(new JsonDiagnostic
             {
-                File = location.FilePath,
-                Line = location.Line,
+                File = location?.FilePath,
+                Line = location?.Line,
                 Code = diagnostic.FormatCode(),
                 Message = diagnostic.Message,
             });
@@ -140,10 +142,10 @@ internal sealed class JsonCompilationReport
 internal sealed class JsonDiagnostic
 {
     [JsonPropertyName("file")]
-    public required string File { get; init; }
+    public required string? File { get; init; }
 
     [JsonPropertyName("line")]
-    public required int Line { get; init; }
+    public required int? Line { get; init; }
 
     [JsonPropertyName("code")]
     public required string Code { get; init; }

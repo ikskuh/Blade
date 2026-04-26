@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Globalization;
 using Blade;
 using Blade.Source;
 
@@ -42,547 +41,451 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
         return new SourceScope(this, previous);
     }
 
-    public void Report(DiagnosticCode code, TextSpan span, string message)
+    /// <summary>
+    /// Adds a typed diagnostic message to the bag.
+    /// </summary>
+    public void Report(DiagnosticMessage message)
     {
-        Assert.Invariant(_currentSource is not null, "Diagnostics require a current source context. Use DiagnosticBag.UseSource(source) when reporting.");
-        _diagnostics.Add(new Diagnostic(_currentSource, code, span, message));
+        _diagnostics.Add(new Diagnostic(Requires.NotNull(message)));
+    }
+
+    private SourceText CurrentSource
+    {
+        get
+        {
+            Assert.Invariant(_currentSource is not null, "Diagnostics require a current source context. Use DiagnosticBag.UseSource(source) when reporting.");
+            return _currentSource;
+        }
     }
 
     public void ReportUnexpectedCharacter(TextSpan span, char character)
     {
-        Report(DiagnosticCode.E0001_UnexpectedCharacter, span, $"Unexpected character '{character}'.");
+        Report(new UnexpectedCharacterError(CurrentSource, span, character));
     }
 
     public void ReportUnterminatedString(TextSpan span)
     {
-        Report(DiagnosticCode.E0002_UnterminatedString, span, "Unterminated string literal.");
+        Report(new UnterminatedStringError(CurrentSource, span));
     }
 
     public void ReportInvalidNumberLiteral(TextSpan span, string text)
     {
-        Report(DiagnosticCode.E0003_InvalidNumberLiteral, span, $"Invalid number literal '{text}'.");
+        Report(new InvalidNumberLiteralError(CurrentSource, span, text));
     }
 
     public void ReportUnterminatedBlockComment(TextSpan span)
     {
-        Report(DiagnosticCode.E0004_UnterminatedBlockComment, span, "Unterminated block comment.");
+        Report(new UnterminatedBlockCommentError(CurrentSource, span));
     }
 
     public void ReportInvalidCharacterLiteral(TextSpan span)
     {
-        Report(DiagnosticCode.E0005_InvalidCharacterLiteral, span, "Invalid character literal.");
+        Report(new InvalidCharacterLiteralError(CurrentSource, span));
     }
 
     public void ReportInvalidEscapeSequence(TextSpan span)
     {
-        Report(DiagnosticCode.E0006_InvalidEscapeSequence, span, "Invalid escape sequence.");
+        Report(new InvalidEscapeSequenceError(CurrentSource, span));
     }
 
     public void ReportInvalidUtf8(TextSpan span)
     {
-        Report(DiagnosticCode.E0007_InvalidUtf8, span, "Source file is not valid UTF-8.");
+        Report(new InvalidUtf8Error(CurrentSource, span));
     }
 
     public void ReportInvalidControlCharacter(TextSpan span, char character)
     {
-        Report(
-            DiagnosticCode.E0008_InvalidControlCharacter,
-            span,
-            string.Format(CultureInfo.InvariantCulture, "Control character U+{0:X4} is not allowed in Blade source files.", (int)character));
+        Report(new InvalidControlCharacterError(CurrentSource, span, character));
     }
-
-    // Parser diagnostics
 
     public void ReportUnexpectedToken(TextSpan span, string expected, string actual)
     {
-        Report(DiagnosticCode.E0101_UnexpectedToken, span, $"Expected {expected}, got '{actual}'.");
+        Report(new UnexpectedTokenError(CurrentSource, span, expected, actual));
     }
 
     public void ReportExpectedExpression(TextSpan span)
     {
-        Report(DiagnosticCode.E0102_ExpectedExpression, span, "Expected expression.");
+        Report(new ExpectedExpressionError(CurrentSource, span));
     }
 
     public void ReportExpectedStatement(TextSpan span)
     {
-        Report(DiagnosticCode.E0103_ExpectedStatement, span, "Expected statement.");
+        Report(new ExpectedStatementError(CurrentSource, span));
     }
 
     public void ReportExpectedTypeName(TextSpan span)
     {
-        Report(DiagnosticCode.E0104_ExpectedTypeName, span, "Expected type name.");
+        Report(new ExpectedTypeNameError(CurrentSource, span));
     }
 
     public void ReportExpectedIdentifier(TextSpan span)
     {
-        Report(DiagnosticCode.E0105_ExpectedIdentifier, span, "Expected identifier.");
+        Report(new ExpectedIdentifierError(CurrentSource, span));
     }
 
     public void ReportInvalidAssignmentTarget(TextSpan span)
     {
-        Report(DiagnosticCode.E0106_InvalidAssignmentTarget, span, "Invalid assignment target.");
+        Report(new InvalidAssignmentTargetError(CurrentSource, span));
     }
 
     public void ReportExpectedSemicolon(TextSpan span)
     {
-        Report(DiagnosticCode.E0107_ExpectedSemicolon, span, "Expected ';'.");
+        Report(new ExpectedSemicolonError(CurrentSource, span));
     }
 
     public void ReportDuplicateVariableClause(TextSpan span, string clauseName)
     {
-        Report(DiagnosticCode.E0108_DuplicateVariableClause, span, $"Duplicate variable clause '{clauseName}'.");
+        Report(new DuplicateVariableClauseError(CurrentSource, span, clauseName));
     }
-
-    // Semantic diagnostics
 
     public void ReportSymbolAlreadyDeclared(TextSpan span, string name)
     {
-        Report(DiagnosticCode.E0201_SymbolAlreadyDeclared, span, $"Symbol '{name}' is already declared.");
+        Report(new SymbolAlreadyDeclaredError(CurrentSource, span, name));
     }
 
     public void ReportUndefinedName(TextSpan span, string name)
     {
-        Report(DiagnosticCode.E0202_UndefinedName, span, $"Name '{name}' does not exist in the current scope.");
+        Report(new UndefinedNameError(CurrentSource, span, name));
     }
 
     public void ReportUndefinedType(TextSpan span, string name)
     {
-        Report(DiagnosticCode.E0203_UndefinedType, span, $"Type '{name}' is not defined.");
+        Report(new UndefinedTypeError(CurrentSource, span, name));
     }
 
     public void ReportCannotAssignToConstant(TextSpan span, string name)
     {
-        Report(DiagnosticCode.E0204_CannotAssignToConstant, span, $"Cannot assign to constant '{name}'.");
+        Report(new CannotAssignToConstantError(CurrentSource, span, name));
     }
 
     public void ReportTypeMismatch(TextSpan span, string expected, string actual)
     {
-        Report(DiagnosticCode.E0205_TypeMismatch, span, $"Type mismatch: expected '{expected}', got '{actual}'.");
+        Report(new TypeMismatchError(CurrentSource, span, expected, actual));
     }
 
     public void ReportNotCallable(TextSpan span, string typeName)
     {
-        Report(DiagnosticCode.E0206_NotCallable, span, $"Expression of type '{typeName}' is not callable.");
+        Report(new NotCallableError(CurrentSource, span, typeName));
     }
 
     public void ReportArgumentCountMismatch(TextSpan span, string functionName, int expected, int actual)
     {
-        Report(
-            DiagnosticCode.E0207_ArgumentCountMismatch,
-            span,
-            $"Function '{functionName}' expects {expected} argument(s), but got {actual}.");
+        Report(new ArgumentCountMismatchError(CurrentSource, span, functionName, expected, actual));
     }
 
     public void ReportInvalidLoopControl(TextSpan span, string keyword)
     {
-        Report(DiagnosticCode.E0208_InvalidLoopControl, span, $"'{keyword}' can only be used inside a loop.");
+        Report(new InvalidLoopControlError(CurrentSource, span, keyword));
     }
 
     public void ReportInvalidBreakInRep(TextSpan span)
     {
-        Report(DiagnosticCode.E0209_InvalidBreakInRepLoop, span, "'break' is not allowed inside 'rep' loops.");
+        Report(new InvalidBreakInRepLoopError(CurrentSource, span));
     }
 
     public void ReportInvalidYield(TextSpan span)
     {
-        Report(DiagnosticCode.E0210_InvalidYieldUsage, span, "'yield' is only allowed inside int1/int2/int3 functions.");
+        Report(new InvalidYieldUsageError(CurrentSource, span));
     }
 
     public void ReportInvalidYieldto(TextSpan span)
     {
-        Report(DiagnosticCode.E0211_InvalidYieldtoUsage, span, "'yieldto' is not allowed in this context.");
+        Report(new InvalidYieldtoUsageError(CurrentSource, span));
     }
 
     public void ReportReturnValueCountMismatch(TextSpan span, string functionName, int expected, int actual)
     {
-        Report(
-            DiagnosticCode.E0212_ReturnValueCountMismatch,
-            span,
-            $"Function '{functionName}' returns {expected} value(s), but got {actual}.");
+        Report(new ReturnValueCountMismatchError(CurrentSource, span, functionName, expected, actual));
     }
 
     public void ReportReturnOutsideFunction(TextSpan span)
     {
-        Report(DiagnosticCode.E0213_ReturnOutsideFunction, span, "'return' is only allowed inside a function.");
+        Report(new ReturnOutsideFunctionError(CurrentSource, span));
     }
 
     public void ReportInvalidYieldtoTarget(TextSpan span, string target)
     {
-        Report(DiagnosticCode.E0214_InvalidYieldtoTarget, span, $"'{target}' is not a coroutine function.");
+        Report(new InvalidYieldtoTargetError(CurrentSource, span, target));
     }
 
     public void ReportInvalidLocalStorageClass(TextSpan span, string storageClass)
     {
-        Report(DiagnosticCode.E0215_InvalidLocalStorageClass, span, $"Storage class '{storageClass}' is only allowed for top-level storage declarations.");
+        Report(new InvalidLocalStorageClassError(CurrentSource, span, storageClass));
     }
 
     public void ReportInvalidExternScope(TextSpan span)
     {
-        Report(DiagnosticCode.E0216_InvalidExternScope, span, "automatic variable cannot be extern");
+        Report(new InvalidExternScopeError(CurrentSource, span));
     }
 
     public void ReportInvalidParameterStorageClass(TextSpan span, string storageClass)
     {
-        Report(DiagnosticCode.E0217_InvalidParameterStorageClass, span, $"Parameter storage class '{storageClass}' is not supported.");
+        Report(new InvalidParameterStorageClassError(CurrentSource, span, storageClass));
     }
 
     public void ReportPointerStorageClassRequired(TextSpan span)
     {
-        Report(DiagnosticCode.E0264_PointerStorageClassRequired, span, "Pointer types must explicitly declare a storage class.");
+        Report(new PointerStorageClassRequiredError(CurrentSource, span));
     }
 
     public void ReportUnknownNamedArgument(TextSpan span, string functionName, string parameterName)
     {
-        Report(
-            DiagnosticCode.E0219_UnknownNamedArgument,
-            span,
-            $"Function '{functionName}' does not have a parameter named '{parameterName}'.");
+        Report(new UnknownNamedArgumentError(CurrentSource, span, functionName, parameterName));
     }
 
     public void ReportDuplicateNamedArgument(TextSpan span, string parameterName)
     {
-        Report(DiagnosticCode.E0220_DuplicateNamedArgument, span, $"Named argument '{parameterName}' is specified more than once.");
+        Report(new DuplicateNamedArgumentError(CurrentSource, span, parameterName));
     }
 
     public void ReportPositionalArgumentAfterNamed(TextSpan span, string functionName)
     {
-        Report(
-            DiagnosticCode.E0221_PositionalArgumentAfterNamed,
-            span,
-            $"Function '{functionName}' does not allow positional arguments after named arguments.");
+        Report(new PositionalArgumentAfterNamedError(CurrentSource, span, functionName));
     }
 
     public void ReportNamedArgumentConflictsWithPositional(TextSpan span, string parameterName)
     {
-        Report(
-            DiagnosticCode.E0222_NamedArgumentConflictsWithPositional,
-            span,
-            $"Named argument '{parameterName}' conflicts with a positional argument.");
+        Report(new NamedArgumentConflictsWithPositionalError(CurrentSource, span, parameterName));
     }
 
     public void ReportInvalidAddressOfTarget(TextSpan span)
     {
-        Report(DiagnosticCode.E0223_InvalidAddressOfTarget, span, "Address-of requires an addressable variable or parameter.");
+        Report(new InvalidAddressOfTargetError(CurrentSource, span));
     }
 
     public void ReportInvalidExplicitCast(TextSpan span, string sourceType, string targetType)
     {
-        Report(DiagnosticCode.E0224_InvalidExplicitCast, span, $"Cannot explicitly cast from '{sourceType}' to '{targetType}'.");
+        Report(new InvalidExplicitCastError(CurrentSource, span, sourceType, targetType));
     }
 
     public void ReportBitcastSizeMismatch(TextSpan span, string sourceType, string targetType)
     {
-        Report(DiagnosticCode.E0225_BitcastSizeMismatch, span, $"Cannot bitcast from '{sourceType}' to '{targetType}' because their sizes differ.");
+        Report(new BitcastSizeMismatchError(CurrentSource, span, sourceType, targetType));
     }
 
     public void ReportAddressOfRecursiveLocal(TextSpan span, string name)
     {
-        Report(DiagnosticCode.E0226_AddressOfRecursiveLocal, span, $"Cannot take the address of local '{name}' inside a recursive function.");
+        Report(new AddressOfRecursiveLocalError(CurrentSource, span, name));
     }
 
     public void ReportMissingReturnValue(TextSpan span, string functionName)
     {
-        Report(DiagnosticCode.E0227_MissingReturnValue, span, $"Function '{functionName}' must return a value on all control-flow paths.");
+        Report(new MissingReturnValueError(CurrentSource, span, functionName));
     }
 
     public void ReportReturnFromCoroutine(TextSpan span, string functionName)
     {
-        Report(DiagnosticCode.E0278_ReturnFromCoroutine, span, $"Coroutine function '{functionName}' cannot return and must end in 'yieldto' on every control-flow path.");
+        Report(new ReturnFromCoroutineError(CurrentSource, span, functionName));
     }
-
 
     public void ReportFileImportAliasRequired(TextSpan span)
     {
-        Report(DiagnosticCode.E0228_FileImportAliasRequired, span, "File imports require an alias: use 'import \"path\" as alias;'.");
+        Report(new FileImportAliasRequiredError(CurrentSource, span));
     }
 
     public void ReportUnknownNamedModule(TextSpan span, string moduleName)
     {
-        Report(DiagnosticCode.E0229_UnknownNamedModule, span, $"Named module '{moduleName}' is not defined.");
+        Report(new UnknownNamedModuleError(CurrentSource, span, moduleName));
     }
 
     public void ReportImportFileNotFound(TextSpan span, string path)
     {
-        Report(DiagnosticCode.E0230_ImportFileNotFound, span, $"Imported file '{path}' was not found.");
+        Report(new ImportFileNotFoundError(CurrentSource, span, path));
     }
 
     public void ReportCircularImport(TextSpan span, string path)
     {
-        Report(DiagnosticCode.E0231_CircularImport, span, $"Circular import detected at '{path}'.");
+        Report(new CircularImportError(CurrentSource, span, path));
     }
 
     public void ReportEnumLiteralRequiresContext(TextSpan span, string memberName)
     {
-        Report(
-            DiagnosticCode.E0232_EnumLiteralRequiresContext,
-            span,
-            $"Enum literal '.{memberName}' requires an expected enum type.");
+        Report(new EnumLiteralRequiresContextError(CurrentSource, span, memberName));
     }
 
     public void ReportBitfieldWidthOverflow(TextSpan span, string bitfieldName, string fieldName, int usedBits, int backingBits)
     {
-        Report(
-            DiagnosticCode.E0233_BitfieldWidthOverflow,
-            span,
-            $"Bitfield '{bitfieldName}' field '{fieldName}' uses {usedBits} bits, exceeding backing width {backingBits}.");
+        Report(new BitfieldWidthOverflowError(CurrentSource, span, bitfieldName, fieldName, usedBits, backingBits));
     }
 
     public void ReportArrayLiteralRequiresContext(TextSpan span)
     {
-        Report(
-            DiagnosticCode.E0234_ArrayLiteralRequiresContext,
-            span,
-            "Array literal requires an expected array type.");
+        Report(new ArrayLiteralRequiresContextError(CurrentSource, span));
     }
 
     public void ReportArrayLiteralSpreadMustBeLast(TextSpan span)
     {
-        Report(
-            DiagnosticCode.E0235_ArrayLiteralSpreadMustBeLast,
-            span,
-            "Array literal spread element must be the last element.");
+        Report(new ArrayLiteralSpreadMustBeLastError(CurrentSource, span));
     }
 
     public void ReportStructUnknownField(TextSpan span, string structName, string fieldName)
     {
-        Report(DiagnosticCode.E0236_StructUnknownField, span, $"Struct '{structName}' does not have a field named '{fieldName}'.");
+        Report(new StructUnknownFieldError(CurrentSource, span, structName, fieldName));
     }
 
     public void ReportStructMissingFields(TextSpan span, string structName, string missingFields)
     {
-        Report(DiagnosticCode.E0237_StructMissingFields, span, $"Struct literal for '{structName}' is missing field(s): {missingFields}.");
+        Report(new StructMissingFieldsError(CurrentSource, span, structName, missingFields));
     }
 
     public void ReportStructDuplicateField(TextSpan span, string fieldName)
     {
-        Report(DiagnosticCode.E0238_StructDuplicateField, span, $"Field '{fieldName}' is specified more than once.");
+        Report(new StructDuplicateFieldError(CurrentSource, span, fieldName));
     }
 
     public void ReportStringLengthMismatch(TextSpan span, int expectedLength, int actualLength)
     {
-        Report(
-            DiagnosticCode.E0239_StringLengthMismatch,
-            span,
-            $"String length {actualLength} does not match array length {expectedLength}.");
+        Report(new StringLengthMismatchError(CurrentSource, span, expectedLength, actualLength));
     }
 
     public void ReportStringToNonConstPointer(TextSpan span)
     {
-        Report(
-            DiagnosticCode.E0240_StringToNonConstPointer,
-            span,
-            "String literal cannot be assigned to a non-const pointer.");
+        Report(new StringToNonConstPointerError(CurrentSource, span));
     }
 
     public void ReportComptimeValueRequired(TextSpan span)
     {
-        Report(
-            DiagnosticCode.E0241_ComptimeValueRequired,
-            span,
-            "Expression must be compile-time evaluable in this context.");
+        Report(new ComptimeValueRequiredError(CurrentSource, span));
     }
 
     public void ReportComptimeUnsupportedConstruct(TextSpan span, string detail)
     {
-        Report(
-            DiagnosticCode.E0242_ComptimeUnsupportedConstruct,
-            span,
-            $"Construct is not supported during comptime evaluation: {detail}");
+        Report(new ComptimeUnsupportedConstructError(CurrentSource, span, detail));
     }
 
     public void ReportComptimeForbiddenSymbolAccess(TextSpan span, string detail)
     {
-        Report(
-            DiagnosticCode.E0243_ComptimeForbiddenSymbolAccess,
-            span,
-            $"Comptime evaluation cannot access this symbol: {detail}");
+        Report(new ComptimeForbiddenSymbolAccessError(CurrentSource, span, detail));
     }
 
     public void ReportComptimeFuelExhausted(TextSpan span)
     {
-        Report(
-            DiagnosticCode.E0244_ComptimeFuelExhausted,
-            span,
-            "Comptime evaluation ran out of fuel.");
+        Report(new ComptimeFuelExhaustedError(CurrentSource, span));
     }
 
     public void ReportDuplicateNamedModuleRoot(TextSpan span, string firstModuleName, string secondModuleName, string path)
     {
-        Report(
-            DiagnosticCode.E0245_DuplicateNamedModuleRoot,
-            span,
-            $"Named modules '{firstModuleName}' and '{secondModuleName}' both resolve to '{path}'.");
+        Report(new DuplicateNamedModuleRootError(CurrentSource, span, firstModuleName, secondModuleName, path));
     }
 
     public void ReportMultiAssignmentRequiresCall(TextSpan span)
     {
-        Report(
-            DiagnosticCode.E0246_MultiAssignmentRequiresCall,
-            span,
-            "Multi-target assignment requires a function call or spawn expression on the right-hand side.");
+        Report(new MultiAssignmentRequiresCallError(CurrentSource, span));
     }
 
-        public void ReportMultiAssignmentTargetCountMismatch(TextSpan span, string expressionName, int expected, int actual)
+    public void ReportMultiAssignmentTargetCountMismatch(TextSpan span, string expressionName, int expected, int actual)
     {
-        Report(
-            DiagnosticCode.E0247_MultiAssignmentTargetCountMismatch,
-            span,
-            $"Expression '{expressionName}' returns {expected} value(s), but {actual} assignment target(s) provided.");
+        Report(new MultiAssignmentTargetCountMismatchError(CurrentSource, span, expressionName, expected, actual));
     }
 
     public void ReportDiscardInExpression(TextSpan span)
     {
-        Report(
-            DiagnosticCode.E0248_DiscardInExpression,
-            span,
-            "The discard '_' can only be used as an assignment target.");
+        Report(new DiscardInExpressionError(CurrentSource, span));
     }
 
     public void ReportExternCannotHaveInitializer(TextSpan span, string name)
     {
-        Report(
-            DiagnosticCode.E0249_ExternCannotHaveInitializer,
-            span,
-            $"Extern variable '{name}' cannot have an initializer.");
+        Report(new ExternCannotHaveInitializerError(CurrentSource, span, name));
     }
 
     public void ReportMemoryofRequiresVariable(TextSpan span)
     {
-        Report(DiagnosticCode.E0250_MemoryofRequiresVariable, span, "'memoryof' requires a variable declaration, not a type.");
+        Report(new MemoryofRequiresVariableError(CurrentSource, span));
     }
 
     public void ReportQueryRequiresMemorySpace(TextSpan span, string operatorName)
     {
-        Report(DiagnosticCode.E0251_QueryRequiresMemorySpace, span, $"'{operatorName}' of a type requires a memory space argument.");
+        Report(new QueryRequiresMemorySpaceError(CurrentSource, span, operatorName));
     }
 
     public void ReportQueryUnsupportedType(TextSpan span, string operatorName, string typeName)
     {
-        Report(DiagnosticCode.E0252_QueryUnsupportedType, span, $"Cannot determine size/alignment for type '{typeName}' in '{operatorName}'.");
+        Report(new QueryUnsupportedTypeError(CurrentSource, span, operatorName, typeName));
     }
 
     public void ReportQueryAutomaticLocal(TextSpan span, string operatorName, string variableName)
     {
-        Report(DiagnosticCode.E0253_QueryAutomaticLocal, span, $"'{operatorName}' cannot be applied to automatic local variable '{variableName}'.");
+        Report(new QueryAutomaticLocalError(CurrentSource, span, operatorName, variableName));
     }
 
     public void ReportInvalidMemorySpaceArgument(TextSpan span)
     {
-        Report(DiagnosticCode.E0254_InvalidMemorySpaceArgument, span, "Expected a 'builtin.MemorySpace' value.");
+        Report(new InvalidMemorySpaceArgumentError(CurrentSource, span));
     }
 
     public void ReportAssertionFailed(TextSpan span, string? message)
     {
-        Report(
-            DiagnosticCode.E0255_AssertionFailed,
-            span,
-            message is null ? "assertion failed" : $"assertion failed: {message}");
+        string assertionMessage = message is null ? "assertion failed" : $"assertion failed: {message}";
+        Report(new AssertionFailedError(CurrentSource, span, assertionMessage));
     }
 
     public void ReportUnknownBuiltin(TextSpan span, string name)
     {
-        Report(DiagnosticCode.E0256_UnknownBuiltin, span, $"Unknown builtin '@{name}'.");
+        Report(new UnknownBuiltinError(CurrentSource, span, name));
     }
 
     public void ReportInvalidPointerArithmetic(TextSpan span, string operation)
     {
-        Report(
-            DiagnosticCode.E0257_InvalidPointerArithmetic,
-            span,
-            $"Invalid pointer arithmetic for '{operation}'. Only '[*]' pointers support '+', '-', '+=', and '-=' with integer deltas.");
+        Report(new InvalidPointerArithmeticError(CurrentSource, span, operation));
     }
 
     public void ReportIncompatiblePointerSubtraction(TextSpan span, string leftType, string rightType)
     {
-        Report(
-            DiagnosticCode.E0258_IncompatiblePointerSubtraction,
-            span,
-            $"Pointer subtraction requires matching '[*]' pointer element types and memory spaces, but got '{leftType}' and '{rightType}'.");
+        Report(new IncompatiblePointerSubtractionError(CurrentSource, span, leftType, rightType));
     }
 
     public void ReportExpressionNotAStatement(TextSpan span)
     {
-        Report(DiagnosticCode.E0259_ExpressionNotAStatement, span, "An expression is not a statement. Only function calls and spawn expressions are allowed as standalone statements.");
+        Report(new ExpressionNotAStatementError(CurrentSource, span));
     }
 
     public void ReportRangeIterationRequiresBinding(TextSpan span)
     {
-        Report(DiagnosticCode.E0260_RangeIterationRequiresBinding, span, "Range iteration requires an index binding '-> index'.");
+        Report(new RangeIterationRequiresBindingError(CurrentSource, span));
     }
 
     public void ReportRangeExpressionOutsideForLoop(TextSpan span)
     {
-        Report(
-            DiagnosticCode.E0263_RangeExpressionOutsideForLoop,
-            span,
-            "Range expressions are only allowed as the iterable of a for/rep for statement.");
+        Report(new RangeExpressionOutsideForLoopError(CurrentSource, span));
     }
 
     public void ReportComptimeIntegerTruncation(TextSpan span, string value, string targetType, string truncatedValue)
     {
-        Report(
-            DiagnosticCode.W0261_ComptimeIntegerTruncation,
-            span,
-            $"Compile-time integer value {value} is truncated to {truncatedValue} when converted to '{targetType}'.");
+        Report(new ComptimeIntegerTruncationWarning(CurrentSource, span, value, targetType, truncatedValue));
     }
 
     public void ReportAddressOfParameter(TextSpan span, string name)
     {
-        Report(DiagnosticCode.E0262_AddressOfParameter, span, $"Cannot take the address of parameter '{name}'.");
+        Report(new AddressOfParameterError(CurrentSource, span, name));
     }
 
-    /// <summary>
-    /// Reports that an unqualified name is provided by multiple imported layouts.
-    /// </summary>
     public void ReportAmbiguousLayoutMemberAccess(TextSpan span, string name, IReadOnlyList<string> layoutNames)
     {
-        Report(
-            DiagnosticCode.E0265_AmbiguousLayoutMemberAccess,
-            span,
-            $"Name '{name}' is provided by multiple layouts ({string.Join(", ", layoutNames)}). Use 'Layout.member' to disambiguate.");
+        string layoutNamesText = string.Join(", ", layoutNames);
+        Report(new AmbiguousLayoutMemberAccessError(CurrentSource, span, name, layoutNamesText));
     }
 
-    /// <summary>
-    /// Reports that lexical resolution won over one or more imported layout members of the same name.
-    /// </summary>
     public void ReportLexicalNameConflictsWithLayoutMember(TextSpan span, string name, IReadOnlyList<string> layoutNames)
     {
-        Report(
-            DiagnosticCode.W0266_LexicalNameConflictsWithLayoutMember,
-            span,
-            $"Name '{name}' is visible both lexically and through layout members ({string.Join(", ", layoutNames)}). The lexical name wins.");
+        string layoutNamesText = string.Join(", ", layoutNames);
+        Report(new LexicalNameConflictsWithLayoutMemberWarning(CurrentSource, span, name, layoutNamesText));
     }
 
-    /// <summary>
-    /// Reports that a layout declaration shadows a member inherited from a parent layout.
-    /// </summary>
     public void ReportLayoutMemberShadowsParentMember(TextSpan span, string layoutName, string memberName)
     {
-        Report(
-            DiagnosticCode.W0267_LayoutMemberShadowsParentMember,
-            span,
-            $"Layout '{layoutName}' declares member '{memberName}', which shadows an inherited layout member.");
+        Report(new LayoutMemberShadowsParentMemberWarning(CurrentSource, span, layoutName, memberName));
     }
 
-    /// <summary>
-    /// Reports that a layout attempted to inherit from a task-private layout.
-    /// </summary>
     public void ReportTaskLayoutCannotBeInherited(TextSpan span, string taskName)
     {
-        Report(DiagnosticCode.E0268_TaskLayoutCannotBeInherited, span, $"Task layout '{taskName}' cannot be inherited.");
+        Report(new TaskLayoutCannotBeInheritedError(CurrentSource, span, taskName));
     }
 
-    /// <summary>
-    /// Reports that a spawn expression targets something other than a task.
-    /// </summary>
     public void ReportInvalidSpawnTarget(TextSpan span, string targetName)
     {
-        Report(DiagnosticCode.E0279_InvalidSpawnTarget, span, $"Spawn target '{targetName}' is not a task.");
+        Report(new InvalidSpawnTargetError(CurrentSource, span, targetName));
     }
 
-    /// <summary>
-    /// Reports that the required root entry task exists but does not start in cog storage.
-    /// </summary>
     public void ReportMainTaskMustBeCog(TextSpan span, string taskName, Blade.Semantics.VariableStorageClass storageClass)
     {
         string storageClassKeyword = storageClass switch
@@ -593,23 +496,14 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
             _ => Assert.UnreachableValue<string>(), // pragma: force-coverage
         };
 
-        Report(
-            DiagnosticCode.W0269_MainTaskMustBeCog,
-            span,
-            $"Entry task '{taskName}' should be declared as 'cog task'; found '{storageClassKeyword} task'.");
+        Report(new MainTaskMustBeCogWarning(CurrentSource, span, taskName, storageClassKeyword));
     }
 
-    /// <summary>
-    /// Reports that the root module does not export the required <c>main</c> task.
-    /// </summary>
     public void ReportMissingMainTask(TextSpan span)
     {
-        Report(DiagnosticCode.E0270_MissingMainTask, span, "Root module must export a task named 'main'.");
+        Report(new MissingMainTaskError(CurrentSource, span));
     }
 
-    /// <summary>
-    /// Reports that a callee requires layouts that are not available to the caller.
-    /// </summary>
     public void ReportFunctionLayoutSubsetViolation(TextSpan span, string callerName, string calleeName, IReadOnlyList<string> callerLayouts, IReadOnlyList<string> calleeLayouts)
     {
         Requires.NotNull(callerLayouts);
@@ -617,87 +511,45 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
 
         string callerLayoutText = callerLayouts.Count == 0 ? "<none>" : string.Join(", ", callerLayouts);
         string calleeLayoutText = calleeLayouts.Count == 0 ? "<none>" : string.Join(", ", calleeLayouts);
-        Report(
-            DiagnosticCode.E0271_FunctionLayoutSubsetViolation,
-            span,
-            $"Function '{callerName}' cannot transfer control to '{calleeName}' because callee layouts [{calleeLayoutText}] are not a subset of caller layouts [{callerLayoutText}].");
+        Report(new FunctionLayoutSubsetViolationError(CurrentSource, span, callerName, calleeName, callerLayoutText, calleeLayoutText));
     }
 
-    /// <summary>
-    /// Reports that a function metadata block repeated the <c>layout(...)</c> property.
-    /// </summary>
     public void ReportDuplicateFunctionLayoutMetadata(TextSpan span)
     {
-        Report(DiagnosticCode.W0272_DuplicateFunctionLayoutMetadata, span, "Duplicate function metadata property 'layout(...)'; layouts are merged.");
+        Report(new DuplicateFunctionLayoutMetadataWarning(CurrentSource, span));
     }
 
-    /// <summary>
-    /// Reports that a function metadata block repeated the <c>align(...)</c> property.
-    /// </summary>
     public void ReportDuplicateFunctionAlignMetadata(TextSpan span)
     {
-        Report(DiagnosticCode.E0273_DuplicateFunctionAlignMetadata, span, "Duplicate function metadata property 'align(...)'.");
+        Report(new DuplicateFunctionAlignMetadataError(CurrentSource, span));
     }
 
-    /// <summary>
-    /// Reports that a function metadata <c>align(...)</c> value is invalid.
-    /// </summary>
     public void ReportInvalidFunctionAlignment(TextSpan span, int alignment)
     {
-        Report(DiagnosticCode.E0274_InvalidFunctionAlignment, span, $"Function alignment must be a positive power of two; got '{alignment}'.");
+        Report(new InvalidFunctionAlignmentError(CurrentSource, span, alignment));
     }
 
-    /// <summary>
-    /// Reports that a function metadata <c>layout(...)</c> reference resolved to a task-private layout.
-    /// </summary>
     public void ReportTaskLayoutNotAllowedInFunctionMetadata(TextSpan span, string taskName)
     {
-        Report(DiagnosticCode.E0275_TaskLayoutNotAllowedInFunctionMetadata, span, $"Task layout '{taskName}' cannot be referenced from function metadata.");
+        Report(new TaskLayoutNotAllowedInFunctionMetadataError(CurrentSource, span, taskName));
     }
 
-    /// <summary>
-    /// Reports that a qualified layout member access targets a layout that is not visible in the current context.
-    /// </summary>
     public void ReportAccessToForeignLayout(TextSpan span, string layoutName, string memberName)
     {
-        Report(
-            DiagnosticCode.E0276_AccessToForeignLayout,
-            span,
-            $"Layout member '{layoutName}.{memberName}' is not accessible from this context because the layout is not declared here.");
+        Report(new AccessToForeignLayoutError(CurrentSource, span, layoutName, memberName));
     }
 
-    /// <summary>
-    /// Reports that a plain top-level global used a storage class that is only meaningful inside a layout.
-    /// </summary>
     public void ReportUnsupportedGlobalStorage(TextSpan span, string storageClass)
     {
-        Report(
-            DiagnosticCode.E0277_UnsupportedGlobalStorage,
-            span,
-            $"Top-level global storage class '{storageClass}' is not supported here. Use 'hub' or move the declaration into a layout.");
+        Report(new UnsupportedGlobalStorageError(CurrentSource, span, storageClass));
     }
 
-    /// <summary>
-    /// Reports that a layout member requested an invalid alignment.
-    /// </summary>
     public void ReportInvalidLayoutAlignment(TextSpan span, string layoutName, string memberName, int alignment)
     {
-        Report(
-            DiagnosticCode.E0280_InvalidLayoutAlignment,
-            span,
-            $"Layout member '{layoutName}.{memberName}' has invalid alignment '{alignment}'. Alignment must be a positive power of two.");
+        Report(new InvalidLayoutAlignmentError(CurrentSource, span, layoutName, memberName, alignment));
     }
 
-    /// <summary>
-    /// Reports that a layout member requested an invalid fixed address.
-    /// </summary>
-    public void ReportInvalidLayoutAddress(
-        TextSpan span,
-        string layoutName,
-        string memberName,
-        Blade.Semantics.VariableStorageClass storageClass,
-        int address,
-        int sizeInAddressUnits)
+    public void ReportInvalidLayoutAddress(TextSpan span, string layoutName, string memberName, Blade.Semantics.VariableStorageClass storageClass, int address, int sizeInAddressUnits)
     {
         string storageName = storageClass switch
         {
@@ -707,24 +559,10 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
             _ => Assert.UnreachableValue<string>(), // pragma: force-coverage
         };
 
-        Report(
-            DiagnosticCode.E0281_InvalidLayoutAddress,
-            span,
-            $"Layout member '{layoutName}.{memberName}' cannot be placed at {storageName} address '{address}' with size '{sizeInAddressUnits}'.");
+        Report(new InvalidLayoutAddressError(CurrentSource, span, layoutName, memberName, storageName, address, sizeInAddressUnits));
     }
 
-    /// <summary>
-    /// Reports that two layout members overlap in the solved address space.
-    /// </summary>
-    public void ReportLayoutAddressConflict(
-        TextSpan span,
-        string layoutName,
-        string memberName,
-        Blade.Semantics.VariableStorageClass storageClass,
-        int address,
-        string conflictingLayoutName,
-        string conflictingMemberName,
-        int conflictingAddress)
+    public void ReportLayoutAddressConflict(TextSpan span, string layoutName, string memberName, Blade.Semantics.VariableStorageClass storageClass, int address, string conflictingLayoutName, string conflictingMemberName, int conflictingAddress)
     {
         string storageName = storageClass switch
         {
@@ -734,22 +572,10 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
             _ => Assert.UnreachableValue<string>(), // pragma: force-coverage
         };
 
-        Report(
-            DiagnosticCode.E0282_LayoutAddressConflict,
-            span,
-            $"Layout member '{layoutName}.{memberName}' at {storageName} address '{address}' overlaps '{conflictingLayoutName}.{conflictingMemberName}' at address '{conflictingAddress}'.");
+        Report(new LayoutAddressConflictError(CurrentSource, span, layoutName, memberName, storageName, address, conflictingLayoutName, conflictingMemberName, conflictingAddress));
     }
 
-    /// <summary>
-    /// Reports that the layout solver could not find a valid address for a member.
-    /// </summary>
-    public void ReportLayoutAllocationFailed(
-        TextSpan span,
-        string layoutName,
-        string memberName,
-        Blade.Semantics.VariableStorageClass storageClass,
-        int sizeInAddressUnits,
-        int alignmentInAddressUnits)
+    public void ReportLayoutAllocationFailed(TextSpan span, string layoutName, string memberName, Blade.Semantics.VariableStorageClass storageClass, int sizeInAddressUnits, int alignmentInAddressUnits)
     {
         string storageName = storageClass switch
         {
@@ -759,64 +585,47 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
             _ => Assert.UnreachableValue<string>(), // pragma: force-coverage
         };
 
-        Report(
-            DiagnosticCode.E0283_LayoutAllocationFailed,
-            span,
-            $"Layout solver could not place '{layoutName}.{memberName}' in {storageName} space with size '{sizeInAddressUnits}' and alignment '{alignmentInAddressUnits}'.");
+        Report(new LayoutAllocationFailedError(CurrentSource, span, layoutName, memberName, storageName, sizeInAddressUnits, alignmentInAddressUnits));
     }
-
-    // Inline assembly diagnostics
 
     public void ReportInlineAsmUnknownInstruction(TextSpan span, string mnemonic)
     {
-        Report(DiagnosticCode.E0301_InlineAsmUnknownInstruction, span, $"Unknown P2 instruction '{mnemonic}' in inline assembly.");
+        Report(new InlineAsmUnknownInstructionError(CurrentSource, span, mnemonic));
     }
 
     public void ReportInlineAsmUndefinedVariable(TextSpan span, string name)
     {
-        Report(DiagnosticCode.E0302_InlineAsmUndefinedVariable, span, $"Undefined variable '{name}' referenced in inline assembly.");
+        Report(new InlineAsmUndefinedVariableError(CurrentSource, span, name));
     }
 
     public void ReportInlineAsmEmptyInstruction(TextSpan span)
     {
-        Report(DiagnosticCode.E0303_InlineAsmEmptyInstruction, span, "Empty instruction in inline assembly block.");
+        Report(new InlineAsmEmptyInstructionError(CurrentSource, span));
     }
 
     public void ReportInlineAsmInvalidFlagOutput(TextSpan span, string flag)
     {
-        Report(DiagnosticCode.E0304_InlineAsmInvalidFlagOutput, span, $"Invalid flag output '@{flag}' in inline assembly. Expected '@C' or '@Z'.");
+        Report(new InlineAsmInvalidFlagOutputError(CurrentSource, span, flag));
     }
 
     public void ReportInlineAsmInvalidInstructionForm(TextSpan span, string mnemonic, int operandCount)
     {
-        Report(
-            DiagnosticCode.E0305_InlineAsmInvalidInstructionForm,
-            span,
-            $"Instruction '{mnemonic}' does not support {operandCount} operand(s) in inline assembly.");
+        Report(new InlineAsmInvalidInstructionFormError(CurrentSource, span, mnemonic, operandCount));
     }
 
     public void ReportInlineAsmUndefinedLabel(TextSpan span, string name)
     {
-        Report(
-            DiagnosticCode.E0306_InlineAsmUndefinedLabel,
-            span,
-            $"Inline assembly references undefined label '{name}'. Only labels defined within the same asm block are accessible.");
+        Report(new InlineAsmUndefinedLabelError(CurrentSource, span, name));
     }
 
     public void ReportInlineAsmTempReadBeforeWrite(TextSpan span, string name)
     {
-        Report(
-            DiagnosticCode.W0307_InlineAsmTempReadBeforeWrite,
-            span,
-            $"Inline assembly temporary '{name}' is read before any prior write in the same asm block. The register contents are unspecified.");
+        Report(new InlineAsmTempReadBeforeWriteWarning(CurrentSource, span, name));
     }
 
     public void ReportUnsupportedLowering(TextSpan span, string lowering)
     {
-        Report(
-            DiagnosticCode.E0401_UnsupportedLowering,
-            span,
-            $"Backend lowering for '{lowering}' is not implemented yet.");
+        Report(new UnsupportedLoweringError(CurrentSource, span, lowering));
     }
 
     public IEnumerator<Diagnostic> GetEnumerator() => _diagnostics.GetEnumerator();

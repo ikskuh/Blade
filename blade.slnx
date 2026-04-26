@@ -4,8 +4,9 @@
   </Folder>
   <Folder Name="/Tools/">
     <Project Path="Tools/CoverageFilter/CoverageFilter.csproj" />
+    <Project Path="Tools/Blade.Roslyn.Analyzers/Blade.Roslyn.Analyzers.csproj" />
+    <Project Path="Tools/Blade.DiagnosticGen/Blade.DiagnosticGen.csproj" />
   </Folder>
-  <Project Path="Blade.Roslyn.Analyzers/Blade.Roslyn.Analyzers.csproj" />
   <Project Path="Blade.Tests/Blade.Tests.csproj" />
   <Project Path="Blade.HwTestRunner/Blade.HwTestRunner.csproj" />
   <Project Path="Blade.Regressions/Blade.Regressions.csproj" />

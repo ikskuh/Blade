@@ -10,12 +10,11 @@ public class DiagnosticBagTests
     private static readonly TextSpan Span = new(1, 2);
 
     [Test]
-    public void ReportMethods_EmitExpectedDiagnosticCodes()
+    public void ReportMethods_EmitExpectedCodes()
     {
         DiagnosticBag bag = new();
         using IDisposable _ = bag.UseSource(new SourceText(string.Empty, "<input>"));
 
-        bag.Report(DiagnosticCode.E0001_UnexpectedCharacter, Span, "x");
         bag.ReportUnexpectedCharacter(Span, '$');
         bag.ReportUnterminatedString(Span);
         bag.ReportInvalidNumberLiteral(Span, "0x");
@@ -73,9 +72,9 @@ public class DiagnosticBagTests
         bag.ReportUnsupportedLowering(Span, "store.index");
         bag.ReportDuplicateVariableClause(Span, "@(...)");
 
-        Assert.That(bag.Count, Is.EqualTo(57));
+        Assert.That(bag.Count, Is.EqualTo(56));
         Assert.That(bag.HasErrors, Is.True);
-        Assert.That(bag.Last().Code, Is.EqualTo(DiagnosticCode.E0108_DuplicateVariableClause));
+        Assert.That(bag.Last().Code, Is.EqualTo("E0108"));
     }
 
     [Test]
@@ -89,6 +88,6 @@ public class DiagnosticBagTests
         Assert.That(bag.Count, Is.EqualTo(1));
         Assert.That(bag.ErrorCount, Is.EqualTo(0));
         Assert.That(bag.HasErrors, Is.False);
-        Assert.That(bag.Single().Code, Is.EqualTo(DiagnosticCode.W0307_InlineAsmTempReadBeforeWrite));
+        Assert.That(bag.Single().Code, Is.EqualTo("W0307"));
     }
 }

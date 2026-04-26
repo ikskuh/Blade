@@ -175,7 +175,7 @@ public class ParserTests
 
         QualifiedTypeSyntax qualifiedParent = (QualifiedTypeSyntax)layout.ParentLayouts[0];
         Assert.That(qualifiedParent.Parts.Select(static part => part.Text), Is.EqualTo(new[] { "ex", "Base" }));
-        Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0101_UnexpectedToken), Is.False);
+        Assert.That(diag.Any(d => d.Code == "E0101"), Is.False);
     }
 
     [Test]
@@ -283,7 +283,7 @@ public class ParserTests
     {
         (_, DiagnosticBag diag) = Parse("cog var x: u32 = 0q123_456;");
 
-        Assert.That(diag.Select(diagnostic => diagnostic.Code), Is.EqualTo([DiagnosticCode.E0003_InvalidNumberLiteral]));
+        Assert.That(diag.Select(diagnostic => diagnostic.Code), Is.EqualTo(["E0003"]));
     }
 
     // ── Statements ──
@@ -404,7 +404,7 @@ public class ParserTests
             assert false, msg;
             """);
 
-        Assert.That(diag.Select(diagnostic => diagnostic.Code), Is.EqualTo([DiagnosticCode.E0101_UnexpectedToken]));
+        Assert.That(diag.Select(diagnostic => diagnostic.Code), Is.EqualTo(["E0101"]));
     }
 
     // ── Types ──
@@ -450,7 +450,7 @@ public class ParserTests
     {
         (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog var x: u32 = 0");
         Assert.That(diag.Count, Is.GreaterThan(0));
-        Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0101_UnexpectedToken), Is.True);
+        Assert.That(diag.Any(d => d.Code == "E0101"), Is.True);
     }
 
     [Test]
@@ -513,7 +513,7 @@ public class ParserTests
         (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog var table: u32 @(1) @(2);");
 
         VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
-        Assert.That(diag.Select(diagnostic => diagnostic.Code), Is.EqualTo([DiagnosticCode.E0108_DuplicateVariableClause]));
+        Assert.That(diag.Select(diagnostic => diagnostic.Code), Is.EqualTo(["E0108"]));
         AssertIntegerTokenValue(((LiteralExpressionSyntax)decl.AtClause!.Address).Token, 1L);
     }
 
@@ -553,7 +553,7 @@ public class ParserTests
         (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog var table: u32 align(4) align(8);");
 
         VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
-        Assert.That(diag.Select(diagnostic => diagnostic.Code), Is.EqualTo([DiagnosticCode.E0108_DuplicateVariableClause]));
+        Assert.That(diag.Select(diagnostic => diagnostic.Code), Is.EqualTo(["E0108"]));
         AssertIntegerTokenValue(((LiteralExpressionSyntax)decl.AlignClause!.Alignment).Token, 4L);
     }
 
@@ -563,7 +563,7 @@ public class ParserTests
         (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog var table: u32 = 1 = 2;");
 
         VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
-        Assert.That(diag.Select(diagnostic => diagnostic.Code), Is.EqualTo([DiagnosticCode.E0108_DuplicateVariableClause]));
+        Assert.That(diag.Select(diagnostic => diagnostic.Code), Is.EqualTo(["E0108"]));
         AssertIntegerTokenValue(((LiteralExpressionSyntax)decl.Initializer!).Token, 1L);
     }
 
@@ -574,9 +574,9 @@ public class ParserTests
 
         VariableDeclarationSyntax decl = (VariableDeclarationSyntax)unit.Members[0];
         Assert.That(diag.Select(diagnostic => diagnostic.Code), Is.EqualTo([
-            DiagnosticCode.E0108_DuplicateVariableClause,
-            DiagnosticCode.E0108_DuplicateVariableClause,
-            DiagnosticCode.E0108_DuplicateVariableClause,
+            "E0108",
+            "E0108",
+            "E0108",
         ]));
         AssertIntegerTokenValue(((LiteralExpressionSyntax)decl.AtClause!.Address).Token, 1L);
         AssertIntegerTokenValue(((LiteralExpressionSyntax)decl.AlignClause!.Alignment).Token, 4L);
@@ -588,7 +588,7 @@ public class ParserTests
     {
         (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog table: u32;");
         Assert.That(unit.Members[0], Is.TypeOf<VariableDeclarationSyntax>());
-        Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0101_UnexpectedToken), Is.True);
+        Assert.That(diag.Any(d => d.Code == "E0101"), Is.True);
     }
 
     [Test]
@@ -607,7 +607,7 @@ public class ParserTests
     public void PackedStructTypeAlias_IsRejected()
     {
         (CompilationUnitSyntax _, DiagnosticBag diag) = Parse("type Header = packed struct { lo: u8, hi: u32 };");
-        Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0101_UnexpectedToken), Is.True);
+        Assert.That(diag.Any(d => d.Code == "E0101"), Is.True);
     }
 
     [Test]
@@ -624,7 +624,7 @@ public class ParserTests
     {
         (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("if (flag) { return; }");
 
-        Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0101_UnexpectedToken), Is.True);
+        Assert.That(diag.Any(d => d.Code == "E0101"), Is.True);
         Assert.That(unit.Members[0], Is.TypeOf<GlobalStatementSyntax>());
     }
 
@@ -633,7 +633,7 @@ public class ParserTests
     {
         (CompilationUnitSyntax _, DiagnosticBag diag) = Parse("const BuildInfo = 1;");
 
-        Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0102_ExpectedExpression || d.Code == DiagnosticCode.E0101_UnexpectedToken), Is.True);
+        Assert.That(diag.Any(d => d.Code == "E0102" || d.Code == "E0101"), Is.True);
     }
 
     [Test]
@@ -641,7 +641,7 @@ public class ParserTests
     {
         (CompilationUnitSyntax _, DiagnosticBag diag) = Parse("const Header = struct { lo: u8, hi: u8 };");
 
-        Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0102_ExpectedExpression || d.Code == DiagnosticCode.E0101_UnexpectedToken), Is.True);
+        Assert.That(diag.Any(d => d.Code == "E0102" || d.Code == "E0101"), Is.True);
     }
 
     [Test]
@@ -682,7 +682,7 @@ public class ParserTests
     {
         (CompilationUnitSyntax _, DiagnosticBag diag) = Parse("leaf rec fn demo() { return; }");
 
-        Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0101_UnexpectedToken), Is.True);
+        Assert.That(diag.Any(d => d.Code == "E0101"), Is.True);
     }
 
     [Test]
@@ -690,7 +690,7 @@ public class ParserTests
     {
         (CompilationUnitSyntax _, DiagnosticBag diag) = Parse("inline noinline fn demo() { return; }");
 
-        Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0101_UnexpectedToken), Is.True);
+        Assert.That(diag.Any(d => d.Code == "E0101"), Is.True);
     }
 
     [Test]
@@ -698,7 +698,7 @@ public class ParserTests
     {
         (CompilationUnitSyntax _, DiagnosticBag diag) = Parse("inline leaf fn demo() { return; }");
 
-        Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0101_UnexpectedToken), Is.True);
+        Assert.That(diag.Any(d => d.Code == "E0101"), Is.True);
     }
 
     [Test]
@@ -902,7 +902,7 @@ public class ParserTests
     public void PointerDerefExpression_ParsesAndReportsExpressionNotAStatement()
     {
         (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("ptr.*;");
-        Assert.That(diag.Select(d => d.Code), Is.EqualTo(new[] { DiagnosticCode.E0259_ExpressionNotAStatement }));
+        Assert.That(diag.Select(d => d.Code), Is.EqualTo(new[] { "E0259" }));
 
         GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
         ExpressionStatementSyntax statement = (ExpressionStatementSyntax)global.Statement;
@@ -913,7 +913,7 @@ public class ParserTests
     public void MemberAccessExpression_ParsesAndReportsExpressionNotAStatement()
     {
         (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("node.value;");
-        Assert.That(diag.Select(d => d.Code), Is.EqualTo(new[] { DiagnosticCode.E0259_ExpressionNotAStatement }));
+        Assert.That(diag.Select(d => d.Code), Is.EqualTo(new[] { "E0259" }));
 
         GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
         ExpressionStatementSyntax statement = (ExpressionStatementSyntax)global.Statement;
@@ -929,7 +929,7 @@ public class ParserTests
                 invoke(a, b);
             }
             """);
-        Assert.That(diag.Select(d => d.Code), Is.EqualTo(new[] { DiagnosticCode.E0259_ExpressionNotAStatement }));
+        Assert.That(diag.Select(d => d.Code), Is.EqualTo(new[] { "E0259" }));
 
         BlockStatementSyntax block = (BlockStatementSyntax)((GlobalStatementSyntax)unit.Members[0]).Statement;
         Assert.That(((ExpressionStatementSyntax)block.Statements[0]).Expression, Is.TypeOf<IndexExpressionSyntax>());
@@ -954,7 +954,7 @@ public class ParserTests
     public void CastExpression_ParsesAndReportsExpressionNotAStatement()
     {
         (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("value as u8;");
-        Assert.That(diag.Select(d => d.Code), Is.EqualTo(new[] { DiagnosticCode.E0259_ExpressionNotAStatement }));
+        Assert.That(diag.Select(d => d.Code), Is.EqualTo(new[] { "E0259" }));
 
         GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
         ExpressionStatementSyntax statement = (ExpressionStatementSyntax)global.Statement;
@@ -968,7 +968,7 @@ public class ParserTests
     public void BitcastExpression_ParsesAndReportsExpressionNotAStatement()
     {
         (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("bitcast(*cog u32, value);");
-        Assert.That(diag.Select(d => d.Code), Is.EqualTo(new[] { DiagnosticCode.E0259_ExpressionNotAStatement }));
+        Assert.That(diag.Select(d => d.Code), Is.EqualTo(new[] { "E0259" }));
 
         GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
         ExpressionStatementSyntax statement = (ExpressionStatementSyntax)global.Statement;
@@ -1022,10 +1022,10 @@ public class ParserTests
             """);
         Assert.That(diag.Select(d => d.Code), Is.EqualTo(new[]
         {
-            DiagnosticCode.E0259_ExpressionNotAStatement,
-            DiagnosticCode.E0259_ExpressionNotAStatement,
-            DiagnosticCode.E0259_ExpressionNotAStatement,
-            DiagnosticCode.E0259_ExpressionNotAStatement,
+            "E0259",
+            "E0259",
+            "E0259",
+            "E0259",
         }));
 
         BlockStatementSyntax block = (BlockStatementSyntax)((GlobalStatementSyntax)unit.Members[0]).Statement;
@@ -1039,7 +1039,7 @@ public class ParserTests
     public void ComptimeBlockExpression_IsRejected()
     {
         (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("comptime { 1; };");
-        Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0102_ExpectedExpression), Is.True);
+        Assert.That(diag.Any(d => d.Code == "E0102"), Is.True);
         Assert.That(unit.Members[0], Is.TypeOf<GlobalStatementSyntax>());
     }
 
@@ -1058,7 +1058,7 @@ public class ParserTests
     {
         (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("cog var value: = 0;");
         Assert.That(unit.Members[0], Is.TypeOf<VariableDeclarationSyntax>());
-        Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0104_ExpectedTypeName), Is.True);
+        Assert.That(diag.Any(d => d.Code == "E0104"), Is.True);
     }
 
     [Test]
@@ -1133,7 +1133,7 @@ public class ParserTests
     {
         (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("asm { {");
         Assert.That(unit.Members[0], Is.TypeOf<GlobalStatementSyntax>());
-        Assert.That(diag.Any(d => d.Code == DiagnosticCode.E0101_UnexpectedToken), Is.True);
+        Assert.That(diag.Any(d => d.Code == "E0101"), Is.True);
     }
 
     [Test]
@@ -1298,8 +1298,8 @@ public class ParserTests
             """);
         Assert.That(diag.Select(d => d.Code), Is.EqualTo(new[]
         {
-            DiagnosticCode.E0259_ExpressionNotAStatement,
-            DiagnosticCode.E0259_ExpressionNotAStatement,
+            "E0259",
+            "E0259",
         }));
 
         GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];

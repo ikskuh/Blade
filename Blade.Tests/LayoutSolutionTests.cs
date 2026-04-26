@@ -67,7 +67,7 @@ public class LayoutSolutionTests
             }
             """, filePath: "<input>");
 
-        Assert.That(result.Diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0280_InvalidLayoutAlignment), Is.True);
+        Assert.That(result.Diagnostics.Any(diagnostic => diagnostic.Code == "E0280"), Is.True);
     }
 
     [Test]
@@ -82,7 +82,7 @@ public class LayoutSolutionTests
             }
             """, filePath: "<input>");
 
-        Assert.That(result.Diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0281_InvalidLayoutAddress), Is.True);
+        Assert.That(result.Diagnostics.Any(diagnostic => diagnostic.Code == "E0281"), Is.True);
     }
 
     [Test]
@@ -98,7 +98,7 @@ public class LayoutSolutionTests
             }
             """, filePath: "<input>");
 
-        Assert.That(result.Diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0282_LayoutAddressConflict), Is.True);
+        Assert.That(result.Diagnostics.Any(diagnostic => diagnostic.Code == "E0282"), Is.True);
     }
 
     [Test]
@@ -114,6 +114,6 @@ public class LayoutSolutionTests
             }
             """, filePath: "<input>");
 
-        Assert.That(result.Diagnostics.Any(diagnostic => diagnostic.Code == DiagnosticCode.E0283_LayoutAllocationFailed), Is.True);
+        Assert.That(result.Diagnostics.Any(diagnostic => diagnostic.Code == "E0283"), Is.True);
     }
 }

@@ -278,7 +278,7 @@ public class LexerTests
         Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.IntegerLiteral));
         AssertIntegerValue(tokens[0], 0L);
         Assert.That(diagnostics.Count, Is.EqualTo(1));
-        Assert.That(diagnostics.Single().Code, Is.EqualTo(DiagnosticCode.E0003_InvalidNumberLiteral));
+        Assert.That(diagnostics.Single().Code, Is.EqualTo("E0003"));
     }
 
     [Test]
@@ -297,7 +297,7 @@ public class LexerTests
         Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.IntegerLiteral));
         AssertIntegerValue(tokens[0], 0L);
         Assert.That(diagnostics.Count, Is.EqualTo(1));
-        Assert.That(diagnostics.Single().Code, Is.EqualTo(DiagnosticCode.E0003_InvalidNumberLiteral));
+        Assert.That(diagnostics.Single().Code, Is.EqualTo("E0003"));
     }
 
     [Test]
@@ -327,7 +327,7 @@ public class LexerTests
         Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.IntegerLiteral));
         AssertIntegerValue(tokens[0], 0L);
         Assert.That(diagnostics.Count, Is.EqualTo(1));
-        Assert.That(diagnostics.Single().Code, Is.EqualTo(DiagnosticCode.E0003_InvalidNumberLiteral));
+        Assert.That(diagnostics.Single().Code, Is.EqualTo("E0003"));
     }
 
     [Test]
@@ -353,7 +353,7 @@ public class LexerTests
         Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.IntegerLiteral));
         AssertIntegerValue(tokens[0], 0L);
         Assert.That(diagnostics.Count, Is.EqualTo(1));
-        Assert.That(diagnostics.Single().Code, Is.EqualTo(DiagnosticCode.E0003_InvalidNumberLiteral));
+        Assert.That(diagnostics.Single().Code, Is.EqualTo("E0003"));
     }
 
     [Test]
@@ -365,7 +365,7 @@ public class LexerTests
         AssertIntegerValue(tokens[0], 0L);
         Assert.That(tokens, Has.Count.EqualTo(2));
         Assert.That(diagnostics.Count, Is.EqualTo(1));
-        Assert.That(diagnostics.Single().Code, Is.EqualTo(DiagnosticCode.E0003_InvalidNumberLiteral));
+        Assert.That(diagnostics.Single().Code, Is.EqualTo("E0003"));
     }
 
     [Test]
@@ -375,7 +375,7 @@ public class LexerTests
         Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.IntegerLiteral));
         AssertIntegerValue(tokens[0], 0L);
         Assert.That(diagnostics.Count, Is.EqualTo(1));
-        Assert.That(diagnostics.Single().Code, Is.EqualTo(DiagnosticCode.E0003_InvalidNumberLiteral));
+        Assert.That(diagnostics.Single().Code, Is.EqualTo("E0003"));
     }
 
     [TestCase("123_")]
@@ -389,7 +389,7 @@ public class LexerTests
         Assert.That(tokens[0].Text, Is.EqualTo(text));
         AssertIntegerValue(tokens[0], 0L);
         Assert.That(diagnostics.Count, Is.EqualTo(1));
-        Assert.That(diagnostics.Single().Code, Is.EqualTo(DiagnosticCode.E0003_InvalidNumberLiteral));
+        Assert.That(diagnostics.Single().Code, Is.EqualTo("E0003"));
     }
 
     [Test]
@@ -414,7 +414,7 @@ public class LexerTests
         List<Token> tokens = LexWithDiagnostics("'ab'", out DiagnosticBag diagnostics);
         Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.CharLiteral));
         Assert.That(diagnostics.Count, Is.EqualTo(1));
-        Assert.That(diagnostics.Single().Code, Is.EqualTo(DiagnosticCode.E0005_InvalidCharacterLiteral));
+        Assert.That(diagnostics.Single().Code, Is.EqualTo("E0005"));
     }
 
     [Test]
@@ -423,7 +423,7 @@ public class LexerTests
         List<Token> tokens = LexWithDiagnostics("'", out DiagnosticBag diagnostics);
         Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.CharLiteral));
         Assert.That(diagnostics.Count, Is.EqualTo(1));
-        Assert.That(diagnostics.Single().Code, Is.EqualTo(DiagnosticCode.E0002_UnterminatedString));
+        Assert.That(diagnostics.Single().Code, Is.EqualTo("E0002"));
     }
 
     [TestCase("'a\n")]
@@ -434,7 +434,7 @@ public class LexerTests
         List<Token> tokens = LexWithDiagnostics(text, out DiagnosticBag diagnostics);
         Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.CharLiteral));
         Assert.That(diagnostics.Count, Is.EqualTo(1));
-        Assert.That(diagnostics.Single().Code, Is.EqualTo(DiagnosticCode.E0005_InvalidCharacterLiteral));
+        Assert.That(diagnostics.Single().Code, Is.EqualTo("E0005"));
     }
 
     [TestCase("'\\x\n")]
@@ -445,8 +445,8 @@ public class LexerTests
         Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.CharLiteral));
         Assert.That(diagnostics.Select(d => d.Code), Is.EqualTo(new[]
         {
-            DiagnosticCode.E0006_InvalidEscapeSequence,
-            DiagnosticCode.E0005_InvalidCharacterLiteral,
+            "E0006",
+            "E0005",
         }));
     }
 
@@ -464,7 +464,7 @@ public class LexerTests
         List<Token> tokens = LexWithDiagnostics("\"" + "\\q" + "\"", out DiagnosticBag diagnostics);
         Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.StringLiteral));
         Assert.That(diagnostics.Count, Is.EqualTo(1));
-        Assert.That(diagnostics.Single().Code, Is.EqualTo(DiagnosticCode.E0006_InvalidEscapeSequence));
+        Assert.That(diagnostics.Single().Code, Is.EqualTo("E0006"));
     }
 
     [TestCase("\"\\u{}\"")]
@@ -476,7 +476,7 @@ public class LexerTests
         List<Token> tokens = LexWithDiagnostics(text, out DiagnosticBag diagnostics);
         Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.StringLiteral));
         Assert.That(diagnostics.Count, Is.EqualTo(1));
-        Assert.That(diagnostics.Single().Code, Is.EqualTo(DiagnosticCode.E0006_InvalidEscapeSequence));
+        Assert.That(diagnostics.Single().Code, Is.EqualTo("E0006"));
     }
 
     [TestCase("\"\\xF\"", "F")]
@@ -488,7 +488,7 @@ public class LexerTests
         Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.StringLiteral));
         AssertStringValue(tokens[0], expectedValue);
         Assert.That(diagnostics.Count, Is.EqualTo(1));
-        Assert.That(diagnostics.Single().Code, Is.EqualTo(DiagnosticCode.E0006_InvalidEscapeSequence));
+        Assert.That(diagnostics.Single().Code, Is.EqualTo("E0006"));
     }
 
     [Test]
@@ -518,7 +518,7 @@ public class LexerTests
 
         Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.StringLiteral));
         AssertStringValue(tokens[0], string.Empty);
-        Assert.That(diagnostics.Select(d => d.Code), Is.EqualTo([DiagnosticCode.E0006_InvalidEscapeSequence]));
+        Assert.That(diagnostics.Select(d => d.Code), Is.EqualTo(["E0006"]));
     }
 
     [TestCase("'\\u{110000}'")]
@@ -529,7 +529,7 @@ public class LexerTests
 
         Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.CharLiteral));
         AssertIntegerValue(tokens[0], 0L);
-        Assert.That(diagnostics.Select(d => d.Code), Is.EqualTo([DiagnosticCode.E0006_InvalidEscapeSequence]));
+        Assert.That(diagnostics.Select(d => d.Code), Is.EqualTo(["E0006"]));
     }
 
     [Test]
@@ -540,7 +540,7 @@ public class LexerTests
         Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.StringLiteral));
         AssertStringValue(tokens[0], "41");
         Assert.That(diagnostics.Count, Is.EqualTo(1));
-        Assert.That(diagnostics.Single().Code, Is.EqualTo(DiagnosticCode.E0006_InvalidEscapeSequence));
+        Assert.That(diagnostics.Single().Code, Is.EqualTo("E0006"));
     }
 
     [Test]
