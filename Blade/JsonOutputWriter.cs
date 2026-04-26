@@ -70,7 +70,7 @@ internal static class JsonReportBuilder
         CompilationMetrics metrics)
     {
         bool success = !HasErrors(compilation.Diagnostics) && compilation.IrBuildResult is not null;
-        Dictionary<string, string?> dumps = BuildJsonDumps(compilation, options, success);
+        IReadOnlyList<DumpArtifact> dumps = BuildJsonDumps(compilation, options, success);
         List<JsonDiagnostic> diagnostics = [];
         foreach (Diagnostic diagnostic in compilation.Diagnostics)
         {
@@ -105,41 +105,17 @@ internal static class JsonReportBuilder
         return false;
     }
 
-    private static Dictionary<string, string?> BuildJsonDumps(
+    private static IReadOnlyList<DumpArtifact> BuildJsonDumps(
         CompilationResult compilation,
         CommandLineOptions options,
         bool success)
     {
-        Dictionary<string, string?> dumps = new()
-        {
-            ["bound"] = null,
-            ["mir-preopt"] = null,
-            ["mir"] = null,
-            ["lir-preopt"] = null,
-            ["lir"] = null,
-            ["asmir-preopt"] = null,
-            ["asmir"] = null,
-        };
-
         if (!success)
-            return dumps;
+            return [];
 
         IrBuildResult buildResult = compilation.IrBuildResult!;
-        if (options.DumpBound)
-            dumps["bound"] = Blade.Semantics.Bound.BoundTreeWriter.Write(buildResult.BoundProgram);
-        if (options.DumpMirPreOptimization)
-            dumps["mir-preopt"] = Blade.IR.Mir.MirTextWriter.Write(buildResult.PreOptimizationMirModule);
-        if (options.DumpMir)
-            dumps["mir"] = Blade.IR.Mir.MirTextWriter.Write(buildResult.MirModule);
-        if (options.DumpLirPreOptimization)
-            dumps["lir-preopt"] = Blade.IR.Lir.LirTextWriter.Write(buildResult.PreOptimizationLirModule);
-        if (options.DumpLir)
-            dumps["lir"] = Blade.IR.Lir.LirTextWriter.Write(buildResult.LirModule);
-        if (options.DumpAsmirPreOptimization)
-            dumps["asmir-preopt"] = Blade.IR.Asm.AsmTextWriter.Write(buildResult.PreOptimizationAsmModule);
-        if (options.DumpAsmir)
-            dumps["asmir"] = Blade.IR.Asm.AsmTextWriter.Write(buildResult.AsmModule);
-        return dumps;
+        DumpSelection dumpSelection = DumpSelectionFactory.FromCommandLineOptions(options);
+        return DumpBundleBuilder.Build(dumpSelection, buildResult);
     }
 }
 
@@ -152,7 +128,7 @@ internal sealed class JsonCompilationReport
     public required IReadOnlyList<JsonDiagnostic> Diagnostics { get; init; }
 
     [JsonPropertyName("dumps")]
-    public required IReadOnlyDictionary<string, string?> Dumps { get; init; }
+    public required IReadOnlyList<DumpArtifact> Dumps { get; init; }
 
     [JsonPropertyName("result")]
     public required string? Result { get; init; }

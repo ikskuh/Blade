@@ -11,16 +11,6 @@ interface DumpSection {
     readonly title: string;
 }
 
-const OrderedDumpSections = [
-    { key: "bound", title: "Bound" },
-    { key: "mir-preopt", title: "MIR (Preopt)" },
-    { key: "mir", title: "MIR" },
-    { key: "lir-preopt", title: "LIR (Preopt)" },
-    { key: "lir", title: "LIR" },
-    { key: "asmir-preopt", title: "ASMIR (Preopt)" },
-    { key: "asmir", title: "ASMIR" },
-] as const;
-
 const PreferredMetricOrder = [
     "token_count",
     "member_count",
@@ -95,6 +85,10 @@ pre {
     background: var(--vscode-textCodeBlock-background);
 }
 
+pre code {
+    background: unset;
+}
+
 code {
     font-family: var(--vscode-editor-font-family);
     font-size: var(--vscode-editor-font-size);
@@ -144,10 +138,15 @@ ${sections.join("\n")}
 
 function buildDumpSections(report: BladeCompilationReport): readonly DumpSection[] {
     const sections: DumpSection[] = [];
-    for (const { key, title } of OrderedDumpSections) {
-        const dump = report.dumps[key];
-        if (typeof dump === "string")
-            sections.push({ content: dump, expanded: false, title });
+    for (const dump of report.dumps) {
+        if (dump.id === "final-asm")
+            continue;
+
+        sections.push({
+            content: dump.content,
+            expanded: false,
+            title: dump.title,
+        });
     }
 
     return sections;

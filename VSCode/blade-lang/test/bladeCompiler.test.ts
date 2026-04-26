@@ -68,9 +68,14 @@ test("interpretBladeCompilerOutput returns the full successful JSON report", () 
         JSON.stringify({
             success: true,
             diagnostics: [],
-            dumps: {
-                bound: "Program",
-            },
+            dumps: [
+                {
+                    id: "bound",
+                    title: "Bound",
+                    fileName: "00_bound.ir",
+                    content: "Program",
+                },
+            ],
             metrics: {
                 token_count: 2,
             },
@@ -84,9 +89,14 @@ test("interpretBladeCompilerOutput returns the full successful JSON report", () 
         kind: "report",
         report: {
             diagnostics: [],
-            dumps: {
-                bound: "Program",
-            },
+            dumps: [
+                {
+                    id: "bound",
+                    title: "Bound",
+                    fileName: "00_bound.ir",
+                    content: "Program",
+                },
+            ],
             metrics: {
                 token_count: 2,
             },
@@ -107,9 +117,7 @@ test("interpretBladeCompilerOutput preserves diagnostics in a failed JSON report
                     message: "Expected expression.",
                 },
             ],
-            dumps: {
-                bound: null,
-            },
+            dumps: [],
             metrics: {
                 token_count: 4,
             },
@@ -130,9 +138,7 @@ test("interpretBladeCompilerOutput preserves diagnostics in a failed JSON report
                     message: "Expected expression.",
                 },
             ],
-            dumps: {
-                bound: null,
-            },
+            dumps: [],
             metrics: {
                 token_count: 4,
             },

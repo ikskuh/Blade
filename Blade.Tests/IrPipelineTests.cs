@@ -73,7 +73,7 @@ public class IrPipelineTests
     }
 
     [Test]
-    public void DumpContentBuilder_CanEmitPreOptimizationStageDumps()
+    public void DumpBundleBuilder_CanEmitPreOptimizationStageDumps()
     {
         (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
             fn add_one(x: u32) -> u32 {
@@ -81,7 +81,9 @@ public class IrPipelineTests
                 return copy + 1;
             }
 
-            var sink: u32 = add_one(1);
+            cog task main {
+                var sink: u32 = add_one(1);
+            }
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
@@ -100,9 +102,9 @@ public class IrPipelineTests
             DumpAsmirPreOptimization = true,
             DumpAsmir = true,
         };
-        Dictionary<string, string> dumps = DumpContentBuilder.Build(selection, build);
+        IReadOnlyList<DumpArtifact> dumps = DumpBundleBuilder.Build(selection, build);
 
-        Assert.That(dumps.Keys, Is.EquivalentTo(new[]
+        Assert.That(dumps.Select(static dump => dump.FileName), Is.EquivalentTo(new[]
         {
             "05_mir_preopt.ir",
             "10_mir.ir",
@@ -111,12 +113,12 @@ public class IrPipelineTests
             "25_asmir_preopt.ir",
             "30_asmir.ir",
         }));
-        Assert.That(dumps["05_mir_preopt.ir"], Is.EqualTo(MirTextWriter.Write(build.PreOptimizationMirModule)));
-        Assert.That(dumps["10_mir.ir"], Is.EqualTo(MirTextWriter.Write(build.MirModule)));
-        Assert.That(dumps["15_lir_preopt.ir"], Is.EqualTo(LirTextWriter.Write(build.PreOptimizationLirModule)));
-        Assert.That(dumps["20_lir.ir"], Is.EqualTo(LirTextWriter.Write(build.LirModule)));
-        Assert.That(dumps["25_asmir_preopt.ir"], Is.EqualTo(AsmTextWriter.Write(build.PreOptimizationAsmModule)));
-        Assert.That(dumps["30_asmir.ir"], Is.EqualTo(AsmTextWriter.Write(build.AsmModule)));
+        Assert.That(dumps.Single(static dump => dump.FileName == "05_mir_preopt.ir").Content, Is.EqualTo(MirTextWriter.Write(build.PreOptimizationMirModule)));
+        Assert.That(dumps.Single(static dump => dump.FileName == "10_mir.ir").Content, Is.EqualTo(MirTextWriter.Write(build.MirModule)));
+        Assert.That(dumps.Single(static dump => dump.FileName == "15_lir_preopt.ir").Content, Is.EqualTo(LirTextWriter.Write(build.PreOptimizationLirModule)));
+        Assert.That(dumps.Single(static dump => dump.FileName == "20_lir.ir").Content, Is.EqualTo(LirTextWriter.Write(build.LirModule)));
+        Assert.That(dumps.Single(static dump => dump.FileName == "25_asmir_preopt.ir").Content, Is.EqualTo(AsmTextWriter.Write(build.PreOptimizationAsmModule)));
+        Assert.That(dumps.Single(static dump => dump.FileName == "30_asmir.ir").Content, Is.EqualTo(AsmTextWriter.Write(build.AsmModule)));
     }
 
     [Test]
@@ -2182,7 +2184,7 @@ public class IrPipelineTests
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
 
-        MirModule mirModule = MirLowerer.Lower(program);
+        MirModule mirModule = MirLowerer.Lower(program, LayoutSolver.Solve(program));
         string mir = MirTextWriter.Write(mirModule);
 
         Assert.That(mir, Does.Contain("load.index.cog"));
@@ -2219,7 +2221,7 @@ public class IrPipelineTests
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
 
-        MirModule mirModule = MirLowerer.Lower(program);
+        MirModule mirModule = MirLowerer.Lower(program, LayoutSolver.Solve(program));
         string mir = MirTextWriter.Write(mirModule);
 
         Assert.That(mir, Does.Contain("load.member.value"));
@@ -2249,7 +2251,7 @@ public class IrPipelineTests
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
 
-        MirModule mirModule = MirLowerer.Lower(program);
+        MirModule mirModule = MirLowerer.Lower(program, LayoutSolver.Solve(program));
         string mir = MirTextWriter.Write(mirModule);
 
         Assert.That(Regex.Matches(mir, @"\[flag:Z\]").Count, Is.EqualTo(1), mir);
@@ -2336,7 +2338,7 @@ public class IrPipelineTests
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
 
-        MirModule mirModule = MirLowerer.Lower(program);
+        MirModule mirModule = MirLowerer.Lower(program, LayoutSolver.Solve(program));
         string mir = MirTextWriter.Write(mirModule);
 
         Assert.That(mir, Does.Contain("load.member.value.4"));
@@ -2363,7 +2365,7 @@ public class IrPipelineTests
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
 
-        MirModule mirModule = MirLowerer.Lower(program);
+        MirModule mirModule = MirLowerer.Lower(program, LayoutSolver.Solve(program));
         string mir = MirTextWriter.Write(mirModule);
 
         Assert.That(mir, Does.Contain("insert.member.value.0"));
@@ -2384,7 +2386,7 @@ public class IrPipelineTests
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
 
-        MirModule mirModule = MirLowerer.Lower(program);
+        MirModule mirModule = MirLowerer.Lower(program, LayoutSolver.Solve(program));
         string mir = MirTextWriter.Write(mirModule);
 
         Assert.That(mir, Does.Contain("insert.member.value.0"));
@@ -2406,7 +2408,7 @@ public class IrPipelineTests
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
 
-        MirModule mirModule = MirLowerer.Lower(program);
+        MirModule mirModule = MirLowerer.Lower(program, LayoutSolver.Solve(program));
         string mir = MirTextWriter.Write(mirModule);
 
         Assert.That(mir, Does.Contain("insert.member.value.0"));
@@ -2868,7 +2870,7 @@ public class IrPipelineTests
                 new BoundVariableDeclarationStatement(symbol, new BoundLiteralExpression(new RuntimeBladeValue(BuiltinTypes.U32, 1L), new TextSpan(0, 0)), new TextSpan(0, 0)),
             ]);
 
-        MirModule mirModule = MirLowerer.Lower(program);
+        MirModule mirModule = MirLowerer.Lower(program, LayoutSolver.Solve(program));
 
         Assert.That(mirModule.StoragePlaces.Any(place => place.Symbol is VariableSymbol { Name: "local" }), Is.False);
     }
@@ -2883,7 +2885,7 @@ public class IrPipelineTests
             VariableScopeKind.GlobalStorage);
         BoundProgram program = IrTestFactory.CreateBoundProgram(globalVariables: [shared, shared]);
 
-        MirModule mirModule = MirLowerer.Lower(program);
+        MirModule mirModule = MirLowerer.Lower(program, LayoutSolver.Solve(program));
 
         Assert.That(mirModule.StoragePlaces.Count(place => ReferenceEquals(place.Symbol, shared)), Is.EqualTo(1));
     }

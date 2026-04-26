@@ -140,18 +140,83 @@ public static class FinalAssemblyWriter
                 case AsmDataBlockKind.Lut:
                     sb.AppendLine();
                     sb.AppendLine("    fit $200");
-                    sb.AppendLine("    org $200");
-                    WriteAllocatedBlock(sb, block, "' --- lut file ---", functionIdentifiers);
+                    WriteStorageBlock(sb, block, "' --- lut file ---", functionIdentifiers, VariableStorageClass.Lut);
                     break;
                 case AsmDataBlockKind.External:
                     break;
                 case AsmDataBlockKind.Hub:
                     sb.AppendLine();
-                    sb.AppendLine("    orgh");
-                    WriteAllocatedBlock(sb, block, "' --- hub file ---", functionIdentifiers, emitAlignmentDirectives: true);
+                    WriteStorageBlock(sb, block, "' --- hub file ---", functionIdentifiers, VariableStorageClass.Hub);
                     break;
             }
         }
+    }
+
+    private static void WriteStorageBlock(
+        StringBuilder sb,
+        AsmDataBlock block,
+        string header,
+        IReadOnlyDictionary<FunctionSymbol, string> functionIdentifiers,
+        VariableStorageClass storageClass)
+    {
+        List<AsmAllocatedStorageDefinition> placedDefinitions = block.Definitions
+            .OfType<AsmAllocatedStorageDefinition>()
+            .Where(definition => definition.Symbol is StoragePlace { ResolvedLayoutSlot: not null })
+            .OrderBy(static definition => ((StoragePlace)definition.Symbol).ResolvedLayoutSlot!.Address)
+            .ThenBy(definition => definition.Symbol.Name, StringComparer.Ordinal)
+            .ToList();
+        if (placedDefinitions.Count == 0)
+        {
+            if (storageClass == VariableStorageClass.Lut)
+                sb.AppendLine("    org $200");
+            else
+                sb.AppendLine("    orgh");
+
+            WriteAllocatedBlock(sb, block, header, functionIdentifiers, emitAlignmentDirectives: storageClass == VariableStorageClass.Hub);
+            return;
+        }
+
+        List<AsmAllocatedStorageDefinition> sequentialDefinitions = block.Definitions
+            .OfType<AsmAllocatedStorageDefinition>()
+            .Where(definition => definition.Symbol is not StoragePlace { ResolvedLayoutSlot: not null })
+            .ToList();
+
+        sb.AppendLine();
+        sb.AppendLine(header);
+
+        int maxLabelWidth = block.Definitions
+            .OfType<AsmAllocatedStorageDefinition>()
+            .Select(definition => FormatSymbol(definition.Symbol, functionIdentifiers).Length)
+            .DefaultIfEmpty(0)
+            .Max();
+        int maxDirectiveWidth = block.Definitions
+            .OfType<AsmAllocatedStorageDefinition>()
+            .Select(static definition => FormatDataDirective(definition.Directive).Length)
+            .DefaultIfEmpty(0)
+            .Max();
+
+        int nextAddress = 0;
+        foreach (AsmAllocatedStorageDefinition definition in placedDefinitions)
+        {
+            StoragePlace place = (StoragePlace)definition.Symbol;
+            LayoutSlot slot = Assert.NotNull(place.ResolvedLayoutSlot);
+            WriteOriginDirective(sb, storageClass, slot.Address);
+            WriteAllocatedDefinition(sb, definition, functionIdentifiers, maxLabelWidth, maxDirectiveWidth);
+            nextAddress = Math.Max(nextAddress, slot.Address + GetDefinitionSizeInAddressUnits(definition));
+        }
+
+        if (sequentialDefinitions.Count == 0)
+            return;
+
+        WriteOriginDirective(sb, storageClass, nextAddress);
+        AsmDataBlock sequentialBlock = new(block.Kind, sequentialDefinitions);
+        WriteAllocatedBlockContents(
+            sb,
+            sequentialBlock,
+            functionIdentifiers,
+            maxLabelWidth,
+            maxDirectiveWidth,
+            emitAlignmentDirectives: storageClass == VariableStorageClass.Hub);
     }
 
     private static void WriteAllocatedBlock(
@@ -174,6 +239,22 @@ public static class FinalAssemblyWriter
 
         int maxLabelWidth = definitions.Max(definition => FormatSymbol(definition.Symbol, functionIdentifiers).Length);
         int maxDirectiveWidth = definitions.Max(static definition => FormatDataDirective(definition.Directive).Length);
+        WriteAllocatedBlockContents(sb, block, functionIdentifiers, maxLabelWidth, maxDirectiveWidth, emitAlignmentDirectives);
+    }
+
+    private static void WriteAllocatedBlockContents(
+        StringBuilder sb,
+        AsmDataBlock block,
+        IReadOnlyDictionary<FunctionSymbol, string> functionIdentifiers,
+        int maxLabelWidth,
+        int maxDirectiveWidth,
+        bool emitAlignmentDirectives)
+    {
+        List<AsmAllocatedStorageDefinition> definitions = block.Definitions
+            .OfType<AsmAllocatedStorageDefinition>()
+            .OrderByDescending(static definition => definition.AlignmentBytes)
+            .ThenBy(static definition => definition.Symbol.Name, StringComparer.Ordinal)
+            .ToList();
         int currentAlignment = -1;
 
         foreach (AsmAllocatedStorageDefinition definition in definitions)
@@ -187,17 +268,73 @@ public static class FinalAssemblyWriter
                     sb.AppendLine("    ALIGNW");
             }
 
-            string label = FormatSymbol(definition.Symbol, functionIdentifiers);
-            string directive = FormatDataDirective(definition.Directive);
-            string value = FormatDataValue(definition, functionIdentifiers);
-
-            sb.Append(label.PadRight(maxLabelWidth));
-            sb.Append(' ');
-            sb.Append(directive.PadRight(maxDirectiveWidth));
-            sb.Append(' ');
-            sb.Append(value);
-            sb.AppendLine();
+            WriteAllocatedDefinition(sb, definition, functionIdentifiers, maxLabelWidth, maxDirectiveWidth);
         }
+    }
+
+    private static void WriteAllocatedDefinition(
+        StringBuilder sb,
+        AsmAllocatedStorageDefinition definition,
+        IReadOnlyDictionary<FunctionSymbol, string> functionIdentifiers,
+        int maxLabelWidth,
+        int maxDirectiveWidth)
+    {
+        string label = FormatSymbol(definition.Symbol, functionIdentifiers);
+        string directive = FormatDataDirective(definition.Directive);
+        string value = FormatDataValue(definition, functionIdentifiers);
+
+        sb.Append(label.PadRight(maxLabelWidth));
+        sb.Append(' ');
+        sb.Append(directive.PadRight(maxDirectiveWidth));
+        sb.Append(' ');
+        sb.Append(value);
+        sb.AppendLine();
+    }
+
+    private static void WriteOriginDirective(StringBuilder sb, VariableStorageClass storageClass, int address)
+    {
+        Requires.NotNull(sb);
+        Requires.NonNegative(address);
+
+        switch (storageClass)
+        {
+            case VariableStorageClass.Lut:
+                int lutOrigin = checked(0x200 + address);
+                sb.Append("    org $");
+                sb.AppendLine(lutOrigin.ToString("X", CultureInfo.InvariantCulture));
+                break;
+
+            case VariableStorageClass.Hub:
+                if (address == 0)
+                {
+                    sb.AppendLine("    orgh");
+                    break;
+                }
+
+                sb.Append("    orgh $");
+                sb.AppendLine(address.ToString("X", CultureInfo.InvariantCulture));
+                break;
+
+            default:
+                Assert.Unreachable($"Unexpected storage origin class '{storageClass}'."); // pragma: force-coverage
+                break; // pragma: force-coverage
+        }
+    }
+
+    private static int GetDefinitionSizeInAddressUnits(AsmAllocatedStorageDefinition definition)
+    {
+        Requires.NotNull(definition);
+
+        if (definition.StorageClass is VariableStorageClass.Cog or VariableStorageClass.Lut)
+            return definition.Count;
+
+        return definition.Directive switch
+        {
+            AsmDataDirective.Byte => definition.Count,
+            AsmDataDirective.Word => definition.Count * 2,
+            AsmDataDirective.Long => definition.Count * 4,
+            _ => Assert.UnreachableValue<int>(), // pragma: force-coverage
+        };
     }
 
     private static string FormatDataDirective(AsmDataDirective directive)

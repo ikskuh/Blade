@@ -156,6 +156,7 @@ internal static class IrTestFactory
                 effectiveType,
                 isConst,
                 storageClass ?? throw new InvalidOperationException("Global storage variables require an explicit storage class."),
+                declaringLayout: null,
                 isExtern,
                 fixedAddress,
                 alignment,

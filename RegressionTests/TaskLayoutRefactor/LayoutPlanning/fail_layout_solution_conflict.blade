@@ -1,0 +1,10 @@
+// EXPECT: fail
+// DIAGNOSTICS: E0282
+
+layout Broken {
+    lut var first: [2]u32 @(0x10) = [1, 2];
+    lut var second: u32 @(0x11) = 3;
+}
+
+cog task main() : Broken {
+}

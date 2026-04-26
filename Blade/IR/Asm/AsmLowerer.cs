@@ -112,15 +112,14 @@ public static class AsmLowerer
                 && (place.RegisterRole == StoragePlaceRegisterRole.Global
                     || place.StorageClass is VariableStorageClass.Lut or VariableStorageClass.Hub))
             {
-                RuntimeTypeSymbol elementType = GetPlaceElementType(place);
-                int count = GetPlaceEntryCount(place);
+                StorageLayoutShape shape = StorageLayoutShape.FromPlace(place);
                 IReadOnlyList<AsmOperand>? loweredInitialValues = LowerDataInitialValue(initialValues.GetValueOrDefault(place), placesBySymbol);
                 AsmAllocatedStorageDefinition allocated = new(
                     place,
                     place.StorageClass,
-                    elementType,
+                    shape.ElementType,
                     loweredInitialValues,
-                    count);
+                    shape.EntryCount);
                 switch (place.StorageClass)
                 {
                     case VariableStorageClass.Cog:
@@ -152,42 +151,6 @@ public static class AsmLowerer
             new AsmDataBlock(AsmDataBlockKind.External, externalDefinitions),
             new AsmDataBlock(AsmDataBlockKind.Hub, hubDefinitions),
         ];
-    }
-
-    private static RuntimeTypeSymbol GetPlaceElementType(StoragePlace place)
-    {
-        if (place.Symbol is VariableSymbol { Type: ArrayTypeSymbol variableArrayType })
-        {
-            return variableArrayType.ElementType as RuntimeTypeSymbol
-                ?? Assert.UnreachableValue<RuntimeTypeSymbol>(); // pragma: force-coverage
-        }
-
-        if (place.Symbol is VariableSymbol { Type: RuntimeTypeSymbol runtimeType })
-            return runtimeType;
-
-        return Assert.UnreachableValue<RuntimeTypeSymbol>(); // pragma: force-coverage
-    }
-
-    private static int GetPlaceEntryCount(StoragePlace place)
-    {
-        if (place.Symbol is not VariableSymbol variable)
-            return 1;
-
-        RuntimeTypeSymbol runtimeType = variable.Type switch
-        {
-            ArrayTypeSymbol arrayType => arrayType.ElementType as RuntimeTypeSymbol
-                ?? Assert.UnreachableValue<RuntimeTypeSymbol>(), // pragma: force-coverage
-            RuntimeTypeSymbol directType => directType,
-            _ => Assert.UnreachableValue<RuntimeTypeSymbol>(), // pragma: force-coverage
-        };
-
-        int elementCount = variable.Type is ArrayTypeSymbol { Length: int length } ? length : 1;
-        if (place.StorageClass is VariableStorageClass.Cog or VariableStorageClass.Lut)
-            return elementCount * runtimeType.GetSizeInMemorySpace(place.StorageClass);
-
-        return runtimeType is AggregateTypeSymbol
-            ? elementCount * GetAggregateLaneCount(runtimeType)
-            : elementCount;
     }
 
     private static IReadOnlyList<AsmOperand>? LowerDataInitialValue(
@@ -574,6 +537,7 @@ public static class AsmLowerer
                 BuiltinTypes.U32,
                 isConst: false,
                 VariableStorageClass.Cog,
+                declaringLayout: null,
                 isExtern: false,
                 fixedAddress: null,
                 alignment: null,
@@ -658,6 +622,7 @@ public static class AsmLowerer
             type,
             isConst: false,
             VariableStorageClass.Cog,
+            declaringLayout: null,
             isExtern: false,
             fixedAddress: null,
             alignment: null,

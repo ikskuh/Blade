@@ -13,15 +13,19 @@ test("renderCompilationReportHtml orders sections and includes clickable diagnos
                     message: "Expected expression.",
                 },
             ],
-            dumps: {
-                "asmir": "asmir dump",
-                "asmir-preopt": "asmir preopt dump",
-                "bound": "bound dump",
-                "lir": "lir dump",
-                "lir-preopt": "lir preopt dump",
-                "mir": "mir dump",
-                "mir-preopt": "mir preopt dump",
-            },
+            dumps: [
+                { id: "final-asm", title: "Final Assembly", fileName: "40_final.spin2", content: "duplicate final asm dump" },
+                { id: "bound", title: "Bound", fileName: "00_bound.ir", content: "bound dump" },
+                { id: "images", title: "Images", fileName: "02_images.ir", content: "images dump" },
+                { id: "layout-solution", title: "Layout Solution", fileName: "03_layout_solution.ir", content: "layout solution dump" },
+                { id: "mir-preopt", title: "MIR (Preopt)", fileName: "05_mir_preopt.ir", content: "mir preopt dump" },
+                { id: "mir", title: "MIR", fileName: "10_mir.ir", content: "mir dump" },
+                { id: "lir-preopt", title: "LIR (Preopt)", fileName: "15_lir_preopt.ir", content: "lir preopt dump" },
+                { id: "lir", title: "LIR", fileName: "20_lir.ir", content: "lir dump" },
+                { id: "asmir-preopt", title: "ASMIR (Preopt)", fileName: "25_asmir_preopt.ir", content: "asmir preopt dump" },
+                { id: "asmir", title: "ASMIR", fileName: "30_asmir.ir", content: "asmir dump" },
+                { id: "image-memory-maps", title: "Image Memory Maps", fileName: "35_image_memory_maps.ir", content: "memory map dump" },
+            ],
             metrics: {
                 member_count: 2,
                 time_ms: 1.25,
@@ -38,25 +42,32 @@ test("renderCompilationReportHtml orders sections and includes clickable diagnos
     const diagnosticsIndex = html.indexOf("<summary>Diagnostics</summary>");
     const finalAssemblyIndex = html.indexOf("<summary>Final Assembly</summary>");
     const boundIndex = html.indexOf("<summary>Bound</summary>");
+    const imagesIndex = html.indexOf("<summary>Images</summary>");
+    const layoutSolutionIndex = html.indexOf("<summary>Layout Solution</summary>");
     const mirPreoptIndex = html.indexOf("<summary>MIR (Preopt)</summary>");
     const mirIndex = html.indexOf("<summary>MIR</summary>");
     const lirPreoptIndex = html.indexOf("<summary>LIR (Preopt)</summary>");
     const lirIndex = html.indexOf("<summary>LIR</summary>");
     const asmirPreoptIndex = html.indexOf("<summary>ASMIR (Preopt)</summary>");
     const asmirIndex = html.indexOf("<summary>ASMIR</summary>");
+    const memoryMapIndex = html.indexOf("<summary>Image Memory Maps</summary>");
     const metricsIndex = html.indexOf("<summary>Metrics</summary>");
 
     assert.ok(diagnosticsIndex < finalAssemblyIndex);
     assert.ok(finalAssemblyIndex < boundIndex);
-    assert.ok(boundIndex < mirPreoptIndex);
+    assert.ok(boundIndex < imagesIndex);
+    assert.ok(imagesIndex < layoutSolutionIndex);
+    assert.ok(layoutSolutionIndex < mirPreoptIndex);
     assert.ok(mirPreoptIndex < mirIndex);
     assert.ok(mirIndex < lirPreoptIndex);
     assert.ok(lirPreoptIndex < lirIndex);
     assert.ok(lirIndex < asmirPreoptIndex);
     assert.ok(asmirPreoptIndex < asmirIndex);
-    assert.ok(asmirIndex < metricsIndex);
+    assert.ok(asmirIndex < memoryMapIndex);
+    assert.ok(memoryMapIndex < metricsIndex);
     assert.match(html, /<details open>\s*<summary>Final Assembly<\/summary>/);
     assert.match(html, /<a href="command:blade\.openDiagnosticLocation\?test">\/workspace\/main\.blade:3<\/a>/);
     assert.match(html, /<table>/);
     assert.match(html, /<pre><code>bound dump<\/code><\/pre>/);
+    assert.equal(html.match(/<summary>Final Assembly<\/summary>/g)?.length, 1);
 });

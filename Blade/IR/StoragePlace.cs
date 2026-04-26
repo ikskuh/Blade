@@ -21,6 +21,7 @@ public enum StoragePlaceRegisterRole
 public sealed class StoragePlace : IAsmSymbol
 {
     private string? _emittedName;
+    private LayoutSlot? _resolvedLayoutSlot;
 
     public StoragePlace(
         GlobalVariableSymbol symbol,
@@ -43,7 +44,10 @@ public sealed class StoragePlace : IAsmSymbol
         switch (placement)
         {
             case StoragePlacePlacement.Allocatable:
-                Assert.Invariant(!symbol.FixedAddress.HasValue, "Allocatable storage places must not have fixed addresses.");
+                bool isLayoutAllocatedMember = symbol.DeclaringLayout is not null && !symbol.IsExtern;
+                Assert.Invariant(
+                    !symbol.FixedAddress.HasValue || isLayoutAllocatedMember,
+                    "Allocatable storage places may only carry fixed addresses for layout-solved storage.");
                 Assert.Invariant(!symbol.IsExtern, "Allocatable storage places must not be extern.");
                 break;
 
@@ -90,6 +94,7 @@ public sealed class StoragePlace : IAsmSymbol
     public bool IsExternalAlias => Placement == StoragePlacePlacement.ExternalAlias;
 
     internal bool CanElideTopLevelStoreLoadChains => Symbol.CanElideTopLevelStoreLoadChains;
+    internal LayoutSlot? ResolvedLayoutSlot => _resolvedLayoutSlot;
 
     public bool EmitsStorageLabel => Placement != StoragePlacePlacement.ExternalAlias;
 
@@ -107,5 +112,20 @@ public sealed class StoragePlace : IAsmSymbol
     internal void AssignEmittedName(string emittedName)
     {
         _emittedName = Requires.NotNullOrWhiteSpace(emittedName);
+    }
+
+    internal void AssignResolvedLayoutSlot(LayoutSlot layoutSlot)
+    {
+        Requires.NotNull(layoutSlot);
+        Assert.Invariant(
+            _resolvedLayoutSlot is null,
+            "Resolved layout slots must only be assigned once.");
+        Assert.Invariant(
+            ReferenceEquals(layoutSlot.Symbol, Symbol),
+            "Resolved layout slots must be assigned to the matching storage symbol.");
+        Assert.Invariant(
+            Placement == StoragePlacePlacement.Allocatable,
+            "Only allocatable storage places can receive solved layout slots.");
+        _resolvedLayoutSlot = layoutSlot;
     }
 }

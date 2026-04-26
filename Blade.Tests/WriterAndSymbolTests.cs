@@ -8,6 +8,7 @@ using Blade.Semantics.Bound;
 using Blade.Source;
 using Blade.Syntax;
 using Blade.Syntax.Nodes;
+using System.Collections.Generic;
 using System.Reflection;
 
 namespace Blade.Tests;
@@ -65,19 +66,70 @@ public class WriterAndSymbolTests
     }
 
     [Test]
-    public void DumpContentBuilder_ReturnsFinalAssemblyWhenNoExplicitDumpFlagsAreSet()
+    public void DumpBundleBuilder_ReturnsFinalAssemblyWhenNoExplicitDumpFlagsAreSet()
     {
         BoundProgram program = IrTestFactory.CreateBoundProgram("/tmp/test.blade");
         MirModule mir = new([], [], []);
         LirModule lir = new([]);
         AsmModule asm = new([], [], []);
         ImagePlan imagePlan = CreateSingleEntryImagePlan(program.EntryPoint);
-        IrBuildResult build = new(program, imagePlan, mir, mir, lir, lir, asm, asm, "DAT\n");
+        LayoutSolution layoutSolution = LayoutSolver.Solve(program);
+        IrBuildResult build = new(program, imagePlan, layoutSolution, mir, mir, lir, lir, asm, asm, "DAT\n");
 
-        Dictionary<string, string> dumps = DumpContentBuilder.Build(new DumpSelection(), build);
+        IReadOnlyList<DumpArtifact> dumps = DumpBundleBuilder.Build(new DumpSelection(), build);
 
-        Assert.That(dumps.Keys, Is.EqualTo(new[] { "40_final.spin2" }));
-        Assert.That(dumps["40_final.spin2"], Is.EqualTo("DAT\n"));
+        Assert.That(dumps.Select(static dump => dump.FileName), Is.EqualTo(new[] { "40_final.spin2" }));
+        Assert.That(dumps[0].Id, Is.EqualTo("final-asm"));
+        Assert.That(dumps[0].Content, Is.EqualTo("DAT\n"));
+    }
+
+    [Test]
+    public void DumpBundleBuilder_DumpBoundIncludesImagePlanAndLayoutSolution()
+    {
+        BoundProgram program = IrTestFactory.CreateBoundProgram("/tmp/test.blade");
+        MirModule mir = new([], [], []);
+        LirModule lir = new([]);
+        AsmModule asm = new([], [], []);
+        ImagePlan imagePlan = CreateSingleEntryImagePlan(program.EntryPoint);
+        LayoutSolution layoutSolution = LayoutSolver.Solve(program);
+        IrBuildResult build = new(program, imagePlan, layoutSolution, mir, mir, lir, lir, asm, asm, "DAT\n");
+
+        IReadOnlyList<DumpArtifact> dumps = DumpBundleBuilder.Build(new DumpSelection
+        {
+            DumpBound = true,
+        }, build);
+
+        Assert.That(dumps.Select(static dump => dump.Id), Is.EqualTo(new[] { "bound", "images", "layout-solution" }));
+        Assert.That(dumps.Select(static dump => dump.FileName), Is.EqualTo(new[] { "00_bound.ir", "02_images.ir", "03_layout_solution.ir" }));
+        Assert.That(dumps[1].Title, Is.EqualTo("Images"));
+        Assert.That(dumps[2].Title, Is.EqualTo("Layout Solution"));
+    }
+
+    [Test]
+    public void DumpBundleBuilder_DumpMemoryMapAddsLateArtifact()
+    {
+        CompilationResult compilation = CompilerDriver.Compile("""
+            layout Shared {
+                hub var hub_flag: u8 = 1;
+                lut var lut_word: u32 = 7;
+            }
+
+            cog task main : Shared { }
+            """, "<input>");
+
+        Assert.That(compilation.Diagnostics, Is.Empty);
+        IrBuildResult build = Requires.NotNull(compilation.IrBuildResult);
+
+        IReadOnlyList<DumpArtifact> dumps = DumpBundleBuilder.Build(new DumpSelection
+        {
+            DumpMemoryMap = true,
+        }, build);
+
+        Assert.That(dumps.Select(static dump => dump.Id), Is.EqualTo(new[] { "image-memory-maps" }));
+        Assert.That(dumps[0].FileName, Is.EqualTo("35_image_memory_maps.ir"));
+        Assert.That(dumps[0].Content, Does.Contain("; Image Memory Maps v1"));
+        Assert.That(dumps[0].Content, Does.Contain("shared hub"));
+        Assert.That(dumps[0].Content, Does.Contain("image main entry mode=Cog"));
     }
 
     private static ImagePlan CreateSingleEntryImagePlan(TaskSymbol task)

@@ -677,6 +677,94 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
             $"Top-level global storage class '{storageClass}' is not supported here. Use 'hub' or move the declaration into a layout.");
     }
 
+    /// <summary>
+    /// Reports that a layout member requested an invalid alignment.
+    /// </summary>
+    public void ReportInvalidLayoutAlignment(TextSpan span, string layoutName, string memberName, int alignment)
+    {
+        Report(
+            DiagnosticCode.E0280_InvalidLayoutAlignment,
+            span,
+            $"Layout member '{layoutName}.{memberName}' has invalid alignment '{alignment}'. Alignment must be a positive power of two.");
+    }
+
+    /// <summary>
+    /// Reports that a layout member requested an invalid fixed address.
+    /// </summary>
+    public void ReportInvalidLayoutAddress(
+        TextSpan span,
+        string layoutName,
+        string memberName,
+        Blade.Semantics.VariableStorageClass storageClass,
+        int address,
+        int sizeInAddressUnits)
+    {
+        string storageName = storageClass switch
+        {
+            Blade.Semantics.VariableStorageClass.Cog => "cog",
+            Blade.Semantics.VariableStorageClass.Lut => "lut",
+            Blade.Semantics.VariableStorageClass.Hub => "hub",
+            _ => Assert.UnreachableValue<string>(), // pragma: force-coverage
+        };
+
+        Report(
+            DiagnosticCode.E0281_InvalidLayoutAddress,
+            span,
+            $"Layout member '{layoutName}.{memberName}' cannot be placed at {storageName} address '{address}' with size '{sizeInAddressUnits}'.");
+    }
+
+    /// <summary>
+    /// Reports that two layout members overlap in the solved address space.
+    /// </summary>
+    public void ReportLayoutAddressConflict(
+        TextSpan span,
+        string layoutName,
+        string memberName,
+        Blade.Semantics.VariableStorageClass storageClass,
+        int address,
+        string conflictingLayoutName,
+        string conflictingMemberName,
+        int conflictingAddress)
+    {
+        string storageName = storageClass switch
+        {
+            Blade.Semantics.VariableStorageClass.Cog => "cog",
+            Blade.Semantics.VariableStorageClass.Lut => "lut",
+            Blade.Semantics.VariableStorageClass.Hub => "hub",
+            _ => Assert.UnreachableValue<string>(), // pragma: force-coverage
+        };
+
+        Report(
+            DiagnosticCode.E0282_LayoutAddressConflict,
+            span,
+            $"Layout member '{layoutName}.{memberName}' at {storageName} address '{address}' overlaps '{conflictingLayoutName}.{conflictingMemberName}' at address '{conflictingAddress}'.");
+    }
+
+    /// <summary>
+    /// Reports that the layout solver could not find a valid address for a member.
+    /// </summary>
+    public void ReportLayoutAllocationFailed(
+        TextSpan span,
+        string layoutName,
+        string memberName,
+        Blade.Semantics.VariableStorageClass storageClass,
+        int sizeInAddressUnits,
+        int alignmentInAddressUnits)
+    {
+        string storageName = storageClass switch
+        {
+            Blade.Semantics.VariableStorageClass.Cog => "cog",
+            Blade.Semantics.VariableStorageClass.Lut => "lut",
+            Blade.Semantics.VariableStorageClass.Hub => "hub",
+            _ => Assert.UnreachableValue<string>(), // pragma: force-coverage
+        };
+
+        Report(
+            DiagnosticCode.E0283_LayoutAllocationFailed,
+            span,
+            $"Layout solver could not place '{layoutName}.{memberName}' in {storageName} space with size '{sizeInAddressUnits}' and alignment '{alignmentInAddressUnits}'.");
+    }
+
     // Inline assembly diagnostics
 
     public void ReportInlineAsmUnknownInstruction(TextSpan span, string mnemonic)

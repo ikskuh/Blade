@@ -221,7 +221,7 @@ function buildDiagnosticLink(diagnostic: BladeDiagnostic): { href: string; label
 function emptyReport(): BladeCompilationReport {
     return {
         diagnostics: [],
-        dumps: {},
+        dumps: [],
         metrics: {},
         result: null,
         success: true,

@@ -127,6 +127,7 @@ public sealed class GlobalVariableSymbol(
     BladeType type,
     bool isConst,
     VariableStorageClass storageClass,
+    LayoutSymbol? declaringLayout,
     bool isExtern,
     int? fixedAddress,
     int? alignment,
@@ -145,6 +146,12 @@ public sealed class GlobalVariableSymbol(
     public int? FixedAddress => _fixedAddress;
     public int? Alignment => _alignment;
     public bool CanElideTopLevelStoreLoadChains => _canElideTopLevelStoreLoadChains;
+
+    /// <summary>
+    /// Gets the layout that directly declared this variable, or <see langword="null"/>
+    /// for plain top-level globals.
+    /// </summary>
+    public LayoutSymbol? DeclaringLayout { get; } = declaringLayout;
 
     public BoundExpression? Initializer { get; private set; }
 

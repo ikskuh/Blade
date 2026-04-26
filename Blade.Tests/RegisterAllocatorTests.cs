@@ -92,9 +92,10 @@ public class RegisterAllocatorTests
     {
         BoundProgram program = IrTestFactory.CreateBoundProgram("/tmp/test.blade");
         ImagePlan imagePlan = CreateSingleEntryImagePlan(program.EntryPoint);
+        LayoutSolution layoutSolution = LayoutSolver.Solve(program);
         MirModule mirModule = new([], [], []);
         LirModule lirModule = new([]);
-        return new IrBuildResult(program, imagePlan, mirModule, mirModule, lirModule, lirModule, asmModule, asmModule, string.Empty);
+        return new IrBuildResult(program, imagePlan, layoutSolution, mirModule, mirModule, lirModule, lirModule, asmModule, asmModule, string.Empty);
     }
 
     private static ImagePlan CreateSingleEntryImagePlan(TaskSymbol task)

@@ -13,14 +13,15 @@ namespace Blade.IR.Mir;
 
 public static class MirLowerer
 {
-    public static MirModule Lower(BoundProgram program)
+    public static MirModule Lower(BoundProgram program, LayoutSolution layoutSolution)
     {
         Requires.NotNull(program);
+        Requires.NotNull(layoutSolution);
 
         (
             List<StoragePlace> storagePlaces,
             List<StorageDefinition> storageDefinitions,
-            Dictionary<Symbol, StoragePlace> storagePlacesBySymbol) = CollectStoragePlaces(program);
+            Dictionary<Symbol, StoragePlace> storagePlacesBySymbol) = CollectStoragePlaces(program, layoutSolution);
         BackendSymbolNaming.AssignStorageNames(storagePlaces);
 
         List<MirFunction> functions = new();
@@ -68,13 +69,15 @@ public static class MirLowerer
         return context.Build();
     }
 
-    private static (List<StoragePlace> Places, List<StorageDefinition> Definitions, Dictionary<Symbol, StoragePlace> PlacesBySymbol) CollectStoragePlaces(BoundProgram program)
+    private static (List<StoragePlace> Places, List<StorageDefinition> Definitions, Dictionary<Symbol, StoragePlace> PlacesBySymbol) CollectStoragePlaces(
+        BoundProgram program,
+        LayoutSolution layoutSolution)
     {
         List<StoragePlace> places = new(program.GlobalVariables.Count);
         List<StorageDefinition> definitions = [];
         Dictionary<Symbol, StoragePlace> placesBySymbol = [];
         HashSet<Symbol> seenSymbols = [];
-        CollectStoragePlaces(program.GlobalVariables, places, definitions, placesBySymbol, seenSymbols);
+        CollectStoragePlaces(program.GlobalVariables, layoutSolution, places, definitions, placesBySymbol, seenSymbols);
 
         foreach (VariableSymbol symbol in CollectAddressTakenSymbols(program))
         {
@@ -84,7 +87,7 @@ public static class MirLowerer
             StoragePlace place = symbol switch
             {
                 AutomaticVariableSymbol automaticVariable => CreateAddressTakenStoragePlace(automaticVariable),
-                GlobalVariableSymbol globalVariable => CreateGlobalStoragePlace(globalVariable),
+                GlobalVariableSymbol globalVariable => CreateGlobalStoragePlace(globalVariable, layoutSolution),
                 _ => Assert.UnreachableValue<StoragePlace>($"Address-taken symbol '{symbol.Name}' must be a variable with storage."), // pragma: force-coverage
             };
             places.Add(place);
@@ -104,6 +107,7 @@ public static class MirLowerer
 
     private static void CollectStoragePlaces(
         IReadOnlyList<GlobalVariableSymbol> globals,
+        LayoutSolution layoutSolution,
         ICollection<StoragePlace> places,
         ICollection<StorageDefinition> definitions,
         IDictionary<Symbol, StoragePlace> placesBySymbol,
@@ -115,7 +119,7 @@ public static class MirLowerer
             if (!seenSymbols.Add(symbol))
                 continue;
 
-            StoragePlace place = CreateGlobalStoragePlace(symbol);
+            StoragePlace place = CreateGlobalStoragePlace(symbol, layoutSolution);
 
             RuntimeBladeValue? staticInitializer = null;
             if (place.IsAllocatable
@@ -132,13 +136,29 @@ public static class MirLowerer
         }
     }
 
-    private static StoragePlace CreateGlobalStoragePlace(GlobalVariableSymbol symbol)
+    private static StoragePlace CreateGlobalStoragePlace(GlobalVariableSymbol symbol, LayoutSolution layoutSolution)
     {
-        StoragePlacePlacement placement = symbol.FixedAddress.HasValue
-            ? StoragePlacePlacement.FixedAlias
-            : symbol.IsExtern
-                ? StoragePlacePlacement.ExternalAlias
-                : StoragePlacePlacement.Allocatable;
+        Requires.NotNull(symbol);
+        Requires.NotNull(layoutSolution);
+
+        bool isLayoutAllocatedMember = symbol.DeclaringLayout is not null && !symbol.IsExtern;
+        StoragePlacePlacement placement;
+        if (isLayoutAllocatedMember)
+        {
+            placement = StoragePlacePlacement.Allocatable;
+        }
+        else if (symbol.FixedAddress.HasValue)
+        {
+            placement = StoragePlacePlacement.FixedAlias;
+        }
+        else if (symbol.IsExtern)
+        {
+            placement = StoragePlacePlacement.ExternalAlias;
+        }
+        else
+        {
+            placement = StoragePlacePlacement.Allocatable;
+        }
         StoragePlaceRegisterRole? registerRole = placement == StoragePlacePlacement.Allocatable
             && symbol.StorageClass == VariableStorageClass.Cog
             ? StoragePlaceRegisterRole.Global
@@ -148,7 +168,15 @@ public static class MirLowerer
             && P2InstructionMetadata.TryParseSpecialRegister(symbol.Name, out P2SpecialRegister specialRegister)
                 ? specialRegister
                 : null;
-        return new StoragePlace(symbol, placement, registerRole, specialRegisterAlias: specialRegisterAlias);
+        StoragePlace place = new StoragePlace(symbol, placement, registerRole, specialRegisterAlias: specialRegisterAlias);
+        if (layoutSolution.TryGetSlot(symbol, out LayoutSlot? layoutSlot)
+            && layoutSlot is not null
+            && placement == StoragePlacePlacement.Allocatable)
+        {
+            place.AssignResolvedLayoutSlot(layoutSlot);
+        }
+
+        return place;
     }
 
     private static StoragePlace CreateAddressTakenStoragePlace(AutomaticVariableSymbol symbol)
@@ -158,6 +186,7 @@ public static class MirLowerer
             symbol.Type,
             symbol.IsConst,
             VariableStorageClass.Cog,
+            declaringLayout: null,
             isExtern: false,
             fixedAddress: null,
             alignment: null,

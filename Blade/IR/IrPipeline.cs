@@ -14,7 +14,8 @@ public static class IrPipeline
         options ??= new IrPipelineOptions();
 
         ImagePlan imagePlan = ImagePlanner.Build(boundProgram);
-        MirModule mirModule = MirLowerer.Lower(boundProgram);
+        LayoutSolution layoutSolution = LayoutSolver.Solve(boundProgram, diagnostics);
+        MirModule mirModule = MirLowerer.Lower(boundProgram, layoutSolution);
 
         bool enableSingleCallsiteInlining = options.EnableSingleCallsiteInlining
             && options.EnabledMirOptimizations.Contains(OptimizationRegistry.SingleCallsiteInlineMirOptimization);
@@ -48,6 +49,7 @@ public static class IrPipeline
         IrBuildResult preEmit = new(
             boundProgram,
             imagePlan,
+            layoutSolution,
             preOptimizationMirModule,
             mirModule,
             preOptimizationLirModule,
@@ -63,6 +65,7 @@ public static class IrPipeline
         return new IrBuildResult(
             boundProgram,
             imagePlan,
+            layoutSolution,
             preOptimizationMirModule,
             mirModule,
             preOptimizationLirModule,

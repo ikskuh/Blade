@@ -71,6 +71,17 @@ public class ProgramTests
         throw new InvalidOperationException($"Unexpected entry point return type: {result.GetType()}");
     }
 
+    private static JsonElement FindDump(JsonElement root, string id)
+    {
+        foreach (JsonElement dump in root.GetProperty("dumps").EnumerateArray())
+        {
+            if (dump.GetProperty("id").GetString() == id)
+                return dump;
+        }
+
+        throw new InvalidOperationException($"Dump '{id}' was not present.");
+    }
+
     [Test]
     public void CommandLineOptions_Parse_RecognizesAllSupportedFlags()
     {
@@ -83,6 +94,7 @@ public class ProgramTests
             "--dump-lir",
             "--dump-asmir-preopt",
             "--dump-asmir",
+            "--dump-mmap",
             "--dump-final-asm",
             "--json",
             "--metrics",
@@ -98,6 +110,7 @@ public class ProgramTests
         Assert.That(GetProperty<bool>(options!, "DumpLir"), Is.True);
         Assert.That(GetProperty<bool>(options!, "DumpAsmirPreOptimization"), Is.True);
         Assert.That(GetProperty<bool>(options!, "DumpAsmir"), Is.True);
+        Assert.That(GetProperty<bool>(options!, "DumpMemoryMap"), Is.True);
         Assert.That(GetProperty<bool>(options!, "DumpFinalAsm"), Is.True);
         Assert.That(GetProperty<bool>(options!, "Json"), Is.True);
         Assert.That(GetProperty<bool>(options!, "EmitMetrics"), Is.True);
@@ -118,6 +131,7 @@ public class ProgramTests
         Assert.That(GetProperty<bool>(options!, "DumpLir"), Is.True);
         Assert.That(GetProperty<bool>(options!, "DumpAsmirPreOptimization"), Is.True);
         Assert.That(GetProperty<bool>(options!, "DumpAsmir"), Is.True);
+        Assert.That(GetProperty<bool>(options!, "DumpMemoryMap"), Is.True);
         Assert.That(GetProperty<bool>(options!, "DumpFinalAsm"), Is.True);
     }
 
@@ -192,7 +206,7 @@ public class ProgramTests
     public void EntryPoint_PrintsDiagnosticsForInvalidSource()
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-invalid-{Guid.NewGuid():N}.blade");
-        File.WriteAllText(filePath, "x = 1;");
+        File.WriteAllText(filePath, "cog task main { x = 1; }");
 
         try
         {
@@ -214,7 +228,7 @@ public class ProgramTests
     public void EntryPoint_PrintsDiagnosticForUnknownBuiltin()
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-unknown-builtin-{Guid.NewGuid():N}.blade");
-        File.WriteAllText(filePath, "@askdjsad(1);");
+        File.WriteAllText(filePath, "cog task main { @askdjsad(1); }");
 
         try
         {
@@ -280,7 +294,7 @@ public class ProgramTests
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-valid-{Guid.NewGuid():N}.blade");
         string dumpDir = Path.Combine(Path.GetTempPath(), $"blade-dumps-{Guid.NewGuid():N}");
-        File.WriteAllText(filePath, "cog var x: u32 = 1;");
+        File.WriteAllText(filePath, "cog task main { }");
 
         try
         {
@@ -290,6 +304,8 @@ public class ProgramTests
             Assert.That(stdout, Is.Empty);
             Assert.That(stderr, Is.Empty);
             Assert.That(File.Exists(Path.Combine(dumpDir, "00_bound.ir")), Is.True);
+            Assert.That(File.Exists(Path.Combine(dumpDir, "02_images.ir")), Is.True);
+            Assert.That(File.Exists(Path.Combine(dumpDir, "03_layout_solution.ir")), Is.True);
             Assert.That(File.Exists(Path.Combine(dumpDir, "40_final.spin2")), Is.True);
         }
         finally
@@ -305,7 +321,7 @@ public class ProgramTests
     public void EntryPoint_WritesRequestedDumpToStdoutWithoutDumpDirectory()
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-stdout-{Guid.NewGuid():N}.blade");
-        File.WriteAllText(filePath, "cog var x: u32 = 1;");
+        File.WriteAllText(filePath, "cog task main { }");
 
         try
         {
@@ -314,6 +330,8 @@ public class ProgramTests
             Assert.That(exitCode, Is.EqualTo(0));
             Assert.That(stderr, Is.Empty);
             Assert.That(stdout, Does.Contain("' 00_bound.ir"));
+            Assert.That(stdout, Does.Contain("' 02_images.ir"));
+            Assert.That(stdout, Does.Contain("' 03_layout_solution.ir"));
             Assert.That(stdout, Does.Contain("Program"));
             Assert.That(stdout, Does.Not.Contain("errors :"));
         }
@@ -327,7 +345,7 @@ public class ProgramTests
     public void EntryPoint_WritesMultipleDumpsToStdoutWithSeparators()
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-stdout-multi-{Guid.NewGuid():N}.blade");
-        File.WriteAllText(filePath, "cog var x: u32 = 1;");
+        File.WriteAllText(filePath, "cog task main { }");
 
         try
         {
@@ -336,6 +354,8 @@ public class ProgramTests
             Assert.That(exitCode, Is.EqualTo(0));
             Assert.That(stderr, Is.Empty);
             Assert.That(stdout, Does.Contain("' 00_bound.ir"));
+            Assert.That(stdout, Does.Contain("' 02_images.ir"));
+            Assert.That(stdout, Does.Contain("' 03_layout_solution.ir"));
             Assert.That(stdout, Does.Contain("' 40_final.spin2"));
         }
         finally
@@ -348,7 +368,7 @@ public class ProgramTests
     public void EntryPoint_PrintsMetricsAsCommentsWhenRequested()
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-stdout-metrics-{Guid.NewGuid():N}.blade");
-        File.WriteAllText(filePath, "cog var x: u32 = 1;");
+        File.WriteAllText(filePath, "cog task main { }");
 
         try
         {
@@ -370,7 +390,7 @@ public class ProgramTests
     public void EntryPoint_WritesRequestedDumpAsJsonToStdout()
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-json-stdout-{Guid.NewGuid():N}.blade");
-        File.WriteAllText(filePath, "cog var x: u32 = 1;");
+        File.WriteAllText(filePath, "cog task main { }");
 
         try
         {
@@ -383,10 +403,42 @@ public class ProgramTests
             JsonElement root = document.RootElement;
             Assert.That(root.GetProperty("success").GetBoolean(), Is.True);
             Assert.That(root.GetProperty("diagnostics").GetArrayLength(), Is.EqualTo(0));
-            Assert.That(root.GetProperty("dumps").GetProperty("bound").GetString(), Does.Contain("Program"));
-            Assert.That(root.GetProperty("dumps").GetProperty("asmir").ValueKind, Is.EqualTo(JsonValueKind.Null));
+            Assert.That(root.GetProperty("dumps").GetArrayLength(), Is.EqualTo(3));
+            Assert.That(FindDump(root, "bound").GetProperty("content").GetString(), Does.Contain("Program"));
+            Assert.That(FindDump(root, "images").GetProperty("fileName").GetString(), Is.EqualTo("02_images.ir"));
+            Assert.That(FindDump(root, "layout-solution").GetProperty("fileName").GetString(), Is.EqualTo("03_layout_solution.ir"));
             Assert.That(root.GetProperty("result").GetString(), Does.Contain("org 0"));
             Assert.That(root.GetProperty("metrics").ValueKind, Is.EqualTo(JsonValueKind.Null));
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
+    }
+
+    [Test]
+    public void EntryPoint_WritesMemoryMapDumpToStdout()
+    {
+        string filePath = Path.Combine(Path.GetTempPath(), $"blade-mmap-stdout-{Guid.NewGuid():N}.blade");
+        File.WriteAllText(filePath, """
+            layout Shared {
+                hub var hub_flag: u8 = 1;
+                lut var lut_word: u32 = 7;
+            }
+
+            cog task main : Shared { }
+            """);
+
+        try
+        {
+            (int exitCode, string stdout, string stderr) = CaptureConsole(() => InvokeEntryPoint([filePath, "--dump-mmap"]));
+
+            Assert.That(exitCode, Is.EqualTo(0));
+            Assert.That(stderr, Is.Empty);
+            Assert.That(stdout, Does.Contain("' 35_image_memory_maps.ir"));
+            Assert.That(stdout, Does.Contain("; Image Memory Maps v1"));
+            Assert.That(stdout, Does.Contain("shared hub"));
+            Assert.That(stdout, Does.Contain("image main entry mode=Cog"));
         }
         finally
         {
@@ -399,7 +451,7 @@ public class ProgramTests
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-output-file-{Guid.NewGuid():N}.blade");
         string outputPath = Path.Combine(Path.GetTempPath(), $"blade-output-file-{Guid.NewGuid():N}.txt");
-        File.WriteAllText(filePath, "cog var x: u32 = 1;");
+        File.WriteAllText(filePath, "cog task main { }");
 
         try
         {
@@ -427,7 +479,7 @@ public class ProgramTests
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-output-fail-{Guid.NewGuid():N}.blade");
         string outputDirectory = Path.Combine(Path.GetTempPath(), $"blade-output-dir-{Guid.NewGuid():N}");
-        File.WriteAllText(filePath, "cog var x: u32 = 1;");
+        File.WriteAllText(filePath, "cog task main { }");
         Directory.CreateDirectory(outputDirectory);
 
         try
@@ -453,7 +505,7 @@ public class ProgramTests
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-json-file-{Guid.NewGuid():N}.blade");
         string outputPath = Path.Combine(Path.GetTempPath(), $"blade-json-file-{Guid.NewGuid():N}.json");
-        File.WriteAllText(filePath, "cog var x: u32 = 1;");
+        File.WriteAllText(filePath, "cog task main { }");
 
         try
         {
@@ -466,7 +518,8 @@ public class ProgramTests
             using JsonDocument document = JsonDocument.Parse(File.ReadAllText(outputPath));
             JsonElement root = document.RootElement;
             Assert.That(root.GetProperty("success").GetBoolean(), Is.True);
-            Assert.That(root.GetProperty("dumps").GetProperty("bound").GetString(), Does.Contain("Program"));
+            Assert.That(root.GetProperty("dumps").GetArrayLength(), Is.EqualTo(3));
+            Assert.That(FindDump(root, "bound").GetProperty("content").GetString(), Does.Contain("Program"));
             Assert.That(root.GetProperty("result").GetString(), Does.Contain("org 0"));
             Assert.That(root.GetProperty("metrics").ValueKind, Is.EqualTo(JsonValueKind.Null));
         }
@@ -483,7 +536,7 @@ public class ProgramTests
     public void EntryPoint_EmitsJsonMetricsOnlyWhenRequested()
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-json-metrics-{Guid.NewGuid():N}.blade");
-        File.WriteAllText(filePath, "cog var x: u32 = 1;");
+        File.WriteAllText(filePath, "cog task main { }");
 
         try
         {
@@ -508,7 +561,7 @@ public class ProgramTests
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-json-output-fail-{Guid.NewGuid():N}.blade");
         string outputDirectory = Path.Combine(Path.GetTempPath(), $"blade-json-output-dir-{Guid.NewGuid():N}");
-        File.WriteAllText(filePath, "cog var x: u32 = 1;");
+        File.WriteAllText(filePath, "cog task main { }");
         Directory.CreateDirectory(outputDirectory);
 
         try
@@ -533,7 +586,7 @@ public class ProgramTests
     public void EntryPoint_TreatsDashOutputPathAsStdout()
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-json-dash-{Guid.NewGuid():N}.blade");
-        File.WriteAllText(filePath, "cog var x: u32 = 1;");
+        File.WriteAllText(filePath, "cog task main { }");
 
         try
         {
@@ -545,7 +598,8 @@ public class ProgramTests
             using JsonDocument document = JsonDocument.Parse(stdout);
             JsonElement root = document.RootElement;
             Assert.That(root.GetProperty("success").GetBoolean(), Is.True);
-            Assert.That(root.GetProperty("dumps").GetProperty("bound").GetString(), Does.Contain("Program"));
+            Assert.That(root.GetProperty("dumps").GetArrayLength(), Is.EqualTo(3));
+            Assert.That(FindDump(root, "bound").GetProperty("content").GetString(), Does.Contain("Program"));
         }
         finally
         {
@@ -558,7 +612,7 @@ public class ProgramTests
     public void EntryPoint_WritesFailureAsJsonEnvelope()
     {
         string filePath = Path.Combine(Path.GetTempPath(), $"blade-json-fail-{Guid.NewGuid():N}.blade");
-        File.WriteAllText(filePath, "x = 1;");
+        File.WriteAllText(filePath, "cog task main { x = 1; }");
 
         try
         {
@@ -576,7 +630,7 @@ public class ProgramTests
             Assert.That(diagnostic.GetProperty("line").GetInt32(), Is.EqualTo(1));
             Assert.That(diagnostic.GetProperty("code").GetString(), Is.EqualTo("E0202"));
             Assert.That(root.GetProperty("result").ValueKind, Is.EqualTo(JsonValueKind.Null));
-            Assert.That(root.GetProperty("dumps").GetProperty("bound").ValueKind, Is.EqualTo(JsonValueKind.Null));
+            Assert.That(root.GetProperty("dumps").GetArrayLength(), Is.EqualTo(0));
         }
         finally
         {

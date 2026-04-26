@@ -8,9 +8,16 @@ export interface BladeDiagnostic {
     readonly message?: string;
 }
 
+export interface BladeDumpArtifact {
+    readonly content: string;
+    readonly fileName: string;
+    readonly id: string;
+    readonly title: string;
+}
+
 export interface BladeCompilationReport {
     readonly diagnostics: readonly BladeDiagnostic[];
-    readonly dumps: Readonly<Record<string, string | null>>;
+    readonly dumps: readonly BladeDumpArtifact[];
     readonly metrics: Readonly<Record<string, unknown>>;
     readonly result: string | null;
     readonly success: boolean;
@@ -339,14 +346,29 @@ function asDiagnostics(value: unknown): readonly BladeDiagnostic[] {
     return diagnostics;
 }
 
-function asDumps(value: unknown): Readonly<Record<string, string | null>> {
-    if (!isRecord(value))
-        return {};
+function asDumps(value: unknown): readonly BladeDumpArtifact[] {
+    if (!Array.isArray(value))
+        return [];
 
-    const dumps: Record<string, string | null> = {};
-    for (const [name, dumpValue] of Object.entries(value)) {
-        if (typeof dumpValue === "string" || dumpValue === null)
-            dumps[name] = dumpValue;
+    const dumps: BladeDumpArtifact[] = [];
+    for (const item of value) {
+        if (!isRecord(item))
+            continue;
+
+        if (typeof item.id !== "string"
+            || typeof item.title !== "string"
+            || typeof item.fileName !== "string"
+            || typeof item.content !== "string")
+        {
+            continue;
+        }
+
+        dumps.push({
+            content: item.content,
+            fileName: item.fileName,
+            id: item.id,
+            title: item.title,
+        });
     }
 
     return dumps;

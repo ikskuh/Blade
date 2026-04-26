@@ -642,7 +642,7 @@ public static class RegressionRunner
         if (compilation.IrBuildResult is not null)
         {
             irCoverageSession?.Record(compilation.IrBuildResult);
-            Dictionary<string, string> dumps = DumpContentBuilder.Build(
+            IReadOnlyList<DumpArtifact> dumps = DumpBundleBuilder.Build(
                 new DumpSelection
                 {
                     DumpBound = true,
@@ -655,14 +655,14 @@ public static class RegressionRunner
                     DumpFinalAsm = true,
                 },
                 compilation.IrBuildResult);
-            stageOutputs[RegressionStage.Bound] = dumps["00_bound.ir"];
-            stageOutputs[RegressionStage.MirPreOptimization] = dumps["05_mir_preopt.ir"];
-            stageOutputs[RegressionStage.Mir] = dumps["10_mir.ir"];
-            stageOutputs[RegressionStage.LirPreOptimization] = dumps["15_lir_preopt.ir"];
-            stageOutputs[RegressionStage.Lir] = dumps["20_lir.ir"];
-            stageOutputs[RegressionStage.AsmirPreOptimization] = dumps["25_asmir_preopt.ir"];
-            stageOutputs[RegressionStage.Asmir] = dumps["30_asmir.ir"];
-            stageOutputs[RegressionStage.FinalAsm] = dumps["40_final.spin2"];
+            stageOutputs[RegressionStage.Bound] = dumps.Single(static dump => dump.FileName == "00_bound.ir").Content;
+            stageOutputs[RegressionStage.MirPreOptimization] = dumps.Single(static dump => dump.FileName == "05_mir_preopt.ir").Content;
+            stageOutputs[RegressionStage.Mir] = dumps.Single(static dump => dump.FileName == "10_mir.ir").Content;
+            stageOutputs[RegressionStage.LirPreOptimization] = dumps.Single(static dump => dump.FileName == "15_lir_preopt.ir").Content;
+            stageOutputs[RegressionStage.Lir] = dumps.Single(static dump => dump.FileName == "20_lir.ir").Content;
+            stageOutputs[RegressionStage.AsmirPreOptimization] = dumps.Single(static dump => dump.FileName == "25_asmir_preopt.ir").Content;
+            stageOutputs[RegressionStage.Asmir] = dumps.Single(static dump => dump.FileName == "30_asmir.ir").Content;
+            stageOutputs[RegressionStage.FinalAsm] = dumps.Single(static dump => dump.FileName == "40_final.spin2").Content;
         }
 
         return new EvaluatedFixture(

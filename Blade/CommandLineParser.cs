@@ -22,6 +22,7 @@ internal static class CommandLineParser
         bool dumpLir = false;
         bool dumpAsmirPreOptimization = false;
         bool dumpAsmir = false;
+        bool dumpMemoryMap = false;
         bool dumpFinalAsm = false;
         bool dumpAll = false;
         bool json = false;
@@ -60,6 +61,10 @@ internal static class CommandLineParser
 
                 case "--dump-asmir-preopt":
                     dumpAsmirPreOptimization = true;
+                    break;
+
+                case "--dump-mmap":
+                    dumpMemoryMap = true;
                     break;
 
                 case "--dump-final-asm":
@@ -143,6 +148,7 @@ internal static class CommandLineParser
             dumpLir = true;
             dumpAsmirPreOptimization = true;
             dumpAsmir = true;
+            dumpMemoryMap = true;
             dumpFinalAsm = true;
         }
 
@@ -168,6 +174,7 @@ internal static class CommandLineParser
             DumpLir = dumpLir,
             DumpAsmirPreOptimization = dumpAsmirPreOptimization,
             DumpAsmir = dumpAsmir,
+            DumpMemoryMap = dumpMemoryMap,
             DumpFinalAsm = dumpFinalAsm,
             DumpDirectory = dumpDirectory,
             Json = json,
@@ -194,6 +201,7 @@ internal static class CommandLineParser
         Console.Error.WriteLine("  --dump-lir");
         Console.Error.WriteLine("  --dump-asmir-preopt");
         Console.Error.WriteLine("  --dump-asmir");
+        Console.Error.WriteLine("  --dump-mmap");
         Console.Error.WriteLine("  --dump-final-asm");
         Console.Error.WriteLine("  --dump-all");
         Console.Error.WriteLine("  --dump-dir <path>");

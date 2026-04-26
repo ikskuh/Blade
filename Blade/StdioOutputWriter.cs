@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Blade.Diagnostics;
-using Blade.IR;
 using Blade.Source;
 
 namespace Blade;
@@ -33,22 +32,12 @@ internal sealed class StdioOutputWriter : ICompilerOutputWriter
 
         Assert.Invariant(compilation.IrBuildResult is not null, "Successful text output requires an IR build result.");
 
-        DumpSelection dumpSelection = new()
-        {
-            DumpBound = options.DumpBound,
-            DumpMirPreOptimization = options.DumpMirPreOptimization,
-            DumpMir = options.DumpMir,
-            DumpLirPreOptimization = options.DumpLirPreOptimization,
-            DumpLir = options.DumpLir,
-            DumpAsmirPreOptimization = options.DumpAsmirPreOptimization,
-            DumpAsmir = options.DumpAsmir,
-            DumpFinalAsm = options.DumpFinalAsm,
-        };
-        Dictionary<string, string> dumpContent = DumpContentBuilder.Build(dumpSelection, compilation.IrBuildResult);
+        DumpSelection dumpSelection = DumpSelectionFactory.FromCommandLineOptions(options);
+        IReadOnlyList<DumpArtifact> dumpArtifacts = DumpBundleBuilder.Build(dumpSelection, compilation.IrBuildResult);
 
         bool writeSucceeded = TryWriteText(
             options,
-            dumpContent,
+            dumpArtifacts,
             metrics,
             errorCount,
             out error);
@@ -70,7 +59,7 @@ internal sealed class StdioOutputWriter : ICompilerOutputWriter
 
     private static bool TryWriteText(
         CommandLineOptions options,
-        IReadOnlyDictionary<string, string> dumpContent,
+        IReadOnlyList<DumpArtifact> dumpArtifacts,
         CompilationMetrics metrics,
         int errorCount,
         out string? error)
@@ -80,27 +69,27 @@ internal sealed class StdioOutputWriter : ICompilerOutputWriter
             if (options.DumpDirectory is not null)
             {
                 Directory.CreateDirectory(options.DumpDirectory);
-                foreach ((string fileName, string content) in dumpContent)
+                foreach (DumpArtifact artifact in dumpArtifacts)
                 {
-                    string path = Path.Combine(options.DumpDirectory, fileName);
-                    File.WriteAllText(path, content);
+                    string path = Path.Combine(options.DumpDirectory, artifact.FileName);
+                    File.WriteAllText(path, artifact.Content);
                 }
 
                 if (options.EmitMetrics)
-                    WriteTextReport(Console.Out, dumpContent, metrics, errorCount, includeDumps: false);
+                    WriteTextReport(Console.Out, dumpArtifacts, metrics, errorCount, includeDumps: false, includeMetrics: true);
                 error = null;
                 return true;
             }
 
             if (options.OutputPath is null || options.OutputPath == "-")
             {
-                WriteTextReport(Console.Out, dumpContent, metrics, errorCount, includeDumps: true, includeMetrics: options.EmitMetrics);
+                WriteTextReport(Console.Out, dumpArtifacts, metrics, errorCount, includeDumps: true, includeMetrics: options.EmitMetrics);
                 error = null;
                 return true;
             }
 
             using StreamWriter writer = new(options.OutputPath);
-            WriteTextReport(writer, dumpContent, metrics, errorCount, includeDumps: true, includeMetrics: options.EmitMetrics);
+            WriteTextReport(writer, dumpArtifacts, metrics, errorCount, includeDumps: true, includeMetrics: options.EmitMetrics);
             error = null;
             return true;
         }
@@ -114,25 +103,25 @@ internal sealed class StdioOutputWriter : ICompilerOutputWriter
 
     private static void WriteTextReport(
         TextWriter writer,
-        IReadOnlyDictionary<string, string> dumpContent,
+        IReadOnlyList<DumpArtifact> dumpArtifacts,
         CompilationMetrics metrics,
         int errorCount,
         bool includeDumps,
-        bool includeMetrics = true)
+        bool includeMetrics)
     {
         if (includeDumps)
         {
             bool first = true;
-            foreach ((string fileName, string content) in dumpContent)
+            foreach (DumpArtifact artifact in dumpArtifacts)
             {
                 if (!first)
                     writer.WriteLine();
                 first = false;
-                writer.WriteLine($"' {fileName}");
-                writer.WriteLine(content);
+                writer.WriteLine($"' {artifact.FileName}");
+                writer.WriteLine(artifact.Content);
             }
 
-            if (dumpContent.Count > 0)
+            if (dumpArtifacts.Count > 0)
                 writer.WriteLine();
         }
 

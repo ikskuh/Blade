@@ -334,6 +334,7 @@ public sealed class Binder
             BuiltinTypes.U32,
             isConst,
             VariableStorageClass.Cog,
+            layout,
             isExtern: true,
             fixedAddress: address,
             alignment: null);
@@ -868,7 +869,7 @@ public sealed class Binder
             BladeType variableType = BindType(declaration.Type);
             _suppressPointerStorageClassDiagnostics = false;
 
-            GlobalVariableSymbol symbol = CreateGlobalVariableSymbol(declaration, variableType);
+            GlobalVariableSymbol symbol = CreateGlobalVariableSymbol(declaration, variableType, layout);
             if (HasInheritedLayoutMember(layout, symbol.Name))
                 _diagnostics.ReportLayoutMemberShadowsParentMember(declaration.Name.Span, layout.Name, symbol.Name);
 
@@ -1111,7 +1112,7 @@ public sealed class Binder
             _suppressPointerStorageClassDiagnostics = true;
             BladeType variableType = BindType(variableDecl.Type);
             _suppressPointerStorageClassDiagnostics = false;
-            GlobalVariableSymbol symbol = CreateGlobalVariableSymbol(variableDecl, variableType);
+            GlobalVariableSymbol symbol = CreateGlobalVariableSymbol(variableDecl, variableType, declaringLayout: null);
 
             _ = TryDeclareSymbol(_globalScope, symbol, variableDecl.Name.Span);
         }
@@ -1133,7 +1134,7 @@ public sealed class Binder
         }
         else
         {
-            variableSymbol = CreateGlobalVariableSymbol(variable, variableType);
+            variableSymbol = CreateGlobalVariableSymbol(variable, variableType, declaringLayout: null);
         }
 
         ResolveLayoutMetadata(variable, variableSymbol);
@@ -4430,6 +4431,7 @@ public sealed class Binder
             literalValue.Type,
             isConst: true,
             targetPointer.StorageClass,
+            declaringLayout: null,
             isExtern: false,
             fixedAddress: null,
             alignment: null,
@@ -4497,7 +4499,8 @@ public sealed class Binder
 
     private GlobalVariableSymbol CreateGlobalVariableSymbol(
         VariableDeclarationSyntax declaration,
-        BladeType variableType)
+        BladeType variableType,
+        LayoutSymbol? declaringLayout)
     {
         VariableStorageClass? storageClass = MapStorageClass(declaration.StorageClassKeyword);
         Assert.Invariant(storageClass.HasValue, "Global variable declarations must have an explicit storage class.");
@@ -4506,6 +4509,7 @@ public sealed class Binder
             variableType,
             declaration.MutabilityKeyword.Kind == TokenKind.ConstKeyword,
             storageClass.Value,
+            declaringLayout,
             declaration.ExternKeyword is not null,
             fixedAddress: null,
             alignment: null,

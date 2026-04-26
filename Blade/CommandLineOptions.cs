@@ -18,6 +18,7 @@ internal sealed class CommandLineOptions
     public bool DumpLir { get; init; }
     public bool DumpAsmirPreOptimization { get; init; }
     public bool DumpAsmir { get; init; }
+    public bool DumpMemoryMap { get; init; }
     public bool DumpFinalAsm { get; init; }
     public string? DumpDirectory { get; init; }
     public bool Json { get; init; }

@@ -109,6 +109,10 @@ public enum DiagnosticCode
 
     E0278_ReturnFromCoroutine = 278,
     E0279_InvalidSpawnTarget = 279,
+    E0280_InvalidLayoutAlignment = 280,
+    E0281_InvalidLayoutAddress = 281,
+    E0282_LayoutAddressConflict = 282,
+    E0283_LayoutAllocationFailed = 283,
 
     // Inline assembly errors
     E0301_InlineAsmUnknownInstruction = 301,
