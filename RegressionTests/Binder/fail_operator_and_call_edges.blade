@@ -3,12 +3,11 @@
 // NOTE:
 //   Covers unary/binary type errors, not-callable expressions, call-shape edge cases,
 //   and call-related binder errors.
+type Pair = struct {
+    value: u32,
+};
+
 cog task main {
-    
-    type Pair = struct {
-        value: u32,
-    };
-    
     fn pair_sum(x: u32, y: u32) -> u32 {
         return x + y;
     }

@@ -2,12 +2,11 @@
 // DIAGNOSTICS: UndefinedName, UndefinedType
 // NOTE:
 //   Covers missing module members, missing qualified types, and self-recursive aliases.
+
+import "../Modules/types.mod" as types;
+type Loop = Loop;
+
 cog task main {
-    
-    import "../Modules/types.blade" as types;
-    
-    type Loop = Loop;
-    
     var missing_type: MissingType = undefined;
     var missing_qualified_type: types.Missing = undefined;
     var missing_member_value: u32 = types.missing;

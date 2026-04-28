@@ -1,6 +1,6 @@
 // EXPECT: fail
 // ARGS:
-// - --module=extmod=../Modules/extmod.blade
+// - --module=extmod=../Modules/extmod.mod
 // DIAGNOSTICS:
 // - L36, ComptimeForbiddenSymbolAccess
 // - L37, ComptimeForbiddenSymbolAccess
@@ -11,20 +11,20 @@
 // - L48, ComptimeUnsupportedConstruct
 // - L49, ComptimeUnsupportedConstruct
 // - L50, ComptimeUnsupportedConstruct
-// - L52, ComptimeForbiddenSymbolAccess
 // - L51, ComptimeUnsupportedConstruct
+// - L52, ComptimeForbiddenSymbolAccess
+// - L54, ComptimeUnsupportedConstruct
 // - L55, ComptimeUnsupportedConstruct
 // - L56, ComptimeUnsupportedConstruct
-// - L57, ComptimeUnsupportedConstruct
 // NOTE:
 //   Forces comptime-required contexts through binder-side folding, validation, and failure reporting.
 import extmod as ext;
 
+type Pair = struct {
+    value: u32,
+};
+
 cog task main {    
-    type Pair = struct {
-        value: u32,
-    };
-    
     cog var seed: u32 = 1;
     cog var values: [1]u32 = [1];
     cog var ptr: *cog u32 = undefined;
@@ -48,7 +48,6 @@ cog task main {
     extern cog var check_member: u32 @(pair.value);
     extern cog var check_index: u32 @(values[0]);
     extern cog var check_deref: u32 @(ptr.*);
-    extern cog var check_module: u32 @(ext());
     extern cog var check_symbol: u32 @(seed);
     
     cog const check_array_call: [1]u32 = [runtime_u32()];

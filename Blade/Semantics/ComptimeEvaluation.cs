@@ -435,12 +435,12 @@ internal sealed class ComptimeFunctionSupportAnalyzer
 
 internal sealed class ComptimeEvaluator(
     int fuel,
-    Func<FunctionSymbol, BoundBlockStatement?> functionBodyResolver,
+    Func<FunctionSymbol, BoundBlockStatement> functionBodyResolver,
     Func<FunctionSymbol, ComptimeSupportResult> supportResolver)
 {
     private static readonly BoundBlockStatement EmptyBlock = new([], new TextSpan(0, 0));
 
-    private readonly Func<FunctionSymbol, BoundBlockStatement?> _functionBodyResolver = Requires.NotNull(functionBodyResolver);
+    private readonly Func<FunctionSymbol, BoundBlockStatement> _functionBodyResolver = Requires.NotNull(functionBodyResolver);
     private readonly Func<FunctionSymbol, ComptimeSupportResult> _supportResolver = Requires.NotNull(supportResolver);
     private readonly HashSet<GlobalVariableSymbol> _globalEvaluationStack = [];
 
@@ -713,9 +713,7 @@ internal sealed class ComptimeEvaluator(
         if (call.Arguments.Count != call.Function.Parameters.Count)
             return new ComptimeResult(ComptimeFailureKind.NotEvaluable, call.Span, $"call to '{call.Function.Name}' does not have a full argument list.");
 
-        BoundBlockStatement? body = _functionBodyResolver(call.Function);
-        if (body is null)
-            return new ComptimeResult(ComptimeFailureKind.NotEvaluable, call.Span, $"function body for '{call.Function.Name}' is unavailable during comptime evaluation.");
+        BoundBlockStatement body = _functionBodyResolver(call.Function);
 
         ComptimeSupportResult support = _supportResolver(call.Function);
         if (!support.IsSupported)

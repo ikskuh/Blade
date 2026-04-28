@@ -3,10 +3,9 @@
 // NOTE:
 //   Covers TryResolveMemorySpace with integer constant that is out of range.
 //   Exercises the ReportInvalidMemorySpace paths (Binder L2810-2839).
+import builtin;
+
 cog task main {
-    
-    import builtin;
-    
     hub var x: u32 = 0;
     
     fn test_sizeof_bad_memspace_constant() -> u32 {

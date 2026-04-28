@@ -2,5 +2,3 @@ type Mode = enum (u32) {
     Off = 0,
     On = 1,
 };
-cog task main {
-}

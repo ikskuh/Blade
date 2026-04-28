@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using Blade;
@@ -805,11 +806,13 @@ public sealed class Binder
             ResolveFunctionSignature(localFunction.Symbol);
 
         IReadOnlyList<StoredLayoutMemberBinding> members = CollectStoredLayoutMembers(task, GetTaskStoredDeclarations(taskDeclaration));
-        BindStoredLayoutMembers(members, taskScope, task, boundGlobals);
 
-        boundFunctions.Add(BindTaskEntryFunction(task, taskDeclaration, taskScope));
         foreach (TaskLocalFunctionBinding localFunction in localFunctions)
             boundFunctions.Add(BindTaskLocalFunction(task, localFunction, taskScope));
+
+        BindStoredLayoutMembers(members, taskScope, task, boundGlobals);
+        
+        boundFunctions.Add(BindTaskEntryFunction(task, taskDeclaration, taskScope));
 
         _currentScope = previousScope;
     }
@@ -3735,18 +3738,19 @@ public sealed class Binder
         };
     }
 
-    private BoundBlockStatement? ResolveFunctionBodyForComptime(FunctionSymbol function)
+    private BoundBlockStatement ResolveFunctionBodyForComptime(FunctionSymbol function)
     {
         if (_boundFunctionBodies.TryGetValue(function, out BoundBlockStatement? localBody))
-            return localBody;
+            return Requires.NotNull(localBody);
 
         foreach (BoundModule module in _importedModules.Values)
         {
             if (TryResolveImportedFunctionBody(module, function, out BoundBlockStatement? importedBody))
-                return importedBody;
+                return Requires.NotNull(importedBody);
         }
 
-        return null;
+        Assert.Unreachable($"Comptime evaluation requires a resolved body for function '{function.Name}'. This indicates a binder ordering bug.");
+        throw new UnreachableException();
     }
 
     private static bool TryResolveImportedFunctionBody(BoundModule module, FunctionSymbol function, out BoundBlockStatement? body)
@@ -3778,11 +3782,10 @@ public sealed class Binder
         if (_comptimeSupportCache.TryGetValue(function, out ComptimeSupportResult cached))
             return cached;
 
-        BoundBlockStatement? body = ResolveFunctionBodyForComptime(function);
-        Assert.Invariant(body is not null, "Comptime support analysis should only run after body resolution succeeds.");
+        BoundBlockStatement body = ResolveFunctionBodyForComptime(function);
 
         ComptimeFunctionSupportAnalyzer analyzer = new();
-        ComptimeSupportResult analyzed = analyzer.Analyze(function, Requires.NotNull(body));
+        ComptimeSupportResult analyzed = analyzer.Analyze(function, body);
         _comptimeSupportCache[function] = analyzed;
         return analyzed;
     }

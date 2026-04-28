@@ -4,10 +4,8 @@
 // DIAGNOSTICS: ArgumentCountMismatch, UnknownNamedArgument, DuplicateNamedArgument, PositionalArgumentAfterNamed, NamedArgumentConflictsWithPositional
 // NOTE:
 //   Covers named-argument reordering failures plus module call argument checking.
+
 cog task main {
-    
-    import extmod as ext;
-    
     fn pair(x: u32, y: u32) -> u32 {
         return x + y;
     }
@@ -16,6 +14,4 @@ cog task main {
     var bad_duplicate: u32 = pair(y=10, x=20, y=30);
     var bad_order: u32 = pair(y=10, 20);
     var bad_conflict: u32 = pair(10, x=20);
-    
-    ext(1);
 }

@@ -2,9 +2,10 @@
 // NOTE:
 //   Covers comptime folding through imported modules, nested imported body lookup,
 //   and the comptime support cache on a repeated imported call.
+import "./support/comptime/root.mod" as root;
+
 cog task main {
     
-    import "./support/comptime/root.mod" as root;
     
     cog const first: u32 = root.from_root();
     cog const second: u32 = root.from_root();

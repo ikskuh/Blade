@@ -2,20 +2,19 @@
 // RUNS:
 // - [] = 2
 // - [] = 2
-// ARGS: --module=hw_modules_lib=../hw_modules_lib.blade
+// ARGS: --module=hw_modules_lib=../hw_modules_lib.mod
 // NOTE:
 //   Tests named module import, repeated module execution, and global state persistence.
 //   hw_modules_lib has a cog var counter starting at 0 and incrementing on each call.
 //   After two calls: counter = 2.
 //   Both runs are independent program executions starting from a clean state.
-cog task main {
-    
+import hw_modules_lib as lib;
+
+cog task main : lib.Counter {    
     extern cog var rt_result: u32;
+
+    lib.increment();
+    lib.increment();
     
-    import hw_modules_lib as lib;
-    
-    lib();
-    lib();
-    
-    rt_result = lib.counter;
+    rt_result = counter;
 }

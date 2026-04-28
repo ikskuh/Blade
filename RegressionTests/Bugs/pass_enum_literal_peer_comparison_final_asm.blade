@@ -17,13 +17,13 @@
 //   Bare enum literals in == and != should infer their enum type from the
 //   opposite operand. The sample forces final codegen to load enum bytes from
 //   hub memory and store bool results back to hub memory.
+
+type Mode = enum (u8) {
+    Off = 0,
+    On = 1,
+};
+
 cog task main {
-    
-    type Mode = enum (u8) {
-        Off = 0,
-        On = 1,
-    };
-    
     hub var mode: Mode = .Off;
     hub var eq_out: bool = false;
     hub var ne_out: bool = false;

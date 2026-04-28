@@ -2,18 +2,17 @@
 // DIAGNOSTICS: SymbolAlreadyDeclared, UndefinedName, TypeMismatch, InlineAsmInvalidFlagOutput
 // NOTE:
 //   Covers statement-shape binder branches that were still missing from demonstrators.
+import "../Modules/types.mod" as types;
+
+type Pair = struct {
+    value: u32,
+};
+
+type Flags = bitfield (u32) {
+    low: nib,
+};
+
 cog task main {
-    
-    import "../Modules/types.blade" as types;
-    
-    type Pair = struct {
-        value: u32,
-    };
-    
-    type Flags = bitfield (u32) {
-        low: nib,
-    };
-    
     cog var pair: Pair = undefined;
     cog var flags: Flags = undefined;
     

@@ -5,8 +5,8 @@
 // - Literal<MemorySpace> 1
 // NOTE:
 //   The builtin module can be imported under an alias. .lut has value 1.
+import builtin as b;
+
 cog task main {
-    import builtin as b;
-    
     cog var cls: b.MemorySpace = .lut;
 }

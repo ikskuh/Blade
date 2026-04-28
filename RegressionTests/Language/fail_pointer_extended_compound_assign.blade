@@ -10,7 +10,6 @@
 //   The extended fused assignment operators are parsed, but pointer compound
 //   assignment is still restricted to += and -= on [*] pointers.
 cog task main {
-    
     fn bad(cursor: [*]cog u32) {
         cursor *= 2;
         cursor /= 2;

@@ -6,9 +6,8 @@
 // NOTE:
 //   Importing the compiler-provided builtin module gives access
 //   to builtin.MemorySpace enum type. .hub has value 2.
+import builtin;
+
 cog task main {
-    
-    import builtin;
-    
     cog var cls: builtin.MemorySpace = .hub;
 }

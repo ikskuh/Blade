@@ -4,6 +4,6 @@ fn plus(a: u32, b: u32) -> u32 {
     return a + b;
 }
 
-cog task main {
+fn increment() {
     seed = seed + 1;
 }

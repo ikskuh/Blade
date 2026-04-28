@@ -1624,7 +1624,7 @@ public static class MirLowerer
 
             ComptimeEvaluator evaluator = new(
                 fuel: 8,
-                functionBodyResolver: static _ => null,
+                functionBodyResolver: static function => Assert.UnreachableValue<BoundBlockStatement>($"MIR literal probing should not need comptime function body resolution for '{function.Name}'."),
                 supportResolver: static _ => new ComptimeSupportResult(true, default));
             ComptimeResult evaluated = evaluator.TryEvaluateExpression(expression);
             if (evaluated.TryConvertToLong(out long evaluatedValue))

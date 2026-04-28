@@ -7,17 +7,16 @@
 // - TargetDeref<u32>
 // NOTE:
 //   Covers fusion assignment paths for member, bitfield, index, and dereference targets.
+type Pair = struct {
+    value: u32,
+};
+
+type Flags = bitfield (u32) {
+    low: nib,
+    high: nib,
+};
+
 cog task main {
-    
-    type Pair = struct {
-        value: u32,
-    };
-    
-    type Flags = bitfield (u32) {
-        low: nib,
-        high: nib,
-    };
-    
     cog var pair: Pair = undefined;
     
     cog var flags: Flags = undefined;

@@ -3,37 +3,38 @@
 // NOTE:
 //   Distinct structs and unions are nominally incompatible, even when their
 //   field layouts match exactly.
+    
+type StructLeft = struct {
+    a: u32,
+    b: u16,
+};
+
+type StructRight = struct {
+    a: u32,
+    b: u16,
+};
+
+type StructWrong = struct {
+    a: u32,
+    c: u16,
+};
+
+type UnionLeft = union {
+    a: u32,
+    b: u16,
+};
+
+type UnionRight = union {
+    a: u32,
+    b: u16,
+};
+
+type UnionWrong = union {
+    a: u32,
+    c: u16,
+};
+
 cog task main {
-    
-    type StructLeft = struct {
-        a: u32,
-        b: u16,
-    };
-    
-    type StructRight = struct {
-        a: u32,
-        b: u16,
-    };
-    
-    type StructWrong = struct {
-        a: u32,
-        c: u16,
-    };
-    
-    type UnionLeft = union {
-        a: u32,
-        b: u16,
-    };
-    
-    type UnionRight = union {
-        a: u32,
-        b: u16,
-    };
-    
-    type UnionWrong = union {
-        a: u32,
-        c: u16,
-    };
     
     var s_right: StructRight = undefined;
     var s_left: StructLeft = s_right;

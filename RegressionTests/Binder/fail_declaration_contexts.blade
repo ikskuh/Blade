@@ -2,16 +2,16 @@
 // DIAGNOSTICS: SymbolAlreadyDeclared, InvalidLocalStorageClass, InvalidExternScope, InvalidParameterStorageClass
 // NOTE:
 //   Covers duplicate declarations plus invalid local storage/extern usage.
+
+type Pair = struct {
+    value: u32,
+};
+
+type Pair = struct {
+    other: u32,
+};
+
 cog task main {
-    
-    type Pair = struct {
-        value: u32,
-    };
-    
-    type Pair = struct {
-        other: u32,
-    };
-    
     cog var sink: u32 = 0;
     cog var sink: u32 = 1;
     

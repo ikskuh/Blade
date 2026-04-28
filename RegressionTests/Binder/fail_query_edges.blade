@@ -3,10 +3,9 @@
 // NOTE:
 //   Covers query expression edge cases for sizeof, alignof, memoryof.
 //   Exercises uncovered branches in BindOneArgQueryExpression and BindTwoArgQueryExpression.
+import builtin;
+
 cog task main {
-    
-    import builtin;
-    
     // memoryof requires a variable, not a type
     fn test_memoryof_type() -> u32 {
         return memoryof(u32);
