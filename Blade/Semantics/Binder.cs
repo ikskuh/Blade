@@ -47,6 +47,42 @@ public sealed class Binder
     private readonly record struct StoredLayoutMemberBinding(VariableDeclarationSyntax Declaration, GlobalVariableSymbol Symbol);
     private readonly record struct TaskLocalFunctionBinding(FunctionSymbol Symbol, SyntaxNode Syntax);
 
+    private sealed class BindContext : IDisposable
+    {
+        private readonly Binder _binder;
+        private readonly Scope _previousScope;
+        private readonly FunctionSymbol? _previousFunction;
+        private readonly LayoutSymbol? _previousImplicitLayout;
+        private readonly IReadOnlyList<LayoutSymbol> _previousEffectiveLayouts;
+
+        public BindContext(
+            Binder binder,
+            Scope scope,
+            FunctionSymbol? function,
+            LayoutSymbol? implicitLayout,
+            IReadOnlyList<LayoutSymbol> effectiveLayouts)
+        {
+            _binder = Requires.NotNull(binder);
+            _previousScope = binder._currentScope;
+            _previousFunction = binder._currentFunction;
+            _previousImplicitLayout = binder._currentImplicitLayout;
+            _previousEffectiveLayouts = binder._currentEffectiveLayouts;
+
+            binder._currentScope = Requires.NotNull(scope);
+            binder._currentFunction = function;
+            binder._currentImplicitLayout = implicitLayout;
+            binder._currentEffectiveLayouts = Requires.NotNull(effectiveLayouts);
+        }
+
+        public void Dispose()
+        {
+            _binder._currentEffectiveLayouts = _previousEffectiveLayouts;
+            _binder._currentImplicitLayout = _previousImplicitLayout;
+            _binder._currentFunction = _previousFunction;
+            _binder._currentScope = _previousScope;
+        }
+    }
+
     private Binder(
         DiagnosticBag diagnostics,
         LoadedCompilation compilation,
@@ -893,20 +929,21 @@ public sealed class Binder
         LayoutSymbol? implicitLayout,
         ICollection<GlobalVariableSymbol> boundGlobals)
     {
-        Scope previousScope = _currentScope;
-        LayoutSymbol? previousImplicitLayout = _currentImplicitLayout;
+        FunctionSymbol? activeFunction = implicitLayout is TaskSymbol task
+            ? task.EntryFunction
+            : null;
 
-        _currentScope = bindingScope;
-        _currentImplicitLayout = implicitLayout;
+        using IDisposable bindContext = PushContext(
+            bindingScope,
+            activeFunction,
+            implicitLayout,
+            activeFunction is null ? [] : GetEffectiveLayouts(activeFunction, implicitLayout));
 
         foreach (StoredLayoutMemberBinding storedMember in storedMembers)
         {
             BindStoredLayoutMember(storedMember.Declaration, storedMember.Symbol);
             boundGlobals.Add(storedMember.Symbol);
         }
-
-        _currentImplicitLayout = previousImplicitLayout;
-        _currentScope = previousScope;
     }
 
     private void BindStoredLayoutMember(VariableDeclarationSyntax declaration, GlobalVariableSymbol variableSymbol)
@@ -1178,35 +1215,25 @@ public sealed class Binder
         Scope parentScope,
         LayoutSymbol? implicitLayout)
     {
-        Scope previousScope = _currentScope;
-        FunctionSymbol? previousFunction = _currentFunction;
-        LayoutSymbol? previousImplicitLayout = _currentImplicitLayout;
-        IReadOnlyList<LayoutSymbol> previousEffectiveLayouts = _currentEffectiveLayouts;
-
-        _currentScope = new Scope(parentScope);
-        _currentFunction = function;
-        _currentImplicitLayout = implicitLayout;
-        _currentEffectiveLayouts = GetEffectiveLayouts(function, implicitLayout);
-
-        foreach (ParameterVariableSymbol parameter in function.Parameters)
-            _ = TryDeclareSymbol(_currentScope, parameter, function.SignatureNameSpan, preserveLocalBindingOnShadowing: true);
-
-        BoundBlockStatement body = BindBlockStatement(bodySyntax, createScope: false);
-
-        if (function.Kind == FunctionKind.Coro)
+        BoundBlockStatement body;
+        using (IDisposable bindContext = PushContext(new Scope(parentScope), function, implicitLayout, GetEffectiveLayouts(function, implicitLayout)))
         {
-            CoroutineExitAnalysis exitAnalysis = AnalyzeCoroutineExitPaths(body);
-            if (exitAnalysis.CanReachFunctionEnd)
-                _diagnostics.Report(new ReturnFromCoroutineError(_diagnostics.CurrentSource, missingReturnSpan, function.Name));
+            foreach (ParameterVariableSymbol parameter in function.Parameters)
+                _ = TryDeclareSymbol(_currentScope, parameter, function.SignatureNameSpan, preserveLocalBindingOnShadowing: true);
+
+            body = BindBlockStatement(bodySyntax, createScope: false);
+
+            if (function.Kind == FunctionKind.Coro)
+            {
+                CoroutineExitAnalysis exitAnalysis = AnalyzeCoroutineExitPaths(body);
+                if (exitAnalysis.CanReachFunctionEnd)
+                    _diagnostics.Report(new ReturnFromCoroutineError(_diagnostics.CurrentSource, missingReturnSpan, function.Name));
+            }
+
+            if (function.ReturnTypes.Count > 0 && !AlwaysReturns(body))
+                _diagnostics.Report(new MissingReturnValueError(_diagnostics.CurrentSource, missingReturnSpan, function.Name));
         }
 
-        if (function.ReturnTypes.Count > 0 && !AlwaysReturns(body))
-            _diagnostics.Report(new MissingReturnValueError(_diagnostics.CurrentSource, missingReturnSpan, function.Name));
-
-        _currentFunction = previousFunction;
-        _currentImplicitLayout = previousImplicitLayout;
-        _currentEffectiveLayouts = previousEffectiveLayouts;
-        _currentScope = previousScope;
         _boundFunctionBodies[function] = body;
 
         return new BoundFunctionMember(function, body, memberSpan);
@@ -1225,77 +1252,76 @@ public sealed class Binder
         Scope parentScope,
         LayoutSymbol? implicitLayout)
     {
-        Scope previousScope = _currentScope;
-        FunctionSymbol? previousFunction = _currentFunction;
-        LayoutSymbol? previousImplicitLayout = _currentImplicitLayout;
-        IReadOnlyList<LayoutSymbol> previousEffectiveLayouts = _currentEffectiveLayouts;
-
-        _currentScope = new Scope(parentScope);
-        _currentFunction = function;
-        _currentImplicitLayout = implicitLayout;
-        _currentEffectiveLayouts = GetEffectiveLayouts(function, implicitLayout);
-
-        foreach (ParameterVariableSymbol parameter in function.Parameters)
-            _ = TryDeclareSymbol(_currentScope, parameter, function.SignatureNameSpan, preserveLocalBindingOnShadowing: true);
-
-        // For asm fn, the "return" keyword is a valid binding name referencing the return value.
-        // Add a synthetic variable so the validator accepts {return} references.
-        // For flag-only returns (e.g. -> bool@C), no {return} variable is needed because
-        // the return value lives in the flag, not in a register.
-        LocalVariableSymbol? returnSymbol = null;
-        bool hasRegisterReturn = function.ReturnSlots.Any(s => s.Placement == ReturnPlacement.Register);
-        if (hasRegisterReturn)
+        BoundBlockStatement body;
+        using (IDisposable bindContext = PushContext(new Scope(parentScope), function, implicitLayout, GetEffectiveLayouts(function, implicitLayout)))
         {
-            BladeType firstRegisterType = function.ReturnSlots.First(s => s.Placement == ReturnPlacement.Register).Type;
-            returnSymbol = new LocalVariableSymbol(
-                "return",
-                firstRegisterType,
-                isConst: false,
-                sourceSpan: CreateSourceSpan(asmSyntax.Name.Span));
-            _ = TryDeclareSymbol(_currentScope, returnSymbol, asmSyntax.Name.Span, preserveLocalBindingOnShadowing: true);
+            foreach (ParameterVariableSymbol parameter in function.Parameters)
+                _ = TryDeclareSymbol(_currentScope, parameter, function.SignatureNameSpan, preserveLocalBindingOnShadowing: true);
+
+            // For asm fn, the "return" keyword is a valid binding name referencing the return value.
+            // Add a synthetic variable so the validator accepts {return} references.
+            // For flag-only returns (e.g. -> bool@C), no {return} variable is needed because
+            // the return value lives in the flag, not in a register.
+            LocalVariableSymbol? returnSymbol = null;
+            bool hasRegisterReturn = function.ReturnSlots.Any(s => s.Placement == ReturnPlacement.Register);
+            if (hasRegisterReturn)
+            {
+                BladeType firstRegisterType = function.ReturnSlots.First(s => s.Placement == ReturnPlacement.Register).Type;
+                returnSymbol = new LocalVariableSymbol(
+                    "return",
+                    firstRegisterType,
+                    isConst: false,
+                    sourceSpan: CreateSourceSpan(asmSyntax.Name.Span));
+                _ = TryDeclareSymbol(_currentScope, returnSymbol, asmSyntax.Name.Span, preserveLocalBindingOnShadowing: true);
+            }
+
+            AsmVolatility volatility = asmSyntax.VolatileKeyword is not null
+                ? AsmVolatility.Volatile
+                : AsmVolatility.NonVolatile;
+
+            // Determine flag output from return spec placement annotations.
+            InlineAsmFlagOutput? flagOutput = null;
+            ReturnSlot? firstFlagSlot = function.ReturnSlots.Cast<ReturnSlot?>().FirstOrDefault(s => s!.Value.IsFlagPlaced);
+            if (firstFlagSlot is not null)
+            {
+                flagOutput = firstFlagSlot.Value.Placement == ReturnPlacement.FlagC
+                    ? InlineAsmFlagOutput.C
+                    : InlineAsmFlagOutput.Z;
+            }
+
+            InlineAsmBindingResult asmResult = BindInlineAsmBody(asmSyntax.Body);
+
+            BoundAsmStatement asmStatement = new(volatility, flagOutput, asmResult.Lines, asmResult.ReferencedSymbols, asmSyntax.Span);
+
+            // Synthesize an implicit return after the asm body.
+            // If the function has a return type, the return reads the synthetic {return} variable
+            // so the register allocator correctly propagates the asm-written value.
+            List<BoundStatement> bodyStatements = [asmStatement];
+            if (returnSymbol is not null)
+            {
+                BoundExpression returnRead = new BoundSymbolExpression(returnSymbol, asmSyntax.Span, returnSymbol.Type);
+                bodyStatements.Add(new BoundReturnStatement([returnRead], asmSyntax.Span));
+            }
+            else
+            {
+                bodyStatements.Add(new BoundReturnStatement([], asmSyntax.Span));
+            }
+
+            body = new BoundBlockStatement(bodyStatements, asmSyntax.Span);
         }
 
-        AsmVolatility volatility = asmSyntax.VolatileKeyword is not null
-            ? AsmVolatility.Volatile
-            : AsmVolatility.NonVolatile;
-
-        // Determine flag output from return spec placement annotations.
-        InlineAsmFlagOutput? flagOutput = null;
-        ReturnSlot? firstFlagSlot = function.ReturnSlots.Cast<ReturnSlot?>().FirstOrDefault(s => s!.Value.IsFlagPlaced);
-        if (firstFlagSlot is not null)
-        {
-            flagOutput = firstFlagSlot.Value.Placement == ReturnPlacement.FlagC
-                ? InlineAsmFlagOutput.C
-                : InlineAsmFlagOutput.Z;
-        }
-
-        InlineAsmBindingResult asmResult = BindInlineAsmBody(asmSyntax.Body);
-
-        BoundAsmStatement asmStatement = new(volatility, flagOutput, asmResult.Lines, asmResult.ReferencedSymbols, asmSyntax.Span);
-
-        // Synthesize an implicit return after the asm body.
-        // If the function has a return type, the return reads the synthetic {return} variable
-        // so the register allocator correctly propagates the asm-written value.
-        List<BoundStatement> bodyStatements = [asmStatement];
-        if (returnSymbol is not null)
-        {
-            BoundExpression returnRead = new BoundSymbolExpression(returnSymbol, asmSyntax.Span, returnSymbol.Type);
-            bodyStatements.Add(new BoundReturnStatement([returnRead], asmSyntax.Span));
-        }
-        else
-        {
-            bodyStatements.Add(new BoundReturnStatement([], asmSyntax.Span));
-        }
-
-        BoundBlockStatement body = new(bodyStatements, asmSyntax.Span);
-
-        _currentFunction = previousFunction;
-        _currentImplicitLayout = previousImplicitLayout;
-        _currentEffectiveLayouts = previousEffectiveLayouts;
-        _currentScope = previousScope;
         _boundFunctionBodies[function] = body;
 
         return new BoundFunctionMember(function, body, asmSyntax.Span);
+    }
+
+    private IDisposable PushContext(
+        Scope scope,
+        FunctionSymbol? function,
+        LayoutSymbol? implicitLayout,
+        IReadOnlyList<LayoutSymbol> effectiveLayouts)
+    {
+        return new BindContext(this, scope, function, implicitLayout, effectiveLayouts);
     }
 
     private static bool AlwaysReturns(BoundStatement statement)
@@ -3402,9 +3428,7 @@ public sealed class Binder
 
     private void ValidateFunctionLayoutSubset(FunctionSymbol callee, TextSpan span)
     {
-        IReadOnlyList<LayoutSymbol> callerLayouts = _currentFunction is null
-            ? []
-            : GetEffectiveLayouts(_currentFunction, _currentFunction.ImplicitLayout);
+        IReadOnlyList<LayoutSymbol> callerLayouts = _currentEffectiveLayouts;
         IReadOnlyList<LayoutSymbol> calleeLayouts = GetEffectiveLayouts(callee, callee.ImplicitLayout);
 
         if (calleeLayouts.Count == 0)

@@ -1499,6 +1499,23 @@ public class BinderTests
     }
 
     [Test]
+    public void TaskStoredConstInitializer_CanCallTaskLocalComptimeFunction()
+    {
+        (_, _, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
+            cog task main {
+                comptime fn increment(p: u32) -> u32 {
+                    p = p + 1;
+                    return p;
+                }
+
+                cog const result: u32 = increment(41);
+            }
+            """);
+
+        Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == "E0271"), Is.False);
+    }
+
+    [Test]
     public void TaskUnqualifiedName_PrefersLexicalSymbolAndWarnsOnLayoutConflict()
     {
         (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""

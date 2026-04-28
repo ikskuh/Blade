@@ -150,6 +150,49 @@ public sealed class RegressionHarnessTests
     }
 
     [Test]
+    public void ConfigDrivenRegressionSuite_PrunesArtifactRunsToLastTenEntries()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("RegressionTests/retention_failure.blade", """
+        cog task main {
+            missing_symbol();
+        }
+        """);
+
+        string regressionsArtifactRoot = Path.Combine(temp.Path, ".artifacts", "regressions");
+        Directory.CreateDirectory(regressionsArtifactRoot);
+        for (int index = 0; index < 11; index++)
+            Directory.CreateDirectory(Path.Combine(regressionsArtifactRoot, $"20240101T0000000{index}Z"));
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = true,
+        });
+
+        RegressionFixtureResult failedFixture = result.FixtureResults.Single(fixture =>
+            fixture.RelativePath == "RegressionTests/retention_failure.blade");
+
+        Assert.That(result.Succeeded, Is.False);
+        Assert.That(failedFixture.ArtifactDirectoryPath, Is.Not.Null);
+
+        string[] remainingEntries = Directory
+            .GetFileSystemEntries(regressionsArtifactRoot)
+            .Select(Path.GetFileName)
+            .Where(static name => name is not null)
+            .Cast<string>()
+            .OrderBy(static name => name, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.That(remainingEntries, Has.Length.EqualTo(10));
+        Assert.That(remainingEntries, Does.Not.Contain("20240101T00000000Z"));
+        Assert.That(
+            remainingEntries,
+            Does.Contain(Path.GetFileName(Path.GetDirectoryName(failedFixture.ArtifactDirectoryPath!))));
+    }
+
+    [Test]
     public void PassHwFixture_WithoutConfiguredPort_UsesConfiguredHardwareRuntimeAndPasses()
     {
         using TempDirectory temp = new();

@@ -2160,6 +2160,7 @@ internal static class NormalizedDiffBuilder
 
 internal sealed class ArtifactWriter
 {
+    private const int MaxRunRoots = 10;
     private readonly string _repositoryRootPath;
     private readonly bool _enabled;
     private string? _runRootPath;
@@ -2214,13 +2215,41 @@ internal sealed class ArtifactWriter
 
     private string CreateRunRootPath()
     {
-        string root = Path.Combine(
+        string regressionsRoot = Path.Combine(
             _repositoryRootPath,
             ".artifacts",
-            "regressions",
+            "regressions");
+        Directory.CreateDirectory(regressionsRoot);
+
+        string root = Path.Combine(
+            regressionsRoot,
             DateTime.UtcNow.ToString("yyyyMMddTHHmmssfffZ", CultureInfo.InvariantCulture));
         Directory.CreateDirectory(root);
+        PruneRunRoots(regressionsRoot);
         return root;
+    }
+
+    private static void PruneRunRoots(string regressionsRoot)
+    {
+        FileSystemInfo[] staleEntries = new DirectoryInfo(regressionsRoot)
+            .EnumerateFileSystemInfos()
+            .OrderByDescending(static entry => entry.Name, StringComparer.Ordinal)
+            .Skip(MaxRunRoots)
+            .ToArray();
+
+        foreach (FileSystemInfo staleEntry in staleEntries)
+        {
+            switch (staleEntry)
+            {
+                case DirectoryInfo staleDirectory:
+                    staleDirectory.Delete(recursive: true);
+                    break;
+
+                default:
+                    staleEntry.Delete();
+                    break;
+            }
+        }
     }
 }
 
