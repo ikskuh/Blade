@@ -140,6 +140,10 @@ When code appears unreachable, immediately log it into `Work/Unreachable.md`.
 Always prefer a new code sample in `Demonstrators/` over a dedicated unit test in `Blade.Tests`.
 A unit test asserts code, a Demonstrator asserts compiler compliance.
 
+When compiler behavior can be covered by the regression harness, do not add or modify `Blade.Tests/BinderTests.cs`.
+Add or update a fixture under `RegressionTests/` or `Demonstrators/` instead.
+Only touch `BinderTests.cs` when the behavior cannot be expressed through the regression harness, or when the user explicitly asks for a binder unit test.
+
 **100% branch coverage required.** Run `just coverage`; query uncovered lines:
 `python Scripts/coverage_range.py <class_pattern> <start_line> <end_line>`.
 

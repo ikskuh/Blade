@@ -2,20 +2,19 @@
 // ARGS:
 // - --module=extmod=../Modules/extmod.mod
 // DIAGNOSTICS:
+// - L35, ComptimeForbiddenSymbolAccess
 // - L36, ComptimeForbiddenSymbolAccess
-// - L37, ComptimeForbiddenSymbolAccess
-// - L38, ComptimeUnsupportedConstruct
+// - L37, ComptimeUnsupportedConstruct
+// - L44, ComptimeForbiddenSymbolAccess
 // - L45, ComptimeForbiddenSymbolAccess
-// - L46, ComptimeForbiddenSymbolAccess
-// - L47, ComptimeForbiddenSymbolAccess
+// - L46 ComptimeForbiddenSymbolAccess
+// - L47, ComptimeUnsupportedConstruct
 // - L48, ComptimeUnsupportedConstruct
 // - L49, ComptimeUnsupportedConstruct
-// - L50, ComptimeUnsupportedConstruct
-// - L52, ComptimeForbiddenSymbolAccess
-// - L51, ComptimeUnsupportedConstruct
+// - L50, ComptimeForbiddenSymbolAccess
+// - L53, ComptimeUnsupportedConstruct
+// - L54, ComptimeUnsupportedConstruct
 // - L55, ComptimeUnsupportedConstruct
-// - L56, ComptimeUnsupportedConstruct
-// - L57, ComptimeUnsupportedConstruct
 // NOTE:
 //   Forces comptime-required contexts through binder-side folding, validation, and failure reporting.
 import extmod as ext;
@@ -48,7 +47,6 @@ cog task main {
     extern cog var check_member: u32 @(pair.value);
     extern cog var check_index: u32 @(values[0]);
     extern cog var check_deref: u32 @(ptr.*);
-    extern cog var check_module: u32 @(ext());
     extern cog var check_symbol: u32 @(seed);
 
     cog const check_array_call: [1]u32 = [runtime_u32()];

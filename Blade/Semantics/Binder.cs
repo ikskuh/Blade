@@ -3456,7 +3456,8 @@ public sealed class Binder
 
         foreach (LayoutSymbol layout in calleeLayouts)
         {
-            if (!callerLayouts.Contains(layout))
+            bool callerCanSatisfyLayout = callerLayouts.Any(callerLayout => IsReachableLayout(callerLayout, layout));
+            if (!callerCanSatisfyLayout)
             {
                 _diagnostics.Report(new FunctionLayoutSubsetViolationError(
                     _diagnostics.CurrentSource,

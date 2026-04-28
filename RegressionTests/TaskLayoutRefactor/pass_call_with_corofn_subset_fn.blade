@@ -1,0 +1,19 @@
+// EXPECT: pass
+
+layout SharedState { }
+
+coro fn ping() : layout(SharedState) {
+    loop {
+        yieldto pong();
+    }
+}
+
+coro fn pong() : layout(SharedState) {
+    loop {
+        yieldto ping();
+    }
+}
+
+cog task main : SharedState {
+    yieldto ping();
+}

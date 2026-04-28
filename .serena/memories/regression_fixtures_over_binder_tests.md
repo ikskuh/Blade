@@ -1,0 +1,3 @@
+- In this repo, if compiler behavior can be covered by a regression fixture, do not add or modify Blade.Tests/BinderTests.cs.
+- Prefer RegressionTests/ or Demonstrators/ fixtures.
+- Only use BinderTests.cs when regression harness coverage is impossible or the user explicitly asks for a binder unit test.

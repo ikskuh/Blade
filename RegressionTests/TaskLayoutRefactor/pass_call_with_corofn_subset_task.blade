@@ -1,0 +1,11 @@
+// EXPECT: pass
+
+layout SharedState { }
+
+coro fn callee() : layout(SharedState) {
+    loop { }
+}
+
+cog task main : SharedState {
+    yieldto callee();
+}
