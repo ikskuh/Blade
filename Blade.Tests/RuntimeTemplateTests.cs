@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Blade;
 using Blade.IR;
@@ -160,5 +161,70 @@ public sealed class RuntimeTemplateTests
         int constantFileIndex = text.IndexOf("' --- cog data file ---", StringComparison.Ordinal);
         Assert.That(haltIndex, Is.GreaterThanOrEqualTo(0), text);
         Assert.That(constantFileIndex, Is.GreaterThan(haltIndex), text);
+    }
+
+    [Test]
+    public void WriteDatSectionContents_CogStorageOriginsAdvanceHubImageWithOrgh()
+    {
+        StoragePlace low = new(
+            (GlobalVariableSymbol)IrTestFactory.CreateVariableSymbol("lo", storageClass: VariableStorageClass.Cog, scopeKind: VariableScopeKind.GlobalStorage),
+            StoragePlacePlacement.Allocatable,
+            StoragePlaceRegisterRole.Global,
+            emittedName: "lo");
+
+        StoragePlace high = new(
+            (GlobalVariableSymbol)IrTestFactory.CreateVariableSymbol("hi", storageClass: VariableStorageClass.Cog, scopeKind: VariableScopeKind.GlobalStorage),
+            StoragePlacePlacement.Allocatable,
+            StoragePlaceRegisterRole.Global,
+            emittedName: "hi");
+
+        AsmFunction entryFunction = IrTestFactory.CreateAsmFunction(
+            "$top",
+            isEntryPoint: true,
+            CallingConventionTier.EntryPoint,
+            []);
+
+        AsmModule module = new(
+            [low, high],
+            [
+                new AsmDataBlock(
+                    AsmDataBlockKind.Constant,
+                    [
+                        new AsmAllocatedStorageDefinition(
+                            low,
+                            VariableStorageClass.Cog,
+                            BuiltinTypes.U32,
+                            [new AsmSymbolOperand(high, AsmSymbolAddressingMode.Register)]),
+                        new AsmAllocatedStorageDefinition(
+                            high,
+                            VariableStorageClass.Cog,
+                            BuiltinTypes.U32,
+                            [new AsmSymbolOperand(low, AsmSymbolAddressingMode.Register)]),
+                    ]),
+            ],
+            [entryFunction]);
+
+        ImagePlan imagePlan = IrTestFactory.CreateSingleEntryImagePlan(entryFunction.Symbol);
+        CogResourceLayout entryLayout = new(imagePlan.EntryImage, 0, [], [low, high]);
+        CogResourceLayoutSet cogResourceLayouts = new(
+            [entryLayout],
+            entryLayout,
+            new Dictionary<IAsmSymbol, int>
+            {
+                [low] = 0,
+                [high] = 0x100,
+            },
+            new Dictionary<FunctionSymbol, CogResourceLayout>
+            {
+                [entryFunction.Symbol] = entryLayout,
+            },
+            new Dictionary<StoragePlace, CogResourceLayout>(),
+            0);
+        string datSectionContents = FinalAssemblyWriter.WriteDatSectionContents(module, cogResourceLayouts);
+
+        Assert.That(datSectionContents, Does.Contain("orgh $0"));
+        Assert.That(datSectionContents, Does.Contain("org $0"));
+        Assert.That(datSectionContents, Does.Contain("orgh $100"));
+        Assert.That(datSectionContents, Does.Contain("org $100"));
     }
 }

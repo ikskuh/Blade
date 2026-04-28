@@ -367,6 +367,8 @@ public static class FinalAssemblyWriter
         Requires.NotNull(sb);
         Requires.InRange(address, 0, 0x1FF);
 
+        sb.Append("    orgh $");
+        sb.AppendLine(address.ToString("X", CultureInfo.InvariantCulture));
         sb.Append("    org $");
         sb.AppendLine(address.ToString("X", CultureInfo.InvariantCulture));
     }
