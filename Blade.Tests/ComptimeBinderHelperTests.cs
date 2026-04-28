@@ -266,6 +266,38 @@ public sealed class ComptimeBinderHelperTests
     }
 
     [Test]
+    public void RecursiveRuntimeFunction_BindsWithoutEagerComptimeCrash()
+    {
+        (BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
+            rec fn fibonacci(n: u32) -> u32 {
+                if (n <= 1) {
+                    return n;
+                }
+
+                var a: u32 = fibonacci(n - 1);
+                var b: u32 = fibonacci(n - 2);
+                return a + b;
+            }
+
+            cog task main {
+                cog var input: u32 = 10;
+                cog var result: u32 = 0;
+
+                result = fibonacci(input);
+            }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        BoundFunctionMember fibonacci = program.Functions.Single(member => member.Symbol.Name == "fibonacci");
+        BoundVariableDeclarationStatement firstCall = (BoundVariableDeclarationStatement)fibonacci.Body.Statements[1];
+        BoundVariableDeclarationStatement secondCall = (BoundVariableDeclarationStatement)fibonacci.Body.Statements[2];
+
+        Assert.That(firstCall.Initializer, Is.TypeOf<BoundCallExpression>());
+        Assert.That(secondCall.Initializer, Is.TypeOf<BoundCallExpression>());
+    }
+
+    [Test]
     public void ComptimeBareIfWithoutElse_FoldsBoolLiteralCondition()
     {
         (BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""

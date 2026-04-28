@@ -26,6 +26,7 @@ public sealed class Binder
     private readonly Dictionary<string, FunctionSymbol> _functions = new(StringComparer.Ordinal);
     private readonly Dictionary<string, BoundModule> _importedModules = new(StringComparer.Ordinal);
     private readonly Dictionary<FunctionSymbol, BoundBlockStatement> _boundFunctionBodies = new();
+    private readonly HashSet<FunctionSymbol> _pendingFunctionBodies = [];
     private readonly Dictionary<FunctionSymbol, ComptimeSupportResult> _comptimeSupportCache = new();
     private readonly Dictionary<string, BoundModule> _moduleDefinitionCache;
     private readonly HashSet<string> _moduleBindingStack;
@@ -535,8 +536,13 @@ public sealed class Binder
                 continue;
             }
 
+            _pendingFunctionBodies.Add(function);
+
             if (!TryDeclareSymbol(_globalScope, function, syntax.Name.Span))
+            {
+                _pendingFunctionBodies.Remove(function);
                 _functions.Remove(function.Name);
+            }
         }
     }
 
@@ -854,6 +860,7 @@ public sealed class Binder
             if (!TryDeclareSymbol(taskScope, symbol, symbol.SignatureNameSpan))
                 continue;
 
+            _pendingFunctionBodies.Add(symbol);
             localFunctions.Add(new TaskLocalFunctionBinding(symbol, item));
         }
 
@@ -1219,8 +1226,9 @@ public sealed class Binder
         LayoutSymbol? implicitLayout)
     {
         BoundBlockStatement body;
-        using (IDisposable bindContext = PushContext(new Scope(parentScope), function, implicitLayout, GetEffectiveLayouts(function, implicitLayout)))
+        try
         {
+            using IDisposable bindContext = PushContext(new Scope(parentScope), function, implicitLayout, GetEffectiveLayouts(function, implicitLayout));
             foreach (ParameterVariableSymbol parameter in function.Parameters)
                 _ = TryDeclareSymbol(_currentScope, parameter, function.SignatureNameSpan, preserveLocalBindingOnShadowing: true);
 
@@ -1235,6 +1243,10 @@ public sealed class Binder
 
             if (function.ReturnTypes.Count > 0 && !AlwaysReturns(body))
                 _diagnostics.Report(new MissingReturnValueError(_diagnostics.CurrentSource, missingReturnSpan, function.Name));
+        }
+        finally
+        {
+            _pendingFunctionBodies.Remove(function);
         }
 
         _boundFunctionBodies[function] = body;
@@ -1256,8 +1268,9 @@ public sealed class Binder
         LayoutSymbol? implicitLayout)
     {
         BoundBlockStatement body;
-        using (IDisposable bindContext = PushContext(new Scope(parentScope), function, implicitLayout, GetEffectiveLayouts(function, implicitLayout)))
+        try
         {
+            using IDisposable bindContext = PushContext(new Scope(parentScope), function, implicitLayout, GetEffectiveLayouts(function, implicitLayout));
             foreach (ParameterVariableSymbol parameter in function.Parameters)
                 _ = TryDeclareSymbol(_currentScope, parameter, function.SignatureNameSpan, preserveLocalBindingOnShadowing: true);
 
@@ -1311,6 +1324,10 @@ public sealed class Binder
             }
 
             body = new BoundBlockStatement(bodyStatements, asmSyntax.Span);
+        }
+        finally
+        {
+            _pendingFunctionBodies.Remove(function);
         }
 
         _boundFunctionBodies[function] = body;
@@ -3738,10 +3755,13 @@ public sealed class Binder
         };
     }
 
-    private BoundBlockStatement ResolveFunctionBodyForComptime(FunctionSymbol function)
+    private BoundBlockStatement? ResolveFunctionBodyForComptime(FunctionSymbol function)
     {
         if (_boundFunctionBodies.TryGetValue(function, out BoundBlockStatement? localBody))
             return Requires.NotNull(localBody);
+
+        if (_pendingFunctionBodies.Contains(function))
+            return null;
 
         foreach (BoundModule module in _importedModules.Values)
         {
@@ -3749,8 +3769,8 @@ public sealed class Binder
                 return Requires.NotNull(importedBody);
         }
 
-        Assert.Unreachable($"Comptime evaluation requires a resolved body for function '{function.Name}'. This indicates a binder ordering bug.");
-        throw new UnreachableException();
+        Assert.Unreachable($"Comptime evaluation requires a resolved or pending body for function '{function.Name}'."); // pragma: force-coverage
+        return Assert.UnreachableValue<BoundBlockStatement?>(); // pragma: force-coverage
     }
 
     private static bool TryResolveImportedFunctionBody(BoundModule module, FunctionSymbol function, out BoundBlockStatement? body)
@@ -3782,10 +3802,11 @@ public sealed class Binder
         if (_comptimeSupportCache.TryGetValue(function, out ComptimeSupportResult cached))
             return cached;
 
-        BoundBlockStatement body = ResolveFunctionBodyForComptime(function);
+        BoundBlockStatement? body = ResolveFunctionBodyForComptime(function);
+        Assert.Invariant(body is not null, $"Comptime support analysis requires a stable body for function '{function.Name}'.");
 
         ComptimeFunctionSupportAnalyzer analyzer = new();
-        ComptimeSupportResult analyzed = analyzer.Analyze(function, body);
+        ComptimeSupportResult analyzed = analyzer.Analyze(function, Requires.NotNull(body));
         _comptimeSupportCache[function] = analyzed;
         return analyzed;
     }
