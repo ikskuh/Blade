@@ -3,11 +3,10 @@
 // ARGS:
 // - -fno-asmir-opt=*
 // CONTAINS:
-// - MOV _r1, _r1
+// - MOV ?1, ?1
 // NOTE:
 //   Negative case for ASMIR cleanup-self-mov: the self-move remains.
 cog task main {
-    
     cog var sink: u32 = 0;
     var x: u32 = 1;
     

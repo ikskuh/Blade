@@ -4,7 +4,7 @@
 // - -fno-mir-opt=*
 // - -fno-lir-opt=*
 // CONTAINS:
-// - branch %r0 ? bb2() : bb3()
+// - branch cond=%r0, true=bb2(), false=bb3()
 // NOTE:
 //   Negative case for LIR cfg-simplify: the original branch fanout remains.
 cog task main {

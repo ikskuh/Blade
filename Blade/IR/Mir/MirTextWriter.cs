@@ -401,7 +401,7 @@ public static class MirTextWriter
                 break;
 
             case MirBranchTerminator branch:
-                sb.Append("branch ");
+                sb.Append("branch cond=");
                 sb.Append(formatter.Format(branch.Condition));
                 if (branch.ConditionFlag is not null)
                 {
@@ -409,11 +409,11 @@ public static class MirTextWriter
                     sb.Append(branch.ConditionFlag.Value.ToString());
                     sb.Append(']');
                 }
-                sb.Append(" ? ");
+                sb.Append(", true=");
                 sb.Append(blockFormatter.Format(branch.TrueTarget));
                 sb.Append('(');
                 WriteValueList(sb, branch.TrueArguments, formatter);
-                sb.Append(") : ");
+                sb.Append("), false=");
                 sb.Append(blockFormatter.Format(branch.FalseTarget));
                 sb.Append('(');
                 WriteValueList(sb, branch.FalseArguments, formatter);

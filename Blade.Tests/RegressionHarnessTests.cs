@@ -1250,6 +1250,309 @@ public sealed class RegressionHarnessTests
     }
 
     [Test]
+    public void CodeAssertions_ContainsBlocksHaveIndependentWildcardBindings()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/contains_independent_bindings.blade", """
+        // EXPECT: pass
+        // STAGE: final-asm
+        // FLEXSPIN: forbidden
+        // CONTAINS:
+        // - MOV ?1, #1
+        // - ADD ?1, #2
+        // CONTAINS:
+        // - MOV ?1, #3
+        // - ADD ?1, #4
+        cog task main {
+            asm volatile {
+                MOV PA, #1
+                ADD PA, #2
+                MOV PB, #3
+                ADD PB, #4
+            };
+        }
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+            Filters = ["contains_independent_bindings.blade"],
+        });
+
+        Assert.That(result.Succeeded, Is.True, RegressionReportFormatter.Format(result));
+    }
+
+    [Test]
+    public void CodeAssertions_SequenceBlocksHaveIndependentWildcardBindings()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/sequence_independent_bindings.blade", """
+        // EXPECT: pass
+        // STAGE: final-asm
+        // FLEXSPIN: forbidden
+        // SEQUENCE:
+        // - MOV ?1, #1
+        // - ADD ?1, #2
+        // SEQUENCE:
+        // - MOV ?1, #3
+        // - ADD ?1, #4
+        cog task main {
+            asm volatile {
+                MOV PA, #1
+                ADD PA, #2
+                MOV PB, #3
+                ADD PB, #4
+            };
+        }
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+            Filters = ["sequence_independent_bindings.blade"],
+        });
+
+        Assert.That(result.Succeeded, Is.True, RegressionReportFormatter.Format(result));
+    }
+
+    [Test]
+    public void CodeAssertions_ExactRejectsInterleavedUnexpectedTextButAllowsOuterText()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/exact_allows_outer_text.blade", """
+        // EXPECT: pass
+        // STAGE: final-asm
+        // FLEXSPIN: forbidden
+        // EXACT:
+        // - MOV PA, #1
+        // - NOP
+        // - ADD PA, #2
+        cog task main {
+            asm volatile {
+                MOV PA, #1
+                NOP
+                ADD PA, #2
+            };
+        }
+        """);
+        temp.WriteFile("Demonstrators/exact_rejects_interleaved_text.blade", """
+        // EXPECT: pass
+        // STAGE: final-asm
+        // FLEXSPIN: forbidden
+        // EXACT:
+        // - MOV PA, #1
+        // - ADD PA, #2
+        cog task main {
+            asm volatile {
+                MOV PA, #1
+                NOP
+                ADD PA, #2
+            };
+        }
+        """);
+
+        RegressionRunResult passingResult = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+            Filters = ["exact_allows_outer_text.blade"],
+        });
+        RegressionRunResult failingResult = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+            Filters = ["exact_rejects_interleaved_text.blade"],
+        });
+
+        RegressionFixtureResult failingFixture = failingResult.FixtureResults.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(passingResult.Succeeded, Is.True, RegressionReportFormatter.Format(passingResult));
+            Assert.That(failingResult.Succeeded, Is.False);
+            Assert.That(failingFixture.Details, Has.Some.Contains("unexpected text between exact snippets before: ADD PA, #2"));
+        });
+    }
+
+    [Test]
+    public void CodeAssertions_SequenceNegativesCheckPrefixSuffixAndRejectOnlyNegativeBlocks()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/sequence_negative_edges.blade", """
+        // EXPECT: pass
+        // STAGE: final-asm
+        // FLEXSPIN: forbidden
+        // SEQUENCE:
+        // ! WAITX
+        // - MOV PA, #1
+        // ! WAITX
+        cog task main {
+            asm volatile {
+                MOV PA, #1
+            };
+        }
+        """);
+        temp.WriteFile("Demonstrators/sequence_only_negative.blade", """
+        // EXPECT: pass
+        // STAGE: final-asm
+        // SEQUENCE:
+        // ! NOP
+        cog task main {
+        }
+        """);
+        temp.WriteFile("Demonstrators/exact_negative_edges.blade", """
+        // EXPECT: pass
+        // STAGE: final-asm
+        // FLEXSPIN: forbidden
+        // EXACT:
+        // ! WAITX
+        // - MOV PA, #1
+        // ! WAITX
+        cog task main {
+            asm volatile {
+                MOV PA, #1
+            };
+        }
+        """);
+        temp.WriteFile("Demonstrators/exact_only_negative.blade", """
+        // EXPECT: pass
+        // STAGE: final-asm
+        // EXACT:
+        // ! NOP
+        cog task main {
+        }
+        """);
+
+        RegressionRunResult passingResult = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+            Filters = ["sequence_negative_edges.blade"],
+        });
+        RegressionRunResult exactPassingResult = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+            Filters = ["exact_negative_edges.blade"],
+        });
+        RegressionRunResult failingResult = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+            Filters = ["sequence_only_negative.blade"],
+        });
+        RegressionRunResult exactFailingResult = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+            Filters = ["exact_only_negative.blade"],
+        });
+
+        RegressionFixtureResult failingFixture = failingResult.FixtureResults.Single();
+        RegressionFixtureResult exactFailingFixture = exactFailingResult.FixtureResults.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(passingResult.Succeeded, Is.True, RegressionReportFormatter.Format(passingResult));
+            Assert.That(exactPassingResult.Succeeded, Is.True, RegressionReportFormatter.Format(exactPassingResult));
+            Assert.That(failingResult.Succeeded, Is.False);
+            Assert.That(exactFailingResult.Succeeded, Is.False);
+            Assert.That(failingFixture.Details, Has.Some.Contains("SEQUENCE block requires at least one '-' or count item."));
+            Assert.That(exactFailingFixture.Details, Has.Some.Contains("EXACT block requires at least one '-' or count item."));
+        });
+    }
+
+    [Test]
+    public void CodeAssertions_RejectsZeroCountAndAcceptsPositiveCount()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/count_positive.blade", """
+        // EXPECT: pass
+        // STAGE: final-asm
+        // FLEXSPIN: forbidden
+        // CONTAINS:
+        // 3x NOP
+        cog task main {
+            asm volatile {
+                NOP
+                NOP
+            };
+        }
+        """);
+        temp.WriteFile("Demonstrators/count_zero.blade", """
+        // EXPECT: pass
+        // STAGE: final-asm
+        // CONTAINS:
+        // 0x NOP
+        cog task main {
+        }
+        """);
+
+        RegressionRunResult passingResult = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+            Filters = ["count_positive.blade"],
+        });
+        RegressionRunResult failingResult = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+            Filters = ["count_zero.blade"],
+        });
+
+        RegressionFixtureResult failingFixture = failingResult.FixtureResults.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(passingResult.Succeeded, Is.True, RegressionReportFormatter.Format(passingResult));
+            Assert.That(failingResult.Succeeded, Is.False);
+            Assert.That(failingFixture.Details, Has.Some.Contains("CONTAINS count prefixes must be greater than zero. Use '!' for negative assertions."));
+        });
+    }
+
+    [Test]
+    public void CodeAssertions_WildcardsDoNotFuseIdentifiers()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/wildcard_identifier_fusion.blade", """
+        // EXPECT: pass
+        // STAGE: final-asm
+        // FLEXSPIN: forbidden
+        // SEQUENCE:
+        // - ANDN ?1, #10
+        // - AND ?1, #20
+        cog task main {
+            asm volatile {
+                FOO:
+                NFOO:
+                ANDN FOO, #10
+                AND NFOO, #20
+            };
+        }
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+            Filters = ["wildcard_identifier_fusion.blade"],
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Details, Has.Some.Contains("missing ordered snippet: AND ?1, #20"));
+        });
+    }
+
+    [Test]
     public void HeaderValidation_BlankLineTerminatesExpectationBlock()
     {
         using TempDirectory temp = new();

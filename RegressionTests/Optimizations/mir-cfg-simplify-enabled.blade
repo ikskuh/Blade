@@ -4,8 +4,8 @@
 // - -fno-mir-opt=*
 // - -fmir-opt=cfg-simplify
 // CONTAINS:
-// - branch %v0 ? bb2() : bb1(
-// ! branch %v0 ? bb2() : bb3()
+// - branch cond=%v0, true=bb2(), false=bb1(
+// ! branch cond=%v0, true=bb2(), false=bb3()
 // NOTE:
 //   Positive case for MIR cfg-simplify: the trivial false-edge block should be threaded away.
 cog task main {

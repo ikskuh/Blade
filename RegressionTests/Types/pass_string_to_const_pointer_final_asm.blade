@@ -1,9 +1,8 @@
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// - CALLPA ##g_lit_Cog_
-// - g_lit_Cog_
-// - LONG 104, 101, 108, 108, 111
+// - CALLPA ##?1
+// - ?1 LONG 104, 101, 108, 108, 111
 // NOTE:
 //   String-to-pointer coercion now lowers through literal-backed symbolic
 //   storage instead of a raw numeric address.

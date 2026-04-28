@@ -1,13 +1,10 @@
 // EXPECT: pass
-// STAGE: bound
+// STAGE: final-asm
 // CONTAINS:
-// - Literal<[*]cog const u8>
-// - &lit_Cog_
+// - ? LONG 104, 101, 108, 108, 111
 // NOTE:
 //   String literals now bind directly to literal-backed symbolic pointers.
 
-fn test_cog() {
+cog task main {
     var s: [*]cog const u8 = "hello";
 }
-
-cog task main {}

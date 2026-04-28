@@ -151,13 +151,13 @@ The strict form supports these entry shapes:
 
 ### `CONTAINS`
 
-Every listed snippet must appear after comment and whitespace normalization.
+Every listed snippet is matched after comment and token-safe whitespace normalization. Each `CONTAINS` block is evaluated independently, so numbered wildcards bind only within the block where they appear.
 
 Items use a prefix to indicate the assertion kind:
 
 - `- snippet` (dash) — the snippet must appear at least once (positive)
 - `! snippet` (bang) — the snippet must never appear (negative)
-- `Nx snippet` (count) — the snippet must appear exactly N times; `0x` is an alias for `!`
+- `Nx snippet` (count) — the snippet must appear exactly N times; N must be greater than zero
 
 ```blade
 // EXPECT: pass
@@ -171,11 +171,13 @@ Items use a prefix to indicate the assertion kind:
 
 ### `SEQUENCE`
 
-The listed snippets must appear in order after normalization. The same item prefixes as `CONTAINS` apply:
+The listed snippets must appear in order after normalization. Each `SEQUENCE` block is evaluated independently, so numbered wildcards bind only within the block where they appear. The same item prefixes as `CONTAINS` apply:
 
 - `- snippet` — find this snippet at or after the current position
-- `! snippet` — this snippet must not appear between the previous and next positive match
-- `Nx snippet` — this snippet must appear exactly N consecutive times at the current position
+- `! snippet` — this snippet must not appear between the previous and next advancing match; when first or last, it applies to the prefix or suffix gap
+- `Nx snippet` — advance through N matches of this snippet; N must be greater than zero
+
+A `SEQUENCE` block with only `!` items is malformed.
 
 ```blade
 // EXPECT: pass
@@ -190,7 +192,7 @@ The listed snippets must appear in order after normalization. The same item pref
 
 ### Wildcards
 
-Wildcards are only active for assembly stages (`asmir-preopt`, `asmir`, `final-asm`). In IR stages (`bound`, `mir`, `lir` variants), `?` is treated as a literal because it is part of the ternary operator syntax.
+Wildcards are active in all code assertion stages. MIR and LIR branch dumps use named fields rather than ternary-style `?` text, so `?` always belongs to the harness pattern language.
 
 Use `?` in any snippet to match a single token (identifier, register name, etc.):
 
@@ -209,16 +211,23 @@ Use `?N` (e.g. `?1`, `?2`) for numbered wildcards that bind on first use and mus
 
 This matches `MOV PA, #0` followed by `ADD <anything>, PA` — `?1` captured `PA` on the first occurrence and requires the same value on the second.
 
+Snippet matching is token-safe: whitespace is normalized, but identifiers are not fused. For example, `ANDN ?1, #10` followed by `AND ?1, #20` cannot match `ANDN FOO, #10` followed by `AND NFOO, #20`.
+
+Comment stripping depends on the selected stage:
+
+- `bound`, `mir-preopt`, `mir`, `lir-preopt`, `lir` strip `;` comments.
+- `asmir-preopt`, `asmir`, `final-asm` strip `'` comments.
+
 ### `EXACT`
 
-The fully normalized code must match exactly.
+`EXACT` uses the same prefixed block syntax as `SEQUENCE`, but it does not allow unexpected normalized text between advancing matches. Prefix and suffix text outside the first and last advancing match is allowed. Each `EXACT` block is evaluated independently, and a block with only `!` items is malformed.
 
 ```blade
 // EXPECT: pass
 // STAGE: final-asm
 // EXACT:
-//   OR OUTA, #16
-//   RET
+// - OR OUTA, #16
+// - RET
 cog task main {
 }
 ```

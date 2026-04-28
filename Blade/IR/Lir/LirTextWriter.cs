@@ -160,13 +160,13 @@ public static class LirTextWriter
                 break;
 
             case LirBranchTerminator branchTerminator:
-                sb.Append("branch ");
+                sb.Append("branch cond=");
                 sb.Append(FormatOperand(branchTerminator.Condition, formatter));
-                sb.Append(" ? ");
+                sb.Append(", true=");
                 sb.Append(blockFormatter.Format(branchTerminator.TrueTarget));
                 sb.Append('(');
                 WriteOperandList(sb, branchTerminator.TrueArguments, formatter);
-                sb.Append(") : ");
+                sb.Append("), false=");
                 sb.Append(blockFormatter.Format(branchTerminator.FalseTarget));
                 sb.Append('(');
                 WriteOperandList(sb, branchTerminator.FalseArguments, formatter);
@@ -202,7 +202,7 @@ public static class LirTextWriter
             LirRegisterOperand register => formatter.Format(register.Register),
             LirImmediateOperand immediate => $"{immediate.Value.Format()}:{immediate.Type.Name}",
             LirPlaceOperand place => $"%place({place.Place.EmittedName})",
-            _ => "<op>",
+            _ => Assert.UnreachableValue<string>($"Unhandled class {operand.GetType()}"),
         };
     }
 
@@ -222,7 +222,7 @@ public static class LirTextWriter
             InlineAsmBindingAccess.Read => "r",
             InlineAsmBindingAccess.Write => "w",
             InlineAsmBindingAccess.ReadWrite => "rw",
-            _ => "?",
+            _ => Assert.UnreachableValue<string>(),
         };
     }
 

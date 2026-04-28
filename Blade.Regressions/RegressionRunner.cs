@@ -243,11 +243,18 @@ public sealed class SnippetItem
 
     public static SnippetItem ExactCount(string text, int count)
     {
-        if (count == 0)
-            return Negative(text);
-
         return new SnippetItem(SnippetKind.Count, text, count);
     }
+}
+
+public sealed class SnippetBlock
+{
+    public SnippetBlock(IReadOnlyList<SnippetItem> items)
+    {
+        Items = items;
+    }
+
+    public IReadOnlyList<SnippetItem> Items { get; }
 }
 
 public sealed class HardwareRunExpectation
@@ -272,9 +279,9 @@ public sealed class RegressionExpectation
     public RegressionExpectation(
         RegressionExpectationKind expectationKind,
         RegressionStage? stage,
-        IReadOnlyList<SnippetItem> containsSnippets,
-        IReadOnlyList<SnippetItem> sequenceSnippets,
-        string? exactText,
+        IReadOnlyList<SnippetBlock> containsBlocks,
+        IReadOnlyList<SnippetBlock> sequenceBlocks,
+        IReadOnlyList<SnippetBlock> exactBlocks,
         IReadOnlyList<string> looseDiagnosticNames,
         IReadOnlyList<ExpectedDiagnostic> exactDiagnostics,
         FlexspinExpectation flexspinExpectation,
@@ -283,9 +290,9 @@ public sealed class RegressionExpectation
     {
         ExpectationKind = expectationKind;
         Stage = stage;
-        ContainsSnippets = containsSnippets;
-        SequenceSnippets = sequenceSnippets;
-        ExactText = exactText;
+        ContainsBlocks = containsBlocks;
+        SequenceBlocks = sequenceBlocks;
+        ExactBlocks = exactBlocks;
         LooseDiagnosticNames = looseDiagnosticNames;
         ExactDiagnostics = exactDiagnostics;
         FlexspinExpectation = flexspinExpectation;
@@ -295,15 +302,15 @@ public sealed class RegressionExpectation
 
     public RegressionExpectationKind ExpectationKind { get; }
     public RegressionStage? Stage { get; }
-    public IReadOnlyList<SnippetItem> ContainsSnippets { get; }
-    public IReadOnlyList<SnippetItem> SequenceSnippets { get; }
-    public string? ExactText { get; }
+    public IReadOnlyList<SnippetBlock> ContainsBlocks { get; }
+    public IReadOnlyList<SnippetBlock> SequenceBlocks { get; }
+    public IReadOnlyList<SnippetBlock> ExactBlocks { get; }
     public IReadOnlyList<string> LooseDiagnosticNames { get; }
     public IReadOnlyList<ExpectedDiagnostic> ExactDiagnostics { get; }
     public FlexspinExpectation FlexspinExpectation { get; }
     public IReadOnlyList<string> CompilerArgs { get; }
     public IReadOnlyList<HardwareRunExpectation> HardwareRuns { get; }
-    public bool HasCodeAssertions => ContainsSnippets.Count > 0 || SequenceSnippets.Count > 0 || ExactText is not null;
+    public bool HasCodeAssertions => ContainsBlocks.Count > 0 || SequenceBlocks.Count > 0 || ExactBlocks.Count > 0;
     public bool HasDiagnosticAssertions => LooseDiagnosticNames.Count > 0 || ExactDiagnostics.Count > 0;
 }
 
@@ -560,7 +567,7 @@ public static class RegressionRunner
                     null,
                     [],
                     [],
-                    null,
+                    [],
                     [],
                     [],
                     FlexspinExpectation.Forbidden,
@@ -583,16 +590,16 @@ public static class RegressionRunner
             DetermineFixtureKindOrDefault(discoveredFixture.AbsolutePath),
             text: string.Empty,
             bodyText: string.Empty,
-            new RegressionExpectation(
-                RegressionExpectationKind.Pass,
-                null,
-                [],
-                [],
-                null,
-                [],
-                [],
-                FlexspinExpectation.Forbidden,
-                [],
+                new RegressionExpectation(
+                    RegressionExpectationKind.Pass,
+                    null,
+                    [],
+                    [],
+                    [],
+                    [],
+                    [],
+                    FlexspinExpectation.Forbidden,
+                    [],
                 []));
         EvaluatedFixture emptyFixture = EvaluatedFixture.Empty(discoveredFixture.RelativePath);
         List<string> details = [message];
@@ -822,80 +829,79 @@ public static class RegressionRunner
             return issues;
         }
 
-        string normalizedActual = CodeNormalizer.NormalizeBladeStage(expectation.Stage.Value, actualText);
+        NormalizedText normalizedActual = CodeNormalizer.NormalizeBladeStage(expectation.Stage.Value, actualText);
         issues.AddRange(EvaluateNormalizedAssertions(expectation, normalizedActual, expectation.Stage.Value));
         return issues;
     }
 
-    private static bool WildcardsEnabled(RegressionStage? stage)
-    {
-        return stage is null
-            or RegressionStage.AsmirPreOptimization
-            or RegressionStage.Asmir
-            or RegressionStage.FinalAsm;
-    }
-
     private static List<string> EvaluateNormalizedAssertions(
         RegressionExpectation expectation,
-        string normalizedActual,
+        NormalizedText normalizedActual,
         RegressionStage? stage)
     {
         List<string> issues = [];
-        bool wildcards = WildcardsEnabled(stage);
 
-        Dictionary<int, string> containsBindings = new();
-        foreach (SnippetItem item in expectation.ContainsSnippets)
+        foreach (SnippetBlock block in expectation.ContainsBlocks)
+            EvaluateContainsAssertions(block, normalizedActual, stage, issues);
+
+        foreach (SnippetBlock block in expectation.SequenceBlocks)
+            EvaluateSequenceAssertions(block, normalizedActual, stage, requireExactGaps: false, issues);
+
+        foreach (SnippetBlock block in expectation.ExactBlocks)
+            EvaluateSequenceAssertions(block, normalizedActual, stage, requireExactGaps: true, issues);
+
+        return issues;
+    }
+
+    private static void EvaluateContainsAssertions(
+        SnippetBlock block,
+        NormalizedText normalizedActual,
+        RegressionStage? stage,
+        List<string> issues)
+    {
+        PatternBindings bindings = new();
+        foreach (SnippetItem item in block.Items)
         {
-            string normalizedSnippet = NormalizeExpectedCode(item.Text, stage);
+            Pattern pattern = Pattern.Compile(PrepareExpectedCode(item.Text, stage));
 
             switch (item.Kind)
             {
                 case SnippetKind.Positive:
-                    if (!SnippetMatcher.Contains(normalizedActual, normalizedSnippet, containsBindings, wildcards))
+                    if (!SnippetMatcher.Contains(normalizedActual, pattern, bindings))
                         issues.Add($"missing snippet: {item.Text}");
                     break;
 
                 case SnippetKind.Negative:
-                    if (SnippetMatcher.Contains(normalizedActual, normalizedSnippet, containsBindings, wildcards))
+                    PatternBindings negativeBindings = bindings.Clone();
+                    if (SnippetMatcher.Contains(normalizedActual, pattern, negativeBindings))
                         issues.Add($"unexpected snippet present: {item.Text}");
                     break;
 
                 case SnippetKind.Count:
-                    int actualCount = SnippetMatcher.CountOccurrences(normalizedActual, normalizedSnippet, containsBindings, wildcards);
+                    int actualCount = SnippetMatcher.CountOccurrences(normalizedActual, pattern, bindings);
                     if (actualCount != item.Count)
                         issues.Add($"expected {item.Count} occurrence(s) of snippet, found {actualCount}: {item.Text}");
                     break;
             }
         }
-
-        if (expectation.SequenceSnippets.Count > 0)
-            EvaluateSequenceAssertions(expectation.SequenceSnippets, normalizedActual, stage, wildcards, issues);
-
-        if (expectation.ExactText is not null)
-        {
-            string normalizedExpected = NormalizeExpectedCode(expectation.ExactText, stage);
-            if (!string.Equals(normalizedActual, normalizedExpected, StringComparison.Ordinal))
-                issues.Add($"exact text mismatch: {NormalizedDiffBuilder.Build(normalizedExpected, normalizedActual)}");
-        }
-
-        return issues;
     }
 
     private static void EvaluateSequenceAssertions(
-        IReadOnlyList<SnippetItem> sequenceSnippets,
-        string normalizedActual,
+        SnippetBlock block,
+        NormalizedText normalizedActual,
         RegressionStage? stage,
-        bool wildcardsEnabled,
+        bool requireExactGaps,
         List<string> issues)
     {
-        Dictionary<int, string> sequenceBindings = new();
+        PatternBindings sequenceBindings = new();
         int index = 0;
         int previousPositiveEnd = 0;
+        bool sawAdvancingItem = false;
         List<SnippetItem> pendingNegatives = [];
 
-        foreach (SnippetItem item in sequenceSnippets)
+        foreach (SnippetItem item in block.Items)
         {
-            string normalizedSnippet = NormalizeExpectedCode(item.Text, stage);
+            Pattern pattern = Pattern.Compile(PrepareExpectedCode(item.Text, stage));
 
             switch (item.Kind)
             {
@@ -905,17 +911,20 @@ public static class RegressionRunner
 
                 case SnippetKind.Positive:
                 {
-                    int foundIndex = SnippetMatcher.IndexOf(normalizedActual, normalizedSnippet, index, sequenceBindings, wildcardsEnabled, out int matchLength);
-                    if (foundIndex < 0)
+                    if (SnippetMatcher.IndexOf(normalizedActual, pattern, index, sequenceBindings) is not PatternMatch match)
                     {
                         issues.Add($"missing ordered snippet: {item.Text}");
                         return;
                     }
 
-                    CheckPendingNegatives(normalizedActual, previousPositiveEnd, foundIndex, pendingNegatives, stage, sequenceBindings, wildcardsEnabled, issues);
+                    if (requireExactGaps && sawAdvancingItem && !CodeNormalizer.IsIgnorableGap(normalizedActual.Text[previousPositiveEnd..match.Start]))
+                        issues.Add($"unexpected text between exact snippets before: {item.Text}");
+
+                    CheckPendingNegatives(normalizedActual, previousPositiveEnd, match.Start, pendingNegatives, stage, sequenceBindings, issues);
                     pendingNegatives.Clear();
-                    previousPositiveEnd = foundIndex + matchLength;
+                    previousPositiveEnd = match.End;
                     index = previousPositiveEnd;
+                    sawAdvancingItem = true;
                     break;
                 }
 
@@ -924,62 +933,65 @@ public static class RegressionRunner
                     int countIndex = index;
                     for (int i = 0; i < item.Count; i++)
                     {
-                        int foundIndex = SnippetMatcher.IndexOf(normalizedActual, normalizedSnippet, countIndex, sequenceBindings, wildcardsEnabled, out int matchLength);
-                        if (foundIndex < 0)
+                        if (SnippetMatcher.IndexOf(normalizedActual, pattern, countIndex, sequenceBindings) is not PatternMatch match)
                         {
-                            issues.Add($"expected {item.Count} consecutive occurrence(s) of ordered snippet, found {i}: {item.Text}");
+                            issues.Add($"expected {item.Count} occurrence(s) of ordered snippet, found {i}: {item.Text}");
                             return;
                         }
 
-                        if (i == 0)
+                        bool firstMatchInItem = i == 0;
+                        if (requireExactGaps && (sawAdvancingItem || !firstMatchInItem) && !CodeNormalizer.IsIgnorableGap(normalizedActual.Text[previousPositiveEnd..match.Start]))
+                            issues.Add($"unexpected text between exact snippets before: {item.Text}");
+
+                        if (firstMatchInItem)
                         {
-                            CheckPendingNegatives(normalizedActual, previousPositiveEnd, foundIndex, pendingNegatives, stage, sequenceBindings, wildcardsEnabled, issues);
+                            CheckPendingNegatives(normalizedActual, previousPositiveEnd, match.Start, pendingNegatives, stage, sequenceBindings, issues);
                             pendingNegatives.Clear();
                         }
 
-                        countIndex = foundIndex + matchLength;
+                        previousPositiveEnd = match.End;
+                        countIndex = match.End;
+                        sawAdvancingItem = true;
                     }
 
-                    previousPositiveEnd = countIndex;
                     index = countIndex;
                     break;
                 }
             }
         }
 
-        // Check trailing negatives against rest of the text.
         if (pendingNegatives.Count > 0)
-            CheckPendingNegatives(normalizedActual, previousPositiveEnd, normalizedActual.Length, pendingNegatives, stage, sequenceBindings, wildcardsEnabled, issues);
+            CheckPendingNegatives(normalizedActual, previousPositiveEnd, normalizedActual.Text.Length, pendingNegatives, stage, sequenceBindings, issues);
     }
 
     private static void CheckPendingNegatives(
-        string normalizedActual,
+        NormalizedText normalizedActual,
         int gapStart,
         int gapEnd,
         List<SnippetItem> pendingNegatives,
         RegressionStage? stage,
-        Dictionary<int, string> bindings,
-        bool wildcardsEnabled,
+        PatternBindings bindings,
         List<string> issues)
     {
         if (gapStart >= gapEnd)
             return;
 
-        string gap = normalizedActual[gapStart..gapEnd];
+        NormalizedText gap = new(normalizedActual.Text[gapStart..gapEnd]);
         foreach (SnippetItem negative in pendingNegatives)
         {
-            string normalizedNeg = NormalizeExpectedCode(negative.Text, stage);
-            if (SnippetMatcher.Contains(gap, normalizedNeg, bindings, wildcardsEnabled))
+            Pattern normalizedNeg = Pattern.Compile(PrepareExpectedCode(negative.Text, stage));
+            PatternBindings negativeBindings = bindings.Clone();
+            if (SnippetMatcher.Contains(gap, normalizedNeg, negativeBindings))
                 issues.Add($"unexpected snippet in sequence gap: {negative.Text}");
         }
     }
 
-    private static string NormalizeExpectedCode(string text, RegressionStage? stage)
+    private static string PrepareExpectedCode(string text, RegressionStage? stage)
     {
         if (stage is null)
-            return CodeNormalizer.NormalizeAssemblyText(text);
+            return CodeNormalizer.StripAssemblyComments(text);
 
-        return CodeNormalizer.NormalizeBladeStage(stage.Value, text);
+        return CodeNormalizer.StripStageComments(stage.Value, text);
     }
 
     private static List<string> EvaluateFlexspin(RegressionFixture fixture, EvaluatedFixture evaluatedFixture)
@@ -1482,7 +1494,7 @@ internal static class RegressionFixtureParser
             null,
             [],
             [],
-            null,
+            [],
             [],
             [],
             FlexspinExpectation.Auto,
@@ -1528,44 +1540,50 @@ internal static class RegressionFixtureParser
         {
             throw new InvalidOperationException($"EXPECT: {ExpectationName(expectation.ExpectationKind)} cannot be combined with error diagnostic expectations.");
         }
+
+        ValidateAdvancingSnippetBlocks(expectation.SequenceBlocks, "SEQUENCE");
+        ValidateAdvancingSnippetBlocks(expectation.ExactBlocks, "EXACT");
+    }
+
+    private static void ValidateAdvancingSnippetBlocks(IReadOnlyList<SnippetBlock> blocks, string directiveName)
+    {
+        foreach (SnippetBlock block in blocks)
+        {
+            if (block.Items.All(static item => item.Kind == SnippetKind.Negative))
+                throw new InvalidOperationException($"{directiveName} block requires at least one '-' or count item.");
+        }
     }
 
     private static RegressionExpectation ParseExpectation(HeaderScanResult headerScan)
     {
         RegressionExpectationKind expectationKind = RegressionExpectationKind.Pass;
         RegressionStage? stage = null;
-        List<SnippetItem> containsSnippets = [];
-        List<SnippetItem> sequenceSnippets = [];
+        List<SnippetBlock> containsBlocks = [];
+        List<SnippetBlock> sequenceBlocks = [];
+        List<SnippetBlock> exactBlocks = [];
         List<string> looseDiagnosticNames = [];
         List<ExpectedDiagnostic> exactDiagnostics = [];
         FlexspinExpectation flexspinExpectation = FlexspinExpectation.Auto;
         List<string> compilerArgs = [];
         List<HardwareRunExpectation> hardwareRuns = [];
-        StringBuilder? exactText = null;
+        List<SnippetItem>? activeSnippetItems = null;
         HeaderBlock? activeBlock = null;
 
         foreach (HeaderLine line in headerScan.HeaderLines)
         {
             if (!line.IsComment)
-            {
-                if (activeBlock == HeaderBlock.Exact && exactText is not null)
-                    exactText.AppendLine();
                 continue;
-            }
 
             string trimmed = line.Content.TrimStart();
             if (trimmed.Length == 0)
-            {
-                if (activeBlock == HeaderBlock.Exact && exactText is not null)
-                    exactText.AppendLine();
                 continue;
-            }
 
             Match directiveMatch = DirectiveRegex.Match(trimmed);
             if (directiveMatch.Success)
             {
                 string directiveName = directiveMatch.Groups["name"].Value;
                 string directiveValue = directiveMatch.Groups["value"].Value.Trim();
+                activeSnippetItems = null;
                 activeBlock = directiveName switch
                 {
                     "NOTE" => HeaderBlock.Note,
@@ -1617,15 +1635,24 @@ internal static class RegressionFixtureParser
                         break;
 
                     case "CONTAINS":
+                        if (directiveValue.Length > 0)
+                            throw new InvalidOperationException("CONTAINS only supports block form.");
+                        activeSnippetItems = [];
+                        containsBlocks.Add(new SnippetBlock(activeSnippetItems));
                         break;
 
                     case "SEQUENCE":
+                        if (directiveValue.Length > 0)
+                            throw new InvalidOperationException("SEQUENCE only supports block form.");
+                        activeSnippetItems = [];
+                        sequenceBlocks.Add(new SnippetBlock(activeSnippetItems));
                         break;
 
                     case "EXACT":
-                        exactText = new StringBuilder();
                         if (directiveValue.Length > 0)
-                            exactText.AppendLine(directiveValue);
+                            throw new InvalidOperationException("EXACT only supports block form.");
+                        activeSnippetItems = [];
+                        exactBlocks.Add(new SnippetBlock(activeSnippetItems));
                         break;
 
                     case "ARGS":
@@ -1666,17 +1693,21 @@ internal static class RegressionFixtureParser
                     break;
 
                 case HeaderBlock.Contains:
-                    containsSnippets.Add(ParseSnippetItem(trimmed, "CONTAINS"));
+                    if (activeSnippetItems is null)
+                        throw new InvalidOperationException("CONTAINS block started without an item buffer.");
+                    activeSnippetItems.Add(ParseSnippetItem(trimmed, "CONTAINS"));
                     break;
 
                 case HeaderBlock.Sequence:
-                    sequenceSnippets.Add(ParseSnippetItem(trimmed, "SEQUENCE"));
+                    if (activeSnippetItems is null)
+                        throw new InvalidOperationException("SEQUENCE block started without an item buffer.");
+                    activeSnippetItems.Add(ParseSnippetItem(trimmed, "SEQUENCE"));
                     break;
 
                 case HeaderBlock.Exact:
-                    if (exactText is null)
-                        throw new InvalidOperationException("EXACT block started without a buffer.");
-                    exactText.AppendLine(line.Content);
+                    if (activeSnippetItems is null)
+                        throw new InvalidOperationException("EXACT block started without an item buffer.");
+                    activeSnippetItems.Add(ParseSnippetItem(trimmed, "EXACT"));
                     break;
 
                 case HeaderBlock.Args:
@@ -1696,13 +1727,12 @@ internal static class RegressionFixtureParser
             }
         }
 
-        string? exact = exactText?.ToString().TrimEnd();
         return new RegressionExpectation(
             expectationKind,
             stage,
-            containsSnippets,
-            sequenceSnippets,
-            exact,
+            containsBlocks,
+            sequenceBlocks,
+            exactBlocks,
             looseDiagnosticNames,
             exactDiagnostics,
             flexspinExpectation,
@@ -1755,21 +1785,32 @@ internal static class RegressionFixtureParser
     private static SnippetItem ParseSnippetItem(string trimmed, string directiveName)
     {
         if (trimmed.StartsWith('-'))
-            return SnippetItem.Positive(trimmed[1..].TrimStart());
+            return SnippetItem.Positive(RequireSnippetText(trimmed[1..].TrimStart(), directiveName));
 
         if (trimmed.StartsWith('!'))
-            return SnippetItem.Negative(trimmed[1..].TrimStart());
+            return SnippetItem.Negative(RequireSnippetText(trimmed[1..].TrimStart(), directiveName));
 
         Match countMatch = CountPrefixRegex.Match(trimmed);
         if (countMatch.Success)
         {
             int count = int.Parse(countMatch.Groups["count"].Value, CultureInfo.InvariantCulture);
-            string text = countMatch.Groups["text"].Value;
+            if (count == 0)
+                throw new InvalidOperationException($"{directiveName} count prefixes must be greater than zero. Use '!' for negative assertions.");
+
+            string text = RequireSnippetText(countMatch.Groups["text"].Value, directiveName);
             return SnippetItem.ExactCount(text, count);
         }
 
         throw new InvalidOperationException(
             $"{directiveName} block entries must begin with '-', '!', or a count prefix (e.g. '3x').");
+    }
+
+    private static string RequireSnippetText(string text, string directiveName)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            throw new InvalidOperationException($"{directiveName} block entries must include snippet text.");
+
+        return text;
     }
 
     private static ExpectedDiagnostic ParseExactDiagnostic(string itemText)
@@ -1938,27 +1979,65 @@ internal static class RegressionFixtureParser
     }
 }
 
+internal readonly record struct NormalizedText(string Text);
+
 internal static class CodeNormalizer
 {
-    public static string NormalizeBladeStage(RegressionStage stage, string text)
+    private static readonly Regex WordBoundaryRegex = new(
+        @"\b",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex WhitespaceRegex = new(
+        @"\s+",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    public static NormalizedText NormalizeBladeStage(RegressionStage stage, string text)
     {
         return stage switch
         {
-            RegressionStage.Bound => RemoveWhitespace(text),
-            RegressionStage.MirPreOptimization => RemoveWhitespace(StripSemicolonComments(text)),
-            RegressionStage.Mir => RemoveWhitespace(StripSemicolonComments(text)),
-            RegressionStage.LirPreOptimization => RemoveWhitespace(StripSemicolonComments(text)),
-            RegressionStage.Lir => RemoveWhitespace(StripSemicolonComments(text)),
-            RegressionStage.AsmirPreOptimization => RemoveWhitespace(StripAssemblyComments(text)),
-            RegressionStage.Asmir => RemoveWhitespace(StripAssemblyComments(text)),
-            RegressionStage.FinalAsm => RemoveWhitespace(StripAssemblyComments(text)),
+            RegressionStage.Bound => NormalizeText(StripStageComments(stage, text)),
+            RegressionStage.MirPreOptimization => NormalizeText(StripStageComments(stage, text)),
+            RegressionStage.Mir => NormalizeText(StripStageComments(stage, text)),
+            RegressionStage.LirPreOptimization => NormalizeText(StripStageComments(stage, text)),
+            RegressionStage.Lir => NormalizeText(StripStageComments(stage, text)),
+            RegressionStage.AsmirPreOptimization => NormalizeText(StripStageComments(stage, text)),
+            RegressionStage.Asmir => NormalizeText(StripStageComments(stage, text)),
+            RegressionStage.FinalAsm => NormalizeText(StripStageComments(stage, text)),
             _ => throw new InvalidOperationException($"Unknown stage '{stage}'."),
         };
     }
 
-    public static string NormalizeAssemblyText(string text)
+    public static NormalizedText NormalizeAssemblyText(string text)
     {
-        return RemoveWhitespace(StripAssemblyComments(text));
+        return NormalizeText(StripAssemblyComments(text));
+    }
+
+    public static bool IsIgnorableGap(string text)
+    {
+        return text.All(static ch => ch == ' ');
+    }
+
+    public static NormalizedText NormalizeText(string text)
+    {
+        string separated = WordBoundaryRegex.Replace(text, " ");
+        string collapsed = WhitespaceRegex.Replace(separated, " ");
+        return new NormalizedText(collapsed.Trim());
+    }
+
+    public static string StripStageComments(RegressionStage stage, string text)
+    {
+        return stage switch
+        {
+            RegressionStage.Bound => StripSemicolonComments(text),
+            RegressionStage.MirPreOptimization => StripSemicolonComments(text),
+            RegressionStage.Mir => StripSemicolonComments(text),
+            RegressionStage.LirPreOptimization => StripSemicolonComments(text),
+            RegressionStage.Lir => StripSemicolonComments(text),
+            RegressionStage.AsmirPreOptimization => StripAssemblyComments(text),
+            RegressionStage.Asmir => StripAssemblyComments(text),
+            RegressionStage.FinalAsm => StripAssemblyComments(text),
+            _ => throw new InvalidOperationException($"Unknown stage '{stage}'."),
+        };
     }
 
     private static string StripSemicolonComments(string text)
@@ -1974,13 +2053,12 @@ internal static class CodeNormalizer
         return builder.ToString();
     }
 
-    private static string StripAssemblyComments(string text)
+    public static string StripAssemblyComments(string text)
     {
         StringBuilder builder = new();
         foreach (string line in SplitLines(text))
         {
             string kept = StripComment(line, "'");
-            kept = StripComment(kept, ";");
             builder.AppendLine(kept);
         }
 
@@ -1997,18 +2075,6 @@ internal static class CodeNormalizer
     {
         return text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
     }
-
-    private static string RemoveWhitespace(string text)
-    {
-        StringBuilder builder = new();
-        foreach (char ch in text)
-        {
-            if (!char.IsWhiteSpace(ch))
-                builder.Append(ch);
-        }
-
-        return builder.ToString();
-    }
 }
 
 internal static class SnippetMatcher
@@ -2017,144 +2083,221 @@ internal static class SnippetMatcher
         @"\?(\d+)?",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    public static bool ContainsWildcard(string snippet)
+    public static bool Contains(NormalizedText haystack, Pattern pattern, PatternBindings bindings)
     {
-        return snippet.Contains('?', StringComparison.Ordinal);
+        return IndexOf(haystack, pattern, 0, bindings) is not null;
     }
 
-    public static bool Contains(string haystack, string normalizedSnippet, Dictionary<int, string>? bindings, bool wildcardsEnabled)
+    public static PatternMatch? IndexOf(NormalizedText haystack, Pattern pattern, int startIndex, PatternBindings bindings)
     {
-        if (!wildcardsEnabled || !ContainsWildcard(normalizedSnippet))
-            return haystack.Contains(normalizedSnippet, StringComparison.Ordinal);
-
-        Regex regex = BuildWildcardRegex(normalizedSnippet, bindings);
-        Match match = regex.Match(haystack);
-        if (!match.Success)
-            return false;
-
-        if (bindings is not null)
-            RecordBindings(match, bindings);
-
-        return true;
-    }
-
-    public static int IndexOf(string haystack, string normalizedSnippet, int startIndex, Dictionary<int, string>? bindings, bool wildcardsEnabled, out int matchLength)
-    {
-        if (!wildcardsEnabled || !ContainsWildcard(normalizedSnippet))
+        for (int index = startIndex; index <= haystack.Text.Length; index++)
         {
-            matchLength = normalizedSnippet.Length;
-            return haystack.IndexOf(normalizedSnippet, startIndex, StringComparison.Ordinal);
-        }
-
-        Regex regex = BuildWildcardRegex(normalizedSnippet, bindings);
-        Match match = regex.Match(haystack, startIndex);
-        if (!match.Success)
-        {
-            matchLength = 0;
-            return -1;
-        }
-
-        if (bindings is not null)
-            RecordBindings(match, bindings);
-
-        matchLength = match.Length;
-        return match.Index;
-    }
-
-    public static int CountOccurrences(string haystack, string normalizedSnippet, Dictionary<int, string>? bindings, bool wildcardsEnabled)
-    {
-        if (!wildcardsEnabled || !ContainsWildcard(normalizedSnippet))
-        {
-            int count = 0;
-            int index = 0;
-            while (true)
+            PatternBindings candidateBindings = bindings.Clone();
+            if (pattern.TryMatchAt(haystack.Text, index, candidateBindings, out int end))
             {
-                int found = haystack.IndexOf(normalizedSnippet, index, StringComparison.Ordinal);
-                if (found < 0)
-                    break;
-
-                count++;
-                index = found + normalizedSnippet.Length;
-            }
-
-            return count;
-        }
-
-        Regex regex = BuildWildcardRegex(normalizedSnippet, bindings);
-        MatchCollection matches = regex.Matches(haystack);
-        if (bindings is not null && matches.Count > 0)
-            RecordBindings(matches[0], bindings);
-
-        return matches.Count;
-    }
-
-    private static Regex BuildWildcardRegex(string normalizedSnippet, Dictionary<int, string>? bindings)
-    {
-        StringBuilder pattern = new();
-        int lastEnd = 0;
-
-        foreach (Match wildcardMatch in WildcardTokenRegex.Matches(normalizedSnippet))
-        {
-            if (wildcardMatch.Index > lastEnd)
-                pattern.Append(Regex.Escape(normalizedSnippet[lastEnd..wildcardMatch.Index]));
-
-            if (wildcardMatch.Groups[1].Success)
-            {
-                int number = int.Parse(wildcardMatch.Groups[1].Value, CultureInfo.InvariantCulture);
-                if (bindings is not null && bindings.TryGetValue(number, out string? boundValue))
-                    pattern.Append(Regex.Escape(boundValue));
-                else
-                    pattern.Append(CultureInfo.InvariantCulture, $"(?<w{number}>\\w+)");
-            }
-            else
-            {
-                pattern.Append(@"\w+");
-            }
-
-            lastEnd = wildcardMatch.Index + wildcardMatch.Length;
-        }
-
-        if (lastEnd < normalizedSnippet.Length)
-            pattern.Append(Regex.Escape(normalizedSnippet[lastEnd..]));
-
-        return new Regex(pattern.ToString(), RegexOptions.CultureInvariant);
-    }
-
-    private static void RecordBindings(Match match, Dictionary<int, string> bindings)
-    {
-        foreach (Group group in match.Groups)
-        {
-            if (group.Success && group.Name.StartsWith('w'))
-            {
-                int number = int.Parse(group.Name[1..], CultureInfo.InvariantCulture);
-                bindings.TryAdd(number, group.Value);
+                bindings.ReplaceWith(candidateBindings);
+                return new PatternMatch(index, end);
             }
         }
+
+        return null;
+    }
+
+    public static int CountOccurrences(NormalizedText haystack, Pattern pattern, PatternBindings bindings)
+    {
+        int count = 0;
+        int index = 0;
+        PatternBindings countBindings = bindings.Clone();
+        while (index <= haystack.Text.Length)
+        {
+            if (IndexOf(haystack, pattern, index, countBindings) is not PatternMatch match)
+                break;
+
+            count++;
+            index = match.End;
+        }
+
+        if (count > 0)
+            bindings.ReplaceWith(countBindings);
+        return count;
     }
 }
 
-internal static class NormalizedDiffBuilder
-{
-    public static string Build(string expected, string actual)
-    {
-        int index = 0;
-        int maxCommonLength = Math.Min(expected.Length, actual.Length);
-        while (index < maxCommonLength && expected[index] == actual[index])
-            index++;
+internal readonly record struct PatternMatch(int Start, int End);
 
-        string expectedSnippet = Slice(expected, index);
-        string actualSnippet = Slice(actual, index);
-        return $"first difference at offset {index}: expected \"{expectedSnippet}\", got \"{actualSnippet}\"";
+internal sealed class PatternBindings
+{
+    private readonly Dictionary<int, string> _bindings;
+
+    public PatternBindings()
+    {
+        _bindings = new Dictionary<int, string>();
     }
 
-    private static string Slice(string text, int index)
+    private PatternBindings(Dictionary<int, string> bindings)
     {
-        if (index >= text.Length)
-            return "<end>";
+        _bindings = bindings;
+    }
 
-        int start = Math.Max(0, index - 20);
-        int length = Math.Min(40, text.Length - start);
-        return text.Substring(start, length);
+    public PatternBindings Clone()
+    {
+        return new PatternBindings(new Dictionary<int, string>(_bindings));
+    }
+
+    public bool TryBind(int number, string value)
+    {
+        if (_bindings.TryGetValue(number, out string? bound))
+            return string.Equals(bound, value, StringComparison.Ordinal);
+
+        _bindings.Add(number, value);
+        return true;
+    }
+
+    public void ReplaceWith(PatternBindings other)
+    {
+        _bindings.Clear();
+        foreach ((int key, string value) in other._bindings)
+            _bindings.Add(key, value);
+    }
+}
+
+internal sealed class Pattern
+{
+    private static readonly Regex WildcardTokenRegex = new(
+        @"\?(\d+)?",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    public Pattern(string[] sequences, int?[] patterns)
+    {
+        Requires.NotNull(sequences);
+        Requires.NotNull(patterns);
+        Requires.That(sequences.Length == patterns.Length + 1);
+        Requires.That(sequences.Skip(1).Take(sequences.Length - 2).All(static sequence => sequence.Length > 0));
+        Sequences = sequences;
+        Patterns = patterns;
+    }
+
+    public string[] Sequences { get; }
+    public int?[] Patterns { get; }
+
+    public static Pattern Compile(string text)
+    {
+        List<string> sequences = [];
+        List<int?> patterns = [];
+        int lastEnd = 0;
+        MatchCollection wildcardMatches = WildcardTokenRegex.Matches(text);
+
+        foreach (Match wildcardMatch in wildcardMatches)
+        {
+            sequences.Add(NormalizePatternSequence(text[lastEnd..wildcardMatch.Index], sequences.Count, wildcardMatches.Count));
+            int? binding = wildcardMatch.Groups[1].Success
+                ? int.Parse(wildcardMatch.Groups[1].Value, CultureInfo.InvariantCulture)
+                : null;
+            patterns.Add(binding);
+            lastEnd = wildcardMatch.Index + wildcardMatch.Length;
+        }
+
+        sequences.Add(NormalizePatternSequence(text[lastEnd..], sequences.Count, wildcardMatches.Count));
+        return new Pattern(sequences.ToArray(), patterns.ToArray());
+    }
+
+    public bool TryMatchAt(string text, int start, PatternBindings bindings, out int end)
+    {
+        end = start;
+        if (!MatchesLiteral(text, Sequences[0], end, isFirstSequence: true, out end))
+            return false;
+
+        for (int patternIndex = 0; patternIndex < Patterns.Length; patternIndex++)
+        {
+            if (!TryConsumeIdentifier(text, end, out string identifier, out end))
+                return false;
+
+            int? bindingNumber = Patterns[patternIndex];
+            if (bindingNumber is not null && !bindings.TryBind(bindingNumber.Value, identifier))
+                return false;
+
+            if (!MatchesLiteral(text, Sequences[patternIndex + 1], end, isFirstSequence: false, out end))
+                return false;
+        }
+
+        return HasTrailingBoundary(text, end);
+    }
+
+    private static string NormalizePatternSequence(string text, int sequenceIndex, int patternCount)
+    {
+        string sequence = CodeNormalizer.NormalizeText(text).Text;
+        bool beforeWildcard = sequenceIndex < patternCount;
+        bool afterWildcard = sequenceIndex > 0;
+
+        if (sequence.Length == 0)
+        {
+            if (beforeWildcard && afterWildcard)
+                return " ";
+
+            return string.Empty;
+        }
+
+        if (afterWildcard && !sequence.StartsWith(' '))
+            sequence = " " + sequence;
+
+        if (beforeWildcard && !sequence.EndsWith(' '))
+            sequence += " ";
+
+        return sequence;
+    }
+
+    private static bool MatchesLiteral(string text, string literal, int start, bool isFirstSequence, out int end)
+    {
+        end = start;
+        if (literal.Length == 0)
+            return true;
+
+        if (start + literal.Length > text.Length)
+            return false;
+
+        if (!text.AsSpan(start, literal.Length).SequenceEqual(literal.AsSpan()))
+            return false;
+
+        if (isFirstSequence && IsWordAtStart(literal) && start > 0 && IsIdentifierChar(text[start - 1]))
+            return false;
+
+        end = start + literal.Length;
+        return true;
+    }
+
+    private static bool HasTrailingBoundary(string text, int end)
+    {
+        if (end == 0 || end >= text.Length)
+            return true;
+
+        if (!IsIdentifierChar(text[end - 1]))
+            return true;
+
+        return !IsIdentifierChar(text[end]);
+    }
+
+    private static bool IsWordAtStart(string literal)
+    {
+        return literal.Length > 0 && IsIdentifierChar(literal[0]);
+    }
+
+    private static bool TryConsumeIdentifier(string text, int start, out string identifier, out int end)
+    {
+        identifier = string.Empty;
+        end = start;
+        if (start >= text.Length || !IsIdentifierChar(text[start]))
+            return false;
+
+        while (end < text.Length && IsIdentifierChar(text[end]))
+            end++;
+
+        identifier = text[start..end];
+        return true;
+    }
+
+    private static bool IsIdentifierChar(char ch)
+    {
+        return char.IsLetterOrDigit(ch) || ch == '_';
     }
 }
 
