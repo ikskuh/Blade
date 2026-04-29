@@ -1,7 +1,8 @@
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// - MOV g_reinterpreted_signed, #511
+// - MOV g_reinterpreted_signed, ?1
+// - ?1      LONG $FFFFFFFF
 // ! MOV g_reinterpreted_signed, #-1
 cog task main {
     

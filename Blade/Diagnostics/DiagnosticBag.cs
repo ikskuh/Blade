@@ -103,13 +103,13 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
     /// <summary>
     /// Reports a non-cog entry task and formats its storage class for the diagnostic message.
     /// </summary>
-    public void ReportMainTaskMustBeCog(TextSpan span, string taskName, Blade.Semantics.VariableStorageClass storageClass)
+    public void ReportMainTaskMustBeCog(TextSpan span, string taskName, AddressSpace storageClass)
     {
         string storageClassKeyword = storageClass switch
         {
-            Blade.Semantics.VariableStorageClass.Cog => "cog",
-            Blade.Semantics.VariableStorageClass.Lut => "lut",
-            Blade.Semantics.VariableStorageClass.Hub => "hub",
+            AddressSpace.Cog => "cog",
+            AddressSpace.Lut => "lut",
+            AddressSpace.Hub => "hub",
             _ => Assert.UnreachableValue<string>(), // pragma: force-coverage
         };
 
@@ -119,7 +119,7 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
     /// <summary>
     /// Reports an invalid fixed layout address after formatting the storage class.
     /// </summary>
-    public void ReportInvalidLayoutAddress(TextSpan span, string layoutName, string memberName, Blade.Semantics.VariableStorageClass storageClass, int address, int sizeInAddressUnits)
+    public void ReportInvalidLayoutAddress(TextSpan span, string layoutName, string memberName, AddressSpace storageClass, int address, int sizeInAddressUnits)
     {
         string storageName = FormatStorageClass(storageClass);
         Report(new InvalidLayoutAddressError(CurrentSource, span, layoutName, memberName, storageName, address, sizeInAddressUnits));
@@ -128,7 +128,7 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
     /// <summary>
     /// Reports two fixed layout addresses that conflict after formatting the storage class.
     /// </summary>
-    public void ReportLayoutAddressConflict(TextSpan span, string layoutName, string memberName, Blade.Semantics.VariableStorageClass storageClass, int address, string conflictingLayoutName, string conflictingMemberName, int conflictingAddress)
+    public void ReportLayoutAddressConflict(TextSpan span, string layoutName, string memberName, AddressSpace storageClass, int address, string conflictingLayoutName, string conflictingMemberName, int conflictingAddress)
     {
         string storageName = FormatStorageClass(storageClass);
         Report(new LayoutAddressConflictError(CurrentSource, span, layoutName, memberName, storageName, address, conflictingLayoutName, conflictingMemberName, conflictingAddress));
@@ -137,7 +137,7 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
     /// <summary>
     /// Reports a failed automatic layout allocation after formatting the storage class.
     /// </summary>
-    public void ReportLayoutAllocationFailed(TextSpan span, string layoutName, string memberName, Blade.Semantics.VariableStorageClass storageClass, int sizeInAddressUnits, int alignmentInAddressUnits)
+    public void ReportLayoutAllocationFailed(TextSpan span, string layoutName, string memberName, AddressSpace storageClass, int sizeInAddressUnits, int alignmentInAddressUnits)
     {
         string storageName = FormatStorageClass(storageClass);
         Report(new LayoutAllocationFailedError(CurrentSource, span, layoutName, memberName, storageName, sizeInAddressUnits, alignmentInAddressUnits));
@@ -159,13 +159,13 @@ public sealed class DiagnosticBag : IEnumerable<Diagnostic>
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-    private static string FormatStorageClass(Blade.Semantics.VariableStorageClass storageClass)
+    private static string FormatStorageClass(AddressSpace storageClass)
     {
         return storageClass switch
         {
-            Blade.Semantics.VariableStorageClass.Cog => "cog",
-            Blade.Semantics.VariableStorageClass.Lut => "lut",
-            Blade.Semantics.VariableStorageClass.Hub => "hub",
+            AddressSpace.Cog => "cog",
+            AddressSpace.Lut => "lut",
+            AddressSpace.Hub => "hub",
             _ => Assert.UnreachableValue<string>(), // pragma: force-coverage
         };
     }

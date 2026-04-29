@@ -150,8 +150,8 @@ internal static class ImageMemoryMapModelBuilder
 
         foreach (ImagePlacementEntry placement in imagePlacement.Images.OrderBy(static entry => entry.HubStartAddressBytes))
         {
-            int endAddress = System.Math.Min(placement.HubEndAddressExclusive, HubDisplayEndAddress);
-            for (int address = placement.HubStartAddressBytes; address < endAddress; address++)
+            int endAddress = System.Math.Min((int)placement.HubEndAddressExclusive, HubDisplayEndAddress);
+            for (int address = (int)placement.HubStartAddressBytes; address < endAddress; address++)
             {
                 cells[address] = new HubByteCell(HubByteKind.ImageUnknown, 0, $"image {placement.Image.Task.Name}");
             }
@@ -159,12 +159,13 @@ internal static class ImageMemoryMapModelBuilder
 
         HashSet<LayoutSymbol> selectedLayouts = [.. layouts];
         foreach (LayoutSlot slot in layoutSolution.Slots
-                     .Where(slot => slot.StorageClass == VariableStorageClass.Hub && selectedLayouts.Contains(slot.Layout))
-                     .OrderBy(static slot => slot.Address)
+                     .Where(slot => slot.StorageClass == AddressSpace.Hub && selectedLayouts.Contains(slot.Layout))
+                     .OrderBy(static slot => GetRawAddress(slot.Address))
                      .ThenBy(static slot => slot.Layout.Name, System.StringComparer.Ordinal)
                      .ThenBy(static slot => slot.Symbol.Name, System.StringComparer.Ordinal))
         {
             string owner = $"{slot.Layout.Name}.{slot.Symbol.Name}";
+            int slotAddress = GetRawAddress(slot.Address);
             int endAddress = System.Math.Min(slot.EndAddressExclusive, HubDisplayEndAddress);
             if (initialValues.TryGetValue(slot.Symbol, out RuntimeBladeValue? initialValue)
                 && TrySerializeHubValue(initialValue, out byte[] bytes))
@@ -172,14 +173,14 @@ internal static class ImageMemoryMapModelBuilder
                 Assert.Invariant(
                     bytes.Length == slot.SizeInAddressUnits,
                     "Serialized hub initializer bytes must match the solved slot size.");
-                for (int address = slot.Address; address < endAddress; address++)
+                for (int address = slotAddress; address < endAddress; address++)
                 {
-                    cells[address] = new HubByteCell(HubByteKind.Known, bytes[address - slot.Address], owner);
+                    cells[address] = new HubByteCell(HubByteKind.Known, bytes[address - slotAddress], owner);
                 }
             }
             else
             {
-                for (int address = slot.Address; address < endAddress; address++)
+                for (int address = slotAddress; address < endAddress; address++)
                 {
                     cells[address] = new HubByteCell(HubByteKind.AllocatedUnknown, 0, owner);
                 }
@@ -272,19 +273,26 @@ internal static class ImageMemoryMapModelBuilder
         Requires.NotNull(symbol);
         Requires.NotNull(cogResourceLayouts);
 
-        if (symbol is StoragePlace { ResolvedLayoutSlot: LayoutSlot { StorageClass: VariableStorageClass.Cog } slot })
+        if (symbol is StoragePlace { ResolvedLayoutSlot: LayoutSlot { StorageClass: AddressSpace.Cog } slot })
         {
-            address = slot.Address;
+            address = GetRawAddress(slot.Address);
             return true;
         }
 
         if (symbol is AsmSpillSlotSymbol spillSlot)
         {
-            address = spillSlot.Slot;
+            address = (int)spillSlot.Slot;
             return true;
         }
 
-        return cogResourceLayouts.TryGetStableAddress(symbol, out address);
+        if (cogResourceLayouts.TryGetAddress(symbol, out MemoryAddress memoryAddress))
+        {
+            address = GetRawAddress(memoryAddress.Virtual);
+            return true;
+        }
+
+        address = 0;
+        return false;
     }
 
     private static IReadOnlyList<MemoryMapRow> BuildLutRows(
@@ -295,15 +303,17 @@ internal static class ImageMemoryMapModelBuilder
         HashSet<LayoutSymbol> selectedLayouts = [.. layouts];
         Dictionary<int, MemoryMapRow> rowsByAddress = [];
         foreach (LayoutSlot slot in layoutSolution.Slots
-                     .Where(slot => slot.StorageClass == VariableStorageClass.Lut && selectedLayouts.Contains(slot.Layout))
-                     .OrderBy(static slot => slot.Address)
+                     .Where(slot => slot.StorageClass == AddressSpace.Lut && selectedLayouts.Contains(slot.Layout))
+                     .OrderBy(static slot => GetRawAddress(slot.Address))
                      .ThenBy(static slot => slot.Layout.Name, System.StringComparer.Ordinal)
                      .ThenBy(static slot => slot.Symbol.Name, System.StringComparer.Ordinal))
         {
             string initialValue = initialValues.TryGetValue(slot.Symbol, out RuntimeBladeValue? value)
                 ? value.Format()
                 : "-";
-            for (int rowIndex = slot.Address; rowIndex < slot.EndAddressExclusive; rowIndex++)
+            int startAddress = GetRawAddress(slot.Address);
+            int endAddress = slot.EndAddressExclusive;
+            for (int rowIndex = startAddress; rowIndex < endAddress; rowIndex++)
             {
                 rowsByAddress[rowIndex] = new MemoryMapRow(
                     rowIndex,
@@ -356,6 +366,12 @@ internal static class ImageMemoryMapModelBuilder
             HubByteKind.Known => cell.Value.ToString("X2", System.Globalization.CultureInfo.InvariantCulture),
             _ => Assert.UnreachableValue<string>(), // pragma: force-coverage
         };
+    }
+
+    private static int GetRawAddress(VirtualAddress address)
+    {
+        (_, int rawAddress) = address.GetDataAddress();
+        return rawAddress;
     }
 
     private static bool TrySerializeHubValue(RuntimeBladeValue value, out byte[] bytes)

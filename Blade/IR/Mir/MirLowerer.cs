@@ -29,7 +29,7 @@ public static class MirLowerer
 
         foreach (BoundFunctionMember functionMember in program.Functions)
         {
-            if (!ReferenceEquals(functionMember, program.EntryPointFunction))
+            if (!ReferenceEquals(functionMember, program.LauncherEntryPointFunction))
                 functions.Add(LowerFunction(functionMember, storagePlacesBySymbol, storageDefinitions));
         }
 
@@ -42,13 +42,13 @@ public static class MirLowerer
         IReadOnlyList<StorageDefinition> storageDefinitions)
     {
         FunctionLoweringContext context = new(
-            program.EntryPoint.EntryFunction,
+            program.LauncherEntryPoint.EntryFunction,
             isEntryPoint: true,
-            program.EntryPoint.EntryFunction.ReturnTypes,
+            program.LauncherEntryPoint.EntryFunction.ReturnTypes,
             storagePlacesBySymbol,
             storageDefinitions,
-            program.EntryPoint.EntryFunction.ReturnSlots);
-        context.LowerEntryPointBody(program.GlobalVariables, program.EntryPointFunction.Body);
+            program.LauncherEntryPoint.EntryFunction.ReturnSlots);
+        context.LowerEntryPointBody(program.GlobalVariables, program.LauncherEntryPointFunction.Body);
         return context.Build();
     }
 
@@ -160,11 +160,11 @@ public static class MirLowerer
             placement = StoragePlacePlacement.Allocatable;
         }
         StoragePlaceRegisterRole? registerRole = placement == StoragePlacePlacement.Allocatable
-            && symbol.StorageClass == VariableStorageClass.Cog
+            && symbol.StorageClass == AddressSpace.Cog
             ? StoragePlaceRegisterRole.Global
             : null;
         P2SpecialRegister? specialRegisterAlias = placement is StoragePlacePlacement.FixedAlias or StoragePlacePlacement.ExternalAlias
-            && symbol.StorageClass == VariableStorageClass.Cog
+            && symbol.StorageClass == AddressSpace.Cog
             && P2InstructionMetadata.TryParseSpecialRegister(symbol.Name, out P2SpecialRegister specialRegister)
                 ? specialRegister
                 : null;
@@ -185,7 +185,7 @@ public static class MirLowerer
             symbol.Name,
             symbol.Type,
             symbol.IsConst,
-            VariableStorageClass.Cog,
+            AddressSpace.Cog,
             declaringLayout: null,
             isExtern: false,
             fixedAddress: null,
@@ -194,16 +194,16 @@ public static class MirLowerer
         return new StoragePlace(storageSymbol, StoragePlacePlacement.Allocatable, StoragePlaceRegisterRole.Global);
     }
 
-    private static VariableStorageClass GetStorageClass(BladeType type)
+    private static AddressSpace GetStorageClass(BladeType type)
     {
         return type switch
         {
             PointerLikeTypeSymbol pointer => pointer.StorageClass,
-            _ => VariableStorageClass.Cog,
+            _ => AddressSpace.Cog,
         };
     }
 
-    private static VariableStorageClass GetStorageClass(BoundExpression expression)
+    private static AddressSpace GetStorageClass(BoundExpression expression)
     {
         // For pointer/multi-pointer types, the storage class is on the type itself.
         if (expression.Type is PointerLikeTypeSymbol pointer)
@@ -214,7 +214,7 @@ public static class MirLowerer
         if (expression is BoundSymbolExpression { Symbol: GlobalVariableSymbol variable })
             return variable.StorageClass;
 
-        return VariableStorageClass.Cog;
+        return AddressSpace.Cog;
     }
 
     private static IReadOnlyList<VariableSymbol> CollectAddressTakenSymbols(BoundProgram program)
@@ -436,7 +436,7 @@ public static class MirLowerer
 
                 if (_preInitializedStoragePlaces.Contains(place)
                     && place.IsAllocatable
-                    && place.StorageClass is VariableStorageClass.Cog or VariableStorageClass.Hub)
+                    && place.StorageClass is AddressSpace.Cog or AddressSpace.Hub)
                 {
                     continue;
                 }
@@ -991,7 +991,7 @@ public static class MirLowerer
             MirValueId bodyIndex = ReadSymbol(forStatement.IndexVariable, BuiltinTypes.U32, forStatement.Span);
 
             // For array iteration, load element at current index.
-            VariableStorageClass iterStorageClass = GetStorageClass(forStatement.Iterable);
+            AddressSpace iterStorageClass = GetStorageClass(forStatement.Iterable);
             if (isArrayIteration && forStatement.ItemVariable is not null)
             {
                 MirValueId element = EmitLoadIndex(
@@ -1394,7 +1394,7 @@ public static class MirLowerer
             foreach (BoundExpression element in arrayLiteral.Elements)
                 elementValues.Add(LowerExpression(element));
 
-            VariableStorageClass storageClass = GetStorageClass(arrayLiteral.Type);
+            AddressSpace storageClass = GetStorageClass(arrayLiteral.Type);
             BladeType arrElemType = arrayLiteral.Type.ElementType;
             for (int i = 0; i < explicitCount; i++)
             {
@@ -1461,7 +1461,7 @@ public static class MirLowerer
         {
             MirValueId baseAddress = LowerExpression(indexExpression.Expression);
             MirValueId offset = LowerExpression(indexExpression.Index);
-            VariableStorageClass storageClass = GetStorageClass(indexExpression.Expression);
+            AddressSpace storageClass = GetStorageClass(indexExpression.Expression);
             int stride = GetPointerElementStride(indexExpression.Type, storageClass);
 
             MirValueId address = NextValue();
@@ -2044,7 +2044,7 @@ public static class MirLowerer
             MirValueId index,
             BladeType indexedType,
             BladeType type,
-            VariableStorageClass storageClass,
+            AddressSpace storageClass,
             bool hasSideEffects,
             TextSpan span)
         {
@@ -2057,7 +2057,7 @@ public static class MirLowerer
             MirValueId pointer,
             BladeType pointerType,
             BladeType type,
-            VariableStorageClass storageClass,
+            AddressSpace storageClass,
             bool hasSideEffects,
             TextSpan span)
         {
@@ -2066,7 +2066,7 @@ public static class MirLowerer
             return result;
         }
 
-        private static int GetPointerElementStride(BladeType pointeeType, VariableStorageClass storageClass)
+        private static int GetPointerElementStride(BladeType pointeeType, AddressSpace storageClass)
         {
             Assert.Invariant(pointeeType is RuntimeTypeSymbol, $"Pointer arithmetic requires a concrete element stride for '{pointeeType.Name}' in '{storageClass}'.");
             RuntimeTypeSymbol runtimeType = (RuntimeTypeSymbol)pointeeType;
@@ -2101,7 +2101,7 @@ public static class MirLowerer
 
         private void EmitUpdatePlace(StoragePlace place, BoundBinaryOperatorKind operatorKind, MirValueId value, TextSpan span)
         {
-            if (place.StorageClass is VariableStorageClass.Lut or VariableStorageClass.Hub)
+            if (place.StorageClass is AddressSpace.Lut or AddressSpace.Hub)
             {
                 BladeType placeType = GetSymbolType(place.Symbol);
                 if (placeType is not MultiPointerTypeSymbol)

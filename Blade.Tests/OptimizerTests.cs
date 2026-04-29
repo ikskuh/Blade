@@ -27,7 +27,7 @@ public class OptimizerTests
 
     private static StoragePlace CreatePlace(string name)
     {
-        GlobalVariableSymbol symbol = (GlobalVariableSymbol)IrTestFactory.CreateVariableSymbol(name, BuiltinTypes.U32, VariableStorageClass.Cog, VariableScopeKind.GlobalStorage);
+        GlobalVariableSymbol symbol = (GlobalVariableSymbol)IrTestFactory.CreateVariableSymbol(name, BuiltinTypes.U32, AddressSpace.Cog, VariableScopeKind.GlobalStorage);
         return new StoragePlace(symbol, StoragePlacePlacement.Allocatable, StoragePlaceRegisterRole.Global, emittedName: $"g_{name}");
     }
 

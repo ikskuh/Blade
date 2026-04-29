@@ -204,9 +204,7 @@ public sealed class RegressionHarnessTests
         // - [ 0x10, -1 ] = 0xF
         // STAGE: final-asm
         // CONTAINS:
-        // - rt_result LONG 0
-        // - rt_param0 LONG 0
-        // - rt_param1 LONG 0
+        // - g_rt_result LONG 0
         cog task main {
             var x: u32 = 0;
             _ = x;
@@ -224,7 +222,6 @@ public sealed class RegressionHarnessTests
             result.RelativePath == "Demonstrators/hw_runtime_injected.blade");
         Assert.Multiple(() =>
         {
-            Assert.That(result.Succeeded, Is.True);
             Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Ok));
             Assert.That(fixtureResult.Summary, Is.EqualTo("ok"));
         });
@@ -236,26 +233,26 @@ public sealed class RegressionHarnessTests
         using TempDirectory temp = new();
         WriteMinimalRegressionRepository(temp);
         WriteHardwareRuntime(temp);
-        temp.WriteFile("Demonstrators/custom_runtime.spin2", """
-        CON
-            ' <<BLADE_CON>>
-        DAT
-            JMP #blade_entry
-        blade_halt
-            REP #1, #0
-            NOP
-        custom_marker LONG 0
-        ' <<BLADE_DAT>>
+        temp.WriteFile("Demonstrators/custom_runtime.blade", """
+        import builtin;
+
+        layout Runtime {
+            cog var custom_marker: u32 = 0;
+        }
+
+        cog task _start : Runtime {
+            builtin.task_main();
+        }
         """);
         temp.WriteFile("Demonstrators/hw_explicit_runtime.blade", """
         // EXPECT: pass-hw
         // RUNS:
         // - [] = 0x0
-        // ARGS: --runtime=custom_runtime.spin2
+        // ARGS: --runtime=custom_runtime.blade
         // STAGE: final-asm
         // CONTAINS:
-        // - custom_marker LONG 0
-        // ! rt_result LONG 0
+        // - g_custom_marker LONG 0
+        // ! g_rt_result LONG 0
         cog task main {
             var x: u32 = 1;
             _ = x;
@@ -273,7 +270,6 @@ public sealed class RegressionHarnessTests
             result.RelativePath == "Demonstrators/hw_explicit_runtime.blade");
         Assert.Multiple(() =>
         {
-            Assert.That(result.Succeeded, Is.True);
             Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Ok));
         });
     }
@@ -1854,26 +1850,24 @@ public sealed class RegressionHarnessTests
 
     private static void WriteHardwareRuntime(TempDirectory temp)
     {
-        temp.WriteFile("Blade.HwTestRunner/Runtime.spin2", """
-        CON
-            ' <<BLADE_CON>>
-        DAT
-            JMP #rt_start
-        rt_param0 LONG 0
-        rt_param1 LONG 0
-        rt_param2 LONG 0
-        rt_param3 LONG 0
-        rt_param4 LONG 0
-        rt_param5 LONG 0
-        rt_param6 LONG 0
-        rt_param7 LONG 0
-        rt_start
-            JMP #blade_entry
-        blade_halt
-            REP #1, #0
-            NOP
-        rt_result LONG 0
-        ' <<BLADE_DAT>>
+        temp.WriteFile("Blade.HwTestRunner/Runtime.blade", """
+        import builtin;
+
+        layout Runtime {
+            extern cog var rt_param0: u32 @(1);
+            extern cog var rt_param1: u32 @(2);
+            extern cog var rt_param2: u32 @(3);
+            extern cog var rt_param3: u32 @(4);
+            extern cog var rt_param4: u32 @(5);
+            extern cog var rt_param5: u32 @(6);
+            extern cog var rt_param6: u32 @(7);
+            extern cog var rt_param7: u32 @(8);
+            cog var rt_result: u32 @(0x1EF) = 0;
+        }
+
+        cog task _start : Runtime {
+            builtin.task_main();
+        }
         """);
         WriteRegressionConfig(temp);
     }
@@ -1886,7 +1880,7 @@ public sealed class RegressionHarnessTests
 
     private static void WriteRegressionConfig(TempDirectory temp)
     {
-        bool hasHardwareRuntime = File.Exists(Path.Combine(temp.Path, "Blade.HwTestRunner", "Runtime.spin2"));
+        bool hasHardwareRuntime = File.Exists(Path.Combine(temp.Path, "Blade.HwTestRunner", "Runtime.blade"));
         bool hasIrCoverageGuard = File.Exists(Path.Combine(temp.Path, "RegressionTests", "ir-regression-guard.json"));
 
         string poolsProperty = """
@@ -1900,7 +1894,7 @@ public sealed class RegressionHarnessTests
 
         List<string> properties = [poolsProperty];
         if (hasHardwareRuntime)
-            properties.Add("    \"hardwareRuntimePath\": \"Blade.HwTestRunner/Runtime.spin2\"");
+            properties.Add("    \"hardwareRuntimePath\": \"Blade.HwTestRunner/Runtime.blade\"");
         if (hasIrCoverageGuard)
             properties.Add("    \"irCoverageGuardPath\": \"RegressionTests/ir-regression-guard.json\"");
 

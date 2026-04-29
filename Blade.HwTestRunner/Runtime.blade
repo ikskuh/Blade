@@ -1,0 +1,123 @@
+layout Runtime{
+    extern cog var rt_param0: u32 @(1);
+    extern cog var rt_param1: u32 @(2);
+    extern cog var rt_param2: u32 @(3);
+    extern cog var rt_param3: u32 @(4);
+    extern cog var rt_param4: u32 @(5);
+    extern cog var rt_param5: u32 @(6);
+    extern cog var rt_param6: u32 @(7);
+    extern cog var rt_param7: u32 @(8);
+    cog var rt_result: u32 @(0x1EF) = 0;
+}
+
+hub const RT_F_CPU: u32   = 200_000_000;
+hub const RT_BAUD: u32    =     115_200;
+
+hub const RT_TXD_PIN: u32 = 62;
+hub const RT_RXD_PIN: u32 = 63;
+
+hub const RT_UART_CLOCKS: u32 = RT_F_CPU / RT_BAUD;
+
+hub const RT_UART_CFG: u32 = (RT_F_CPU / RT_BAUD * 0x1_0000) | (8-1); // 115200 @ 8 bit
+
+hub const RT_START_MARKER: u8 = 0x02; // STX
+hub const RT_END_MARKER: u8 = 0x03;  // ETC
+
+hub const P_TT_01: u32 = 0x00000040;
+hub const P_ASYNC_TX: u32 = 0x0000003C;
+
+
+asm fn rt_write_hex_long(value: u32)
+{
+        MOV     %1, #8
+  nib_loop:
+        GETNIB  %2, {value}, #7
+        CMP     %2, #10    WCZ
+IF_GE   ADD     %2, #55 // == "A"-10 == 65-10
+IF_LT   ADD     %2, #48 // == "0" == 0x30
+        CALLPA  %2, {rt_write_byte}
+        SHL     {value}, #4
+        DJNZ    %1, #nib_loop
+        RET
+}
+
+asm fn rt_write_byte(chr: u8)
+{
+    _loop:
+        TESTP   {RT_TXD_PIN}        WC   // wait for empty buffer
+IF_NC   JMP     #_loop                  // if not empty, test again
+_RET_   WYPIN   {chr}, {RT_TXD_PIN}      // write PA
+}
+
+inline asm volatile fn halt() {
+    REP #1, #0
+    NOP
+}
+
+import builtin;
+
+cog task _start : Runtime
+{
+    asm volatile {
+                JMP #over
+    rt_param0:
+         LONG 0
+    rt_param1:
+         LONG 0
+    rt_param2:
+         LONG 0
+    rt_param3:
+         LONG 0
+    rt_param4:
+         LONG 0
+    rt_param5:
+         LONG 0
+    rt_param6:
+         LONG 0
+    rt_param7:
+         LONG 0
+    over:
+    };
+    
+    //  %0000_000E_DDDD_DDMM_MMMM_MMMM_PPPP_CCSS
+    // 0b0000_0001_0000_0000_0000_1001_1111_1011
+    //           E                               = "PLL on"
+    //             DDDD_DD                       = xi div:  1
+    //                    MM_MMMM_MMMM           = vco mul: 10
+    //                                 PPPP      = "VCO / 1"
+    //                                      CC   = "15pF per pin"
+    //                                        SS = clk:PLL
+    // => "CLK = XI * 20 with PLL enabled"
+    @hubset(0x10009FB);
+
+        @WRPIN(P_TT_01 | P_ASYNC_TX, RT_TXD_PIN);
+        @WXPIN(RT_UART_CFG, RT_TXD_PIN);
+
+        // enable smart pin
+        @DIRH(RT_TXD_PIN);
+
+        @WAITX(1_000_000);
+
+        // Initialize hub stack pointer (PTRB) for rec fn (CALLB/RETB/PUSHB/POPB).
+        // Point well above the program binary so the stack does not clobber code/data.
+        asm volatile {
+            MOV PTRB, #0x10000
+        };
+
+        // First write must be without the "wait busy" logic as the pin would never trigger this!
+        // Write the "start of execution marker":
+        @WYPIN(RT_START_MARKER, RT_TXD_PIN);
+
+        builtin.task_main();
+
+        rt_write_byte(RT_END_MARKER);
+        rt_write_hex_long(rt_result);
+        rt_write_byte(0x0A);
+
+        // CALLPB #$7E, #rt_write_hex_long
+        // CALLPB #$100, #rt_write_hex_long
+        // CALLPB #$1FF, #rt_write_hex_long
+        // CALLPB ##$CAFEBABE, #rt_write_hex_long
+
+    halt();
+}

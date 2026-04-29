@@ -1,0 +1,13 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - MOV ?1, PA
+// - MOV OUTA, ?1
+
+cog task main {
+    var foo: u32 = undefined;
+    asm volatile {
+        MOV {foo}, PA
+        MOV OUTA, {foo}
+    };
+}

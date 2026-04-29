@@ -262,10 +262,10 @@ public abstract partial class BladeValue(BladeType type, object value) : IEquata
 
     private static int GetPointerHashCode(BladeValue value, PointedValue pointedValue)
     {
-        if (TryGetAbsolutePointerIdentity(value, pointedValue, out VariableStorageClass storageClass, out int absoluteAddress))
-            return HashCode.Combine("pointer-abs", storageClass, absoluteAddress);
+        if (TryGetAbsolutePointerIdentity(value, pointedValue, out VirtualAddress absoluteAddress))
+            return HashCode.Combine("pointer-abs", absoluteAddress);
 
-        VariableStorageClass pointerStorageClass = ((PointerLikeTypeSymbol)value.Type).StorageClass;
+        AddressSpace pointerStorageClass = ((PointerLikeTypeSymbol)value.Type).StorageClass;
         return HashCode.Combine(
             "pointer-symbolic",
             pointerStorageClass,

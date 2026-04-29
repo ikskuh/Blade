@@ -14,10 +14,12 @@ internal static class CompilationModuleLoader
 {
     public static LoadedCompilation Load(
         SourceText rootSource,
+        SourceText runtimeLauncherSource,
         DiagnosticBag diagnostics,
         IReadOnlyDictionary<string, string> namedModuleRoots)
     {
         Requires.NotNull(rootSource);
+        Requires.NotNull(runtimeLauncherSource);
         Requires.NotNull(diagnostics);
         Requires.NotNull(namedModuleRoots);
 
@@ -32,6 +34,17 @@ internal static class CompilationModuleLoader
             namedModuleOwners,
             out List<string> newlyDiscoveredModules);
         modulesByFullPath[root.FullPath] = root;
+
+        foreach (string modulePath in newlyDiscoveredModules)
+            work.Enqueue(modulePath);
+
+        LoadedModule runtimeLauncherModule = LoadModuleFromSource(
+            runtimeLauncherSource,
+            diagnostics,
+            namedModuleRoots,
+            namedModuleOwners,
+            out newlyDiscoveredModules);
+        modulesByFullPath[runtimeLauncherModule.FullPath] = runtimeLauncherModule;
 
         foreach (string modulePath in newlyDiscoveredModules)
             work.Enqueue(modulePath);
@@ -57,7 +70,7 @@ internal static class CompilationModuleLoader
                 work.Enqueue(discovered);
         }
 
-        return new LoadedCompilation(root, modulesByFullPath);
+        return new LoadedCompilation(root, runtimeLauncherModule, modulesByFullPath);
     }
 
     private static LoadedModule LoadModuleFromSource(
@@ -186,9 +199,10 @@ internal enum LoadedImportKind
     Builtin,
 }
 
-internal sealed class LoadedCompilation(LoadedModule rootModule, IReadOnlyDictionary<string, LoadedModule> modulesByFullPath)
+internal sealed class LoadedCompilation(LoadedModule rootModule, LoadedModule runtimeLauncherModule, IReadOnlyDictionary<string, LoadedModule> modulesByFullPath)
 {
     public LoadedModule RootModule { get; } = Requires.NotNull(rootModule);
+    public LoadedModule RuntimeLauncherModule { get; } = Requires.NotNull(runtimeLauncherModule);
     public IReadOnlyDictionary<string, LoadedModule> ModulesByFullPath { get; } = Requires.NotNull(modulesByFullPath);
 }
 

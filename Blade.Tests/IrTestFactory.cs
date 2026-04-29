@@ -132,13 +132,25 @@ internal static class IrTestFactory
             returnTypes ?? [],
             [],
             returnSlots);
-        return new AsmFunction(sourceFunction, ccTier, nodes);
+        TaskSymbol task = new(
+            $"{name}_task",
+            sourceFunction.Symbol,
+            AddressSpace.Cog,
+            SourceSpan.Synthetic());
+        ImageDescriptor image = new(
+            task,
+            sourceFunction.Symbol,
+            AddressSpace.Cog,
+            isEntryPoint,
+            [sourceFunction.Symbol],
+            []);
+        return new AsmFunction(image, sourceFunction, ccTier, nodes);
     }
 
     public static VariableSymbol CreateVariableSymbol(
         string name,
         BladeType? type = null,
-        VariableStorageClass? storageClass = null,
+        AddressSpace? storageClass = null,
         VariableScopeKind scopeKind = VariableScopeKind.Local,
         bool isConst = false,
         bool isExtern = false,
@@ -158,7 +170,9 @@ internal static class IrTestFactory
                 storageClass ?? throw new InvalidOperationException("Global storage variables require an explicit storage class."),
                 declaringLayout: null,
                 isExtern,
-                fixedAddress,
+                fixedAddress.HasValue
+                    ? new VirtualAddress(storageClass ?? throw new InvalidOperationException("Global storage variables require an explicit storage class."), fixedAddress.Value)
+                    : null,
                 alignment,
                 SourceSpan.Synthetic()),
             _ => throw new InvalidOperationException($"Unsupported variable scope kind '{scopeKind}'."),
@@ -169,7 +183,7 @@ internal static class IrTestFactory
         string name,
         StoragePlacePlacement placement = StoragePlacePlacement.Allocatable,
         BladeType? type = null,
-        VariableStorageClass storageClass = VariableStorageClass.Cog,
+        AddressSpace storageClass = AddressSpace.Cog,
         VariableScopeKind scopeKind = VariableScopeKind.GlobalStorage,
         bool isConst = false,
         bool isExtern = false,
@@ -192,7 +206,7 @@ internal static class IrTestFactory
         StoragePlaceRegisterRole? effectiveRegisterRole = registerRole;
         if (!effectiveRegisterRole.HasValue
             && placement == StoragePlacePlacement.Allocatable
-            && storageClass == VariableStorageClass.Cog)
+            && storageClass == AddressSpace.Cog)
         {
             effectiveRegisterRole = StoragePlaceRegisterRole.Global;
         }
@@ -251,6 +265,8 @@ internal static class IrTestFactory
             rootModule,
             entryPoint,
             entryPointFunction,
+            entryPoint,
+            entryPointFunction,
             effectiveModules,
             effectiveGlobals,
             effectiveFunctions);
@@ -264,7 +280,7 @@ internal static class IrTestFactory
             CreateFunctionDeclarationSyntax("main"),
             FunctionKind.Default,
             isTopLevel: false,
-            VariableStorageClass.Cog,
+            AddressSpace.Cog,
             FunctionInliningPolicy.Default,
             SourceSpan.Synthetic());
         return new BoundFunctionMember(entryFunction, body, body.Span);
@@ -272,7 +288,7 @@ internal static class IrTestFactory
 
     public static TaskSymbol CreateEntryTask(FunctionSymbol entryFunction)
     {
-        return new TaskSymbol("main", Requires.NotNull(entryFunction), VariableStorageClass.Cog, SourceSpan.Synthetic());
+        return new TaskSymbol("main", Requires.NotNull(entryFunction), AddressSpace.Cog, SourceSpan.Synthetic());
     }
 
     public static ImagePlan CreateSingleEntryImagePlan(FunctionSymbol entryFunction)
@@ -283,7 +299,7 @@ internal static class IrTestFactory
         ImageDescriptor image = new(
             task,
             entryFunction,
-            VariableStorageClass.Cog,
+            AddressSpace.Cog,
             isEntryImage: true,
             [entryFunction],
             []);
@@ -307,24 +323,22 @@ internal static class IrTestFactory
     public static CogResourceLayoutSet CreateEmptyCogResourceLayouts(ImagePlan imagePlan)
     {
         Requires.NotNull(imagePlan);
+        ImagePlacement imagePlacement = ImagePlacer.Place(imagePlan);
 
-        List<int> availableRegisters = [];
+        List<CogAddress> availableRegisters = [];
         for (int address = 0x1EF; address >= 0; address--)
-            availableRegisters.Add(address);
+            availableRegisters.Add(new CogAddress(address));
 
-        CogResourceLayout entryLayout = new(imagePlan.EntryImage, 0, availableRegisters, []);
-        Dictionary<FunctionSymbol, CogResourceLayout> layoutsByFunction = [];
-        foreach (ImageDescriptor image in imagePlan.Images)
-        {
-            foreach (FunctionSymbol function in image.Functions)
-                layoutsByFunction[function] = entryLayout;
-        }
+        CogResourceLayout entryLayout = new(imagePlacement.EntryImage, 0, availableRegisters, []);
 
         return new CogResourceLayoutSet(
             [entryLayout],
             entryLayout,
-            new Dictionary<IAsmSymbol, int>(),
-            layoutsByFunction,
+            new Dictionary<IAsmSymbol, MemoryAddress>(),
+            new Dictionary<ImageDescriptor, CogResourceLayout>
+            {
+                [imagePlan.EntryImage] = entryLayout,
+            },
             new Dictionary<StoragePlace, CogResourceLayout>(),
             0);
     }
@@ -334,8 +348,8 @@ internal static class IrTestFactory
         Requires.NotNull(module);
         Requires.That(module.Functions.Count > 0);
 
-        FunctionSymbol entryFunction = module.Functions.First(static function => function.IsEntryPoint).Symbol;
-        return CreateSimpleCogResourceLayouts(module, CreateSingleEntryImagePlan(entryFunction), includeDefaultBladeHalt: false);
+        ImagePlan imagePlan = CreateImagePlanFromModule(module);
+        return CreateSimpleCogResourceLayouts(module, imagePlan, includeDefaultBladeHalt: false);
     }
 
     public static CogResourceLayoutSet CreateSimpleCogResourceLayouts(AsmModule module, bool includeDefaultBladeHalt)
@@ -343,8 +357,8 @@ internal static class IrTestFactory
         Requires.NotNull(module);
         Requires.That(module.Functions.Count > 0);
 
-        FunctionSymbol entryFunction = module.Functions.First(static function => function.IsEntryPoint).Symbol;
-        return CreateSimpleCogResourceLayouts(module, CreateSingleEntryImagePlan(entryFunction), includeDefaultBladeHalt);
+        ImagePlan imagePlan = CreateImagePlanFromModule(module);
+        return CreateSimpleCogResourceLayouts(module, imagePlan, includeDefaultBladeHalt);
     }
 
     public static CogResourceLayoutSet CreateSimpleCogResourceLayouts(AsmModule module, ImagePlan imagePlan, bool includeDefaultBladeHalt)
@@ -352,7 +366,21 @@ internal static class IrTestFactory
         Requires.NotNull(module);
         Requires.NotNull(imagePlan);
 
-        return CogResourcePlanner.Build(module, imagePlan, new LayoutSolution([]), includeDefaultBladeHalt, diagnostics: null);
+        return CogResourcePlanner.Build(module, imagePlan, ImagePlacer.Place(imagePlan), new LayoutSolution([]), includeDefaultBladeHalt, diagnostics: null);
+    }
+
+    public static ImagePlan CreateImagePlanFromModule(AsmModule module)
+    {
+        Requires.NotNull(module);
+
+        IReadOnlyList<ImageDescriptor> images = [.. module.Functions
+            .Select(static function => function.OwningImage)
+            .Distinct()];
+        ImageDescriptor entryImage = module.Functions
+            .FirstOrDefault(static function => function.IsEntryPoint)
+            ?.OwningImage
+            ?? module.Functions[0].OwningImage;
+        return new ImagePlan(images, entryImage);
     }
 
     public static IReadOnlyDictionary<string, Symbol> CreateExports(

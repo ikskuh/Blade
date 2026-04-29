@@ -15,6 +15,12 @@ namespace Blade.Semantics;
 public sealed class Binder
 {
     private const string BuiltinModulePath = "<builtin>";
+    private const string BuiltinRuntimeModulePath = "<builtin-runtime>";
+    private const string ProgramMainTaskName = "main";
+    private const string RuntimeLauncherTaskName = "_start";
+    private const string BuiltinTaskMainFunctionName = "task_main";
+    private const string DefaultRuntimeLauncherPath = "<default-runtime>";
+    private const int RuntimeAbiResultAddress = 0x1EF;
     private readonly DiagnosticBag _diagnostics;
     private readonly LoadedCompilation _compilation;
     private readonly Dictionary<string, TypeSymbol> _typeAliases = new(StringComparer.Ordinal);
@@ -36,6 +42,9 @@ public sealed class Binder
     private SourceText? _currentSource;
     private readonly Stack<LoopContext> _loopStack = new();
     private readonly int _comptimeFuel;
+    private readonly FunctionSymbol? _builtinTaskMainTarget;
+    private FunctionSymbol? _builtinTaskMainFunction;
+    private readonly bool _enableRuntimeAbiBindings;
     private int _anonymousStructIndex;
     private bool _suppressPointerStorageClassDiagnostics;
     private LayoutSymbol? _currentImplicitLayout;
@@ -44,9 +53,11 @@ public sealed class Binder
     private static readonly EnumTypeSymbol MemorySpaceType = new("MemorySpace", BuiltinTypes.U32,
         new Dictionary<string, long>(StringComparer.Ordinal) { ["cog"] = 0, ["lut"] = 1, ["hub"] = 2, ["_cog"] = 0, ["_lut"] = 1, ["_hub"] = 2 },
         isOpen: false);
+    private static readonly IReadOnlyDictionary<string, int> RuntimeAbiFixedAddresses = CreateRuntimeAbiFixedAddresses();
 
     private readonly record struct LayoutMemberBinding(LayoutSymbol Layout, GlobalVariableSymbol Variable);
     private readonly record struct StoredLayoutMemberBinding(VariableDeclarationSyntax Declaration, GlobalVariableSymbol Symbol);
+    private readonly record struct TaskExternalBinding(VariableDeclarationSyntax Declaration, GlobalVariableSymbol Symbol);
     private readonly record struct TaskLocalFunctionBinding(FunctionSymbol Symbol, SyntaxNode Syntax);
 
     private sealed class BindContext : IDisposable
@@ -85,18 +96,29 @@ public sealed class Binder
         }
     }
 
+    private sealed class SyntheticFunctionSignatureSyntax(Token name) : IFunctionSignatureSyntax
+    {
+        public Token Name { get; } = name;
+        public SeparatedSyntaxList<ParameterSyntax> Parameters { get; } = new([]);
+        public Token? Arrow => null;
+        public SeparatedSyntaxList<ReturnItemSyntax>? ReturnSpec => null;
+    }
+
     private Binder(
         DiagnosticBag diagnostics,
         LoadedCompilation compilation,
         HashSet<string> moduleBindingStack,
         Dictionary<string, BoundModule> moduleDefinitionCache,
-        int comptimeFuel)
+        int comptimeFuel,
+        FunctionSymbol? builtinTaskMainTarget)
     {
         _diagnostics = diagnostics;
         _compilation = Requires.NotNull(compilation);
         _moduleBindingStack = Requires.NotNull(moduleBindingStack);
         _moduleDefinitionCache = Requires.NotNull(moduleDefinitionCache);
         _comptimeFuel = Requires.Positive(comptimeFuel);
+        _builtinTaskMainTarget = builtinTaskMainTarget;
+        _enableRuntimeAbiBindings = !PathIdentity.Comparer.Equals(compilation.RuntimeLauncherModule.FullPath, DefaultRuntimeLauncherPath);
         _globalScope = new Scope(parent: null);
         _currentScope = _globalScope;
     }
@@ -109,15 +131,42 @@ public sealed class Binder
         Requires.NotNull(compilation);
         Requires.NotNull(diagnostics);
 
-        HashSet<string> moduleBindingStack = new(PathIdentity.Comparer)
+        Dictionary<string, BoundModule> moduleDefinitionCache = new(PathIdentity.Comparer);
+
+        HashSet<string> rootModuleBindingStack = new(PathIdentity.Comparer)
         {
             compilation.RootModule.FullPath,
         };
-        Dictionary<string, BoundModule> moduleDefinitionCache = new(PathIdentity.Comparer);
-        Binder binder = new(diagnostics, compilation, moduleBindingStack, moduleDefinitionCache, comptimeFuel);
-        BoundModule rootModule = binder.BindCompilationUnit(compilation.RootModule);
+        Binder rootBinder = new(diagnostics, compilation, rootModuleBindingStack, moduleDefinitionCache, comptimeFuel, builtinTaskMainTarget: null);
+        BoundModule rootModule = rootBinder.BindCompilationUnit(compilation.RootModule);
         using IDisposable _ = diagnostics.UseSource(compilation.RootModule.Source);
-        return binder.CreateBoundProgram(rootModule);
+        if (!rootBinder.TryResolveProgramMainTask(rootModule, out TaskSymbol? programMainTask, out BoundFunctionMember? programMainEntryFunction))
+            return null;
+
+        HashSet<string> runtimeModuleBindingStack = new(PathIdentity.Comparer)
+        {
+            compilation.RuntimeLauncherModule.FullPath,
+        };
+        Binder runtimeBinder = new(
+            diagnostics,
+            compilation,
+            runtimeModuleBindingStack,
+            moduleDefinitionCache,
+            comptimeFuel,
+            Requires.NotNull(programMainTask).EntryFunction);
+        BoundModule runtimeLauncherModule = runtimeBinder.BindCompilationUnit(compilation.RuntimeLauncherModule);
+        using IDisposable __ = diagnostics.UseSource(compilation.RuntimeLauncherModule.Source);
+        if (!runtimeBinder.TryResolveRuntimeLauncherEntryPoint(runtimeLauncherModule, out TaskSymbol? entryPoint, out BoundFunctionMember? entryPointFunction))
+            return null;
+
+        return ComposeBoundProgram(
+            rootModule,
+            runtimeLauncherModule,
+            Requires.NotNull(programMainTask),
+            Requires.NotNull(programMainEntryFunction),
+            Requires.NotNull(entryPoint),
+            Requires.NotNull(entryPointFunction),
+            moduleDefinitionCache);
     }
 
     private BoundModule BindCompilationUnit(LoadedModule module)
@@ -186,43 +235,10 @@ public sealed class Binder
             exportedSymbols);
     }
 
-    private BoundProgram? CreateBoundProgram(BoundModule rootModule)
+    private bool TryResolveProgramMainTask(BoundModule rootModule, out TaskSymbol? entryPoint, out BoundFunctionMember? entryPointFunction)
     {
         Requires.NotNull(rootModule);
-        if (!TryResolveProgramEntryPoint(rootModule, out TaskSymbol? entryPoint, out BoundFunctionMember? entryPointFunction))
-            return null;
-
-        TaskSymbol requiredEntryPoint = Requires.NotNull(entryPoint);
-        BoundFunctionMember requiredEntryPointFunction = Requires.NotNull(entryPointFunction);
-
-        List<BoundModule> modules = [rootModule];
-        foreach (BoundModule module in _moduleDefinitionCache
-                     .Where(static entry => !ReferenceEquals(entry.Value, null))
-                     .OrderBy(static entry => entry.Key, StringComparer.Ordinal)
-                     .Select(static entry => entry.Value))
-        {
-            if (!ReferenceEquals(module, rootModule))
-                modules.Add(module);
-        }
-
-        List<GlobalVariableSymbol> globalVariables = new();
-        List<BoundFunctionMember> functions = new();
-        foreach (BoundModule module in modules)
-        {
-            globalVariables.AddRange(module.GlobalVariables);
-            functions.AddRange(module.Functions);
-        }
-
-        if (!functions.Any(function => ReferenceEquals(function.Symbol, requiredEntryPoint.EntryFunction)))
-            functions.Insert(0, requiredEntryPointFunction);
-
-        return new BoundProgram(rootModule, requiredEntryPoint, requiredEntryPointFunction, modules, globalVariables, functions);
-    }
-
-    private bool TryResolveProgramEntryPoint(BoundModule rootModule, out TaskSymbol? entryPoint, out BoundFunctionMember? entryPointFunction)
-    {
-        Requires.NotNull(rootModule);
-        if (!rootModule.ExportedSymbols.TryGetValue("main", out Symbol? symbol)
+        if (!rootModule.ExportedSymbols.TryGetValue(ProgramMainTaskName, out Symbol? symbol)
             || symbol is not TaskSymbol task)
         {
             _diagnostics.Report(new MissingMainTaskError(_diagnostics.CurrentSource, rootModule.Syntax.EndOfFileToken.Span));
@@ -231,7 +247,7 @@ public sealed class Binder
             return false;
         }
 
-        if (task.StorageClass != VariableStorageClass.Cog)
+        if (task.StorageClass != AddressSpace.Cog)
             _diagnostics.ReportMainTaskMustBeCog(task.SourceSpan.Span, task.Name, task.StorageClass);
 
         foreach (BoundFunctionMember function in rootModule.Functions)
@@ -248,6 +264,99 @@ public sealed class Binder
         entryPoint = Assert.UnreachableValue<TaskSymbol>(); // pragma: force-coverage
         entryPointFunction = Assert.UnreachableValue<BoundFunctionMember>(); // pragma: force-coverage
         return false; // pragma: force-coverage
+    }
+
+    private bool TryResolveRuntimeLauncherEntryPoint(BoundModule runtimeModule, out TaskSymbol? entryPoint, out BoundFunctionMember? entryPointFunction)
+    {
+        Requires.NotNull(runtimeModule);
+
+        if (runtimeModule.ExportedSymbols.TryGetValue(ProgramMainTaskName, out Symbol? declaredMain)
+            && declaredMain is TaskSymbol)
+        {
+            _diagnostics.Report(new RuntimeLauncherCannotDeclareMainTaskError(_diagnostics.CurrentSource, declaredMain.SourceSpan.Span));
+            entryPoint = null;
+            entryPointFunction = null;
+            return false;
+        }
+
+        if (!runtimeModule.ExportedSymbols.TryGetValue(RuntimeLauncherTaskName, out Symbol? symbol)
+            || symbol is not TaskSymbol task)
+        {
+            _diagnostics.Report(new MissingRuntimeLauncherTaskError(_diagnostics.CurrentSource, runtimeModule.Syntax.EndOfFileToken.Span));
+            entryPoint = null;
+            entryPointFunction = null;
+            return false;
+        }
+
+        if (task.StorageClass != AddressSpace.Cog)
+            _diagnostics.ReportMainTaskMustBeCog(task.SourceSpan.Span, task.Name, task.StorageClass);
+
+        foreach (BoundFunctionMember function in runtimeModule.Functions)
+        {
+            if (ReferenceEquals(function.Symbol, task.EntryFunction))
+            {
+                entryPoint = task;
+                entryPointFunction = function;
+                return true;
+            }
+        }
+
+        Assert.Unreachable($"Runtime launcher task '{task.Name}' must have a bound function body in the runtime module."); // pragma: force-coverage
+        entryPoint = Assert.UnreachableValue<TaskSymbol>(); // pragma: force-coverage
+        entryPointFunction = Assert.UnreachableValue<BoundFunctionMember>(); // pragma: force-coverage
+        return false; // pragma: force-coverage
+    }
+
+    private static BoundProgram ComposeBoundProgram(
+        BoundModule rootModule,
+        BoundModule runtimeLauncherModule,
+        TaskSymbol programEntryPoint,
+        BoundFunctionMember programEntryPointFunction,
+        TaskSymbol launcherEntryPoint,
+        BoundFunctionMember launcherEntryPointFunction,
+        IReadOnlyDictionary<string, BoundModule> moduleDefinitionCache)
+    {
+        Requires.NotNull(rootModule);
+        Requires.NotNull(runtimeLauncherModule);
+        Requires.NotNull(programEntryPoint);
+        Requires.NotNull(programEntryPointFunction);
+        Requires.NotNull(launcherEntryPoint);
+        Requires.NotNull(launcherEntryPointFunction);
+        Requires.NotNull(moduleDefinitionCache);
+
+        List<BoundModule> modules = [rootModule, runtimeLauncherModule];
+        foreach (BoundModule module in moduleDefinitionCache
+                     .Where(static entry => !ReferenceEquals(entry.Value, null))
+                     .OrderBy(static entry => entry.Key, StringComparer.Ordinal)
+                     .Select(static entry => entry.Value))
+        {
+            if (!ReferenceEquals(module, rootModule) && !ReferenceEquals(module, runtimeLauncherModule))
+                modules.Add(module);
+        }
+
+        List<GlobalVariableSymbol> globalVariables = [];
+        List<BoundFunctionMember> functions = [];
+        foreach (BoundModule module in modules)
+        {
+            globalVariables.AddRange(module.GlobalVariables);
+            functions.AddRange(module.Functions);
+        }
+
+        if (!functions.Any(function => ReferenceEquals(function.Symbol, programEntryPoint.EntryFunction)))
+            functions.Insert(0, programEntryPointFunction);
+
+        if (!functions.Any(function => ReferenceEquals(function.Symbol, launcherEntryPoint.EntryFunction)))
+            functions.Insert(0, launcherEntryPointFunction);
+
+        return new BoundProgram(
+            rootModule,
+            programEntryPoint,
+            programEntryPointFunction,
+            launcherEntryPoint,
+            launcherEntryPointFunction,
+            modules,
+            globalVariables,
+            functions);
     }
 
     private void BindImports(LoadedModule module)
@@ -294,7 +403,7 @@ public sealed class Binder
         BoundModule program;
         try
         {
-            Binder nestedBinder = new(_diagnostics, _compilation, _moduleBindingStack, _moduleDefinitionCache, _comptimeFuel);
+            Binder nestedBinder = new(_diagnostics, _compilation, _moduleBindingStack, _moduleDefinitionCache, _comptimeFuel, _builtinTaskMainTarget);
             program = nestedBinder.BindCompilationUnit(imported);
         }
         finally
@@ -319,8 +428,51 @@ public sealed class Binder
 
     private BoundModule GetOrCreateBuiltinModule()
     {
-        if (_moduleDefinitionCache.TryGetValue(BuiltinModulePath, out BoundModule? cached))
-            return cached;
+        if (_builtinTaskMainTarget is null)
+            return GetOrCreateBuiltinBaseModule();
+
+        if (_moduleDefinitionCache.TryGetValue(BuiltinRuntimeModulePath, out BoundModule? cachedRuntimeModule))
+        {
+            if (cachedRuntimeModule.ExportedSymbols.TryGetValue(BuiltinTaskMainFunctionName, out Symbol? cachedBuiltinTaskMain)
+                && cachedBuiltinTaskMain is FunctionSymbol cachedBuiltinTaskMainFunction)
+            {
+                _builtinTaskMainFunction = cachedBuiltinTaskMainFunction;
+            }
+
+            return cachedRuntimeModule;
+        }
+
+        BoundModule baseBuiltinModule = GetOrCreateBuiltinBaseModule();
+        Dictionary<string, Symbol> exportedSymbols = new(baseBuiltinModule.ExportedSymbols, StringComparer.Ordinal);
+
+        Token name = new(TokenKind.Identifier, new TextSpan(0, 0), BuiltinTaskMainFunctionName);
+        FunctionSymbol builtinTaskMainFunction = new(
+            BuiltinTaskMainFunctionName,
+            new SyntheticFunctionSignatureSyntax(name),
+            FunctionKind.Default,
+            isTopLevel: false,
+            storageClass: null,
+            FunctionInliningPolicy.Default,
+            SourceSpan.Synthetic());
+        builtinTaskMainFunction.Parameters = [];
+        builtinTaskMainFunction.ReturnSlots = _builtinTaskMainTarget.ReturnSlots;
+        exportedSymbols.Add(BuiltinTaskMainFunctionName, builtinTaskMainFunction);
+        _builtinTaskMainFunction = builtinTaskMainFunction;
+
+        BoundModule builtinRuntimeModule = new(
+            BuiltinRuntimeModulePath,
+            baseBuiltinModule.Syntax,
+            baseBuiltinModule.GlobalVariables,
+            baseBuiltinModule.Functions,
+            exportedSymbols);
+        _moduleDefinitionCache[BuiltinRuntimeModulePath] = builtinRuntimeModule;
+        return builtinRuntimeModule;
+    }
+
+    private BoundModule GetOrCreateBuiltinBaseModule()
+    {
+        if (_moduleDefinitionCache.TryGetValue(BuiltinModulePath, out BoundModule? cachedBaseModule))
+            return cachedBaseModule;
 
         LayoutSymbol intRegsLayout = new("IntRegs");
         AddBuiltinLayoutMember(intRegsLayout, "IJMP3", isConst: false, address: 0x1F0);
@@ -354,15 +506,15 @@ public sealed class Binder
         };
 
         CompilationUnitSyntax emptySyntax = new([], new Token(TokenKind.EndOfFile, new TextSpan(0, 0), string.Empty));
-        BoundModule builtinModule = new(
+        BoundModule builtinBaseModule = new(
             BuiltinModulePath,
             emptySyntax,
             [],
             [],
             exportedSymbols);
 
-        _moduleDefinitionCache[BuiltinModulePath] = builtinModule;
-        return builtinModule;
+        _moduleDefinitionCache[BuiltinModulePath] = builtinBaseModule;
+        return builtinBaseModule;
     }
 
     private static void AddBuiltinLayoutMember(LayoutSymbol layout, string name, bool isConst, int address)
@@ -371,10 +523,10 @@ public sealed class Binder
             name,
             BuiltinTypes.U32,
             isConst,
-            VariableStorageClass.Cog,
+            AddressSpace.Cog,
             layout,
             isExtern: true,
-            fixedAddress: address,
+            fixedAddress: new VirtualAddress(new CogAddress(address)),
             alignment: null);
         bool added = layout.TryDeclareMember(member);
         Assert.Invariant(added, $"Builtin layout '{layout.Name}' must not contain duplicate member '{name}'.");
@@ -467,7 +619,7 @@ public sealed class Binder
                     break;
 
                 case TaskDeclarationSyntax taskDeclaration:
-                    VariableStorageClass? storageClass = MapStorageClass(taskDeclaration.StorageClassKeyword);
+                    AddressSpace? storageClass = MapStorageClass(taskDeclaration.StorageClassKeyword);
                     Assert.Invariant(storageClass.HasValue, "Tasks must declare an explicit storage class.");
 
                     FunctionSymbol entryFunction = new(
@@ -629,7 +781,7 @@ public sealed class Binder
         }
     }
 
-    private static VariableStorageClass? GetFunctionStorageClass(IFunctionSignatureSyntax syntax)
+    private static AddressSpace? GetFunctionStorageClass(IFunctionSignatureSyntax syntax)
     {
         return MapStorageClass(GetFunctionStorageClassKeyword(syntax));
     }
@@ -812,11 +964,13 @@ public sealed class Binder
             ResolveFunctionSignature(localFunction.Symbol);
 
         IReadOnlyList<StoredLayoutMemberBinding> members = CollectStoredLayoutMembers(task, GetTaskStoredDeclarations(taskDeclaration));
+        IReadOnlyList<TaskExternalBinding> taskExternalBindings = CollectTaskExternalBindings(taskDeclaration, taskScope);
 
         foreach (TaskLocalFunctionBinding localFunction in localFunctions)
             boundFunctions.Add(BindTaskLocalFunction(task, localFunction, taskScope));
 
         BindStoredLayoutMembers(members, taskScope, task, boundGlobals);
+        BindTaskExternalBindings(taskExternalBindings, boundGlobals);
         
         boundFunctions.Add(BindTaskEntryFunction(task, taskDeclaration, taskScope));
 
@@ -897,11 +1051,39 @@ public sealed class Binder
         List<VariableDeclarationSyntax> declarations = [];
         foreach (SyntaxNode item in taskDeclaration.Body.Items)
         {
-            if (item is VariableDeclarationSyntax declaration && MapStorageClass(declaration.StorageClassKeyword) is not null)
+            if (item is VariableDeclarationSyntax declaration
+                && MapStorageClass(declaration.StorageClassKeyword) is not null
+                && declaration.ExternKeyword is null)
                 declarations.Add(declaration);
         }
 
         return declarations;
+    }
+
+    private IReadOnlyList<TaskExternalBinding> CollectTaskExternalBindings(TaskDeclarationSyntax taskDeclaration, Scope taskScope)
+    {
+        List<TaskExternalBinding> bindings = [];
+        foreach (SyntaxNode item in taskDeclaration.Body.Items)
+        {
+            if (item is not VariableDeclarationSyntax declaration
+                || MapStorageClass(declaration.StorageClassKeyword) is null
+                || declaration.ExternKeyword is null)
+            {
+                continue;
+            }
+
+            _suppressPointerStorageClassDiagnostics = true;
+            BladeType variableType = BindType(declaration.Type);
+            _suppressPointerStorageClassDiagnostics = false;
+
+            GlobalVariableSymbol symbol = CreateGlobalVariableSymbol(declaration, variableType, declaringLayout: null);
+            if (!TryDeclareSymbol(taskScope, symbol, declaration.Name.Span))
+                continue;
+
+            bindings.Add(new TaskExternalBinding(declaration, symbol));
+        }
+
+        return bindings;
     }
 
     private IReadOnlyList<StoredLayoutMemberBinding> CollectStoredLayoutMembers(LayoutSymbol layout, IReadOnlyList<VariableDeclarationSyntax> declarations)
@@ -957,6 +1139,18 @@ public sealed class Binder
     }
 
     private void BindStoredLayoutMember(VariableDeclarationSyntax declaration, GlobalVariableSymbol variableSymbol)
+        => BindGlobalStorageDeclaration(declaration, variableSymbol);
+
+    private void BindTaskExternalBindings(IReadOnlyList<TaskExternalBinding> bindings, ICollection<GlobalVariableSymbol> boundGlobals)
+    {
+        foreach (TaskExternalBinding binding in bindings)
+        {
+            BindGlobalStorageDeclaration(binding.Declaration, binding.Symbol);
+            boundGlobals.Add(binding.Symbol);
+        }
+    }
+
+    private void BindGlobalStorageDeclaration(VariableDeclarationSyntax declaration, GlobalVariableSymbol variableSymbol)
     {
         ResolveLayoutMetadata(declaration, variableSymbol);
 
@@ -1738,7 +1932,7 @@ public sealed class Binder
 
                 case InlineAsmInstructionLineSyntax instructionLine:
                     {
-                        InlineAsmInstructionLine? bound = BindInlineAsmInstruction(
+                        InlineAsmLine? bound = BindInlineAsmLine(
                             instructionLine, bodySyntax.Span, availableBindings, labels,
                             tempBindings, referencedVarBindings);
                         if (bound is not null)
@@ -1779,7 +1973,7 @@ public sealed class Binder
         };
     }
 
-    private InlineAsmInstructionLine? BindInlineAsmInstruction(
+    private InlineAsmLine? BindInlineAsmLine(
         InlineAsmInstructionLineSyntax instructionLine,
         TextSpan blockSpan,
         IReadOnlyDictionary<string, InlineAsmVarBindingSlot> availableBindings,
@@ -1787,12 +1981,15 @@ public sealed class Binder
         Dictionary<int, InlineAsmTempBindingSlot> tempBindings,
         HashSet<InlineAsmVarBindingSlot> referencedVarBindings)
     {
+        if (TryParseInlineAsmDataDirective(instructionLine.Mnemonic.Text, out InlineAsmDataDirective directive))
+            return BindInlineAsmDataLine(instructionLine, blockSpan, directive, availableBindings, labels, tempBindings, referencedVarBindings);
+
         P2ConditionCode? condition = null;
         if (instructionLine.Condition is Token conditionToken)
         {
             if (!P2InstructionMetadata.TryParseConditionCode(conditionToken.Text, out P2ConditionCode parsedCondition))
             {
-                _diagnostics.Report(new InlineAsmUnknownInstructionError(_diagnostics.CurrentSource, blockSpan, conditionToken.Text));
+                _diagnostics.Report(new InlineAsmUnknownConditionError(_diagnostics.CurrentSource, conditionToken.Span, conditionToken.Text));
                 return null;
             }
             condition = parsedCondition;
@@ -1825,13 +2022,54 @@ public sealed class Binder
         {
             if (!P2InstructionMetadata.TryParseFlagEffect(flagToken.Text, out P2FlagEffect parsedFlagEffect))
             {
-                _diagnostics.Report(new InlineAsmUnknownInstructionError(_diagnostics.CurrentSource, blockSpan, flagToken.Text));
+                _diagnostics.Report(new InlineAsmInvalidFlagEffectError(_diagnostics.CurrentSource, flagToken.Span, flagToken.Text));
                 return null;
             }
             flagEffect = parsedFlagEffect;
         }
 
         return new InlineAsmInstructionLine(condition, mnemonic, operands, flagEffect, instructionLine.TrailingComment);
+    }
+
+    private InlineAsmDataLine? BindInlineAsmDataLine(
+        InlineAsmInstructionLineSyntax instructionLine,
+        TextSpan blockSpan,
+        InlineAsmDataDirective directive,
+        IReadOnlyDictionary<string, InlineAsmVarBindingSlot> availableBindings,
+        IReadOnlyDictionary<string, ControlFlowLabelSymbol> labels,
+        Dictionary<int, InlineAsmTempBindingSlot> tempBindings,
+        HashSet<InlineAsmVarBindingSlot> referencedVarBindings)
+    {
+        if (instructionLine.Condition is Token conditionToken)
+        {
+            _diagnostics.Report(new InlineAsmUnexpectedTokenError(_diagnostics.CurrentSource, conditionToken.Span, conditionToken.Text));
+            return null;
+        }
+
+        if (instructionLine.FlagEffect is Token flagToken)
+        {
+            _diagnostics.Report(new InlineAsmUnexpectedTokenError(_diagnostics.CurrentSource, flagToken.Span, flagToken.Text));
+            return null;
+        }
+
+        List<InlineAsmDataValue> values = [];
+        foreach (InlineAsmOperandSyntax operandSyntax in instructionLine.Operands)
+        {
+            InlineAsmDataValue? value = BindInlineAsmDataValue(
+                operandSyntax,
+                blockSpan,
+                InlineAsmAddressingMode.Direct,
+                availableBindings,
+                labels,
+                tempBindings,
+                referencedVarBindings);
+            if (value is null)
+                return null;
+
+            values.Add(value);
+        }
+
+        return new InlineAsmDataLine(directive, values, instructionLine.TrailingComment);
     }
 
     private InlineAsmOperand? BindInlineAsmOperand(
@@ -1870,13 +2108,16 @@ public sealed class Binder
                 }
 
             case InlineAsmImmediateOperandSyntax immediate:
-                return BindInlineAsmImmediateOperand(immediate, blockSpan, labels);
+                return BindInlineAsmImmediateOperand(immediate, blockSpan, availableBindings, labels);
 
             case InlineAsmCurrentAddressOperandSyntax:
                 return new InlineAsmCurrentAddressOperand(InlineAsmAddressingMode.Direct);
 
             case InlineAsmIntegerLiteralOperandSyntax:
-                _diagnostics.Report(new InlineAsmUndefinedLabelError(_diagnostics.CurrentSource, blockSpan, operandSyntax.Span.Length > 0 ? "integer" : ""));
+                _diagnostics.Report(new InlineAsmInvalidDirectOperandError(
+                    _diagnostics.CurrentSource,
+                    operandSyntax.Span,
+                    GetInlineAsmOperandText(operandSyntax.Span)));
                 return null;
 
             case InlineAsmSymbolOperandSyntax symbol:
@@ -1890,6 +2131,7 @@ public sealed class Binder
     private InlineAsmOperand? BindInlineAsmImmediateOperand(
         InlineAsmImmediateOperandSyntax immediate,
         TextSpan blockSpan,
+        IReadOnlyDictionary<string, InlineAsmVarBindingSlot> availableBindings,
         IReadOnlyDictionary<string, ControlFlowLabelSymbol> labels)
     {
         switch (immediate.Inner)
@@ -1913,12 +2155,25 @@ public sealed class Binder
                     if (labels.TryGetValue(name, out ControlFlowLabelSymbol? label))
                         return new InlineAsmLabelOperand(label, InlineAsmAddressingMode.Immediate);
 
+                    if (P2InstructionMetadata.TryParseSpecialRegister(name, out _)
+                        || availableBindings.ContainsKey(name))
+                    {
+                        _diagnostics.Report(new InlineAsmInvalidImmediateOperandKindError(
+                            _diagnostics.CurrentSource,
+                            symbol.Span,
+                            name));
+                        return null;
+                    }
+
                     _diagnostics.Report(new InlineAsmUndefinedLabelError(_diagnostics.CurrentSource, blockSpan, name));
                     return null;
                 }
 
             default:
-                _diagnostics.Report(new InlineAsmUndefinedLabelError(_diagnostics.CurrentSource, blockSpan, "#"));
+                _diagnostics.Report(new InlineAsmInvalidImmediateOperandKindError(
+                    _diagnostics.CurrentSource,
+                    immediate.Inner.Span,
+                    GetInlineAsmOperandText(immediate.Inner.Span)));
                 return null;
         }
     }
@@ -1944,6 +2199,116 @@ public sealed class Binder
 
         _diagnostics.Report(new InlineAsmUndefinedLabelError(_diagnostics.CurrentSource, blockSpan, name));
         return null;
+    }
+
+    private InlineAsmDataValue? BindInlineAsmDataValue(
+        InlineAsmOperandSyntax operandSyntax,
+        TextSpan blockSpan,
+        InlineAsmAddressingMode addressingMode,
+        IReadOnlyDictionary<string, InlineAsmVarBindingSlot> availableBindings,
+        IReadOnlyDictionary<string, ControlFlowLabelSymbol> labels,
+        Dictionary<int, InlineAsmTempBindingSlot> tempBindings,
+        HashSet<InlineAsmVarBindingSlot> referencedVarBindings)
+    {
+        switch (operandSyntax)
+        {
+            case InlineAsmVarBindingOperandSyntax varBinding:
+                {
+                    string name = string.Join(".", varBinding.Path.Select(static p => p.Text));
+                    if (!availableBindings.TryGetValue(name, out InlineAsmVarBindingSlot? slot))
+                    {
+                        _diagnostics.Report(new InlineAsmUndefinedVariableError(_diagnostics.CurrentSource, blockSpan, name));
+                        return null;
+                    }
+
+                    referencedVarBindings.Add(slot);
+                    return new InlineAsmDataBindingValue(slot, addressingMode);
+                }
+
+            case InlineAsmTempBindingOperandSyntax tempBinding:
+                {
+                    int tempId = 0;
+                    if (tempBinding.Number.Value is BladeValue tempValue && tempValue.TryGetInteger(out long tempLong))
+                        tempId = (int)tempLong;
+                    if (!tempBindings.TryGetValue(tempId, out InlineAsmTempBindingSlot? slot))
+                    {
+                        slot = new InlineAsmTempBindingSlot(tempId);
+                        tempBindings.Add(tempId, slot);
+                    }
+
+                    return new InlineAsmDataBindingValue(slot, addressingMode);
+                }
+
+            case InlineAsmImmediateOperandSyntax immediate:
+                return BindInlineAsmDataValue(
+                    immediate.Inner,
+                    blockSpan,
+                    InlineAsmAddressingMode.Immediate,
+                    availableBindings,
+                    labels,
+                    tempBindings,
+                    referencedVarBindings);
+
+            case InlineAsmCurrentAddressOperandSyntax:
+                return new InlineAsmDataCurrentAddressValue(addressingMode);
+
+            case InlineAsmIntegerLiteralOperandSyntax intLiteral:
+                {
+                    long value = 0;
+                    if (intLiteral.Literal.Value is BladeValue literalValue && literalValue.TryGetInteger(out long parsed))
+                        value = parsed;
+                    if (intLiteral.Sign is Token sign && sign.Kind == TokenKind.Minus)
+                        value = -value;
+                    return new InlineAsmDataIntegerValue(value, addressingMode);
+                }
+
+            case InlineAsmSymbolOperandSyntax symbol:
+                {
+                    string name = symbol.Name.Text;
+                    if (labels.TryGetValue(name, out ControlFlowLabelSymbol? label))
+                        return new InlineAsmDataLabelValue(label, addressingMode);
+
+                    if (P2InstructionMetadata.TryParseSpecialRegister(name, out P2SpecialRegister register))
+                        return new InlineAsmDataSpecialRegisterValue(register, addressingMode);
+
+                    if (availableBindings.TryGetValue(name, out InlineAsmVarBindingSlot? binding))
+                    {
+                        referencedVarBindings.Add(binding);
+                        return new InlineAsmDataBindingValue(binding, addressingMode);
+                    }
+
+                    return new InlineAsmDataRawSymbolValue(name, addressingMode);
+                }
+
+            default:
+                return Assert.UnreachableValue<InlineAsmDataValue?>("all inline asm data operand syntaxes handled"); // pragma: force-coverage
+        }
+    }
+
+    private static bool TryParseInlineAsmDataDirective(string text, out InlineAsmDataDirective directive)
+    {
+        switch (text)
+        {
+            case "BYTE":
+                directive = InlineAsmDataDirective.Byte;
+                return true;
+            case "WORD":
+                directive = InlineAsmDataDirective.Word;
+                return true;
+            case "LONG":
+                directive = InlineAsmDataDirective.Long;
+                return true;
+            default:
+                directive = default;
+                return false;
+        }
+    }
+
+    private string GetInlineAsmOperandText(TextSpan span)
+    {
+        return span.Length > 0
+            ? _diagnostics.CurrentSource.ToString(span)
+            : string.Empty;
     }
 
     private void AnalyzeTempReadBeforeWrite(
@@ -2936,9 +3301,9 @@ public sealed class Binder
             return new BoundErrorExpression(unary.Span);
         }
 
-        VariableStorageClass storageClass = variable is GlobalVariableSymbol globalVariable
+        AddressSpace storageClass = variable is GlobalVariableSymbol globalVariable
             ? globalVariable.StorageClass
-            : VariableStorageClass.Cog;
+            : AddressSpace.Cog;
         BladeType pointerType = variable.Type is ArrayTypeSymbol arrayType
             ? new MultiPointerTypeSymbol(arrayType.ElementType, variable.IsConst, storageClass: storageClass)
             : new PointerTypeSymbol(variable.Type, variable.IsConst, storageClass: storageClass);
@@ -2977,15 +3342,15 @@ public sealed class Binder
         {
             case BoundSymbolExpression { Symbol: VariableSymbol variable } when variable.Type is ArrayTypeSymbol:
                 {
-                    VariableStorageClass storageClass = variable is GlobalVariableSymbol globalVariable
+                    AddressSpace storageClass = variable is GlobalVariableSymbol globalVariable
                         ? globalVariable.StorageClass
-                        : VariableStorageClass.Cog;
+                        : AddressSpace.Cog;
                     pointerType = new PointerTypeSymbol(elementType, variable.IsConst, storageClass: storageClass);
                     return true;
                 }
 
             case BoundSymbolExpression { Symbol: ParameterVariableSymbol parameter } when parameter.Type is ArrayTypeSymbol:
-                pointerType = new PointerTypeSymbol(elementType, isConst: false, storageClass: VariableStorageClass.Cog);
+                pointerType = new PointerTypeSymbol(elementType, isConst: false, storageClass: AddressSpace.Cog);
                 return true;
 
             default:
@@ -3367,17 +3732,25 @@ public sealed class Binder
         }
 
         FunctionSymbol function = maybeFunction;
-        ValidateFunctionLayoutSubset(function, callExpression.Callee.Span);
-        List<BoundExpression> arguments = BindCallArguments(function, callExpression.Arguments, callExpression.Callee.Span);
-        BladeType returnType = function.ReturnTypes.Count switch
+        bool isBuiltinTaskMainCall = _builtinTaskMainTarget is not null
+            && ReferenceEquals(function, _builtinTaskMainFunction);
+        FunctionSymbol targetFunction = isBuiltinTaskMainCall
+            ? Requires.NotNull(_builtinTaskMainTarget)
+            : function;
+
+        if (!isBuiltinTaskMainCall)
+            ValidateFunctionLayoutSubset(targetFunction, callExpression.Callee.Span);
+
+        List<BoundExpression> arguments = BindCallArguments(targetFunction, callExpression.Arguments, callExpression.Callee.Span);
+        BladeType returnType = targetFunction.ReturnTypes.Count switch
         {
             0 => BuiltinTypes.Void,
-            1 => function.ReturnTypes[0],
+            1 => targetFunction.ReturnTypes[0],
             _ => BuiltinTypes.Unknown,
         };
 
-        BoundCallExpression call = new(function, arguments, callExpression.Span, returnType);
-        if (function.Kind == FunctionKind.Comptime)
+        BoundCallExpression call = new(targetFunction, arguments, callExpression.Span, returnType);
+        if (targetFunction.Kind == FunctionKind.Comptime)
         {
             if (TryFoldExpression(call, reportDiagnostics: true, out BoundExpression folded))
                 return folded;
@@ -4080,7 +4453,7 @@ public sealed class Binder
         BladeType type = BindType(query.Subject);
         BoundExpression memorySpaceExpr = BindExpression(query.MemorySpace!, expectedType: MemorySpaceType);
 
-        VariableStorageClass? storageClass = TryResolveMemorySpace(memorySpaceExpr, query.MemorySpace!.Span);
+        AddressSpace? storageClass = TryResolveMemorySpace(memorySpaceExpr, query.MemorySpace!.Span);
         if (storageClass is null)
             return new BoundErrorExpression(query.Span);
 
@@ -4157,15 +4530,15 @@ public sealed class Binder
 
     private BoundExpression FoldVariableQuery(QueryExpressionSyntax query, GlobalVariableSymbol variable, string operatorName)
     {
-        VariableStorageClass sc = variable.StorageClass;
+        AddressSpace sc = variable.StorageClass;
 
         if (query.Keyword.Kind == TokenKind.MemoryofKeyword)
         {
             (string memberName, long value) = sc switch
             {
-                VariableStorageClass.Cog => ("cog", 0L),
-                VariableStorageClass.Lut => ("lut", 1L),
-                VariableStorageClass.Hub => ("hub", 2L),
+                AddressSpace.Cog => ("cog", 0L),
+                AddressSpace.Lut => ("lut", 1L),
+                AddressSpace.Hub => ("hub", 2L),
                 _ => Assert.UnreachableValue<(string, long)>(), // pragma: force-coverage
             };
 
@@ -4196,15 +4569,15 @@ public sealed class Binder
         return new BoundLiteralExpression(new ComptimeBladeValue((ComptimeTypeSymbol)BuiltinTypes.IntegerLiteral, (long)alignment), query.Span);
     }
 
-    private VariableStorageClass? TryResolveMemorySpace(BoundExpression expression, TextSpan span)
+    private AddressSpace? TryResolveMemorySpace(BoundExpression expression, TextSpan span)
     {
         if (expression is BoundEnumLiteralExpression enumLiteral)
         {
             return enumLiteral.Value switch
             {
-                0 => VariableStorageClass.Cog,
-                1 => VariableStorageClass.Lut,
-                2 => VariableStorageClass.Hub,
+                0 => AddressSpace.Cog,
+                1 => AddressSpace.Lut,
+                2 => AddressSpace.Hub,
                 _ => ReportInvalidMemorySpace(span),
             };
         }
@@ -4214,9 +4587,9 @@ public sealed class Binder
         {
             return value switch
             {
-                0 => VariableStorageClass.Cog,
-                1 => VariableStorageClass.Lut,
-                2 => VariableStorageClass.Hub,
+                0 => AddressSpace.Cog,
+                1 => AddressSpace.Lut,
+                2 => AddressSpace.Hub,
                 _ => ReportInvalidMemorySpace(span),
             };
         }
@@ -4225,7 +4598,7 @@ public sealed class Binder
         return null;
     }
 
-    private VariableStorageClass? ReportInvalidMemorySpace(TextSpan span)
+    private AddressSpace? ReportInvalidMemorySpace(TextSpan span)
     {
         _diagnostics.Report(new InvalidMemorySpaceArgumentError(_diagnostics.CurrentSource, span));
         return null;
@@ -4543,7 +4916,7 @@ public sealed class Binder
         BladeType variableType,
         LayoutSymbol? declaringLayout)
     {
-        VariableStorageClass? storageClass = MapStorageClass(declaration.StorageClassKeyword);
+        AddressSpace? storageClass = MapStorageClass(declaration.StorageClassKeyword);
         Assert.Invariant(storageClass.HasValue, "Global variable declarations must have an explicit storage class.");
         return new GlobalVariableSymbol(
             declaration.Name.Text,
@@ -4557,23 +4930,23 @@ public sealed class Binder
             sourceSpan: CreateSourceSpan(declaration.Name.Span));
     }
 
-    private static VariableStorageClass? MapStorageClass(Token? storageClassKeyword)
+    private static AddressSpace? MapStorageClass(Token? storageClassKeyword)
     {
         return storageClassKeyword?.Kind switch
         {
-            TokenKind.CogKeyword => VariableStorageClass.Cog,
-            TokenKind.LutKeyword => VariableStorageClass.Lut,
-            TokenKind.HubKeyword => VariableStorageClass.Hub,
+            TokenKind.CogKeyword => AddressSpace.Cog,
+            TokenKind.LutKeyword => AddressSpace.Lut,
+            TokenKind.HubKeyword => AddressSpace.Hub,
             _ => null,
         };
     }
 
     private bool IsSupportedPlainTopLevelGlobal(VariableDeclarationSyntax declaration, bool reportDiagnostic)
     {
-        VariableStorageClass? storageClass = MapStorageClass(declaration.StorageClassKeyword);
+        AddressSpace? storageClass = MapStorageClass(declaration.StorageClassKeyword);
         Assert.Invariant(storageClass.HasValue, "Stored top-level declarations must have an explicit storage class.");
 
-        if (storageClass == VariableStorageClass.Hub)
+        if (storageClass == AddressSpace.Hub)
             return true;
 
         if (reportDiagnostic)
@@ -4586,15 +4959,15 @@ public sealed class Binder
         return false;
     }
 
-    private VariableStorageClass BindPointerStorageClass(Token? storageClassKeyword, TextSpan span)
+    private AddressSpace BindPointerStorageClass(Token? storageClassKeyword, TextSpan span)
     {
-        VariableStorageClass? storageClass = MapStorageClass(storageClassKeyword);
-        if (storageClass is VariableStorageClass explicitStorageClass)
+        AddressSpace? storageClass = MapStorageClass(storageClassKeyword);
+        if (storageClass is AddressSpace explicitStorageClass)
             return explicitStorageClass;
 
         if (!_suppressPointerStorageClassDiagnostics)
             _diagnostics.Report(new PointerStorageClassRequiredError(_diagnostics.CurrentSource, span));
-        return VariableStorageClass.Cog;
+        return AddressSpace.Cog;
     }
 
     private void ResolveLayoutMetadata(VariableDeclarationSyntax declaration, GlobalVariableSymbol variableSymbol)
@@ -4602,10 +4975,62 @@ public sealed class Binder
         int? fixedAddress = declaration.AtClause is null
             ? null
             : BindRequiredConstantInt(declaration.AtClause.Address, declaration.AtClause.Address.Span);
+        if (!fixedAddress.HasValue
+            && TryGetRuntimeAbiFixedAddress(variableSymbol, out VirtualAddress runtimeAbiAddress))
+        {
+            (_, int runtimeAbiRawAddress) = runtimeAbiAddress.GetDataAddress();
+            fixedAddress = runtimeAbiRawAddress;
+        }
+
         int? alignment = declaration.AlignClause is null
             ? null
             : BindRequiredConstantInt(declaration.AlignClause.Alignment, declaration.AlignClause.Alignment.Span);
-        variableSymbol.SetLayoutMetadata(fixedAddress, alignment);
+        VirtualAddress? virtualFixedAddress = fixedAddress.HasValue
+            ? new VirtualAddress(variableSymbol.StorageClass, fixedAddress.Value)
+            : null;
+        variableSymbol.SetLayoutMetadata(virtualFixedAddress, alignment);
+    }
+
+    private bool TryGetRuntimeAbiFixedAddress(GlobalVariableSymbol variableSymbol, out VirtualAddress address)
+    {
+        Requires.NotNull(variableSymbol);
+
+        if (!_enableRuntimeAbiBindings
+            || !variableSymbol.IsExtern
+            || variableSymbol.StorageClass != AddressSpace.Cog)
+        {
+            address = default;
+            return false;
+        }
+
+        if (variableSymbol.DeclaringLayout is LayoutSymbol declaringLayout
+            && declaringLayout is not TaskSymbol)
+        {
+            address = default;
+            return false;
+        }
+
+        if (!RuntimeAbiFixedAddresses.TryGetValue(variableSymbol.Name, out int rawAddress))
+        {
+            address = default;
+            return false;
+        }
+
+        address = new VirtualAddress(AddressSpace.Cog, rawAddress);
+        return true;
+    }
+
+    private static IReadOnlyDictionary<string, int> CreateRuntimeAbiFixedAddresses()
+    {
+        Dictionary<string, int> addresses = new(StringComparer.Ordinal)
+        {
+            ["rt_result"] = RuntimeAbiResultAddress,
+        };
+
+        for (int index = 0; index < 8; index++)
+            addresses.Add($"rt_param{index}", index + 1);
+
+        return addresses;
     }
 
     private int? BindRequiredConstantInt(ExpressionSyntax expression, TextSpan span)

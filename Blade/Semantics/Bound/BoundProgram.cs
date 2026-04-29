@@ -12,6 +12,8 @@ public sealed class BoundProgram(
     BoundModule rootModule,
     TaskSymbol entryPoint,
     BoundFunctionMember entryPointFunction,
+    TaskSymbol launcherEntryPoint,
+    BoundFunctionMember launcherEntryPointFunction,
     IReadOnlyList<BoundModule> modules,
     IReadOnlyList<GlobalVariableSymbol> globalVariables,
     IReadOnlyList<BoundFunctionMember> functions) : BoundNode(BoundNodeKind.Program, ComputeSpan(entryPointFunction))
@@ -30,6 +32,16 @@ public sealed class BoundProgram(
     /// Gets the bound function member that executes the entry task body.
     /// </summary>
     public BoundFunctionMember EntryPointFunction { get; } = Requires.NotNull(entryPointFunction);
+
+    /// <summary>
+    /// Gets the task that physically starts execution in the emitted entry image.
+    /// </summary>
+    public TaskSymbol LauncherEntryPoint { get; } = Requires.NotNull(launcherEntryPoint);
+
+    /// <summary>
+    /// Gets the bound function member that executes the launcher task body.
+    /// </summary>
+    public BoundFunctionMember LauncherEntryPointFunction { get; } = Requires.NotNull(launcherEntryPointFunction);
 
     /// <summary>
     /// Gets every bound module participating in the compilation.

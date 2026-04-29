@@ -1,0 +1,9 @@
+// EXPECT: fail
+// DIAGNOSTICS: InlineAsmInvalidImmediateOperandKind
+
+cog task main {
+    var x: u32 = 0;
+    asm {
+        MOV {x}, #{x}
+    };
+}

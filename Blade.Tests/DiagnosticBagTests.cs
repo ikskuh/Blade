@@ -65,14 +65,24 @@ public class DiagnosticBagTests
         bag.Report(new UnsupportedGlobalStorageError(bag.CurrentSource, Span, "cog"));
         bag.Report(new InlineAsmUnknownInstructionError(bag.CurrentSource, Span, "BLAH"));
         bag.Report(new InlineAsmUndefinedVariableError(bag.CurrentSource, Span, "x"));
-        bag.Report(new InlineAsmEmptyInstructionError(bag.CurrentSource, Span));
         bag.Report(new InlineAsmInvalidFlagOutputError(bag.CurrentSource, Span, "Q"));
+        bag.Report(new InlineAsmMissingInstructionMnemonicError(bag.CurrentSource, Span));
+        bag.Report(new InlineAsmUnexpectedTokenError(bag.CurrentSource, Span, "%"));
+        bag.Report(new InlineAsmMissingOperandError(bag.CurrentSource, Span));
+        bag.Report(new InlineAsmInvalidTempPlaceholderError(bag.CurrentSource, Span));
+        bag.Report(new InlineAsmInvalidBindingSyntaxError(bag.CurrentSource, Span));
+        bag.Report(new InlineAsmInvalidImmediateOperandError(bag.CurrentSource, Span));
+        bag.Report(new InlineAsmInvalidSignedOperandError(bag.CurrentSource, Span));
+        bag.Report(new InlineAsmUnknownConditionError(bag.CurrentSource, Span, "IF_FAKE"));
+        bag.Report(new InlineAsmInvalidFlagEffectError(bag.CurrentSource, Span, "WQ"));
+        bag.Report(new InlineAsmInvalidDirectOperandError(bag.CurrentSource, Span, "123"));
+        bag.Report(new InlineAsmInvalidImmediateOperandKindError(bag.CurrentSource, Span, "{x}"));
         bag.Report(new InlineAsmTempReadBeforeWriteWarning(bag.CurrentSource, Span, "%0"));
         bag.Report(new ComptimeIntegerTruncationWarning(bag.CurrentSource, Span, "257", "u8", "1"));
         bag.Report(new UnsupportedLoweringError(bag.CurrentSource, Span, "store.index"));
         bag.Report(new DuplicateVariableClauseError(bag.CurrentSource, Span, "@(...)"));
 
-        Assert.That(bag.Count, Is.EqualTo(56));
+        Assert.That(bag.Count, Is.EqualTo(66));
         Assert.That(bag.HasErrors, Is.True);
         Assert.That(bag.Last().Code, Is.EqualTo("E0108"));
     }

@@ -1,10 +1,11 @@
 // EXPECT: pass
 // STAGE: final-asm
 // SEQUENCE:
-// - AUGS #1110
-// - GETNIB g_nibble, #86, #3
+// - GETNIB g_nibble, ?1, #3
 // CONTAINS:
 // ! AUGD
+// ! AUGS
+// - ?1 LONG $00000456
 // NOTE:
 //   GETNIB may AUG-extend the S operand, but the #N operand is immediate-only and must not trigger AUGD/AUGS.
 cog task main {

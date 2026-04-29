@@ -33,13 +33,15 @@ public sealed class ImagePlacement
     /// <summary>
     /// Gets the exclusive end address of the reserved image arena in hub bytes.
     /// </summary>
-    public int ImageArenaEndAddressExclusive => Images.Count == 0 ? 0 : Images[^1].HubEndAddressExclusive;
+    public HubAddress ImageArenaEndAddressExclusive => Images.Count == 0
+        ? new HubAddress(0)
+        : Images[^1].HubEndAddressExclusive;
 }
 
 /// <summary>
 /// Represents the physical hub-memory reservation for one image.
 /// </summary>
-public sealed class ImagePlacementEntry(ImageDescriptor image, int hubStartAddressBytes, int sizeBytes)
+public sealed class ImagePlacementEntry(ImageDescriptor image, HubAddress hubStartAddressBytes, int sizeBytes)
 {
     /// <summary>
     /// Gets the logical image whose hub placement is being described.
@@ -49,7 +51,7 @@ public sealed class ImagePlacementEntry(ImageDescriptor image, int hubStartAddre
     /// <summary>
     /// Gets the image start address in hub bytes.
     /// </summary>
-    public int HubStartAddressBytes { get; } = Requires.NonNegative(hubStartAddressBytes);
+    public HubAddress HubStartAddressBytes { get; } = hubStartAddressBytes;
 
     /// <summary>
     /// Gets the reserved hub size in bytes for this image.
@@ -59,7 +61,7 @@ public sealed class ImagePlacementEntry(ImageDescriptor image, int hubStartAddre
     /// <summary>
     /// Gets the exclusive end address of the image reservation in hub bytes.
     /// </summary>
-    public int HubEndAddressExclusive => checked(HubStartAddressBytes + SizeBytes);
+    public HubAddress HubEndAddressExclusive => HubStartAddressBytes + SizeBytes;
 }
 
 /// <summary>
@@ -80,7 +82,7 @@ public static class ImagePlacer
         Requires.NotNull(imagePlan);
 
         List<ImagePlacementEntry> placements = [];
-        int nextHubAddress = 0;
+        HubAddress nextHubAddress = new(0);
 
         ImagePlacementEntry entryPlacement = CreatePlacement(imagePlan.EntryImage, nextHubAddress);
         placements.Add(entryPlacement);
@@ -99,10 +101,9 @@ public static class ImagePlacer
         return new ImagePlacement(placements, entryPlacement);
     }
 
-    private static ImagePlacementEntry CreatePlacement(ImageDescriptor image, int hubStartAddressBytes)
+    private static ImagePlacementEntry CreatePlacement(ImageDescriptor image, HubAddress hubStartAddressBytes)
     {
         Requires.NotNull(image);
-        Requires.NonNegative(hubStartAddressBytes);
         return new ImagePlacementEntry(image, hubStartAddressBytes, ReservedImageSizeBytes);
     }
 }

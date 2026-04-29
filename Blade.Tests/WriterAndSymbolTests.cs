@@ -18,7 +18,7 @@ public class WriterAndSymbolTests
 {
     private static readonly TextSpan Span = new(0, 0);
 
-    private static VariableSymbol CreateVariable(string name, VariableStorageClass? storageClass, VariableScopeKind scopeKind)
+    private static VariableSymbol CreateVariable(string name, AddressSpace? storageClass, VariableScopeKind scopeKind)
     {
         return IrTestFactory.CreateVariableSymbol(name, BuiltinTypes.U32, storageClass, scopeKind);
     }
@@ -28,15 +28,15 @@ public class WriterAndSymbolTests
     {
         VariableSymbol local = CreateVariable("local", storageClass: null, VariableScopeKind.Local);
         VariableSymbol topLevel = CreateVariable("top", storageClass: null, VariableScopeKind.Local);
-        VariableSymbol globalReg = CreateVariable("global_reg", VariableStorageClass.Cog, VariableScopeKind.GlobalStorage);
-        VariableSymbol globalHub = CreateVariable("global_hub", VariableStorageClass.Hub, VariableScopeKind.GlobalStorage);
+        VariableSymbol globalReg = CreateVariable("global_reg", AddressSpace.Cog, VariableScopeKind.GlobalStorage);
+        VariableSymbol globalHub = CreateVariable("global_hub", AddressSpace.Hub, VariableScopeKind.GlobalStorage);
         ControlFlowLabelSymbol label = new("bb0");
 
         Assert.That(local, Is.TypeOf<LocalVariableSymbol>());
         Assert.That(topLevel, Is.TypeOf<LocalVariableSymbol>());
         Assert.That(globalReg, Is.TypeOf<GlobalVariableSymbol>());
-        Assert.That(((GlobalVariableSymbol)globalReg).StorageClass, Is.EqualTo(VariableStorageClass.Cog));
-        Assert.That(((GlobalVariableSymbol)globalHub).StorageClass, Is.EqualTo(VariableStorageClass.Hub));
+        Assert.That(((GlobalVariableSymbol)globalReg).StorageClass, Is.EqualTo(AddressSpace.Cog));
+        Assert.That(((GlobalVariableSymbol)globalHub).StorageClass, Is.EqualTo(AddressSpace.Hub));
         Assert.That(((GlobalVariableSymbol)globalReg).ScopeKind, Is.EqualTo(VariableScopeKind.GlobalStorage));
         Assert.That(((GlobalVariableSymbol)globalHub).Alignment, Is.Null);
         Assert.That(label.SymbolType, Is.EqualTo(SymbolType.ControlFlowLabel));
@@ -46,12 +46,12 @@ public class WriterAndSymbolTests
     public void LirIndexOperations_AcceptArrayAndManyPointerShapes()
     {
         ArrayTypeSymbol arrayType = new(BuiltinTypes.U32, 2);
-        MultiPointerTypeSymbol manyPointerType = new(BuiltinTypes.U32, isConst: false, VariableStorageClass.Cog);
+        MultiPointerTypeSymbol manyPointerType = new(BuiltinTypes.U32, isConst: false, AddressSpace.Cog);
 
-        Assert.That(new LirLoadIndexOperation(arrayType, VariableStorageClass.Cog).IsValidResultType(BuiltinTypes.U32), Is.True);
-        Assert.That(new LirLoadIndexOperation(manyPointerType, VariableStorageClass.Cog).IsValidResultType(BuiltinTypes.U32), Is.True);
-        Assert.That(new LirStoreIndexOperation(arrayType, VariableStorageClass.Cog).IsValidResultType(BuiltinTypes.U32), Is.True);
-        Assert.That(new LirStoreIndexOperation(manyPointerType, VariableStorageClass.Cog).IsValidResultType(BuiltinTypes.U32), Is.True);
+        Assert.That(new LirLoadIndexOperation(arrayType, AddressSpace.Cog).IsValidResultType(BuiltinTypes.U32), Is.True);
+        Assert.That(new LirLoadIndexOperation(manyPointerType, AddressSpace.Cog).IsValidResultType(BuiltinTypes.U32), Is.True);
+        Assert.That(new LirStoreIndexOperation(arrayType, AddressSpace.Cog).IsValidResultType(BuiltinTypes.U32), Is.True);
+        Assert.That(new LirStoreIndexOperation(manyPointerType, AddressSpace.Cog).IsValidResultType(BuiltinTypes.U32), Is.True);
     }
 
     [Test]
@@ -252,18 +252,18 @@ public class WriterAndSymbolTests
         StoragePlace allocatableRegister = IrTestFactory.CreateStoragePlace(
             "global_reg",
             placement: StoragePlacePlacement.Allocatable,
-            storageClass: VariableStorageClass.Cog,
+            storageClass: AddressSpace.Cog,
             emittedName: "g_global_reg");
         StoragePlace fixedLutAlias = IrTestFactory.CreateStoragePlace(
             "fixed_lut",
             placement: StoragePlacePlacement.FixedAlias,
-            storageClass: VariableStorageClass.Lut,
+            storageClass: AddressSpace.Lut,
             fixedAddress: 12,
             emittedName: "fixed_lut");
         StoragePlace externalHubAlias = IrTestFactory.CreateStoragePlace(
             "external_hub",
             placement: StoragePlacePlacement.ExternalAlias,
-            storageClass: VariableStorageClass.Hub,
+            storageClass: AddressSpace.Hub,
             isExtern: true,
             emittedName: "external_hub");
 

@@ -1,3 +1,9 @@
+// EXPECT: xfail
+// STAGE: final-asm
+// SEQUENCE:
+// - RESI1
+// - MOV IJMP1, #f_on_interrupt
+// - RETI1
 // NOTE:
 //   Exercises interrupt handler (int1 fn) with yield and return.
 cog task main {

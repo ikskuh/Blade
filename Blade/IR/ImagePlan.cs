@@ -47,7 +47,7 @@ public sealed class ImagePlan
 public sealed class ImageDescriptor(
     TaskSymbol task,
     FunctionSymbol entryFunction,
-    VariableStorageClass executionMode,
+    AddressSpace executionMode,
     bool isEntryImage,
     IReadOnlyList<FunctionSymbol> functions,
     IReadOnlyList<GlobalVariableSymbol> storage)
@@ -66,7 +66,7 @@ public sealed class ImageDescriptor(
     /// Gets the execution mode selected by the task declaration and therefore the mode
     /// in which this image begins running.
     /// </summary>
-    public VariableStorageClass ExecutionMode { get; } = executionMode;
+    public AddressSpace ExecutionMode { get; } = executionMode;
 
     /// <summary>
     /// Gets a value indicating whether this image is emitted at the start of the output
@@ -106,7 +106,7 @@ public static class ImagePlanner
 
         Dictionary<TaskSymbol, ImageDescriptor> imagesByTask = [];
         Queue<TaskSymbol> pendingTasks = new();
-        pendingTasks.Enqueue(program.EntryPoint);
+        pendingTasks.Enqueue(program.LauncherEntryPoint);
 
         while (pendingTasks.Count > 0)
         {
@@ -128,7 +128,7 @@ public static class ImagePlanner
                 task,
                 task.EntryFunction,
                 task.StorageClass,
-                ReferenceEquals(task, program.EntryPoint),
+                ReferenceEquals(task, program.LauncherEntryPoint),
                 reachableFunctions.OrderBy(static function => function.Name, System.StringComparer.Ordinal).ToList(),
                 reachableStorage.OrderBy(static storage => storage.Name, System.StringComparer.Ordinal).ToList());
             imagesByTask.Add(task, image);
@@ -137,7 +137,7 @@ public static class ImagePlanner
                 pendingTasks.Enqueue(spawnedTask);
         }
 
-        ImageDescriptor entryImage = imagesByTask[program.EntryPoint];
+        ImageDescriptor entryImage = imagesByTask[program.LauncherEntryPoint];
         return new ImagePlan(imagesByTask.Values.ToList(), entryImage);
     }
 

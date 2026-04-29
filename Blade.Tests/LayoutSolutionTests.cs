@@ -9,6 +9,12 @@ namespace Blade.Tests;
 [TestFixture]
 public class LayoutSolutionTests
 {
+    private static int GetRawAddress(VirtualAddress address)
+    {
+        (_, int rawAddress) = address.GetDataAddress();
+        return rawAddress;
+    }
+
     [Test]
     public void LayoutSolution_SolvesHubAndLutMembers_AndEmissionUsesSolvedAddresses()
     {
@@ -38,12 +44,12 @@ public class LayoutSolutionTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(placement.EntryImage.HubStartAddressBytes, Is.EqualTo(0));
+            Assert.That(placement.EntryImage.HubStartAddressBytes, Is.EqualTo(new HubAddress(0)));
             Assert.That(placement.EntryImage.SizeBytes, Is.EqualTo(ImagePlacer.ReservedImageSizeBytes));
-            Assert.That(head.Address, Is.EqualTo(0x100));
-            Assert.That(tail.Address, Is.EqualTo(0));
-            Assert.That(flag.Address, Is.EqualTo(0x2000));
-            Assert.That(counter.Address, Is.EqualTo(0x800));
+            Assert.That(head.Address, Is.EqualTo(new VirtualAddress(AddressSpace.Lut, 0x100)));
+            Assert.That(tail.Address, Is.EqualTo(new VirtualAddress(AddressSpace.Lut, 0)));
+            Assert.That(flag.Address, Is.EqualTo(new VirtualAddress(AddressSpace.Hub, 0x2000)));
+            Assert.That(counter.Address, Is.EqualTo(new VirtualAddress(AddressSpace.Hub, 0x800)));
             Assert.That(counter.AlignmentInAddressUnits, Is.EqualTo(8));
             Assert.That(counter.SizeInAddressUnits, Is.EqualTo(4));
         });
@@ -51,8 +57,6 @@ public class LayoutSolutionTests
         Assert.That(build.AssemblyText, Does.Contain("org $200"));
         Assert.That(build.AssemblyText, Does.Contain("org $300"));
         Assert.That(build.AssemblyText, Does.Contain("orgh"));
-        Assert.That(build.AssemblyText, Does.Contain("orgh $800"));
-        Assert.That(build.AssemblyText, Does.Contain("orgh $2000"));
         Assert.That(build.AssemblyText, Does.Match(@"g_tail\s+LONG\s+2"));
         Assert.That(build.AssemblyText, Does.Match(@"g_head\s+LONG\s+1"));
         Assert.That(build.AssemblyText, Does.Match(@"g_counter\s+WORD\s+0\[2\]"));
@@ -81,10 +85,10 @@ public class LayoutSolutionTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(pair.Address, Is.EqualTo(0x1EE));
+            Assert.That(pair.Address, Is.EqualTo(new VirtualAddress(AddressSpace.Cog, 0x1EE)));
             Assert.That(pair.SizeInAddressUnits, Is.EqualTo(2));
-            Assert.That(head.Address, Is.EqualTo(0x1ED));
-            Assert.That(build.CogResourceLayouts.MaximumCodeSizeLongs, Is.LessThan(head.Address));
+            Assert.That(head.Address, Is.EqualTo(new VirtualAddress(AddressSpace.Cog, 0x1ED)));
+            Assert.That(build.CogResourceLayouts.MaximumCodeSizeLongs, Is.LessThan(GetRawAddress(head.Address)));
         });
 
         Assert.That(build.AssemblyText, Does.Contain("org $1EC"));

@@ -48,7 +48,7 @@ internal sealed class StorageLayoutShape(
     /// <summary>
     /// Computes the emitted storage footprint for one variable in the specified storage space.
     /// </summary>
-    public static StorageLayoutShape FromVariable(VariableSymbol symbol, VariableStorageClass storageClass)
+    public static StorageLayoutShape FromVariable(VariableSymbol symbol, AddressSpace storageClass)
     {
         Requires.NotNull(symbol);
 
@@ -56,13 +56,13 @@ internal sealed class StorageLayoutShape(
         int elementCount = symbol.Type is ArrayTypeSymbol { Length: int length } ? length : 1;
         int entryCount = storageClass switch
         {
-            VariableStorageClass.Cog or VariableStorageClass.Lut => elementCount * elementType.GetSizeInMemorySpace(storageClass),
-            VariableStorageClass.Hub when elementType is AggregateTypeSymbol => elementCount * GetAggregateLaneCount(elementType),
-            VariableStorageClass.Hub => elementCount,
+            AddressSpace.Cog or AddressSpace.Lut => elementCount * elementType.GetSizeInMemorySpace(storageClass),
+            AddressSpace.Hub when elementType is AggregateTypeSymbol => elementCount * GetAggregateLaneCount(elementType),
+            AddressSpace.Hub => elementCount,
             _ => Assert.UnreachableValue<int>(), // pragma: force-coverage
         };
 
-        int sizeInAddressUnits = storageClass == VariableStorageClass.Hub
+        int sizeInAddressUnits = storageClass == AddressSpace.Hub
             ? entryCount * GetDirectiveWidthBytes(elementType)
             : entryCount;
         int defaultAlignmentInAddressUnits = elementType.GetAlignmentInMemorySpace(storageClass);

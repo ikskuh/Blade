@@ -20,7 +20,10 @@ public sealed class CompilationOptions
     public IReadOnlyList<AsmOptimization> EnabledAsmirOptimizations { get; init; } = OptimizationRegistry.AllAsmOptimizations;
     public IReadOnlyDictionary<string, string> NamedModuleRoots { get; init; } = new Dictionary<string, string>();
     public int ComptimeFuel { get; init; } = 250;
-    public RuntimeTemplate? RuntimeTemplate { get; init; }
+    /// <summary>
+    /// Gets the optional Blade source file that overrides the default launcher task for the entry image.
+    /// </summary>
+    public string? RuntimeLauncherPath { get; init; }
 }
 
 public sealed class CompilationResult(
@@ -63,7 +66,11 @@ public static class CompilerDriver
 
     private static CompilationResult CompileCore(SourceText source, DiagnosticBag diagnostics, CompilationOptions effectiveOptions)
     {
-        LoadedCompilation loadedCompilation = CompilationModuleLoader.Load(source, diagnostics, effectiveOptions.NamedModuleRoots);
+        SourceText runtimeLauncherSource = CreateRuntimeLauncherSource(effectiveOptions.RuntimeLauncherPath, diagnostics);
+        if (diagnostics.HasErrors)
+            return CreateFailedCompilationResult(source, diagnostics);
+
+        LoadedCompilation loadedCompilation = CompilationModuleLoader.Load(source, runtimeLauncherSource, diagnostics, effectiveOptions.NamedModuleRoots);
         CompilationUnitSyntax unit = loadedCompilation.RootModule.Syntax;
 
         BoundProgram? boundProgram = null;
@@ -80,7 +87,6 @@ public static class CompilerDriver
                 EnabledMirOptimizations = SortOptimizations(effectiveOptions.EnabledMirOptimizations),
                 EnabledLirOptimizations = SortOptimizations(effectiveOptions.EnabledLirOptimizations),
                 EnabledAsmirOptimizations = SortOptimizations(effectiveOptions.EnabledAsmirOptimizations),
-                RuntimeTemplate = effectiveOptions.RuntimeTemplate,
             };
             irBuildResult = IrPipeline.Build(boundProgram, pipelineOptions, diagnostics);
         }
@@ -106,4 +112,24 @@ public static class CompilerDriver
         CompilationUnitSyntax syntax = new([], eof);
         return new CompilationResult(source, syntax, boundProgram: null, null, diagnostics.ToList(), 0);
     }
+
+    private static SourceText CreateRuntimeLauncherSource(string? runtimeLauncherPath, DiagnosticBag diagnostics)
+    {
+        Requires.NotNull(diagnostics);
+
+        if (runtimeLauncherPath is null)
+            return new SourceText(DefaultRuntimeLauncherText, "<default-runtime>");
+
+        bool loaded = SourceFileLoader.TryLoad(runtimeLauncherPath, diagnostics, out SourceText runtimeSource);
+        _ = loaded;
+        return runtimeSource;
+    }
+
+    private const string DefaultRuntimeLauncherText = """
+        import builtin;
+
+        cog task _start {
+            builtin.task_main();
+        }
+        """;
 }

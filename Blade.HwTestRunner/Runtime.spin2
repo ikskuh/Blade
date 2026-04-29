@@ -1,3 +1,4 @@
+
 CON
         RT_F_CPU   = 200_000_000
         RT_BAUD    =     115_200
@@ -36,7 +37,7 @@ rt_start
         ''                                      CC   = "15pF per pin"
         ''                                        SS = clk:PLL
         '' => "CLK = XI * 20 with PLL enabled"
-        hubset ##16779771 '' _clkmode = 0x10009FB = 200 MHz
+        HUBSET ##16779771 '' _clkmode = 0x10009FB = 200 MHz
     
         WRPIN #P_TT_01 | P_ASYNC_TX, #RT_TXD_PIN
         WXPIN ##RT_UART_CFG, #RT_TXD_PIN

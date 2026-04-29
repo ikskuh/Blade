@@ -30,5 +30,5 @@ internal sealed class CommandLineOptions
     public IReadOnlyList<AsmOptimization> EnabledAsmirOptimizations { get; init; } = OptimizationRegistry.AllAsmOptimizations;
     public IReadOnlyDictionary<string, string> NamedModuleRoots { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
     public int ComptimeFuel { get; init; }
-    public RuntimeTemplate? RuntimeTemplate { get; init; }
+    public string? RuntimeLauncherPath { get; init; }
 }

@@ -109,12 +109,12 @@ public abstract class LirOperation
 
     public abstract bool IsValidOperandCount(int operandCount);
 
-    protected static string StorageClassSuffix(VariableStorageClass storageClass)
+    protected static string StorageClassSuffix(AddressSpace storageClass)
     {
         return storageClass switch
         {
-            VariableStorageClass.Lut => "lut",
-            VariableStorageClass.Hub => "hub",
+            AddressSpace.Lut => "lut",
+            AddressSpace.Hub => "hub",
             _ => "cog",
         };
     }
@@ -287,11 +287,11 @@ public sealed class LirLoadMemberOperation(AggregateMemberSymbol member) : LirOp
     public override bool IsValidOperandCount(int operandCount) => operandCount == 1;
 }
 
-public sealed class LirLoadIndexOperation(BladeType indexedType, VariableStorageClass storageClass) : LirOperation
+public sealed class LirLoadIndexOperation(BladeType indexedType, AddressSpace storageClass) : LirOperation
 {
     public BladeType IndexedType { get; } = Requires.NotNull(indexedType);
     public BladeType ElementType { get; } = GetElementType(indexedType);
-    public VariableStorageClass StorageClass { get; } = storageClass;
+    public AddressSpace StorageClass { get; } = storageClass;
 
     public override string DisplayName => $"load.index.{StorageClassSuffix(StorageClass)}";
 
@@ -308,10 +308,10 @@ public sealed class LirLoadIndexOperation(BladeType indexedType, VariableStorage
     }
 }
 
-public sealed class LirLoadDerefOperation(BladeType pointerType, VariableStorageClass storageClass) : LirOperation
+public sealed class LirLoadDerefOperation(BladeType pointerType, AddressSpace storageClass) : LirOperation
 {
     public PointerTypeSymbol PointerType { get; } = GetPointerType(pointerType);
-    public VariableStorageClass StorageClass { get; } = storageClass;
+    public AddressSpace StorageClass { get; } = storageClass;
 
     public override string DisplayName => $"load.deref.{StorageClassSuffix(StorageClass)}";
 
@@ -423,11 +423,11 @@ public sealed class LirIntrinsicOperation(P2Mnemonic mnemonic) : LirOperation
         || P2InstructionMetadata.TryGetInstructionForm(Mnemonic, operandCount + 1, out _);
 }
 
-public sealed class LirStoreIndexOperation(BladeType indexedType, VariableStorageClass storageClass) : LirOperation
+public sealed class LirStoreIndexOperation(BladeType indexedType, AddressSpace storageClass) : LirOperation
 {
     public BladeType IndexedType { get; } = Requires.NotNull(indexedType);
     public BladeType ElementType { get; } = GetElementType(indexedType);
-    public VariableStorageClass StorageClass { get; } = storageClass;
+    public AddressSpace StorageClass { get; } = storageClass;
 
     public override string DisplayName => $"store.index.{StorageClassSuffix(StorageClass)}";
 
@@ -445,10 +445,10 @@ public sealed class LirStoreIndexOperation(BladeType indexedType, VariableStorag
     }
 }
 
-public sealed class LirStoreDerefOperation(BladeType pointerType, VariableStorageClass storageClass) : LirOperation
+public sealed class LirStoreDerefOperation(BladeType pointerType, AddressSpace storageClass) : LirOperation
 {
     public PointerTypeSymbol PointerType { get; } = GetPointerType(pointerType);
-    public VariableStorageClass StorageClass { get; } = storageClass;
+    public AddressSpace StorageClass { get; } = storageClass;
 
     public override string DisplayName => $"store.deref.{StorageClassSuffix(StorageClass)}";
 

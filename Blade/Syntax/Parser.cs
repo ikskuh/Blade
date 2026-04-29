@@ -1227,25 +1227,31 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
         if (tokens.Count == 2 && tokens[0].Kind == TokenKind.Identifier && tokens[1].Kind == TokenKind.Colon)
             return new InlineAsmLabelLineSyntax(tokens[0], tokens[1], trailingComment);
 
-        // Optional condition prefix: tokens whose text starts with "IF_" (or is "_RET_").
-        // This is a syntactic prefix rule — the binder validates the concrete condition code.
+        bool hasConditionPrefixCandidate = tokens.Count > 0 && IsInlineAsmConditionPrefixCandidate(tokens[0]);
         Token? condition = null;
-        if (i + 1 < tokens.Count
-            && tokens[i].Kind == TokenKind.Identifier
-            && tokens[i + 1].Kind == TokenKind.Identifier
-            && (tokens[i].Text.StartsWith("IF_", System.StringComparison.Ordinal)
-                || tokens[i].Text == "_RET_"))
+        if (hasConditionPrefixCandidate)
         {
             condition = tokens[i];
             i++;
         }
 
-        if (i >= tokens.Count || tokens[i].Kind != TokenKind.Identifier)
+        if (i >= tokens.Count)
         {
-            TextSpan span = tokens.Count > 0
-                ? TextSpan.FromBounds(tokens[0].Span.Start, tokens[^1].Span.End)
-                : new TextSpan(0, 0);
-            Diagnostics.Report(new InlineAsmEmptyInstructionError(Diagnostics.CurrentSource, span));
+            Diagnostics.Report(new InlineAsmMissingInstructionMnemonicError(Diagnostics.CurrentSource, GetInlineAsmTokenSpan(tokens)));
+            return null;
+        }
+
+        if (tokens[i].Kind != TokenKind.Identifier)
+        {
+            if (condition is not null)
+            {
+                Diagnostics.Report(new InlineAsmMissingInstructionMnemonicError(Diagnostics.CurrentSource, GetInlineAsmTokenSpan(tokens)));
+            }
+            else
+            {
+                Diagnostics.Report(new InlineAsmUnexpectedTokenError(Diagnostics.CurrentSource, tokens[i].Span, tokens[i].Text));
+            }
+
             return null;
         }
 
@@ -1270,7 +1276,13 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
             if (tokens[i].Kind != TokenKind.Comma)
                 break;
 
+            Token comma = tokens[i];
             i++;
+            if (i >= tokens.Count || tokens[i].Kind == TokenKind.Comma)
+            {
+                Diagnostics.Report(new InlineAsmMissingOperandError(Diagnostics.CurrentSource, comma.Span));
+                return null;
+            }
         }
 
         Token? flagEffect = null;
@@ -1282,7 +1294,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
 
         if (i != tokens.Count)
         {
-            Diagnostics.Report(new InlineAsmEmptyInstructionError(Diagnostics.CurrentSource, tokens[i].Span));
+            Diagnostics.Report(new InlineAsmUnexpectedTokenError(Diagnostics.CurrentSource, tokens[i].Span, tokens[i].Text));
             return null;
         }
 
@@ -1294,7 +1306,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
         consumed = 0;
         if (index >= tokens.Count)
         {
-            Diagnostics.Report(new InlineAsmEmptyInstructionError(Diagnostics.CurrentSource, tokens[^1].Span));
+            Diagnostics.Report(new InlineAsmUnexpectedTokenError(Diagnostics.CurrentSource, tokens[^1].Span, tokens[^1].Text));
             return null;
         }
 
@@ -1306,22 +1318,32 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
                 // {ident (. ident)*}
                 int j = index + 1;
                 List<Token> path = [];
-                if (j >= tokens.Count || tokens[j].Text.Length == 0)
+                if (j >= tokens.Count || !IsInlineAsmBindingPathSegment(tokens[j]))
                 {
-                    Diagnostics.Report(new InlineAsmEmptyInstructionError(Diagnostics.CurrentSource, first.Span));
+                    Diagnostics.Report(new InlineAsmInvalidBindingSyntaxError(Diagnostics.CurrentSource, GetInlineAsmOperandSpan(tokens, index, j)));
                     return null;
                 }
+
                 path.Add(tokens[j++]);
-                while (j + 1 < tokens.Count && tokens[j].Kind == TokenKind.Dot)
+
+                while (j < tokens.Count && tokens[j].Kind == TokenKind.Dot)
                 {
                     j++;
+                    if (j >= tokens.Count || !IsInlineAsmBindingPathSegment(tokens[j]))
+                    {
+                        Diagnostics.Report(new InlineAsmInvalidBindingSyntaxError(Diagnostics.CurrentSource, GetInlineAsmOperandSpan(tokens, index, j)));
+                        return null;
+                    }
+
                     path.Add(tokens[j++]);
                 }
+
                 if (j >= tokens.Count || tokens[j].Kind != TokenKind.CloseBrace)
                 {
-                    Diagnostics.Report(new InlineAsmEmptyInstructionError(Diagnostics.CurrentSource, first.Span));
+                    Diagnostics.Report(new InlineAsmInvalidBindingSyntaxError(Diagnostics.CurrentSource, GetInlineAsmOperandSpan(tokens, index, j)));
                     return null;
                 }
+
                 consumed = (j - index) + 1;
                 return new InlineAsmVarBindingOperandSyntax(first, path, tokens[j]);
             }
@@ -1330,15 +1352,22 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
             {
                 if (index + 1 >= tokens.Count || tokens[index + 1].Kind != TokenKind.IntegerLiteral)
                 {
-                    Diagnostics.Report(new InlineAsmEmptyInstructionError(Diagnostics.CurrentSource, first.Span));
+                    Diagnostics.Report(new InlineAsmInvalidTempPlaceholderError(Diagnostics.CurrentSource, GetInlineAsmOperandSpan(tokens, index, index + 1)));
                     return null;
                 }
+
                 consumed = 2;
                 return new InlineAsmTempBindingOperandSyntax(first, tokens[index + 1]);
             }
 
             case TokenKind.Hash:
             {
+                if (index + 1 >= tokens.Count || !IsInlineAsmOperandStart(tokens[index + 1]))
+                {
+                    Diagnostics.Report(new InlineAsmInvalidImmediateOperandError(Diagnostics.CurrentSource, GetInlineAsmOperandSpan(tokens, index, index + 1)));
+                    return null;
+                }
+
                 int innerConsumed;
                 InlineAsmOperandSyntax? inner = TryParseInlineAsmOperand(tokens, index + 1, out innerConsumed);
                 if (inner is null)
@@ -1355,9 +1384,10 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
             {
                 if (index + 1 >= tokens.Count || tokens[index + 1].Kind != TokenKind.IntegerLiteral)
                 {
-                    Diagnostics.Report(new InlineAsmEmptyInstructionError(Diagnostics.CurrentSource, first.Span));
+                    Diagnostics.Report(new InlineAsmInvalidSignedOperandError(Diagnostics.CurrentSource, GetInlineAsmOperandSpan(tokens, index, index + 1)));
                     return null;
                 }
+
                 consumed = 2;
                 return new InlineAsmIntegerLiteralOperandSyntax(first, tokens[index + 1]);
             }
@@ -1371,9 +1401,46 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
                 return new InlineAsmSymbolOperandSyntax(first);
 
             default:
-                Diagnostics.Report(new InlineAsmEmptyInstructionError(Diagnostics.CurrentSource, first.Span));
+                Diagnostics.Report(new InlineAsmUnexpectedTokenError(Diagnostics.CurrentSource, first.Span, first.Text));
                 return null;
         }
+    }
+
+    private static bool IsInlineAsmConditionPrefixCandidate(Token token)
+    {
+        return token.Kind == TokenKind.Identifier
+            && (token.Text.StartsWith("IF_", System.StringComparison.Ordinal)
+                || token.Text == "_RET_");
+    }
+
+    private static bool IsInlineAsmOperandStart(Token token)
+    {
+        return token.Kind is TokenKind.OpenBrace
+            or TokenKind.Percent
+            or TokenKind.Hash
+            or TokenKind.Dollar
+            or TokenKind.Minus
+            or TokenKind.IntegerLiteral
+            or TokenKind.Identifier;
+    }
+
+    private static bool IsInlineAsmBindingPathSegment(Token token)
+    {
+        return token.Text.Length > 0
+            && (char.IsLetter(token.Text[0]) || token.Text[0] == '_');
+    }
+
+    private static TextSpan GetInlineAsmTokenSpan(IReadOnlyList<Token> tokens)
+    {
+        return tokens.Count > 0
+            ? TextSpan.FromBounds(tokens[0].Span.Start, tokens[^1].Span.End)
+            : new TextSpan(0, 0);
+    }
+
+    private static TextSpan GetInlineAsmOperandSpan(IReadOnlyList<Token> tokens, int startIndex, int endIndexInclusive)
+    {
+        int boundedEndIndex = endIndexInclusive < tokens.Count ? endIndexInclusive : tokens.Count - 1;
+        return TextSpan.FromBounds(tokens[startIndex].Span.Start, tokens[boundedEndIndex].Span.End);
     }
 
     private StatementSyntax ParseExpressionOrAssignmentStatement()

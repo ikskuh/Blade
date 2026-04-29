@@ -271,14 +271,14 @@ public sealed class MirLoadIndexInstruction(
     BladeType indexedType,
     MirValueId indexed,
     MirValueId index,
-    VariableStorageClass storageClass,
+    AddressSpace storageClass,
     bool hasSideEffects,
     TextSpan span) : MirInstruction(result, type, span, hasSideEffects)
 {
     public BladeType IndexedType { get; } = Requires.NotNull(indexedType);
     public MirValueId Indexed { get; } = indexed;
     public MirValueId Index { get; } = index;
-    public VariableStorageClass StorageClass { get; } = storageClass;
+    public AddressSpace StorageClass { get; } = storageClass;
 
     public override IReadOnlyList<MirValueId> Uses => [Indexed, Index];
 
@@ -297,13 +297,13 @@ public sealed class MirLoadDerefInstruction(
     BladeType type,
     BladeType pointerType,
     MirValueId address,
-    VariableStorageClass storageClass,
+    AddressSpace storageClass,
     bool hasSideEffects,
     TextSpan span) : MirInstruction(result, type, span, hasSideEffects)
 {
     public BladeType PointerType { get; } = Requires.NotNull(pointerType);
     public MirValueId Address { get; } = address;
-    public VariableStorageClass StorageClass { get; } = storageClass;
+    public AddressSpace StorageClass { get; } = storageClass;
 
     public override IReadOnlyList<MirValueId> Uses => [Address];
 
@@ -524,7 +524,7 @@ public sealed class MirStoreIndexInstruction(
     MirValueId indexed,
     MirValueId index,
     MirValueId value,
-    VariableStorageClass storageClass,
+    AddressSpace storageClass,
     TextSpan span)
     : MirInstruction(result: null, resultType: elementType, span, hasSideEffects: true)
 {
@@ -532,7 +532,7 @@ public sealed class MirStoreIndexInstruction(
     public MirValueId Indexed { get; } = indexed;
     public MirValueId Index { get; } = index;
     public MirValueId Value { get; } = value;
-    public VariableStorageClass StorageClass { get; } = storageClass;
+    public AddressSpace StorageClass { get; } = storageClass;
 
     public override IReadOnlyList<MirValueId> Uses => [Indexed, Index, Value];
 
@@ -552,14 +552,14 @@ public sealed class MirStoreDerefInstruction(
     BladeType pointerType,
     MirValueId address,
     MirValueId value,
-    VariableStorageClass storageClass,
+    AddressSpace storageClass,
     TextSpan span)
     : MirInstruction(result: null, resultType: elementType, span, hasSideEffects: true)
 {
     public BladeType PointerType { get; } = Requires.NotNull(pointerType);
     public MirValueId Address { get; } = address;
     public MirValueId Value { get; } = value;
-    public VariableStorageClass StorageClass { get; } = storageClass;
+    public AddressSpace StorageClass { get; } = storageClass;
 
     public override IReadOnlyList<MirValueId> Uses => [Address, Value];
 

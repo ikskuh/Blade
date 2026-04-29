@@ -16,7 +16,7 @@
 // NOTE:
 //   Covers the recursive ABI branch for a register-returning rec fn with no
 //   parameters. The recursive return value now comes back in the shared
-//   register slot, and entry-point materialization may copy it through a temp.
+//   register slot, and entry-point materialization currently copies it through a temp register.
 cog task main {
     
     extern cog var OUTA: u32 @(0x1FC);

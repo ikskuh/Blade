@@ -15,9 +15,9 @@ internal static class LayoutSolutionDumpWriter
         sb.AppendLine("; Layout Solution v1");
 
         IReadOnlyList<IGrouping<Blade.Semantics.LayoutSymbol, LayoutSlot>> layouts = layoutSolution.Slots
-            .OrderBy(static slot => slot.StorageClass)
+            .OrderBy(static slot => (int)slot.StorageClass)
             .ThenBy(static slot => slot.Layout.Name, System.StringComparer.Ordinal)
-            .ThenBy(static slot => slot.Address)
+            .ThenBy(static slot => GetRawAddress(slot.Address))
             .ThenBy(static slot => slot.Symbol.Name, System.StringComparer.Ordinal)
             .GroupBy(static slot => slot.Layout)
             .OrderBy(static group => group.Key.Name, System.StringComparer.Ordinal)
@@ -48,5 +48,11 @@ internal static class LayoutSolutionDumpWriter
         }
 
         return sb.ToString();
+    }
+
+    private static int GetRawAddress(VirtualAddress address)
+    {
+        (_, int rawAddress) = address.GetDataAddress();
+        return rawAddress;
     }
 }

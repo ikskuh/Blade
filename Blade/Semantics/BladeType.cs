@@ -53,21 +53,20 @@ public abstract class RuntimeTypeSymbol(string name) : BladeType(name)
     public virtual bool IsSignedInteger => false;
     public virtual int? BitfieldFieldWidthBits => ScalarWidthBits;
 
-    public int GetSizeInMemorySpace(VariableStorageClass storageClass)
+    public int GetSizeInMemorySpace(AddressSpace storageClass)
     {
-        return storageClass is VariableStorageClass.Cog or VariableStorageClass.Lut
-            ? Math.Max(1, (SizeBytes + 3) / 4)
-            : SizeBytes;
+        int unitSizeBytes = storageClass.GetAddressUnitSizeInBytes();
+        return Math.Max(1, (SizeBytes + (unitSizeBytes - 1)) / unitSizeBytes);
     }
 
-    public int GetAlignmentInMemorySpace(VariableStorageClass storageClass)
+    public int GetAlignmentInMemorySpace(AddressSpace storageClass)
     {
-        return storageClass is VariableStorageClass.Cog or VariableStorageClass.Lut
+        return storageClass is AddressSpace.Cog or AddressSpace.Lut
             ? 1
             : AlignmentBytes;
     }
 
-    public int GetPointerElementStride(VariableStorageClass storageClass)
+    public int GetPointerElementStride(AddressSpace storageClass)
     {
         int stride = GetSizeInMemorySpace(storageClass);
         Assert.Invariant(stride > 0, $"Runtime type '{Name}' must have positive storage size.");
@@ -149,7 +148,7 @@ public abstract class PointerLikeTypeSymbol(
     bool isConst,
     bool isVolatile,
     int? alignment,
-    VariableStorageClass storageClass)
+    AddressSpace storageClass)
     : ScalarTypeSymbol(BuildName(prefix, pointeeType, isConst, isVolatile, alignment, storageClass), bitWidth: 32, sizeBytes: 4, alignmentBytes: 4)
 {
     public RuntimeTypeSymbol PointeeType { get; } = pointeeType as RuntimeTypeSymbol
@@ -158,7 +157,7 @@ public abstract class PointerLikeTypeSymbol(
     public bool IsConst { get; } = isConst;
     public bool IsVolatile { get; } = isVolatile;
     public int? Alignment { get; } = alignment;
-    public VariableStorageClass StorageClass { get; } = storageClass;
+    public AddressSpace StorageClass { get; } = storageClass;
 
     public override bool IsLegalRuntimeObject(object value) => value is PointedValue;
 
@@ -183,13 +182,13 @@ public abstract class PointerLikeTypeSymbol(
         bool isConst,
         bool isVolatile,
         int? alignment,
-        VariableStorageClass storageClass)
+        AddressSpace storageClass)
     {
         string storageText = storageClass switch
         {
-            VariableStorageClass.Cog => "cog ",
-            VariableStorageClass.Lut => "lut ",
-            VariableStorageClass.Hub => "hub ",
+            AddressSpace.Cog => "cog ",
+            AddressSpace.Lut => "lut ",
+            AddressSpace.Hub => "hub ",
             _ => Assert.UnreachableValue<string>($"Unexpected pointer storage class '{storageClass}'."), // pragma: force-coverage
         };
 
@@ -208,7 +207,7 @@ public abstract class PointerLikeTypeSymbol(
 public sealed class PointerTypeSymbol(
     BladeType pointeeType,
     bool isConst,
-    VariableStorageClass storageClass,
+    AddressSpace storageClass,
     bool isVolatile = false,
     int? alignment = null)
     : PointerLikeTypeSymbol("*", pointeeType, isConst, isVolatile, alignment, storageClass);
@@ -216,7 +215,7 @@ public sealed class PointerTypeSymbol(
 public sealed class MultiPointerTypeSymbol(
     BladeType pointeeType,
     bool isConst,
-    VariableStorageClass storageClass,
+    AddressSpace storageClass,
     bool isVolatile = false,
     int? alignment = null)
     : PointerLikeTypeSymbol("[*]", pointeeType, isConst, isVolatile, alignment, storageClass);

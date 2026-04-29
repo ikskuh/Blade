@@ -1,4 +1,4 @@
-// EXPECT: xfail
+// EXPECT: pass
 // STAGE: mir
 // FLEXSPIN: forbidden
 // ARGS:
@@ -7,8 +7,14 @@
 // NOTE:
 //   Exercises MIR constant propagation across unary, integer-binary, comparison,
 //   and boolean operators using runtime symbols initialized from constants.
+//   The heavy expression body lives in a spawned hub task so the MIR-focused
+//   sample does not consume the entry cog image's limited code/register space.
 
 cog task main {
+    spawn helper();
+}
+
+hub task helper {
     cog var sink_u: u32 = 0;
     cog var sink_b: bool = false;
     

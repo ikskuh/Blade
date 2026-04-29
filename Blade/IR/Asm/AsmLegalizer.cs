@@ -17,32 +17,31 @@ namespace Blade.IR.Asm;
 /// </summary>
 public static class AsmLegalizer
 {
+    private readonly record struct ConstantKey(ImageDescriptor Image, uint Value);
+
     public static AsmModule Legalize(AsmModule module)
     {
         Requires.NotNull(module);
 
-        // First pass: collect all large immediate values across the whole program
-        // to decide which ones should share a constant register vs. use AUG.
-        Dictionary<uint, int> immediateUseCounts = [];
+        Dictionary<ConstantKey, int> immediateUseCounts = [];
         foreach (AsmFunction function in module.Functions)
         {
             foreach (AsmNode node in function.Nodes)
             {
                 if (node is AsmInstructionNode instruction)
-                    CountLargeImmediates(instruction, immediateUseCounts);
+                    CountLargeImmediates(function, instruction, immediateUseCounts);
             }
         }
 
-        // Immediates used 2+ times → allocate a shared constant register.
-        // Immediates used once → use AUG prefix inline.
-        Dictionary<uint, AsmSharedConstantSymbol> constantRegisters = [];
-        foreach ((uint value, int count) in immediateUseCounts.OrderBy(static pair => pair.Key))
+        Dictionary<ConstantKey, AsmSharedConstantSymbol> constantRegisters = [];
+        foreach ((ConstantKey key, int count) in immediateUseCounts.OrderBy(static pair => pair.Key.Image.Task.Name, StringComparer.Ordinal).ThenBy(static pair => pair.Key.Value))
         {
-            if (count >= 2)
-                constantRegisters[value] = new AsmSharedConstantSymbol(value);
+            bool requiresConstantRegister = key.Image.ExecutionMode is AddressSpace.Cog or AddressSpace.Lut
+                || count >= 2;
+            if (requiresConstantRegister)
+                constantRegisters[key] = new AsmSharedConstantSymbol(key.Image, key.Value);
         }
 
-        // Second pass: legalize each function
         List<AsmFunction> functions = new(module.Functions.Count);
         foreach (AsmFunction function in module.Functions)
         {
@@ -54,13 +53,13 @@ public static class AsmLegalizer
         if (constantRegisters.Count > 0)
         {
             List<AsmDataDefinition> constantDefinitions = [];
-            foreach ((uint value, AsmSharedConstantSymbol label) in constantRegisters.OrderBy(static pair => pair.Key))
+            foreach ((ConstantKey key, AsmSharedConstantSymbol label) in constantRegisters.OrderBy(static pair => pair.Key.Image.Task.Name, StringComparer.Ordinal).ThenBy(static pair => pair.Key.Value))
             {
                 constantDefinitions.Add(new AsmAllocatedStorageDefinition(
                     label,
-                    VariableStorageClass.Cog,
+                    AddressSpace.Cog,
                     BuiltinTypes.U32,
-                    [new AsmImmediateOperand((long)value)],
+                    [new AsmImmediateOperand((long)key.Value)],
                     useHexFormat: true));
             }
 
@@ -85,8 +84,9 @@ public static class AsmLegalizer
     }
 
     private static void CountLargeImmediates(
+        AsmFunction function,
         AsmInstructionNode instruction,
-        Dictionary<uint, int> counts)
+        Dictionary<ConstantKey, int> counts)
     {
         for (int operandIndex = 0; operandIndex < instruction.Operands.Count; operandIndex++)
         {
@@ -103,8 +103,9 @@ public static class AsmLegalizer
                 uint uval = unchecked((uint)imm.Value);
                 if (!FitsInOperandField(uval, operandInfo.BitWidth))
                 {
-                    counts.TryGetValue(uval, out int existing);
-                    counts[uval] = existing + 1;
+                    ConstantKey key = new(function.OwningImage, uval);
+                    counts.TryGetValue(key, out int existing);
+                    counts[key] = existing + 1;
                 }
             }
         }
@@ -112,14 +113,14 @@ public static class AsmLegalizer
 
     private static AsmFunction LegalizeFunction(
         AsmFunction function,
-        Dictionary<uint, AsmSharedConstantSymbol> constantRegisters)
+        Dictionary<ConstantKey, AsmSharedConstantSymbol> constantRegisters)
     {
         List<AsmNode> nodes = new(function.Nodes.Count);
 
         foreach (AsmNode node in function.Nodes)
         {
             if (node is AsmInstructionNode instruction)
-                LegalizeInstruction(nodes, instruction, constantRegisters);
+                LegalizeInstruction(function, nodes, instruction, constantRegisters);
             else
                 nodes.Add(node);
         }
@@ -128,9 +129,10 @@ public static class AsmLegalizer
     }
 
     private static void LegalizeInstruction(
+        AsmFunction function,
         List<AsmNode> nodes,
         AsmInstructionNode instruction,
-        Dictionary<uint, AsmSharedConstantSymbol> constantRegisters)
+        Dictionary<ConstantKey, AsmSharedConstantSymbol> constantRegisters)
     {
         bool modified = false;
         List<AsmOperand> newOperands = new(instruction.Operands.Count);
@@ -153,11 +155,10 @@ public static class AsmLegalizer
 
                 if (!FitsInOperandField(uval, operandInfo.BitWidth))
                 {
-                    // Check if this value has a shared constant register
+                    ConstantKey constantKey = new(function.OwningImage, uval);
                     if (CanUseSharedConstant(operandInfo)
-                        && constantRegisters.TryGetValue(uval, out AsmSharedConstantSymbol? constLabel))
+                        && constantRegisters.TryGetValue(constantKey, out AsmSharedConstantSymbol? constLabel))
                     {
-                        // Replace immediate with reference to constant register
                         newOperands.Add(new AsmSymbolOperand(constLabel, AsmSymbolAddressingMode.Register));
                         modified = true;
                         continue;

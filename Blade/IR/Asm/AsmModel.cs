@@ -27,22 +27,38 @@ internal sealed class AsmCurrentAddressSymbol : IAsmSymbol
     public SymbolType SymbolType => SymbolType.ControlFlowLabel;
 }
 
-internal sealed class AsmSpillSlotSymbol(int slot) : IAsmSymbol
+internal readonly record struct AsmFunctionKey(ImageDescriptor Image, FunctionSymbol Function)
 {
-    public int Slot { get; } = Requires.NonNegative(slot);
-    public string Name => $"_r{Slot}";
+    public ImageDescriptor Image { get; } = Requires.NotNull(Image);
+    public FunctionSymbol Function { get; } = Requires.NotNull(Function);
+}
+
+internal sealed class AsmImageStartSymbol(ImageDescriptor image) : IAsmSymbol
+{
+    public ImageDescriptor Image { get; } = Requires.NotNull(image);
+    public string Name => $"{Image.Task.Name}_image_start";
+    public SymbolType SymbolType => SymbolType.Function;
+}
+
+internal sealed class AsmSpillSlotSymbol(ImageDescriptor image, CogAddress slot) : IAsmSymbol
+{
+    public ImageDescriptor Image { get; } = Requires.NotNull(image);
+    public CogAddress Slot { get; } = slot;
+    public string Name => $"{Image.Task.Name}_r{(int)Slot}";
     public SymbolType SymbolType => SymbolType.RegVariable;
 }
 
-internal sealed class AsmSharedConstantSymbol(uint value) : IAsmSymbol
+internal sealed class AsmSharedConstantSymbol(ImageDescriptor image, uint value) : IAsmSymbol
 {
+    public ImageDescriptor Image { get; } = Requires.NotNull(image);
     public uint Value { get; } = value;
-    public string Name => $"c_{Value}";
+    public string Name => $"{Image.Task.Name}_c_{Value}";
     public SymbolType SymbolType => SymbolType.RegVariable;
 }
 
-internal sealed class AsmFunctionReferenceSymbol(FunctionSymbol function) : IAsmSymbol
+internal sealed class AsmFunctionReferenceSymbol(ImageDescriptor image, FunctionSymbol function) : IAsmSymbol
 {
+    public ImageDescriptor Image { get; } = Requires.NotNull(image);
     public FunctionSymbol Function { get; } = Requires.NotNull(function);
     public string Name => Function.Name;
     public SymbolType SymbolType => SymbolType.Function;
@@ -75,14 +91,14 @@ public abstract class AsmDataDefinition(IAsmSymbol symbol)
 
 public sealed class AsmAllocatedStorageDefinition(
     IAsmSymbol symbol,
-    VariableStorageClass storageClass,
+    AddressSpace storageClass,
     RuntimeTypeSymbol elementType,
     IReadOnlyList<AsmOperand>? initialValues = null,
     int count = 1,
     bool useHexFormat = false)
     : AsmDataDefinition(symbol)
 {
-    public VariableStorageClass StorageClass { get; } = storageClass;
+    public AddressSpace StorageClass { get; } = storageClass;
     public RuntimeTypeSymbol ElementType { get; } = Requires.NotNull(elementType);
     public IReadOnlyList<AsmOperand>? InitialValues { get; } = initialValues;
     public int Count { get; } = Requires.Positive(count);
@@ -90,7 +106,7 @@ public sealed class AsmAllocatedStorageDefinition(
 
     public override int AlignmentBytes => ElementType.GetAlignmentInMemorySpace(StorageClass);
 
-    public AsmDataDirective Directive => StorageClass is VariableStorageClass.Cog or VariableStorageClass.Lut
+    public AsmDataDirective Directive => StorageClass is AddressSpace.Cog or AddressSpace.Lut
         ? AsmDataDirective.Long
         : SelectDirective(ElementType);
 
@@ -151,6 +167,7 @@ public sealed class AsmRegisterConstraint
 }
 
 public sealed class AsmFunction(
+    ImageDescriptor owningImage,
     LirFunction sourceFunction,
     CallingConventionTier ccTier,
     IReadOnlyList<AsmNode> nodes,
@@ -159,6 +176,7 @@ public sealed class AsmFunction(
 {
     public AsmFunction(AsmFunction sourceFunction, IReadOnlyList<AsmNode> nodes)
         : this(
+            Requires.NotNull(sourceFunction).OwningImage,
             Requires.NotNull(sourceFunction).SourceFunction,
             sourceFunction.CcTier,
             nodes,
@@ -167,7 +185,9 @@ public sealed class AsmFunction(
     {
     }
 
+    public ImageDescriptor OwningImage { get; } = Requires.NotNull(owningImage);
     public LirFunction SourceFunction { get; } = Requires.NotNull(sourceFunction);
+    internal AsmFunctionKey Key => new(OwningImage, Symbol);
     public FunctionSymbol Symbol => SourceFunction.Symbol;
     public string Name => SourceFunction.Name;
     public bool IsEntryPoint => SourceFunction.IsEntryPoint;
@@ -291,6 +311,28 @@ public sealed class AsmInstructionNode : AsmNode
             && operandInfo.Access == P2OperandAccess.None
             && operandInfo.Role == P2OperandRole.N;
 
+}
+
+public sealed class AsmInlineDataNode(AsmDataDirective directive, IReadOnlyList<AsmInlineDataValue> values) : AsmNode
+{
+    public AsmDataDirective Directive { get; } = directive;
+    public IReadOnlyList<AsmInlineDataValue> Values { get; } = Requires.NotNull(values);
+}
+
+public abstract class AsmInlineDataValue
+{
+}
+
+public sealed class AsmInlineDataOperandValue(AsmOperand operand, bool preserveImmediateSyntax) : AsmInlineDataValue
+{
+    public AsmOperand Operand { get; } = Requires.NotNull(operand);
+    public bool PreserveImmediateSyntax { get; } = preserveImmediateSyntax;
+}
+
+public sealed class AsmInlineDataRawSymbolValue(string name, bool preserveImmediateSyntax) : AsmInlineDataValue
+{
+    public string Name { get; } = Requires.NotNullOrWhiteSpace(name);
+    public bool PreserveImmediateSyntax { get; } = preserveImmediateSyntax;
 }
 
 /// <summary>

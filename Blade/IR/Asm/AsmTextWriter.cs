@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 using Blade;
 
@@ -86,6 +87,23 @@ public static class AsmTextWriter
                 sb.AppendLine();
                 break;
 
+            case AsmInlineDataNode inlineData:
+                sb.Append("    ");
+                sb.Append(inlineData.Directive);
+                if (inlineData.Values.Count > 0)
+                {
+                    sb.Append(' ');
+                    for (int i = 0; i < inlineData.Values.Count; i++)
+                    {
+                        if (i > 0)
+                            sb.Append(", ");
+                        sb.Append(FormatInlineDataValue(inlineData.Values[i], formatter));
+                    }
+                }
+
+                sb.AppendLine();
+                break;
+
             case AsmVolatileRegionBeginNode:
                 sb.AppendLine("    .volatile_begin");
                 break;
@@ -159,6 +177,35 @@ public static class AsmTextWriter
         return operand switch
         {
             AsmRegisterOperand register => formatter.Format(register.Register),
+            _ => operand.Format(),
+        };
+    }
+
+    private static string FormatInlineDataValue(AsmInlineDataValue value, RegisterFormatter formatter)
+    {
+        return value switch
+        {
+            AsmInlineDataOperandValue operandValue when operandValue.Operand is AsmRegisterOperand register && !operandValue.PreserveImmediateSyntax
+                => formatter.Format(register.Register),
+            AsmInlineDataOperandValue operandValue when operandValue.PreserveImmediateSyntax
+                => FormatOperand(operandValue.Operand, formatter),
+            AsmInlineDataOperandValue operandValue
+                => FormatDataLikeOperand(operandValue.Operand, formatter),
+            AsmInlineDataRawSymbolValue raw when raw.PreserveImmediateSyntax
+                => "#" + raw.Name,
+            AsmInlineDataRawSymbolValue raw
+                => raw.Name,
+            _ => Assert.UnreachableValue<string>(), // pragma: force-coverage
+        };
+    }
+
+    private static string FormatDataLikeOperand(AsmOperand operand, RegisterFormatter formatter)
+    {
+        return operand switch
+        {
+            AsmRegisterOperand register => formatter.Format(register.Register),
+            AsmImmediateOperand immediate => immediate.Value.ToString(CultureInfo.InvariantCulture),
+            AsmSymbolOperand symbol => symbol.Name,
             _ => operand.Format(),
         };
     }

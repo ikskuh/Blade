@@ -414,6 +414,12 @@ located CogResourceLayoutFailed: E0284
     param:   string ownerName
     param:   string reason
 
+located MissingRuntimeLauncherTask: E0285
+    message: "Runtime launcher module must export a task named '_start'."
+
+located RuntimeLauncherCannotDeclareMainTask: E0286
+    message: "Runtime launcher module must not declare a task named 'main'."
+
 located InlineAsmUnknownInstruction: E0301
     message: $"Unknown P2 instruction '{mnemonic}' in inline assembly."
     param:   string mnemonic
@@ -441,6 +447,46 @@ located InlineAsmUndefinedLabel: E0306
 located InlineAsmTempReadBeforeWrite: W0307
     message: $"Inline assembly temporary '{name}' is read before any prior write in the same asm block. The register contents are unspecified."
     param:   string name
+
+# E0303 is intentionally reserved for the retired catch-all inline asm parse error.
+
+located InlineAsmMissingInstructionMnemonic: E0308
+    message: "Inline assembly instruction is missing a mnemonic."
+
+located InlineAsmUnexpectedToken: E0309
+    message: $"Unexpected token '{tokenText}' in inline assembly instruction."
+    param:   string tokenText
+
+located InlineAsmMissingOperand: E0310
+    message: "Expected an inline assembly operand after ','."
+
+located InlineAsmInvalidTempPlaceholder: E0311
+    message: "Invalid inline assembly temporary placeholder. Expected '%' followed by an integer literal."
+
+located InlineAsmInvalidBindingSyntax: E0312
+    message: "Invalid inline assembly binding syntax. Expected '{name}' or '{path.to.name}'."
+
+located InlineAsmInvalidImmediateOperand: E0313
+    message: "Invalid inline assembly immediate operand. Expected an operand after '#'."
+
+located InlineAsmInvalidSignedOperand: E0314
+    message: "Invalid inline assembly signed operand. Expected an integer literal after '-'."
+
+located InlineAsmUnknownCondition: E0315
+    message: $"Unknown P2 condition prefix '{condition}' in inline assembly."
+    param:   string condition
+
+located InlineAsmInvalidFlagEffect: E0316
+    message: $"Invalid inline assembly flag effect '{flag}'. Expected a P2 flag effect such as 'WC', 'WZ', or 'WCZ'."
+    param:   string flag
+
+located InlineAsmInvalidDirectOperand: E0317
+    message: $"Inline assembly operand '{operandText}' is not valid in direct position. Expected a label, special register, binding, temporary, or '$'."
+    param:   string operandText
+
+located InlineAsmInvalidImmediateOperandKind: E0318
+    message: $"Inline assembly operand '{operandText}' is not valid after '#'. Expected an integer literal, label, or '$'."
+    param:   string operandText
 
 located UnsupportedLowering: E0401
     message: $"Backend lowering for '{lowering}' is not implemented yet."

@@ -460,9 +460,9 @@ public static class RegisterAllocator
 
     private static Dictionary<AsmFunction, HashSet<AsmFunction>> ReconstructCallGraph(AsmModule module)
     {
-        Dictionary<FunctionSymbol, AsmFunction> functionsBySymbol = [];
+        Dictionary<AsmFunctionKey, AsmFunction> functionsBySymbol = [];
         foreach (AsmFunction function in module.Functions)
-            functionsBySymbol[function.Symbol] = function;
+            functionsBySymbol[function.Key] = function;
 
         Dictionary<AsmFunction, HashSet<AsmFunction>> callGraph = [];
         foreach (AsmFunction function in module.Functions)
@@ -475,7 +475,7 @@ public static class RegisterAllocator
                     foreach (AsmOperand operand in instruction.Operands)
                     {
                         if (operand is AsmSymbolOperand { Symbol: AsmFunctionReferenceSymbol functionReference }
-                            && functionsBySymbol.TryGetValue(functionReference.Function, out AsmFunction? callee))
+                            && functionsBySymbol.TryGetValue(new AsmFunctionKey(functionReference.Image, functionReference.Function), out AsmFunction? callee))
                         {
                             callees.Add(callee);
                         }
@@ -553,9 +553,9 @@ public static class RegisterAllocator
         {
             if (place.RegisterRole == StoragePlaceRegisterRole.Global)
             {
-                bool foundStableAddress = cogResourceLayouts.TryGetStableAddress(place, out int stableAddress);
-                Assert.Invariant(foundStableAddress, $"Global storage place '{place.Symbol.Name}' must have a stable COG address before register allocation.");
-                placeLocations[place] = AllocatedLocation.ForStoragePlace(place, stableAddress);
+                bool foundStableAddress = cogResourceLayouts.TryGetAddress(place, out MemoryAddress stableAddress);
+                Assert.Invariant(foundStableAddress, $"Global storage place '{place.Symbol.Name}' must have a virtual COG address before register allocation.");
+                placeLocations[place] = AllocatedLocation.ForStoragePlace(place, GetRawAddress(stableAddress.Virtual));
                 continue;
             }
 
@@ -579,13 +579,7 @@ public static class RegisterAllocator
             FunctionLiveness liveness = livenessMap[function];
             Dictionary<VirtualAsmRegister, int> coloring = coloringMap[function];
             Dictionary<int, AsmRegisterConstraint> colorConstraints = functionColorConstraints.GetValueOrDefault(function) ?? [];
-            bool foundLayout = cogResourceLayouts.TryGetLayout(function.Symbol, out CogResourceLayout? functionLayout);
-            if (!foundLayout)
-            {
-                // Skip functions that aren't referenced in the program.
-                Console.Error.WriteLine("TODO: Fix RegisterAllocator trying to handle functions that aren't compiled at all.");
-                continue;
-            }
+            bool foundLayout = cogResourceLayouts.TryGetLayout(function.OwningImage, out CogResourceLayout? functionLayout);
             Assert.Invariant(foundLayout, $"Function '{function.Symbol.Name}' must belong to one image layout.");
             CogResourceLayout layout = Assert.NotNull(functionLayout);
 
@@ -644,7 +638,7 @@ public static class RegisterAllocator
                     if (preferredRegister is { } physicalRegister)
                     {
                         bool preferredIsFree = physicalRegister.IsSpecial
-                            || (layout.IsRegisterAddressAvailable(physicalRegister.Address)
+                            || (layout.IsRegisterAddressAvailable(new CogAddress(physicalRegister.Address))
                                 && !alwaysForbidden.Contains(physicalRegister.Address)
                                 && !usedByThisFunction.Contains(physicalRegister.Address)
                                 && !calleeSlots.Contains(physicalRegister.Address));
@@ -789,13 +783,20 @@ public static class RegisterAllocator
         Requires.NotNull(layout);
         Requires.NotNull(forbidden);
 
-        foreach (int address in layout.AvailableRegisterAddresses)
+        foreach (CogAddress address in layout.AvailableRegisterAddresses)
         {
-            if (!forbidden.Contains(address))
-                return address;
+            int rawAddress = (int)address;
+            if (!forbidden.Contains(rawAddress))
+                return rawAddress;
         }
 
         return Assert.UnreachableValue<int>($"Image '{layout.Image.Task.Name}' ran out of allocatable COG registers."); // pragma: force-coverage
+    }
+
+    private static int GetRawAddress(VirtualAddress address)
+    {
+        (_, int rawAddress) = address.GetDataAddress();
+        return rawAddress;
     }
 
     /// <summary>
@@ -846,14 +847,14 @@ public static class RegisterAllocator
         Dictionary<AsmFunction, Dictionary<VirtualAsmRegister, AllocatedLocation>> registerLocationMap,
         Dictionary<StoragePlace, AllocatedLocation> placeLocationMap)
     {
-        Dictionary<int, AsmSpillSlotSymbol> slotSymbols = [];
+        Dictionary<(ImageDescriptor Image, int Slot), AsmSpillSlotSymbol> slotSymbols = [];
 
-        AsmSpillSlotSymbol GetSlotSymbol(int slot)
+        AsmSpillSlotSymbol GetSlotSymbol(ImageDescriptor image, int slot)
         {
-            if (!slotSymbols.TryGetValue(slot, out AsmSpillSlotSymbol? symbol))
+            if (!slotSymbols.TryGetValue((image, slot), out AsmSpillSlotSymbol? symbol))
             {
-                symbol = new AsmSpillSlotSymbol(slot);
-                slotSymbols.Add(slot, symbol);
+                symbol = new AsmSpillSlotSymbol(image, new CogAddress(slot));
+                slotSymbols.Add((image, slot), symbol);
             }
 
             return symbol;
@@ -874,13 +875,37 @@ public static class RegisterAllocator
                         {
                             List<AsmOperand> operands = new(instruction.Operands.Count);
                             foreach (AsmOperand operand in instruction.Operands)
-                                operands.Add(RewriteOperand(operand, regToLocation, placeLocationMap, GetSlotSymbol));
+                                operands.Add(RewriteOperand(operand, function.OwningImage, regToLocation, placeLocationMap, GetSlotSymbol));
                             rewrittenNodes.Add(new AsmInstructionNode(
                                 instruction.Mnemonic,
                                 operands,
                                 instruction.Condition,
                                 instruction.FlagEffect,
                                 instruction.IsNonElidable));
+                            break;
+                        }
+
+                    case AsmInlineDataNode inlineData:
+                        {
+                            List<AsmInlineDataValue> rewrittenValues = new(inlineData.Values.Count);
+                            foreach (AsmInlineDataValue value in inlineData.Values)
+                            {
+                                if (value is AsmInlineDataOperandValue operandValue)
+                                {
+                                    AsmOperand rewrittenOperand = RewriteOperand(
+                                        operandValue.Operand,
+                                        function.OwningImage,
+                                        regToLocation,
+                                        placeLocationMap,
+                                        GetSlotSymbol);
+                                    rewrittenValues.Add(new AsmInlineDataOperandValue(rewrittenOperand, operandValue.PreserveImmediateSyntax));
+                                    continue;
+                                }
+
+                                rewrittenValues.Add(value);
+                            }
+
+                            rewrittenNodes.Add(new AsmInlineDataNode(inlineData.Directive, rewrittenValues));
                             break;
                         }
 
@@ -893,7 +918,7 @@ public static class RegisterAllocator
             functions.Add(new AsmFunction(function, rewrittenNodes));
         }
 
-        HashSet<int> allUsedSlots = CollectReferencedSpillSlots(functions);
+        HashSet<AsmSpillSlotSymbol> allUsedSlots = CollectReferencedSpillSlots(functions);
 
         List<AsmDataBlock> dataBlocks = [.. module.DataBlocks];
         List<AsmDataDefinition> registerDefinitions = dataBlocks
@@ -903,15 +928,14 @@ public static class RegisterAllocator
             ?? [];
 
         HashSet<IAsmSymbol> emitted = registerDefinitions.Select(static definition => definition.Symbol).ToHashSet();
-        foreach (int slot in allUsedSlots.Order())
+        foreach (AsmSpillSlotSymbol label in allUsedSlots.OrderBy(static symbol => symbol.Image.Task.Name, StringComparer.Ordinal).ThenBy(static symbol => symbol.Slot))
         {
-            AsmSpillSlotSymbol label = GetSlotSymbol(slot);
             if (!emitted.Add(label))
                 continue;
 
             registerDefinitions.Add(new AsmAllocatedStorageDefinition(
                 label,
-                VariableStorageClass.Cog,
+                AddressSpace.Cog,
                 BuiltinTypes.U32));
         }
 
@@ -933,9 +957,9 @@ public static class RegisterAllocator
         dataBlocks.Add(replacement);
     }
 
-    private static HashSet<int> CollectReferencedSpillSlots(IReadOnlyList<AsmFunction> functions)
+    private static HashSet<AsmSpillSlotSymbol> CollectReferencedSpillSlots(IReadOnlyList<AsmFunction> functions)
     {
-        HashSet<int> slots = [];
+        HashSet<AsmSpillSlotSymbol> slots = [];
         foreach (AsmFunction function in functions)
         {
             foreach (AsmNode node in function.Nodes)
@@ -946,7 +970,7 @@ public static class RegisterAllocator
                 foreach (AsmOperand operand in instruction.Operands)
                 {
                     if (operand is AsmSymbolOperand { Symbol: AsmSpillSlotSymbol spillSlot })
-                        slots.Add(spillSlot.Slot);
+                        slots.Add(spillSlot);
                 }
             }
         }
@@ -956,18 +980,19 @@ public static class RegisterAllocator
 
     private static AsmOperand RewriteOperand(
         AsmOperand operand,
+        ImageDescriptor functionImage,
         IReadOnlyDictionary<VirtualAsmRegister, AllocatedLocation> regToLocation,
         IReadOnlyDictionary<StoragePlace, AllocatedLocation> placeLocationMap,
-        Func<int, AsmSpillSlotSymbol> getSlotSymbol)
+        Func<ImageDescriptor, int, AsmSpillSlotSymbol> getSlotSymbol)
     {
         if (operand is AsmRegisterOperand reg && regToLocation.TryGetValue(reg.Register, out AllocatedLocation registerLocation))
-            return ToOperand(registerLocation, getSlotSymbol);
+            return ToOperand(functionImage, registerLocation, getSlotSymbol);
 
         if (operand is AsmSymbolOperand { Symbol: StoragePlace place, AddressingMode: AsmSymbolAddressingMode.Register }
             && place.IsInternalRegisterSlot
             && placeLocationMap.TryGetValue(place, out AllocatedLocation placeLocation))
         {
-            return ToOperand(placeLocation, getSlotSymbol);
+            return ToOperand(functionImage, placeLocation, getSlotSymbol);
         }
 
         return operand;
@@ -983,11 +1008,14 @@ public static class RegisterAllocator
         return Assert.UnreachableValue<AllocatedLocation>($"Missing allocated location for internal register place '{place.Symbol.Name}'."); // pragma: force-coverage
     }
 
-    private static AsmOperand ToOperand(AllocatedLocation location, Func<int, AsmSpillSlotSymbol> getSlotSymbol)
+    private static AsmOperand ToOperand(
+        ImageDescriptor functionImage,
+        AllocatedLocation location,
+        Func<ImageDescriptor, int, AsmSpillSlotSymbol> getSlotSymbol)
     {
         return location.Kind switch
         {
-            AllocatedLocationKind.RegisterAddress => new AsmSymbolOperand(getSlotSymbol(location.Address), AsmSymbolAddressingMode.Register),
+            AllocatedLocationKind.RegisterAddress => new AsmSymbolOperand(getSlotSymbol(functionImage, location.Address), AsmSymbolAddressingMode.Register),
             AllocatedLocationKind.PhysicalRegister => new AsmPhysicalRegisterOperand(location.PhysicalRegister!.Value),
             AllocatedLocationKind.StoragePlace => new AsmSymbolOperand(location.StoragePlace!, AsmSymbolAddressingMode.Register),
             _ => Assert.UnreachableValue<AsmOperand>(), // pragma: force-coverage

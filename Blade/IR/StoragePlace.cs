@@ -29,15 +29,17 @@ public sealed class StoragePlace : IAsmSymbol
         StoragePlaceRegisterRole? registerRole = null,
         string? emittedName = null,
         IReadOnlyList<P2Register>? preferredRegisters = null,
-        P2SpecialRegister? specialRegisterAlias = null)
+        P2SpecialRegister? specialRegisterAlias = null,
+        ImageDescriptor? owningImage = null)
     {
         Symbol = Requires.NotNull(symbol);
         Placement = placement;
         PreferredRegisters = preferredRegisters ?? [];
         SpecialRegisterAlias = specialRegisterAlias;
+        OwningImage = owningImage;
 
         bool isAllocatableRegisterPlace = placement == StoragePlacePlacement.Allocatable
-            && symbol.StorageClass == VariableStorageClass.Cog;
+            && symbol.StorageClass == AddressSpace.Cog;
         Assert.Invariant(isAllocatableRegisterPlace == registerRole.HasValue, "Register role must be present exactly for allocatable register storage places.");
         RegisterRole = registerRole;
 
@@ -65,7 +67,7 @@ public sealed class StoragePlace : IAsmSymbol
             Assert.Invariant(
                 placement is StoragePlacePlacement.FixedAlias or StoragePlacePlacement.ExternalAlias,
                 "Special-register aliases are only valid for fixed or external aliases.");
-            Assert.Invariant(symbol.StorageClass == VariableStorageClass.Cog, "Special-register aliases must live in register space.");
+            Assert.Invariant(symbol.StorageClass == AddressSpace.Cog, "Special-register aliases must live in register space.");
         }
 
         if (!string.IsNullOrWhiteSpace(emittedName))
@@ -77,8 +79,9 @@ public sealed class StoragePlace : IAsmSymbol
     public StoragePlaceRegisterRole? RegisterRole { get; }
     public IReadOnlyList<P2Register> PreferredRegisters { get; }
     public P2SpecialRegister? SpecialRegisterAlias { get; }
-    public int? FixedAddress => Symbol.FixedAddress;
-    public VariableStorageClass StorageClass => Symbol.StorageClass;
+    public ImageDescriptor? OwningImage { get; }
+    public VirtualAddress? FixedAddress => Symbol.FixedAddress;
+    public AddressSpace StorageClass => Symbol.StorageClass;
     internal bool HasAssignedEmittedName => _emittedName is not null;
 
     public bool IsInternalRegisterSlot => RegisterRole is StoragePlaceRegisterRole.InternalShared
@@ -104,8 +107,8 @@ public sealed class StoragePlace : IAsmSymbol
 
     public SymbolType SymbolType => StorageClass switch
     {
-        VariableStorageClass.Lut => SymbolType.LutVariable,
-        VariableStorageClass.Hub => SymbolType.HubVariable,
+        AddressSpace.Lut => SymbolType.LutVariable,
+        AddressSpace.Hub => SymbolType.HubVariable,
         _ => SymbolType.RegVariable,
     };
 

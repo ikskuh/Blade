@@ -184,7 +184,7 @@ public class BinderTests
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
         Assert.That(program.EntryPoint.Name, Is.EqualTo("main"));
-        Assert.That(program.EntryPoint.StorageClass, Is.EqualTo(VariableStorageClass.Cog));
+        Assert.That(program.EntryPoint.StorageClass, Is.EqualTo(AddressSpace.Cog));
         Assert.That(ReferenceEquals(program.EntryPoint.EntryFunction, program.EntryPointFunction.Symbol), Is.True);
     }
 
@@ -215,7 +215,7 @@ public class BinderTests
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
 
         BoundFunctionMember helper = GetFunction(program, "helper");
-        Assert.That(helper.Symbol.StorageClass, Is.EqualTo(VariableStorageClass.Hub));
+        Assert.That(helper.Symbol.StorageClass, Is.EqualTo(AddressSpace.Hub));
         Assert.That(helper.Symbol.Alignment, Is.EqualTo(16));
         Assert.That(helper.Symbol.AssociatedLayouts.Select(static layout => layout.Name), Is.EqualTo(["SharedState"]));
     }
@@ -427,7 +427,7 @@ public class BinderTests
 
         Assert.That(diagnostics.Any(d => d.Code == "W0269"), Is.True);
         Assert.That(diagnostics.Any(d => d.Code == "E0270"), Is.False);
-        Assert.That(program.EntryPoint.StorageClass, Is.EqualTo(VariableStorageClass.Lut));
+        Assert.That(program.EntryPoint.StorageClass, Is.EqualTo(AddressSpace.Lut));
     }
 
     [Test]

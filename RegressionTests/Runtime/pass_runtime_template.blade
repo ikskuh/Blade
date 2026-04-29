@@ -1,9 +1,8 @@
 // EXPECT: pass
 // STAGE: final-asm
-// ARGS: --runtime=../../Work/RuntimeTemplates/basic_template.spin2
+// ARGS: --runtime=runtime_launcher.blade
 // CONTAINS:
-// - RUNTIME_BOOT_MAGIC = $42
-// - JMP #blade_entry
+// - g_runtime_marker LONG 66
 // - blade_entry
 // - JMP #blade_halt
 

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Numerics;
 using Blade.Diagnostics;
 using Blade.IR.Asm;
 using Blade.Semantics;
@@ -10,144 +11,158 @@ using Blade.Source;
 namespace Blade.IR;
 
 /// <summary>
-/// Represents the image-specific COG occupancy that remains after stable COG-backed data
-/// has been assigned concrete addresses. Each image starts code at <c>$000</c>, reserves
-/// the special-register tail at <c>$1F0..$1FF</c>, and exposes the remaining concrete
-/// allocatable register addresses for image-local ABI and virtual-register allocation.
+/// Describes the register-space layout for one emitted image.
 /// </summary>
 public sealed class CogResourceLayout(
-    ImageDescriptor image,
+    ImagePlacementEntry placement,
     int codeSizeLongs,
-    IReadOnlyList<int> availableRegisterAddresses,
-    IReadOnlyList<IAsmSymbol> referencedStableSymbols)
+    IReadOnlyList<CogAddress> availableRegisterAddresses,
+    IReadOnlyList<IAsmSymbol> stableSymbols)
 {
-    private readonly HashSet<int> _availableRegisterAddresses = [.. availableRegisterAddresses];
-    private readonly HashSet<IAsmSymbol> _referencedStableSymbols = [.. referencedStableSymbols];
+    private readonly HashSet<CogAddress> _availableRegisterAddresses = [.. availableRegisterAddresses];
+    private readonly HashSet<IAsmSymbol> _stableSymbols = [.. stableSymbols];
+
+    /// <summary>
+    /// Gets the physical image placement that owns this register-space layout.
+    /// </summary>
+    public ImagePlacementEntry Placement { get; } = Requires.NotNull(placement);
 
     /// <summary>
     /// Gets the logical image whose COG resources are being described.
     /// </summary>
-    public ImageDescriptor Image { get; } = Requires.NotNull(image);
+    public ImageDescriptor Image => Placement.Image;
 
     /// <summary>
-    /// Gets the number of COG longs occupied by executable code that starts at <c>$000</c>.
+    /// Gets the number of instruction longs emitted for this image's executable body.
     /// </summary>
     public int CodeSizeLongs { get; } = Requires.NonNegative(codeSizeLongs);
 
     /// <summary>
-    /// Gets the concrete allocatable COG addresses that remain free after reserving code,
-    /// stable data, and the special-register tail for this image.
+    /// Gets the remaining concrete register addresses available for allocation.
     /// </summary>
-    public IReadOnlyList<int> AvailableRegisterAddresses { get; } = Requires.NotNull(availableRegisterAddresses);
+    public IReadOnlyList<CogAddress> AvailableRegisterAddresses { get; } = Requires.NotNull(availableRegisterAddresses);
 
     /// <summary>
-    /// Gets the stable COG-backed symbols that this image physically contains.
+    /// Gets the stable register-backed symbols physically present in this image.
     /// </summary>
-    public IReadOnlyList<IAsmSymbol> ReferencedStableSymbols { get; } = Requires.NotNull(referencedStableSymbols);
+    public IReadOnlyList<IAsmSymbol> StableSymbols { get; } = Requires.NotNull(stableSymbols);
 
     /// <summary>
-    /// Returns whether the supplied concrete COG address is still free for image-local allocation.
+    /// Gets the physical hub start address of this image in bytes.
     /// </summary>
-    public bool IsRegisterAddressAvailable(int address)
+    public HubAddress HubStartAddressBytes => Placement.HubStartAddressBytes;
+
+    /// <summary>
+    /// Returns whether the supplied concrete register address is free in this image.
+    /// </summary>
+    public bool IsRegisterAddressAvailable(CogAddress address)
     {
-        Requires.InRange(address, 0, 0x1EF);
         return _availableRegisterAddresses.Contains(address);
     }
 
     /// <summary>
-    /// Returns whether the supplied stable COG symbol is physically present in this image.
+    /// Returns whether the supplied register-backed symbol is physically present in this image.
     /// </summary>
     public bool ContainsStableSymbol(IAsmSymbol symbol)
     {
         Requires.NotNull(symbol);
-        return _referencedStableSymbols.Contains(symbol);
+        return _stableSymbols.Contains(symbol);
     }
 }
 
 /// <summary>
-/// Represents the stable COG-backed data addresses plus the per-image free-register sets
-/// derived from the legalized ASMIR. Stable data is assigned once for the whole program so
-/// every emitted symbol keeps a concrete COG address, while each image still gets its own
-/// code size and therefore its own remaining allocatable register pool.
+/// Exposes per-image register-space layouts plus virtual and physical addresses for emitted symbols.
 /// </summary>
 public sealed class CogResourceLayoutSet
 {
-    private readonly IReadOnlyDictionary<IAsmSymbol, int> _stableAddressesBySymbol;
-    private readonly IReadOnlyDictionary<FunctionSymbol, CogResourceLayout> _layoutsByFunction;
+    private readonly IReadOnlyDictionary<IAsmSymbol, MemoryAddress> _addressBySymbol;
+    private readonly IReadOnlyDictionary<ImageDescriptor, CogResourceLayout> _layoutsByImage;
     private readonly IReadOnlyDictionary<StoragePlace, CogResourceLayout> _layoutsByOwnedPlace;
 
     public CogResourceLayoutSet(
         IReadOnlyList<CogResourceLayout> images,
         CogResourceLayout entryImage,
-        IReadOnlyDictionary<IAsmSymbol, int> stableAddressesBySymbol,
-        IReadOnlyDictionary<FunctionSymbol, CogResourceLayout> layoutsByFunction,
+        IReadOnlyDictionary<IAsmSymbol, MemoryAddress> addressBySymbol,
+        IReadOnlyDictionary<ImageDescriptor, CogResourceLayout> layoutsByImage,
         IReadOnlyDictionary<StoragePlace, CogResourceLayout> layoutsByOwnedPlace,
         int maximumCodeSizeLongs)
     {
         Requires.NotNull(images);
         Requires.NotNull(entryImage);
-        Requires.NotNull(stableAddressesBySymbol);
-        Requires.NotNull(layoutsByFunction);
+        Requires.NotNull(addressBySymbol);
+        Requires.NotNull(layoutsByImage);
         Requires.NotNull(layoutsByOwnedPlace);
         Requires.That(images.Contains(entryImage));
 
         Images = images;
         EntryImage = entryImage;
         MaximumCodeSizeLongs = Requires.NonNegative(maximumCodeSizeLongs);
-        _stableAddressesBySymbol = stableAddressesBySymbol;
-        _layoutsByFunction = layoutsByFunction;
+        _addressBySymbol = addressBySymbol;
+        _layoutsByImage = layoutsByImage;
         _layoutsByOwnedPlace = layoutsByOwnedPlace;
     }
 
     /// <summary>
-    /// Gets the per-image COG layouts in image-plan order.
+    /// Gets the per-image register-space layouts in hub-placement order.
     /// </summary>
     public IReadOnlyList<CogResourceLayout> Images { get; }
 
     /// <summary>
-    /// Gets the COG layout for the entry image.
+    /// Gets the entry image layout.
     /// </summary>
     public CogResourceLayout EntryImage { get; }
 
     /// <summary>
-    /// Gets the largest per-image code footprint in longs. Stable COG-backed data is
-    /// assigned above this floor so it cannot collide with any image's code.
+    /// Gets the largest executable body among all images.
     /// </summary>
     public int MaximumCodeSizeLongs { get; }
 
     /// <summary>
-    /// Tries to get the stable concrete COG address for one emitted COG-backed symbol.
+    /// Tries to get the virtual register-space address for one emitted symbol.
     /// </summary>
-    public bool TryGetStableAddress(IAsmSymbol symbol, out int address)
+    public bool TryGetAddress(IAsmSymbol symbol, out MemoryAddress address)
     {
         Requires.NotNull(symbol);
-        return _stableAddressesBySymbol.TryGetValue(symbol, out address);
+        return _addressBySymbol.TryGetValue(symbol, out address);
     }
 
     /// <summary>
-    /// Tries to get the per-image COG layout that owns one lowered function.
+    /// Tries to get the image layout for one logical image.
     /// </summary>
-    public bool TryGetLayout(FunctionSymbol function, out CogResourceLayout? layout)
+    public bool TryGetLayout(ImageDescriptor image, out CogResourceLayout? layout)
     {
-        Requires.NotNull(function);
-        return _layoutsByFunction.TryGetValue(function, out layout);
+        Requires.NotNull(image);
+        return _layoutsByImage.TryGetValue(image, out layout);
     }
 
     /// <summary>
-    /// Tries to get the per-image COG layout that owns one image-local storage place.
-    /// Stable globals may appear in multiple images and therefore do not participate here.
+    /// Tries to get the image layout that owns one image-local storage place.
     /// </summary>
     public bool TryGetOwningLayout(StoragePlace place, out CogResourceLayout? layout)
     {
         Requires.NotNull(place);
         return _layoutsByOwnedPlace.TryGetValue(place, out layout);
     }
+
+    /// <summary>
+    /// Tries to get the physical hub start address for one image.
+    /// </summary>
+    public bool TryGetImageStartAddress(ImageDescriptor image, out HubAddress addressBytes)
+    {
+        Requires.NotNull(image);
+        if (_layoutsByImage.TryGetValue(image, out CogResourceLayout? layout))
+        {
+            addressBytes = layout.HubStartAddressBytes;
+            return true;
+        }
+
+        addressBytes = default;
+        return false;
+    }
 }
 
 /// <summary>
-/// Builds stable COG-backed data addresses and the per-image free-register pools that the
-/// register allocator must honor. Stable data is packed from the back of the allocatable
-/// COG range so the front remains available for code growing upward from <c>$000</c>.
+/// Plans per-image stable register-backed storage and free allocation space.
 /// </summary>
 public static class CogResourcePlanner
 {
@@ -159,77 +174,81 @@ public static class CogResourcePlanner
     private readonly record struct OccupiedRange(int StartAddress, int EndAddressExclusive);
 
     /// <summary>
-    /// Builds the stable COG-backed data map and the per-image free-register sets after
-    /// instruction-count-changing prepasses have established concrete code sizes.
+    /// Builds the image-local register-space layouts after code-size-changing passes completed.
     /// </summary>
     public static CogResourceLayoutSet Build(
         AsmModule module,
         ImagePlan imagePlan,
+        ImagePlacement imagePlacement,
         LayoutSolution layoutSolution,
         bool includeDefaultBladeHalt,
         DiagnosticBag? diagnostics)
     {
         Requires.NotNull(module);
         Requires.NotNull(imagePlan);
+        Requires.NotNull(imagePlacement);
         Requires.NotNull(layoutSolution);
 
-        Dictionary<FunctionSymbol, AsmFunction> functionsBySymbol = module.Functions.ToDictionary(static function => function.Symbol);
+        Dictionary<ImageDescriptor, IReadOnlyList<AsmFunction>> functionsByImage = module.Functions
+            .GroupBy(static function => function.OwningImage)
+            .ToDictionary(static group => group.Key, static group => (IReadOnlyList<AsmFunction>)group.ToList());
+
         Dictionary<ImageDescriptor, int> codeSizeByImage = [];
         int maximumCodeSizeLongs = 0;
-        foreach (ImageDescriptor image in imagePlan.Images)
+        foreach (ImagePlacementEntry placement in imagePlacement.Images)
         {
-            int codeSizeLongs = CountImageCodeLongs(image, functionsBySymbol, includeDefaultBladeHalt);
-            codeSizeByImage.Add(image, codeSizeLongs);
+            int codeSizeLongs = CountImageCodeLongs(
+                placement.Image,
+                functionsByImage.GetValueOrDefault(placement.Image) ?? [],
+                includeDefaultBladeHalt);
+            codeSizeByImage.Add(placement.Image, codeSizeLongs);
             maximumCodeSizeLongs = Math.Max(maximumCodeSizeLongs, codeSizeLongs);
         }
 
-        bool maxCodeFits = maximumCodeSizeLongs <= FirstSpecialRegisterAddress;
-        if (!maxCodeFits)
-        {
-            ImageDescriptor entryImage = imagePlan.EntryImage;
-            diagnostics?.ReportCogResourceLayoutFailed(
-                entryImage.Task.SourceSpan.Span,
-                entryImage.Task.Name,
-                $"code uses '{maximumCodeSizeLongs.ToString(CultureInfo.InvariantCulture)}' longs before stable data is placed");
-        }
-
-        IReadOnlyList<AsmAllocatedStorageDefinition> stableCogDefinitions = CollectStableCogDefinitions(module);
-        Dictionary<IAsmSymbol, int> stableAddressesBySymbol = AssignStableAddresses(
-            stableCogDefinitions,
-            maximumCodeSizeLongs,
-            diagnostics);
-
-        List<CogResourceLayout> imageLayouts = [];
-        Dictionary<FunctionSymbol, CogResourceLayout> layoutsByFunction = [];
+        Dictionary<IAsmSymbol, MemoryAddress> addressBySymbol = [];
+        Dictionary<ImageDescriptor, CogResourceLayout> layoutsByImage = [];
         Dictionary<StoragePlace, CogResourceLayout> layoutsByOwnedPlace = [];
-        foreach (ImageDescriptor image in imagePlan.Images)
+        List<CogResourceLayout> layouts = [];
+
+        foreach (ImagePlacementEntry placement in imagePlacement.Images)
         {
-            CogResourceLayout layout = BuildImageLayout(
-                image,
-                codeSizeByImage[image],
-                stableAddressesBySymbol,
-                stableCogDefinitions,
-                functionsBySymbol);
-            imageLayouts.Add(layout);
+            IReadOnlyList<AsmAllocatedStorageDefinition> imageDefinitions = CollectImageCogDefinitions(module, placement.Image);
+            Dictionary<IAsmSymbol, CogAddress> imageAddresses = AssignStableAddressesForImage(
+                placement,
+                imageDefinitions,
+                codeSizeByImage[placement.Image],
+                diagnostics);
 
-            foreach (FunctionSymbol function in image.Functions)
-                layoutsByFunction[function] = layout;
+            List<CogAddress> availableAddresses = BuildAvailableAddresses(
+                placement.Image.ExecutionMode,
+                codeSizeByImage[placement.Image],
+                imageDefinitions,
+                imageAddresses);
+            List<IAsmSymbol> stableSymbols = imageDefinitions.Select(static definition => definition.Symbol).ToList();
+            CogResourceLayout layout = new(placement, codeSizeByImage[placement.Image], availableAddresses, stableSymbols);
+            layouts.Add(layout);
+            layoutsByImage.Add(placement.Image, layout);
 
-            foreach (StoragePlace place in CollectImageLocalOwnedPlaces(image, functionsBySymbol))
-                layoutsByOwnedPlace[place] = layout;
+            foreach ((IAsmSymbol symbol, CogAddress virtualAddress) in imageAddresses)
+            {
+                addressBySymbol.Add(symbol, new MemoryAddress(placement.HubStartAddressBytes + ((int)virtualAddress * 4), new VirtualAddress(virtualAddress)));
+
+                if (symbol is StoragePlace place && place.OwningImage is not null)
+                    layoutsByOwnedPlace[place] = layout;
+            }
         }
 
-        CogResourceLayout entryLayout = imageLayouts.Single(layout => layout.Image.IsEntryImage);
+        CogResourceLayout entryLayout = layouts.Single(layout => ReferenceEquals(layout.Image, imagePlan.EntryImage));
         return new CogResourceLayoutSet(
-            imageLayouts,
+            layouts,
             entryLayout,
-            stableAddressesBySymbol,
-            layoutsByFunction,
+            addressBySymbol,
+            layoutsByImage,
             layoutsByOwnedPlace,
             maximumCodeSizeLongs);
     }
 
-    private static IReadOnlyList<AsmAllocatedStorageDefinition> CollectStableCogDefinitions(AsmModule module)
+    private static IReadOnlyList<AsmAllocatedStorageDefinition> CollectImageCogDefinitions(AsmModule module, ImageDescriptor image)
     {
         List<AsmAllocatedStorageDefinition> definitions = [];
         foreach (AsmDataBlock block in module.DataBlocks)
@@ -239,8 +258,13 @@ public static class CogResourcePlanner
 
             foreach (AsmAllocatedStorageDefinition definition in block.Definitions.OfType<AsmAllocatedStorageDefinition>())
             {
-                if (definition.StorageClass == VariableStorageClass.Cog)
-                    definitions.Add(definition);
+                if (definition.StorageClass != AddressSpace.Cog)
+                    continue;
+
+                if (GetOwningImage(definition.Symbol) is not { } owningImage || !ReferenceEquals(owningImage, image))
+                    continue;
+
+                definitions.Add(definition);
             }
         }
 
@@ -249,19 +273,23 @@ public static class CogResourcePlanner
 
     private static int CountImageCodeLongs(
         ImageDescriptor image,
-        IReadOnlyDictionary<FunctionSymbol, AsmFunction> functionsBySymbol,
+        IReadOnlyList<AsmFunction> functions,
         bool includeDefaultBladeHalt)
     {
         int count = 0;
-        foreach (FunctionSymbol function in image.Functions)
+        foreach (AsmFunction function in functions)
         {
-            if (!functionsBySymbol.TryGetValue(function, out AsmFunction? asmFunction))
-                continue;
-
-            foreach (AsmNode node in asmFunction.Nodes)
+            foreach (AsmNode node in function.Nodes)
             {
-                if (node is AsmInstructionNode)
-                    count++;
+                switch (node)
+                {
+                    case AsmInstructionNode:
+                        count++;
+                        break;
+                    case AsmInlineDataNode inlineData:
+                        count += GetInlineDataSizeLongs(inlineData);
+                        break;
+                }
             }
         }
 
@@ -271,24 +299,46 @@ public static class CogResourcePlanner
         return count;
     }
 
-    private static Dictionary<IAsmSymbol, int> AssignStableAddresses(
+    private static int GetInlineDataSizeLongs(AsmInlineDataNode inlineData)
+    {
+        int valueCount = Math.Max(1, inlineData.Values.Count);
+        int totalBytes = inlineData.Directive switch
+        {
+            AsmDataDirective.Byte => valueCount,
+            AsmDataDirective.Word => valueCount * 2,
+            AsmDataDirective.Long => valueCount * 4,
+            _ => Assert.UnreachableValue<int>(), // pragma: force-coverage
+        };
+
+        return (totalBytes + 3) / 4;
+    }
+
+    private static Dictionary<IAsmSymbol, CogAddress> AssignStableAddressesForImage(
+        ImagePlacementEntry placement,
         IReadOnlyList<AsmAllocatedStorageDefinition> definitions,
-        int maximumCodeSizeLongs,
+        int codeSizeLongs,
         DiagnosticBag? diagnostics)
     {
-        List<OccupiedRange> occupied = [];
-        occupied.Add(new OccupiedRange(FirstSpecialRegisterAddress, 0x200));
-        if (maximumCodeSizeLongs > 0)
-            occupied.Add(new OccupiedRange(FirstNonSpecialAddress, maximumCodeSizeLongs));
+        List<OccupiedRange> occupied = [new OccupiedRange(FirstSpecialRegisterAddress, 0x200)];
+        if (placement.Image.ExecutionMode == AddressSpace.Cog && codeSizeLongs > 0)
+            occupied.Add(new OccupiedRange(FirstNonSpecialAddress, codeSizeLongs));
 
-        Dictionary<IAsmSymbol, int> addresses = [];
+        if (placement.Image.ExecutionMode == AddressSpace.Cog && codeSizeLongs > FirstSpecialRegisterAddress)
+        {
+            diagnostics?.ReportCogResourceLayoutFailed(
+                placement.Image.Task.SourceSpan.Span,
+                placement.Image.Task.Name,
+                $"code uses '{codeSizeLongs.ToString(CultureInfo.InvariantCulture)}' longs before stable register data is placed");
+        }
+
+        Dictionary<IAsmSymbol, CogAddress> addresses = [];
         foreach (AsmAllocatedStorageDefinition definition in definitions.OrderBy(static definition => GetDeterministicKey(definition.Symbol), StringComparer.Ordinal))
         {
-            if (!TryGetFixedAddress(definition, out int fixedAddress))
+            if (!TryGetFixedAddress(definition, out CogAddress fixedAddress))
                 continue;
 
             int size = GetCogDefinitionSizeLongs(definition);
-            if (!TryReserve(addresses, occupied, definition.Symbol, fixedAddress, size, diagnostics))
+            if (!TryReserve(addresses, occupied, definition.Symbol, (int)fixedAddress, size, diagnostics))
                 continue;
         }
 
@@ -303,145 +353,70 @@ public static class CogResourcePlanner
             int? address = FindHighestFit(size, alignment, occupied);
             if (!address.HasValue)
             {
-                TextSpan span = GetOwnerSpan(definition.Symbol);
                 diagnostics?.ReportCogResourceLayoutFailed(
-                    span,
+                    GetOwnerSpan(definition.Symbol),
                     GetDeterministicKey(definition.Symbol),
-                    $"stable COG storage of size '{size.ToString(CultureInfo.InvariantCulture)}' longs does not fit above code and below '$1F0'");
+                    $"stable COG storage of size '{size.ToString(CultureInfo.InvariantCulture)}' longs does not fit in image '{placement.Image.Task.Name}'");
                 continue;
             }
 
             bool reserved = TryReserve(addresses, occupied, definition.Symbol, address.Value, size, diagnostics);
-            Assert.Invariant(reserved, "Back-to-front stable COG placement must not overlap previously reserved ranges.");
+            Assert.Invariant(reserved, "Stable register placement must not overlap.");
         }
 
         return addresses;
     }
 
-    private static CogResourceLayout BuildImageLayout(
-        ImageDescriptor image,
+    private static List<CogAddress> BuildAvailableAddresses(
+        AddressSpace executionMode,
         int codeSizeLongs,
-        IReadOnlyDictionary<IAsmSymbol, int> stableAddressesBySymbol,
-        IReadOnlyList<AsmAllocatedStorageDefinition> stableDefinitions,
-        IReadOnlyDictionary<FunctionSymbol, AsmFunction> functionsBySymbol)
+        IReadOnlyList<AsmAllocatedStorageDefinition> definitions,
+        IReadOnlyDictionary<IAsmSymbol, CogAddress> imageAddresses)
     {
-        HashSet<IAsmSymbol> referencedStableSymbols = [];
-        HashSet<StoragePlace> storagePlaces = CollectStoragePlacesForImage(image, functionsBySymbol);
-        HashSet<IAsmSymbol> referencedAsmSymbols = CollectReferencedAsmSymbols(image, functionsBySymbol);
-
-        foreach (AsmAllocatedStorageDefinition definition in stableDefinitions)
-        {
-            if (definition.Symbol is StoragePlace place)
-            {
-                bool referencedByStorage = image.Storage.Contains(place.Symbol) || storagePlaces.Contains(place);
-                bool referencedByAsm = referencedAsmSymbols.Contains(place);
-                if (!referencedByStorage && !referencedByAsm)
-                    continue;
-            }
-            else if (!referencedAsmSymbols.Contains(definition.Symbol))
-            {
-                continue;
-            }
-
-            referencedStableSymbols.Add(definition.Symbol);
-        }
-
         HashSet<int> reservedAddresses = [];
-        for (int address = 0; address < codeSizeLongs; address++)
-            reservedAddresses.Add(address);
-        for (int address = FirstSpecialRegisterAddress; address < 0x200; address++)
-            reservedAddresses.Add(address);
-
-        foreach (IAsmSymbol symbol in referencedStableSymbols)
+        if (executionMode == AddressSpace.Cog)
         {
-            AsmAllocatedStorageDefinition definition = stableDefinitions.Single(candidate => ReferenceEquals(candidate.Symbol, symbol));
-            if (stableAddressesBySymbol.TryGetValue(symbol, out int startAddress))
-            {
-                int size = GetCogDefinitionSizeLongs(definition);
-                for (int address = startAddress; address < startAddress + size; address++)
-                    reservedAddresses.Add(address);
-            }
-        }
-
-        foreach ((IAsmSymbol symbol, int startAddress) in stableAddressesBySymbol)
-        {
-            AsmAllocatedStorageDefinition definition = stableDefinitions.Single(candidate => ReferenceEquals(candidate.Symbol, symbol));
-            int size = GetCogDefinitionSizeLongs(definition);
-            for (int address = startAddress; address < startAddress + size; address++)
+            for (int address = 0; address < codeSizeLongs; address++)
                 reservedAddresses.Add(address);
         }
 
-        List<int> availableAddresses = [];
+        for (int address = FirstSpecialRegisterAddress; address < 0x200; address++)
+            reservedAddresses.Add(address);
+
+        foreach (AsmAllocatedStorageDefinition definition in definitions)
+        {
+            if (!imageAddresses.TryGetValue(definition.Symbol, out CogAddress startAddress))
+                continue;
+
+            int size = GetCogDefinitionSizeLongs(definition);
+            for (int address = (int)startAddress; address < (int)startAddress + size; address++)
+                reservedAddresses.Add(address);
+        }
+
+        List<CogAddress> availableAddresses = [];
         for (int address = FirstNonSpecialAddress; address <= LastAllocatableAddress; address++)
         {
             if (!reservedAddresses.Contains(address))
-                availableAddresses.Add(address);
+                availableAddresses.Add(new CogAddress(address));
         }
 
         availableAddresses.Sort(static (left, right) => right.CompareTo(left));
-        return new CogResourceLayout(image, codeSizeLongs, availableAddresses, [.. referencedStableSymbols]);
+        return availableAddresses;
     }
 
-    private static HashSet<StoragePlace> CollectStoragePlacesForImage(
-        ImageDescriptor image,
-        IReadOnlyDictionary<FunctionSymbol, AsmFunction> functionsBySymbol)
+    private static ImageDescriptor? GetOwningImage(IAsmSymbol symbol)
     {
-        HashSet<StoragePlace> places = [];
-        HashSet<IAsmSymbol> referenced = CollectReferencedAsmSymbols(image, functionsBySymbol);
-        foreach (IAsmSymbol symbol in referenced)
+        return symbol switch
         {
-            if (symbol is StoragePlace place)
-                places.Add(place);
-        }
-
-        return places;
-    }
-
-    private static HashSet<IAsmSymbol> CollectReferencedAsmSymbols(
-        ImageDescriptor image,
-        IReadOnlyDictionary<FunctionSymbol, AsmFunction> functionsBySymbol)
-    {
-        HashSet<IAsmSymbol> symbols = [];
-        foreach (FunctionSymbol function in image.Functions)
-        {
-            if (!functionsBySymbol.TryGetValue(function, out AsmFunction? asmFunction))
-                continue;
-
-            foreach (AsmNode node in asmFunction.Nodes)
-            {
-                if (node is not AsmInstructionNode instruction)
-                    continue;
-
-                foreach (AsmOperand operand in instruction.Operands)
-                {
-                    if (operand is AsmSymbolOperand symbolOperand)
-                        symbols.Add(symbolOperand.Symbol);
-                }
-            }
-        }
-
-        return symbols;
-    }
-
-    private static IReadOnlyList<StoragePlace> CollectImageLocalOwnedPlaces(
-        ImageDescriptor image,
-        IReadOnlyDictionary<FunctionSymbol, AsmFunction> functionsBySymbol)
-    {
-        HashSet<StoragePlace> places = [];
-        foreach (IAsmSymbol symbol in CollectReferencedAsmSymbols(image, functionsBySymbol))
-        {
-            if (symbol is not StoragePlace place)
-                continue;
-
-            if (place.RegisterRole is StoragePlaceRegisterRole.InternalDedicated or StoragePlaceRegisterRole.InternalShared)
-                places.Add(place);
-        }
-
-        return [.. places];
+            StoragePlace place => place.OwningImage,
+            AsmSharedConstantSymbol constant => constant.Image,
+            AsmSpillSlotSymbol spill => spill.Image,
+            _ => null,
+        };
     }
 
     private static bool TryReserve(
-        IDictionary<IAsmSymbol, int> addresses,
+        IDictionary<IAsmSymbol, CogAddress> addresses,
         ICollection<OccupiedRange> occupied,
         IAsmSymbol symbol,
         int startAddress,
@@ -472,48 +447,48 @@ public static class CogResourcePlanner
             diagnostics?.ReportCogResourceLayoutFailed(
                 GetOwnerSpan(symbol),
                 GetDeterministicKey(symbol),
-                $"address range '${startAddress:X3}..${(endAddressExclusive - 1):X3}' overlaps already reserved COG space");
+                $"address range '${startAddress:X3}..${(endAddressExclusive - 1):X3}' overlaps already reserved register space");
             return false;
         }
 
-        addresses.Add(symbol, startAddress);
+        addresses.Add(symbol, new CogAddress(startAddress));
         occupied.Add(new OccupiedRange(startAddress, endAddressExclusive));
         return true;
     }
 
-    private static bool TryGetFixedAddress(AsmAllocatedStorageDefinition definition, out int address)
+    private static bool TryGetFixedAddress(AsmAllocatedStorageDefinition definition, out CogAddress address)
     {
         Requires.NotNull(definition);
 
         if (definition.Symbol is StoragePlace place)
         {
-            if (place.StorageClass != VariableStorageClass.Cog)
+            if (place.StorageClass != AddressSpace.Cog)
             {
-                address = 0;
+                address = default;
                 return false;
             }
 
-            if (place.ResolvedLayoutSlot is LayoutSlot layoutSlot && layoutSlot.StorageClass == VariableStorageClass.Cog)
+            if (place.ResolvedLayoutSlot is LayoutSlot layoutSlot && layoutSlot.StorageClass == AddressSpace.Cog)
             {
-                address = layoutSlot.Address;
+                address = layoutSlot.Address.ToCogAddress();
                 return true;
             }
 
-            if (place.FixedAddress is int fixedAddress)
+            if (place.FixedAddress is VirtualAddress fixedAddress)
             {
-                address = fixedAddress;
+                address = fixedAddress.ToCogAddress();
                 return true;
             }
         }
 
-        address = 0;
+        address = default;
         return false;
     }
 
     private static int GetCogDefinitionSizeLongs(AsmAllocatedStorageDefinition definition)
     {
         Requires.NotNull(definition);
-        Assert.Invariant(definition.StorageClass == VariableStorageClass.Cog, "COG layout only accepts COG-backed data definitions.");
+        Assert.Invariant(definition.StorageClass == AddressSpace.Cog, "COG planner only accepts COG-backed definitions.");
         return definition.Count;
     }
 
@@ -566,7 +541,9 @@ public static class CogResourcePlanner
     {
         return symbol switch
         {
-            StoragePlace place => place.EmittedName,
+            StoragePlace place => $"{place.OwningImage?.Task.Name ?? "shared"}:{place.EmittedName}",
+            AsmSharedConstantSymbol constant => $"{constant.Image.Task.Name}:{constant.Name}",
+            AsmSpillSlotSymbol spill => $"{spill.Image.Task.Name}:{spill.Name}",
             _ => symbol.Name,
         };
     }

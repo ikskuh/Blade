@@ -49,12 +49,12 @@ public static class IrPipeline
         AsmModule asmModule = AsmLowerer.Lower(lirModule, imagePlan, diagnostics);
         AsmModule preOptimizationAsmModule = asmModule;
 
-        CogResourceLayout placeholderEntryLayout = new(imagePlan.EntryImage, 0, [], []);
+        CogResourceLayout placeholderEntryLayout = new(imagePlacement.EntryImage, 0, [], []);
         CogResourceLayoutSet placeholderCogResourceLayouts = new(
             [placeholderEntryLayout],
             placeholderEntryLayout,
-            new Dictionary<IAsmSymbol, int>(),
-            new Dictionary<FunctionSymbol, CogResourceLayout>(),
+            new Dictionary<IAsmSymbol, MemoryAddress>(),
+            new Dictionary<ImageDescriptor, CogResourceLayout>(),
             new Dictionary<StoragePlace, CogResourceLayout>(),
             0);
 
@@ -74,7 +74,6 @@ public static class IrPipeline
         EmitResult emitResult = CodegenPipeline.Emit(preEmit, new EmitOptions
         {
             EnabledAsmirOptimizations = options.EnabledAsmirOptimizations,
-            RuntimeTemplate = options.RuntimeTemplate,
         }, diagnostics);
         return new IrBuildResult(
             boundProgram,

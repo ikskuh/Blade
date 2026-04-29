@@ -15,6 +15,19 @@ internal static class BackendSymbolNaming
     {
         Requires.NotNull(places);
 
+        Dictionary<StoragePlace, string> unscopedBaseNames = new();
+        Dictionary<string, int> unscopedBaseNameCounts = new(StringComparer.Ordinal);
+        foreach (StoragePlace place in places)
+        {
+            string baseName = GetUnscopedBaseName(place);
+            unscopedBaseNames.Add(place, baseName);
+
+            if (unscopedBaseNameCounts.TryGetValue(baseName, out int count))
+                unscopedBaseNameCounts[baseName] = count + 1;
+            else
+                unscopedBaseNameCounts.Add(baseName, 1);
+        }
+
         Dictionary<string, int> emittedNameCounts = new(StringComparer.Ordinal);
         foreach (StoragePlace place in places)
         {
@@ -24,7 +37,10 @@ internal static class BackendSymbolNaming
                 continue;
             }
 
-            string baseName = GetBaseName(place);
+            string baseName = unscopedBaseNames[place];
+            if (unscopedBaseNameCounts[baseName] > 1 && place.OwningImage is ImageDescriptor owningImage)
+                baseName = $"{SanitizeIdentifier(owningImage.Task.Name)}_{baseName}";
+
             string assignedName = AllocateUniqueName(emittedNameCounts, baseName);
             place.AssignEmittedName(assignedName);
         }
@@ -62,7 +78,7 @@ internal static class BackendSymbolNaming
         return builder.ToString();
     }
 
-    private static string GetBaseName(StoragePlace place)
+    private static string GetUnscopedBaseName(StoragePlace place)
     {
         return place switch
         {

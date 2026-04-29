@@ -1,0 +1,15 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - UndefinedName
+// - NotCallable
+// - MissingMainTask
+
+import builtin;
+
+layout RuntimeLayout {
+    cog var runtime_marker: u32 = 66;
+}
+
+cog task _start : RuntimeLayout {
+    builtin.task_main();
+}

@@ -363,6 +363,28 @@ see generated code
 
 `cog var c: uint(5) = 0;` in `RegressionTests/TestSuiteExport/accept/types.blade` is not sanctioned right now.
 
+## Optimize some constants into more efficient structures
+
+This can be encoded using e.g. `BITH` or `NOT g_reinterpreted_signed, #0`
+
+```
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - MOV g_reinterpreted_signed, main_c_4294967295
+// - main_c_4294967295      LONG $FFFFFFFF
+// ! MOV g_reinterpreted_signed, #-1
+cog task main {
+    
+    cog var reinterpreted_signed: i8 = 0;
+    reinterpreted_signed = bitcast(i8, 255 as u8);
+}
+```
+
+## New constant
+
+`comptime const` as a comptime-only value type that must be pasted verbatim.
+
 ## Task/Layout Refactoring
 
 ### Introduce true split-phase variables

@@ -186,7 +186,7 @@ internal static class CommandLineParser
             EnabledAsmirOptimizations = compilerOptions.EnabledAsmirOptimizations,
             NamedModuleRoots = compilerOptions.NamedModuleRoots,
             ComptimeFuel = compilerOptions.ComptimeFuel,
-            RuntimeTemplate = compilerOptions.RuntimeTemplate,
+            RuntimeLauncherPath = compilerOptions.RuntimeLauncherPath,
         };
     }
 

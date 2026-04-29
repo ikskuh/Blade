@@ -983,9 +983,9 @@ public class IrPipelineTests
                 new AsmDataBlock(
                     AsmDataBlockKind.Register,
                     [
-                        new AsmAllocatedStorageDefinition(inputWord, VariableStorageClass.Cog, BuiltinTypes.U32, [new AsmImmediateOperand(13L)]),
-                        new AsmAllocatedStorageDefinition(deadCodeVisible, VariableStorageClass.Cog, BuiltinTypes.U32, [new AsmImmediateOperand(0L)]),
-                        new AsmAllocatedStorageDefinition(r4, VariableStorageClass.Cog, BuiltinTypes.U32, [new AsmImmediateOperand(0L)]),
+                        new AsmAllocatedStorageDefinition(inputWord, AddressSpace.Cog, BuiltinTypes.U32, [new AsmImmediateOperand(13L)]),
+                        new AsmAllocatedStorageDefinition(deadCodeVisible, AddressSpace.Cog, BuiltinTypes.U32, [new AsmImmediateOperand(0L)]),
+                        new AsmAllocatedStorageDefinition(r4, AddressSpace.Cog, BuiltinTypes.U32, [new AsmImmediateOperand(0L)]),
                     ]),
             ],
             [
@@ -1468,7 +1468,7 @@ public class IrPipelineTests
         Assert.That(function.CcTier, Is.EqualTo(CallingConventionTier.General));
         Assert.That(returnPlace.RegisterRole, Is.EqualTo(StoragePlaceRegisterRole.InternalShared));
         Assert.That(returnPlace.IsInternalRegisterSlot, Is.True);
-        Assert.That(returnPlace.Symbol.StorageClass, Is.EqualTo(VariableStorageClass.Cog));
+        Assert.That(returnPlace.Symbol.StorageClass, Is.EqualTo(AddressSpace.Cog));
     }
 
     [Test]
@@ -1725,7 +1725,7 @@ public class IrPipelineTests
 
         StoragePlace place = build.AsmModule.StoragePlaces.Single(p => p.EmittedName == "OUTA");
         Assert.That(place.Placement, Is.EqualTo(StoragePlacePlacement.FixedAlias));
-        Assert.That(place.FixedAddress, Is.EqualTo(0x1FC));
+        Assert.That(place.FixedAddress, Is.EqualTo(new VirtualAddress(AddressSpace.Cog, 0x1FC)));
         Assert.That(build.AssemblyText, Does.Contain("OR OUTA, #16"));
         Assert.That(build.AssemblyText, Does.Not.Contain("OUTA = $1FC"));
         Assert.That(build.AssemblyText, Does.Not.Match(@"LONG\s+0\b"));
@@ -1771,7 +1771,7 @@ public class IrPipelineTests
         });
 
         StoragePlace place = build.AsmModule.StoragePlaces.Single(p => p.EmittedName == "LED_PORT");
-        Assert.That(place.FixedAddress, Is.EqualTo(0x1FC));
+        Assert.That(place.FixedAddress, Is.EqualTo(new VirtualAddress(AddressSpace.Cog, 0x1FC)));
         Assert.That(build.AssemblyText, Does.Contain("CON"));
         Assert.That(build.AssemblyText, Does.Contain("LED_PORT = $1FC"));
         Assert.That(build.AssemblyText, Does.Contain("OR LED_PORT, #16"));
@@ -2889,7 +2889,7 @@ public class IrPipelineTests
         GlobalVariableSymbol shared = (GlobalVariableSymbol)IrTestFactory.CreateVariableSymbol(
             "seed",
             BuiltinTypes.U32,
-            VariableStorageClass.Cog,
+            AddressSpace.Cog,
             VariableScopeKind.GlobalStorage);
         BoundProgram program = IrTestFactory.CreateBoundProgram(globalVariables: [shared, shared]);
 

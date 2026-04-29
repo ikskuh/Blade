@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Blade.Semantics.Bound;
 using Blade.Source;
 using Blade.Syntax;
+using Blade.Syntax.Nodes;
 
 namespace Blade.Semantics;
 
@@ -710,6 +711,9 @@ internal sealed class ComptimeEvaluator(
         BoundCallExpression call,
         Dictionary<Symbol, ComptimeResult> callerFrame)
     {
+        if (call.Function.SignatureSyntax is TaskDeclarationSyntax)
+            return new ComptimeResult(ComptimeFailureKind.NotEvaluable, call.Span, $"task entry '{call.Function.Name}' is not comptime evaluable.");
+
         if (call.Arguments.Count != call.Function.Parameters.Count)
             return new ComptimeResult(ComptimeFailureKind.NotEvaluable, call.Span, $"call to '{call.Function.Name}' does not have a full argument list.");
 
@@ -1107,7 +1111,7 @@ internal sealed class ComptimeEvaluator(
         return new ComptimeResult(ComptimeFailureKind.NotEvaluable, span, detail);
     }
 
-    private static VariableStorageClass GetStorageClass(BoundExpression expression)
+    private static AddressSpace GetStorageClass(BoundExpression expression)
     {
         if (expression.Type is PointerLikeTypeSymbol pointerType)
             return pointerType.StorageClass;
@@ -1115,7 +1119,7 @@ internal sealed class ComptimeEvaluator(
         if (expression is BoundSymbolExpression { Symbol: GlobalVariableSymbol variable })
             return variable.StorageClass;
 
-        return VariableStorageClass.Cog;
+        return AddressSpace.Cog;
     }
 
     private static ComptimeResult RequireIntegerResult(ComptimeResult value, TextSpan span, string detail)

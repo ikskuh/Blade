@@ -36,8 +36,8 @@ public class RegisterAllocatorTests
             EnabledAsmirOptimizations = [OptimizationRegistry.GetAsmOptimization("cleanup-self-mov")!],
         });
 
-        Assert.That(emit.AssemblyText, Does.Not.Match(@"MOV\s+(_r\d+),\s+\1\b"), emit.AssemblyText);
-        Assert.That(emit.AssemblyText, Does.Match(@"MOV\s+OUTA,\s+_r\d+\b"), emit.AssemblyText);
+        Assert.That(emit.AssemblyText, Does.Not.Match(@"MOV\s+([A-Za-z_]\w*),\s+\1\b"), emit.AssemblyText);
+        Assert.That(emit.AssemblyText, Does.Match(@"MOV\s+OUTA,\s+[A-Za-z_]\w*\b"), emit.AssemblyText);
     }
 
     [Test]
@@ -62,7 +62,7 @@ public class RegisterAllocatorTests
             EnabledAsmirOptimizations = [],
         });
 
-        Assert.That(emit.AssemblyText, Does.Match(@"MOV\s+(_r\d+),\s+\1\b"), emit.AssemblyText);
+        Assert.That(emit.AssemblyText, Does.Match(@"MOV\s+([A-Za-z_]\w*),\s+\1\b"), emit.AssemblyText);
     }
 
     [Test]
@@ -91,9 +91,7 @@ public class RegisterAllocatorTests
     private static IrBuildResult CreateBuildResult(AsmModule asmModule)
     {
         BoundProgram program = IrTestFactory.CreateBoundProgram("/tmp/test.blade");
-        FunctionSymbol entryFunction = asmModule.Functions.FirstOrDefault(static function => function.IsEntryPoint)?.Symbol
-            ?? asmModule.Functions.First().Symbol;
-        ImagePlan imagePlan = IrTestFactory.CreateSingleEntryImagePlan(entryFunction);
+        ImagePlan imagePlan = IrTestFactory.CreateImagePlanFromModule(asmModule);
         ImagePlacement imagePlacement = ImagePlacer.Place(imagePlan);
         LayoutSolution layoutSolution = LayoutSolver.SolveStableLayouts(program, imagePlacement);
         CogResourceLayoutSet cogResourceLayouts = IrTestFactory.CreateSimpleCogResourceLayouts(asmModule, imagePlan, includeDefaultBladeHalt: false);

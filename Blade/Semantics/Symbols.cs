@@ -33,18 +33,18 @@ public abstract class Symbol(string name, SourceSpan? sourceSpan = null)
     public SourceSpan SourceSpan { get; } = sourceSpan ?? SourceSpan.Synthetic();
 }
 
-public sealed class AbsoluteAddressSymbol(int address, VariableStorageClass storageClass) : Symbol(BuildName(address, storageClass))
+public sealed class AbsoluteAddressSymbol(VirtualAddress address) : Symbol(BuildName(address))
 {
-    public int Address { get; } = address;
-    public VariableStorageClass StorageClass { get; } = storageClass;
+    public VirtualAddress Address { get; } = address;
+    public AddressSpace StorageClass => Address.AddressSpace;
 
-    private static string BuildName(int address, VariableStorageClass storageClass)
+    private static string BuildName(VirtualAddress address)
     {
-        return storageClass switch
+        return address.AddressSpace switch
         {
-            VariableStorageClass.Lut => $"abs_lut_{address}",
-            VariableStorageClass.Hub => $"abs_hub_{address}",
-            _ => $"abs_reg_{address}",
+            AddressSpace.Lut => $"abs_lut_{(int)address.ToLutAddress()}",
+            AddressSpace.Hub => $"abs_hub_{(int)address.ToHubAddress()}",
+            _ => $"abs_reg_{(int)address.ToCogAddress()}",
         };
     }
 }
@@ -126,24 +126,24 @@ public sealed class GlobalVariableSymbol(
     string name,
     BladeType type,
     bool isConst,
-    VariableStorageClass storageClass,
+    AddressSpace storageClass,
     LayoutSymbol? declaringLayout,
     bool isExtern,
-    int? fixedAddress,
+    VirtualAddress? fixedAddress,
     int? alignment,
     SourceSpan? sourceSpan = null)
     : VariableSymbol(name, type, isConst, sourceSpan)
 {
-    private int? _fixedAddress = fixedAddress;
+    private VirtualAddress? _fixedAddress = fixedAddress;
     private int? _alignment = alignment;
-    private bool _canElideTopLevelStoreLoadChains = storageClass == VariableStorageClass.Cog
+    private bool _canElideTopLevelStoreLoadChains = storageClass == AddressSpace.Cog
         && !isExtern
         && !fixedAddress.HasValue;
 
     public override VariableScopeKind ScopeKind => VariableScopeKind.GlobalStorage;
     public bool IsExtern { get; } = isExtern;
-    public VariableStorageClass StorageClass { get; } = storageClass;
-    public int? FixedAddress => _fixedAddress;
+    public AddressSpace StorageClass { get; } = storageClass;
+    public VirtualAddress? FixedAddress => _fixedAddress;
     public int? Alignment => _alignment;
     public bool CanElideTopLevelStoreLoadChains => _canElideTopLevelStoreLoadChains;
 
@@ -155,7 +155,7 @@ public sealed class GlobalVariableSymbol(
 
     public BoundExpression? Initializer { get; private set; }
 
-    public void SetLayoutMetadata(int? fixedAddress, int? alignment)
+    public void SetLayoutMetadata(VirtualAddress? fixedAddress, int? alignment)
     {
         _fixedAddress = fixedAddress;
         _alignment = alignment;
@@ -172,13 +172,6 @@ public sealed class GlobalVariableSymbol(
     {
         _canElideTopLevelStoreLoadChains = false;
     }
-}
-
-public enum VariableStorageClass
-{
-    Cog,
-    Lut,
-    Hub,
 }
 
 public enum VariableScopeKind
@@ -225,7 +218,7 @@ public sealed class FunctionSymbol(
     IFunctionSignatureSyntax syntax,
     FunctionKind kind,
     bool isTopLevel,
-    VariableStorageClass? storageClass,
+    AddressSpace? storageClass,
     FunctionInliningPolicy inliningPolicy,
     SourceSpan? sourceSpan) : Symbol(name, sourceSpan)
 {
@@ -239,7 +232,7 @@ public sealed class FunctionSymbol(
     internal SeparatedSyntaxList<ReturnItemSyntax>? SignatureReturnSpec { get; } = syntax.ReturnSpec;
     public FunctionKind Kind { get; } = kind;
     public bool IsTopLevel { get; } = isTopLevel;
-    public VariableStorageClass? StorageClass { get; private set; } = storageClass;
+    public AddressSpace? StorageClass { get; private set; } = storageClass;
     public FunctionInliningPolicy InliningPolicy { get; } = inliningPolicy;
     public int? Alignment => _alignment;
     public IReadOnlyList<LayoutSymbol> AssociatedLayouts => _associatedLayouts;
@@ -311,7 +304,7 @@ public class LayoutSymbol(string name, SourceSpan? sourceSpan = null) : Symbol(n
 /// <summary>
 /// Represents a task declaration together with its implicit private layout.
 /// </summary>
-public sealed class TaskSymbol(string name, FunctionSymbol entryFunction, VariableStorageClass storageClass, SourceSpan? sourceSpan = null)
+public sealed class TaskSymbol(string name, FunctionSymbol entryFunction, AddressSpace storageClass, SourceSpan? sourceSpan = null)
     : LayoutSymbol(name, sourceSpan)
 {
     /// <summary>
@@ -322,7 +315,7 @@ public sealed class TaskSymbol(string name, FunctionSymbol entryFunction, Variab
     /// <summary>
     /// Gets the execution/storage space in which this task starts.
     /// </summary>
-    public VariableStorageClass StorageClass { get; } = storageClass;
+    public AddressSpace StorageClass { get; } = storageClass;
 
     /// <summary>
     /// Gets a value indicating that this layout is the implicit private layout attached to a task.

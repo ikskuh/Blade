@@ -34,8 +34,8 @@ public sealed class RuntimeTypeAndValueTests
     [Test]
     public void PointerTypeNames_IncludeQualifiersInNormalizedOrder()
     {
-        PointerTypeSymbol pointer = new(BuiltinTypes.U32, isConst: true, isVolatile: true, alignment: 4, storageClass: VariableStorageClass.Hub);
-        MultiPointerTypeSymbol multiPointer = new(BuiltinTypes.U8, isConst: false, isVolatile: true, alignment: 8, storageClass: VariableStorageClass.Cog);
+        PointerTypeSymbol pointer = new(BuiltinTypes.U32, isConst: true, isVolatile: true, alignment: 4, storageClass: AddressSpace.Hub);
+        MultiPointerTypeSymbol multiPointer = new(BuiltinTypes.U8, isConst: false, isVolatile: true, alignment: 8, storageClass: AddressSpace.Cog);
 
         Assert.That(pointer.Name, Is.EqualTo("*hub const volatile align(4) u32"));
         Assert.That(multiPointer.Name, Is.EqualTo("[*]cog volatile align(8) u8"));
@@ -104,7 +104,7 @@ public sealed class RuntimeTypeAndValueTests
         UnionTypeSymbol unionType = new("U", new Dictionary<string, BladeType>(), new Dictionary<string, AggregateMemberSymbol>(), sizeBytes: 8, alignmentBytes: 4);
         EnumTypeSymbol enumType = new("Mode", BuiltinTypes.U16, new Dictionary<string, long>(), isOpen: false);
         BitfieldTypeSymbol bitfieldType = new("Flags", BuiltinTypes.U32, new Dictionary<string, BladeType>(), new Dictionary<string, AggregateMemberSymbol>());
-        PointerTypeSymbol pointerType = new(BuiltinTypes.U32, isConst: false, storageClass: VariableStorageClass.Cog);
+        PointerTypeSymbol pointerType = new(BuiltinTypes.U32, isConst: false, storageClass: AddressSpace.Cog);
         ArrayTypeSymbol arrayType = new(BuiltinTypes.U16, 3);
 
         Assert.Multiple(() =>
@@ -123,17 +123,17 @@ public sealed class RuntimeTypeAndValueTests
             Assert.That(arrayType.SizeBytes, Is.EqualTo(6));
             Assert.That(BuiltinTypes.Bool.AlignmentBytes, Is.EqualTo(1));
             Assert.That(BuiltinTypes.Nib.SizeBytes, Is.EqualTo(1));
-            Assert.That(arrayType.GetSizeInMemorySpace(VariableStorageClass.Hub), Is.EqualTo(6));
-            Assert.That(arrayType.GetSizeInMemorySpace(VariableStorageClass.Cog), Is.EqualTo(2));
-            Assert.That(arrayType.GetAlignmentInMemorySpace(VariableStorageClass.Hub), Is.EqualTo(2));
-            Assert.That(arrayType.GetAlignmentInMemorySpace(VariableStorageClass.Lut), Is.EqualTo(1));
+            Assert.That(arrayType.GetSizeInMemorySpace(AddressSpace.Hub), Is.EqualTo(6));
+            Assert.That(arrayType.GetSizeInMemorySpace(AddressSpace.Cog), Is.EqualTo(2));
+            Assert.That(arrayType.GetAlignmentInMemorySpace(AddressSpace.Hub), Is.EqualTo(2));
+            Assert.That(arrayType.GetAlignmentInMemorySpace(AddressSpace.Lut), Is.EqualTo(1));
         });
     }
 
     [Test]
     public void RuntimeTypeLegality_RejectsRepairStylePayloads()
     {
-        PointerTypeSymbol pointerType = new(BuiltinTypes.U32, isConst: false, storageClass: VariableStorageClass.Cog);
+        PointerTypeSymbol pointerType = new(BuiltinTypes.U32, isConst: false, storageClass: AddressSpace.Cog);
         EnumTypeSymbol enumType = new("Mode", BuiltinTypes.U8, new Dictionary<string, long> { ["Idle"] = 0 }, isOpen: true);
         BitfieldTypeSymbol bitfieldType = new("Flags", BuiltinTypes.U16, new Dictionary<string, BladeType>(), new Dictionary<string, AggregateMemberSymbol>());
 
@@ -176,7 +176,7 @@ public sealed class RuntimeTypeAndValueTests
             Assert.That(BuiltinTypes.U32.IsSignedInteger, Is.False);
 
             Assert.That(BuiltinTypes.Bool.IsScalarCastType, Is.True);
-            Assert.That(new PointerTypeSymbol(BuiltinTypes.U32, isConst: false, storageClass: VariableStorageClass.Cog).IsScalarCastType, Is.True);
+            Assert.That(new PointerTypeSymbol(BuiltinTypes.U32, isConst: false, storageClass: AddressSpace.Cog).IsScalarCastType, Is.True);
             Assert.That(enumType.IsScalarCastType, Is.True);
             Assert.That(bitfieldType.IsScalarCastType, Is.True);
             Assert.That(BladeValue.U8Array([120]).Type, Is.TypeOf<ArrayTypeSymbol>());
@@ -215,9 +215,9 @@ public sealed class RuntimeTypeAndValueTests
     {
         ArrayTypeSymbol arrayLeft = new(BuiltinTypes.U8, 8);
         ArrayTypeSymbol arrayRight = new(BuiltinTypes.U8, 8);
-        PointerTypeSymbol pointerLeft = new(BuiltinTypes.U16, isConst: true, isVolatile: true, alignment: 4, storageClass: VariableStorageClass.Hub);
-        PointerTypeSymbol pointerRight = new(BuiltinTypes.U16, isConst: true, isVolatile: true, alignment: 4, storageClass: VariableStorageClass.Hub);
-        MultiPointerTypeSymbol differentFamily = new(BuiltinTypes.U16, isConst: true, isVolatile: true, alignment: 4, storageClass: VariableStorageClass.Hub);
+        PointerTypeSymbol pointerLeft = new(BuiltinTypes.U16, isConst: true, isVolatile: true, alignment: 4, storageClass: AddressSpace.Hub);
+        PointerTypeSymbol pointerRight = new(BuiltinTypes.U16, isConst: true, isVolatile: true, alignment: 4, storageClass: AddressSpace.Hub);
+        MultiPointerTypeSymbol differentFamily = new(BuiltinTypes.U16, isConst: true, isVolatile: true, alignment: 4, storageClass: AddressSpace.Hub);
 
         Assert.Multiple(() =>
         {
@@ -338,17 +338,17 @@ public sealed class RuntimeTypeAndValueTests
     [Test]
     public void BladeValuePointerEquality_UsesProvenanceBeforeAbsoluteAddressFallback()
     {
-        VariableSymbol sameSymbol = IrTestFactory.CreateVariableSymbol("arr", BuiltinTypes.U8, VariableStorageClass.Hub, VariableScopeKind.GlobalStorage);
-        VariableSymbol differentSymbol = IrTestFactory.CreateVariableSymbol("other", BuiltinTypes.U8, VariableStorageClass.Hub, VariableScopeKind.GlobalStorage);
-        PointerTypeSymbol singlePointer = new(BuiltinTypes.U8, isConst: false, storageClass: VariableStorageClass.Hub);
-        MultiPointerTypeSymbol multiPointer = new(BuiltinTypes.U8, isConst: true, storageClass: VariableStorageClass.Hub);
+        VariableSymbol sameSymbol = IrTestFactory.CreateVariableSymbol("arr", BuiltinTypes.U8, AddressSpace.Hub, VariableScopeKind.GlobalStorage);
+        VariableSymbol differentSymbol = IrTestFactory.CreateVariableSymbol("other", BuiltinTypes.U8, AddressSpace.Hub, VariableScopeKind.GlobalStorage);
+        PointerTypeSymbol singlePointer = new(BuiltinTypes.U8, isConst: false, storageClass: AddressSpace.Hub);
+        MultiPointerTypeSymbol multiPointer = new(BuiltinTypes.U8, isConst: true, storageClass: AddressSpace.Hub);
         BladeValue left = BladeValue.Pointer(singlePointer, new PointedValue(sameSymbol, 2));
         BladeValue same = BladeValue.Pointer(multiPointer, new PointedValue(sameSymbol, 2));
         BladeValue differentOffset = BladeValue.Pointer(singlePointer, new PointedValue(sameSymbol, 5));
         BladeValue differentSymbolPointer = BladeValue.Pointer(singlePointer, new PointedValue(differentSymbol, 2));
-        BladeValue absoluteHub = BladeValue.Pointer(singlePointer, new PointedValue(new AbsoluteAddressSymbol(12, VariableStorageClass.Hub), 1));
-        BladeValue fixedHub = BladeValue.Pointer(multiPointer, new PointedValue(IrTestFactory.CreateVariableSymbol("fixed", BuiltinTypes.U8, VariableStorageClass.Hub, VariableScopeKind.GlobalStorage, fixedAddress: 13), 0));
-        BladeValue absoluteReg = BladeValue.Pointer(new PointerTypeSymbol(BuiltinTypes.U8, isConst: false, storageClass: VariableStorageClass.Cog), new PointedValue(new AbsoluteAddressSymbol(13, VariableStorageClass.Cog), 0));
+        BladeValue absoluteHub = BladeValue.Pointer(singlePointer, new PointedValue(new AbsoluteAddressSymbol(new VirtualAddress(AddressSpace.Hub, 12)), 1));
+        BladeValue fixedHub = BladeValue.Pointer(multiPointer, new PointedValue(IrTestFactory.CreateVariableSymbol("fixed", BuiltinTypes.U8, AddressSpace.Hub, VariableScopeKind.GlobalStorage, fixedAddress: 13), 0));
+        BladeValue absoluteReg = BladeValue.Pointer(new PointerTypeSymbol(BuiltinTypes.U8, isConst: false, storageClass: AddressSpace.Cog), new PointedValue(new AbsoluteAddressSymbol(new VirtualAddress(AddressSpace.Cog, 13)), 0));
 
         Assert.Multiple(() =>
         {

@@ -385,7 +385,7 @@ public abstract partial class BladeValue
 
             if (value.TryGetInteger(out long absoluteAddress))
             {
-                AbsoluteAddressSymbol absoluteSymbol = new(unchecked((int)(uint)absoluteAddress), pointerType.StorageClass);
+                AbsoluteAddressSymbol absoluteSymbol = new(new VirtualAddress(pointerType.StorageClass, unchecked((int)(uint)absoluteAddress)));
                 result = Pointer(pointerType, new PointedValue(absoluteSymbol, 0));
                 return EvaluationError.None;
             }
@@ -473,7 +473,7 @@ public abstract partial class BladeValue
 
         if (type is PointerLikeTypeSymbol pointerType)
         {
-            AbsoluteAddressSymbol absoluteSymbol = new(unchecked((int)rawBits), pointerType.StorageClass);
+            AbsoluteAddressSymbol absoluteSymbol = new(new VirtualAddress(pointerType.StorageClass, unchecked((int)rawBits)));
             result = Pointer(pointerType, new PointedValue(absoluteSymbol, 0));
             return EvaluationError.None;
         }
@@ -513,14 +513,13 @@ public abstract partial class BladeValue
         if (ReferenceEquals(leftPointed.Symbol, rightPointed.Symbol))
             return leftPointed.Offset == rightPointed.Offset;
 
-        if (!TryGetAbsolutePointerIdentity(left, leftPointed, out VariableStorageClass leftStorageClass, out int leftAddress)
-            || !TryGetAbsolutePointerIdentity(right, rightPointed, out VariableStorageClass rightStorageClass, out int rightAddress))
+        if (!TryGetAbsolutePointerIdentity(left, leftPointed, out VirtualAddress leftAddress)
+            || !TryGetAbsolutePointerIdentity(right, rightPointed, out VirtualAddress rightAddress))
         {
             return false;
         }
 
-        return leftStorageClass == rightStorageClass
-            && leftAddress == rightAddress;
+        return leftAddress == rightAddress;
     }
 
     private static bool TryGetRuntimeArray(BladeValue value, out IReadOnlyList<RuntimeBladeValue> elements)
@@ -565,7 +564,7 @@ public abstract partial class BladeValue
         return true;
     }
 
-    private static bool TryGetAbsolutePointerIdentity(BladeValue value, PointedValue pointedValue, out VariableStorageClass storageClass, out int address)
+    private static bool TryGetAbsolutePointerIdentity(BladeValue value, PointedValue pointedValue, out VirtualAddress address)
     {
         Requires.NotNull(value);
         Requires.NotNull(pointedValue);
@@ -576,39 +575,41 @@ public abstract partial class BladeValue
         {
             if (absoluteSymbol.StorageClass != pointerType.StorageClass)
             {
-                storageClass = default;
-                address = 0;
+                address = default;
                 return false;
             }
 
-            storageClass = absoluteSymbol.StorageClass;
-            address = absoluteSymbol.Address + pointedValue.Offset;
+            address = AddressMath.AddAddressUnits(absoluteSymbol.Address, pointedValue.Offset);
             return true;
         }
 
-        if (pointedValue.Symbol is GlobalVariableSymbol { FixedAddress: int fixedAddress, StorageClass: var fixedStorageClass })
+        if (pointedValue.Symbol is GlobalVariableSymbol { FixedAddress: VirtualAddress fixedAddress, StorageClass: var fixedStorageClass })
         {
             if (fixedStorageClass != pointerType.StorageClass)
             {
-                storageClass = default;
-                address = 0;
+                address = default;
                 return false;
             }
 
-            storageClass = fixedStorageClass;
-            address = fixedAddress + pointedValue.Offset;
+            address = AddressMath.AddAddressUnits(fixedAddress, pointedValue.Offset);
             return true;
         }
 
-        storageClass = default;
-        address = 0;
+        address = default;
         return false;
     }
 
     private static bool TryGetKnownAbsoluteAddress(PointerLikeTypeSymbol type, PointedValue value, out int address)
     {
         RuntimeBladeValue wrapper = Pointer(type, value);
-        return TryGetAbsolutePointerIdentity(wrapper, value, out _, out address);
+        if (TryGetAbsolutePointerIdentity(wrapper, value, out VirtualAddress absoluteAddress))
+        {
+            (_, address) = absoluteAddress.GetDataAddress();
+            return true;
+        }
+
+        address = 0;
+        return false;
     }
 
     private static long NormalizeIntegerBits(IntegerTypeSymbol type, uint rawBits)

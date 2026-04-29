@@ -3,7 +3,8 @@ reportgenerator := require('reportgenerator')
 python          := require('python')
 roslynator      := require('roslynator')
 
-BLADE_TEST_PORT := "/dev/serial/by-id/usb-FTDI_FT231X_USB_UART_DUAB9RPU-if00-port0"
+# BLADE_TEST_PORT := "/dev/serial/by-id/usb-FTDI_FT231X_USB_UART_DUAB9RPU-if00-port0"
+BLADE_TEST_PORT := ""
 
 all: build test regressions compile-all-samples
 
@@ -131,7 +132,7 @@ hwtest path:
     mkdir -p .hwtest
 
     Blade/bin/Debug/net10.0/blade \
-        "--runtime=Blade.HwTestRunner/Runtime.spin2" \
+        "--runtime=Blade.HwTestRunner/Runtime.blade" \
         "--output" ".hwtest/payload.spin2" \
         "{{path}}"
     

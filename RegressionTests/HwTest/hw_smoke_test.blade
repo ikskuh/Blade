@@ -1,0 +1,16 @@
+// EXPECT: pass-hw
+// RUNS:
+// - [ 0 ] = 0
+// - [ 1 ] = 1
+// - [ 0x100 ] = 0x100
+// - [ 0x200 ] = 0x200
+// - [ 0xFFFFFFFF ] = 0xFFFFFFFF
+// NOTE:
+//   This test is a basic smoke test that checks if the test runner
+//   works at all.
+cog task main {
+    extern cog var rt_result: u32;
+    extern cog var rt_param0: u32;
+    
+    rt_result = rt_param0;
+}

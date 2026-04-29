@@ -371,7 +371,7 @@ public sealed class ComptimeBinderHelperTests
 
         BoundExpression[] unsupportedExpressions =
         [
-            new BoundUnaryExpression(BoundUnaryOperator.Bind(TokenKind.Ampersand)!, Literal(1, BuiltinTypes.IntegerLiteral), Span, new PointerTypeSymbol(BuiltinTypes.U32, isConst: false, storageClass: VariableStorageClass.Cog)),
+            new BoundUnaryExpression(BoundUnaryOperator.Bind(TokenKind.Ampersand)!, Literal(1, BuiltinTypes.IntegerLiteral), Span, new PointerTypeSymbol(BuiltinTypes.U32, isConst: false, storageClass: AddressSpace.Cog)),
             new BoundBinaryExpression(Literal(1, BuiltinTypes.IntegerLiteral), BoundBinaryOperator.Bind(TokenKind.Plus)!, localSymbol, Span, BuiltinTypes.IntegerLiteral),
             new BoundArrayLiteralExpression([Literal(1, BuiltinTypes.IntegerLiteral), localSymbol], lastElementIsSpread: false, Span, new ArrayTypeSymbol(BuiltinTypes.U32, 2)),
             new BoundStructLiteralExpression([new BoundStructFieldInitializer("value", localSymbol)], Span, pairType),

@@ -1,9 +1,10 @@
 // EXPECT: pass
 // STAGE: final-asm
 // SEQUENCE:
-// - AUGS #1000
-// - MOV ?1, #488
+// - MOV ?1, ?2
 // - WAITX ?1
+// - ?2 LONG $000003E8
+// ! AUGS
 // NOTE:
 //   Intrinsic lowering must not synthesize a fake destination operand for WAITX.
 //   The intrinsic currently materializes the large literal in a temp register, then waits on that register.

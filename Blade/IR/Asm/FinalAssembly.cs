@@ -13,16 +13,11 @@ public sealed class FinalAssembly(string conSectionContents, string datSectionCo
 
 internal static class FinalAssemblyComposer
 {
-    public static FinalAssembly Compose(string conSectionContents, string datSectionContents, RuntimeTemplate? runtimeTemplate)
+    public static FinalAssembly Compose(string conSectionContents, string datSectionContents)
     {
         Requires.NotNull(conSectionContents);
         Requires.NotNull(datSectionContents);
-
-        string text = runtimeTemplate is null
-            ? ComposeRaw(conSectionContents, datSectionContents)
-            : ComposeTemplate(runtimeTemplate, conSectionContents, datSectionContents);
-
-        return new FinalAssembly(conSectionContents, datSectionContents, text);
+        return new FinalAssembly(conSectionContents, datSectionContents, ComposeRaw(conSectionContents, datSectionContents));
     }
 
     private static string ComposeRaw(string conSectionContents, string datSectionContents)
@@ -43,44 +38,5 @@ internal static class FinalAssemblyComposer
         if (!datSectionContents.EndsWith(Environment.NewLine, StringComparison.Ordinal))
             builder.AppendLine();
         return builder.ToString();
-    }
-
-    private static string ComposeTemplate(RuntimeTemplate runtimeTemplate, string conSectionContents, string datSectionContents)
-    {
-        Requires.NotNull(runtimeTemplate);
-
-        StringBuilder builder = new();
-        using StringReader reader = new(runtimeTemplate.TemplateText);
-        while (reader.ReadLine() is string line)
-        {
-            if (RuntimeTemplate.IsConMarkerLine(line))
-            {
-                AppendSectionContents(builder, conSectionContents);
-                continue;
-            }
-
-            if (RuntimeTemplate.IsDatMarkerLine(line))
-            {
-                AppendSectionContents(builder, datSectionContents);
-                continue;
-            }
-
-            builder.AppendLine(line);
-        }
-
-        return builder.ToString();
-    }
-
-    private static void AppendSectionContents(StringBuilder builder, string contents)
-    {
-        Requires.NotNull(builder);
-        Requires.NotNull(contents);
-
-        if (contents.Length == 0)
-            return;
-
-        builder.Append(contents);
-        if (!contents.EndsWith(Environment.NewLine, StringComparison.Ordinal))
-            builder.AppendLine();
     }
 }

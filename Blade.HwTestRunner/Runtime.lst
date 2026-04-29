@@ -1,0 +1,119 @@
+00000                 | 
+00000                 | #line 1 "Blade.HwTestRunner/Runtime.spin2"
+00000                 | 
+00000                 | CON
+00000                 |         RT_F_CPU   = 200_000_000
+00000                 |         RT_BAUD    =     115_200
+00000                 | 
+00000                 |         RT_TXD_PIN = 62
+00000                 |         RT_RXD_PIN = 63
+00000                 | 
+00000                 |         RT_UART_CLOCKS = RT_F_CPU / RT_BAUD
+00000                 | 
+00000                 |         RT_UART_CFG = (RT_F_CPU / RT_BAUD * $1_0000) | (8-1) ' 115200 @ 8 bit
+00000                 | 
+00000                 |         RT_START_MARKER = $02 ' STX
+00000                 |         RT_END_MARKER = $03 ' ETC
+00000                 | 
+00000                 |         ' <<BLADE_CON>>
+00000                 | DAT
+00000 000 20 00 90 FD |         JMP #rt_start
+00004 001             | 
+00004 001             | rt_params        ' export a labelled name for an array
+00004 001             | rt_param0 LONG 0 ' export regular runtime variable
+00004 001 00 00 00 00 
+00008 002             | rt_param1 LONG 0 ' export regular runtime variable
+00008 002 00 00 00 00 
+0000c 003             | rt_param2 LONG 0 ' export regular runtime variable
+0000c 003 00 00 00 00 
+00010 004             | rt_param3 LONG 0 ' export regular runtime variable
+00010 004 00 00 00 00 
+00014 005             | rt_param4 LONG 0 ' export regular runtime variable
+00014 005 00 00 00 00 
+00018 006             | rt_param5 LONG 0 ' export regular runtime variable
+00018 006 00 00 00 00 
+0001c 007             | rt_param6 LONG 0 ' export regular runtime variable
+0001c 007 00 00 00 00 
+00020 008             | rt_param7 LONG 0 ' export regular runtime variable
+00020 008 00 00 00 00 
+00024 009             | 
+00024 009             | rt_start
+00024 009             |         ''  %0000_000E_DDDD_DDMM_MMMM_MMMM_PPPP_CCSS
+00024 009             |         '' 0b0000_0001_0000_0000_0000_1001_1111_1011
+00024 009             |         ''           E                               = "PLL on"
+00024 009             |         ''             DDDD_DD                       = xi div:  1
+00024 009             |         ''                    MM_MMMM_MMMM           = vco mul: 10
+00024 009             |         ''                                 PPPP      = "VCO / 1"
+00024 009             |         ''                                      CC   = "15pF per pin"
+00024 009             |         ''                                        SS = clk:PLL
+00024 009             |         '' => "CLK = XI * 20 with PLL enabled"
+00024 009 04 80 80 FF 
+00028 00a 00 F6 67 FD |         HUBSET ##16779771 '' _clkmode = 0x10009FB = 200 MHz
+0002c 00b             |     
+0002c 00b 3E F8 0C FC |         WRPIN #P_TT_01 | P_ASYNC_TX, #RT_TXD_PIN
+00030 00c 00 64 83 FF 
+00034 00d 3E 0E 1C FC |         WXPIN ##RT_UART_CFG, #RT_TXD_PIN
+00038 00e             | 
+00038 00e             |         '' enable smart pin
+00038 00e 41 7C 64 FD |         DIRH #RT_TXD_PIN
+0003c 00f             | 
+0003c 00f A1 07 80 FF 
+00040 010 1F 80 64 FD |         WAITX ##1_000_000
+00044 011             | 
+00044 011             |         ' Initialize hub stack pointer (PTRB) for rec fn (CALLB/RETB/PUSHB/POPB).
+00044 011             |         ' Point well above the program binary so the stack does not clobber code/data.
+00044 011 80 00 00 FF 
+00048 012 00 F2 07 F6 |         MOV PTRB, ##$10000
+0004c 013             | 
+0004c 013             |         ' First write must be without the "wait busy" logic as the pin would never trigger this!
+0004c 013             |         ' Write the "start of execution marker":
+0004c 013 3E 04 2C FC |         WYPIN #RT_START_MARKER, #RT_TXD_PIN
+00050 014 58 00 90 FD |         JMP #blade_entry
+00054 015             | 
+00054 015             | blade_halt
+00054 015 0D 06 4C FB |         CALLPA #RT_END_MARKER, #rt_write_byte
+00058 016             | 
+00058 016 03 50 54 FB |         CALLPB rt_result, #rt_write_hex_long
+0005c 017 0B 14 4C FB |         CALLPA #$0A, #rt_write_byte
+00060 018             |         ' CALLPB #$7E, #rt_write_hex_long
+00060 018             |         ' CALLPB #$100, #rt_write_hex_long
+00060 018             |         ' CALLPB #$1FF, #rt_write_hex_long
+00060 018             |         ' CALLPB ##$CAFEBABE, #rt_write_hex_long
+00060 018             | 
+00060 018 00 02 DC FC |         REP @.end, #0
+00064 019 00 00 00 00 |         NOP
+00068 01a             | .end
+00068 01a             | 
+00068 01a             | rt_write_hex_long ' (chr: PB)
+00068 01a 08 4C 04 F6 |         MOV     rt_tmp0, #8
+0006c 01b             |   .nib_loop
+0006c 01b F7 4F 78 F8 |         GETNIB  rt_tmp1, PB, #7
+00070 01c 0A 4E 1C F2 |         CMP     rt_tmp1, #10    WCZ
+00074 01d 37 4E 04 31 | IF_GE   ADD     rt_tmp1, #"A"-10
+00078 01e 30 4E 04 C1 | IF_LT   ADD     rt_tmp1, #"0"
+0007c 01f 03 4E 44 FB |         CALLPA  rt_tmp1, #rt_write_byte
+00080 020 04 EE 67 F0 |         SHL     PB, #4
+00084 021 F9 4D 6C FB |         DJNZ    rt_tmp0, #.nib_loop
+00088 022 2D 00 64 FD |         RET
+0008c 023             | 
+0008c 023             | rt_write_byte ' (chr: PA)
+0008c 023 40 7C 74 FD |         TESTP   #RT_TXD_PIN        WC   ' wait for empty buffer
+00090 024 F8 FF 9F 3D | IF_NC   JMP     #rt_write_byte          ' if not empty, test again
+00094 025 3E EC 27 0C | _RET_   WYPIN   PA, #RT_TXD_PIN         ' write PA
+00098 026             | 
+00098 026             | rt_tmp0     LONG 0
+00098 026 00 00 00 00 
+0009c 027             | rt_tmp1     LONG 0
+0009c 027 00 00 00 00 
+000a0 028             | rt_result   LONG 0
+000a0 028 00 00 00 00 
+000a4 029             | 
+000a4 029             | ' start of blade code
+000a4 029             | ' <<BLADE_DAT>>
+000a4 029             | ' end of blade code
+000a4 029             | 
+000a4 029 40 00 00 00 | LONG P_TT_01
+000a8 02a 3C 00 00 00 | LONG P_ASYNC_TX
+000ac 02b             | 
+000ac 02b             | blade_entry
+000ac 02b             | 

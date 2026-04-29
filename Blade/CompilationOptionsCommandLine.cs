@@ -42,7 +42,7 @@ public static class CompilationOptionsCommandLine
         string normalizedBaseDirectory = Path.GetFullPath(baseDirectory);
         Dictionary<string, string> namedModuleRoots = new(StringComparer.Ordinal);
         int parsedComptimeFuel = 250;
-        RuntimeTemplate? runtimeTemplate = null;
+        string? runtimeLauncherPath = null;
 
         OptimizationSet<MirOptimization> mirSet = new(OptimizationRegistry.AllMirOptimizations, "mir");
         OptimizationSet<LirOptimization> lirSet = new(OptimizationRegistry.AllLirOptimizations, "lir");
@@ -133,16 +133,16 @@ public static class CompilationOptionsCommandLine
                 return false;
             }
 
-            if (TryParseRuntimeTemplate(arg, normalizedBaseDirectory, out RuntimeTemplate? parsedRuntimeTemplate, out errorMessage))
+            if (TryParseRuntimeLauncherPath(arg, normalizedBaseDirectory, out string? parsedRuntimeLauncherPath, out errorMessage))
             {
-                if (runtimeTemplate is not null)
+                if (runtimeLauncherPath is not null)
                 {
                     options = new CompilationOptions();
-                    errorMessage = "error: duplicate runtime template specification.";
+                    errorMessage = "error: duplicate runtime launcher specification.";
                     return false;
                 }
 
-                runtimeTemplate = parsedRuntimeTemplate;
+                runtimeLauncherPath = parsedRuntimeLauncherPath;
                 continue;
             }
 
@@ -164,7 +164,7 @@ public static class CompilationOptionsCommandLine
             EnabledAsmirOptimizations = asmirSet.ToList(),
             NamedModuleRoots = namedModuleRoots,
             ComptimeFuel = parsedComptimeFuel,
-            RuntimeTemplate = runtimeTemplate,
+            RuntimeLauncherPath = runtimeLauncherPath,
         };
         errorMessage = null;
         return true;
@@ -244,13 +244,13 @@ public static class CompilationOptionsCommandLine
         return true;
     }
 
-    private static bool TryParseRuntimeTemplate(
+    private static bool TryParseRuntimeLauncherPath(
         string arg,
         string baseDirectory,
-        out RuntimeTemplate? runtimeTemplate,
+        out string? runtimeLauncherPath,
         out string? errorMessage)
     {
-        runtimeTemplate = null;
+        runtimeLauncherPath = null;
         errorMessage = null;
 
         if (!TryGetArgumentValue(arg, "--runtime=", out string? pathText))
@@ -259,12 +259,19 @@ public static class CompilationOptionsCommandLine
         string trimmedPath = pathText.Trim();
         if (trimmedPath.Length == 0)
         {
-            errorMessage = "error: invalid runtime template specification '--runtime='. Expected --runtime=<path>.";
+            errorMessage = "error: invalid runtime launcher specification '--runtime='. Expected --runtime=<path>.";
             return false;
         }
 
         string fullPath = Path.GetFullPath(trimmedPath, baseDirectory);
-        return RuntimeTemplate.TryLoad(fullPath, out runtimeTemplate, out errorMessage);
+        if (!string.Equals(Path.GetExtension(fullPath), ".blade", StringComparison.OrdinalIgnoreCase))
+        {
+            errorMessage = $"error: runtime launcher '{fullPath}' must be a .blade file.";
+            return false;
+        }
+
+        runtimeLauncherPath = fullPath;
+        return true;
     }
 
     private sealed class OptimizationSet<T> where T : Optimization

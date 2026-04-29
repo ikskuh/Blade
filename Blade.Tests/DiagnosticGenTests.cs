@@ -215,6 +215,9 @@ public class DiagnosticGenTests
         Assert.That(DiagnosticMessage.GetNameFrom(307), Is.EqualTo("InlineAsmTempReadBeforeWrite"));
         Assert.That(DiagnosticMessage.GetSeverity(307), Is.EqualTo(DiagnosticSeverity.Warning));
         Assert.That(DiagnosticMessage.GetSeverity("InlineAsmTempReadBeforeWrite"), Is.EqualTo(DiagnosticSeverity.Warning));
+        Assert.That(DiagnosticMessage.GetNameFrom(315), Is.EqualTo("InlineAsmUnknownCondition"));
+        Assert.That(DiagnosticMessage.GetSeverity(318), Is.EqualTo(DiagnosticSeverity.Error));
+        Assert.That(DiagnosticMessage.GetSeverity("InlineAsmInvalidImmediateOperandKind"), Is.EqualTo(DiagnosticSeverity.Error));
         Assert.That(DiagnosticMessage.GetByName("missing"), Is.Null);
         Assert.That(DiagnosticMessage.GetNameFrom(123456), Is.Null);
         Assert.That(DiagnosticMessage.GetSeverity(123456), Is.Null);

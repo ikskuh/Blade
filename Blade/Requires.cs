@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 
 namespace Blade;
@@ -34,29 +35,32 @@ public static class Requires
         return value;
     }
 
-    public static int NonNegative(
-        int value,
+    public static T NonNegative<T>(
+        T value,
         [CallerArgumentExpression("value")] string? parameterName = null)
+        where T : INumber<T>
     {
-        if (value < 0)
+        if (value < T.Zero)
             throw new ArgumentOutOfRangeException(parameterName, value, "Value must be non-negative.");
         return value;
     }
 
-    public static int Positive(
-        int value,
+    public static T Positive<T>(
+        T value,
         [CallerArgumentExpression("value")] string? parameterName = null)
+        where T : INumber<T>
     {
-        if (value <= 0)
+        if (value <= T.Zero)
             throw new ArgumentOutOfRangeException(parameterName, value, "Value must be positive.");
         return value;
     }
 
-    public static int InRange(
-        int value,
-        int minInclusive,
-        int maxInclusive,
+    public static T InRange<T>(
+        T value,
+        T minInclusive,
+        T maxInclusive,
         [CallerArgumentExpression("value")] string? parameterName = null)
+        where T : INumber<T>
     {
         if (value < minInclusive || value > maxInclusive)
         {

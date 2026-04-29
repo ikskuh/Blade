@@ -13,6 +13,6 @@
             "expect": "encoded"
         }
     ],
-    "hardwareRuntimePath": "Blade.HwTestRunner/Runtime.spin2",
+    "hardwareRuntimePath": "Blade.HwTestRunner/Runtime.blade",
     "irCoverageGuardPath": "RegressionTests/ir-regression-guard.json"
 }

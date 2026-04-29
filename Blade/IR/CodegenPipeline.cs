@@ -24,8 +24,9 @@ public static class CodegenPipeline
         CogResourceLayoutSet cogResourceLayouts = CogResourcePlanner.Build(
             asmModule,
             buildResult.ImagePlan,
+            buildResult.ImagePlacement,
             buildResult.LayoutSolution,
-            includeDefaultBladeHalt: options.RuntimeTemplate is null,
+            includeDefaultBladeHalt: true,
             diagnostics);
         if (diagnostics?.HasErrors == true)
             return new EmitResult(asmModule, cogResourceLayouts, string.Empty);
@@ -52,7 +53,7 @@ public static class CodegenPipeline
             }
         }
 
-        FinalAssembly finalAssembly = FinalAssemblyWriter.Build(asmModule, cogResourceLayouts, options.RuntimeTemplate);
+        FinalAssembly finalAssembly = FinalAssemblyWriter.Build(asmModule, cogResourceLayouts);
         return new EmitResult(asmModule, cogResourceLayouts, finalAssembly.Text);
     }
 }

@@ -12,18 +12,18 @@ public static class Formatter
     {
         if (input is null)
             return null;
-        if (input is VariableStorageClass cls)
+        if (input is AddressSpace cls)
             return Format(cls);
         if (input is ICollection<LayoutSymbol> items)
             return Format(items);
         return input;
     }
 
-    public static string Format(VariableStorageClass storageClass) => storageClass switch
+    public static string Format(AddressSpace storageClass) => storageClass switch
     {
-        VariableStorageClass.Cog => "cog",
-        VariableStorageClass.Lut => "lut",
-        VariableStorageClass.Hub => "hub",
+        AddressSpace.Cog => "cog",
+        AddressSpace.Lut => "lut",
+        AddressSpace.Hub => "hub",
         _ => Assert.UnreachableValue<string>(), // pragma: force-coverage
     };
 

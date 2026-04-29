@@ -458,12 +458,12 @@ public static class MirTextWriter
         };
     }
 
-    private static string FormatStorageClass(VariableStorageClass storageClass)
+    private static string FormatStorageClass(AddressSpace storageClass)
     {
         return storageClass switch
         {
-            VariableStorageClass.Lut => "lut",
-            VariableStorageClass.Hub => "hub",
+            AddressSpace.Lut => "lut",
+            AddressSpace.Hub => "hub",
             _ => "cog",
         };
     }

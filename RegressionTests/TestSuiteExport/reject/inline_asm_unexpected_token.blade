@@ -1,0 +1,9 @@
+// EXPECT: fail
+// DIAGNOSTICS: InlineAsmUnexpectedToken
+
+fn f() void {
+    var x: u32 = 0;
+    asm {
+        MOV {x} %0
+    };
+}

@@ -116,6 +116,8 @@ public abstract partial class DiagnosticMessage
             "LayoutAddressConflict" => (DiagnosticSeverity.Error, 282),
             "LayoutAllocationFailed" => (DiagnosticSeverity.Error, 283),
             "CogResourceLayoutFailed" => (DiagnosticSeverity.Error, 284),
+            "MissingRuntimeLauncherTask" => (DiagnosticSeverity.Error, 285),
+            "RuntimeLauncherCannotDeclareMainTask" => (DiagnosticSeverity.Error, 286),
             "InlineAsmUnknownInstruction" => (DiagnosticSeverity.Error, 301),
             "InlineAsmUndefinedVariable" => (DiagnosticSeverity.Error, 302),
             "InlineAsmEmptyInstruction" => (DiagnosticSeverity.Error, 303),
@@ -123,6 +125,17 @@ public abstract partial class DiagnosticMessage
             "InlineAsmInvalidInstructionForm" => (DiagnosticSeverity.Error, 305),
             "InlineAsmUndefinedLabel" => (DiagnosticSeverity.Error, 306),
             "InlineAsmTempReadBeforeWrite" => (DiagnosticSeverity.Warning, 307),
+            "InlineAsmMissingInstructionMnemonic" => (DiagnosticSeverity.Error, 308),
+            "InlineAsmUnexpectedToken" => (DiagnosticSeverity.Error, 309),
+            "InlineAsmMissingOperand" => (DiagnosticSeverity.Error, 310),
+            "InlineAsmInvalidTempPlaceholder" => (DiagnosticSeverity.Error, 311),
+            "InlineAsmInvalidBindingSyntax" => (DiagnosticSeverity.Error, 312),
+            "InlineAsmInvalidImmediateOperand" => (DiagnosticSeverity.Error, 313),
+            "InlineAsmInvalidSignedOperand" => (DiagnosticSeverity.Error, 314),
+            "InlineAsmUnknownCondition" => (DiagnosticSeverity.Error, 315),
+            "InlineAsmInvalidFlagEffect" => (DiagnosticSeverity.Error, 316),
+            "InlineAsmInvalidDirectOperand" => (DiagnosticSeverity.Error, 317),
+            "InlineAsmInvalidImmediateOperandKind" => (DiagnosticSeverity.Error, 318),
             "UnsupportedLowering" => (DiagnosticSeverity.Error, 401),
             _ => null,
         };
@@ -231,6 +244,8 @@ public abstract partial class DiagnosticMessage
             282 => "LayoutAddressConflict",
             283 => "LayoutAllocationFailed",
             284 => "CogResourceLayoutFailed",
+            285 => "MissingRuntimeLauncherTask",
+            286 => "RuntimeLauncherCannotDeclareMainTask",
             301 => "InlineAsmUnknownInstruction",
             302 => "InlineAsmUndefinedVariable",
             303 => "InlineAsmEmptyInstruction",
@@ -238,6 +253,17 @@ public abstract partial class DiagnosticMessage
             305 => "InlineAsmInvalidInstructionForm",
             306 => "InlineAsmUndefinedLabel",
             307 => "InlineAsmTempReadBeforeWrite",
+            308 => "InlineAsmMissingInstructionMnemonic",
+            309 => "InlineAsmUnexpectedToken",
+            310 => "InlineAsmMissingOperand",
+            311 => "InlineAsmInvalidTempPlaceholder",
+            312 => "InlineAsmInvalidBindingSyntax",
+            313 => "InlineAsmInvalidImmediateOperand",
+            314 => "InlineAsmInvalidSignedOperand",
+            315 => "InlineAsmUnknownCondition",
+            316 => "InlineAsmInvalidFlagEffect",
+            317 => "InlineAsmInvalidDirectOperand",
+            318 => "InlineAsmInvalidImmediateOperandKind",
             401 => "UnsupportedLowering",
             _ => null,
         };
@@ -346,6 +372,8 @@ public abstract partial class DiagnosticMessage
             282 => DiagnosticSeverity.Error,
             283 => DiagnosticSeverity.Error,
             284 => DiagnosticSeverity.Error,
+            285 => DiagnosticSeverity.Error,
+            286 => DiagnosticSeverity.Error,
             301 => DiagnosticSeverity.Error,
             302 => DiagnosticSeverity.Error,
             303 => DiagnosticSeverity.Error,
@@ -353,6 +381,17 @@ public abstract partial class DiagnosticMessage
             305 => DiagnosticSeverity.Error,
             306 => DiagnosticSeverity.Error,
             307 => DiagnosticSeverity.Warning,
+            308 => DiagnosticSeverity.Error,
+            309 => DiagnosticSeverity.Error,
+            310 => DiagnosticSeverity.Error,
+            311 => DiagnosticSeverity.Error,
+            312 => DiagnosticSeverity.Error,
+            313 => DiagnosticSeverity.Error,
+            314 => DiagnosticSeverity.Error,
+            315 => DiagnosticSeverity.Error,
+            316 => DiagnosticSeverity.Error,
+            317 => DiagnosticSeverity.Error,
+            318 => DiagnosticSeverity.Error,
             401 => DiagnosticSeverity.Error,
             _ => null,
         };
@@ -461,6 +500,8 @@ public abstract partial class DiagnosticMessage
             "LayoutAddressConflict" => DiagnosticSeverity.Error,
             "LayoutAllocationFailed" => DiagnosticSeverity.Error,
             "CogResourceLayoutFailed" => DiagnosticSeverity.Error,
+            "MissingRuntimeLauncherTask" => DiagnosticSeverity.Error,
+            "RuntimeLauncherCannotDeclareMainTask" => DiagnosticSeverity.Error,
             "InlineAsmUnknownInstruction" => DiagnosticSeverity.Error,
             "InlineAsmUndefinedVariable" => DiagnosticSeverity.Error,
             "InlineAsmEmptyInstruction" => DiagnosticSeverity.Error,
@@ -468,6 +509,17 @@ public abstract partial class DiagnosticMessage
             "InlineAsmInvalidInstructionForm" => DiagnosticSeverity.Error,
             "InlineAsmUndefinedLabel" => DiagnosticSeverity.Error,
             "InlineAsmTempReadBeforeWrite" => DiagnosticSeverity.Warning,
+            "InlineAsmMissingInstructionMnemonic" => DiagnosticSeverity.Error,
+            "InlineAsmUnexpectedToken" => DiagnosticSeverity.Error,
+            "InlineAsmMissingOperand" => DiagnosticSeverity.Error,
+            "InlineAsmInvalidTempPlaceholder" => DiagnosticSeverity.Error,
+            "InlineAsmInvalidBindingSyntax" => DiagnosticSeverity.Error,
+            "InlineAsmInvalidImmediateOperand" => DiagnosticSeverity.Error,
+            "InlineAsmInvalidSignedOperand" => DiagnosticSeverity.Error,
+            "InlineAsmUnknownCondition" => DiagnosticSeverity.Error,
+            "InlineAsmInvalidFlagEffect" => DiagnosticSeverity.Error,
+            "InlineAsmInvalidDirectOperand" => DiagnosticSeverity.Error,
+            "InlineAsmInvalidImmediateOperandKind" => DiagnosticSeverity.Error,
             "UnsupportedLowering" => DiagnosticSeverity.Error,
             _ => null,
         };
@@ -1408,6 +1460,16 @@ public sealed class CogResourceLayoutFailedError(SourceText source, TextSpan spa
     }
 }
 
+public sealed class MissingRuntimeLauncherTaskError(SourceText source, TextSpan span)
+    : LocatedDiagnosticMessage(source, span, "MissingRuntimeLauncherTask", DiagnosticSeverity.Error, 285, "Runtime launcher module must export a task named '_start'.")
+{
+}
+
+public sealed class RuntimeLauncherCannotDeclareMainTaskError(SourceText source, TextSpan span)
+    : LocatedDiagnosticMessage(source, span, "RuntimeLauncherCannotDeclareMainTask", DiagnosticSeverity.Error, 286, "Runtime launcher module must not declare a task named 'main'.")
+{
+}
+
 public sealed class InlineAsmUnknownInstructionError(SourceText source, TextSpan span, string mnemonic)
     : LocatedDiagnosticMessage(source, span, "InlineAsmUnknownInstruction", DiagnosticSeverity.Error, 301)
 {
@@ -1477,6 +1539,91 @@ public sealed class InlineAsmTempReadBeforeWriteWarning(SourceText source, TextS
     protected override global::System.FormattableString GetFormattableMessage()
     {
         return $"Inline assembly temporary '{ParameterName}' is read before any prior write in the same asm block. The register contents are unspecified.";
+    }
+}
+
+public sealed class InlineAsmMissingInstructionMnemonicError(SourceText source, TextSpan span)
+    : LocatedDiagnosticMessage(source, span, "InlineAsmMissingInstructionMnemonic", DiagnosticSeverity.Error, 308, "Inline assembly instruction is missing a mnemonic.")
+{
+}
+
+public sealed class InlineAsmUnexpectedTokenError(SourceText source, TextSpan span, string tokenText)
+    : LocatedDiagnosticMessage(source, span, "InlineAsmUnexpectedToken", DiagnosticSeverity.Error, 309)
+{
+    public string TokenText { get; } = tokenText;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Unexpected token '{TokenText}' in inline assembly instruction.";
+    }
+}
+
+public sealed class InlineAsmMissingOperandError(SourceText source, TextSpan span)
+    : LocatedDiagnosticMessage(source, span, "InlineAsmMissingOperand", DiagnosticSeverity.Error, 310, "Expected an inline assembly operand after ','.")
+{
+}
+
+public sealed class InlineAsmInvalidTempPlaceholderError(SourceText source, TextSpan span)
+    : LocatedDiagnosticMessage(source, span, "InlineAsmInvalidTempPlaceholder", DiagnosticSeverity.Error, 311, "Invalid inline assembly temporary placeholder. Expected '%' followed by an integer literal.")
+{
+}
+
+public sealed class InlineAsmInvalidBindingSyntaxError(SourceText source, TextSpan span)
+    : LocatedDiagnosticMessage(source, span, "InlineAsmInvalidBindingSyntax", DiagnosticSeverity.Error, 312, "Invalid inline assembly binding syntax. Expected '{name}' or '{path.to.name}'.")
+{
+}
+
+public sealed class InlineAsmInvalidImmediateOperandError(SourceText source, TextSpan span)
+    : LocatedDiagnosticMessage(source, span, "InlineAsmInvalidImmediateOperand", DiagnosticSeverity.Error, 313, "Invalid inline assembly immediate operand. Expected an operand after '#'.")
+{
+}
+
+public sealed class InlineAsmInvalidSignedOperandError(SourceText source, TextSpan span)
+    : LocatedDiagnosticMessage(source, span, "InlineAsmInvalidSignedOperand", DiagnosticSeverity.Error, 314, "Invalid inline assembly signed operand. Expected an integer literal after '-'.")
+{
+}
+
+public sealed class InlineAsmUnknownConditionError(SourceText source, TextSpan span, string condition)
+    : LocatedDiagnosticMessage(source, span, "InlineAsmUnknownCondition", DiagnosticSeverity.Error, 315)
+{
+    public string Condition { get; } = condition;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Unknown P2 condition prefix '{Condition}' in inline assembly.";
+    }
+}
+
+public sealed class InlineAsmInvalidFlagEffectError(SourceText source, TextSpan span, string flag)
+    : LocatedDiagnosticMessage(source, span, "InlineAsmInvalidFlagEffect", DiagnosticSeverity.Error, 316)
+{
+    public string Flag { get; } = flag;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Invalid inline assembly flag effect '{Flag}'. Expected a P2 flag effect such as 'WC', 'WZ', or 'WCZ'.";
+    }
+}
+
+public sealed class InlineAsmInvalidDirectOperandError(SourceText source, TextSpan span, string operandText)
+    : LocatedDiagnosticMessage(source, span, "InlineAsmInvalidDirectOperand", DiagnosticSeverity.Error, 317)
+{
+    public string OperandText { get; } = operandText;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Inline assembly operand '{OperandText}' is not valid in direct position. Expected a label, special register, binding, temporary, or '$'.";
+    }
+}
+
+public sealed class InlineAsmInvalidImmediateOperandKindError(SourceText source, TextSpan span, string operandText)
+    : LocatedDiagnosticMessage(source, span, "InlineAsmInvalidImmediateOperandKind", DiagnosticSeverity.Error, 318)
+{
+    public string OperandText { get; } = operandText;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Inline assembly operand '{OperandText}' is not valid after '#'. Expected an integer literal, label, or '$'.";
     }
 }
 
