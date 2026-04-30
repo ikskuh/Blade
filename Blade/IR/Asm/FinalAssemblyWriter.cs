@@ -118,7 +118,9 @@ public static class FinalAssemblyWriter
         LabelNameEmitter labelNames = new();
         string conSectionContents = WriteConSectionContents(modules, cogResourceLayouts, labelNames);
         string datSectionContents = WriteDatSectionContents(modules, cogResourceLayouts, labelNames, includeDefaultBladeHalt: true);
-        return FinalAssemblyComposer.Compose(conSectionContents, datSectionContents);
+        FinalAssembly assembly = FinalAssemblyComposer.Compose(conSectionContents, datSectionContents);
+        Assert.Invariant(!assembly.Text.Contains("##", StringComparison.Ordinal), "Final assembly must not contain implicit long-immediate syntax.");
+        return assembly;
     }
 
     public static string WriteConSectionContents(IReadOnlyList<AsmModule> modules, CogResourceLayoutSet cogResourceLayouts)
@@ -386,7 +388,7 @@ public static class FinalAssemblyWriter
             if (previousEndAddress != address)
                 WriteCogOriginDirective(sb, ResolveCogPhysicalAddressBytes(definition.Symbol, cogResourceLayouts), address, labelNames);
 
-            WriteAllocatedDefinition(sb, definition, labelNames, maxLabelWidth, maxDirectiveWidth);
+            WriteAllocatedDefinition(sb, definition, labelNames, maxLabelWidth, maxDirectiveWidth, cogResourceLayouts);
             previousEndAddress = address + GetDefinitionSizeInAddressUnits(definition);
         }
 
@@ -420,7 +422,7 @@ public static class FinalAssemblyWriter
             else
                 sb.AppendLine("    orgh");
 
-            WriteAllocatedBlock(sb, block, header, labelNames, emitAlignmentDirectives: storageClass == AddressSpace.Hub);
+            WriteAllocatedBlock(sb, block, header, labelNames, cogResourceLayouts, emitAlignmentDirectives: storageClass == AddressSpace.Hub);
             return;
         }
 
@@ -449,7 +451,7 @@ public static class FinalAssemblyWriter
             StoragePlace place = (StoragePlace)definition.Symbol;
             LayoutSlot slot = Assert.NotNull(place.ResolvedLayoutSlot);
             WriteOriginDirective(sb, storageClass, GetRawAddress(slot.Address));
-            WriteAllocatedDefinition(sb, definition, labelNames, maxLabelWidth, maxDirectiveWidth);
+            WriteAllocatedDefinition(sb, definition, labelNames, maxLabelWidth, maxDirectiveWidth, cogResourceLayouts);
             nextAddress = Math.Max(nextAddress, GetRawAddress(slot.Address) + GetDefinitionSizeInAddressUnits(definition));
         }
 
@@ -464,6 +466,7 @@ public static class FinalAssemblyWriter
             labelNames,
             maxLabelWidth,
             maxDirectiveWidth,
+            cogResourceLayouts,
             emitAlignmentDirectives: storageClass == AddressSpace.Hub);
     }
 
@@ -521,7 +524,7 @@ public static class FinalAssemblyWriter
                 sb.AppendLine("]");
             }
 
-            WriteAllocatedDefinition(sb, definition, labelNames, maxLabelWidth, maxDirectiveWidth);
+            WriteAllocatedDefinition(sb, definition, labelNames, maxLabelWidth, maxDirectiveWidth, cogResourceLayouts);
             currentAddress = slotAddress + GetDefinitionSizeInAddressUnits(definition);
         }
 
@@ -535,6 +538,7 @@ public static class FinalAssemblyWriter
             labelNames,
             maxLabelWidth,
             maxDirectiveWidth,
+            cogResourceLayouts,
             emitAlignmentDirectives: true);
     }
 
@@ -543,6 +547,7 @@ public static class FinalAssemblyWriter
         AsmDataBlock block,
         string header,
         LabelNameEmitter labelNames,
+        CogResourceLayoutSet cogResourceLayouts,
         bool emitAlignmentDirectives = false)
     {
         List<AsmAllocatedStorageDefinition> definitions = block.Definitions
@@ -558,7 +563,7 @@ public static class FinalAssemblyWriter
 
         int maxLabelWidth = definitions.Max(definition => GetLabelName(definition.Symbol, labelNames).Length);
         int maxDirectiveWidth = definitions.Max(static definition => FormatDataDirective(definition.Directive).Length);
-        WriteAllocatedBlockContents(sb, block, labelNames, maxLabelWidth, maxDirectiveWidth, emitAlignmentDirectives);
+        WriteAllocatedBlockContents(sb, block, labelNames, maxLabelWidth, maxDirectiveWidth, cogResourceLayouts, emitAlignmentDirectives);
     }
 
     private static void WriteAllocatedBlockContents(
@@ -567,6 +572,7 @@ public static class FinalAssemblyWriter
         LabelNameEmitter labelNames,
         int maxLabelWidth,
         int maxDirectiveWidth,
+        CogResourceLayoutSet cogResourceLayouts,
         bool emitAlignmentDirectives)
     {
         List<AsmAllocatedStorageDefinition> definitions = block.Definitions
@@ -587,7 +593,7 @@ public static class FinalAssemblyWriter
                     sb.AppendLine("    ALIGNW");
             }
 
-            WriteAllocatedDefinition(sb, definition, labelNames, maxLabelWidth, maxDirectiveWidth);
+            WriteAllocatedDefinition(sb, definition, labelNames, maxLabelWidth, maxDirectiveWidth, cogResourceLayouts);
         }
     }
 
@@ -596,11 +602,12 @@ public static class FinalAssemblyWriter
         AsmAllocatedStorageDefinition definition,
         LabelNameEmitter labelNames,
         int maxLabelWidth,
-        int maxDirectiveWidth)
+        int maxDirectiveWidth,
+        CogResourceLayoutSet cogResourceLayouts)
     {
         string label = GetLabelName(definition.Symbol, labelNames);
         string directive = FormatDataDirective(definition.Directive);
-        string value = FormatDataValue(definition, labelNames);
+        string value = FormatDataValue(definition, labelNames, cogResourceLayouts);
 
         sb.Append(label.PadRight(maxLabelWidth));
         sb.Append(' ');
@@ -751,32 +758,66 @@ public static class FinalAssemblyWriter
         };
     }
 
-    private static string FormatDataValue(AsmAllocatedStorageDefinition definition, LabelNameEmitter labelNames)
+    private static string FormatDataValue(AsmAllocatedStorageDefinition definition, LabelNameEmitter labelNames, CogResourceLayoutSet cogResourceLayouts)
     {
+        if (definition.Symbol is AsmSharedConstantSymbol constant)
+            return FormatSharedConstantValue(constant.Value, definition.UseHexFormat, labelNames, cogResourceLayouts);
+
         if (definition.InitialValues is null || definition.InitialValues.Count == 0)
             return definition.Count > 1 ? $"0[{definition.Count}]" : "0";
 
         if (definition.InitialValues.Count == 1)
         {
-            string initializer = FormatDataOperand(definition.InitialValues[0], definition.UseHexFormat, labelNames);
+            string initializer = FormatDataOperand(definition.InitialValues[0], definition.UseHexFormat, labelNames, cogResourceLayouts);
             return definition.Count > 1 ? $"{initializer}[{definition.Count}]" : initializer;
         }
 
         List<string> values = new(definition.InitialValues.Count);
         foreach (AsmOperand operand in definition.InitialValues)
-            values.Add(FormatDataOperand(operand, definition.UseHexFormat, labelNames));
+            values.Add(FormatDataOperand(operand, definition.UseHexFormat, labelNames, cogResourceLayouts));
         return string.Join(", ", values);
     }
 
-    private static string FormatDataOperand(AsmOperand operand, bool useHexFormat, LabelNameEmitter labelNames)
+    private static string FormatDataOperand(AsmOperand operand, bool useHexFormat, LabelNameEmitter labelNames, CogResourceLayoutSet cogResourceLayouts)
     {
         return operand switch
         {
             AsmImmediateOperand { Value: >= 0 } immediate when useHexFormat => $"${immediate.Value:X8}",
             AsmImmediateOperand immediate => immediate.Value.ToString(CultureInfo.InvariantCulture),
-            AsmSymbolOperand symbol => GetLabelName(symbol.Symbol, labelNames),
+            AsmSymbolOperand symbol => FormatDataSymbolOperand(symbol, labelNames, cogResourceLayouts),
             _ => operand.Format(),
         };
+    }
+
+    private static string FormatSharedConstantValue(
+        AsmSharedConstantValue value,
+        bool useHexFormat,
+        LabelNameEmitter labelNames,
+        CogResourceLayoutSet cogResourceLayouts)
+    {
+        return value switch
+        {
+            AsmLiteralSharedConstantValue literal when useHexFormat => $"${literal.Value:X8}",
+            AsmLiteralSharedConstantValue literal => unchecked((int)literal.Value).ToString(CultureInfo.InvariantCulture),
+            AsmSymbolSharedConstantValue symbolic => FormatOffsetExpression(
+                FormatSymbolExpression(symbolic.Symbol, labelNames, cogResourceLayouts, currentFunction: null, useLutVirtualAddressAlias: false),
+                symbolic.Offset),
+            AsmLutVirtualAddressSharedConstantValue lut => FormatOffsetExpression(
+                FormatSymbolExpression(lut.Place, labelNames, cogResourceLayouts, currentFunction: null, useLutVirtualAddressAlias: true),
+                lut.Offset),
+            _ => Assert.UnreachableValue<string>(), // pragma: force-coverage
+        };
+    }
+
+    private static string FormatDataSymbolOperand(AsmSymbolOperand operand, LabelNameEmitter labelNames, CogResourceLayoutSet cogResourceLayouts)
+    {
+        Requires.NotNull(operand);
+        Requires.NotNull(labelNames);
+        Requires.NotNull(cogResourceLayouts);
+
+        return FormatOffsetExpression(
+            FormatSymbolExpression(operand.Symbol, labelNames, cogResourceLayouts, currentFunction: null, useLutVirtualAddressAlias: false),
+            operand.Offset);
     }
 
     private static void WriteNode(
@@ -954,36 +995,16 @@ public static class FinalAssemblyWriter
         CogResourceLayoutSet cogResourceLayouts,
         AsmFunction currentFunction)
     {
-        if (operand.Symbol is AsmImageStartSymbol imageStart
-            && operand.AddressingMode == AsmSymbolAddressingMode.Immediate)
-        {
-            bool found = cogResourceLayouts.TryGetImageStartAddress(imageStart.Image, out HubAddress addressBytes);
-            Assert.Invariant(found, $"Missing image start address for task '{imageStart.Image.Task.Name}'.");
-            return FormatImmediateOffsetExpression(FormatPhysicalAddressExpression(addressBytes, labelNames), operand.Offset, useLongImmediate: true);
-        }
-
-        bool isImmediateLutSymbol = operand.Symbol.SymbolType == SymbolType.LutVariable
-            && operand.AddressingMode == AsmSymbolAddressingMode.Immediate;
-        string formatted = isImmediateLutSymbol
-            ? GetLutVirtualAddressConstantName(operand.Symbol, labelNames, currentFunction)
-            : GetLabelName(operand.Symbol, labelNames, currentFunction);
         if (operand.AddressingMode == AsmSymbolAddressingMode.Immediate)
         {
-            bool useLongImmediate = operand.Symbol is StoragePlace;
-            if (instruction.Mnemonic is P2Mnemonic.RDLUT or P2Mnemonic.WRLUT
-                && operandIndex == 1
-                && isImmediateLutSymbol)
-            {
-                useLongImmediate = false;
-            }
-
-            return FormatImmediateOffsetExpression(formatted, operand.Offset, useLongImmediate);
+            bool useLutVirtualAddressAlias = operand.Symbol.SymbolType == SymbolType.LutVariable;
+            string immediateExpression = FormatSymbolExpression(operand.Symbol, labelNames, cogResourceLayouts, currentFunction, useLutVirtualAddressAlias);
+            return FormatImmediateOffsetExpression(immediateExpression, operand.Offset);
         }
 
-        if (operand.Offset != 0)
-            formatted = operand.Offset > 0 ? $"{formatted} + {operand.Offset}" : $"{formatted} - {-operand.Offset}";
-
-        return formatted;
+        return FormatOffsetExpression(
+            FormatSymbolExpression(operand.Symbol, labelNames, cogResourceLayouts, currentFunction, useLutVirtualAddressAlias: false),
+            operand.Offset);
     }
 
     private static string FormatSymbolOperand(
@@ -997,42 +1018,58 @@ public static class FinalAssemblyWriter
         Requires.NotNull(cogResourceLayouts);
         Requires.NotNull(currentFunction);
 
-        if (operand.Symbol is AsmImageStartSymbol imageStart
-            && operand.AddressingMode == AsmSymbolAddressingMode.Immediate)
+        if (operand.AddressingMode == AsmSymbolAddressingMode.Immediate)
+            return FormatImmediateOffsetExpression(
+                FormatSymbolExpression(operand.Symbol, labelNames, cogResourceLayouts, currentFunction, useLutVirtualAddressAlias: operand.Symbol.SymbolType == SymbolType.LutVariable),
+                operand.Offset);
+
+        return FormatOffsetExpression(
+            FormatSymbolExpression(operand.Symbol, labelNames, cogResourceLayouts, currentFunction, useLutVirtualAddressAlias: false),
+            operand.Offset);
+    }
+
+    private static string FormatImmediateOffsetExpression(string baseExpression, int offset)
+    {
+        if (offset == 0)
+            return $"#{baseExpression}";
+
+        return $"#({FormatOffsetExpression(baseExpression, offset)})";
+    }
+
+    private static string FormatSymbolExpression(
+        IAsmSymbol symbol,
+        LabelNameEmitter labelNames,
+        CogResourceLayoutSet cogResourceLayouts,
+        AsmFunction? currentFunction,
+        bool useLutVirtualAddressAlias)
+    {
+        Requires.NotNull(symbol);
+        Requires.NotNull(labelNames);
+        Requires.NotNull(cogResourceLayouts);
+
+        if (symbol is AsmImageStartSymbol imageStart)
         {
             bool found = cogResourceLayouts.TryGetImageStartAddress(imageStart.Image, out HubAddress addressBytes);
             Assert.Invariant(found, $"Missing image start address for task '{imageStart.Image.Task.Name}'.");
-            return FormatImmediateOffsetExpression(FormatPhysicalAddressExpression(addressBytes, labelNames), operand.Offset, useLongImmediate: true);
+            return FormatPhysicalAddressExpression(addressBytes, labelNames);
         }
 
-        bool isImmediateLutSymbol = operand.Symbol.SymbolType == SymbolType.LutVariable
-            && operand.AddressingMode == AsmSymbolAddressingMode.Immediate;
-        string formatted = isImmediateLutSymbol
-            ? GetLutVirtualAddressConstantName(operand.Symbol, labelNames, currentFunction)
-            : GetLabelName(operand.Symbol, labelNames, currentFunction);
-        if (operand.AddressingMode == AsmSymbolAddressingMode.Immediate)
-        {
-            bool useLongImmediate = operand.Symbol is StoragePlace;
-            return FormatImmediateOffsetExpression(formatted, operand.Offset, useLongImmediate);
-        }
+        if (useLutVirtualAddressAlias)
+            return GetLutVirtualAddressConstantName(symbol, labelNames, currentFunction);
 
-        if (operand.Offset != 0)
-            formatted = operand.Offset > 0 ? $"{formatted} + {operand.Offset}" : $"{formatted} - {-operand.Offset}";
-
-        return formatted;
+        return GetLabelName(symbol, labelNames, currentFunction);
     }
 
-    private static string FormatImmediateOffsetExpression(string baseExpression, int offset, bool useLongImmediate)
+    private static string FormatOffsetExpression(string baseExpression, int offset)
     {
-        string prefix = useLongImmediate ? "##" : "#";
+        Requires.NotNull(baseExpression);
 
         if (offset == 0)
-            return $"{prefix}{baseExpression}";
+            return baseExpression;
 
-        string offsetExpression = offset > 0
+        return offset > 0
             ? $"{baseExpression} + {offset}"
             : $"{baseExpression} - {-offset}";
-        return $"{prefix}({offsetExpression})";
     }
 
     private static string GetLabelName(IAsmSymbol symbol, LabelNameEmitter labelNames, AsmFunction? currentFunction = null)

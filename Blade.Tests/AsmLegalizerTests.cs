@@ -1,4 +1,6 @@
 using Blade.IR.Asm;
+using Blade.IR.Lir;
+using Blade.IR.Mir;
 
 namespace Blade.Tests;
 
@@ -56,24 +58,63 @@ public class AsmLegalizerTests
             Throws.InvalidOperationException.With.Message.Contains("cannot be AUG-extended"));
     }
 
+    [Test]
+    public void Legalize_UsesSharedConstantRegisterForHubAddressSymbol()
+    {
+        var hubValue = CreateStoragePlace("hub_value", storageClass: AddressSpace.Hub);
+        AsmModule module = LegalizeModule(
+            new AsmInstructionNode(
+                P2Mnemonic.MOV,
+                [AsmRegister(1), new AsmSymbolOperand(hubValue, AsmSymbolAddressingMode.Immediate, 4)]));
+
+        AsmInstructionNode instruction = (AsmInstructionNode)module.Functions[0].Nodes[0];
+        AsmSymbolOperand operand = (AsmSymbolOperand)instruction.Operands[1];
+        AsmDataDefinition definition = module.DataBlocks.Single(block => block.Kind == AsmDataBlockKind.Constant).Definitions.Single();
+
+        Assert.That(operand.AddressingMode, Is.EqualTo(AsmSymbolAddressingMode.Register));
+        Assert.That(operand.Symbol.Name, Does.Contain("g_hub_value_plus_4"));
+        Assert.That(definition.Symbol.Name, Is.EqualTo(operand.Symbol.Name));
+    }
+
+    [Test]
+    public void Legalize_UsesSharedConstantRegisterForLutVirtualAddressAlias()
+    {
+        var lutValue = CreateStoragePlace("lut_value", storageClass: AddressSpace.Lut);
+        AsmModule module = LegalizeModule(
+            new AsmInstructionNode(
+                P2Mnemonic.MOV,
+                [AsmRegister(1), new AsmSymbolOperand(lutValue, AsmSymbolAddressingMode.Immediate, 2)]));
+
+        AsmInstructionNode instruction = (AsmInstructionNode)module.Functions[0].Nodes[0];
+        AsmSymbolOperand operand = (AsmSymbolOperand)instruction.Operands[1];
+        AsmDataDefinition definition = module.DataBlocks.Single(block => block.Kind == AsmDataBlockKind.Constant).Definitions.Single();
+
+        Assert.That(operand.AddressingMode, Is.EqualTo(AsmSymbolAddressingMode.Register));
+        Assert.That(operand.Symbol.Name, Does.Contain("g_lut_value_vaddr_plus_2"));
+        Assert.That(definition.Symbol.Name, Is.EqualTo(operand.Symbol.Name));
+    }
+
     private static IReadOnlyList<AsmNode> LegalizeNodes(AsmInstructionNode instruction)
     {
         AsmModule module = CreateModule(instruction);
         return AsmLegalizer.Legalize(module).Functions[0].Nodes;
     }
 
+    private static AsmModule LegalizeModule(params AsmNode[] nodes)
+    {
+        return AsmLegalizer.Legalize(CreateModule(nodes));
+    }
+
     private static AsmModule CreateModule(params AsmNode[] nodes)
     {
-        return new AsmModule(
-            [],
-            [],
-            [
-                CreateAsmFunction(
-                    "test",
-                    isEntryPoint: true,
-                    CallingConventionTier.General,
-                    nodes),
-            ]);
+        AsmFunction function = CreateAsmFunction(
+            "test",
+            isEntryPoint: true,
+            CallingConventionTier.General,
+            nodes);
+        MirModule mirModule = new(function.OwningImage, [], [], []);
+        LirModule lirModule = new(mirModule, [], [], []);
+        return new AsmModule(lirModule, [], [], [function]);
     }
 
     private static void AssertAugInstruction(AsmNode node, string opcode, long expectedValue)

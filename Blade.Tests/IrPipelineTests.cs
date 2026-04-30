@@ -466,7 +466,9 @@ public class IrPipelineTests
         Assert.That(MirTextWriter.Write(build.MirModule), Does.Contain("const &x"));
         Assert.That(build.AssemblyText, Does.Contain("MOV _r1, PA"));
         Assert.That(build.AssemblyText, Does.Contain("MOV g_x, _r1"));
-        Assert.That(build.AssemblyText, Does.Contain("MOV PA, ##g_x"));
+        Assert.That(build.AssemblyText, Does.Match(@"(?m)^\s*\w+_c_g_x\s+LONG\s+g_x$"), build.AssemblyText);
+        Assert.That(build.AssemblyText, Does.Match(@"(?m)^\s*MOV PA, \w+_c_g_x$"), build.AssemblyText);
+        Assert.That(build.AssemblyText, Does.Not.Contain("##"), build.AssemblyText);
     }
 
     [Test]
@@ -496,7 +498,9 @@ public class IrPipelineTests
         Assert.That(MirTextWriter.Write(build.MirModule), Does.Contain("const &param"));
         Assert.That(build.AssemblyText, Does.Contain("MOV _r1, PA"));
         Assert.That(build.AssemblyText, Does.Contain("MOV g_param, _r1"));
-        Assert.That(build.AssemblyText, Does.Contain("MOV PA, ##g_param"));
+        Assert.That(build.AssemblyText, Does.Match(@"(?m)^\s*\w+_c_g_param\s+LONG\s+g_param$"), build.AssemblyText);
+        Assert.That(build.AssemblyText, Does.Match(@"(?m)^\s*MOV PA, \w+_c_g_param$"), build.AssemblyText);
+        Assert.That(build.AssemblyText, Does.Not.Contain("##"), build.AssemblyText);
     }
 
     [Test]
@@ -527,7 +531,34 @@ public class IrPipelineTests
 
         Assert.That(MirTextWriter.Write(build.MirModule), Does.Contain("const &base"));
         Assert.That(build.AsmModule.StoragePlaces.Count(place => place.Symbol.Name == "base"), Is.EqualTo(1));
-        Assert.That(build.AssemblyText, Does.Contain("MOV PA, ##g_base"));
+        Assert.That(build.AssemblyText, Does.Match(@"(?m)^\s*\w+_c_g_base\s+LONG\s+g_base$"), build.AssemblyText);
+        Assert.That(build.AssemblyText, Does.Match(@"(?m)^\s*MOV PA, \w+_c_g_base$"), build.AssemblyText);
+        Assert.That(build.AssemblyText, Does.Not.Contain("##"), build.AssemblyText);
+    }
+
+    [Test]
+    public void SpawnedTaskImageStart_UsesSharedConstantRegister()
+    {
+        (BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+            cog task worker() {
+            }
+
+            cog task main {
+                spawn worker();
+            }
+            """);
+
+        Assert.That(diagnostics.Count, Is.EqualTo(0));
+
+        IrBuildResult build = IrPipeline.Build(program, new IrPipelineOptions
+        {
+            EnableMirOptimizations = false,
+            EnableLirOptimizations = false,
+        });
+
+        Assert.That(build.AssemblyText, Does.Match(@"(?m)^\s*\w+_c_\w*_image_start\s+LONG\s+blade_image_base(?: \+ \$[0-9A-F]+)?$"), build.AssemblyText);
+        Assert.That(build.AssemblyText, Does.Match(@"(?m)^\s*COGINIT\s+[^,]+, \w+_c_\w*_image_start\b"), build.AssemblyText);
+        Assert.That(build.AssemblyText, Does.Not.Contain("##"), build.AssemblyText);
     }
 
     [Test]
@@ -1578,10 +1609,11 @@ public class IrPipelineTests
         });
 
         Assert.That(build.AssemblyText, Does.Contain("RDLONG "));
-        Assert.That(build.AssemblyText, Does.Contain("##(g_hub_value + 4)"), build.AssemblyText);
-        Assert.That(build.AssemblyText, Does.Contain("##(g_hub_value + 8)"), build.AssemblyText);
-        Assert.That(build.AssemblyText, Does.Contain("##(g_lut_value - $200 + 1)"), build.AssemblyText);
-        Assert.That(build.AssemblyText, Does.Contain("##(g_lut_value - $200 + 2)"), build.AssemblyText);
+        Assert.That(build.AssemblyText, Does.Match(@"(?m)^\s*\w+_c_g_hub_value_plus_4\s+LONG\s+g_hub_value \+ 4$"), build.AssemblyText);
+        Assert.That(build.AssemblyText, Does.Match(@"(?m)^\s*\w+_c_g_hub_value_plus_8\s+LONG\s+g_hub_value \+ 8$"), build.AssemblyText);
+        Assert.That(build.AssemblyText, Does.Match(@"(?m)^\s*\w+_c_g_lut_value_vaddr_plus_1\s+LONG\s+g_lut_value_vaddr \+ 1$"), build.AssemblyText);
+        Assert.That(build.AssemblyText, Does.Match(@"(?m)^\s*\w+_c_g_lut_value_vaddr_plus_2\s+LONG\s+g_lut_value_vaddr \+ 2$"), build.AssemblyText);
+        Assert.That(build.AssemblyText, Does.Not.Contain("##"), build.AssemblyText);
     }
 
     [Test]

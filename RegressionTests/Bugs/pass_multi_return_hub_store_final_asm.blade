@@ -4,22 +4,26 @@
 // - CALLPA #42, #f_get_pair
 // - MOV ?1, PA
 // - BITC ?2, #0
-// - WRLONG ?1, ##g_result
-// - WRBYTE ?2, ##g_flag1
+// - WRLONG ?1, ?3
+// - WRBYTE ?2, ?4
 // - CALLPA #42, #f_get_triple
-// - MOV ?3, PA
-// - BITC ?4, #0
-// - BITZ ?5, #0
-// - WRLONG ?3, ##g_result
-// - WRBYTE ?4, ##g_flag1
-// - WRBYTE ?5, ##g_flag2
+// - MOV ?5, PA
+// - BITC ?6, #0
+// - BITZ ?7, #0
+// - WRLONG ?5, ?3
+// - WRBYTE ?6, ?4
+// - WRBYTE ?7, ?8
 // CONTAINS:
+// - ? LONG g_result
+// - ? LONG g_flag1
+// - ? LONG g_flag2
 // ! MOV g_result,
 // ! MOV g_flag1,
 // ! MOV g_flag2,
 // NOTE:
 //   A noinline multi-return call that stores into hub globals must materialize
-//   the flag-backed extra results and emit direct hub stores in final assembly.
+//   the flag-backed extra results and emit direct hub stores via shared address
+//   constants in final assembly.
 //   Hub storage is already loader-initialized, so the runtime path should only
 //   perform the call-result writes that are actually needed.
 cog task main {

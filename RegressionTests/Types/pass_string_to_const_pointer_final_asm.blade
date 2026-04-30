@@ -1,11 +1,12 @@
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// - CALLPA ##?1
-// - ?1 LONG 104, 101, 108, 108, 111
+// - CALLPA ?1, #f_first_byte
+// - ?1 LONG ?2
+// - ?2 LONG 104, 101, 108, 108, 111
 // NOTE:
 //   String-to-pointer coercion now lowers through literal-backed symbolic
-//   storage instead of a raw numeric address.
+//   storage and a shared pointer constant instead of a raw numeric address.
 
 cog task main {
     cog var sink: u8 = 0;

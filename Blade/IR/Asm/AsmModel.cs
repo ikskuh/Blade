@@ -48,12 +48,50 @@ internal sealed class AsmSpillSlotSymbol(ImageDescriptor image, CogAddress slot)
     public SymbolType SymbolType => SymbolType.RegVariable;
 }
 
-internal sealed class AsmSharedConstantSymbol(ImageDescriptor image, uint value) : IAsmSymbol
+internal abstract record AsmSharedConstantValue
+{
+}
+
+internal sealed record AsmLiteralSharedConstantValue(uint Value) : AsmSharedConstantValue;
+
+internal sealed record AsmSymbolSharedConstantValue(IAsmSymbol Symbol, int Offset = 0) : AsmSharedConstantValue
+{
+    public IAsmSymbol Symbol { get; } = Requires.NotNull(Symbol);
+}
+
+internal sealed record AsmLutVirtualAddressSharedConstantValue(StoragePlace Place, int Offset = 0) : AsmSharedConstantValue
+{
+    public StoragePlace Place { get; } = Requires.NotNull(Place);
+}
+
+internal sealed class AsmSharedConstantSymbol(ImageDescriptor image, AsmSharedConstantValue value) : IAsmSymbol
 {
     public ImageDescriptor Image { get; } = Requires.NotNull(image);
-    public uint Value { get; } = value;
-    public string Name => $"{Image.Task.Name}_c_{Value}";
+    public AsmSharedConstantValue Value { get; } = Requires.NotNull(value);
+    public string Name => Value switch
+    {
+        AsmLiteralSharedConstantValue literal => $"{Image.Task.Name}_c_{literal.Value}",
+        AsmSymbolSharedConstantValue symbolic => $"{Image.Task.Name}_c_{Sanitize(symbolic.Symbol)}{FormatOffsetSuffix(symbolic.Offset)}",
+        AsmLutVirtualAddressSharedConstantValue lut => $"{Image.Task.Name}_c_{Sanitize(lut.Place)}_vaddr{FormatOffsetSuffix(lut.Offset)}",
+        _ => Assert.UnreachableValue<string>(), // pragma: force-coverage
+    };
     public SymbolType SymbolType => SymbolType.RegVariable;
+
+    private static string Sanitize(IAsmSymbol symbol)
+    {
+        Requires.NotNull(symbol);
+        return BackendSymbolNaming.SanitizeIdentifier(symbol.Name);
+    }
+
+    private static string FormatOffsetSuffix(int offset)
+    {
+        if (offset == 0)
+            return string.Empty;
+
+        return offset > 0
+            ? $"_plus_{offset}"
+            : $"_minus_{-offset}";
+    }
 }
 
 internal sealed class AsmFunctionReferenceSymbol(ImageDescriptor image, FunctionSymbol function) : IAsmSymbol

@@ -1,13 +1,14 @@
 // EXPECT: pass
 // STAGE: final-asm
 // EXACT:
-// - RDLONG ?1, ##g_seed
+// - RDLONG ?1, ?2
 // - ADD ?1, #1
-// - WRLONG ?1, ##g_seed
-// - RDLONG ?1, ##g_seed
+// - WRLONG ?1, ?2
+// - RDLONG ?1, ?2
 // - ADD ?1, #1
-// - WRLONG ?1, ##g_seed
+// - WRLONG ?1, ?2
 // CONTAINS:
+// - ? LONG g_seed
 // - g_seed LONG 7
 // ARGS:
 // - --module=extmod=extmod.mod
