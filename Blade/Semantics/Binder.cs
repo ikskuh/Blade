@@ -648,7 +648,9 @@ public sealed class Binder
         if (_moduleDefinitionCache.TryGetValue(BuiltinModulePath, out BoundModule? cachedBaseModule))
             return cachedBaseModule;
 
-        LayoutSymbol intRegsLayout = new("IntRegs");
+        SourceSpan builtinSourceSpan = SourceSpan.Synthetic(BuiltinModulePath);
+
+        LayoutSymbol intRegsLayout = new("IntRegs", builtinSourceSpan);
         AddBuiltinLayoutMember(intRegsLayout, "IJMP3", isConst: false, address: 0x1F0);
         AddBuiltinLayoutMember(intRegsLayout, "IRET3", isConst: false, address: 0x1F1);
         AddBuiltinLayoutMember(intRegsLayout, "IJMP2", isConst: false, address: 0x1F2);
@@ -656,7 +658,7 @@ public sealed class Binder
         AddBuiltinLayoutMember(intRegsLayout, "IJMP1", isConst: false, address: 0x1F4);
         AddBuiltinLayoutMember(intRegsLayout, "IRET1", isConst: false, address: 0x1F5);
 
-        LayoutSymbol ioLayout = new("IO");
+        LayoutSymbol ioLayout = new("IO", builtinSourceSpan);
         AddBuiltinLayoutMember(ioLayout, "DIRA", isConst: false, address: 0x1FA);
         AddBuiltinLayoutMember(ioLayout, "DIRB", isConst: false, address: 0x1FB);
         AddBuiltinLayoutMember(ioLayout, "OUTA", isConst: false, address: 0x1FC);
@@ -664,7 +666,7 @@ public sealed class Binder
         AddBuiltinLayoutMember(ioLayout, "INA", isConst: true, address: 0x1FE);
         AddBuiltinLayoutMember(ioLayout, "INB", isConst: true, address: 0x1FF);
 
-        LayoutSymbol sfrLayout = new("SFR");
+        LayoutSymbol sfrLayout = new("SFR", builtinSourceSpan);
         sfrLayout.SetParents([ioLayout, intRegsLayout]);
         AddBuiltinLayoutMember(sfrLayout, "PA", isConst: false, address: 0x1F6);
         AddBuiltinLayoutMember(sfrLayout, "PB", isConst: false, address: 0x1F7);
@@ -701,7 +703,8 @@ public sealed class Binder
             layout,
             isExtern: true,
             fixedAddress: new VirtualAddress(new CogAddress(address)),
-            alignment: null);
+            alignment: null,
+            sourceSpan: layout.SourceSpan);
         bool added = layout.TryDeclareMember(member);
         Assert.Invariant(added, $"Builtin layout '{layout.Name}' must not contain duplicate member '{name}'.");
     }

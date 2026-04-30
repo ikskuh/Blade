@@ -26,7 +26,7 @@ internal static class LayoutSolutionDumpWriter
         foreach (IGrouping<Blade.Semantics.LayoutSymbol, LayoutSlot> layout in layouts)
         {
             sb.Append("layout ");
-            sb.AppendLine(layout.Key.Name);
+            sb.AppendLine(LayoutDebugNameFormatter.FormatLayoutName(layout.Key));
             sb.AppendLine("{");
 
             foreach (LayoutSlot slot in layout)

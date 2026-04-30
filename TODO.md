@@ -403,3 +403,15 @@ See name.
   - Each `hub task` image has zero size, but will (later) require additional memory allocations to cater for its initializer-function and `cog fn` loader.
   => We can start by pretending each image is exactly 2048 byte large for the first implementation.
 - The entry point image for `cog task main` must be locateed at hub address 0. No `hub fn` must be located below hub address 0x400.
+
+### Proper layout resolution
+
+Right now, we perform a global layout resolution, which is wrong.
+
+In general, Layouts have to be conflict free for:
+- actually used variables/declarations
+  - We don't have to care for variables that are not used in the source code
+  - Future `[Used]` attribute may change this behavior
+- `hub` (which is the trivial case)
+  - All hub variables get unique values
+- `cog` and `lut`

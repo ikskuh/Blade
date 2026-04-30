@@ -123,7 +123,7 @@ public static class LayoutSolver
         Requires.NotNull(program);
         Requires.NotNull(imagePlacement);
 
-        IReadOnlyList<LayoutSymbol> layouts = CollectLayouts(program);
+        IReadOnlyList<LayoutSymbol> layouts = CollectLayouts(imagePlacement);
         List<LayoutSlot> slots = [];
         slots.AddRange(SolveStorageClass(layouts, AddressSpace.Cog, [], diagnostics));
         slots.AddRange(SolveStorageClass(layouts, AddressSpace.Lut, [], diagnostics));
@@ -185,7 +185,7 @@ public static class LayoutSolver
             {
                 diagnostics?.ReportLayoutAllocationFailed(
                     candidate.Symbol.SourceSpan.Span,
-                    candidate.Layout.Name,
+                    LayoutDebugNameFormatter.FormatLayoutName(candidate.Layout),
                     candidate.Symbol.Name,
                     candidate.Symbol.StorageClass,
                     candidate.Shape.SizeInAddressUnits,
@@ -247,22 +247,26 @@ public static class LayoutSolver
         return candidates;
     }
 
-    private static IReadOnlyList<LayoutSymbol> CollectLayouts(BoundProgram program)
+    private static IReadOnlyList<LayoutSymbol> CollectLayouts(ImagePlacement imagePlacement)
     {
         HashSet<LayoutSymbol> layouts = [];
 
-        foreach (BoundModule module in program.Modules)
+        foreach (ImagePlacementEntry placement in imagePlacement.Images)
         {
-            foreach (LayoutSymbol layout in module.ExportedSymbols.Values.OfType<LayoutSymbol>())
-                CollectLayoutTree(layout, layouts);
-        }
+            foreach (FunctionSymbol function in placement.Image.Functions)
+            {
+                if (function.ImplicitLayout is LayoutSymbol implicitLayout)
+                    CollectLayoutTree(implicitLayout, layouts);
 
-        foreach (BoundFunctionMember function in program.Functions)
-        {
-            if (function.Symbol.ImplicitLayout is LayoutSymbol implicitLayout)
-                CollectLayoutTree(implicitLayout, layouts);
+                foreach (LayoutSymbol associatedLayout in function.AssociatedLayouts)
+                    CollectLayoutTree(associatedLayout, layouts);
+            }
 
-            foreach (LayoutSymbol associatedLayout in function.Symbol.AssociatedLayouts)
+            CollectLayoutTree(placement.Image.Task, layouts);
+            if (placement.Image.EntryFunction.ImplicitLayout is LayoutSymbol entryImplicitLayout)
+                CollectLayoutTree(entryImplicitLayout, layouts);
+
+            foreach (LayoutSymbol associatedLayout in placement.Image.EntryFunction.AssociatedLayouts)
                 CollectLayoutTree(associatedLayout, layouts);
         }
 
@@ -291,7 +295,7 @@ public static class LayoutSolver
             diagnostics.Report(new InvalidLayoutAlignmentError(
                 diagnostics.CurrentSource,
                 candidate.Symbol.SourceSpan.Span,
-                candidate.Layout.Name,
+                LayoutDebugNameFormatter.FormatLayoutName(candidate.Layout),
                 candidate.Symbol.Name,
                 candidate.AlignmentInAddressUnits));
         }
@@ -310,7 +314,7 @@ public static class LayoutSolver
         {
             diagnostics?.ReportInvalidLayoutAddress(
                 candidate.Symbol.SourceSpan.Span,
-                candidate.Layout.Name,
+                LayoutDebugNameFormatter.FormatLayoutName(candidate.Layout),
                 candidate.Symbol.Name,
                 candidate.Symbol.StorageClass,
                 rawAddress,
@@ -323,7 +327,7 @@ public static class LayoutSolver
         {
             diagnostics?.ReportInvalidLayoutAddress(
                 candidate.Symbol.SourceSpan.Span,
-                candidate.Layout.Name,
+                LayoutDebugNameFormatter.FormatLayoutName(candidate.Layout),
                 candidate.Symbol.Name,
                 candidate.Symbol.StorageClass,
                 rawAddress,
@@ -338,7 +342,7 @@ public static class LayoutSolver
             {
                 diagnostics?.ReportInvalidLayoutAddress(
                     candidate.Symbol.SourceSpan.Span,
-                    candidate.Layout.Name,
+                    LayoutDebugNameFormatter.FormatLayoutName(candidate.Layout),
                     candidate.Symbol.Name,
                     candidate.Symbol.StorageClass,
                     rawAddress,
@@ -352,7 +356,7 @@ public static class LayoutSolver
             {
                 diagnostics?.ReportInvalidLayoutAddress(
                     candidate.Symbol.SourceSpan.Span,
-                    candidate.Layout.Name,
+                    LayoutDebugNameFormatter.FormatLayoutName(candidate.Layout),
                     candidate.Symbol.Name,
                     candidate.Symbol.StorageClass,
                     rawAddress,
@@ -371,7 +375,7 @@ public static class LayoutSolver
             {
                 diagnostics?.ReportInvalidLayoutAddress(
                     candidate.Symbol.SourceSpan.Span,
-                    candidate.Layout.Name,
+                    LayoutDebugNameFormatter.FormatLayoutName(candidate.Layout),
                     candidate.Symbol.Name,
                     candidate.Symbol.StorageClass,
                     rawAddress,
@@ -474,11 +478,11 @@ public static class LayoutSolver
 
             diagnostics?.ReportLayoutAddressConflict(
                 slot.Symbol.SourceSpan.Span,
-                slot.Layout.Name,
+                LayoutDebugNameFormatter.FormatLayoutName(slot.Layout),
                 slot.Symbol.Name,
                 slot.StorageClass,
                 GetRawAddress(slot.Address),
-                existing.Layout.Name,
+                LayoutDebugNameFormatter.FormatLayoutName(existing.Layout),
                 existing.Symbol.Name,
                 GetRawAddress(existing.Address));
             return false;

@@ -1,12 +1,12 @@
 // Starter example: fixed register aliases are emitted through a CON block.
 
-layout IO
+layout PortA
 {
     extern cog var DIRA: u32 @(0x1FA);
     extern cog var OUTA: u32 @(0x1FC);
 }
 
-cog task main : IO
+cog task main : PortA
 {
     DIRA |= 0x10;
     OUTA |= 0x10;
