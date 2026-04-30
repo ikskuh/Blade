@@ -848,8 +848,9 @@ public sealed class Binder
 
                 case AsmFunctionDeclarationSyntax asmFunctionDecl:
                     syntax = asmFunctionDecl;
-                    kind = FunctionKind.Leaf;
-                    inliningPolicy = FunctionInliningPolicy.Default;
+                    (kind, inliningPolicy) = GetFunctionModifiers(asmFunctionDecl.Modifiers);
+                    if (kind == FunctionKind.Default)
+                        kind = FunctionKind.Leaf;
                     break;
 
                 default:
@@ -1213,13 +1214,17 @@ public sealed class Binder
 
     private FunctionSymbol CreateTaskLocalAsmFunctionSymbol(AsmFunctionDeclarationSyntax asmFunctionDeclaration)
     {
+        (FunctionKind kind, FunctionInliningPolicy inliningPolicy) = GetFunctionModifiers(asmFunctionDeclaration.Modifiers);
+        if (kind == FunctionKind.Default)
+            kind = FunctionKind.Leaf;
+
         return new FunctionSymbol(
             asmFunctionDeclaration.Name.Text,
             asmFunctionDeclaration,
-            FunctionKind.Leaf,
+            kind,
             isTopLevel: false,
             GetFunctionStorageClass(asmFunctionDeclaration),
-            FunctionInliningPolicy.Default,
+            inliningPolicy,
             CreateSourceSpan(asmFunctionDeclaration.Name.Span));
     }
 

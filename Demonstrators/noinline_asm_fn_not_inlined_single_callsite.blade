@@ -1,0 +1,20 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - CALLPA PA, #test_helper
+// - function test_helper
+// - _RET_ WYPIN #65, #62
+
+hub const TX_PIN: u32 = 62;
+
+noinline leaf asm fn test_helper()
+{
+_loop:
+    TESTP {TX_PIN} WC
+IF_NC JMP #_loop
+_RET_ WYPIN #65, {TX_PIN}
+}
+
+cog task main {
+    test_helper();
+}
