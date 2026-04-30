@@ -85,3 +85,8 @@ dotnet_diagnostic.CA1720.severity = none
 
 # Mute the diagnostic to use "ToUpperInvariant()" which doesn't make sense here
 dotnet_diagnostic.CA1308.severity = none
+
+[Blade/Addresses.cs]
+
+# "Provide a method named 'ToInt32' or 'FromLutAddress' as an alternate for operator op_Explicit
+dotnet_diagnostic.CA2225.severity = none

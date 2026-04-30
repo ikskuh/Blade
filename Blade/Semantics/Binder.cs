@@ -1144,7 +1144,7 @@ public sealed class Binder
             boundFunctions.Add(BindTaskLocalFunction(task, localFunction, taskScope));
 
         BindStoredLayoutMembers(members, taskScope, task, boundGlobals);
-        BindTaskExternalBindings(taskExternalBindings, boundGlobals);
+        BindTaskExternalBindings(taskExternalBindings, taskScope, task, boundGlobals);
         
         boundFunctions.Add(BindTaskEntryFunction(task, taskDeclaration, taskScope));
 
@@ -1315,8 +1315,18 @@ public sealed class Binder
     private void BindStoredLayoutMember(VariableDeclarationSyntax declaration, GlobalVariableSymbol variableSymbol)
         => BindGlobalStorageDeclaration(declaration, variableSymbol);
 
-    private void BindTaskExternalBindings(IReadOnlyList<TaskExternalBinding> bindings, ICollection<GlobalVariableSymbol> boundGlobals)
+    private void BindTaskExternalBindings(
+        IReadOnlyList<TaskExternalBinding> bindings,
+        Scope bindingScope,
+        TaskSymbol task,
+        ICollection<GlobalVariableSymbol> boundGlobals)
     {
+        using IDisposable bindContext = PushContext(
+            bindingScope,
+            task.EntryFunction,
+            task,
+            GetEffectiveLayouts(task.EntryFunction, task));
+
         foreach (TaskExternalBinding binding in bindings)
         {
             BindGlobalStorageDeclaration(binding.Declaration, binding.Symbol);
