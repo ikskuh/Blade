@@ -83,8 +83,10 @@ internal sealed class StorageLayoutShape(
         Requires.NotNull(symbol);
 
         if (symbol.Type is ArrayTypeSymbol arrayType)
+        {
             return arrayType.ElementType as RuntimeTypeSymbol
                 ?? Assert.UnreachableValue<RuntimeTypeSymbol>(); // pragma: force-coverage
+        }
 
         return symbol.Type as RuntimeTypeSymbol
             ?? Assert.UnreachableValue<RuntimeTypeSymbol>(); // pragma: force-coverage

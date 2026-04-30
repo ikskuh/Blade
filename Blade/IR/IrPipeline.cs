@@ -42,7 +42,7 @@ public static class IrPipeline
             }
         }
 
-        List<LirModule> lirModules = mirModules.Select(LirLowerer.Lower).ToList();
+        List<LirModule> lirModules = mirModules.ConvertAll(LirLowerer.Lower);
         IReadOnlyList<LirModule> preOptimizationLirModules = lirModules.ToList();
         if (options.EnableLirOptimizations)
         {
@@ -55,9 +55,7 @@ public static class IrPipeline
             }
         }
 
-        List<AsmModule> asmModules = lirModules
-            .Select(module => AsmLowerer.Lower(module, imagePlan, diagnostics))
-            .ToList();
+        List<AsmModule> asmModules = lirModules.ConvertAll(module => AsmLowerer.Lower(module, imagePlan, diagnostics));
         IReadOnlyList<AsmModule> preOptimizationAsmModules = asmModules.ToList();
 
         CogResourceLayout placeholderEntryLayout = new(imagePlacement.EntryImage, 0, [], []);

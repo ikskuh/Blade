@@ -1148,7 +1148,7 @@ public sealed class Binder
 
         BindStoredLayoutMembers(members, taskScope, task, boundGlobals);
         BindTaskExternalBindings(taskExternalBindings, taskScope, task, boundGlobals);
-        
+
         boundFunctions.Add(BindTaskEntryFunction(task, taskDeclaration, taskScope));
 
         _currentScope = previousScope;
@@ -1231,7 +1231,9 @@ public sealed class Binder
             if (item is VariableDeclarationSyntax declaration
                 && MapStorageClass(declaration.StorageClassKeyword) is not null
                 && declaration.ExternKeyword is null)
+            {
                 declarations.Add(declaration);
+            }
         }
 
         return declarations;

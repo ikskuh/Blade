@@ -341,7 +341,7 @@ public static class FinalAssemblyWriter
         CogResourceLayoutSet cogResourceLayouts)
     {
         AsmDataBlock? hubBlock = dataBlocks.FirstOrDefault(static candidate => candidate.Kind == AsmDataBlockKind.Hub);
-        if (hubBlock is not null && hubBlock.Definitions.OfType<AsmAllocatedStorageDefinition>().Any())
+        if (hubBlock?.Definitions.OfType<AsmAllocatedStorageDefinition>().Any() == true)
         {
             sb.AppendLine();
             WriteStorageBlock(sb, hubBlock, "' --- hub file ---", labelNames, AddressSpace.Hub, cogResourceLayouts);
@@ -954,7 +954,7 @@ public static class FinalAssemblyWriter
             AsmImmediateOperand immediate => immediate.Format(),
             AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Immediate } => "#0",
             AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Register } => "0",
-            AsmSymbolOperand symbol => FormatSymbolOperand(instruction, operandIndex, symbol, labelNames, cogResourceLayouts, currentFunction),
+            AsmSymbolOperand symbol => FormatSymbolOperand(symbol, labelNames, cogResourceLayouts, currentFunction),
             AsmLabelRefOperand labelRef => FormatLabelRefOperand(labelRef, labelNames, currentFunction),
             _ => operand.Format(),
         };
@@ -988,26 +988,6 @@ public static class FinalAssemblyWriter
     }
 
     private static string FormatSymbolOperand(
-        AsmInstructionNode instruction,
-        int operandIndex,
-        AsmSymbolOperand operand,
-        LabelNameEmitter labelNames,
-        CogResourceLayoutSet cogResourceLayouts,
-        AsmFunction currentFunction)
-    {
-        if (operand.AddressingMode == AsmSymbolAddressingMode.Immediate)
-        {
-            bool useLutVirtualAddressAlias = operand.Symbol.SymbolType == SymbolType.LutVariable;
-            string immediateExpression = FormatSymbolExpression(operand.Symbol, labelNames, cogResourceLayouts, currentFunction, useLutVirtualAddressAlias);
-            return FormatImmediateOffsetExpression(immediateExpression, operand.Offset);
-        }
-
-        return FormatOffsetExpression(
-            FormatSymbolExpression(operand.Symbol, labelNames, cogResourceLayouts, currentFunction, useLutVirtualAddressAlias: false),
-            operand.Offset);
-    }
-
-    private static string FormatSymbolOperand(
         AsmSymbolOperand operand,
         LabelNameEmitter labelNames,
         CogResourceLayoutSet cogResourceLayouts,
@@ -1019,9 +999,11 @@ public static class FinalAssemblyWriter
         Requires.NotNull(currentFunction);
 
         if (operand.AddressingMode == AsmSymbolAddressingMode.Immediate)
+        {
             return FormatImmediateOffsetExpression(
                 FormatSymbolExpression(operand.Symbol, labelNames, cogResourceLayouts, currentFunction, useLutVirtualAddressAlias: operand.Symbol.SymbolType == SymbolType.LutVariable),
                 operand.Offset);
+        }
 
         return FormatOffsetExpression(
             FormatSymbolExpression(operand.Symbol, labelNames, cogResourceLayouts, currentFunction, useLutVirtualAddressAlias: false),

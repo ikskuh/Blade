@@ -10,20 +10,20 @@ public enum AddressSpace
 {
     /// <summary>
     /// The cog register address space.
-    /// 
+    ///
     /// Addresses point to the COG's 512 32-bit registers, which are directly accessible by instructions and can be used for data storage or as instruction targets for jumps and calls.
     /// </summary>
     Cog,
     /// <summary>
     /// The LUT (Look-Up Table) address space.
-    /// 
+    ///
     /// Addresses point to the LUT's 512 32-bit registers, which accessible through `RDLUT` and `WRLUT` instructions and can be used for data storage or as instruction targets for jumps and calls.
     /// </summary>
     Lut,
 
     /// <summary>
     /// The hub address space.
-    /// 
+    ///
     /// Addresses point to bytes in the shared hub memory, which is accessible by all COGs.
     /// </summary>
     Hub,

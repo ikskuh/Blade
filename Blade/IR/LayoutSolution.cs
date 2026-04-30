@@ -290,15 +290,12 @@ public static class LayoutSolver
             return true;
         }
 
-        if (diagnostics is not null)
-        {
-            diagnostics.Report(new InvalidLayoutAlignmentError(
-                diagnostics.CurrentSource,
-                candidate.Symbol.SourceSpan.Span,
-                LayoutDebugNameFormatter.FormatLayoutName(candidate.Layout),
-                candidate.Symbol.Name,
-                candidate.AlignmentInAddressUnits));
-        }
+        diagnostics?.Report(new InvalidLayoutAlignmentError(
+            diagnostics.CurrentSource,
+            candidate.Symbol.SourceSpan.Span,
+            LayoutDebugNameFormatter.FormatLayoutName(candidate.Layout),
+            candidate.Symbol.Name,
+            candidate.AlignmentInAddressUnits));
 
         return false;
     }

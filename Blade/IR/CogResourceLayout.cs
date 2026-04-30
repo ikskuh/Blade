@@ -439,7 +439,7 @@ public static class CogResourcePlanner
             diagnostics?.ReportCogResourceLayoutFailed(
                 GetOwnerSpan(symbol),
                 GetDeterministicKey(symbol),
-                $"address range '${startAddress:X3}..${(endAddressExclusive - 1):X3}' overlaps the reserved special-register tail");
+                $"address range '${startAddress:X3}..${endAddressExclusive - 1:X3}' overlaps the reserved special-register tail");
             return false;
         }
 
@@ -451,7 +451,7 @@ public static class CogResourcePlanner
             diagnostics?.ReportCogResourceLayoutFailed(
                 GetOwnerSpan(symbol),
                 GetDeterministicKey(symbol),
-                $"address range '${startAddress:X3}..${(endAddressExclusive - 1):X3}' overlaps already reserved register space");
+                $"address range '${startAddress:X3}..${endAddressExclusive - 1:X3}' overlaps already reserved register space");
             return false;
         }
 
