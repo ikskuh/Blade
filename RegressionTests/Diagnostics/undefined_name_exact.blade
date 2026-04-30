@@ -5,4 +5,7 @@ fn load() -> u32 {
     return missing;
 }
 
-var sink: u32 = load();
+
+cog task main {
+    var sink: u32 = load();
+}

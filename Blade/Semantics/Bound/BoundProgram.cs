@@ -24,22 +24,22 @@ public sealed class BoundProgram(
     public BoundModule RootModule { get; } = Requires.NotNull(rootModule);
 
     /// <summary>
-    /// Gets the task used as the program entrypoint during IR lowering.
+    /// Gets the task identity that owns the program's root image.
     /// </summary>
     public TaskSymbol EntryPoint { get; } = Requires.NotNull(entryPoint);
 
     /// <summary>
-    /// Gets the bound function member that executes the entry task body.
+    /// Gets the bound function member that starts executing in the emitted root image.
     /// </summary>
     public BoundFunctionMember EntryPointFunction { get; } = Requires.NotNull(entryPointFunction);
 
     /// <summary>
-    /// Gets the task that physically starts execution in the emitted entry image.
+    /// Gets the runtime launcher task resolved during binding.
     /// </summary>
     public TaskSymbol LauncherEntryPoint { get; } = Requires.NotNull(launcherEntryPoint);
 
     /// <summary>
-    /// Gets the bound function member that executes the launcher task body.
+    /// Gets the bound function member that executes the runtime launcher body.
     /// </summary>
     public BoundFunctionMember LauncherEntryPointFunction { get; } = Requires.NotNull(launcherEntryPointFunction);
 

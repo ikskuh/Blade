@@ -47,6 +47,9 @@ WORKBOOK_PATH = REPO_ROOT / "Docs/propeller2-instructions.xlsx"
 INSTRUCTION_CSV_PATH = REPO_ROOT / "Docs/Parallax Propeller 2 Instructions v35 - Rev B_C Silicon.csv"
 CONFIG_PATH = REPO_ROOT / ".blade_mcp.json"
 
+COMPILER_TIMEOUT = "5s"
+REGRESSIONS_TIMEOUT = "60s"
+
 FAILED_REGRESSION_OUTCOMES = frozenset({"fail", "unexpectedPass", "hwFailed"})
 
 ARTIFACT_NAME_TO_FILE = {
@@ -749,6 +752,8 @@ def run_regressions(filters: list[str], with_hardware: bool) -> tuple[Regression
         )
 
     argv = [
+        "timeout",
+        REGRESSIONS_TIMEOUT,
         str(REGRESSIONS_BINARY_PATH),
         "--json",
     ]
@@ -888,6 +893,8 @@ def compile_file(params: CompileParameter) -> CompilerOutput | McpOutput:
             return McpOutput(reason="--module cannot be passed through additional arguments")
 
         argv: list[str] = [
+            "timeout",
+            COMPILER_TIMEOUT,
             str(COMPILER_PATH),
             "--json",
             "--output",

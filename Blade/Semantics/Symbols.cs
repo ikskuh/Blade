@@ -136,6 +136,7 @@ public sealed class GlobalVariableSymbol(
 {
     private VirtualAddress? _fixedAddress = fixedAddress;
     private int? _alignment = alignment;
+    private LayoutSymbol? _declaringLayout = declaringLayout;
     private bool _canElideTopLevelStoreLoadChains = storageClass == AddressSpace.Cog
         && !isExtern
         && !fixedAddress.HasValue;
@@ -151,7 +152,7 @@ public sealed class GlobalVariableSymbol(
     /// Gets the layout that directly declared this variable, or <see langword="null"/>
     /// for plain top-level globals.
     /// </summary>
-    public LayoutSymbol? DeclaringLayout { get; } = declaringLayout;
+    public LayoutSymbol? DeclaringLayout => _declaringLayout;
 
     public BoundExpression? Initializer { get; private set; }
 
@@ -171,6 +172,11 @@ public sealed class GlobalVariableSymbol(
     public void DisableTopLevelStoreLoadChainElision()
     {
         _canElideTopLevelStoreLoadChains = false;
+    }
+
+    internal void RetargetDeclaringLayout(LayoutSymbol? declaringLayout)
+    {
+        _declaringLayout = declaringLayout;
     }
 }
 
@@ -307,10 +313,12 @@ public class LayoutSymbol(string name, SourceSpan? sourceSpan = null) : Symbol(n
 public sealed class TaskSymbol(string name, FunctionSymbol entryFunction, AddressSpace storageClass, SourceSpan? sourceSpan = null)
     : LayoutSymbol(name, sourceSpan)
 {
+    private FunctionSymbol _entryFunction = Requires.NotNull(entryFunction);
+
     /// <summary>
     /// Gets the entry function that executes this task body.
     /// </summary>
-    public FunctionSymbol EntryFunction { get; } = Requires.NotNull(entryFunction);
+    public FunctionSymbol EntryFunction => _entryFunction;
 
     /// <summary>
     /// Gets the execution/storage space in which this task starts.
@@ -321,6 +329,11 @@ public sealed class TaskSymbol(string name, FunctionSymbol entryFunction, Addres
     /// Gets a value indicating that this layout is the implicit private layout attached to a task.
     /// </summary>
     public override bool IsTaskLayout => true;
+
+    internal void RetargetEntryFunction(FunctionSymbol entryFunction)
+    {
+        _entryFunction = Requires.NotNull(entryFunction);
+    }
 }
 
 public sealed class Scope(Scope? parent)

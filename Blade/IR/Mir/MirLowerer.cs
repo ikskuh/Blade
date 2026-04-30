@@ -29,7 +29,7 @@ public static class MirLowerer
 
         foreach (BoundFunctionMember functionMember in program.Functions)
         {
-            if (!ReferenceEquals(functionMember, program.LauncherEntryPointFunction))
+            if (!ReferenceEquals(functionMember, program.EntryPointFunction))
                 functions.Add(LowerFunction(functionMember, storagePlacesBySymbol, storageDefinitions));
         }
 
@@ -42,13 +42,13 @@ public static class MirLowerer
         IReadOnlyList<StorageDefinition> storageDefinitions)
     {
         FunctionLoweringContext context = new(
-            program.LauncherEntryPoint.EntryFunction,
+            program.EntryPoint.EntryFunction,
             isEntryPoint: true,
-            program.LauncherEntryPoint.EntryFunction.ReturnTypes,
+            program.EntryPoint.EntryFunction.ReturnTypes,
             storagePlacesBySymbol,
             storageDefinitions,
-            program.LauncherEntryPoint.EntryFunction.ReturnSlots);
-        context.LowerEntryPointBody(program.GlobalVariables, program.LauncherEntryPointFunction.Body);
+            program.EntryPoint.EntryFunction.ReturnSlots);
+        context.LowerEntryPointBody(program.GlobalVariables, program.EntryPointFunction.Body);
         return context.Build();
     }
 

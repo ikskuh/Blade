@@ -348,15 +348,189 @@ public sealed class Binder
         if (!functions.Any(function => ReferenceEquals(function.Symbol, launcherEntryPoint.EntryFunction)))
             functions.Insert(0, launcherEntryPointFunction);
 
+        MergeRootEntryTask(programEntryPoint, launcherEntryPoint, globalVariables, functions);
+        WrapNonRootTaskEntryFunctions(modules, programEntryPoint, launcherEntryPoint, functions);
+
         return new BoundProgram(
             rootModule,
             programEntryPoint,
-            programEntryPointFunction,
+            launcherEntryPointFunction,
             launcherEntryPoint,
             launcherEntryPointFunction,
             modules,
             globalVariables,
             functions);
+    }
+
+    private static void MergeRootEntryTask(
+        TaskSymbol programEntryPoint,
+        TaskSymbol launcherEntryPoint,
+        IReadOnlyList<GlobalVariableSymbol> globalVariables,
+        IReadOnlyList<BoundFunctionMember> functions)
+    {
+        Requires.NotNull(programEntryPoint);
+        Requires.NotNull(launcherEntryPoint);
+        Requires.NotNull(globalVariables);
+        Requires.NotNull(functions);
+
+        if (ReferenceEquals(programEntryPoint, launcherEntryPoint))
+            return;
+
+        programEntryPoint.SetParents(MergeTaskParents(programEntryPoint, launcherEntryPoint));
+
+        foreach (GlobalVariableSymbol global in globalVariables)
+        {
+            if (!ReferenceEquals(global.DeclaringLayout, launcherEntryPoint))
+                continue;
+
+            bool added = programEntryPoint.TryDeclareMember(global);
+            Assert.Invariant(added, $"Runtime launcher task member '{global.Name}' collides with root task member '{programEntryPoint.Name}.{global.Name}'.");
+            global.RetargetDeclaringLayout(programEntryPoint);
+        }
+
+        foreach (BoundFunctionMember function in functions)
+        {
+            if (ReferenceEquals(function.Symbol.ImplicitLayout, launcherEntryPoint))
+                function.Symbol.SetImplicitLayout(programEntryPoint);
+        }
+
+        programEntryPoint.RetargetEntryFunction(launcherEntryPoint.EntryFunction);
+    }
+
+    private static void WrapNonRootTaskEntryFunctions(
+        IReadOnlyList<BoundModule> modules,
+        TaskSymbol programEntryPoint,
+        TaskSymbol launcherEntryPoint,
+        List<BoundFunctionMember> functions)
+    {
+        Requires.NotNull(modules);
+        Requires.NotNull(programEntryPoint);
+        Requires.NotNull(launcherEntryPoint);
+        Requires.NotNull(functions);
+
+        foreach (TaskSymbol task in CollectDistinctTasks(modules))
+        {
+            if (ReferenceEquals(task, programEntryPoint)
+                || ReferenceEquals(task, launcherEntryPoint))
+            {
+                continue;
+            }
+
+            FunctionSymbol taskBodyFunction = task.EntryFunction;
+            int taskBodyIndex = functions.FindIndex(function => ReferenceEquals(function.Symbol, taskBodyFunction));
+            Assert.Invariant(taskBodyIndex >= 0, $"Task body function '{taskBodyFunction.Name}' must be present in the bound program.");
+
+            BoundFunctionMember wrapper = CreateDefaultTaskRuntimeWrapper(task, taskBodyFunction);
+            task.RetargetEntryFunction(wrapper.Symbol);
+            functions.Insert(taskBodyIndex, wrapper);
+        }
+    }
+
+    private static IReadOnlyList<TaskSymbol> CollectDistinctTasks(IReadOnlyList<BoundModule> modules)
+    {
+        List<TaskSymbol> tasks = [];
+        HashSet<TaskSymbol> seenTasks = [];
+
+        foreach (BoundModule module in modules)
+        {
+            foreach (TaskSymbol task in module.ExportedSymbols.Values.OfType<TaskSymbol>())
+            {
+                if (seenTasks.Add(task))
+                    tasks.Add(task);
+            }
+        }
+
+        return tasks;
+    }
+
+    private static BoundFunctionMember CreateDefaultTaskRuntimeWrapper(TaskSymbol task, FunctionSymbol taskBodyFunction)
+    {
+        Requires.NotNull(task);
+        Requires.NotNull(taskBodyFunction);
+
+        TextSpan syntheticSpan = new(0, 0);
+        SourceSpan syntheticSourceSpan = SourceSpan.Synthetic();
+        Token name = new(TokenKind.Identifier, syntheticSpan, RuntimeLauncherTaskName);
+
+        FunctionSymbol wrapperFunction = new(
+            RuntimeLauncherTaskName,
+            new SyntheticFunctionSignatureSyntax(name),
+            FunctionKind.Default,
+            isTopLevel: true,
+            task.StorageClass,
+            FunctionInliningPolicy.Default,
+            syntheticSourceSpan);
+        wrapperFunction.SetMetadata(taskBodyFunction.Alignment, taskBodyFunction.AssociatedLayouts);
+        wrapperFunction.SetImplicitLayout(task);
+
+        List<ParameterVariableSymbol> wrapperParameters = [];
+        foreach (ParameterVariableSymbol parameter in taskBodyFunction.Parameters)
+            wrapperParameters.Add(new ParameterVariableSymbol(parameter.Name, parameter.Type, syntheticSourceSpan));
+
+        wrapperFunction.Parameters = wrapperParameters;
+        wrapperFunction.ReturnSlots = [];
+
+        List<BoundExpression> callArguments = [];
+        foreach (ParameterVariableSymbol parameter in wrapperParameters)
+            callArguments.Add(new BoundSymbolExpression(parameter, syntheticSpan, parameter.Type));
+
+        BoundExpressionStatement callTaskBody = new(
+            new BoundCallExpression(taskBodyFunction, callArguments, syntheticSpan, BuiltinTypes.Void),
+            syntheticSpan);
+
+        InlineAsmTempBindingSlot cogIdSlot = new(tempId: 1);
+        LocalVariableSymbol cogIdSymbol = new(
+            "asm%1",
+            BuiltinTypes.U32,
+            isConst: false,
+            isInlineAsmTemporary: true,
+            syntheticSourceSpan);
+
+        BoundAsmStatement stopCurrentCog = new(
+            AsmVolatility.Volatile,
+            flagOutput: null,
+            [
+                new InlineAsmInstructionLine(
+                    condition: null,
+                    mnemonic: P2Mnemonic.COGID,
+                    operands: [new InlineAsmBindingRefOperand(cogIdSlot)],
+                    flagEffect: null,
+                    trailingComment: null),
+                new InlineAsmInstructionLine(
+                    condition: null,
+                    mnemonic: P2Mnemonic.COGSTOP,
+                    operands: [new InlineAsmBindingRefOperand(cogIdSlot)],
+                    flagEffect: null,
+                    trailingComment: null),
+            ],
+            new Dictionary<InlineAsmBindingSlot, Symbol>
+            {
+                [cogIdSlot] = cogIdSymbol,
+            },
+            syntheticSpan);
+
+        BoundBlockStatement body = new([callTaskBody, stopCurrentCog], syntheticSpan);
+        return new BoundFunctionMember(wrapperFunction, body, syntheticSpan);
+    }
+
+    private static IReadOnlyList<LayoutSymbol> MergeTaskParents(TaskSymbol programEntryPoint, TaskSymbol launcherEntryPoint)
+    {
+        List<LayoutSymbol> mergedParents = [];
+        HashSet<LayoutSymbol> seenParents = [];
+
+        foreach (LayoutSymbol parent in programEntryPoint.Parents)
+        {
+            if (seenParents.Add(parent))
+                mergedParents.Add(parent);
+        }
+
+        foreach (LayoutSymbol parent in launcherEntryPoint.Parents)
+        {
+            if (seenParents.Add(parent))
+                mergedParents.Add(parent);
+        }
+
+        return mergedParents;
     }
 
     private void BindImports(LoadedModule module)

@@ -1,14 +1,14 @@
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// - CALLPB g_left, #f_wrap_inc
-// - CALLPB g_right, #f_wrap_dec
+// - CALLPB ?1, #?2
+// - CALLPB ?3, #?4
 // - MOV ?, PB
 // ! ADD PB, PB
 // SEQUENCE:
-// - CALLPB g_left, #f_wrap_inc
-// - MOV ?1, PB
-// - CALLPB g_right, #f_wrap_dec
+// - CALLPB ?1, #?2
+// - MOV ?5, PB
+// - CALLPB ?3, #?4
 // ! ADD PB, PB
 // NOTE:
 //   Covers two second-order calls in one expression. The first result must be

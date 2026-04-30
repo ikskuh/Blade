@@ -967,7 +967,6 @@ public static class AsmLowerer
             CreatePlaceRegisterOperand(info.ParameterPlaces[0]),
             new AsmSymbolOperand(info.TransportRegister)));
     }
-
     /// <summary>
     /// Identifies registers whose values are consumed only as hardware flags, not as register
     /// values. A comparison writing to such a register can skip materialization (WRZ/WRC).

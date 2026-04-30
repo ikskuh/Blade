@@ -2,13 +2,17 @@
 // STAGE: asmir
 // 
 // SEQUENCE:
-// - __asm_0_0_self
-// - MOV g_foo, #__asm_0_0_self
+// - NOP
+// - ?1
+// - MOV ?2, #?1
+// - NOP
 
 cog task main {
   cog var foo: u32 = 0;
-  asm {
+  asm volatile {
+      NOP // guard nop for pattern matcher
     self:
       MOV {foo}, #self
+      NOP // guard nop for pattern matcher
   };
 }

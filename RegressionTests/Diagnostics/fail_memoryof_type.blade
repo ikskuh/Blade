@@ -6,5 +6,9 @@
 
 import builtin;
 
-cog var x: u32 = 0;
-cog var cls: builtin.MemorySpace = memoryof(u32, .hub);
+
+cog task main {
+    cog var x: u32 = 0;
+    cog var cls: builtin.MemorySpace = memoryof(u32, .hub);
+}
+

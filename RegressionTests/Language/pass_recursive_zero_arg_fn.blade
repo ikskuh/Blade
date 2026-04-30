@@ -1,18 +1,18 @@
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// - CALLB #f_descend
-// - MOV ?1, PB
-// - MOV OUTA, ?1
+// - CALLB #?1
+// - MOV ?2, PB
+// - MOV OUTA, ?2
 // - RETB
 // ! abi_rec_descend_ret0
 // ! g_rec_descend_ret0
 // SEQUENCE:
-// - descend_bb2
-// - SUB g_remaining, #1
-// - CALLB #f_descend
+// - ?3
+// - SUB ?4, #1
+// - CALLB #?1
 // - MOV PB, PB
-// - JMP #descend_bb3
+// - JMP #?5
 // NOTE:
 //   Covers the recursive ABI branch for a register-returning rec fn with no
 //   parameters. The recursive return value now comes back in the shared

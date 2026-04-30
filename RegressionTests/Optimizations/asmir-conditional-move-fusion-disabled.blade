@@ -3,9 +3,9 @@
 // ARGS:
 // - -fno-asmir-opt=conditional-move-fusion
 // SEQUENCE:
-// - IF_Z JMP #__asm_0_0_done
-// - MOV g_sink, #1
-// - __asm_0_0_done
+// - IF_Z JMP #?1
+// - MOV ?2, #1
+// - ?1
 // NOTE:
 //   Inline asm provides a stable jump-over-single-instruction trigger for the
 //   ASMIR conditional-move-fusion pass.

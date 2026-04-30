@@ -1,9 +1,9 @@
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// - MOV g_sink, PB
-// - CALLPB g_sink, #f_general_use
-// ! CALLPB PB, #f_general_use
+// - MOV ?1, PB
+// - CALLPB ?1, #?2
+// ! CALLPB PB, #?2
 // NOTE:
 //   Reading a register-backed global from a non-top-level function makes the
 //   intermediate store observable, so transport fusion must keep the

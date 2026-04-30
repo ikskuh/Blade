@@ -6,4 +6,7 @@ asm fn bad_ref(a: u32) -> u32 {
     MOV {return}, {nonexistent}
 }
 
-cog var sink: u32 = bad_ref(1);
+
+cog task main {
+    cog var sink: u32 = bad_ref(1);
+}

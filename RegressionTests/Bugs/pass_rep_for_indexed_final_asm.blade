@@ -1,18 +1,17 @@
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// 1x REP @_rep_end_1_0,
-// 1x ADD ?1, #1
-// 1x MOV ?2, ?3
+// 1x REP @?,
+// 1x ADD ?, #1
 // SEQUENCE:
-// - sum_indices_bb1
-// - CMP ?, ?1 WC
-// - IF_NC JMP #_rep_end_1_0
-// - REP @_rep_end_1_0, ?1
-// - ADD ?, ?
+// - CMP ?1, ?2 WC
+// - IF_NC JMP #?
+// - REP @?, ?2
 // - MOV ?, ?
-// - _rep_end_1_0
-// ! JMP #sum_indices_bb1
+// - ADD ?, ?
+// - ADD ?, #1
+// - MOV ?, ?
+// - ?
 // - MOV PA, ?
 // NOTE:
 //   Locks the final PASM shape for indexed rep-for lowering: one REP region,

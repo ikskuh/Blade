@@ -1,9 +1,9 @@
-// EXPECT: xfail
+// EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
 // - BYTE 1, 2, 3, 4
 // - WORD 5, 6
-// - LONG 7, __asm_0_0_done
+// - LONG 7, ?
 
 cog task main {
     asm volatile {

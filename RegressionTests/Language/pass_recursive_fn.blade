@@ -1,10 +1,10 @@
 // EXPECT: pass
 // STAGE: final-asm
 // SEQUENCE:
-// - MOV PB, g_input_n
-// - CALLB #f_factorial
-// - MOV ?1, PA
-// - MOV OUTA, ?1
+// - MOV PB, ?1
+// - CALLB #?2
+// - MOV ?3, PA
+// - MOV OUTA, ?3
 // CONTAINS:
 // - PUSHB
 // - POPB
@@ -14,10 +14,10 @@
 // ! WRLONG
 // ! RDLONG
 // SEQUENCE:
-// - factorial_bb2
+// - ?4
 // - PUSHB PB
 // - MOV PB, PA
-// - CALLB #f_factorial
+// - CALLB #?2
 // - POPB PB
 // NOTE:
 //   Exercises recursive function (rec fn) calling convention with

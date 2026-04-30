@@ -106,7 +106,7 @@ public static class ImagePlanner
 
         Dictionary<TaskSymbol, ImageDescriptor> imagesByTask = [];
         Queue<TaskSymbol> pendingTasks = new();
-        pendingTasks.Enqueue(program.LauncherEntryPoint);
+        pendingTasks.Enqueue(program.EntryPoint);
 
         while (pendingTasks.Count > 0)
         {
@@ -116,28 +116,28 @@ public static class ImagePlanner
 
             HashSet<FunctionSymbol> reachableFunctions = [];
             HashSet<GlobalVariableSymbol> reachableStorage = [];
-            HashSet<TaskSymbol> spawnedTasks = [];
+            HashSet<TaskSymbol> spawnedFromTask = [];
             CollectReachableFromFunction(
                 task.EntryFunction,
                 functionsBySymbol,
                 reachableFunctions,
                 reachableStorage,
-                spawnedTasks);
+                spawnedFromTask);
 
             ImageDescriptor image = new(
                 task,
                 task.EntryFunction,
                 task.StorageClass,
-                ReferenceEquals(task, program.LauncherEntryPoint),
+                ReferenceEquals(task, program.EntryPoint),
                 reachableFunctions.OrderBy(static function => function.Name, System.StringComparer.Ordinal).ToList(),
                 reachableStorage.OrderBy(static storage => storage.Name, System.StringComparer.Ordinal).ToList());
             imagesByTask.Add(task, image);
 
-            foreach (TaskSymbol spawnedTask in spawnedTasks)
+            foreach (TaskSymbol spawnedTask in spawnedFromTask)
                 pendingTasks.Enqueue(spawnedTask);
         }
 
-        ImageDescriptor entryImage = imagesByTask[program.LauncherEntryPoint];
+        ImageDescriptor entryImage = imagesByTask[program.EntryPoint];
         return new ImagePlan(imagesByTask.Values.ToList(), entryImage);
     }
 

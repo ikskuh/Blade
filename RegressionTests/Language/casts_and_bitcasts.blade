@@ -2,9 +2,9 @@
 // DIAGNOSTICS: ComptimeIntegerTruncation
 // STAGE: final-asm
 // CONTAINS:
-// - MOV g_narrowed_unsigned, #1
-// - MOV g_reinterpreted_signed, #1
-// - MOV g_roundtrip_bits, #509
+// - MOV ?1, #1
+// - MOV ?2, #1
+// - MOV ?3, #509
 // NOTE:
 //   Explicit casts and bitcasts now fold aggressively when every operand is a
 //   compile-time constant, including the pointer round-trip through `u32`.

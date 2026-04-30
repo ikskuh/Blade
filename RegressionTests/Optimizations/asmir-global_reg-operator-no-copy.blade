@@ -1,9 +1,9 @@
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// - ADD g_shared, #1
-// ! MOV ?, g_shared
-// ! MOV g_shared, ?
+// - ADD ?1, #1
+// ! MOV ?, ?1
+// ! MOV ?1, ?
 cog task main {
     
     cog var shared: u32 = 0;

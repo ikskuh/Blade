@@ -385,6 +385,10 @@ cog task main {
 
 `comptime const` as a comptime-only value type that must be pasted verbatim.
 
+## Top-level `asset` must be legal
+
+See name.
+
 ## Task/Layout Refactoring
 
 ### Introduce true split-phase variables

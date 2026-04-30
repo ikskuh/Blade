@@ -1,0 +1,18 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - ' --- image worker (Cog) ---
+// - COGID ?
+// - COGSTOP ?
+// SEQUENCE:
+// - ' --- image worker (Cog) ---
+// - ' function _start (Leaf)
+// - COGID ?1
+// - COGSTOP ?1
+
+cog task worker() {
+}
+
+cog task main {
+    spawn worker();
+}

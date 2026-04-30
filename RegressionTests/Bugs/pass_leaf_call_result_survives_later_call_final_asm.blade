@@ -1,14 +1,14 @@
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// - CALLPA g_left, #f_leaf_inc
-// - CALLPA g_right, #f_leaf_dec
+// - CALLPA ?1, #?2
+// - CALLPA ?3, #?4
 // - MOV ?, PA
 // ! ADD PA, PA
 // SEQUENCE:
-// - CALLPA g_left, #f_leaf_inc
-// - MOV ?1, PA
-// - CALLPA g_right, #f_leaf_dec
+// - CALLPA ?1, #?2
+// - MOV ?5, PA
+// - CALLPA ?3, #?4
 // ! ADD PA, PA
 // NOTE:
 //   Covers two leaf calls in one expression. The first result must be copied

@@ -4,4 +4,8 @@
 // NOTE:
 //   sizeof(Type) without a memory space is invalid — needs sizeof(Type, .space).
 
-cog var x: u32 = sizeof(u32);
+
+cog task main {
+    cog var x: u32 = sizeof(u32);
+}
+

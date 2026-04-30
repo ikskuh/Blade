@@ -27,7 +27,7 @@ hub const P_TT_01: u32 = 0x00000040;
 hub const P_ASYNC_TX: u32 = 0x0000003C;
 
 
-asm fn rt_write_hex_long(value: u32)
+noinline leaf asm fn rt_write_hex_long(value: u32)
 {
         MOV     %1, #8
   nib_loop:
@@ -41,7 +41,7 @@ IF_LT   ADD     %2, #48 // == "0" == 0x30
         RET
 }
 
-asm fn rt_write_byte(chr: u8)
+noinline leaf asm fn rt_write_byte(chr: u8)
 {
     _loop:
         TESTP   {RT_TXD_PIN}        WC   // wait for empty buffer

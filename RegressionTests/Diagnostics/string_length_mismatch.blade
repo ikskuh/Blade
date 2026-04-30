@@ -2,4 +2,8 @@
 // DIAGNOSTICS: TypeMismatch
 // NOTE:
 //   String literals now lex as byte-array literals, so mismatched target lengths fail as a normal type mismatch.
-cog var a: [3]u8 = "bye!";
+
+
+cog task main {
+    cog var a: [3]u8 = "bye!";
+}

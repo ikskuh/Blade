@@ -1,12 +1,12 @@
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// - MOV ?, g_right
-// - CALLPA ?, #f_leaf_sub
+// - MOV ?, ?1
+// - CALLPA ?, #?2
 // - MOV ?, PA
 // - MOV PA, ?
 // - SUB PA, ?
-// - MOV g_sink, PA
+// - MOV ?3, PA
 // ! SUB PA, PA
 // ! g_leaf_leaf_sub_arg1
 // NOTE:

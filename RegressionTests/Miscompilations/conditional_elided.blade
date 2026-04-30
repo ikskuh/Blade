@@ -12,13 +12,15 @@ asm fn test_pin(index: u32) -> bool@C {
     TESTP {index} WC
 }
 
-if(test_pin(1)) {
-    asm volatile { 
-        COGATN #1 
-    };
-}
-else {
-    asm volatile { 
-        COGATN #2
-    };
+cog task main {
+    if(test_pin(1)) {
+        asm volatile { 
+            COGATN #1 
+        };
+    }
+    else {
+        asm volatile { 
+            COGATN #2
+        };
+    }
 }

@@ -1,10 +1,10 @@
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// - CALLPB g_source, #f_general_use
-// - CALLPB PB, #f_general_use
-// - CALLPB PB, #f_leaf2_func
-// - CALLPA PB, #f_leaf_func
+// - CALLPB ?1, #?2
+// - CALLPB PB, #?2
+// - CALLPB PB, #?3
+// - CALLPA PB, #?4
 // - ADD PB, #2
 // ! abi_gen_general_use_arg0
 // ! g_gen_general_use_arg0

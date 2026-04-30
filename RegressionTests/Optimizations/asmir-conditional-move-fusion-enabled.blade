@@ -3,8 +3,8 @@
 // ARGS:
 // - -fasmir-opt=conditional-move-fusion
 // CONTAINS:
-// - IF_NZ MOV g_sink, #1
-// ! IF_Z JMP #__asm_0_0_done
+// - IF_NZ MOV ?1, #1
+// ! IF_Z JMP #?2
 // NOTE:
 //   Inline asm provides a stable jump-over-single-instruction trigger, and the
 //   optimizer fuses it into a conditional MOV with the inverted predicate.
