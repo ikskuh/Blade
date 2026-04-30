@@ -10,56 +10,54 @@ layout Runtime{
     cog var rt_result: u32 @(0x1EF) = 0;
 }
 
+hub const RT_F_CPU: u32   = 200_000_000;
+hub const RT_BAUD: u32    =     115_200;
+
+hub const RT_TXD_PIN: u32 = 62;
+hub const RT_RXD_PIN: u32 = 63;
+
+hub const RT_UART_CLOCKS: u32 = RT_F_CPU / RT_BAUD;
+
+hub const RT_UART_CFG: u32 = (RT_F_CPU / RT_BAUD * 0x1_0000) | (8-1); // 115200 @ 8 bit
+
+hub const RT_START_MARKER: u8 = 0x02; // STX
+hub const RT_END_MARKER: u8 = 0x03;  // ETC
+
+hub const P_TT_01: u32 = 0x00000040;
+hub const P_ASYNC_TX: u32 = 0x0000003C;
+
+
+noinline leaf asm fn rt_write_hex_long(value: u32)
+{
+        MOV     %1, #8
+  nib_loop:
+        GETNIB  %2, {value}, #7
+        CMP     %2, #10    WCZ
+IF_GE   ADD     %2, #55 // == "A"-10 == 65-10
+IF_LT   ADD     %2, #48 // == "0" == 0x30
+        CALLPA  %2, {rt_write_byte}
+        SHL     {value}, #4
+        DJNZ    %1, #nib_loop
+        RET
+}
+
+noinline leaf asm fn rt_write_byte(chr: u8)
+{
+    _loop:
+        TESTP   {RT_TXD_PIN}        WC   // wait for empty buffer
+IF_NC   JMP     #_loop                  // if not empty, test again
+_RET_   WYPIN   {chr}, {RT_TXD_PIN}      // write PA
+}
+
+inline asm volatile fn halt() {
+    REP #1, #0
+    NOP
+}
+
 import builtin;
 
 cog task _start : Runtime
 {
-
-     cog const RT_F_CPU: u32   = 200_000_000;
-     cog const RT_BAUD: u32    =     115_200;
-
-     cog const RT_TXD_PIN: u32 = 62;
-     cog const RT_RXD_PIN: u32 = 63;
-
-     cog const RT_UART_CLOCKS: u32 = RT_F_CPU / RT_BAUD;
-
-     cog const RT_UART_CFG: u32 = (RT_F_CPU / RT_BAUD * 0x1_0000) | (8-1); // 115200 @ 8 bit
-
-     cog const RT_START_MARKER: u8 = 0x02; // STX
-     cog const RT_END_MARKER: u8 = 0x03;  // ETC
-
-     cog const P_TT_01: u32 = 0x00000040;
-     cog const P_ASYNC_TX: u32 = 0x0000003C;
-
-
-     noinline leaf asm fn rt_write_hex_long(value: u32)
-     {
-          MOV     %1, #8
-     nib_loop:
-          GETNIB  %2, {value}, #7
-          CMP     %2, #10    WCZ
-     IF_GE   ADD     %2, #55 // == "A"-10 == 65-10
-     IF_LT   ADD     %2, #48 // == "0" == 0x30
-          CALLPA  %2, {rt_write_byte}
-          SHL     {value}, #4
-          DJNZ    %1, #nib_loop
-          RET
-     }
-
-     noinline leaf asm fn rt_write_byte(chr: u8)
-     {
-     _loop:
-          TESTP   {RT_TXD_PIN}        WC   // wait for empty buffer
-     IF_NC   JMP     #_loop                  // if not empty, test again
-     _RET_   WYPIN   {chr}, {RT_TXD_PIN}      // write PA
-     }
-
-     inline asm volatile fn halt() {
-     REP #1, #0
-     NOP
-     }
-
-
     asm volatile {
                 JMP #over
     rt_param0:

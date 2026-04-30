@@ -42,6 +42,16 @@ public static class LirLowerer
             return created;
         }
 
+        Dictionary<MirValueId, BladeValue> constValues = [];
+        foreach (MirBlock mirBlock in mirFunction.Blocks)
+        {
+            foreach (MirInstruction instruction in mirBlock.Instructions)
+            {
+                if (instruction is MirConstantInstruction { Result: MirValueId constId, Value: BladeValue constVal })
+                    constValues[constId] = constVal;
+            }
+        }
+
         List<LirBlock> blocks = new(mirFunction.Blocks.Count);
         foreach (MirBlock mirBlock in mirFunction.Blocks)
         {
@@ -55,7 +65,7 @@ public static class LirLowerer
             List<LirInstruction> instructions = [];
             foreach (MirInstruction instruction in mirBlock.Instructions)
             {
-                instructions.Add(LowerInstruction(instruction, GetRegister));
+                instructions.Add(LowerInstruction(instruction, GetRegister, constValues));
 
                 // Emit extra result extraction instructions for multi-return calls
                 if (instruction is MirCallInstruction { ExtraResults.Count: > 0 } callInstr)
@@ -106,7 +116,8 @@ public static class LirLowerer
 
     private static LirInstruction LowerInstruction(
         MirInstruction instruction,
-        System.Func<MirValueId, LirVirtualRegister> getRegister)
+        System.Func<MirValueId, LirVirtualRegister> getRegister,
+        IReadOnlyDictionary<MirValueId, BladeValue> constValues)
     {
         LirVirtualRegister? destination = instruction.Result is MirValueId result
             ? getRegister(result)
@@ -305,7 +316,7 @@ public static class LirLowerer
                 new LirIntrinsicOperation(intrinsic.Mnemonic),
                 destination,
                 intrinsic.ResultType,
-                LowerOperands(intrinsic.Arguments, getRegister),
+                LowerIntrinsicArguments(intrinsic.Arguments, getRegister, constValues),
                 hasSideEffects: true,
                 predicate: null,
                 writesC: false,
@@ -364,7 +375,7 @@ public static class LirLowerer
                 inlineAsm.Volatility,
                 inlineAsm.FlagOutput,
                 inlineAsm.ParsedLines,
-                LowerInlineAsmBindings(inlineAsm.Bindings, getRegister),
+                LowerInlineAsmBindings(inlineAsm.Bindings, getRegister, constValues),
                 inlineAsm.Span),
 
             MirYieldInstruction yield => new LirOpInstruction(
@@ -507,15 +518,33 @@ public static class LirLowerer
         return operands;
     }
 
+    private static IReadOnlyList<LirOperand> LowerIntrinsicArguments(
+        IReadOnlyList<MirValueId> values,
+        System.Func<MirValueId, LirVirtualRegister> getRegister,
+        IReadOnlyDictionary<MirValueId, BladeValue> constValues)
+    {
+        List<LirOperand> operands = new(values.Count);
+        foreach (MirValueId value in values)
+        {
+            operands.Add(constValues.TryGetValue(value, out BladeValue? constVal)
+                ? new LirImmediateOperand(constVal)
+                : new LirRegisterOperand(getRegister(value)));
+        }
+        return operands;
+    }
+
     private static IReadOnlyList<LirInlineAsmBinding> LowerInlineAsmBindings(
         IReadOnlyList<MirInlineAsmBinding> bindings,
-        System.Func<MirValueId, LirVirtualRegister> getRegister)
+        System.Func<MirValueId, LirVirtualRegister> getRegister,
+        IReadOnlyDictionary<MirValueId, BladeValue> constValues)
     {
         List<LirInlineAsmBinding> lowered = new(bindings.Count);
         foreach (MirInlineAsmBinding binding in bindings)
         {
             LirOperand operand = binding.Value is MirValueId value
-                ? new LirRegisterOperand(getRegister(value))
+                ? constValues.TryGetValue(value, out BladeValue? constVal)
+                    ? new LirImmediateOperand(constVal)
+                    : new LirRegisterOperand(getRegister(value))
                 : new LirPlaceOperand(binding.Place!);
             lowered.Add(new LirInlineAsmBinding(binding.Slot, binding.Symbol, operand, binding.Access));
         }
