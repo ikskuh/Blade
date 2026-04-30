@@ -1,0 +1,21 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - MOV ?1, #62
+// - TESTP ?1 WC
+// - _RET_ WYPIN ?2, ?1
+// ! main_c_g_RT_TXD_PIN
+
+hub const RT_TXD_PIN: u32 = 62;
+
+noinline leaf asm fn rt_write_byte(chr: u8)
+{
+_loop:
+     TESTP   {RT_TXD_PIN}        WC   // wait for empty buffer
+IF_NC JMP     #_loop                  // if not empty, test again
+_RET_ WYPIN   {chr}, {RT_TXD_PIN}     // write PA
+}
+
+cog task main {
+    rt_write_byte(10);
+}

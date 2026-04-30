@@ -1,0 +1,17 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - TESTP main_c_g_RT_TXD_PIN WC
+// - _RET_ WYPIN ?1, main_c_g_RT_TXD_PIN
+// ! MOV ?1, #62
+
+hub var RT_TXD_PIN: u32 = 62;
+
+noinline leaf asm fn rt_write_byte() -> u32
+{
+    RDLONG {result}, {RT_TXD_PIN}
+}
+
+cog task main {
+    _ = rt_write_byte();
+}

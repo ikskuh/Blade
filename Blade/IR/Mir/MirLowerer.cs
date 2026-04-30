@@ -485,6 +485,7 @@ public static class MirLowerer
         private readonly List<BlockBuilder> _blocks = [];
         private readonly Stack<LoopContext> _loopStack = [];
         private readonly Dictionary<Symbol, StoragePlace> _storagePlacesBySymbol = [];
+        private readonly Dictionary<Symbol, RuntimeBladeValue> _staticGlobalValuesBySymbol = [];
         private readonly HashSet<StoragePlace> _preInitializedStoragePlaces = [];
         private readonly BlockBuilder _entryBlock;
         private readonly BlockBuilder _exitBlock;
@@ -506,7 +507,14 @@ public static class MirLowerer
             foreach ((Symbol storageSymbol, StoragePlace place) in storagePlacesBySymbol)
                 _storagePlacesBySymbol[storageSymbol] = place;
             foreach (StorageDefinition definition in storageDefinitions)
+            {
                 _preInitializedStoragePlaces.Add(definition.Place);
+                if (definition.InitialValue is not null
+                    && definition.Place.Symbol is VariableSymbol { ScopeKind: VariableScopeKind.GlobalStorage } global)
+                {
+                    _staticGlobalValuesBySymbol[global] = definition.InitialValue;
+                }
+            }
 
             _entryBlock = CreateBlock();
             _exitBlock = CreateBlock();
@@ -723,6 +731,13 @@ public static class MirLowerer
             foreach ((InlineAsmBindingSlot slot, Symbol symbol) in asmStatement.ReferencedSymbols)
             {
                 InlineAsmBindingAccess access = bindingAccess.GetValueOrDefault(slot, InlineAsmBindingAccess.ReadWrite);
+                if (TryGetInlineAsmConstGlobalValue(symbol, out RuntimeBladeValue constGlobalValue))
+                {
+                    MirValueId constValue = EmitConstant(constGlobalValue, asmStatement.Span);
+                    bindings.Add(new MirInlineAsmBinding(slot, symbol, constValue, place: null, access));
+                    continue;
+                }
+
                 if (TryGetStoragePlace(symbol, out StoragePlace? place))
                 {
                     bindings.Add(new MirInlineAsmBinding(slot, symbol, value: null, place, access));
@@ -1962,6 +1977,24 @@ public static class MirLowerer
                 }
 
             _currentValues[symbol] = value;
+        }
+
+        private bool TryGetInlineAsmConstGlobalValue(Symbol symbol, out RuntimeBladeValue value)
+        {
+            if (symbol is not VariableSymbol { ScopeKind: VariableScopeKind.GlobalStorage, IsConst: true })
+            {
+                value = null!;
+                return false;
+            }
+
+            if (_staticGlobalValuesBySymbol.TryGetValue(symbol, out RuntimeBladeValue? resolved))
+            {
+                value = resolved;
+                return true;
+            }
+
+            value = null!;
+            return false;
         }
 
         private MirValueId ReadSymbol(Symbol symbol, BladeType type, TextSpan span)
