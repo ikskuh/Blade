@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using Blade.IR;
 using Blade.IR.Asm;
 using Blade.IR.Mir;
@@ -53,7 +54,7 @@ internal static class Program
             TokenCount = compilation.TokenCount,
             MemberCount = compilation.Syntax.Members.Count,
             BoundFunctionCount = compilation.BoundProgram?.Functions.Count ?? 0,
-            MirFunctionCount = compilation.IrBuildResult?.MirModule.Functions.Count ?? 0,
+            MirFunctionCount = compilation.IrBuildResult?.MirModules.Sum(static module => module.Functions.Count) ?? 0,
             TimeMs = sw.Elapsed.TotalMilliseconds,
         };
 

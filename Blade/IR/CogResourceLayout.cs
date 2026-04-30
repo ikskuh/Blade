@@ -177,19 +177,20 @@ public static class CogResourcePlanner
     /// Builds the image-local register-space layouts after code-size-changing passes completed.
     /// </summary>
     public static CogResourceLayoutSet Build(
-        AsmModule module,
+        IReadOnlyList<AsmModule> modules,
         ImagePlan imagePlan,
         ImagePlacement imagePlacement,
         LayoutSolution layoutSolution,
         bool includeDefaultBladeHalt,
         DiagnosticBag? diagnostics)
     {
-        Requires.NotNull(module);
+        Requires.NotNull(modules);
         Requires.NotNull(imagePlan);
         Requires.NotNull(imagePlacement);
         Requires.NotNull(layoutSolution);
 
-        Dictionary<ImageDescriptor, IReadOnlyList<AsmFunction>> functionsByImage = module.Functions
+        Dictionary<ImageDescriptor, IReadOnlyList<AsmFunction>> functionsByImage = modules
+            .SelectMany(static module => module.Functions)
             .GroupBy(static function => function.OwningImage)
             .ToDictionary(static group => group.Key, static group => (IReadOnlyList<AsmFunction>)group.ToList());
 
@@ -212,7 +213,7 @@ public static class CogResourcePlanner
 
         foreach (ImagePlacementEntry placement in imagePlacement.Images)
         {
-            IReadOnlyList<AsmAllocatedStorageDefinition> imageDefinitions = CollectImageCogDefinitions(module, placement.Image);
+            IReadOnlyList<AsmAllocatedStorageDefinition> imageDefinitions = CollectImageCogDefinitions(modules, placement.Image);
             Dictionary<IAsmSymbol, CogAddress> imageAddresses = AssignStableAddressesForImage(
                 placement,
                 imageDefinitions,
@@ -248,23 +249,26 @@ public static class CogResourcePlanner
             maximumCodeSizeLongs);
     }
 
-    private static IReadOnlyList<AsmAllocatedStorageDefinition> CollectImageCogDefinitions(AsmModule module, ImageDescriptor image)
+    private static IReadOnlyList<AsmAllocatedStorageDefinition> CollectImageCogDefinitions(IReadOnlyList<AsmModule> modules, ImageDescriptor image)
     {
         List<AsmAllocatedStorageDefinition> definitions = [];
-        foreach (AsmDataBlock block in module.DataBlocks)
+        foreach (AsmModule module in modules)
         {
-            if (block.Kind is not AsmDataBlockKind.Register and not AsmDataBlockKind.Constant)
-                continue;
-
-            foreach (AsmAllocatedStorageDefinition definition in block.Definitions.OfType<AsmAllocatedStorageDefinition>())
+            foreach (AsmDataBlock block in module.DataBlocks)
             {
-                if (definition.StorageClass != AddressSpace.Cog)
+                if (block.Kind is not AsmDataBlockKind.Register and not AsmDataBlockKind.Constant)
                     continue;
 
-                if (GetOwningImage(definition.Symbol) is not { } owningImage || !ReferenceEquals(owningImage, image))
-                    continue;
+                foreach (AsmAllocatedStorageDefinition definition in block.Definitions.OfType<AsmAllocatedStorageDefinition>())
+                {
+                    if (definition.StorageClass != AddressSpace.Cog)
+                        continue;
 
-                definitions.Add(definition);
+                    if (GetOwningImage(definition.Symbol) is not { } owningImage || !ReferenceEquals(owningImage, image))
+                        continue;
+
+                    definitions.Add(definition);
+                }
             }
         }
 

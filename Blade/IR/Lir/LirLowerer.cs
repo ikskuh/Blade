@@ -15,7 +15,7 @@ public static class LirLowerer
         List<LirFunction> functions = new(module.Functions.Count);
         foreach (MirFunction mirFunction in module.Functions)
             functions.Add(LowerFunction(mirFunction));
-        return new LirModule(module.StoragePlaces, module.StorageDefinitions, functions);
+        return new LirModule(module, module.StoragePlaces, module.StorageDefinitions, functions);
     }
 
     private static LirFunction LowerFunction(MirFunction mirFunction)

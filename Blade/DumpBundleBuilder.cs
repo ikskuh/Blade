@@ -33,17 +33,17 @@ public static class DumpBundleBuilder
         }
 
         if (selection.DumpMirPreOptimization)
-            artifacts.Add(CreateArtifact("mir-preopt", "MIR (Preopt)", "05_mir_preopt.ir", MirTextWriter.Write(buildResult.PreOptimizationMirModule)));
+            artifacts.Add(CreateArtifact("mir-preopt", "MIR (Preopt)", "05_mir_preopt.ir", MirTextWriter.Write(buildResult.PreOptimizationMirModules)));
         if (selection.DumpMir)
-            artifacts.Add(CreateArtifact("mir", "MIR", "10_mir.ir", MirTextWriter.Write(buildResult.MirModule)));
+            artifacts.Add(CreateArtifact("mir", "MIR", "10_mir.ir", MirTextWriter.Write(buildResult.MirModules)));
         if (selection.DumpLirPreOptimization)
-            artifacts.Add(CreateArtifact("lir-preopt", "LIR (Preopt)", "15_lir_preopt.ir", LirTextWriter.Write(buildResult.PreOptimizationLirModule)));
+            artifacts.Add(CreateArtifact("lir-preopt", "LIR (Preopt)", "15_lir_preopt.ir", LirTextWriter.Write(buildResult.PreOptimizationLirModules)));
         if (selection.DumpLir)
-            artifacts.Add(CreateArtifact("lir", "LIR", "20_lir.ir", LirTextWriter.Write(buildResult.LirModule)));
+            artifacts.Add(CreateArtifact("lir", "LIR", "20_lir.ir", LirTextWriter.Write(buildResult.LirModules)));
         if (selection.DumpAsmirPreOptimization)
-            artifacts.Add(CreateArtifact("asmir-preopt", "ASMIR (Preopt)", "25_asmir_preopt.ir", AsmTextWriter.Write(buildResult.PreOptimizationAsmModule)));
+            artifacts.Add(CreateArtifact("asmir-preopt", "ASMIR (Preopt)", "25_asmir_preopt.ir", AsmTextWriter.Write(buildResult.PreOptimizationAsmModules)));
         if (selection.DumpAsmir)
-            artifacts.Add(CreateArtifact("asmir", "ASMIR", "30_asmir.ir", AsmTextWriter.Write(buildResult.AsmModule)));
+            artifacts.Add(CreateArtifact("asmir", "ASMIR", "30_asmir.ir", AsmTextWriter.Write(buildResult.AsmModules)));
         if (selection.DumpMemoryMap)
             artifacts.Add(CreateArtifact("image-memory-maps", "Image Memory Maps", "35_image_memory_maps.ir", ImageMemoryMapDumpWriter.Write(buildResult)));
         if (selection.DumpFinalAsm)

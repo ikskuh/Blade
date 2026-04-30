@@ -47,7 +47,7 @@ public sealed class MirCopyPropagation : IMirOptimization
                 function.FlagValues));
         }
 
-        MirModule result2 = new(input.StoragePlaces, input.StorageDefinitions, functions);
+        MirModule result2 = new(input.Image, input.StoragePlaces, input.StorageDefinitions, functions);
         return MirTextWriter.Write(result2) != MirTextWriter.Write(input) ? result2 : null;
     }
 }

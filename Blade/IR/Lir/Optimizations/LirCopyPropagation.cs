@@ -41,7 +41,7 @@ public sealed class LirCopyPropagation : ILirOptimization
             functions.Add(new LirFunction(function.SourceFunction, blocks));
         }
 
-        LirModule result = new(input.StoragePlaces, input.StorageDefinitions, functions);
+        LirModule result = new(input.SourceModule, input.StoragePlaces, input.StorageDefinitions, functions);
         return LirTextWriter.Write(result) != LirTextWriter.Write(input) ? result : null;
     }
 }

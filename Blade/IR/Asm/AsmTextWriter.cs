@@ -10,16 +10,29 @@ public static class AsmTextWriter
     public static string Write(AsmModule module)
     {
         Requires.NotNull(module);
+        return Write([module]);
+    }
+
+    public static string Write(IReadOnlyList<AsmModule> modules)
+    {
+        Requires.NotNull(modules);
 
         StringBuilder sb = new();
         sb.AppendLine("; ASMIR v2");
         sb.AppendLine();
 
-        foreach (AsmFunction function in module.Functions)
-            WriteFunction(sb, function);
+        foreach (AsmModule module in modules)
+        {
+            sb.Append("; image ");
+            sb.AppendLine(module.Image.Task.Name);
+            sb.AppendLine();
 
-        foreach (AsmDataBlock block in module.DataBlocks)
-            WriteDataBlock(sb, block);
+            foreach (AsmFunction function in module.Functions)
+                WriteFunction(sb, function);
+
+            foreach (AsmDataBlock block in module.DataBlocks)
+                WriteDataBlock(sb, block);
+        }
 
         return sb.ToString();
     }

@@ -8,15 +8,13 @@ using Blade.Source;
 namespace Blade.IR.Lir;
 
 public sealed class LirModule(
+    MirModule sourceModule,
     IReadOnlyList<StoragePlace> storagePlaces,
     IReadOnlyList<StorageDefinition> storageDefinitions,
     IReadOnlyList<LirFunction> functions)
 {
-    public LirModule(IReadOnlyList<LirFunction> functions)
-        : this([], [], functions)
-    {
-    }
-
+    public MirModule SourceModule { get; } = Requires.NotNull(sourceModule);
+    public ImageDescriptor Image => SourceModule.Image;
     public IReadOnlyList<StoragePlace> StoragePlaces { get; } = storagePlaces;
     public IReadOnlyList<StorageDefinition> StorageDefinitions { get; } = storageDefinitions;
     public IReadOnlyList<LirFunction> Functions { get; } = functions;

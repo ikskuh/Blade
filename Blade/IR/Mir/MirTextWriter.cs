@@ -12,13 +12,26 @@ public static class MirTextWriter
     public static string Write(MirModule module)
     {
         Requires.NotNull(module);
+        return Write([module]);
+    }
+
+    public static string Write(IReadOnlyList<MirModule> modules)
+    {
+        Requires.NotNull(modules);
 
         StringBuilder sb = new();
         sb.AppendLine("; MIR v1");
         sb.AppendLine();
 
-        foreach (MirFunction function in module.Functions)
-            WriteFunction(sb, function);
+        foreach (MirModule module in modules)
+        {
+            sb.Append("; image ");
+            sb.AppendLine(module.Image.Task.Name);
+            sb.AppendLine();
+
+            foreach (MirFunction function in module.Functions)
+                WriteFunction(sb, function);
+        }
 
         return sb.ToString();
     }

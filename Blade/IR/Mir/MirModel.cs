@@ -15,10 +15,12 @@ namespace Blade.IR.Mir;
 public enum MirFlag { C, Z, NC, NZ }
 
 public sealed class MirModule(
+    ImageDescriptor image,
     IReadOnlyList<StoragePlace> storagePlaces,
     IReadOnlyList<StorageDefinition> storageDefinitions,
     IReadOnlyList<MirFunction> functions)
 {
+    public ImageDescriptor Image { get; } = Requires.NotNull(image);
     public IReadOnlyList<StoragePlace> StoragePlaces { get; } = storagePlaces;
     public IReadOnlyList<StorageDefinition> StorageDefinitions { get; } = storageDefinitions;
     public IReadOnlyList<MirFunction> Functions { get; } = functions;

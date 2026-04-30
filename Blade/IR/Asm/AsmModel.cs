@@ -65,10 +65,13 @@ internal sealed class AsmFunctionReferenceSymbol(ImageDescriptor image, Function
 }
 
 public sealed class AsmModule(
+    LirModule sourceModule,
     IReadOnlyList<StoragePlace> storagePlaces,
     IReadOnlyList<AsmDataBlock> dataBlocks,
     IReadOnlyList<AsmFunction> functions)
 {
+    public LirModule SourceModule { get; } = Requires.NotNull(sourceModule);
+    public ImageDescriptor Image => SourceModule.Image;
     public IReadOnlyList<StoragePlace> StoragePlaces { get; } = storagePlaces;
     public IReadOnlyList<AsmDataBlock> DataBlocks { get; } = dataBlocks;
     public IReadOnlyList<AsmFunction> Functions { get; } = functions;

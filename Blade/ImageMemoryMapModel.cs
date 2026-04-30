@@ -67,7 +67,7 @@ internal static class ImageMemoryMapModelBuilder
     {
         Requires.NotNull(buildResult);
 
-        Dictionary<GlobalVariableSymbol, RuntimeBladeValue> initialValues = CollectInitialValues(buildResult.MirModule);
+        Dictionary<GlobalVariableSymbol, RuntimeBladeValue> initialValues = CollectInitialValues(buildResult.MirModules);
         IReadOnlyList<LayoutSymbol> sharedHubLayouts = CollectSharedHubLayouts(buildResult.ImagePlan);
 
         IReadOnlyList<SharedHubRow> sharedHubRows = BuildSharedHubRows(
@@ -81,24 +81,28 @@ internal static class ImageMemoryMapModelBuilder
         {
             IReadOnlyList<LayoutSymbol> imageLayouts = CollectLayoutsForImage(placement.Image);
             CogResourceLayout cogLayout = buildResult.CogResourceLayouts.Images.Single(layout => ReferenceEquals(layout.Image, placement.Image));
+            AsmModule asmModule = buildResult.AsmModules.Single(module => ReferenceEquals(module.Image, placement.Image));
             images.Add(new ImageMemoryMapImage(
                 placement,
-                BuildCogRows(buildResult.AsmModule, buildResult.CogResourceLayouts, cogLayout, initialValues),
+                BuildCogRows(asmModule, buildResult.CogResourceLayouts, cogLayout, initialValues),
                 BuildLutRows(buildResult.LayoutSolution, imageLayouts, initialValues)));
         }
 
         return new ImageMemoryMapModel(sharedHubRows, images);
     }
 
-    private static Dictionary<GlobalVariableSymbol, RuntimeBladeValue> CollectInitialValues(MirModule mirModule)
+    private static Dictionary<GlobalVariableSymbol, RuntimeBladeValue> CollectInitialValues(IReadOnlyList<MirModule> mirModules)
     {
         Dictionary<GlobalVariableSymbol, RuntimeBladeValue> initialValues = [];
-        foreach (StorageDefinition definition in mirModule.StorageDefinitions)
+        foreach (MirModule mirModule in mirModules)
         {
-            if (definition.InitialValue is null)
-                continue;
+            foreach (StorageDefinition definition in mirModule.StorageDefinitions)
+            {
+                if (definition.InitialValue is null)
+                    continue;
 
-            initialValues[definition.Place.Symbol] = definition.InitialValue;
+                initialValues[definition.Place.Symbol] = definition.InitialValue;
+            }
         }
 
         return initialValues;

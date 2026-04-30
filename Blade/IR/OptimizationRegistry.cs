@@ -42,7 +42,7 @@ public abstract class PerFunctionAsmOptimization : IAsmOptimization
             anyChanged |= result is not null;
         }
 
-        return anyChanged ? new AsmModule(input.StoragePlaces, input.DataBlocks, functions) : null;
+        return anyChanged ? new AsmModule(input.SourceModule, input.StoragePlaces, input.DataBlocks, functions) : null;
     }
 
     protected abstract AsmFunction? RunOnFunction(AsmFunction input);

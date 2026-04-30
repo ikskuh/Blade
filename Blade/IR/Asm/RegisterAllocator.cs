@@ -155,7 +155,7 @@ public static class RegisterAllocator
             functions.Add(new AsmFunction(function, rewrittenNodes));
         }
 
-        return new AsmModule(module.StoragePlaces, module.DataBlocks, functions);
+        return new AsmModule(module.SourceModule, module.StoragePlaces, module.DataBlocks, functions);
     }
 
     private static bool TryGetRecursiveCallBundle(
@@ -940,7 +940,7 @@ public static class RegisterAllocator
         }
 
         ReplaceDataBlock(dataBlocks, new AsmDataBlock(AsmDataBlockKind.Register, registerDefinitions));
-        return new AsmModule(module.StoragePlaces, dataBlocks, functions);
+        return new AsmModule(module.SourceModule, module.StoragePlaces, dataBlocks, functions);
     }
 
     private static void ReplaceDataBlock(List<AsmDataBlock> dataBlocks, AsmDataBlock replacement)

@@ -66,7 +66,7 @@ public static class AsmLegalizer
             ReplaceDataBlock(dataBlocks, new AsmDataBlock(AsmDataBlockKind.Constant, constantDefinitions));
         }
 
-        return new AsmModule(module.StoragePlaces, dataBlocks, functions);
+        return new AsmModule(module.SourceModule, module.StoragePlaces, dataBlocks, functions);
     }
 
     private static void ReplaceDataBlock(List<AsmDataBlock> dataBlocks, AsmDataBlock replacement)
@@ -91,17 +91,18 @@ public static class AsmLegalizer
         for (int operandIndex = 0; operandIndex < instruction.Operands.Count; operandIndex++)
         {
             AsmOperand operand = instruction.Operands[operandIndex];
-            if (operand is AsmImmediateOperand imm)
+            if (TryGetImmediateValue(operand, out uint uval))
             {
                 P2InstructionOperandInfo operandInfo = P2InstructionMetadata.GetOperandInfo(
                     instruction.Mnemonic,
                     instruction.Operands.Count,
                     operandIndex);
-                if (!CanUseSharedConstant(operandInfo))
+                bool canUseSharedConstant = CanUseSharedConstant(operandInfo)
+                    || IsIndirectLutPointerOperand(operand);
+                if (!canUseSharedConstant)
                     continue;
 
-                uint uval = unchecked((uint)imm.Value);
-                if (!FitsInOperandField(uval, operandInfo.BitWidth))
+                if (!FitsInOperandEncoding(instruction, operandIndex, operand, operandInfo, uval))
                 {
                     ConstantKey key = new(function.OwningImage, uval);
                     counts.TryGetValue(key, out int existing);
@@ -146,17 +147,17 @@ public static class AsmLegalizer
                 instruction.Operands.Count,
                 i);
 
-            if (operand is AsmImmediateOperand imm)
+            if (TryGetImmediateValue(operand, out uint uval))
             {
                 if (!operandInfo.SupportsImmediateSyntax || operandInfo.BitWidth <= 0)
                     throw new InvalidOperationException($"Instruction '{instruction.Opcode}' operand {i} does not support immediate syntax.");
 
-                uint uval = unchecked((uint)imm.Value);
-
-                if (!FitsInOperandField(uval, operandInfo.BitWidth))
+                if (!FitsInOperandEncoding(instruction, i, operand, operandInfo, uval))
                 {
                     ConstantKey constantKey = new(function.OwningImage, uval);
-                    if (CanUseSharedConstant(operandInfo)
+                    bool canUseSharedConstant = CanUseSharedConstant(operandInfo)
+                        || IsIndirectLutPointerOperand(operand);
+                    if (canUseSharedConstant
                         && constantRegisters.TryGetValue(constantKey, out AsmSharedConstantSymbol? constLabel))
                     {
                         newOperands.Add(new AsmSymbolOperand(constLabel, AsmSymbolAddressingMode.Register));
@@ -167,14 +168,14 @@ public static class AsmLegalizer
                     if (operandInfo.AugPrefix == P2AugPrefixKind.None)
                     {
                         throw new InvalidOperationException(
-                            $"Immediate value #{imm.Value} does not fit operand {i} of instruction '{instruction.Opcode}' and cannot be AUG-extended.");
+                            $"Immediate value #{GetSignedImmediateValue(operand)} does not fit operand {i} of instruction '{instruction.Opcode}' and cannot be AUG-extended.");
                     }
 
                     // PASM source accepts the original literal on the AUG* prefix,
                     // but the following instruction operand still has to fit its
                     // encoded field width. The assembler consumes the upper bits
                     // from AUG* and the low bits from the instruction operand.
-                    prefixes.Add((GetAugOpcode(operandInfo.AugPrefix), imm.Value));
+                    prefixes.Add((GetAugOpcode(operandInfo.AugPrefix), GetSignedImmediateValue(operand)));
                     long lowImmediateBits = uval & GetOperandMask(operandInfo.BitWidth);
                     newOperands.Add(new AsmImmediateOperand(lowImmediateBits));
                     modified = true;
@@ -209,6 +210,90 @@ public static class AsmLegalizer
         {
             nodes.Add(instruction);
         }
+    }
+
+    private static bool TryGetImmediateValue(AsmOperand operand, out uint value)
+    {
+        Requires.NotNull(operand);
+
+        if (operand is AsmImmediateOperand immediate)
+        {
+            value = unchecked((uint)immediate.Value);
+            return true;
+        }
+
+        if (operand is AsmSymbolOperand
+            {
+                AddressingMode: AsmSymbolAddressingMode.Immediate,
+                Symbol: StoragePlace
+                {
+                    StorageClass: AddressSpace.Lut,
+                    ResolvedLayoutSlot: { Address: var resolvedAddress }
+                }
+            })
+        {
+            value = unchecked((uint)(int)resolvedAddress.ToLutAddress());
+            return true;
+        }
+
+        if (operand is AsmSymbolOperand
+            {
+                AddressingMode: AsmSymbolAddressingMode.Immediate,
+                Symbol: StoragePlace
+                {
+                    StorageClass: AddressSpace.Lut,
+                    FixedAddress: { } fixedAddress
+                }
+            })
+        {
+            value = unchecked((uint)(int)fixedAddress.ToLutAddress());
+            return true;
+        }
+
+        value = 0;
+        return false;
+    }
+
+    private static long GetSignedImmediateValue(AsmOperand operand)
+    {
+        Requires.NotNull(operand);
+
+        return operand switch
+        {
+            AsmImmediateOperand immediate => immediate.Value,
+            _ when TryGetImmediateValue(operand, out uint value) => unchecked((int)value),
+            _ => throw new InvalidOperationException($"Operand '{operand.GetType().Name}' does not provide an immediate value."),
+        };
+    }
+
+    private static bool IsIndirectLutPointerOperand(AsmOperand operand)
+    {
+        Requires.NotNull(operand);
+        return operand is AsmSymbolOperand
+        {
+            AddressingMode: AsmSymbolAddressingMode.Immediate,
+            Symbol.SymbolType: SymbolType.LutVariable,
+        };
+    }
+
+    private static bool FitsInOperandEncoding(
+        AsmInstructionNode instruction,
+        int operandIndex,
+        AsmOperand operand,
+        P2InstructionOperandInfo operandInfo,
+        uint value)
+    {
+        Requires.NotNull(instruction);
+        Requires.NotNull(operand);
+
+        if (instruction.Mnemonic is P2Mnemonic.RDLUT or P2Mnemonic.WRLUT
+            && operandIndex == 1
+            && IsIndirectLutPointerOperand(operand))
+        {
+            return value <= 0xFF;
+        }
+
+        return FitsInOperandField(value, operandInfo.BitWidth);
     }
 
     private static bool CanUseSharedConstant(P2InstructionOperandInfo operandInfo)

@@ -67,10 +67,9 @@ public static class CallGraphAnalyzer
     /// <summary>
     /// Analyze the call graph, assign CC tiers, and identify dead functions.
     /// </summary>
-    public static CallGraphResult Analyze(LirModule module, ImagePlan imagePlan)
+    public static CallGraphResult Analyze(LirModule module)
     {
         Requires.NotNull(module);
-        Requires.NotNull(imagePlan);
 
         // Build maps
         Dictionary<FunctionSymbol, LirFunction> functionMap = new(module.Functions.Count);
@@ -83,7 +82,7 @@ public static class CallGraphAnalyzer
             callGraph[function.Symbol] = CollectCallees(function);
 
         // Compute reachability from entry points and interrupt handlers
-        HashSet<FunctionSymbol> reachable = ComputeReachable(module, imagePlan, callGraph);
+        HashSet<FunctionSymbol> reachable = ComputeReachable(module, callGraph);
 
         // Identify dead functions
         HashSet<FunctionSymbol> deadFunctions = [];
@@ -111,18 +110,13 @@ public static class CallGraphAnalyzer
     /// </summary>
     private static HashSet<FunctionSymbol> ComputeReachable(
         LirModule module,
-        ImagePlan imagePlan,
         Dictionary<FunctionSymbol, HashSet<FunctionSymbol>> callGraph)
     {
         HashSet<FunctionSymbol> reachable = [];
         Queue<FunctionSymbol> worklist = new();
 
-        // Seed: every required task entry image and interrupt handler is reachable.
-        foreach (ImageDescriptor image in imagePlan.Images)
-        {
-            if (reachable.Add(image.EntryFunction))
-                worklist.Enqueue(image.EntryFunction);
-        }
+        if (reachable.Add(module.Image.EntryFunction))
+            worklist.Enqueue(module.Image.EntryFunction);
 
         foreach (LirFunction function in module.Functions)
         {

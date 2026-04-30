@@ -13,9 +13,10 @@ namespace Blade.IR.Mir;
 
 public static class MirLowerer
 {
-    public static MirModule Lower(BoundProgram program, LayoutSolution layoutSolution)
+    public static IReadOnlyList<MirModule> Lower(BoundProgram program, ImagePlan imagePlan, LayoutSolution layoutSolution)
     {
         Requires.NotNull(program);
+        Requires.NotNull(imagePlan);
         Requires.NotNull(layoutSolution);
 
         (
@@ -24,32 +25,121 @@ public static class MirLowerer
             Dictionary<Symbol, StoragePlace> storagePlacesBySymbol) = CollectStoragePlaces(program, layoutSolution);
         BackendSymbolNaming.AssignStorageNames(storagePlaces);
 
-        List<MirFunction> functions = new();
-        functions.Add(LowerEntryPoint(program, storagePlacesBySymbol, storageDefinitions));
-
-        foreach (BoundFunctionMember functionMember in program.Functions)
+        Dictionary<FunctionSymbol, BoundFunctionMember> functionsBySymbol = program.Functions
+            .ToDictionary(static functionMember => functionMember.Symbol);
+        HashSet<FunctionSymbol> reachableFunctionSymbols = [.. imagePlan.Images.SelectMany(static image => image.Functions)];
+        HashSet<GlobalVariableSymbol> reachableStorageSymbols = [.. imagePlan.Images.SelectMany(static image => image.Storage)];
+        List<MirModule> modules = [];
+        foreach (ImageDescriptor image in imagePlan.Images)
         {
-            if (!ReferenceEquals(functionMember, program.EntryPointFunction))
-                functions.Add(LowerFunction(functionMember, storagePlacesBySymbol, storageDefinitions));
+            HashSet<FunctionSymbol> moduleFunctionSymbols = [.. image.Functions];
+            foreach (BoundFunctionMember functionMember in program.Functions)
+            {
+                if (FunctionBelongsToImage(functionMember.Symbol, image))
+                {
+                    moduleFunctionSymbols.Add(functionMember.Symbol);
+                    continue;
+                }
+
+                if (image.IsEntryImage
+                    && !reachableFunctionSymbols.Contains(functionMember.Symbol)
+                    && functionMember.Symbol.ImplicitLayout is not TaskSymbol)
+                {
+                    moduleFunctionSymbols.Add(functionMember.Symbol);
+                }
+            }
+
+            List<BoundFunctionMember> moduleFunctionMembers = program.Functions
+                .Where(functionMember => moduleFunctionSymbols.Contains(functionMember.Symbol))
+                .ToList();
+
+            List<GlobalVariableSymbol> moduleGlobalSymbols = [];
+            HashSet<StoragePlace> moduleStoragePlaces = [];
+            foreach (GlobalVariableSymbol symbol in program.GlobalVariables)
+            {
+                bool belongsToTask = GlobalBelongsToImage(symbol, image);
+                bool belongsToEntryAsUnclaimedTopLevel = image.IsEntryImage
+                    && !reachableStorageSymbols.Contains(symbol)
+                    && symbol.DeclaringLayout is not TaskSymbol;
+                if (!image.Storage.Contains(symbol) && !belongsToTask && !belongsToEntryAsUnclaimedTopLevel)
+                    continue;
+
+                moduleGlobalSymbols.Add(symbol);
+
+                if (storagePlacesBySymbol.TryGetValue(symbol, out StoragePlace? place))
+                    moduleStoragePlaces.Add(place);
+            }
+
+            IReadOnlyList<VariableSymbol> addressTakenSymbols = CollectAddressTakenSymbols(moduleFunctionMembers);
+            foreach (VariableSymbol symbol in addressTakenSymbols)
+            {
+                if (storagePlacesBySymbol.TryGetValue(symbol, out StoragePlace? place))
+                    moduleStoragePlaces.Add(place);
+            }
+
+            List<StoragePlace> orderedModuleStoragePlaces = storagePlaces
+                .Where(moduleStoragePlaces.Contains)
+                .ToList();
+            HashSet<StoragePlace> moduleStoragePlaceSet = [.. orderedModuleStoragePlaces];
+            List<StorageDefinition> moduleStorageDefinitions = storageDefinitions
+                .Where(definition => moduleStoragePlaceSet.Contains(definition.Place))
+                .ToList();
+
+            List<MirFunction> functions = [];
+            foreach (BoundFunctionMember functionMember in moduleFunctionMembers)
+            {
+                if (ReferenceEquals(functionMember.Symbol, image.EntryFunction))
+                {
+                    functions.Add(LowerEntryPoint(functionMember, moduleGlobalSymbols, storagePlacesBySymbol, moduleStorageDefinitions));
+                    continue;
+                }
+
+                functions.Add(LowerFunction(functionMember, storagePlacesBySymbol, moduleStorageDefinitions));
+            }
+
+            modules.Add(new MirModule(image, orderedModuleStoragePlaces, moduleStorageDefinitions, functions));
         }
 
-        return new MirModule(storagePlaces, storageDefinitions, functions);
+        return modules;
     }
 
     private static MirFunction LowerEntryPoint(
-        BoundProgram program,
+        BoundFunctionMember functionMember,
+        IReadOnlyList<GlobalVariableSymbol> imageGlobals,
         IReadOnlyDictionary<Symbol, StoragePlace> storagePlacesBySymbol,
         IReadOnlyList<StorageDefinition> storageDefinitions)
     {
         FunctionLoweringContext context = new(
-            program.EntryPoint.EntryFunction,
+            functionMember.Symbol,
             isEntryPoint: true,
-            program.EntryPoint.EntryFunction.ReturnTypes,
+            functionMember.Symbol.ReturnTypes,
             storagePlacesBySymbol,
             storageDefinitions,
-            program.EntryPoint.EntryFunction.ReturnSlots);
-        context.LowerEntryPointBody(program.GlobalVariables, program.EntryPointFunction.Body);
+            functionMember.Symbol.ReturnSlots);
+        context.LowerEntryPointBody(imageGlobals, functionMember.Body);
         return context.Build();
+    }
+
+    private static bool FunctionBelongsToImage(FunctionSymbol function, ImageDescriptor image)
+    {
+        Requires.NotNull(function);
+        Requires.NotNull(image);
+        return function.ImplicitLayout is TaskSymbol task && TaskBelongsToImage(task, image);
+    }
+
+    private static bool GlobalBelongsToImage(GlobalVariableSymbol symbol, ImageDescriptor image)
+    {
+        Requires.NotNull(symbol);
+        Requires.NotNull(image);
+        return symbol.DeclaringLayout is TaskSymbol task && TaskBelongsToImage(task, image);
+    }
+
+    private static bool TaskBelongsToImage(TaskSymbol task, ImageDescriptor image)
+    {
+        Requires.NotNull(task);
+        Requires.NotNull(image);
+        return ReferenceEquals(task, image.Task)
+            || ReferenceEquals(task.EntryFunction, image.EntryFunction);
     }
 
     private static MirFunction LowerFunction(
@@ -219,9 +309,14 @@ public static class MirLowerer
 
     private static IReadOnlyList<VariableSymbol> CollectAddressTakenSymbols(BoundProgram program)
     {
+        return CollectAddressTakenSymbols(program.Functions);
+    }
+
+    private static IReadOnlyList<VariableSymbol> CollectAddressTakenSymbols(IReadOnlyList<BoundFunctionMember> functions)
+    {
         Dictionary<VariableSymbol, VariableSymbol> symbols = [];
 
-        foreach (BoundFunctionMember function in program.Functions)
+        foreach (BoundFunctionMember function in functions)
             CollectAddressTakenSymbols(function.Body, symbols);
 
         return [.. symbols.Values];
@@ -433,6 +528,13 @@ public static class MirLowerer
             {
                 if (global.Initializer is null || !TryGetStoragePlace(global, out StoragePlace place))
                     continue;
+
+                if (global.DeclaringLayout is not null
+                    && place.IsAllocatable
+                    && place.ResolvedLayoutSlot is null)
+                {
+                    continue;
+                }
 
                 if (_preInitializedStoragePlaces.Contains(place)
                     && place.IsAllocatable

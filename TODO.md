@@ -415,3 +415,8 @@ In general, Layouts have to be conflict free for:
 - `hub` (which is the trivial case)
   - All hub variables get unique values
 - `cog` and `lut`
+
+### Improvement on cog codegen
+
+We can actually fuse cog resource layouting and code layouting, as we know the code size in instructions.
+

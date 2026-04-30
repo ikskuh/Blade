@@ -265,16 +265,37 @@ internal sealed class RegressionIrCoverageSession
 
     private static IrCoverageGroup? ClassifyStageRoot(Type type)
     {
-        if (typeof(BoundProgram).IsAssignableFrom(type) || typeof(BoundModule).IsAssignableFrom(type))
+        Type candidateType = UnwrapEnumerableElementType(type) ?? type;
+
+        if (typeof(BoundProgram).IsAssignableFrom(candidateType) || typeof(BoundModule).IsAssignableFrom(candidateType))
             return IrCoverageGroup.Bound;
-        if (typeof(MirModule).IsAssignableFrom(type))
+        if (typeof(MirModule).IsAssignableFrom(candidateType))
             return IrCoverageGroup.Mir;
-        if (typeof(LirModule).IsAssignableFrom(type))
+        if (typeof(LirModule).IsAssignableFrom(candidateType))
             return IrCoverageGroup.Lir;
-        if (typeof(AsmModule).IsAssignableFrom(type))
+        if (typeof(AsmModule).IsAssignableFrom(candidateType))
             return IrCoverageGroup.Asmir;
 
         return null;
+    }
+
+    private static Type? UnwrapEnumerableElementType(Type type)
+    {
+        Requires.NotNull(type);
+
+        if (type.IsArray)
+            return type.GetElementType();
+
+        if (!typeof(IEnumerable).IsAssignableFrom(type) || type == typeof(string))
+            return null;
+
+        if (type.IsGenericType && type.GetGenericArguments().Length == 1)
+            return type.GetGenericArguments()[0];
+
+        Type? enumerableInterface = type
+            .GetInterfaces()
+            .FirstOrDefault(static iface => iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IEnumerable<>));
+        return enumerableInterface?.GetGenericArguments()[0];
     }
 
     private static PropertyInfo[] GetTraversableProperties(Type type)

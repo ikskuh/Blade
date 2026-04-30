@@ -12,13 +12,26 @@ public static class LirTextWriter
     public static string Write(LirModule module)
     {
         Requires.NotNull(module);
+        return Write([module]);
+    }
+
+    public static string Write(IReadOnlyList<LirModule> modules)
+    {
+        Requires.NotNull(modules);
 
         StringBuilder sb = new();
         sb.AppendLine("; LIR v1");
         sb.AppendLine();
 
-        foreach (LirFunction function in module.Functions)
-            WriteFunction(sb, function);
+        foreach (LirModule module in modules)
+        {
+            sb.Append("; image ");
+            sb.AppendLine(module.Image.Task.Name);
+            sb.AppendLine();
+
+            foreach (LirFunction function in module.Functions)
+                WriteFunction(sb, function);
+        }
 
         return sb.ToString();
     }

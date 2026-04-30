@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Blade.Diagnostics;
 using Blade.IR.Asm;
 
@@ -11,30 +12,37 @@ public static class CodegenPipeline
         Requires.NotNull(buildResult);
 
         options ??= new EmitOptions();
-        AsmModule asmModule = buildResult.AsmModule;
+        List<AsmModule> asmModules = buildResult.AsmModules.ToList();
 
         // Peephole optimization
         if (options.EnableAsmOptimization)
-            asmModule = AsmOptimizer.Optimize(asmModule, options.EnabledAsmirOptimizations);
+        {
+            for (int i = 0; i < asmModules.Count; i++)
+                asmModules[i] = AsmOptimizer.Optimize(asmModules[i], options.EnabledAsmirOptimizations);
+        }
 
         // Legalization before COG resource layout fixes the code size seen by the planner.
         if (options.EnableLegalization)
-            asmModule = AsmLegalizer.Legalize(asmModule);
+        {
+            for (int i = 0; i < asmModules.Count; i++)
+                asmModules[i] = AsmLegalizer.Legalize(asmModules[i]);
+        }
 
         CogResourceLayoutSet cogResourceLayouts = CogResourcePlanner.Build(
-            asmModule,
+            asmModules,
             buildResult.ImagePlan,
             buildResult.ImagePlacement,
             buildResult.LayoutSolution,
             includeDefaultBladeHalt: true,
             diagnostics);
         if (diagnostics?.HasErrors == true)
-            return new EmitResult(asmModule, cogResourceLayouts, string.Empty);
+            return new EmitResult(asmModules, cogResourceLayouts, string.Empty);
 
         // Register allocation: virtual → physical
         if (options.EnableRegisterAllocation)
         {
-            asmModule = RegisterAllocator.AllocateWithinImage(asmModule, cogResourceLayouts);
+            for (int i = 0; i < asmModules.Count; i++)
+                asmModules[i] = RegisterAllocator.AllocateWithinImage(asmModules[i], cogResourceLayouts);
 
             // Register coalescing can turn a useful virtual-register move into
             // a physical self-move (`MOV _rN, _rN`). Run post-regalloc-eligible
@@ -49,11 +57,14 @@ public static class CodegenPipeline
                 }
 
                 if (postRegAllocOptimizations.Count > 0)
-                    asmModule = AsmOptimizer.Optimize(asmModule, postRegAllocOptimizations);
+                {
+                    for (int i = 0; i < asmModules.Count; i++)
+                        asmModules[i] = AsmOptimizer.Optimize(asmModules[i], postRegAllocOptimizations);
+                }
             }
         }
 
-        FinalAssembly finalAssembly = FinalAssemblyWriter.Build(asmModule, cogResourceLayouts);
-        return new EmitResult(asmModule, cogResourceLayouts, finalAssembly.Text);
+        FinalAssembly finalAssembly = FinalAssemblyWriter.Build(asmModules, cogResourceLayouts);
+        return new EmitResult(asmModules, cogResourceLayouts, finalAssembly.Text);
     }
 }

@@ -89,7 +89,7 @@ public sealed class MirFlagPropagation : IMirOptimization
                 flagMap));
         }
 
-        return anyChanged ? new MirModule(input.StoragePlaces, input.StorageDefinitions, functions) : null;
+        return anyChanged ? new MirModule(input.Image, input.StoragePlaces, input.StorageDefinitions, functions) : null;
     }
 
     private static void PropagateFlagsThroughBlockParameters(

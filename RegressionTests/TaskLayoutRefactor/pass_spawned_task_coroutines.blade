@@ -1,0 +1,18 @@
+// EXPECT: pass
+
+coro fn ping() {
+    loop {
+        yieldto ping();
+    }
+}
+
+cog task worker {
+
+    yieldto ping();
+}
+
+cog task main {
+    spawn worker();
+
+    yieldto ping();
+}

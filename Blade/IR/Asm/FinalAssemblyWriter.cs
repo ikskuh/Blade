@@ -105,62 +105,63 @@ public static class FinalAssemblyWriter
         }
     }
 
-    public static string Write(AsmModule module, CogResourceLayoutSet cogResourceLayouts)
+    public static string Write(IReadOnlyList<AsmModule> modules, CogResourceLayoutSet cogResourceLayouts)
     {
-        return Build(module, cogResourceLayouts).Text;
+        return Build(modules, cogResourceLayouts).Text;
     }
 
-    public static FinalAssembly Build(AsmModule module, CogResourceLayoutSet cogResourceLayouts)
+    public static FinalAssembly Build(IReadOnlyList<AsmModule> modules, CogResourceLayoutSet cogResourceLayouts)
     {
-        Requires.NotNull(module);
+        Requires.NotNull(modules);
         Requires.NotNull(cogResourceLayouts);
 
         LabelNameEmitter labelNames = new();
-        string conSectionContents = WriteConSectionContents(module, cogResourceLayouts, labelNames);
-        string datSectionContents = WriteDatSectionContents(module, cogResourceLayouts, labelNames, includeDefaultBladeHalt: true);
+        string conSectionContents = WriteConSectionContents(modules, cogResourceLayouts, labelNames);
+        string datSectionContents = WriteDatSectionContents(modules, cogResourceLayouts, labelNames, includeDefaultBladeHalt: true);
         return FinalAssemblyComposer.Compose(conSectionContents, datSectionContents);
     }
 
-    public static string WriteConSectionContents(AsmModule module, CogResourceLayoutSet cogResourceLayouts)
+    public static string WriteConSectionContents(IReadOnlyList<AsmModule> modules, CogResourceLayoutSet cogResourceLayouts)
     {
-        return WriteConSectionContents(module, cogResourceLayouts, new LabelNameEmitter());
+        return WriteConSectionContents(modules, cogResourceLayouts, new LabelNameEmitter());
     }
 
-    private static string WriteConSectionContents(AsmModule module, CogResourceLayoutSet cogResourceLayouts, LabelNameEmitter labelNames)
+    private static string WriteConSectionContents(IReadOnlyList<AsmModule> modules, CogResourceLayoutSet cogResourceLayouts, LabelNameEmitter labelNames)
     {
-        Requires.NotNull(module);
+        Requires.NotNull(modules);
         Requires.NotNull(cogResourceLayouts);
         Requires.NotNull(labelNames);
 
+        IReadOnlyList<AsmDataBlock> dataBlocks = MergeDataBlocks(modules);
         StringBuilder sb = new();
-        AsmDataBlock? externalBlock = module.DataBlocks.FirstOrDefault(static block => block.Kind == AsmDataBlockKind.External);
-        if (externalBlock is null)
-            return string.Empty;
-
-        foreach (AsmExternalBindingDefinition binding in externalBlock.Definitions.OfType<AsmExternalBindingDefinition>())
+        AsmDataBlock? externalBlock = dataBlocks.FirstOrDefault(static block => block.Kind == AsmDataBlockKind.External);
+        if (externalBlock is not null)
         {
-            StoragePlace place = binding.Place;
-            if (place.SpecialRegisterAlias.HasValue)
-                continue;
-
-            VirtualAddress? virtualAddress = place.ResolvedLayoutSlot?.Address ?? place.FixedAddress;
-            if (!virtualAddress.HasValue
-                && cogResourceLayouts.TryGetAddress(place, out MemoryAddress memoryAddress))
+            foreach (AsmExternalBindingDefinition binding in externalBlock.Definitions.OfType<AsmExternalBindingDefinition>())
             {
-                virtualAddress = memoryAddress.Virtual;
+                StoragePlace place = binding.Place;
+                if (place.SpecialRegisterAlias.HasValue)
+                    continue;
+
+                VirtualAddress? virtualAddress = place.ResolvedLayoutSlot?.Address ?? place.FixedAddress;
+                if (!virtualAddress.HasValue
+                    && cogResourceLayouts.TryGetAddress(place, out MemoryAddress memoryAddress))
+                {
+                    virtualAddress = memoryAddress.Virtual;
+                }
+
+                if (!virtualAddress.HasValue)
+                    continue;
+
+                sb.Append("    ");
+                sb.Append(GetLabelName(place, labelNames));
+                sb.Append(" = $");
+                sb.Append(GetRawAddress(virtualAddress.Value).ToString("X", CultureInfo.InvariantCulture));
+                sb.AppendLine();
             }
-
-            if (!virtualAddress.HasValue)
-                continue;
-
-            sb.Append("    ");
-            sb.Append(GetLabelName(place, labelNames));
-            sb.Append(" = $");
-            sb.Append(GetRawAddress(virtualAddress.Value).ToString("X", CultureInfo.InvariantCulture));
-            sb.AppendLine();
         }
 
-        AsmDataBlock? lutBlock = module.DataBlocks.FirstOrDefault(static block => block.Kind == AsmDataBlockKind.Lut);
+        AsmDataBlock? lutBlock = dataBlocks.FirstOrDefault(static block => block.Kind == AsmDataBlockKind.Lut);
         if (lutBlock is not null)
         {
             foreach (AsmAllocatedStorageDefinition definition in lutBlock.Definitions.OfType<AsmAllocatedStorageDefinition>())
@@ -169,6 +170,12 @@ public static class FinalAssemblyWriter
                     continue;
 
                 VirtualAddress? virtualAddress = place.ResolvedLayoutSlot?.Address ?? place.FixedAddress;
+                if (!virtualAddress.HasValue
+                    && cogResourceLayouts.TryGetAddress(place, out MemoryAddress memoryAddress))
+                {
+                    virtualAddress = memoryAddress.Virtual;
+                }
+
                 if (!virtualAddress.HasValue)
                     continue;
 
@@ -183,29 +190,31 @@ public static class FinalAssemblyWriter
         return sb.ToString();
     }
 
-    public static string WriteDatSectionContents(AsmModule module, CogResourceLayoutSet cogResourceLayouts)
+    public static string WriteDatSectionContents(IReadOnlyList<AsmModule> modules, CogResourceLayoutSet cogResourceLayouts)
     {
-        return WriteDatSectionContents(module, cogResourceLayouts, new LabelNameEmitter(), includeDefaultBladeHalt: false);
+        return WriteDatSectionContents(modules, cogResourceLayouts, new LabelNameEmitter(), includeDefaultBladeHalt: false);
     }
 
     private static string WriteDatSectionContents(
-        AsmModule module,
+        IReadOnlyList<AsmModule> modules,
         CogResourceLayoutSet cogResourceLayouts,
         LabelNameEmitter labelNames,
         bool includeDefaultBladeHalt)
     {
-        Requires.NotNull(module);
+        Requires.NotNull(modules);
         Requires.NotNull(cogResourceLayouts);
         Requires.NotNull(labelNames);
 
+        IReadOnlyList<AsmFunction> functions = modules.SelectMany(static module => module.Functions).ToList();
+        IReadOnlyList<AsmDataBlock> dataBlocks = MergeDataBlocks(modules);
         StringBuilder sb = new();
         sb.AppendLine("    ' --- Blade compiler output ---");
 
-        Dictionary<ImageDescriptor, IReadOnlyList<AsmFunction>> functionsByImage = module.Functions
+        Dictionary<ImageDescriptor, IReadOnlyList<AsmFunction>> functionsByImage = functions
             .GroupBy(static function => function.OwningImage)
             .ToDictionary(static group => group.Key, static group => (IReadOnlyList<AsmFunction>)group.ToList());
-        AsmDataBlock? registerBlock = module.DataBlocks.FirstOrDefault(static candidate => candidate.Kind == AsmDataBlockKind.Register);
-        AsmDataBlock? constantBlock = module.DataBlocks.FirstOrDefault(static candidate => candidate.Kind == AsmDataBlockKind.Constant);
+        AsmDataBlock? registerBlock = dataBlocks.FirstOrDefault(static candidate => candidate.Kind == AsmDataBlockKind.Register);
+        AsmDataBlock? constantBlock = dataBlocks.FirstOrDefault(static candidate => candidate.Kind == AsmDataBlockKind.Constant);
 
         foreach (CogResourceLayout imageLayout in cogResourceLayouts.Images)
         {
@@ -219,8 +228,50 @@ public static class FinalAssemblyWriter
             WriteImageCogStorageBlocks(sb, imageLayout, registerBlock, constantBlock, labelNames, cogResourceLayouts);
         }
 
-        WriteSharedStorageBlocks(sb, module.DataBlocks, labelNames, cogResourceLayouts);
+        WriteSharedStorageBlocks(sb, dataBlocks, labelNames, cogResourceLayouts);
         return sb.ToString();
+    }
+
+    private static IReadOnlyList<AsmDataBlock> MergeDataBlocks(IReadOnlyList<AsmModule> modules)
+    {
+        List<AsmDataBlock> blocks = [];
+        foreach (AsmDataBlockKind kind in new[]
+                 {
+                     AsmDataBlockKind.Register,
+                     AsmDataBlockKind.Constant,
+                     AsmDataBlockKind.Lut,
+                     AsmDataBlockKind.External,
+                     AsmDataBlockKind.Hub,
+                 })
+        {
+            List<AsmDataDefinition> definitions = [];
+            HashSet<object> seen = [];
+            foreach (AsmModule module in modules)
+            {
+                foreach (AsmDataDefinition definition in module.DataBlocks.Where(block => block.Kind == kind).SelectMany(block => block.Definitions))
+                {
+                    if (!seen.Add(GetDataDefinitionKey(definition)))
+                        continue;
+
+                    definitions.Add(definition);
+                }
+            }
+
+            blocks.Add(new AsmDataBlock(kind, definitions));
+        }
+
+        return blocks;
+    }
+
+    private static object GetDataDefinitionKey(AsmDataDefinition definition)
+    {
+        return definition.Symbol switch
+        {
+            StoragePlace place => (place.Symbol, place.OwningImage),
+            AsmSharedConstantSymbol constant => (constant.Image, constant.Value),
+            AsmSpillSlotSymbol spill => (spill.Image, spill.Slot),
+            _ => definition.Symbol,
+        };
     }
 
     private static void WriteImageCodeBlock(
@@ -287,15 +338,6 @@ public static class FinalAssemblyWriter
         LabelNameEmitter labelNames,
         CogResourceLayoutSet cogResourceLayouts)
     {
-        AsmDataBlock? lutBlock = dataBlocks.FirstOrDefault(static candidate => candidate.Kind == AsmDataBlockKind.Lut);
-        if (lutBlock is not null)
-        {
-            sb.AppendLine();
-            sb.AppendLine("    fit $200");
-            if (lutBlock.Definitions.OfType<AsmAllocatedStorageDefinition>().Any())
-                WriteStorageBlock(sb, lutBlock, "' --- lut file ---", labelNames, AddressSpace.Lut, cogResourceLayouts);
-        }
-
         AsmDataBlock? hubBlock = dataBlocks.FirstOrDefault(static candidate => candidate.Kind == AsmDataBlockKind.Hub);
         if (hubBlock is not null && hubBlock.Definitions.OfType<AsmAllocatedStorageDefinition>().Any())
         {
@@ -732,8 +774,6 @@ public static class FinalAssemblyWriter
         {
             AsmImmediateOperand { Value: >= 0 } immediate when useHexFormat => $"${immediate.Value:X8}",
             AsmImmediateOperand immediate => immediate.Value.ToString(CultureInfo.InvariantCulture),
-            AsmSymbolOperand { Symbol: StoragePlace { StorageClass: AddressSpace.Lut } lutPlace, AddressingMode: AsmSymbolAddressingMode.Immediate } =>
-                GetLutVirtualAddressConstantName(lutPlace, labelNames),
             AsmSymbolOperand symbol => GetLabelName(symbol.Symbol, labelNames),
             _ => operand.Format(),
         };
@@ -873,7 +913,7 @@ public static class FinalAssemblyWriter
             AsmImmediateOperand immediate => immediate.Format(),
             AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Immediate } => "#0",
             AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Register } => "0",
-            AsmSymbolOperand symbol => FormatSymbolOperand(symbol, labelNames, cogResourceLayouts, currentFunction),
+            AsmSymbolOperand symbol => FormatSymbolOperand(instruction, operandIndex, symbol, labelNames, cogResourceLayouts, currentFunction),
             AsmLabelRefOperand labelRef => FormatLabelRefOperand(labelRef, labelNames, currentFunction),
             _ => operand.Format(),
         };
@@ -907,16 +947,55 @@ public static class FinalAssemblyWriter
     }
 
     private static string FormatSymbolOperand(
+        AsmInstructionNode instruction,
+        int operandIndex,
         AsmSymbolOperand operand,
         LabelNameEmitter labelNames,
         CogResourceLayoutSet cogResourceLayouts,
         AsmFunction currentFunction)
     {
-        if (operand.Symbol is StoragePlace { StorageClass: AddressSpace.Lut } lutPlace
+        if (operand.Symbol is AsmImageStartSymbol imageStart
             && operand.AddressingMode == AsmSymbolAddressingMode.Immediate)
         {
-            return FormatImmediateOffsetExpression(GetLutVirtualAddressConstantName(lutPlace, labelNames), operand.Offset, useLongImmediate: true);
+            bool found = cogResourceLayouts.TryGetImageStartAddress(imageStart.Image, out HubAddress addressBytes);
+            Assert.Invariant(found, $"Missing image start address for task '{imageStart.Image.Task.Name}'.");
+            return FormatImmediateOffsetExpression(FormatPhysicalAddressExpression(addressBytes, labelNames), operand.Offset, useLongImmediate: true);
         }
+
+        bool isImmediateLutSymbol = operand.Symbol.SymbolType == SymbolType.LutVariable
+            && operand.AddressingMode == AsmSymbolAddressingMode.Immediate;
+        string formatted = isImmediateLutSymbol
+            ? GetLutVirtualAddressConstantName(operand.Symbol, labelNames, currentFunction)
+            : GetLabelName(operand.Symbol, labelNames, currentFunction);
+        if (operand.AddressingMode == AsmSymbolAddressingMode.Immediate)
+        {
+            bool useLongImmediate = operand.Symbol is StoragePlace;
+            if (instruction.Mnemonic is P2Mnemonic.RDLUT or P2Mnemonic.WRLUT
+                && operandIndex == 1
+                && isImmediateLutSymbol)
+            {
+                useLongImmediate = false;
+            }
+
+            return FormatImmediateOffsetExpression(formatted, operand.Offset, useLongImmediate);
+        }
+
+        if (operand.Offset != 0)
+            formatted = operand.Offset > 0 ? $"{formatted} + {operand.Offset}" : $"{formatted} - {-operand.Offset}";
+
+        return formatted;
+    }
+
+    private static string FormatSymbolOperand(
+        AsmSymbolOperand operand,
+        LabelNameEmitter labelNames,
+        CogResourceLayoutSet cogResourceLayouts,
+        AsmFunction currentFunction)
+    {
+        Requires.NotNull(operand);
+        Requires.NotNull(labelNames);
+        Requires.NotNull(cogResourceLayouts);
+        Requires.NotNull(currentFunction);
 
         if (operand.Symbol is AsmImageStartSymbol imageStart
             && operand.AddressingMode == AsmSymbolAddressingMode.Immediate)
@@ -926,7 +1005,11 @@ public static class FinalAssemblyWriter
             return FormatImmediateOffsetExpression(FormatPhysicalAddressExpression(addressBytes, labelNames), operand.Offset, useLongImmediate: true);
         }
 
-        string formatted = GetLabelName(operand.Symbol, labelNames, currentFunction);
+        bool isImmediateLutSymbol = operand.Symbol.SymbolType == SymbolType.LutVariable
+            && operand.AddressingMode == AsmSymbolAddressingMode.Immediate;
+        string formatted = isImmediateLutSymbol
+            ? GetLutVirtualAddressConstantName(operand.Symbol, labelNames, currentFunction)
+            : GetLabelName(operand.Symbol, labelNames, currentFunction);
         if (operand.AddressingMode == AsmSymbolAddressingMode.Immediate)
         {
             bool useLongImmediate = operand.Symbol is StoragePlace;
@@ -981,6 +1064,17 @@ public static class FinalAssemblyWriter
         Requires.NotNull(place);
         Requires.NotNull(labelNames);
         return labelNames.GetLutVirtualAddressConstantName(place);
+    }
+
+    private static string GetLutVirtualAddressConstantName(IAsmSymbol symbol, LabelNameEmitter labelNames, AsmFunction? currentFunction)
+    {
+        Requires.NotNull(symbol);
+        Requires.NotNull(labelNames);
+
+        if (symbol is StoragePlace place)
+            return GetLutVirtualAddressConstantName(place, labelNames);
+
+        return $"{GetLabelName(symbol, labelNames, currentFunction)}_vaddr";
     }
 
     private static string FormatPhysicalAddressExpression(HubAddress addressBytes, LabelNameEmitter labelNames)

@@ -157,7 +157,7 @@ public static class AsmLowerer
         Requires.NotNull(imagePlan);
 
         // Run call graph analysis to determine CC tiers and dead functions
-        CallGraphResult cgResult = CallGraphAnalyzer.Analyze(module, imagePlan);
+        CallGraphResult cgResult = CallGraphAnalyzer.Analyze(module);
         (
             EmittedStorageCatalog storageCatalog,
             Dictionary<AsmFunctionKey, SpecializedCallingConventionInfo> specializedCallingConvention,
@@ -179,42 +179,40 @@ public static class AsmLowerer
         }
 
         Dictionary<FunctionSymbol, LirFunction> lirFunctionsBySymbol = module.Functions.ToDictionary(static function => function.Symbol);
-        Dictionary<TaskSymbol, ImageDescriptor> imagesByTask = imagePlan.Images.ToDictionary(static image => image.Task);
+        ImageDescriptor image = module.Image;
+        Dictionary<TaskSymbol, ImageDescriptor> imagesByTask = imagePlan.Images.ToDictionary(static candidate => candidate.Task);
         List<AsmFunction> functions = [];
-        foreach (ImageDescriptor image in imagePlan.Images)
+        foreach (FunctionSymbol functionSymbol in image.Functions)
         {
-            foreach (FunctionSymbol functionSymbol in image.Functions)
-            {
-                if (cgResult.DeadFunctions.Contains(functionSymbol))
-                    continue;
+            if (cgResult.DeadFunctions.Contains(functionSymbol))
+                continue;
 
-                bool foundFunction = lirFunctionsBySymbol.TryGetValue(functionSymbol, out LirFunction? function);
-                Assert.Invariant(foundFunction, $"Image '{image.Task.Name}' references missing LIR function '{functionSymbol.Name}'.");
+            bool foundFunction = lirFunctionsBySymbol.TryGetValue(functionSymbol, out LirFunction? function);
+            Assert.Invariant(foundFunction, $"Image '{image.Task.Name}' references missing LIR function '{functionSymbol.Name}'.");
 
-                CallingConventionTier tier = cgResult.Tiers.GetValueOrDefault(functionSymbol, CallingConventionTier.General);
-                bool containsYield = FunctionContainsYield(Assert.NotNull(function));
-                LoweringContext ctx = new(
-                    image,
-                    Assert.NotNull(function),
-                    functionOrdinal: functions.Count,
-                    tier,
-                    cgResult.Tiers,
-                    blockParamMap[functionSymbol],
-                    imagesByTask,
-                    specializedCallingConvention,
-                    generalCallingConvention,
-                    recursiveCallingConvention,
-                    coroutineCallingConvention,
-                    storageCatalog,
-                    topLevelYieldStatePlace,
-                    containsYield,
-                    diagnostics);
-                functions.Add(LowerFunction(ctx));
-            }
+            CallingConventionTier tier = cgResult.Tiers.GetValueOrDefault(functionSymbol, CallingConventionTier.General);
+            bool containsYield = FunctionContainsYield(Assert.NotNull(function));
+            LoweringContext ctx = new(
+                image,
+                Assert.NotNull(function),
+                functionOrdinal: functions.Count,
+                tier,
+                cgResult.Tiers,
+                blockParamMap[functionSymbol],
+                imagesByTask,
+                specializedCallingConvention,
+                generalCallingConvention,
+                recursiveCallingConvention,
+                coroutineCallingConvention,
+                storageCatalog,
+                topLevelYieldStatePlace,
+                containsYield,
+                diagnostics);
+            functions.Add(LowerFunction(ctx));
         }
 
         BackendSymbolNaming.AssignStorageNames(storageCatalog.Places);
-        return new AsmModule(storageCatalog.Places, BuildDataBlocks(storageCatalog, module.StorageDefinitions), functions);
+        return new AsmModule(module, storageCatalog.Places, BuildDataBlocks(storageCatalog, module.StorageDefinitions), functions);
     }
 
     private static IReadOnlyList<AsmDataBlock> BuildDataBlocks(
@@ -530,6 +528,7 @@ public static class AsmLowerer
         BuildCallingConventionStorage(LirModule module, ImagePlan imagePlan, CallGraphResult cgResult)
     {
         EmittedStorageCatalog storageCatalog = new();
+        ImageDescriptor currentImage = module.Image;
         Dictionary<TaskSymbol, ImageDescriptor> imagesByTask = imagePlan.Images.ToDictionary(static image => image.Task);
         foreach (StoragePlace prototype in module.StoragePlaces)
         {
@@ -543,13 +542,12 @@ public static class AsmLowerer
 
             if (prototype.StorageClass is AddressSpace.Cog or AddressSpace.Lut)
             {
-                foreach (ImageDescriptor image in imagePlan.Images)
-                    storageCatalog.GetOrCreateStoragePlace(image, prototype);
+                storageCatalog.GetOrCreateStoragePlace(currentImage, prototype);
 
                 continue;
             }
 
-            storageCatalog.GetOrCreateStoragePlace(imagePlan.EntryImage, prototype);
+            storageCatalog.GetOrCreateStoragePlace(currentImage, prototype);
         }
 
         Dictionary<FunctionSymbol, LirFunction> functionsBySymbol = module.Functions.ToDictionary(static function => function.Symbol);
@@ -557,58 +555,56 @@ public static class AsmLowerer
         Dictionary<AsmFunctionKey, GeneralCallingConventionInfo> generalCallingConvention = [];
         Dictionary<AsmFunctionKey, RecursiveCallingConventionInfo> recursiveCallingConvention = [];
         Dictionary<AsmFunctionKey, CoroutineCallingConventionInfo> coroutineCallingConvention = [];
-        foreach (ImageDescriptor image in imagePlan.Images)
+        foreach (FunctionSymbol functionSymbol in currentImage.Functions)
         {
-            foreach (FunctionSymbol functionSymbol in image.Functions)
+            if (cgResult.DeadFunctions.Contains(functionSymbol))
+                continue;
+
+            bool foundFunction = functionsBySymbol.TryGetValue(functionSymbol, out LirFunction? function);
+            Assert.Invariant(foundFunction, $"Missing function prototype '{functionSymbol.Name}' for image '{currentImage.Task.Name}'.");
+            AsmFunctionKey functionKey = new(currentImage, functionSymbol);
+            CallingConventionTier functionTier = cgResult.Tiers.GetValueOrDefault(functionSymbol, CallingConventionTier.General);
+            if (functionTier is CallingConventionTier.Leaf or CallingConventionTier.SecondOrder)
             {
-                if (cgResult.DeadFunctions.Contains(functionSymbol))
-                    continue;
-
-                bool foundFunction = functionsBySymbol.TryGetValue(functionSymbol, out LirFunction? function);
-                Assert.Invariant(foundFunction, $"Missing function prototype '{functionSymbol.Name}' for image '{image.Task.Name}'.");
-                AsmFunctionKey functionKey = new(image, functionSymbol);
-                CallingConventionTier functionTier = cgResult.Tiers.GetValueOrDefault(functionSymbol, CallingConventionTier.General);
-                if (functionTier is CallingConventionTier.Leaf or CallingConventionTier.SecondOrder)
+                Assert.Invariant(function!.Blocks.Count > 0, "Specialized functions must have an entry block.");
+                IReadOnlyList<LirBlockParameter> entryParameters = function.Blocks[0].Parameters;
+                List<StoragePlace> parameterPlaces = [];
+                for (int i = 0; i < entryParameters.Count; i++)
                 {
-                    Assert.Invariant(function!.Blocks.Count > 0, "Specialized functions must have an entry block.");
-                    IReadOnlyList<LirBlockParameter> entryParameters = function.Blocks[0].Parameters;
-                    List<StoragePlace> parameterPlaces = [];
-                    for (int i = 0; i < entryParameters.Count; i++)
-                    {
-                        string abiPrefix = functionTier == CallingConventionTier.Leaf ? "leaf" : "second";
-                        AddInternalRegisterPlaces(
-                            image,
-                            storageCatalog,
-                            parameterPlaces,
-                            $"{abiPrefix}_{function.Name}_arg{i}",
-                            entryParameters[i].Type,
-                            StoragePlaceRegisterRole.InternalShared);
-                    }
-
-                    P2SpecialRegister transportRegister = IsTaskEntryFunction(function.Symbol)
-                        ? P2SpecialRegister.PTRA
-                        : functionTier == CallingConventionTier.Leaf
-                            ? P2SpecialRegister.PA
-                            : P2SpecialRegister.PB;
-                    List<StoragePlace> returnPlaces = CreateSpecializedReturnPlaces(image, function, functionTier, storageCatalog);
-                    specializedCallingConvention[functionKey] = new SpecializedCallingConventionInfo(transportRegister, parameterPlaces, returnPlaces);
+                    string abiPrefix = functionTier == CallingConventionTier.Leaf ? "leaf" : "second";
+                    AddInternalRegisterPlaces(
+                        currentImage,
+                        storageCatalog,
+                        parameterPlaces,
+                        $"{abiPrefix}_{function.Name}_arg{i}",
+                        entryParameters[i].Type,
+                        StoragePlaceRegisterRole.InternalShared);
                 }
-                else if (functionTier == CallingConventionTier.General)
+
+                P2SpecialRegister transportRegister = IsTaskEntryFunction(function.Symbol)
+                    ? P2SpecialRegister.PTRA
+                    : functionTier == CallingConventionTier.Leaf
+                        ? P2SpecialRegister.PA
+                        : P2SpecialRegister.PB;
+                List<StoragePlace> returnPlaces = CreateSpecializedReturnPlaces(currentImage, function, functionTier, storageCatalog);
+                specializedCallingConvention[functionKey] = new SpecializedCallingConventionInfo(transportRegister, parameterPlaces, returnPlaces);
+            }
+            else if (functionTier == CallingConventionTier.General)
+            {
+                Assert.Invariant(function!.Blocks.Count > 0, "General functions must have an entry block.");
+                IReadOnlyList<LirBlockParameter> entryParameters = function.Blocks[0].Parameters;
+                List<StoragePlace> parameterPlaces = [];
+                for (int i = 0; i < entryParameters.Count; i++)
                 {
-                    Assert.Invariant(function!.Blocks.Count > 0, "General functions must have an entry block.");
-                    IReadOnlyList<LirBlockParameter> entryParameters = function.Blocks[0].Parameters;
-                    List<StoragePlace> parameterPlaces = [];
-                    for (int i = 0; i < entryParameters.Count; i++)
-                    {
-                        AddInternalRegisterPlaces(
-                            image,
-                            storageCatalog,
-                            parameterPlaces,
-                            $"gen_{function.Name}_arg{i}",
-                            entryParameters[i].Type,
-                            StoragePlaceRegisterRole.InternalShared,
-                            preferredRegisters: i == 0 ? [new P2Register(P2SpecialRegister.PB), new P2Register(P2SpecialRegister.PA)] : null);
-                    }
+                    AddInternalRegisterPlaces(
+                        currentImage,
+                        storageCatalog,
+                        parameterPlaces,
+                        $"gen_{function.Name}_arg{i}",
+                        entryParameters[i].Type,
+                        StoragePlaceRegisterRole.InternalShared,
+                        preferredRegisters: i == 0 ? [new P2Register(P2SpecialRegister.PB), new P2Register(P2SpecialRegister.PA)] : null);
+                }
 
                     ReturnSlot? registerReturnSlot = function.ReturnSlots
                         .Where(static slot => slot.Placement == ReturnPlacement.Register)
@@ -625,7 +621,7 @@ public static class AsmLowerer
                             for (int lane = 1; lane < returnLaneCount; lane++)
                             {
                                 StoragePlace returnPlace = CreateInternalRegisterPlace(
-                                    image,
+                                    currentImage,
                                     $"gen_{function.Name}_ret0_lane{lane}",
                                     BuiltinTypes.U32,
                                     StoragePlaceRegisterRole.InternalShared);
@@ -636,7 +632,7 @@ public static class AsmLowerer
                         else
                         {
                             AddInternalRegisterPlaces(
-                                image,
+                                currentImage,
                                 storageCatalog,
                                 registerReturnPlaces,
                                 $"gen_{function.Name}_ret0",
@@ -646,24 +642,24 @@ public static class AsmLowerer
                         }
                     }
 
-                    generalCallingConvention[functionKey] = new GeneralCallingConventionInfo(parameterPlaces, registerReturnPlaces);
-                }
-                else if (functionTier == CallingConventionTier.Recursive)
+                generalCallingConvention[functionKey] = new GeneralCallingConventionInfo(parameterPlaces, registerReturnPlaces);
+            }
+            else if (functionTier == CallingConventionTier.Recursive)
+            {
+                Assert.Invariant(function!.Blocks.Count > 0, "Recursive functions must have an entry block.");
+                IReadOnlyList<LirBlockParameter> entryParameters = function.Blocks[0].Parameters;
+                List<StoragePlace> parameterPlaces = [];
+                for (int i = 0; i < entryParameters.Count; i++)
                 {
-                    Assert.Invariant(function!.Blocks.Count > 0, "Recursive functions must have an entry block.");
-                    IReadOnlyList<LirBlockParameter> entryParameters = function.Blocks[0].Parameters;
-                    List<StoragePlace> parameterPlaces = [];
-                    for (int i = 0; i < entryParameters.Count; i++)
-                    {
-                        AddInternalRegisterPlaces(
-                            image,
-                            storageCatalog,
-                            parameterPlaces,
-                            $"rec_{function.Name}_arg{i}",
-                            entryParameters[i].Type,
-                            StoragePlaceRegisterRole.InternalShared,
-                            preferredRegisters: i == 0 ? [new P2Register(P2SpecialRegister.PB), new P2Register(P2SpecialRegister.PA)] : null);
-                    }
+                    AddInternalRegisterPlaces(
+                        currentImage,
+                        storageCatalog,
+                        parameterPlaces,
+                        $"rec_{function.Name}_arg{i}",
+                        entryParameters[i].Type,
+                        StoragePlaceRegisterRole.InternalShared,
+                        preferredRegisters: i == 0 ? [new P2Register(P2SpecialRegister.PB), new P2Register(P2SpecialRegister.PA)] : null);
+                }
 
                     ReturnSlot? registerReturnSlot = function.ReturnSlots
                         .Where(static slot => slot.Placement == ReturnPlacement.Register)
@@ -677,7 +673,7 @@ public static class AsmLowerer
                             ? [new P2Register(P2SpecialRegister.PA), new P2Register(P2SpecialRegister.PB)]
                             : [new P2Register(P2SpecialRegister.PB), new P2Register(P2SpecialRegister.PA)];
                         AddInternalRegisterPlaces(
-                            image,
+                            currentImage,
                             storageCatalog,
                             registerReturnPlaces,
                             $"rec_{function.Name}_ret0",
@@ -686,56 +682,51 @@ public static class AsmLowerer
                             preferredRegisters: preferredReturnRegisters);
                     }
 
-                    recursiveCallingConvention[functionKey] = new RecursiveCallingConventionInfo(parameterPlaces, registerReturnPlaces);
-                }
-                else if (functionTier == CallingConventionTier.Coroutine)
+                recursiveCallingConvention[functionKey] = new RecursiveCallingConventionInfo(parameterPlaces, registerReturnPlaces);
+            }
+            else if (functionTier == CallingConventionTier.Coroutine)
+            {
+                Assert.Invariant(function!.Blocks.Count > 0, "Coroutine functions must have an entry block.");
+                IReadOnlyList<LirBlockParameter> entryParameters = function.Blocks[0].Parameters;
+                List<StoragePlace> parameterPlaces = [];
+                for (int i = 0; i < entryParameters.Count; i++)
                 {
-                    Assert.Invariant(function!.Blocks.Count > 0, "Coroutine functions must have an entry block.");
-                    IReadOnlyList<LirBlockParameter> entryParameters = function.Blocks[0].Parameters;
-                    List<StoragePlace> parameterPlaces = [];
-                    for (int i = 0; i < entryParameters.Count; i++)
-                    {
-                        AddInternalRegisterPlaces(
-                            image,
-                            storageCatalog,
-                            parameterPlaces,
-                            $"coro_{function.Name}_arg{i}",
-                            entryParameters[i].Type,
-                            StoragePlaceRegisterRole.InternalDedicated);
-                    }
-
-                    StoragePlace statePlace = CreateInternalRegisterPlace(
-                        image,
-                        $"coro_{function.Name}_state",
-                        BuiltinTypes.U32,
+                    AddInternalRegisterPlaces(
+                        currentImage,
+                        storageCatalog,
+                        parameterPlaces,
+                        $"coro_{function.Name}_arg{i}",
+                        entryParameters[i].Type,
                         StoragePlaceRegisterRole.InternalDedicated);
-                    storageCatalog.AddSyntheticPlace(statePlace);
-
-                    coroutineCallingConvention[functionKey] = new CoroutineCallingConventionInfo(statePlace, parameterPlaces);
                 }
+
+                StoragePlace statePlace = CreateInternalRegisterPlace(
+                    currentImage,
+                    $"coro_{function.Name}_state",
+                    BuiltinTypes.U32,
+                    StoragePlaceRegisterRole.InternalDedicated);
+                storageCatalog.AddSyntheticPlace(statePlace);
+
+                coroutineCallingConvention[functionKey] = new CoroutineCallingConventionInfo(statePlace, parameterPlaces);
             }
         }
 
-        StoragePlace? topLevelYieldStatePlace = null;
-        if (HasTopLevelYieldto(module))
-        {
-            GlobalVariableSymbol topYieldStateSymbol = new(
-                "top_yield_state",
-                BuiltinTypes.U32,
-                isConst: false,
-                AddressSpace.Cog,
-                declaringLayout: null,
-                isExtern: false,
-                fixedAddress: null,
-                alignment: null,
-                sourceSpan: SourceSpan.Synthetic());
-            StoragePlace topLevelYieldStatePrototype = new(
-                topYieldStateSymbol,
-                StoragePlacePlacement.Allocatable,
-                StoragePlaceRegisterRole.Global,
-                owningImage: imagePlan.EntryImage);
-            topLevelYieldStatePlace = storageCatalog.GetOrCreateStoragePlace(imagePlan.EntryImage, topLevelYieldStatePrototype);
-        }
+        GlobalVariableSymbol topYieldStateSymbol = new(
+            "top_yield_state",
+            BuiltinTypes.U32,
+            isConst: false,
+            AddressSpace.Cog,
+            declaringLayout: null,
+            isExtern: false,
+            fixedAddress: null,
+            alignment: null,
+            sourceSpan: SourceSpan.Synthetic());
+        StoragePlace topLevelYieldStatePrototype = new(
+            topYieldStateSymbol,
+            StoragePlacePlacement.Allocatable,
+            StoragePlaceRegisterRole.Global,
+            owningImage: currentImage);
+        StoragePlace topLevelYieldStatePlace = storageCatalog.GetOrCreateStoragePlace(currentImage, topLevelYieldStatePrototype);
 
         return (storageCatalog, specializedCallingConvention, generalCallingConvention, recursiveCallingConvention, coroutineCallingConvention, topLevelYieldStatePlace);
     }
@@ -830,28 +821,6 @@ public static class AsmLowerer
             {
                 if (instruction is LirOpInstruction { Operation: LirYieldOperation })
                     return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool HasTopLevelYieldto(LirModule module)
-    {
-        foreach (LirFunction function in module.Functions)
-        {
-            if (!function.IsEntryPoint)
-                continue;
-
-            foreach (LirBlock block in function.Blocks)
-            {
-                foreach (LirInstruction instruction in block.Instructions)
-                {
-                    if (instruction is LirOpInstruction { Operation: LirYieldToOperation })
-                    {
-                        return true;
-                    }
-                }
             }
         }
 
