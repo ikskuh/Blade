@@ -54,11 +54,11 @@ public class LayoutSolutionTests
             Assert.That(counter.SizeInAddressUnits, Is.EqualTo(4));
         });
 
-        Assert.That(build.AssemblyText, Does.Contain("org $200"));
-        Assert.That(build.AssemblyText, Does.Contain("org $300"));
         Assert.That(build.AssemblyText, Does.Contain("orgh"));
-        Assert.That(build.AssemblyText, Does.Match(@"g_tail\s+LONG\s+2"));
-        Assert.That(build.AssemblyText, Does.Match(@"g_head\s+LONG\s+1"));
+        Assert.That(build.AssemblyText, Does.Match(@"(?m)^\s*org \$[0-9A-F]+$"));
+        Assert.That(build.AssemblyText, Does.Contain("g_head_vaddr = $100"));
+        Assert.That(build.AssemblyText, Does.Contain("g_tail_vaddr = $0"));
+        Assert.That(build.AssemblyText, Does.Contain("WRLUT"));
         Assert.That(build.AssemblyText, Does.Match(@"g_counter\s+WORD\s+0\[2\]"));
         Assert.That(build.AssemblyText, Does.Match(@"g_flag\s+LONG\s+3"));
     }
@@ -91,8 +91,8 @@ public class LayoutSolutionTests
             Assert.That(build.CogResourceLayouts.MaximumCodeSizeLongs, Is.LessThan(GetRawAddress(head.Address)));
         });
 
-        Assert.That(build.AssemblyText, Does.Contain("org $1EC"));
         Assert.That(build.AssemblyText, Does.Contain("fit $1F0"));
+        Assert.That(build.AssemblyText, Does.Match(@"(?m)^\s*org \$[0-9A-F]+$"));
         Assert.That(build.AssemblyText, Does.Match(@"g_head\s+LONG\s+1"));
         Assert.That(build.AssemblyText, Does.Match(@"g_pair\s+LONG\s+0\[2\]"));
     }

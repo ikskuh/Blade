@@ -10,39 +10,52 @@ public class AsmLegalizerTests
     [Test]
     public void Legalize_UsesAugdForLargeSetxfrqImmediate()
     {
-        IReadOnlyList<AsmNode> nodes = LegalizeNodes(
+        AsmModule module = LegalizeModule(
             new AsmInstructionNode(P2Mnemonic.SETXFRQ, [new AsmImmediateOperand(0x456)]));
+        IReadOnlyList<AsmNode> nodes = module.Functions[0].Nodes;
+        AsmInstructionNode instruction = (AsmInstructionNode)nodes[0];
+        AsmSymbolOperand operand = (AsmSymbolOperand)instruction.Operands[0];
+        AsmDataDefinition definition = module.DataBlocks.Single(block => block.Kind == AsmDataBlockKind.Constant).Definitions.Single();
 
-        Assert.That(nodes, Has.Count.EqualTo(2));
-        AssertAugInstruction(nodes[0], "AUGD", 0x456);
-        AssertInstruction(nodes[1], "SETXFRQ", 0x56);
+        Assert.That(nodes, Has.Count.EqualTo(1));
+        Assert.That(instruction.Opcode, Is.EqualTo("SETXFRQ"));
+        Assert.That(operand.AddressingMode, Is.EqualTo(AsmSymbolAddressingMode.Register));
+        Assert.That(definition.Symbol.Name, Is.EqualTo(operand.Symbol.Name));
     }
 
     [Test]
     public void Legalize_UsesAugsForLargeAkpinImmediate()
     {
-        IReadOnlyList<AsmNode> nodes = LegalizeNodes(
+        AsmModule module = LegalizeModule(
             new AsmInstructionNode(P2Mnemonic.AKPIN, [new AsmImmediateOperand(0x456)]));
+        IReadOnlyList<AsmNode> nodes = module.Functions[0].Nodes;
+        AsmInstructionNode instruction = (AsmInstructionNode)nodes[0];
+        AsmSymbolOperand operand = (AsmSymbolOperand)instruction.Operands[0];
+        AsmDataDefinition definition = module.DataBlocks.Single(block => block.Kind == AsmDataBlockKind.Constant).Definitions.Single();
 
-        Assert.That(nodes, Has.Count.EqualTo(2));
-        AssertAugInstruction(nodes[0], "AUGS", 0x456);
-        AssertInstruction(nodes[1], "AKPIN", 0x56);
+        Assert.That(nodes, Has.Count.EqualTo(1));
+        Assert.That(instruction.Opcode, Is.EqualTo("AKPIN"));
+        Assert.That(operand.AddressingMode, Is.EqualTo(AsmSymbolAddressingMode.Register));
+        Assert.That(definition.Symbol.Name, Is.EqualTo(operand.Symbol.Name));
     }
 
     [Test]
     public void Legalize_UsesOperandRoleMetadataForWrpin()
     {
-        IReadOnlyList<AsmNode> nodes = LegalizeNodes(
+        AsmModule module = LegalizeModule(
             new AsmInstructionNode(P2Mnemonic.WRPIN, [new AsmImmediateOperand(0x456), new AsmImmediateOperand(0x789)]));
+        IReadOnlyList<AsmNode> nodes = module.Functions[0].Nodes;
+        IReadOnlyCollection<AsmDataDefinition> definitions = module.DataBlocks.Single(block => block.Kind == AsmDataBlockKind.Constant).Definitions;
 
-        Assert.That(nodes, Has.Count.EqualTo(3));
-        AssertAugInstruction(nodes[0], "AUGD", 0x456);
-        AssertAugInstruction(nodes[1], "AUGS", 0x789);
+        Assert.That(nodes, Has.Count.EqualTo(1));
+        Assert.That(definitions, Has.Count.EqualTo(2));
 
-        AsmInstructionNode wrpin = (AsmInstructionNode)nodes[2];
+        AsmInstructionNode wrpin = (AsmInstructionNode)nodes[0];
         Assert.That(wrpin.Opcode, Is.EqualTo("WRPIN"));
-        Assert.That(((AsmImmediateOperand)wrpin.Operands[0]).Value, Is.EqualTo(0x56));
-        Assert.That(((AsmImmediateOperand)wrpin.Operands[1]).Value, Is.EqualTo(0x189));
+        Assert.That(wrpin.Operands[0], Is.TypeOf<AsmSymbolOperand>());
+        Assert.That(wrpin.Operands[1], Is.TypeOf<AsmSymbolOperand>());
+        Assert.That(((AsmSymbolOperand)wrpin.Operands[0]).AddressingMode, Is.EqualTo(AsmSymbolAddressingMode.Register));
+        Assert.That(((AsmSymbolOperand)wrpin.Operands[1]).AddressingMode, Is.EqualTo(AsmSymbolAddressingMode.Register));
     }
 
     [Test]

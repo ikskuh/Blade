@@ -191,7 +191,8 @@ internal static class IrTestFactory
         int? alignment = null,
         StoragePlaceRegisterRole? registerRole = null,
         P2SpecialRegister? specialRegisterAlias = null,
-        string? emittedName = null)
+        string? emittedName = null,
+        ImageDescriptor? owningImage = null)
     {
         VariableSymbol symbol = CreateVariableSymbol(
             name,
@@ -211,7 +212,7 @@ internal static class IrTestFactory
             effectiveRegisterRole = StoragePlaceRegisterRole.Global;
         }
 
-        return new StoragePlace(globalSymbol, placement, effectiveRegisterRole, emittedName ?? $"g_{name}", specialRegisterAlias: specialRegisterAlias);
+        return new StoragePlace(globalSymbol, placement, effectiveRegisterRole, emittedName ?? $"g_{name}", specialRegisterAlias: specialRegisterAlias, owningImage: owningImage);
     }
 
     public static BoundModule CreateBoundModule(
@@ -291,6 +292,47 @@ internal static class IrTestFactory
         return new TaskSymbol("main", Requires.NotNull(entryFunction), AddressSpace.Cog, SourceSpan.Synthetic());
     }
 
+    public static MirModule CreateMirModule(
+        IReadOnlyList<StoragePlace>? storagePlaces = null,
+        IReadOnlyList<StorageDefinition>? storageDefinitions = null,
+        IReadOnlyList<MirFunction>? functions = null)
+    {
+        IReadOnlyList<MirFunction> effectiveFunctions = functions ?? [];
+        FunctionSymbol entryFunction = effectiveFunctions
+            .FirstOrDefault(static function => function.IsEntryPoint)
+            ?.Symbol
+            ?? effectiveFunctions.FirstOrDefault()?.Symbol
+            ?? CreateEntryPoint().Symbol;
+        ImageDescriptor image = CreateSingleEntryImagePlan(entryFunction).EntryImage;
+        return new MirModule(image, storagePlaces ?? [], storageDefinitions ?? [], effectiveFunctions);
+    }
+
+    public static LirModule CreateLirModule(
+        IReadOnlyList<StoragePlace>? storagePlaces = null,
+        IReadOnlyList<StorageDefinition>? storageDefinitions = null,
+        IReadOnlyList<LirFunction>? functions = null)
+    {
+        IReadOnlyList<LirFunction> effectiveFunctions = functions ?? [];
+        MirModule sourceModule = CreateMirModule(
+            storagePlaces,
+            storageDefinitions,
+            [.. effectiveFunctions.Select(static function => function.SourceFunction)]);
+        return new LirModule(sourceModule, storagePlaces ?? [], storageDefinitions ?? [], effectiveFunctions);
+    }
+
+    public static AsmModule CreateAsmModule(
+        IReadOnlyList<StoragePlace>? storagePlaces = null,
+        IReadOnlyList<AsmDataBlock>? dataBlocks = null,
+        IReadOnlyList<AsmFunction>? functions = null)
+    {
+        IReadOnlyList<AsmFunction> effectiveFunctions = functions ?? [];
+        LirModule sourceModule = CreateLirModule(
+            storagePlaces,
+            storageDefinitions: [],
+            [.. effectiveFunctions.Select(static function => function.SourceFunction)]);
+        return new AsmModule(sourceModule, storagePlaces ?? [], dataBlocks ?? [], effectiveFunctions);
+    }
+
     public static ImagePlan CreateSingleEntryImagePlan(FunctionSymbol entryFunction)
     {
         Requires.NotNull(entryFunction);
@@ -366,7 +408,7 @@ internal static class IrTestFactory
         Requires.NotNull(module);
         Requires.NotNull(imagePlan);
 
-        return CogResourcePlanner.Build(module, imagePlan, ImagePlacer.Place(imagePlan), new LayoutSolution([]), includeDefaultBladeHalt, diagnostics: null);
+        return CogResourcePlanner.Build([module], imagePlan, ImagePlacer.Place(imagePlan), new LayoutSolution([]), includeDefaultBladeHalt, diagnostics: null);
     }
 
     public static ImagePlan CreateImagePlanFromModule(AsmModule module)

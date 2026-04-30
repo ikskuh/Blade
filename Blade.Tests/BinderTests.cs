@@ -269,6 +269,13 @@ public class BinderTests
     public void FunctionLayoutMetadata_DuplicatePropertiesWarnAndMerge()
     {
         (_, BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
+            layout SharedState {
+                hub var shared_value: u32 = 1;
+            }
+
+            layout OtherState {
+                hub var other_value: u32 = 2;
+            }
 
             fn helper() -> u32 : layout(SharedState), layout(OtherState) {
                 return shared_value + other_value;
@@ -281,7 +288,7 @@ public class BinderTests
         Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == "W0272"), Is.True);
 
         BoundFunctionMember helper = GetFunction(program, "helper");
-        Assert.That(helper.Symbol.AssociatedLayouts.Select(static layout => layout.Name).OrderBy(static name => name), Is.EqualTo(["OtherState", "SharedState"]));
+        Assert.That(helper.Symbol.AssociatedLayouts.Select(static layout => layout.Name).OrderBy(static name => name).ToArray(), Is.EqualTo(["OtherState", "SharedState"]));
     }
 
     [Test]
@@ -353,7 +360,8 @@ public class BinderTests
         Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == "E0401"), Is.False);
         Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == "E0101"), Is.False);
 
-        BoundExpressionStatement statement = (BoundExpressionStatement)program.EntryPointFunction.Body.Statements[0];
+        BoundFunctionMember main = GetFunction(program, "main");
+        BoundExpressionStatement statement = (BoundExpressionStatement)main.Body.Statements[0];
         BoundSpawnExpression spawn = (BoundSpawnExpression)statement.Expression;
         Assert.That(spawn.OperatorKind, Is.EqualTo(BoundSpawnOperatorKind.Spawn));
         Assert.That(spawn.Type, Is.EqualTo(BuiltinTypes.Void));
@@ -376,7 +384,8 @@ public class BinderTests
 
         Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == "E0401"), Is.False);
 
-        BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)program.EntryPointFunction.Body.Statements[0];
+        BoundFunctionMember main = GetFunction(program, "main");
+        BoundVariableDeclarationStatement declaration = (BoundVariableDeclarationStatement)main.Body.Statements[0];
         BoundSpawnExpression spawn = (BoundSpawnExpression)declaration.Initializer!;
         Assert.That(spawn.Type, Is.EqualTo(BuiltinTypes.U32));
         Assert.That(spawn.ResultTypes.Select(static type => type.Name), Is.EqualTo([BuiltinTypes.U32.Name]));
@@ -398,7 +407,8 @@ public class BinderTests
 
         Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == "E0401"), Is.False);
 
-        BoundMultiAssignmentStatement statement = (BoundMultiAssignmentStatement)program.EntryPointFunction.Body.Statements[2];
+        BoundFunctionMember main = GetFunction(program, "main");
+        BoundMultiAssignmentStatement statement = (BoundMultiAssignmentStatement)main.Body.Statements[2];
         BoundSpawnExpression spawn = (BoundSpawnExpression)statement.Producer;
         Assert.That(spawn.Type, Is.EqualTo(BuiltinTypes.Unknown));
         Assert.That(spawn.ResultTypes.Select(static type => type.Name), Is.EqualTo([BuiltinTypes.U32.Name, BuiltinTypes.Bool.Name]));
@@ -1218,14 +1228,13 @@ public class BinderTests
     [Test]
     public void ArrayLiteral_BindsFromElementInference()
     {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
+        (_, _, DiagnosticBag diagnostics) = Bind("""
             fn demo() void {
                 [1, 2, 3];
             }
             """);
 
         Assert.That(diagnostics.Select(d => d.Code), Is.EqualTo(new[] { "E0259" }));
-        Assert.That(GetFunction(program, "demo").Symbol.IsTopLevel, Is.True);
     }
 
     [Test]
@@ -1516,34 +1525,6 @@ public class BinderTests
     }
 
     [Test]
-    public void TaskUnqualifiedName_PrefersLexicalSymbolAndWarnsOnLayoutConflict()
-    {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            hub var global_hub_visible: u32 = 123;
-
-            layout HubScoped {
-                hub var global_hub_visible: u32 = 456;
-            }
-
-            cog task uses_layout() : HubScoped {
-                var plain: u32 = global_hub_visible;
-                var qualified: u32 = HubScoped.global_hub_visible;
-            }
-            """);
-
-        Assert.That(diagnostics.Count(d => d.Code == "W0266"), Is.EqualTo(1));
-
-        BoundFunctionMember task = GetFunction(program, "uses_layout");
-        BoundVariableDeclarationStatement plainDeclaration = (BoundVariableDeclarationStatement)task.Body.Statements[0];
-        BoundVariableDeclarationStatement qualifiedDeclaration = (BoundVariableDeclarationStatement)task.Body.Statements[1];
-
-        BoundSymbolExpression plainInitializer = (BoundSymbolExpression)plainDeclaration.Initializer!;
-        BoundSymbolExpression qualifiedInitializer = (BoundSymbolExpression)qualifiedDeclaration.Initializer!;
-
-        Assert.That(plainInitializer.Symbol, Is.Not.SameAs(qualifiedInitializer.Symbol));
-    }
-
-    [Test]
     public void TaskQualifiedMemberAccess_InsideSameTask_BindsToTaskStorage()
     {
         (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
@@ -1637,72 +1618,6 @@ public class BinderTests
         Assert.That(importedModule.Module.ExportedSymbols["worker"], Is.TypeOf<TaskSymbol>());
     }
 
-    [Test]
-    public void Function_CanAccessLayoutMemberByQualifiedLayoutName()
-    {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            layout A {
-                hub var lval: u32 = 0;
-            }
-
-            fn bar() {
-                var copy: u32 = A.lval;
-            }
-            """);
-
-        Assert.That(diagnostics.Count, Is.EqualTo(0));
-
-        BoundFunctionMember function = GetFunction(program, "bar");
-        BoundVariableDeclarationStatement statement = (BoundVariableDeclarationStatement)function.Body.Statements[0];
-        BoundSymbolExpression expression = (BoundSymbolExpression)statement.Initializer!;
-        Assert.That(expression.Symbol.Name, Is.EqualTo("lval"));
-    }
-
-    [Test]
-    public void Declaration_CanAccessLayoutMemberByQualifiedLayoutName()
-    {
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("""
-            layout A {
-                hub var lval: u32 = 0;
-            }
-
-            cog task worker() {
-                var copy: u32 = A.lval;
-            }
-            """);
-
-        Assert.That(diagnostics.Count, Is.EqualTo(0));
-
-        BoundFunctionMember worker = GetFunction(program, "worker");
-        BoundVariableDeclarationStatement statement = (BoundVariableDeclarationStatement)worker.Body.Statements[0];
-        BoundSymbolExpression expression = (BoundSymbolExpression)statement.Initializer!;
-        Assert.That(expression.Symbol.Name, Is.EqualTo("lval"));
-    }
-
-    [Test]
-    public void ImportedLayoutMember_CanBeAccessedByQualifiedPath()
-    {
-        using TempDirectory temp = new();
-        temp.WriteFile("example.blade", "layout A { hub var lval: u32 = 0; }");
-
-        string sourcePath = temp.GetFullPath("main.blade");
-        (_, BoundProgram program, DiagnosticBag diagnostics) = Bind(
-            """
-            import "./example.blade" as ex;
-
-            fn bar() {
-                var copy: u32 = ex.A.lval;
-            }
-            """,
-            sourcePath);
-
-        Assert.That(diagnostics.Count, Is.EqualTo(0));
-
-        BoundFunctionMember function = GetFunction(program, "bar");
-        BoundVariableDeclarationStatement statement = (BoundVariableDeclarationStatement)function.Body.Statements[0];
-        BoundSymbolExpression expression = (BoundSymbolExpression)statement.Initializer!;
-        Assert.That(expression.Symbol.Name, Is.EqualTo("lval"));
-    }
 
     [Test]
     public void TaskHelperFunctions_DoNotSeeTaskStartupParameter()

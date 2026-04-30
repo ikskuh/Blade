@@ -134,7 +134,7 @@ public class MirOptimizerTests
 
         MirBlock block = new(MirBlockRef("bb0"), [], instructions, new MirReturnTerminator([], span));
         MirFunction function = CreateMirFunction("test", isEntryPoint: true, FunctionKind.Default, [], [block]);
-        MirModule optimized = MirOptimizer.Optimize(new MirModule([], [], [function]), maxIterations: 1, enabledOptimizations: [OptimizationRegistry.GetMirOptimization("const-prop")!]);
+        MirModule optimized = MirOptimizer.Optimize(CreateMirModule(functions: [function]), maxIterations: 1, enabledOptimizations: [OptimizationRegistry.GetMirOptimization("const-prop")!]);
 
         IReadOnlyList<MirInstruction> rewritten = optimized.Functions[0].Blocks[0].Instructions;
         Dictionary<MirValueId, BladeValue> constants = rewritten
@@ -273,7 +273,7 @@ public class MirOptimizerTests
             new MirReturnTerminator([MirValue(206)], span));
         MirFunction caller = new(callerSymbol, isEntryPoint: true, [packedType], [callerBlock], callerSymbol.ReturnSlots);
 
-        MirModule inlined = MirInliner.InlineMandatoryAndSingleCallsite(new MirModule([], [], [caller, callee]), enableSingleCallsiteInlining: true);
+        MirModule inlined = MirInliner.InlineMandatoryAndSingleCallsite(CreateMirModule(functions: [caller, callee]), enableSingleCallsiteInlining: true);
         MirFunction rewrittenCaller = inlined.Functions.Single(function => function.Symbol == callerSymbol);
         List<MirInstruction> instructions = rewrittenCaller.Blocks.SelectMany(static block => block.Instructions).ToList();
 

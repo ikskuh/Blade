@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -23,12 +24,55 @@ public sealed class ComptimeBinderHelperTests
     private static (BoundProgram Program, IReadOnlyList<Diagnostic> Diagnostics) Bind(string text, string? filePath = null, IReadOnlyDictionary<string, string>? namedModuleRoots = null)
     {
         string effectivePath = filePath ?? "<input>";
-        CompilationResult result = CompilerDriver.Compile(text, effectivePath, new CompilationOptions
+        CompilationResult result = CompilerDriver.Compile(EnsureEntrypoint(text), effectivePath, new CompilationOptions
         {
             NamedModuleRoots = namedModuleRoots ?? new Dictionary<string, string>(StringComparer.Ordinal),
             EmitIr = false,
         });
         return (Requires.NotNull(result.BoundProgram), result.Diagnostics);
+    }
+
+    private static string EnsureEntrypoint(string text)
+    {
+        SourceText source = new(text);
+        DiagnosticBag diagnostics = new();
+        Parser parser = Parser.Create(source, diagnostics);
+        CompilationUnitSyntax unit = parser.ParseCompilationUnit();
+
+        if (unit.Members.OfType<TaskDeclarationSyntax>().Any(static task => task.Name.Text == "main"))
+            return text;
+
+        List<MemberSyntax> declarations = [];
+        List<string> synthesizedMainStatements = [];
+        foreach (MemberSyntax member in unit.Members)
+        {
+            if (member is GlobalStatementSyntax globalStatement)
+                synthesizedMainStatements.Add(source.ToString(globalStatement.Span));
+            else
+                declarations.Add(member);
+        }
+
+        StringWriter writer = new();
+        foreach (MemberSyntax declaration in declarations)
+            writer.WriteLine(source.ToString(declaration.Span).Trim());
+
+        if (declarations.Count > 0)
+            writer.WriteLine();
+
+        writer.WriteLine("cog task main() {");
+        foreach (string statementText in synthesizedMainStatements)
+        {
+            foreach (string line in statementText.Trim().Split('\n'))
+                writer.WriteLine($"    {line.TrimEnd('\r')}");
+        }
+
+        writer.WriteLine("}");
+        return writer.ToString();
+    }
+
+    private static BoundFunctionMember GetFunction(BoundProgram program, string name)
+    {
+        return program.Functions.Single(member => member.Symbol.Name == name);
     }
 
     private static SemanticBinder CreateBinder(DiagnosticBag diagnostics)
@@ -63,6 +107,7 @@ public sealed class ComptimeBinderHelperTests
         object loadedCompilation = Activator.CreateInstance(
             loadedCompilationType,
             rootModule,
+            rootModule,
             modulesByPath)!;
 
         Type boundModuleType = typeof(BoundModule);
@@ -76,6 +121,7 @@ public sealed class ComptimeBinderHelperTests
             new HashSet<string>(StringComparer.OrdinalIgnoreCase),
             moduleDefinitionCache,
             250,
+            null,
         ]);
     }
 
@@ -236,7 +282,7 @@ public sealed class ComptimeBinderHelperTests
     [Test]
     public void StorageLayoutMetadata_RequiresComptimeInteger()
     {
-        (_, IReadOnlyList<Diagnostic> diagnostics) = Bind("extern cog var DIRA: u32 @(true);");
+        (_, IReadOnlyList<Diagnostic> diagnostics) = Bind("extern hub var value: u32 @(\"bad\");");
 
         Assert.That(diagnostics.Any(diagnostic => diagnostic.Code == "E0205"), Is.True);
     }
@@ -260,7 +306,8 @@ public sealed class ComptimeBinderHelperTests
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
 
-        BoundVariableDeclarationStatement statement = (BoundVariableDeclarationStatement)program.EntryPointFunction.Body.Statements.Single();
+        BoundFunctionMember main = GetFunction(program, "main");
+        BoundVariableDeclarationStatement statement = (BoundVariableDeclarationStatement)main.Body.Statements.Single();
         BoundLiteralExpression initializer = (BoundLiteralExpression)statement.Initializer!;
         Assert.That(initializer.Value.Value, Is.EqualTo(3L));
     }
@@ -316,7 +363,8 @@ public sealed class ComptimeBinderHelperTests
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
 
-        BoundVariableDeclarationStatement statement = (BoundVariableDeclarationStatement)program.EntryPointFunction.Body.Statements.Single();
+        BoundFunctionMember main = GetFunction(program, "main");
+        BoundVariableDeclarationStatement statement = (BoundVariableDeclarationStatement)main.Body.Statements.Single();
         BoundLiteralExpression initializer = (BoundLiteralExpression)statement.Initializer!;
         Assert.That(initializer.Value.Value, Is.EqualTo(2L));
     }
@@ -325,33 +373,37 @@ public sealed class ComptimeBinderHelperTests
     public void StaticStorageConstants_AreReadableDuringFoldingAndComptimeEvaluation()
     {
         (BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
-            cog const REG_RATE: u32 = 20_000_000;
-            lut const LUT_OFFSET: u32 = 2;
+            hub const REG_RATE: u32 = 20_000_000;
+            hub const LUT_OFFSET: u32 = 2;
             hub const HUB_OFFSET: u32 = 3;
 
             comptime fn total() -> u32 {
                 return REG_RATE / 1_000_000 + LUT_OFFSET + HUB_OFFSET;
             }
 
-            cog const DIRECT: u32 = REG_RATE / 1_000_000 + LUT_OFFSET + HUB_OFFSET;
-            cog const VIA_FN: u32 = total();
+            hub const DIRECT: u32 = REG_RATE / 1_000_000 + LUT_OFFSET + HUB_OFFSET;
+            hub const VIA_FN: u32 = total();
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
-        Assert.That(program.GlobalVariables.Select(static global => global.Initializer).OfType<BoundLiteralExpression>().Select(static literal => literal.Value.Value), Does.Contain((uint)25));
+        Assert.That(
+            program.GlobalVariables.Select(static global => global.Initializer)
+                .OfType<BoundLiteralExpression>()
+                .Select(static literal => Convert.ToInt64(literal.Value.Value, CultureInfo.InvariantCulture)),
+            Does.Contain(25L));
     }
 
     [Test]
     public void IntegerLiteralFolding_Keeps64BitIntermediatesUntilFinalMaterialization()
     {
         (BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("""
-            cog const CLOCKS: u32 = 250 * 20_000_000 / 1000;
+            hub const CLOCKS: u32 = 250 * 20_000_000 / 1000;
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
 
         BoundLiteralExpression initializer = (BoundLiteralExpression)program.GlobalVariables.Single().Initializer!;
-        Assert.That(initializer.Value.Value, Is.EqualTo(5_000_000L));
+        Assert.That(Convert.ToInt64(initializer.Value.Value, CultureInfo.InvariantCulture), Is.EqualTo(5_000_000L));
     }
 
     [Test]

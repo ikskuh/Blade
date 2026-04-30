@@ -20,16 +20,14 @@ public class RegisterAllocatorTests
         AsmRegisterOperand source = AsmRegister(1);
         AsmRegisterOperand copy = AsmRegister(2);
 
-        AsmModule asmModule = new(
-            [],
-            [],
+        AsmModule asmModule = CreateAsmModule(functions:
+        [
+            CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
             [
-                CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
-                [
-                    new AsmInstructionNode(P2Mnemonic.MOV, [copy, source]),
-                    new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(P2SpecialRegister.OUTA), copy]),
-                ]),
-            ]);
+                new AsmInstructionNode(P2Mnemonic.MOV, [copy, source]),
+                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(P2SpecialRegister.OUTA), copy]),
+            ]),
+        ]);
 
         EmitResult emit = CodegenPipeline.Emit(CreateBuildResult(asmModule), new EmitOptions
         {
@@ -46,16 +44,14 @@ public class RegisterAllocatorTests
         AsmRegisterOperand source = AsmRegister(1);
         AsmRegisterOperand copy = AsmRegister(2);
 
-        AsmModule asmModule = new(
-            [],
-            [],
+        AsmModule asmModule = CreateAsmModule(functions:
+        [
+            CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
             [
-                CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
-                [
-                    new AsmInstructionNode(P2Mnemonic.MOV, [copy, source]),
-                    new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(P2SpecialRegister.OUTA), copy]),
-                ]),
-            ]);
+                new AsmInstructionNode(P2Mnemonic.MOV, [copy, source]),
+                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(P2SpecialRegister.OUTA), copy]),
+            ]),
+        ]);
 
         EmitResult emit = CodegenPipeline.Emit(CreateBuildResult(asmModule), new EmitOptions
         {
@@ -95,8 +91,8 @@ public class RegisterAllocatorTests
         ImagePlacement imagePlacement = ImagePlacer.Place(imagePlan);
         LayoutSolution layoutSolution = LayoutSolver.SolveStableLayouts(program, imagePlacement);
         CogResourceLayoutSet cogResourceLayouts = IrTestFactory.CreateSimpleCogResourceLayouts(asmModule, imagePlan, includeDefaultBladeHalt: false);
-        MirModule mirModule = new([], [], []);
-        LirModule lirModule = new([]);
+        MirModule mirModule = CreateMirModule();
+        LirModule lirModule = CreateLirModule();
         return new IrBuildResult(program, imagePlan, imagePlacement, layoutSolution, cogResourceLayouts, mirModule, mirModule, lirModule, lirModule, asmModule, asmModule, string.Empty);
     }
 }

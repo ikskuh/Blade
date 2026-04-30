@@ -43,7 +43,7 @@ public class OptimizerTests
         MirBlockRef bb2 = new();
         MirBlockRef dead = new();
 
-        MirModule module = new([], [], [
+        MirModule module = CreateMirModule(functions: [
             CreateMirFunction("f", isEntryPoint: false, FunctionKind.Default, [],
             [
                 new MirBlock(bb0, [], [Constant(seed, BuiltinTypes.U32, 7u)],
@@ -88,7 +88,7 @@ public class OptimizerTests
         MirBlockRef bb2 = new();
         MirBlockRef bb3 = new();
 
-        MirModule module = new([], [], [
+        MirModule module = CreateMirModule(functions: [
             CreateMirFunction("f", isEntryPoint: false, FunctionKind.Default, [],
             [
                 new MirBlock(bb0, [],
@@ -145,7 +145,7 @@ public class OptimizerTests
         LirBlockRef bb2 = new();
         LirBlockRef dead = new();
 
-        LirModule module = new([
+        LirModule module = CreateLirModule(functions: [
             CreateLirFunction("f", isEntryPoint: false, FunctionKind.Default, [],
             [
                 new LirBlock(bb0, [],
@@ -201,7 +201,7 @@ public class OptimizerTests
         LirBlockRef bb2 = new();
         LirBlockRef bb3 = new();
 
-        LirModule module = new([
+        LirModule module = CreateLirModule(functions: [
             CreateLirFunction("f", isEntryPoint: false, FunctionKind.Default, [],
             [
                 new LirBlock(bb0,
@@ -308,19 +308,17 @@ public class OptimizerTests
         ControlFlowLabelSymbol bb0 = new("f_bb0");
         ControlFlowLabelSymbol bb1 = new("f_bb1");
 
-        AsmModule module = new(
-            [],
-            [],
+        AsmModule module = CreateAsmModule(functions:
+        [
+            CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
             [
-                CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
-                [
-                    new AsmLabelNode(bb0),
-                    new AsmInstructionNode(P2Mnemonic.JMP, [new AsmSymbolOperand(bb1, AsmSymbolAddressingMode.Immediate)]),
-                    new AsmCommentNode("between"),
-                    new AsmLabelNode(bb1),
-                    new AsmInstructionNode(P2Mnemonic.NOP, []),
-                ]),
-            ]);
+                new AsmLabelNode(bb0),
+                new AsmInstructionNode(P2Mnemonic.JMP, [new AsmSymbolOperand(bb1, AsmSymbolAddressingMode.Immediate)]),
+                new AsmCommentNode("between"),
+                new AsmLabelNode(bb1),
+                new AsmInstructionNode(P2Mnemonic.NOP, []),
+            ]),
+        ]);
 
         AsmModule optimized = AsmOptimizer.Optimize(module, OptimizationRegistry.AllAsmOptimizations);
         AsmFunction function = optimized.Functions[0];
@@ -335,18 +333,16 @@ public class OptimizerTests
         ControlFlowLabelSymbol bb1 = new("f_bb1");
         AsmRegisterOperand r1 = AsmRegister(1);
 
-        AsmModule module = new(
-            [],
-            [],
+        AsmModule module = CreateAsmModule(functions:
+        [
+            CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
             [
-                CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
-                [
-                    new AsmLabelNode(bb0),
-                    new AsmInstructionNode(P2Mnemonic.JMP, [new AsmSymbolOperand(bb1, AsmSymbolAddressingMode.Immediate)], P2ConditionCode.IF_Z),
-                    new AsmInstructionNode(P2Mnemonic.MOV, [r1, new AsmImmediateOperand(1)]),
-                    new AsmLabelNode(bb1),
-                ]),
-            ]);
+                new AsmLabelNode(bb0),
+                new AsmInstructionNode(P2Mnemonic.JMP, [new AsmSymbolOperand(bb1, AsmSymbolAddressingMode.Immediate)], P2ConditionCode.IF_Z),
+                new AsmInstructionNode(P2Mnemonic.MOV, [r1, new AsmImmediateOperand(1)]),
+                new AsmLabelNode(bb1),
+            ]),
+        ]);
 
         AsmOptimization optimization = OptimizationRegistry.GetAsmOptimization("conditional-move-fusion")!;
         AsmFunction function = AsmOptimizer.Optimize(module, [optimization]).Functions[0];
@@ -360,20 +356,18 @@ public class OptimizerTests
     [Test]
     public void AsmOptimizer_PreservesNonElidableHaltSentinel()
     {
-        AsmModule module = new(
-            [],
-            [],
+        AsmModule module = CreateAsmModule(functions:
+        [
+            CreateAsmFunction("f", isEntryPoint: true, CallingConventionTier.EntryPoint,
             [
-                CreateAsmFunction("f", isEntryPoint: true, CallingConventionTier.EntryPoint,
-                [
-                    new AsmCommentNode("halt: endless loop"),
-                    new AsmInstructionNode(
-                        P2Mnemonic.REP,
-                        [new AsmImmediateOperand(1), new AsmImmediateOperand(0)],
-                        isNonElidable: true),
-                    new AsmInstructionNode(P2Mnemonic.NOP, [], isNonElidable: true),
-                ]),
-            ]);
+                new AsmCommentNode("halt: endless loop"),
+                new AsmInstructionNode(
+                    P2Mnemonic.REP,
+                    [new AsmImmediateOperand(1), new AsmImmediateOperand(0)],
+                    isNonElidable: true),
+                new AsmInstructionNode(P2Mnemonic.NOP, [], isNonElidable: true),
+            ]),
+        ]);
 
         AsmFunction function = AsmOptimizer.Optimize(module, OptimizationRegistry.AllAsmOptimizations).Functions[0];
         AsmInstructionNode[] instructions = function.Nodes.OfType<AsmInstructionNode>().ToArray();
@@ -388,15 +382,13 @@ public class OptimizerTests
     [Test]
     public void AsmOptimizer_ElidesPlainNopWhenNotMarkedNonElidable()
     {
-        AsmModule module = new(
-            [],
-            [],
+        AsmModule module = CreateAsmModule(functions:
+        [
+            CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
             [
-                CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
-                [
-                    new AsmInstructionNode(P2Mnemonic.NOP, []),
-                ]),
-            ]);
+                new AsmInstructionNode(P2Mnemonic.NOP, []),
+            ]),
+        ]);
 
         AsmFunction function = AsmOptimizer.Optimize(module, OptimizationRegistry.AllAsmOptimizations).Functions[0];
         Assert.That(function.Nodes.OfType<AsmInstructionNode>(), Is.Empty);
@@ -412,9 +404,9 @@ public class OptimizerTests
         AsmSymbolOperand input = new(inputPlace, AsmSymbolAddressingMode.Register);
         AsmSymbolOperand output = new(outputPlace, AsmSymbolAddressingMode.Register);
 
-        AsmModule module = new(
-            [inputPlace, outputPlace],
-            [],
+        AsmModule module = CreateAsmModule(
+            storagePlaces: [inputPlace, outputPlace],
+            functions:
             [
                 CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
                 [
@@ -444,9 +436,9 @@ public class OptimizerTests
         AsmSymbolOperand input = new(inputPlace, AsmSymbolAddressingMode.Register);
         AsmSymbolOperand output = new(outputPlace, AsmSymbolAddressingMode.Register);
 
-        AsmModule module = new(
-            [inputPlace, outputPlace],
-            [],
+        AsmModule module = CreateAsmModule(
+            storagePlaces: [inputPlace, outputPlace],
+            functions:
             [
                 CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
                 [
@@ -473,17 +465,15 @@ public class OptimizerTests
         AsmRegisterOperand r1 = AsmRegister(1);
         AsmRegisterOperand r2 = AsmRegister(2);
 
-        AsmModule module = new(
-            [],
-            [],
+        AsmModule module = CreateAsmModule(functions:
+        [
+            CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
             [
-                CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
-                [
-                    new AsmLabelNode("f_bb0"),
-                    new AsmInstructionNode(P2Mnemonic.MOV, [r1, r2]),
-                    new AsmInstructionNode(P2Mnemonic.ADD, [r1, new AsmImmediateOperand(1)]),
-                ]),
-            ]);
+                new AsmLabelNode("f_bb0"),
+                new AsmInstructionNode(P2Mnemonic.MOV, [r1, r2]),
+                new AsmInstructionNode(P2Mnemonic.ADD, [r1, new AsmImmediateOperand(1)]),
+            ]),
+        ]);
 
         AsmFunction function = AsmOptimizer.Optimize(module, OptimizationRegistry.AllAsmOptimizations).Functions[0];
         Assert.That(function.Nodes.OfType<AsmInstructionNode>(), Is.Empty);
@@ -494,16 +484,14 @@ public class OptimizerTests
     {
         AsmRegisterOperand r1 = AsmRegister(1);
 
-        AsmModule module = new(
-            [],
-            [],
+        AsmModule module = CreateAsmModule(functions:
+        [
+            CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
             [
-                CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
-                [
-                    new AsmLabelNode("f_bb0"),
-                    new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(P2SpecialRegister.OUTA), r1]),
-                ]),
-            ]);
+                new AsmLabelNode("f_bb0"),
+                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(P2SpecialRegister.OUTA), r1]),
+            ]),
+        ]);
 
         AsmFunction function = AsmOptimizer.Optimize(module, OptimizationRegistry.AllAsmOptimizations).Functions[0];
         Assert.That(function.Nodes.OfType<AsmInstructionNode>().ToArray(), Has.Length.EqualTo(1));
@@ -515,9 +503,9 @@ public class OptimizerTests
         AsmRegisterOperand r1 = AsmRegister(1);
         StoragePlace returnPlace = CreatePlace("gen_f_ret0");
 
-        AsmModule module = new(
-            [returnPlace],
-            [],
+        AsmModule module = CreateAsmModule(
+            storagePlaces: [returnPlace],
+            functions:
             [
                 CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
                 [
@@ -539,9 +527,9 @@ public class OptimizerTests
         AsmRegisterOperand r1 = AsmRegister(1);
         AsmSymbolOperand shared = new(sharedPlace, AsmSymbolAddressingMode.Register);
 
-        AsmModule module = new(
-            [sharedPlace],
-            [],
+        AsmModule module = CreateAsmModule(
+            storagePlaces: [sharedPlace],
+            functions:
             [
                 CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
                 [
@@ -568,7 +556,7 @@ public class OptimizerTests
         LirVirtualRegister r0 = LirRegister(0);
         LirVirtualRegister r1 = LirRegister(1);
 
-        LirModule module = new([
+        LirModule module = CreateLirModule(functions: [
             CreateLirFunction("f", isEntryPoint: false, FunctionKind.Default, [],
             [
                 new LirBlock(LirBlockRef("bb0"), [new LirBlockParameter(r0, "x", BuiltinTypes.U32)],
@@ -599,7 +587,7 @@ public class OptimizerTests
     {
         LirVirtualRegister r0 = LirRegister(0);
 
-        LirModule module = new([
+        LirModule module = CreateLirModule(functions: [
             CreateLirFunction("f", isEntryPoint: false, FunctionKind.Default, [],
             [
                 new LirBlock(LirBlockRef("bb0"), [],
@@ -628,7 +616,7 @@ public class OptimizerTests
         LirVirtualRegister r1 = LirRegister(1);
         LirVirtualRegister r2 = LirRegister(2);
 
-        LirModule module = new([
+        LirModule module = CreateLirModule(functions: [
             CreateLirFunction("f", isEntryPoint: false, FunctionKind.Default, [BuiltinTypes.U32],
             [
                 new LirBlock(LirBlockRef("bb0"), [new LirBlockParameter(r0, "x", BuiltinTypes.U32)],

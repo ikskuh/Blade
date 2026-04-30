@@ -69,9 +69,9 @@ public class WriterAndSymbolTests
     public void DumpBundleBuilder_ReturnsFinalAssemblyWhenNoExplicitDumpFlagsAreSet()
     {
         BoundProgram program = IrTestFactory.CreateBoundProgram("/tmp/test.blade");
-        MirModule mir = new([], [], []);
-        LirModule lir = new([]);
-        AsmModule asm = new([], [], []);
+        MirModule mir = CreateMirModule();
+        LirModule lir = CreateLirModule();
+        AsmModule asm = CreateAsmModule();
         ImagePlan imagePlan = IrTestFactory.CreateSingleEntryImagePlan(program.EntryPoint);
         ImagePlacement imagePlacement = ImagePlacer.Place(imagePlan);
         LayoutSolution layoutSolution = LayoutSolver.SolveStableLayouts(program, imagePlacement);
@@ -89,9 +89,9 @@ public class WriterAndSymbolTests
     public void DumpBundleBuilder_DumpBoundIncludesImagePlanAndLayoutSolution()
     {
         BoundProgram program = IrTestFactory.CreateBoundProgram("/tmp/test.blade");
-        MirModule mir = new([], [], []);
-        LirModule lir = new([]);
-        AsmModule asm = new([], [], []);
+        MirModule mir = CreateMirModule();
+        LirModule lir = CreateLirModule();
+        AsmModule asm = CreateAsmModule();
         ImagePlan imagePlan = IrTestFactory.CreateSingleEntryImagePlan(program.EntryPoint);
         ImagePlacement imagePlacement = ImagePlacer.Place(imagePlan);
         LayoutSolution layoutSolution = LayoutSolver.SolveStableLayouts(program, imagePlacement);
@@ -192,7 +192,7 @@ public class WriterAndSymbolTests
     {
         StoragePlace place = IrTestFactory.CreateStoragePlace("mem-slot", emittedName: "g_mem_slot");
 
-        MirModule mir = new([], [], [
+        MirModule mir = CreateMirModule(functions: [
             CreateMirFunction("mir_fn", isEntryPoint: true, FunctionKind.Leaf, [BuiltinTypes.U32],
             [
                 new MirBlock(MirBlockRef("bb0"), [new MirBlockParameter(MirValue(0), "p", BuiltinTypes.U32)],
@@ -203,7 +203,7 @@ public class WriterAndSymbolTests
             ]),
         ]);
 
-        LirModule lir = new([
+        LirModule lir = CreateLirModule(functions: [
             CreateLirFunction("lir_fn", isEntryPoint: false, FunctionKind.Default, [],
             [
                 new LirBlock(LirBlockRef("bb0"), [],
@@ -215,18 +215,16 @@ public class WriterAndSymbolTests
             ]),
         ]);
 
-        AsmModule asm = new(
-            [],
-            [],
+        AsmModule asm = CreateAsmModule(functions:
+        [
+            CreateAsmFunction("asm_fn", isEntryPoint: false, CallingConventionTier.General,
             [
-                CreateAsmFunction("asm_fn", isEntryPoint: false, CallingConventionTier.General,
-                [
-                    new AsmLabelNode("asm_fn_bb0"),
-                    new AsmCommentNode("test"),
-                    new AsmInstructionNode(P2Mnemonic.ADD, [AsmRegister(1), new AsmImmediateOperand(5)], P2ConditionCode.IF_C, flagEffect: P2FlagEffect.WCZ),
-                    new AsmInstructionNode(P2Mnemonic.MOV, [AsmRegister(1), new AsmImmediateOperand(1)]),
-                ]),
-            ]);
+                new AsmLabelNode("asm_fn_bb0"),
+                new AsmCommentNode("test"),
+                new AsmInstructionNode(P2Mnemonic.ADD, [AsmRegister(1), new AsmImmediateOperand(5)], P2ConditionCode.IF_C, flagEffect: P2FlagEffect.WCZ),
+                new AsmInstructionNode(P2Mnemonic.MOV, [AsmRegister(1), new AsmImmediateOperand(1)]),
+            ]),
+        ]);
 
         string mirText = MirTextWriter.Write(mir);
         string lirText = LirTextWriter.Write(lir);

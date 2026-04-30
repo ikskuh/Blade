@@ -21,6 +21,23 @@ public class ParserTests
         return (unit, diagnostics);
     }
 
+    private static (BlockStatementSyntax Body, DiagnosticBag Diagnostics) ParseFunctionBody(string bodyText)
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diagnostics) = Parse($$"""
+            fn demo() void {
+            {{bodyText}}
+            }
+            """);
+        FunctionDeclarationSyntax function = (FunctionDeclarationSyntax)unit.Members[0];
+        return (function.Body, diagnostics);
+    }
+
+    private static (StatementSyntax Statement, DiagnosticBag Diagnostics) ParseSingleBodyStatement(string statementText)
+    {
+        (BlockStatementSyntax body, DiagnosticBag diagnostics) = ParseFunctionBody(statementText);
+        return (body.Statements.Single(), diagnostics);
+    }
+
     private static Parser CreateParser(params Token[] tokens)
     {
         SourceText source = new(string.Empty);
@@ -291,11 +308,10 @@ public class ParserTests
     [Test]
     public void IfElseStatement_ParsesCorrectly()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("if (x) { y = 1; } else { y = 2; }");
+        (StatementSyntax statement, DiagnosticBag diag) = ParseSingleBodyStatement("if (x) { y = 1; } else { y = 2; }");
         AssertNoDiagnostics(diag);
 
-        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
-        IfStatementSyntax ifStmt = (IfStatementSyntax)global.Statement;
+        IfStatementSyntax ifStmt = (IfStatementSyntax)statement;
         Assert.That(ifStmt.ElseClause, Is.Not.Null);
         Assert.That(ifStmt.ThenBody, Is.TypeOf<BlockStatementSyntax>());
         Assert.That(ifStmt.ElseClause!.Body, Is.TypeOf<BlockStatementSyntax>());
@@ -304,21 +320,18 @@ public class ParserTests
     [Test]
     public void WhileLoop_ParsesCorrectly()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("while (x != 0) { x = x - 1; }");
+        (StatementSyntax statement, DiagnosticBag diag) = ParseSingleBodyStatement("while (x != 0) { x = x - 1; }");
         AssertNoDiagnostics(diag);
-
-        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
-        Assert.That(global.Statement, Is.TypeOf<WhileStatementSyntax>());
+        Assert.That(statement, Is.TypeOf<WhileStatementSyntax>());
     }
 
     [Test]
     public void AssignmentStatement_ParsesCorrectly()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("x = 42;");
+        (StatementSyntax statement, DiagnosticBag diag) = ParseSingleBodyStatement("x = 42;");
         AssertNoDiagnostics(diag);
 
-        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
-        AssignmentStatementSyntax assign = (AssignmentStatementSyntax)global.Statement;
+        AssignmentStatementSyntax assign = (AssignmentStatementSyntax)statement;
         Assert.That(assign.Operator.Kind, Is.EqualTo(TokenKind.Equal));
         Assert.That(assign.Target, Is.TypeOf<NameExpressionSyntax>());
     }
@@ -329,26 +342,24 @@ public class ParserTests
     [TestCase("x <%<= 4;", TokenKind.RotateLeftEqual)]
     public void CompoundAssignment_ParsesCorrectly(string text, TokenKind expectedOperator)
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse(text);
+        (StatementSyntax statement, DiagnosticBag diag) = ParseSingleBodyStatement(text);
         AssertNoDiagnostics(diag);
 
-        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
-        AssignmentStatementSyntax assign = (AssignmentStatementSyntax)global.Statement;
+        AssignmentStatementSyntax assign = (AssignmentStatementSyntax)statement;
         Assert.That(assign.Operator.Kind, Is.EqualTo(expectedOperator));
     }
 
     [Test]
     public void AsmVolatileStatement_ParsesCorrectly()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("""
+        (StatementSyntax statement, DiagnosticBag diag) = ParseSingleBodyStatement("""
             asm volatile {
                 MOV x, y
             };
             """);
         AssertNoDiagnostics(diag);
 
-        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
-        AsmBlockStatementSyntax asm = (AsmBlockStatementSyntax)global.Statement;
+        AsmBlockStatementSyntax asm = (AsmBlockStatementSyntax)statement;
         Assert.That(asm.VolatileKeyword, Is.Not.Null);
         Assert.That(asm.VolatileKeyword!.Value.Kind, Is.EqualTo(TokenKind.VolatileKeyword));
         Assert.That(asm.Volatility, Is.EqualTo(AsmVolatility.Volatile));
@@ -357,11 +368,10 @@ public class ParserTests
     [Test]
     public void AssertStatement_ParsesCorrectlyAtTopLevel()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("assert true;");
+        (StatementSyntax statement, DiagnosticBag diag) = ParseSingleBodyStatement("assert true;");
         AssertNoDiagnostics(diag);
 
-        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
-        AssertStatementSyntax assertStatement = (AssertStatementSyntax)global.Statement;
+        AssertStatementSyntax assertStatement = (AssertStatementSyntax)statement;
         Assert.That(assertStatement.AssertKeyword.Kind, Is.EqualTo(TokenKind.AssertKeyword));
         Assert.That(assertStatement.Condition, Is.TypeOf<LiteralExpressionSyntax>());
         Assert.That(assertStatement.CommaToken, Is.Null);
@@ -371,11 +381,10 @@ public class ParserTests
     [Test]
     public void AssertStatement_WithMessage_ParsesCorrectly()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("assert false, \"must hold\";");
+        (StatementSyntax statement, DiagnosticBag diag) = ParseSingleBodyStatement("assert false, \"must hold\";");
         AssertNoDiagnostics(diag);
 
-        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
-        AssertStatementSyntax assertStatement = (AssertStatementSyntax)global.Statement;
+        AssertStatementSyntax assertStatement = (AssertStatementSyntax)statement;
         Assert.That(assertStatement.CommaToken?.Kind, Is.EqualTo(TokenKind.Comma));
         Assert.That(assertStatement.MessageLiteral?.Kind, Is.EqualTo(TokenKind.StringLiteral));
         Assert.That(assertStatement.MessageLiteral.HasValue, Is.True);
@@ -399,12 +408,13 @@ public class ParserTests
     [Test]
     public void AssertStatement_MessageMustBeStringLiteral()
     {
-        (_, DiagnosticBag diag) = Parse("""
+        (BlockStatementSyntax body, DiagnosticBag diag) = ParseFunctionBody("""
             const msg: [4]u8 = "oops";
             assert false, msg;
             """);
 
         Assert.That(diag.Select(diagnostic => diagnostic.Code), Is.EqualTo(["E0101"]));
+        Assert.That(body.Statements[1], Is.TypeOf<AssertStatementSyntax>());
     }
 
     // ── Types ──
@@ -792,11 +802,10 @@ public class ParserTests
     [Test]
     public void IfElseIfStatement_ParsesNestedNonBlockBodies()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("if (x) y = 1; else if (z) y = 2;");
+        (StatementSyntax statement, DiagnosticBag diag) = ParseSingleBodyStatement("if (x) y = 1; else if (z) y = 2;");
         AssertNoDiagnostics(diag);
 
-        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
-        IfStatementSyntax ifStmt = (IfStatementSyntax)global.Statement;
+        IfStatementSyntax ifStmt = (IfStatementSyntax)statement;
         Assert.That(ifStmt.ThenBody, Is.TypeOf<AssignmentStatementSyntax>());
         Assert.That(ifStmt.ElseClause?.Body, Is.TypeOf<IfStatementSyntax>());
     }
@@ -804,18 +813,17 @@ public class ParserTests
     [Test]
     public void IfElseStatement_WithPlainElseBody_ParsesCorrectly()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("if (x) { y = 1; } else y = 2;");
+        (StatementSyntax statement, DiagnosticBag diag) = ParseSingleBodyStatement("if (x) { y = 1; } else y = 2;");
         AssertNoDiagnostics(diag);
 
-        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
-        IfStatementSyntax ifStmt = (IfStatementSyntax)global.Statement;
+        IfStatementSyntax ifStmt = (IfStatementSyntax)statement;
         Assert.That(ifStmt.ElseClause?.Body, Is.TypeOf<AssignmentStatementSyntax>());
     }
 
     [Test]
     public void StatementForms_ParsesControlFlowVariants()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("""
+        (StatementSyntax statement, DiagnosticBag diag) = ParseSingleBodyStatement("""
             {
                 extern cog var ext: u32;
                 for (i) { }
@@ -834,8 +842,7 @@ public class ParserTests
             """);
         AssertNoDiagnostics(diag);
 
-        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
-        BlockStatementSyntax block = (BlockStatementSyntax)global.Statement;
+        BlockStatementSyntax block = (BlockStatementSyntax)statement;
         Assert.That(block.Statements.Count, Is.EqualTo(13));
         Assert.That(block.Statements[0], Is.TypeOf<VariableDeclarationStatementSyntax>());
         Assert.That(block.Statements[1], Is.TypeOf<ForStatementSyntax>());
@@ -901,50 +908,41 @@ public class ParserTests
     [Test]
     public void PointerDerefExpression_ParsesAndReportsExpressionNotAStatement()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("ptr.*;");
+        (StatementSyntax statement, DiagnosticBag diag) = ParseSingleBodyStatement("ptr.*;");
         Assert.That(diag.Select(d => d.Code), Is.EqualTo(new[] { "E0259" }));
 
-        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
-        ExpressionStatementSyntax statement = (ExpressionStatementSyntax)global.Statement;
-        Assert.That(statement.Expression, Is.TypeOf<PointerDerefExpressionSyntax>());
+        Assert.That(((ExpressionStatementSyntax)statement).Expression, Is.TypeOf<PointerDerefExpressionSyntax>());
     }
 
     [Test]
     public void MemberAccessExpression_ParsesAndReportsExpressionNotAStatement()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("node.value;");
+        (StatementSyntax statement, DiagnosticBag diag) = ParseSingleBodyStatement("node.value;");
         Assert.That(diag.Select(d => d.Code), Is.EqualTo(new[] { "E0259" }));
 
-        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
-        ExpressionStatementSyntax statement = (ExpressionStatementSyntax)global.Statement;
-        Assert.That(statement.Expression, Is.TypeOf<MemberAccessExpressionSyntax>());
+        Assert.That(((ExpressionStatementSyntax)statement).Expression, Is.TypeOf<MemberAccessExpressionSyntax>());
     }
 
     [Test]
     public void CallAndIndexExpressions_ParseAndReportExpectedStatementDiagnostics()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("""
-            {
-                items[0];
-                invoke(a, b);
-            }
+        (BlockStatementSyntax body, DiagnosticBag diag) = ParseFunctionBody("""
+            items[0];
+            invoke(a, b);
             """);
         Assert.That(diag.Select(d => d.Code), Is.EqualTo(new[] { "E0259" }));
 
-        BlockStatementSyntax block = (BlockStatementSyntax)((GlobalStatementSyntax)unit.Members[0]).Statement;
-        Assert.That(((ExpressionStatementSyntax)block.Statements[0]).Expression, Is.TypeOf<IndexExpressionSyntax>());
-        Assert.That(((ExpressionStatementSyntax)block.Statements[1]).Expression, Is.TypeOf<CallExpressionSyntax>());
+        Assert.That(((ExpressionStatementSyntax)body.Statements[0]).Expression, Is.TypeOf<IndexExpressionSyntax>());
+        Assert.That(((ExpressionStatementSyntax)body.Statements[1]).Expression, Is.TypeOf<CallExpressionSyntax>());
     }
 
     [Test]
     public void CallExpression_WithNamedArguments_ParsesCorrectly()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("invoke(x=10, y=20);");
+        (StatementSyntax statement, DiagnosticBag diag) = ParseSingleBodyStatement("invoke(x=10, y=20);");
         AssertNoDiagnostics(diag);
 
-        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
-        ExpressionStatementSyntax statement = (ExpressionStatementSyntax)global.Statement;
-        CallExpressionSyntax call = (CallExpressionSyntax)statement.Expression;
+        CallExpressionSyntax call = (CallExpressionSyntax)((ExpressionStatementSyntax)statement).Expression;
 
         Assert.That(call.Arguments[0], Is.TypeOf<NamedArgumentSyntax>());
         Assert.That(call.Arguments[1], Is.TypeOf<NamedArgumentSyntax>());
@@ -953,12 +951,10 @@ public class ParserTests
     [Test]
     public void CastExpression_ParsesAndReportsExpressionNotAStatement()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("value as u8;");
+        (StatementSyntax statement, DiagnosticBag diag) = ParseSingleBodyStatement("value as u8;");
         Assert.That(diag.Select(d => d.Code), Is.EqualTo(new[] { "E0259" }));
 
-        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
-        ExpressionStatementSyntax statement = (ExpressionStatementSyntax)global.Statement;
-        CastExpressionSyntax cast = (CastExpressionSyntax)statement.Expression;
+        CastExpressionSyntax cast = (CastExpressionSyntax)((ExpressionStatementSyntax)statement).Expression;
 
         Assert.That(cast.Expression, Is.TypeOf<NameExpressionSyntax>());
         Assert.That(cast.TargetType, Is.TypeOf<PrimitiveTypeSyntax>());
@@ -967,12 +963,10 @@ public class ParserTests
     [Test]
     public void BitcastExpression_ParsesAndReportsExpressionNotAStatement()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("bitcast(*cog u32, value);");
+        (StatementSyntax statement, DiagnosticBag diag) = ParseSingleBodyStatement("bitcast(*cog u32, value);");
         Assert.That(diag.Select(d => d.Code), Is.EqualTo(new[] { "E0259" }));
 
-        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
-        ExpressionStatementSyntax statement = (ExpressionStatementSyntax)global.Statement;
-        BitcastExpressionSyntax bitcast = (BitcastExpressionSyntax)statement.Expression;
+        BitcastExpressionSyntax bitcast = (BitcastExpressionSyntax)((ExpressionStatementSyntax)statement).Expression;
 
         Assert.That(bitcast.Value, Is.TypeOf<NameExpressionSyntax>());
         Assert.That(bitcast.TargetType, Is.TypeOf<PointerTypeSyntax>());
@@ -981,12 +975,10 @@ public class ParserTests
     [Test]
     public void IntrinsicCallExpression_ParsesCorrectly()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("@encod(value);");
+        (StatementSyntax statement, DiagnosticBag diag) = ParseSingleBodyStatement("@encod(value);");
         AssertNoDiagnostics(diag);
 
-        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
-        ExpressionStatementSyntax statement = (ExpressionStatementSyntax)global.Statement;
-        Assert.That(statement.Expression, Is.TypeOf<IntrinsicCallExpressionSyntax>());
+        Assert.That(((ExpressionStatementSyntax)statement).Expression, Is.TypeOf<IntrinsicCallExpressionSyntax>());
     }
 
     [Test]
@@ -1012,13 +1004,11 @@ public class ParserTests
     [Test]
     public void NonCallExpressionStatements_ReportExpressionNotAStatement()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("""
-            {
-                value;
-                1 + 2;
-                -value;
-                1..<4;
-            }
+        (BlockStatementSyntax body, DiagnosticBag diag) = ParseFunctionBody("""
+            value;
+            1 + 2;
+            -value;
+            1..<4;
             """);
         Assert.That(diag.Select(d => d.Code), Is.EqualTo(new[]
         {
@@ -1028,11 +1018,10 @@ public class ParserTests
             "E0259",
         }));
 
-        BlockStatementSyntax block = (BlockStatementSyntax)((GlobalStatementSyntax)unit.Members[0]).Statement;
-        Assert.That(((ExpressionStatementSyntax)block.Statements[0]).Expression, Is.TypeOf<NameExpressionSyntax>());
-        Assert.That(((ExpressionStatementSyntax)block.Statements[1]).Expression, Is.TypeOf<BinaryExpressionSyntax>());
-        Assert.That(((ExpressionStatementSyntax)block.Statements[2]).Expression, Is.TypeOf<UnaryExpressionSyntax>());
-        Assert.That(((ExpressionStatementSyntax)block.Statements[3]).Expression, Is.TypeOf<RangeExpressionSyntax>());
+        Assert.That(((ExpressionStatementSyntax)body.Statements[0]).Expression, Is.TypeOf<NameExpressionSyntax>());
+        Assert.That(((ExpressionStatementSyntax)body.Statements[1]).Expression, Is.TypeOf<BinaryExpressionSyntax>());
+        Assert.That(((ExpressionStatementSyntax)body.Statements[2]).Expression, Is.TypeOf<UnaryExpressionSyntax>());
+        Assert.That(((ExpressionStatementSyntax)body.Statements[3]).Expression, Is.TypeOf<RangeExpressionSyntax>());
     }
 
     [Test]
@@ -1077,10 +1066,9 @@ public class ParserTests
         (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("var value: mod.TypeName = undefined;");
         AssertNoDiagnostics(diag);
 
-        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
-        VariableDeclarationStatementSyntax declaration = (VariableDeclarationStatementSyntax)global.Statement;
-        Assert.That(declaration.Declaration.Type, Is.TypeOf<QualifiedTypeSyntax>());
-        QualifiedTypeSyntax qualified = (QualifiedTypeSyntax)declaration.Declaration.Type;
+        VariableDeclarationSyntax declaration = (VariableDeclarationSyntax)unit.Members[0];
+        Assert.That(declaration.Type, Is.TypeOf<QualifiedTypeSyntax>());
+        QualifiedTypeSyntax qualified = (QualifiedTypeSyntax)declaration.Type;
         Assert.That(qualified.Parts.Select(part => part.Text), Is.EqualTo(["mod", "TypeName"]));
     }
 
@@ -1290,11 +1278,9 @@ public class ParserTests
     [Test]
     public void ArrayAndTypedStructLiterals_ParseCorrectly()
     {
-        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("""
-            {
-                [1, 2...];
-                Pixel { .r = 1, .g = 2 };
-            }
+        (BlockStatementSyntax body, DiagnosticBag diag) = ParseFunctionBody("""
+            [1, 2...];
+            Pixel { .r = 1, .g = 2 };
             """);
         Assert.That(diag.Select(d => d.Code), Is.EqualTo(new[]
         {
@@ -1302,14 +1288,11 @@ public class ParserTests
             "E0259",
         }));
 
-        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
-        BlockStatementSyntax block = (BlockStatementSyntax)global.Statement;
-
-        ArrayLiteralExpressionSyntax array = (ArrayLiteralExpressionSyntax)((ExpressionStatementSyntax)block.Statements[0]).Expression;
+        ArrayLiteralExpressionSyntax array = (ArrayLiteralExpressionSyntax)((ExpressionStatementSyntax)body.Statements[0]).Expression;
         Assert.That(array.Elements.Count, Is.EqualTo(2));
         Assert.That(array.Elements[1].Spread, Is.Not.Null);
 
-        ExpressionStatementSyntax typedStructStatement = (ExpressionStatementSyntax)block.Statements[1];
+        ExpressionStatementSyntax typedStructStatement = (ExpressionStatementSyntax)body.Statements[1];
         Assert.That(typedStructStatement.Expression, Is.TypeOf<TypedStructLiteralExpressionSyntax>());
     }
 }
