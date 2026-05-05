@@ -78,13 +78,16 @@ If FlexSpin is unavailable, fixtures that require it are still reported as `SKIP
 // RUNS:
 // - [] = 1234
 // - [ 0 ] = 1234
-// - [ 0, -10, 0x12345 ] = 1234
+// - [ 0 ] = [ 1234 ]
+// - [ 0, -10, 0x12345 ] = [ -1, 0x10, 0 ]
 ```
 
-Each run entry supplies a parameter list followed by the expected output for that run.
+Each run entry supplies a parameter list followed by the expected outputs for that run.
 
 - `[]` means no runtime parameters
 - up to 8 parameters are allowed
+- the right-hand side may be a single integer or an array with 1 to 8 integers
+- both parameters and expected outputs are zero-filled to 8 lanes before execution/comparison
 - values support unsigned decimal `0..4294967295`
 - values support signed decimal `-2147483648..-1`
 - values support unsigned hex via `0x...`

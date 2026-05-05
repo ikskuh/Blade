@@ -5214,7 +5214,7 @@ public sealed class Binder
             : null;
         variableSymbol.SetLayoutMetadata(virtualFixedAddress, alignment);
     }
-    
+
     private int? BindRequiredConstantInt(ExpressionSyntax expression, TextSpan span)
     {
         BoundExpression bound = BindExpression(expression);

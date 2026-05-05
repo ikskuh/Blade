@@ -263,16 +263,16 @@ public sealed class HardwareRunExpectation
     public HardwareRunExpectation(
         IReadOnlyList<FixtureParameter> parameters,
         IReadOnlyList<string> parameterLiterals,
-        uint expectedOutput)
+        IReadOnlyList<uint> expectedOutputs)
     {
         Parameters = parameters;
         ParameterLiterals = parameterLiterals;
-        ExpectedOutput = expectedOutput;
+        ExpectedOutputs = expectedOutputs;
     }
 
     public IReadOnlyList<FixtureParameter> Parameters { get; }
     public IReadOnlyList<string> ParameterLiterals { get; }
-    public uint ExpectedOutput { get; }
+    public IReadOnlyList<uint> ExpectedOutputs { get; }
 }
 
 public sealed class RegressionExpectation
@@ -361,6 +361,8 @@ public sealed class ActualDiagnostic
 
 public static class RegressionRunner
 {
+    private const int HardwareVectorWidth = 8;
+
     public static RegressionRunResult Run(RegressionRunOptions? options = null)
     {
         RegressionRunOptions effectiveOptions = options ?? new RegressionRunOptions();
@@ -1059,7 +1061,7 @@ public static class RegressionRunner
         {
             FixtureConfig config = new()
             {
-                ParameterCount = 8,
+                ParameterCount = HardwareVectorWidth,
             };
             List<string> issues = [];
             bool observedMismatch = false;
@@ -1081,22 +1083,22 @@ public static class RegressionRunner
                         run.Parameters.ToArray(),
                         hardwareLoader,
                         hardwareTurbopropNoVersionCheck);
-                    completedRuns.Add(new HardwareRunCapture(i + 1, run, testResult));
 
-                    if (testResult.Outputs.Count != 1)
+                    if (testResult.Outputs.Count == 0 || testResult.Outputs.Count > HardwareVectorWidth)
                     {
                         return HardwareExecutionResult.Error(
-                            [$"hardware run {i + 1} {FormatHardwareRunArguments(run)} produced {testResult.Outputs.Count} outputs; exactly one output is required by the regression harness"],
+                            [$"hardware run {i + 1} {FormatHardwareRunArguments(run)} produced {testResult.Outputs.Count} outputs; hardware fixtures support between 1 and 8 outputs"],
                             binaryResult.BinaryBytes,
                             [.. completedRuns]);
                     }
 
-                    uint actualOutput = testResult.Outputs[0];
+                    TestResult normalizedResult = NormalizeHardwareTestResult(testResult);
+                    completedRuns.Add(new HardwareRunCapture(i + 1, run, normalizedResult));
 
-                    bool runPassed = actualOutput == run.ExpectedOutput;
+                    bool runPassed = normalizedResult.Outputs.SequenceEqual(run.ExpectedOutputs);
                     if (isPassHw && !runPassed)
                     {
-                        issues.Add(FormatHardwareRunMismatch(i + 1, run, actualOutput));
+                        issues.Add(FormatHardwareRunMismatch(i + 1, run, normalizedResult.Outputs));
                         observedMismatch = true;
                     }
                     else if (isXFailHw && !runPassed)
@@ -1136,11 +1138,23 @@ public static class RegressionRunner
         }
     }
 
-    private static string FormatHardwareRunMismatch(int runIndex, HardwareRunExpectation run, uint actualOutput)
+    private static TestResult NormalizeHardwareTestResult(TestResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        return new TestResult(
+            ZeroFillHardwareValues(result.Inputs),
+            ZeroFillHardwareValues(result.Outputs),
+            result.Log,
+            result.StdOut,
+            result.StdErr);
+    }
+
+    private static string FormatHardwareRunMismatch(int runIndex, HardwareRunExpectation run, IReadOnlyList<uint> actualOutputs)
     {
         return
             $"hardware run {runIndex} {FormatHardwareRunArguments(run)} produced an unexpected result:{Environment.NewLine}"
-            + FormatHardwareOutputMismatch(run.ExpectedOutput, actualOutput);
+            + FormatHardwareOutputMismatch(run.ExpectedOutputs, actualOutputs);
     }
 
     private static string FormatHardwareRunArguments(HardwareRunExpectation run)
@@ -1148,25 +1162,51 @@ public static class RegressionRunner
         return $"[{string.Join(", ", run.ParameterLiterals)}]";
     }
 
-    private static string FormatHardwareOutputMismatch(uint expectedOutput, uint actualOutput)
+    private static string FormatHardwareOutputMismatch(IReadOnlyList<uint> expectedOutputs, IReadOnlyList<uint> actualOutputs)
     {
-        int expectedSigned = unchecked((int)expectedOutput);
-        int actualSigned = unchecked((int)actualOutput);
+        StringBuilder builder = new();
+        builder.AppendLine("hardware output mismatch:");
+        AppendHardwareValueList(builder, "  expected:", expectedOutputs);
+        AppendHardwareValueList(builder, "  actual:", actualOutputs);
+        return builder.ToString();
+    }
 
-        return string.Format(
-            CultureInfo.InvariantCulture,
-            """
-            hardware output mismatch:
-                        hex        | unsigned   |      signed
-              expected  0x{0:X8} | {1,10} | {2,11}
-              actual    0x{3:X8} | {4,10} | {5,11}
-            """,
-            expectedOutput,
-            expectedOutput,
-            expectedSigned,
-            actualOutput,
-            actualOutput,
-            actualSigned);
+    private static void AppendHardwareValueList(StringBuilder builder, string title, IReadOnlyList<uint> values)
+    {
+        builder.AppendLine(title);
+        for (int i = 0; i < values.Count; i++)
+        {
+            builder.Append("    [");
+            builder.Append(i.ToString(CultureInfo.InvariantCulture));
+            builder.Append("] ");
+            builder.AppendLine(FormatHardwareValue(values[i]));
+        }
+    }
+
+    private static string FormatHardwareValue(uint value)
+    {
+        int signedValue = unchecked((int)value);
+        return string.Format(CultureInfo.InvariantCulture, "0x{0:X8} | unsigned {1} | signed {2}", value, value, signedValue);
+    }
+
+    private static uint[] ZeroFillHardwareValues(IReadOnlyList<uint> values)
+    {
+        uint[] padded = new uint[HardwareVectorWidth];
+        int copyCount = Math.Min(values.Count, HardwareVectorWidth);
+        for (int i = 0; i < copyCount; i++)
+            padded[i] = values[i];
+
+        return padded;
+    }
+
+    private static FixtureParameter[] ZeroFillHardwareParameters(IReadOnlyList<FixtureParameter> parameters)
+    {
+        FixtureParameter[] padded = new FixtureParameter[HardwareVectorWidth];
+        int copyCount = Math.Min(parameters.Count, HardwareVectorWidth);
+        for (int i = 0; i < copyCount; i++)
+            padded[i] = parameters[i];
+
+        return padded;
     }
 
     private static bool ShouldRunFlexspin(RegressionFixture fixture)
@@ -1408,6 +1448,8 @@ internal sealed class EvaluatedFixture
 
 internal static class RegressionFixtureParser
 {
+    private const int HardwareVectorWidth = 8;
+
     private static readonly Regex DirectiveRegex = new(
         @"^(?<name>EXPECT|NOTE|DIAGNOSTICS|STAGE|CONTAINS|SEQUENCE|EXACT|FLEXSPIN|ARGS|RUNS):(?<value>.*)$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -1858,7 +1900,7 @@ internal static class RegressionFixtureParser
     {
         Match match = HardwareRunRegex.Match(text);
         if (!match.Success)
-            throw new InvalidOperationException($"Invalid RUNS entry '{text}'. Expected '[ ... ] = value'.");
+            throw new InvalidOperationException($"Invalid RUNS entry '{text}'. Expected '[ ... ] = value' or '[ ... ] = [ ... ]'.");
 
         string parametersText = match.Groups["parameters"].Value.Trim();
         List<string> parameterLiterals = [];
@@ -1876,12 +1918,60 @@ internal static class RegressionFixtureParser
             }
         }
 
-        if (parameters.Count > 8)
+        if (parameters.Count > HardwareVectorWidth)
             throw new InvalidOperationException($"Invalid RUNS entry '{text}'. Hardware fixtures support at most 8 parameters.");
 
         string expectedLiteral = match.Groups["expected"].Value.Trim();
-        uint expectedOutput = ParseHardwareLiteral(expectedLiteral);
-        return new HardwareRunExpectation(parameters, parameterLiterals, expectedOutput);
+        IReadOnlyList<uint> expectedOutputs = ParseExpectedHardwareOutputs(expectedLiteral, text);
+        return new HardwareRunExpectation(ZeroFillHardwareParameters(parameters), parameterLiterals, expectedOutputs);
+    }
+
+    private static IReadOnlyList<uint> ParseExpectedHardwareOutputs(string expectedLiteral, string runText)
+    {
+        if (expectedLiteral.StartsWith('['))
+        {
+            if (!expectedLiteral.EndsWith(']'))
+                throw new InvalidOperationException($"Invalid hardware literal '{expectedLiteral}'.");
+
+            string contents = expectedLiteral[1..^1].Trim();
+            if (contents.Length == 0)
+                throw new InvalidOperationException($"Invalid RUNS entry '{runText}'. Expected output arrays must contain between 1 and 8 values.");
+
+            string[] parts = contents.Split(',', StringSplitOptions.TrimEntries);
+            if (parts.Any(static part => part.Length == 0))
+                throw new InvalidOperationException($"Invalid RUNS entry '{runText}'. Expected output arrays must be comma-separated values.");
+
+            if (parts.Length > HardwareVectorWidth)
+                throw new InvalidOperationException($"Invalid RUNS entry '{runText}'. Hardware fixtures support at most 8 expected outputs.");
+
+            List<uint> values = [];
+            foreach (string part in parts)
+                values.Add(ParseHardwareLiteral(part));
+
+            return ZeroFillHardwareValues(values);
+        }
+
+        return ZeroFillHardwareValues([ParseHardwareLiteral(expectedLiteral)]);
+    }
+
+    private static uint[] ZeroFillHardwareValues(IReadOnlyList<uint> values)
+    {
+        uint[] padded = new uint[HardwareVectorWidth];
+        int copyCount = Math.Min(values.Count, HardwareVectorWidth);
+        for (int i = 0; i < copyCount; i++)
+            padded[i] = values[i];
+
+        return padded;
+    }
+
+    private static FixtureParameter[] ZeroFillHardwareParameters(IReadOnlyList<FixtureParameter> parameters)
+    {
+        FixtureParameter[] padded = new FixtureParameter[HardwareVectorWidth];
+        int copyCount = Math.Min(parameters.Count, HardwareVectorWidth);
+        for (int i = 0; i < copyCount; i++)
+            padded[i] = parameters[i];
+
+        return padded;
     }
 
     private static uint ParseHardwareLiteral(string text)
@@ -2906,8 +2996,7 @@ internal static class HardwareResultDumpFormatter
         builder.Append("Arguments: [");
         builder.Append(string.Join(", ", run.Expectation.ParameterLiterals));
         builder.AppendLine("]");
-        builder.Append("Expected Output: ");
-        builder.AppendLine(FormatValue(run.Expectation.ExpectedOutput));
+        AppendValueList(builder, "Expected Outputs", run.Expectation.ExpectedOutputs);
         builder.AppendLine();
 
         AppendValueList(builder, "Inputs", run.Result.Inputs);

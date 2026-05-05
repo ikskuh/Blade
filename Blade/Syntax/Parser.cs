@@ -1174,9 +1174,9 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
                 continue;
             }
 
-            InlineAsmLineSyntax? parsed = ParseInlineAsmLine(lineTokens, trailingComment);
+            IReadOnlyList<InlineAsmLineSyntax>? parsed = ParseInlineAsmLine(lineTokens, trailingComment);
             if (parsed is not null)
-                lines.Add(parsed);
+                lines.AddRange(parsed);
 
             cursor = lineAdvance;
         }
@@ -1219,13 +1219,31 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
         return (commentStart, commentText, lineAdvance);
     }
 
-    private InlineAsmLineSyntax? ParseInlineAsmLine(IReadOnlyList<Token> tokens, string? trailingComment)
+    private IReadOnlyList<InlineAsmLineSyntax>? ParseInlineAsmLine(IReadOnlyList<Token> tokens, string? trailingComment)
+    {
+        if (tokens.Count >= 2 && tokens[0].Kind == TokenKind.Identifier && tokens[1].Kind == TokenKind.Colon)
+        {
+            InlineAsmLabelLineSyntax label = new(tokens[0], tokens[1], tokens.Count == 2 ? trailingComment : null);
+            if (tokens.Count == 2)
+                return [label];
+
+            List<Token> payloadTokens = [];
+            for (int tokenIndex = 2; tokenIndex < tokens.Count; tokenIndex++)
+                payloadTokens.Add(tokens[tokenIndex]);
+            InlineAsmInstructionLineSyntax? payload = TryParseInlineAsmInstructionLine(payloadTokens, trailingComment);
+            if (payload is null)
+                return null;
+
+            return [label, payload];
+        }
+
+        InlineAsmInstructionLineSyntax? line = TryParseInlineAsmInstructionLine(tokens, trailingComment);
+        return line is null ? null : [line];
+    }
+
+    private InlineAsmInstructionLineSyntax? TryParseInlineAsmInstructionLine(IReadOnlyList<Token> tokens, string? trailingComment)
     {
         int i = 0;
-
-        // Label: Identifier ':' (exactly two tokens).
-        if (tokens.Count == 2 && tokens[0].Kind == TokenKind.Identifier && tokens[1].Kind == TokenKind.Colon)
-            return new InlineAsmLabelLineSyntax(tokens[0], tokens[1], trailingComment);
 
         bool hasConditionPrefixCandidate = tokens.Count > 0 && IsInlineAsmConditionPrefixCandidate(tokens[0]);
         Token? condition = null;

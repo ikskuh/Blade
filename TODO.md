@@ -354,10 +354,6 @@ Right now `Demonstrators/HwTest/hw_struct_literal_lowering.blade` only tests the
 
 see generated code
 
-## Rework total semantics of test fixtures
-
-- `SEQUENCE:` mus allow `?` and `?n`
-- Multiple `SEQUENCE:` must be allowed and validated independently
 
 ## Arbitrarily sized integers
 
@@ -398,6 +394,7 @@ Should also report warnings.
 ## Inline asm should allow expression operands
 
 Use cases:
+
 ```blade
 lut var foo: u32 = 0;
 
@@ -429,7 +426,6 @@ If it's zero, the loop body can be fully omitted when lowering, and must emit a 
 The optimization can also be used for comptime-known captures with counter and ranges: 
 
 ```blade
-
 for(10..20) -> value {
   // ...
 }
@@ -460,10 +456,6 @@ This still means we should can potentially lower the operand into a cog constant
 
 ## Task/Layout Refactoring
 
-### Introduce true split-phase variables
-
-`cog var` and `lut var` have a true address in `cog` and `lut` addr space, but `cog var`s will also be placed inside their respective hub images, the same is true for functions.
-
 ### Proper image size planning
 
 - The memory map does not contain the images themselves.
@@ -478,6 +470,7 @@ This still means we should can potentially lower the operand into a cog constant
 Right now, we perform a global layout resolution, which is wrong.
 
 In general, Layouts have to be conflict free for:
+
 - actually used variables/declarations
   - We don't have to care for variables that are not used in the source code
   - Future `[Used]` attribute may change this behavior
@@ -489,14 +482,9 @@ In general, Layouts have to be conflict free for:
 
 We can actually fuse cog resource layouting and code layouting, as we know the code size in instructions.
 
-
 ### Implement Mir/Lir validation
 
 Right now, it's possible to construct IR code that uses never-set values. This is illegal and should be asserted that we're always producing sane code. This assertion must run between lowering, all optimization steps and the emission of this IR.
-
-### Bug: Bad allocation
-
-Variable `extern cog var foo: u32;` without explicit placement gets automatically allocated a memory slot, which is definitly wrong.
 
 #### Technical Debt: Symbol naming for external symbols isn't well specified
 

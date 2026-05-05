@@ -474,6 +474,9 @@ fn inline_asm_demo(a: u32, b: u32) {
         // dead code elimination, register renaming and so on.
         ADD {a}, {b} WC
 
+        // Labels can also share a physical line with the following asm payload:
+    again: JMP #loop
+
         // `$` refers to the current assembly address and `#$` uses it as an immediate:
         MOV {a}, #$
         MOV {a}, $

@@ -1,3 +1,5 @@
+import builtin;
+
 layout Runtime
 {
     extern cog var rt_result: u32 @(0);
@@ -10,6 +12,14 @@ layout Runtime
     extern cog var rt_param5: u32 @(6);
     extern cog var rt_param6: u32 @(7);
     extern cog var rt_param7: u32 @(8);
+
+    extern cog var rt_result1: u32 @(9);
+    extern cog var rt_result2: u32 @(10);
+    extern cog var rt_result3: u32 @(11);
+    extern cog var rt_result4: u32 @(12);
+    extern cog var rt_result5: u32 @(13);
+    extern cog var rt_result6: u32 @(14);
+    extern cog var rt_result7: u32 @(15);
 }
 
 hub const RT_F_CPU: u32   = 200_000_000;
@@ -59,6 +69,15 @@ inline asm fn rt_get_top_nib(value: u32) nib {
      GETNIB {return}, {value}, #7
 }
 
+
+noinline leaf asm fn rt_write_byte(chr: u8)
+{
+    _loop:
+        TESTP   {RT_TXD_PIN}        WC   // wait for empty buffer
+IF_NC   JMP     #_loop                  // if not empty, test again
+        WYPIN   {chr}, {RT_TXD_PIN}      // write PA
+}
+
 noinline fn rt_write_hex_long(value: u32)
 {
      for(8) {
@@ -69,12 +88,10 @@ noinline fn rt_write_hex_long(value: u32)
      }
 }
 
-noinline leaf asm fn rt_write_byte(chr: u8)
+fn rt_write_hex_line(value: u32)
 {
-    _loop:
-        TESTP   {RT_TXD_PIN}        WC   // wait for empty buffer
-IF_NC   JMP     #_loop                  // if not empty, test again
-        WYPIN   {chr}, {RT_TXD_PIN}      // write PA
+     rt_write_hex_long(value);
+     rt_write_byte(0x0A);     
 }
 
 inline asm volatile fn halt() {
@@ -82,31 +99,25 @@ inline asm volatile fn halt() {
     NOP
 }
 
-import builtin;
-
 cog task _start : Runtime
 {
     asm volatile {
-     rt_result:
-                JMP #over
-    rt_param0:
-         LONG 0
-    rt_param1:
-         LONG 0
-    rt_param2:
-         LONG 0
-    rt_param3:
-         LONG 0
-    rt_param4:
-         LONG 0
-    rt_param5:
-         LONG 0
-    rt_param6:
-         LONG 0
-    rt_param7:
-         LONG 0
-    rt_result0:
-         LONG 0
+     rt_result0:    JMP #over
+     rt_param0:     LONG 0
+     rt_param1:     LONG 0
+     rt_param2:     LONG 0
+     rt_param3:     LONG 0
+     rt_param4:     LONG 0
+     rt_param5:     LONG 0
+     rt_param6:     LONG 0
+     rt_param7:     LONG 0
+     rt_result1:    LONG 0
+     rt_result2:    LONG 0
+     rt_result3:    LONG 0
+     rt_result4:    LONG 0
+     rt_result5:    LONG 0
+     rt_result6:    LONG 0
+     rt_result7:    LONG 0
     over:
     };
     
@@ -143,8 +154,14 @@ cog task _start : Runtime
 
     rt_write_byte(RT_END_MARKER);
 
-    rt_write_hex_long(rt_result);
-    rt_write_byte(0x0A);
+    rt_write_hex_line(rt_result);
+    rt_write_hex_line(rt_result1);
+    rt_write_hex_line(rt_result2);
+    rt_write_hex_line(rt_result3);
+    rt_write_hex_line(rt_result4);
+    rt_write_hex_line(rt_result5);
+    rt_write_hex_line(rt_result6);
+    rt_write_hex_line(rt_result7);
 
     rt_write_byte(RT_EOF_MARKER);
 

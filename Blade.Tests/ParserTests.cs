@@ -366,6 +366,46 @@ public class ParserTests
     }
 
     [Test]
+    public void AsmLabelAndPayloadOnSameLine_ParsesAsSeparateAsmLines()
+    {
+        (StatementSyntax statement, DiagnosticBag diag) = ParseSingleBodyStatement("""
+            asm volatile {
+                again: MOV %0, #0
+                      LONG 1
+            };
+            """);
+        AssertNoDiagnostics(diag);
+
+        AsmBlockStatementSyntax asm = (AsmBlockStatementSyntax)statement;
+        Assert.That(asm.Body.Lines.Count, Is.EqualTo(3));
+
+        InlineAsmLabelLineSyntax label = (InlineAsmLabelLineSyntax)asm.Body.Lines[0];
+        Assert.That(label.Name.Text, Is.EqualTo("again"));
+        Assert.That(label.TrailingComment, Is.Null);
+
+        InlineAsmInstructionLineSyntax instruction = (InlineAsmInstructionLineSyntax)asm.Body.Lines[1];
+        Assert.That(instruction.Mnemonic.Text, Is.EqualTo("MOV"));
+
+        InlineAsmInstructionLineSyntax dataDirective = (InlineAsmInstructionLineSyntax)asm.Body.Lines[2];
+        Assert.That(dataDirective.Mnemonic.Text, Is.EqualTo("LONG"));
+    }
+
+    [Test]
+    public void AsmLabelAndInvalidPayloadOnSameLine_DoesNotEmitPartialLabel()
+    {
+        (StatementSyntax statement, DiagnosticBag diag) = ParseSingleBodyStatement("""
+            asm volatile {
+                again: %0
+            };
+            """);
+
+        Assert.That(diag.Select(diagnostic => diagnostic.Code), Is.EqualTo(["E0309"]));
+
+        AsmBlockStatementSyntax asm = (AsmBlockStatementSyntax)statement;
+        Assert.That(asm.Body.Lines, Is.Empty);
+    }
+
+    [Test]
     public void AssertStatement_ParsesCorrectlyAtTopLevel()
     {
         (StatementSyntax statement, DiagnosticBag diag) = ParseSingleBodyStatement("assert true;");

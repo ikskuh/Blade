@@ -800,14 +800,16 @@ public sealed class RegressionHarnessTests
             Assert.That(File.Exists(secondRunDumpPath), Is.True);
             Assert.That(firstRunDump, Does.Contain("Run: 1"));
             Assert.That(firstRunDump, Does.Contain("Arguments: [0x1]"));
-            Assert.That(firstRunDump, Does.Contain("Expected Output: 0x00000010"));
+            Assert.That(firstRunDump, Does.Contain("Expected Outputs:"));
+            Assert.That(firstRunDump, Does.Contain("[0] 0x00000010 | unsigned 16 | signed 16"));
             Assert.That(firstRunDump, Does.Contain("[0] 0x00000001 | unsigned 1 | signed 1"));
             Assert.That(firstRunDump, Does.Contain("<CR><LF>" + Environment.NewLine + "beta<TAB>"));
             Assert.That(firstRunDump, Does.Contain("00000010<LF>" + Environment.NewLine + "<EOT>"));
             Assert.That(firstRunDump, Does.Contain("stderr-one<CR><LF>" + Environment.NewLine));
             Assert.That(secondRunDump, Does.Contain("Run: 2"));
             Assert.That(secondRunDump, Does.Contain("Arguments: [0x2]"));
-            Assert.That(secondRunDump, Does.Contain("Expected Output: 0x00000020"));
+            Assert.That(secondRunDump, Does.Contain("Expected Outputs:"));
+            Assert.That(secondRunDump, Does.Contain("[0] 0x00000020 | unsigned 32 | signed 32"));
             Assert.That(secondRunDump, Does.Contain("[0] 0x00000021 | unsigned 33 | signed 33"));
             Assert.That(secondRunDump, Does.Contain("second<LF>" + Environment.NewLine + "<ETX>00000021<LF>" + Environment.NewLine + "<EOT>"));
             Assert.That(secondRunDump, Does.Contain("stderr-two<EOT>"));
@@ -863,21 +865,41 @@ public sealed class RegressionHarnessTests
             "FormatHardwareOutputMismatch",
             BindingFlags.NonPublic | BindingFlags.Static)!;
 
-        string message = (string)formatter.Invoke(null, [0x0000012Cu, 0x000000C8u])!;
+        string message = (string)formatter.Invoke(null, new object[]
+        {
+            new uint[] { 0x0000012Cu, 0, 0, 0, 0, 0, 0, 0 },
+            new uint[] { 0x000000C8u, 0, 0, 0, 0, 0, 0, 0 },
+        })!;
 
         Assert.That(
             message,
             Is.EqualTo(
                 """
                 hardware output mismatch:
-                            hex        | unsigned   |      signed
-                  expected  0x0000012C |        300 |         300
-                  actual    0x000000C8 |        200 |         200
+                  expected:
+                    [0] 0x0000012C | unsigned 300 | signed 300
+                    [1] 0x00000000 | unsigned 0 | signed 0
+                    [2] 0x00000000 | unsigned 0 | signed 0
+                    [3] 0x00000000 | unsigned 0 | signed 0
+                    [4] 0x00000000 | unsigned 0 | signed 0
+                    [5] 0x00000000 | unsigned 0 | signed 0
+                    [6] 0x00000000 | unsigned 0 | signed 0
+                    [7] 0x00000000 | unsigned 0 | signed 0
+                  actual:
+                    [0] 0x000000C8 | unsigned 200 | signed 200
+                    [1] 0x00000000 | unsigned 0 | signed 0
+                    [2] 0x00000000 | unsigned 0 | signed 0
+                    [3] 0x00000000 | unsigned 0 | signed 0
+                    [4] 0x00000000 | unsigned 0 | signed 0
+                    [5] 0x00000000 | unsigned 0 | signed 0
+                    [6] 0x00000000 | unsigned 0 | signed 0
+                    [7] 0x00000000 | unsigned 0 | signed 0
+                
                 """));
     }
 
     [Test]
-    public void PassHwFixture_RunsDirective_ParsesMixedLiterals()
+    public void PassHwFixture_RunsDirective_ParsesScalarAndArrayOutputs()
     {
         using TempDirectory temp = new();
         WriteMinimalRegressionRepository(temp);
@@ -886,8 +908,8 @@ public sealed class RegressionHarnessTests
         // EXPECT: pass-hw
         // RUNS:
         // - [] = 1234
-        // - [ 0 ] = 1234
-        // - [ 0, -10, 0x12345 ] = -1
+        // - [ 0 ] = [ 1234 ]
+        // - [ 0, -10, 0x12345 ] = [ -1, 0x10, 0 ]
         cog task main {
             var x: u32 = 1234;
             _ = x;
@@ -907,6 +929,34 @@ public sealed class RegressionHarnessTests
         {
             Assert.That(result.Succeeded, Is.True);
             Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Ok));
+        });
+    }
+
+    [Test]
+    public void PassHwFixture_RunsDirective_RejectsMoreThanEightExpectedOutputs()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/hw_too_many_expected_outputs.blade", """
+        // EXPECT: pass-hw
+        // RUNS:
+        // - [ 0 ] = [ 0, 1, 2, 3, 4, 5, 6, 7, 8 ]
+        var x: u32 = 0;
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(run =>
+            run.RelativePath == "Demonstrators/hw_too_many_expected_outputs.blade");
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
+            Assert.That(fixtureResult.Details, Has.Some.Contains("Hardware fixtures support at most 8 expected outputs."));
         });
     }
 
@@ -1018,7 +1068,7 @@ public sealed class RegressionHarnessTests
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
-            Assert.That(fixtureResult.Details, Has.Some.Contains("Invalid RUNS entry '0, 1 = 2'. Expected '[ ... ] = value'."));
+            Assert.That(fixtureResult.Details, Has.Some.Contains("Invalid RUNS entry '0, 1 = 2'. Expected '[ ... ] = value' or '[ ... ] = [ ... ]'."));
         });
     }
 

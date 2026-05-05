@@ -1,0 +1,8 @@
+// EXPECT: pass
+
+cog task main {
+    asm volatile {
+        foo: MOV %1, #0
+             JMP #foo
+    };
+}
