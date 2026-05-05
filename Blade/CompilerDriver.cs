@@ -118,7 +118,9 @@ public static class CompilerDriver
         Requires.NotNull(diagnostics);
 
         if (runtimeLauncherPath is null)
+        {
             return new SourceText(DefaultRuntimeLauncherText, "<default-runtime>");
+        }
 
         bool loaded = SourceFileLoader.TryLoad(runtimeLauncherPath, diagnostics, out SourceText runtimeSource);
         _ = loaded;

@@ -22,6 +22,9 @@ internal static class BackendSymbolNaming
             string baseName = GetUnscopedBaseName(place);
             unscopedBaseNames.Add(place, baseName);
 
+            if (ShouldIgnoreForCollisionResolution(place))
+                continue;
+
             if (unscopedBaseNameCounts.TryGetValue(baseName, out int count))
                 unscopedBaseNameCounts[baseName] = count + 1;
             else
@@ -33,11 +36,18 @@ internal static class BackendSymbolNaming
         {
             if (place.HasAssignedEmittedName)
             {
-                Track(emittedNameCounts, place.EmittedName);
+                if (!ShouldIgnoreForCollisionResolution(place))
+                    Track(emittedNameCounts, place.EmittedName);
                 continue;
             }
 
             string baseName = unscopedBaseNames[place];
+            if (ShouldIgnoreForCollisionResolution(place))
+            {
+                place.AssignEmittedName(baseName);
+                continue;
+            }
+
             if (unscopedBaseNameCounts[baseName] > 1 && place.OwningImage is ImageDescriptor owningImage)
                 baseName = $"{SanitizeIdentifier(owningImage.Task.Name)}_{baseName}";
 
@@ -87,6 +97,9 @@ internal static class BackendSymbolNaming
             _ => $"g_{SanitizeIdentifier(place.Symbol.Name)}",
         };
     }
+
+    private static bool ShouldIgnoreForCollisionResolution(StoragePlace place)
+        => place is { Placement: StoragePlacePlacement.ExternalAlias, FixedAddress: null };
 
     private static string AllocateUniqueName(IDictionary<string, int> emittedNameCounts, string baseName)
     {

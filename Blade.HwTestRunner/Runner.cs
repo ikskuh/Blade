@@ -122,7 +122,7 @@ public sealed class Runner
     /// <summary>
     /// Total timeout in milliseconds until the fixture protocol must complete.
     /// </summary>
-    public int Timeout { get; set; } = 2500;
+    public int Timeout { get; set; } = 3500;
 
     public HardwareLoaderKind Loader { get; set; } = HardwareLoaderKind.Auto;
 

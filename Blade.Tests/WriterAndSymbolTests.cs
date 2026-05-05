@@ -281,4 +281,109 @@ public class WriterAndSymbolTests
         Assert.That(externalHubAlias.EmitsStorageLabel, Is.False);
         Assert.That(externalHubAlias.SymbolType, Is.EqualTo(SymbolType.HubVariable));
     }
+
+    [Test]
+    public void BackendSymbolNaming_IgnoresUnaddressedExternalAliasesForCollisionResolution()
+    {
+        GlobalVariableSymbol runtimeResultSymbol = (GlobalVariableSymbol)IrTestFactory.CreateVariableSymbol(
+            "rt_result",
+            storageClass: AddressSpace.Cog,
+            scopeKind: VariableScopeKind.GlobalStorage,
+            isExtern: true,
+            fixedAddress: 0);
+        StoragePlace runtimeResult = new(
+            runtimeResultSymbol,
+            StoragePlacePlacement.FixedAlias,
+            emittedName: null);
+
+        GlobalVariableSymbol unresolvedExternResultSymbol = (GlobalVariableSymbol)IrTestFactory.CreateVariableSymbol(
+            "rt_result",
+            storageClass: AddressSpace.Cog,
+            scopeKind: VariableScopeKind.GlobalStorage,
+            isExtern: true);
+        StoragePlace unresolvedExternResult = new(
+            unresolvedExternResultSymbol,
+            StoragePlacePlacement.ExternalAlias,
+            emittedName: null);
+
+        Type namingType = typeof(StoragePlace).Assembly.GetType("Blade.IR.BackendSymbolNaming", throwOnError: true)!;
+        MethodInfo assignStorageNames = namingType.GetMethod(
+            "AssignStorageNames",
+            BindingFlags.Public | BindingFlags.Static)!;
+        assignStorageNames.Invoke(null, [new StoragePlace[] { runtimeResult, unresolvedExternResult }]);
+
+        Assert.That(runtimeResult.EmittedName, Is.EqualTo("rt_result"));
+        Assert.That(unresolvedExternResult.EmittedName, Is.EqualTo("rt_result"));
+    }
+
+    [Test]
+    public void FinalAssemblyWriter_CollapsesStoragePlacesWithSameEmittedName()
+    {
+        GlobalVariableSymbol runtimeResultSymbol = (GlobalVariableSymbol)IrTestFactory.CreateVariableSymbol(
+            "rt_result",
+            storageClass: AddressSpace.Cog,
+            scopeKind: VariableScopeKind.GlobalStorage,
+            isExtern: true,
+            fixedAddress: 0);
+        StoragePlace runtimeResult = new(
+            runtimeResultSymbol,
+            StoragePlacePlacement.FixedAlias,
+            emittedName: "rt_result");
+
+        GlobalVariableSymbol unresolvedExternResultSymbol = (GlobalVariableSymbol)IrTestFactory.CreateVariableSymbol(
+            "rt_result",
+            storageClass: AddressSpace.Cog,
+            scopeKind: VariableScopeKind.GlobalStorage,
+            isExtern: true);
+        StoragePlace unresolvedExternResult = new(
+            unresolvedExternResultSymbol,
+            StoragePlacePlacement.ExternalAlias,
+            emittedName: "rt_result");
+
+        Type labelEmitterType = typeof(FinalAssemblyWriter).GetNestedType("LabelNameEmitter", BindingFlags.NonPublic)!;
+        object labelEmitter = Activator.CreateInstance(labelEmitterType, nonPublic: true)!;
+        MethodInfo getLabelName = labelEmitterType.GetMethod("GetLabelName", BindingFlags.Public | BindingFlags.Instance)!;
+
+        string runtimeLabel = (string)getLabelName.Invoke(labelEmitter, [runtimeResult, null])!;
+        string unresolvedExternLabel = (string)getLabelName.Invoke(labelEmitter, [unresolvedExternResult, null])!;
+
+        Assert.That(runtimeLabel, Is.EqualTo("rt_result"));
+        Assert.That(unresolvedExternLabel, Is.EqualTo("rt_result"));
+    }
+
+    [Test]
+    public void FinalAssemblyWriter_DoesNotCollapseAllocatableStoragePlacesWithSameEmittedName()
+    {
+        GlobalVariableSymbol mainYieldStateSymbol = (GlobalVariableSymbol)IrTestFactory.CreateVariableSymbol(
+            "top_yield_state",
+            storageClass: AddressSpace.Cog,
+            scopeKind: VariableScopeKind.GlobalStorage,
+            isExtern: false);
+        StoragePlace mainYieldState = new(
+            mainYieldStateSymbol,
+            StoragePlacePlacement.Allocatable,
+            StoragePlaceRegisterRole.Global,
+            emittedName: "g_top_yield_state");
+
+        GlobalVariableSymbol spawnedYieldStateSymbol = (GlobalVariableSymbol)IrTestFactory.CreateVariableSymbol(
+            "top_yield_state",
+            storageClass: AddressSpace.Cog,
+            scopeKind: VariableScopeKind.GlobalStorage,
+            isExtern: false);
+        StoragePlace spawnedYieldState = new(
+            spawnedYieldStateSymbol,
+            StoragePlacePlacement.Allocatable,
+            StoragePlaceRegisterRole.Global,
+            emittedName: "g_top_yield_state");
+
+        Type labelEmitterType = typeof(FinalAssemblyWriter).GetNestedType("LabelNameEmitter", BindingFlags.NonPublic)!;
+        object labelEmitter = Activator.CreateInstance(labelEmitterType, nonPublic: true)!;
+        MethodInfo getLabelName = labelEmitterType.GetMethod("GetLabelName", BindingFlags.Public | BindingFlags.Instance)!;
+
+        string mainLabel = (string)getLabelName.Invoke(labelEmitter, [mainYieldState, null])!;
+        string spawnedLabel = (string)getLabelName.Invoke(labelEmitter, [spawnedYieldState, null])!;
+
+        Assert.That(mainLabel, Is.EqualTo("g_top_yield_state"));
+        Assert.That(spawnedLabel, Is.EqualTo("g_top_yield_state_2"));
+    }
 }

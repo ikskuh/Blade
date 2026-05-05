@@ -19,8 +19,6 @@ public sealed class Binder
     private const string ProgramMainTaskName = "main";
     private const string RuntimeLauncherTaskName = "_start";
     private const string BuiltinTaskMainFunctionName = "task_main";
-    private const string DefaultRuntimeLauncherPath = "<default-runtime>";
-    private const int RuntimeAbiResultAddress = 0x1EF;
     private readonly DiagnosticBag _diagnostics;
     private readonly LoadedCompilation _compilation;
     private readonly Dictionary<string, TypeSymbol> _typeAliases = new(StringComparer.Ordinal);
@@ -44,7 +42,6 @@ public sealed class Binder
     private readonly int _comptimeFuel;
     private readonly FunctionSymbol? _builtinTaskMainTarget;
     private FunctionSymbol? _builtinTaskMainFunction;
-    private readonly bool _enableRuntimeAbiBindings;
     private int _anonymousStructIndex;
     private bool _suppressPointerStorageClassDiagnostics;
     private LayoutSymbol? _currentImplicitLayout;
@@ -53,7 +50,6 @@ public sealed class Binder
     private static readonly EnumTypeSymbol MemorySpaceType = new("MemorySpace", BuiltinTypes.U32,
         new Dictionary<string, long>(StringComparer.Ordinal) { ["cog"] = 0, ["lut"] = 1, ["hub"] = 2, ["_cog"] = 0, ["_lut"] = 1, ["_hub"] = 2 },
         isOpen: false);
-    private static readonly IReadOnlyDictionary<string, int> RuntimeAbiFixedAddresses = CreateRuntimeAbiFixedAddresses();
 
     private readonly record struct LayoutMemberBinding(LayoutSymbol Layout, GlobalVariableSymbol Variable);
     private readonly record struct StoredLayoutMemberBinding(VariableDeclarationSyntax Declaration, GlobalVariableSymbol Symbol);
@@ -118,7 +114,6 @@ public sealed class Binder
         _moduleDefinitionCache = Requires.NotNull(moduleDefinitionCache);
         _comptimeFuel = Requires.Positive(comptimeFuel);
         _builtinTaskMainTarget = builtinTaskMainTarget;
-        _enableRuntimeAbiBindings = !PathIdentity.Comparer.Equals(compilation.RuntimeLauncherModule.FullPath, DefaultRuntimeLauncherPath);
         _globalScope = new Scope(parent: null);
         _currentScope = _globalScope;
     }
@@ -5210,12 +5205,6 @@ public sealed class Binder
         int? fixedAddress = declaration.AtClause is null
             ? null
             : BindRequiredConstantInt(declaration.AtClause.Address, declaration.AtClause.Address.Span);
-        if (!fixedAddress.HasValue
-            && TryGetRuntimeAbiFixedAddress(variableSymbol, out VirtualAddress runtimeAbiAddress))
-        {
-            (_, int runtimeAbiRawAddress) = runtimeAbiAddress.GetDataAddress();
-            fixedAddress = runtimeAbiRawAddress;
-        }
 
         int? alignment = declaration.AlignClause is null
             ? null
@@ -5225,49 +5214,7 @@ public sealed class Binder
             : null;
         variableSymbol.SetLayoutMetadata(virtualFixedAddress, alignment);
     }
-
-    private bool TryGetRuntimeAbiFixedAddress(GlobalVariableSymbol variableSymbol, out VirtualAddress address)
-    {
-        Requires.NotNull(variableSymbol);
-
-        if (!_enableRuntimeAbiBindings
-            || !variableSymbol.IsExtern
-            || variableSymbol.StorageClass != AddressSpace.Cog)
-        {
-            address = default;
-            return false;
-        }
-
-        if (variableSymbol.DeclaringLayout is LayoutSymbol declaringLayout
-            && declaringLayout is not TaskSymbol)
-        {
-            address = default;
-            return false;
-        }
-
-        if (!RuntimeAbiFixedAddresses.TryGetValue(variableSymbol.Name, out int rawAddress))
-        {
-            address = default;
-            return false;
-        }
-
-        address = new VirtualAddress(AddressSpace.Cog, rawAddress);
-        return true;
-    }
-
-    private static IReadOnlyDictionary<string, int> CreateRuntimeAbiFixedAddresses()
-    {
-        Dictionary<string, int> addresses = new(StringComparer.Ordinal)
-        {
-            ["rt_result"] = RuntimeAbiResultAddress,
-        };
-
-        for (int index = 0; index < 8; index++)
-            addresses.Add($"rt_param{index}", index + 1);
-
-        return addresses;
-    }
-
+    
     private int? BindRequiredConstantInt(ExpressionSyntax expression, TextSpan span)
     {
         BoundExpression bound = BindExpression(expression);

@@ -489,7 +489,31 @@ In general, Layouts have to be conflict free for:
 
 We can actually fuse cog resource layouting and code layouting, as we know the code size in instructions.
 
+
+### Implement Mir/Lir validation
+
+Right now, it's possible to construct IR code that uses never-set values. This is illegal and should be asserted that we're always producing sane code. This assertion must run between lowering, all optimization steps and the emission of this IR.
+
 ### Bug: Bad allocation
 
 Variable `extern cog var foo: u32;` without explicit placement gets automatically allocated a memory slot, which is definitly wrong.
 
+#### Technical Debt: Symbol naming for external symbols isn't well specified
+
+Two layouts can declare a symbol `rt_result`, which will be correctly split into two symbols by the cmpiler.
+
+This yields the issue that we cannot refer to one through `extern var rt_result: u32;`  as the compiler still (correctly) performs the symbol distinction.
+
+Correct solution here is the introduction of a `[linkname("")]` attribute for the variable.
+
+### Improvement: Remove emission of unreferenced globals
+
+Right now, all `hub const` values are emitted into the binary imgae. This is only necessary when the values are pointed to, which is something we can detect.
+
+All unpointed values can be erased.
+
+### g_global_yield_state must be deleted
+
+it can be safely replaced by "yield to INA", which is effectively a value discard.
+
+This means we should introduce this concept on a broader scale to implement it.

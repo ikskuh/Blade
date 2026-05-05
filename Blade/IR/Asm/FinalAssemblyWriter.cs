@@ -85,6 +85,7 @@ public static class FinalAssemblyWriter
         {
             return symbol switch
             {
+                StoragePlace place when ShouldCollapseStorageLabel(place) => ("storage", place.EmittedName),
                 AsmFunction function => function.Key,
                 AsmFunctionReferenceSymbol functionReference => new AsmFunctionKey(functionReference.Image, functionReference.Function),
                 ControlFlowLabelSymbol label when currentFunction is not null && label.Name != DefaultHaltLabel => new ScopedControlFlowLabelKey(currentFunction.Key, label),
@@ -92,6 +93,9 @@ public static class FinalAssemblyWriter
                 _ => symbol,
             };
         }
+
+        private static bool ShouldCollapseStorageLabel(StoragePlace place)
+            => place.Symbol.IsExtern || place.FixedAddress.HasValue;
 
         private static string GetBaseName(IAsmSymbol symbol)
         {
