@@ -1,19 +1,16 @@
 // EXPECT: pass-hw
 // RUNS:
-// - [ 100, 200 ] = 300
-// - [ 200, 100 ] = 300
-// - [ 50, 50 ] = 100
-// - [ 0, 0xFFFFFFFF ] = 0xFFFFFFFF
+// - [ 100, 200 ] = [ 200, 100 ]
+// - [ 200, 100 ] = [ 200, 100 ]
+// - [ 50, 50 ] = [ 50, 50 ]
+// - [ 0, 0xFFFFFFFF ] = [ 0xFFFFFFFF, 0 ]
 // NOTE:
 //   Tests if-else expressions (ternary select).
-//   result = max(a,b) + min(a,b) = a + b always
-//   Run 1: a<b: 200+100 = 300
-//   Run 2: a>b: 200+100 = 300 (swapped)
-//   Run 3: a==b: 50+50 = 100
-//   Run 4: boundary: 0xFFFFFFFF+0 = 0xFFFFFFFF
+//   Reports the selected max and min lanes separately.
 cog task main {
     
     extern cog var rt_result: u32;
+    extern cog var rt_result1: u32;
     extern cog var rt_param0: u32;
     extern cog var rt_param1: u32;
     
@@ -25,5 +22,6 @@ cog task main {
         return if (a < b) a else b;
     }
     
-    rt_result = max(rt_param0, rt_param1) + min(rt_param0, rt_param1);
+    rt_result = max(rt_param0, rt_param1);
+    rt_result1 = min(rt_param0, rt_param1);
 }

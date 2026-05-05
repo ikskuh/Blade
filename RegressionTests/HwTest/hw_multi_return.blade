@@ -1,9 +1,9 @@
 // EXPECT: pass-hw
 // RUNS:
-// - [ 3, 4 ] = 0x00010007
-// - [ 4, 3 ] = 0x00000007
-// - [ 5, 5 ] = 0x0002000A
-// - [ 0, 0 ] = 0x00020000
+// - [ 3, 4 ] = [  7,  7, 1, 1, 0 ]
+// - [ 4, 3 ] = [  7,  7, 0, 0, 0 ]
+// - [ 5, 5 ] = [ 10, 10, 0, 0, 1 ]
+// - [ 0, 0 ] = [  0,  0, 0, 0, 1 ]
 // NOTE:
 //   Regression for multi-return bool flag capture and bool->u32 if-expression lowering.
 //   Tests 2-value and 3-value returns, and discard with `_`.
@@ -17,6 +17,10 @@
 cog task main {
     
     extern cog var rt_result: u32;
+    extern cog var rt_result1: u32;
+    extern cog var rt_result2: u32;
+    extern cog var rt_result3: u32;
+    extern cog var rt_result4: u32;
     extern cog var rt_param0: u32;
     extern cog var rt_param1: u32;
     
@@ -40,8 +44,9 @@ cog task main {
     var eq3: bool = undefined;
     sum3, lt3, eq3 = three_ret(rt_param0, rt_param1);
     
-    var lt2_u: u32 = if (lt2) 1 else 0;
-    var eq3_u: u32 = if (eq3) 1 else 0;
-    
-    rt_result = (sum2 & 0xFFFF) | (lt2_u << 16) | (eq3_u << 17);
+    rt_result = sum2;
+    rt_result1 = sum3;
+    rt_result2 = if (lt2) 1 else 0;
+    rt_result3 = if (lt3) 1 else 0;
+    rt_result4 = if (eq3) 1 else 0;
 }

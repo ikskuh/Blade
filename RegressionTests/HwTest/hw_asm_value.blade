@@ -1,18 +1,16 @@
 // EXPECT: pass-hw
 // RUNS:
-// - [ 10, 20 ] = 60
-// - [ 0, 0 ] = 0
-// - [ 1, 0xFFFFFFFF ] = 0
-// - [ 100, 200 ] = 600
+// - [ 10, 20 ] = [ 30, 30 ]
+// - [ 0, 0 ] = [ 0, 0 ]
+// - [ 1, 0xFFFFFFFF ] = [ 0, 0 ]
+// - [ 100, 200 ] = [ 300, 300 ]
 // NOTE:
 //   Tests asm fn -> u32 and inline asm volatile block.
-//   asm_sum(a,b):    a+b via asm fn
-//   inline_sum(a,b): a+b via asm volatile block
-//   result = asm_sum(a,b) + inline_sum(a,b) = 2*(a+b)
-//   Run 3: 2*(1+0xFFFFFFFF) = 2*0 = 0 (wrapping)
+//   Reports the asm-fn and inline-asm sums as separate result lanes.
 cog task main {
     
     extern cog var rt_result: u32;
+    extern cog var rt_result1: u32;
     extern cog var rt_param0: u32;
     extern cog var rt_param1: u32;
     
@@ -30,5 +28,6 @@ cog task main {
         return r;
     }
     
-    rt_result = asm_sum(rt_param0, rt_param1) + inline_sum(rt_param0, rt_param1);
+    rt_result = asm_sum(rt_param0, rt_param1);
+    rt_result1 = inline_sum(rt_param0, rt_param1);
 }
