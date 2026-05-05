@@ -719,7 +719,7 @@ def render_generated_source(
             "            0 => Operand0,",
             "            1 => Operand1,",
             "            2 => Operand2,",
-            "            _ => default,",
+            "            _ => Assert.UnreachableValue<P2InstructionOperandInfo>(), // pragma: force-coverage",
             "        };",
             "}",
             "",
@@ -740,19 +740,19 @@ def render_generated_source(
         flag_expr = render_flag_effect_mask(form["allowed_flag_effects"])
         return (
             "new P2InstructionFormInfo("
-            f'P2Mnemonic.{form["mnemonic"]}, '
-            f'{form["operand_count"]}, '
-            f'{render_operand_info(form["operand_infos"][0])}, '
-            f'{render_operand_info(form["operand_infos"][1])}, '
-            f'{render_operand_info(form["operand_infos"][2])}, '
-            f'{render_written_registers(form["written_registers"])}, '
-            f'P2HwStackEffect.{form["hw_stack_effect"]}, '
-            f"{flag_expr}, "
-            f'{render_bool(form["is_call"])}, '
-            f'{render_bool(form["is_branch"])}, '
-            f'{render_bool(form["is_return"])}, '
-            f'{render_bool(form["has_no_register_effect"])}, '
-            f'{render_bool(form["is_pure_register_local"])})'
+            f'Mnemonic: P2Mnemonic.{form["mnemonic"]}, '
+            f'OperandCount: {form["operand_count"]}, '
+            f'Operand0: {render_operand_info(form["operand_infos"][0])}, '
+            f'Operand1: {render_operand_info(form["operand_infos"][1])}, '
+            f'Operand2: {render_operand_info(form["operand_infos"][2])}, '
+            f'WrittenRegisters: {render_written_registers(form["written_registers"])}, '
+            f'HwStackEffect: P2HwStackEffect.{form["hw_stack_effect"]}, '
+            f"AllowedFlagEffects: {flag_expr}, "
+            f'IsCall: {render_bool(form["is_call"])}, '
+            f'IsBranch: {render_bool(form["is_branch"])}, '
+            f'IsReturn: {render_bool(form["is_return"])}, '
+            f'HasNoRegisterEffect: {render_bool(form["has_no_register_effect"])}, '
+            f'IsPureRegisterLocal: {render_bool(form["is_pure_register_local"])})'
         )
 
     for mnemonic in valid_mnemonics_sorted:
@@ -898,12 +898,12 @@ def render_flag_effect_mask(flag_effects: tuple[str, ...]) -> str:
 def render_operand_info(info: OperandInfo) -> str:
     return (
         "new P2InstructionOperandInfo("
-        f"P2OperandRole.{info.role}, "
-        f"{info.bit_width}, "
-        f"P2OperandAccess.{info.access}, "
-        f"{render_bool(info.supports_immediate_syntax)}, "
-        f"{render_bool(info.uses_immediate_symbol_syntax)}, "
-        f"P2AugPrefixKind.{info.aug_prefix})"
+        f"Role: P2OperandRole.{info.role}, "
+        f"BitWidth: {info.bit_width}, "
+        f"Access: P2OperandAccess.{info.access}, "
+        f"SupportsImmediateSyntax: {render_bool(info.supports_immediate_syntax)}, "
+        f"UsesImmediateSymbolSyntax: {render_bool(info.uses_immediate_symbol_syntax)}, "
+        f"AugPrefix: P2AugPrefixKind.{info.aug_prefix})"
     )
 
 

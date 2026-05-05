@@ -389,6 +389,12 @@ cog task main {
 
 See name.
 
+## Implicit const promotion
+
+Variables never writen or taken mutable pointers from can be promoted into constant storage and enable stronger inlining.
+
+Should also report warnings.
+
 ## Task/Layout Refactoring
 
 ### Introduce true split-phase variables

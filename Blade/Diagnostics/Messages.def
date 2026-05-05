@@ -488,6 +488,10 @@ located InlineAsmInvalidImmediateOperandKind: E0318
     message: $"Inline assembly operand '{operandText}' is not valid after '#'. Expected an integer literal, label, or '$'."
     param:   string operandText
 
+located InlineAsmInvalidOperandAddressSpace: E0319
+    message: $"Inline assembly operand '{operandText}' does not refer to a register binding."
+    param:   string operandText
+
 located UnsupportedLowering: E0401
     message: $"Backend lowering for '{lowering}' is not implemented yet."
     param:   string lowering

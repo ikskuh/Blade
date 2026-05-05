@@ -375,7 +375,7 @@ public static class LirLowerer
                 inlineAsm.Volatility,
                 inlineAsm.FlagOutput,
                 inlineAsm.ParsedLines,
-                LowerInlineAsmBindings(inlineAsm.Bindings, getRegister, constValues),
+                LowerInlineAsmBindings(inlineAsm.Bindings, getRegister),
                 inlineAsm.Span),
 
             MirYieldInstruction yield => new LirOpInstruction(
@@ -535,17 +535,25 @@ public static class LirLowerer
 
     private static IReadOnlyList<LirInlineAsmBinding> LowerInlineAsmBindings(
         IReadOnlyList<MirInlineAsmBinding> bindings,
-        System.Func<MirValueId, LirVirtualRegister> getRegister,
-        IReadOnlyDictionary<MirValueId, BladeValue> constValues)
+        System.Func<MirValueId, LirVirtualRegister> getRegister)
     {
         List<LirInlineAsmBinding> lowered = new(bindings.Count);
         foreach (MirInlineAsmBinding binding in bindings)
         {
-            LirOperand operand = binding.Value is MirValueId value
-                ? constValues.TryGetValue(value, out BladeValue? constVal)
-                    ? new LirImmediateOperand(constVal)
-                    : new LirRegisterOperand(getRegister(value))
-                : new LirPlaceOperand(binding.Place!);
+            LirOperand operand;
+            if (binding.Place is not null)
+            {
+                operand = new LirPlaceOperand(binding.Place);
+            }
+            else if (binding.Value is MirValueId value)
+            {
+                operand = new LirRegisterOperand(getRegister(value));
+            }
+            else
+            {
+                operand = Assert.UnreachableValue<LirOperand>(); // pragma: force-coverage
+            }
+
             lowered.Add(new LirInlineAsmBinding(binding.Slot, binding.Symbol, operand, binding.Access));
         }
 

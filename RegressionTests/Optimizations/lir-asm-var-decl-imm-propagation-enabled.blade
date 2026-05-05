@@ -1,0 +1,16 @@
+// EXPECT: pass
+// STAGE: lir
+// ARGS:
+// - -fno-mir-opt=*
+// - -fno-lir-opt=*
+// - -flir-opt=asm-var-decl-imm-propagation
+// CONTAINS:
+// - inlineasm x=13:u32:r ; sidefx
+
+cog task main {
+    var x: u32 = 13;
+
+    asm {
+        MOV %0, {x}
+    };
+}

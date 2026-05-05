@@ -1,0 +1,15 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - RDLONG
+// NOTE:
+//   Inline asm direct bindings may reference mutable `cog var` bindings because
+//   they reside in register-addressable COG storage.
+
+cog task main {
+    cog var address: u32 = 62;
+    cog var result: u32 = 0;
+    asm {
+        RDLONG {result}, {address}
+    };
+}

@@ -7,7 +7,7 @@ layout Runtime{
     extern cog var rt_param5: u32 @(6);
     extern cog var rt_param6: u32 @(7);
     extern cog var rt_param7: u32 @(8);
-    cog var rt_result: u32 @(0x1EF) = 0;
+    extern cog var rt_result: u32 @(9);
 }
 
 hub const RT_F_CPU: u32   = 200_000_000;
@@ -59,6 +59,7 @@ import builtin;
 cog task _start : Runtime
 {
     asm volatile {
+     rt_result:
                 JMP #over
     rt_param0:
          LONG 0

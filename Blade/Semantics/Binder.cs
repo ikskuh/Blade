@@ -2127,7 +2127,7 @@ public sealed class Binder
                 case InlineAsmInstructionLineSyntax instructionLine:
                     {
                         InlineAsmLine? bound = BindInlineAsmLine(
-                            instructionLine, bodySyntax.Span, availableBindings, labels,
+                            instructionLine, bodySyntax.Span, availableSymbols, availableBindings, labels,
                             tempBindings, referencedVarBindings);
                         if (bound is not null)
                             lines.Add(bound);
@@ -2170,6 +2170,7 @@ public sealed class Binder
     private InlineAsmLine? BindInlineAsmLine(
         InlineAsmInstructionLineSyntax instructionLine,
         TextSpan blockSpan,
+        IReadOnlyDictionary<string, Symbol> availableSymbols,
         IReadOnlyDictionary<string, InlineAsmVarBindingSlot> availableBindings,
         IReadOnlyDictionary<string, ControlFlowLabelSymbol> labels,
         Dictionary<int, InlineAsmTempBindingSlot> tempBindings,
@@ -2199,7 +2200,7 @@ public sealed class Binder
         foreach (InlineAsmOperandSyntax operandSyntax in instructionLine.Operands)
         {
             InlineAsmOperand? operand = BindInlineAsmOperand(
-                operandSyntax, blockSpan, availableBindings, labels, tempBindings, referencedVarBindings);
+                operandSyntax, blockSpan, availableSymbols, availableBindings, labels, tempBindings, referencedVarBindings);
             if (operand is null)
                 return null;
             operands.Add(operand);
@@ -2269,6 +2270,7 @@ public sealed class Binder
     private InlineAsmOperand? BindInlineAsmOperand(
         InlineAsmOperandSyntax operandSyntax,
         TextSpan blockSpan,
+        IReadOnlyDictionary<string, Symbol> availableSymbols,
         IReadOnlyDictionary<string, InlineAsmVarBindingSlot> availableBindings,
         IReadOnlyDictionary<string, ControlFlowLabelSymbol> labels,
         Dictionary<int, InlineAsmTempBindingSlot> tempBindings,
@@ -2284,6 +2286,10 @@ public sealed class Binder
                         _diagnostics.Report(new InlineAsmUndefinedVariableError(_diagnostics.CurrentSource, blockSpan, name));
                         return null;
                     }
+
+                    if (!ValidateInlineAsmDirectBindingSymbol(name, varBinding.Span, availableSymbols))
+                        return null;
+
                     referencedVarBindings.Add(slot);
                     return new InlineAsmBindingRefOperand(slot);
                 }
@@ -2315,7 +2321,7 @@ public sealed class Binder
                 return null;
 
             case InlineAsmSymbolOperandSyntax symbol:
-                return BindInlineAsmSymbolOperand(symbol.Name.Text, blockSpan, availableBindings, labels, referencedVarBindings);
+                return BindInlineAsmSymbolOperand(symbol.Name.Text, symbol.Span, blockSpan, availableSymbols, availableBindings, labels, referencedVarBindings);
 
             default:
                 return Assert.UnreachableValue<InlineAsmOperand?>("all inline asm operand syntaxes handled"); // pragma: force-coverage
@@ -2374,7 +2380,9 @@ public sealed class Binder
 
     private InlineAsmOperand? BindInlineAsmSymbolOperand(
         string name,
+        TextSpan operandSpan,
         TextSpan blockSpan,
+        IReadOnlyDictionary<string, Symbol> availableSymbols,
         IReadOnlyDictionary<string, InlineAsmVarBindingSlot> availableBindings,
         IReadOnlyDictionary<string, ControlFlowLabelSymbol> labels,
         HashSet<InlineAsmVarBindingSlot> referencedVarBindings)
@@ -2387,12 +2395,45 @@ public sealed class Binder
 
         if (availableBindings.TryGetValue(name, out InlineAsmVarBindingSlot? binding))
         {
+            if (!ValidateInlineAsmDirectBindingSymbol(name, operandSpan, availableSymbols))
+                return null;
+
             referencedVarBindings.Add(binding);
             return new InlineAsmBindingRefOperand(binding);
         }
 
         _diagnostics.Report(new InlineAsmUndefinedLabelError(_diagnostics.CurrentSource, blockSpan, name));
         return null;
+    }
+
+    private bool ValidateInlineAsmDirectBindingSymbol(
+        string name,
+        TextSpan operandSpan,
+        IReadOnlyDictionary<string, Symbol> availableSymbols)
+    {
+        bool found = availableSymbols.TryGetValue(name, out Symbol? symbol);
+        Assert.Invariant(found && symbol is not null, $"Inline asm binding '{name}' must resolve to an available symbol.");
+
+        if (CanUseInlineAsmDirectBinding(Assert.NotNull(symbol)))
+            return true;
+
+        _diagnostics.Report(new InlineAsmInvalidOperandAddressSpaceError(
+            _diagnostics.CurrentSource,
+            operandSpan,
+            GetInlineAsmOperandText(operandSpan)));
+        return false;
+    }
+
+    private static bool CanUseInlineAsmDirectBinding(Symbol symbol)
+    {
+        return symbol switch
+        {
+            AutomaticVariableSymbol => true,
+            FunctionSymbol => true,
+            GlobalVariableSymbol { IsConst: true } => true,
+            GlobalVariableSymbol { StorageClass: AddressSpace.Cog } => true,
+            _ => false,
+        };
     }
 
     private InlineAsmDataValue? BindInlineAsmDataValue(

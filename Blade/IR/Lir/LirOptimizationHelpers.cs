@@ -88,6 +88,32 @@ internal static class LirOptimizationHelpers
         return true;
     }
 
+    internal static bool TryGetConstantValue(
+        LirInstruction instruction,
+        out LirVirtualRegister destination,
+        out BladeValue value)
+    {
+        destination = null!;
+        value = null!;
+
+        if (instruction is not LirOpInstruction op
+            || op.Operation is not LirConstOperation
+            || op.Predicate is not null
+            || op.WritesC
+            || op.WritesZ
+            || op.HasSideEffects
+            || op.Destination is not LirVirtualRegister dest
+            || op.Operands.Count != 1
+            || op.Operands[0] is not LirImmediateOperand immediate)
+        {
+            return false;
+        }
+
+        destination = dest;
+        value = immediate.Value;
+        return true;
+    }
+
     internal static LirInstruction RewriteInstructionUsesForCopyPropagation(
         LirInstruction instruction,
         IReadOnlyDictionary<LirVirtualRegister, LirVirtualRegister> mapping)
@@ -256,6 +282,9 @@ internal static class LirOptimizationHelpers
                 continue;
 
             LirOperand operand = RewriteOperand(binding.Operand, mapping);
+            if (binding.Access != InlineAsmBindingAccess.Read && operand is not LirRegisterOperand)
+                continue;
+
             if (ReferenceEquals(operand, binding.Operand))
                 continue;
 

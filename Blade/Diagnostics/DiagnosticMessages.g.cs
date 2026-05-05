@@ -136,6 +136,7 @@ public abstract partial class DiagnosticMessage
             "InlineAsmInvalidFlagEffect" => (DiagnosticSeverity.Error, 316),
             "InlineAsmInvalidDirectOperand" => (DiagnosticSeverity.Error, 317),
             "InlineAsmInvalidImmediateOperandKind" => (DiagnosticSeverity.Error, 318),
+            "InlineAsmInvalidOperandAddressSpace" => (DiagnosticSeverity.Error, 319),
             "UnsupportedLowering" => (DiagnosticSeverity.Error, 401),
             _ => null,
         };
@@ -264,6 +265,7 @@ public abstract partial class DiagnosticMessage
             316 => "InlineAsmInvalidFlagEffect",
             317 => "InlineAsmInvalidDirectOperand",
             318 => "InlineAsmInvalidImmediateOperandKind",
+            319 => "InlineAsmInvalidOperandAddressSpace",
             401 => "UnsupportedLowering",
             _ => null,
         };
@@ -392,6 +394,7 @@ public abstract partial class DiagnosticMessage
             316 => DiagnosticSeverity.Error,
             317 => DiagnosticSeverity.Error,
             318 => DiagnosticSeverity.Error,
+            319 => DiagnosticSeverity.Error,
             401 => DiagnosticSeverity.Error,
             _ => null,
         };
@@ -520,6 +523,7 @@ public abstract partial class DiagnosticMessage
             "InlineAsmInvalidFlagEffect" => DiagnosticSeverity.Error,
             "InlineAsmInvalidDirectOperand" => DiagnosticSeverity.Error,
             "InlineAsmInvalidImmediateOperandKind" => DiagnosticSeverity.Error,
+            "InlineAsmInvalidOperandAddressSpace" => DiagnosticSeverity.Error,
             "UnsupportedLowering" => DiagnosticSeverity.Error,
             _ => null,
         };
@@ -1624,6 +1628,17 @@ public sealed class InlineAsmInvalidImmediateOperandKindError(SourceText source,
     protected override global::System.FormattableString GetFormattableMessage()
     {
         return $"Inline assembly operand '{OperandText}' is not valid after '#'. Expected an integer literal, label, or '$'.";
+    }
+}
+
+public sealed class InlineAsmInvalidOperandAddressSpaceError(SourceText source, TextSpan span, string operandText)
+    : LocatedDiagnosticMessage(source, span, "InlineAsmInvalidOperandAddressSpace", DiagnosticSeverity.Error, 319)
+{
+    public string OperandText { get; } = operandText;
+
+    protected override global::System.FormattableString GetFormattableMessage()
+    {
+        return $"Inline assembly operand '{OperandText}' does not refer to a register binding.";
     }
 }
 
