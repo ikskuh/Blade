@@ -45,11 +45,31 @@ internal static class Program
             ParameterCount = 0,
         };
 
-        uint exit_code = runner.Execute(binary, config, []);
-
-        if (expected != exit_code)
+        TestResult result;
+        try {
+            result = runner.Execute(binary, config, []);
+        }
+        catch(TimeoutException ex)
         {
-            Console.WriteLine("Exit Code: 0x{0:X8}", exit_code);
+            Console.Error.WriteLine(ex.Message);
+            return 1;
+        }
+        catch (FixtureException ex)
+        {
+            Console.Error.WriteLine(ex.Message);
+            return 1;
+        }
+        if (result.Outputs.Count != 1)
+        {
+            Console.Error.WriteLine($"Expected exactly one output, but received {result.Outputs.Count}.");
+            return 1;
+        }
+
+        uint exitCode = result.Outputs[0];
+
+        if (expected != exitCode)
+        {
+            Console.WriteLine("Exit Code: 0x{0:X8}", exitCode);
             return 1;
         }
 

@@ -1,6 +1,9 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
+using System.Threading;
 using Blade.HwTestRunner;
 
 namespace Blade.Tests;
@@ -16,11 +19,11 @@ public sealed class HardwareRunnerTests
         FakeLoaderPaths paths = InstallFakeLoaders(temp, includeTurboprop: true, includeLoadp2: true);
         using EnvironmentScope environment = CreateLoaderEnvironment(paths);
 
-        uint result = ExecuteFixture(temp, HardwareLoaderKind.Auto);
+        TestResult result = ExecuteFixture(temp, HardwareLoaderKind.Auto);
 
         Assert.Multiple(() =>
         {
-            Assert.That(result, Is.EqualTo(0xCAFEBABEU));
+            Assert.That(result.Outputs, Is.EqualTo(new[] { 0xCAFEBABEU }));
             Assert.That(File.Exists(paths.TurbopropArgsPath), Is.True);
             Assert.That(File.Exists(paths.Loadp2ArgsPath), Is.False);
         });
@@ -33,11 +36,11 @@ public sealed class HardwareRunnerTests
         FakeLoaderPaths paths = InstallFakeLoaders(temp, includeTurboprop: false, includeLoadp2: true);
         using EnvironmentScope environment = CreateLoaderEnvironment(paths);
 
-        uint result = ExecuteFixture(temp, HardwareLoaderKind.Auto);
+        TestResult result = ExecuteFixture(temp, HardwareLoaderKind.Auto);
 
         Assert.Multiple(() =>
         {
-            Assert.That(result, Is.EqualTo(0xCAFEBABEU));
+            Assert.That(result.Outputs, Is.EqualTo(new[] { 0xCAFEBABEU }));
             Assert.That(File.Exists(paths.Loadp2ArgsPath), Is.True);
         });
     }
@@ -49,7 +52,7 @@ public sealed class HardwareRunnerTests
         FakeLoaderPaths paths = InstallFakeLoaders(temp, includeTurboprop: true, includeLoadp2: false);
         using EnvironmentScope environment = CreateLoaderEnvironment(paths);
 
-        _ = ExecuteFixture(
+        TestResult result = ExecuteFixture(
             temp,
             HardwareLoaderKind.Turboprop,
             parameters: [new FixtureParameter(0xAABBCCDDU)]);
@@ -57,6 +60,7 @@ public sealed class HardwareRunnerTests
         byte[] stdinBytes = File.ReadAllBytes(paths.TurbopropStdinPath);
         Assert.Multiple(() =>
         {
+            Assert.That(result.Inputs, Is.EqualTo(new[] { 0xAABBCCDDU }));
             Assert.That(stdinBytes[4], Is.EqualTo(0xDD));
             Assert.That(stdinBytes[5], Is.EqualTo(0xCC));
             Assert.That(stdinBytes[6], Is.EqualTo(0xBB));
@@ -209,7 +213,60 @@ public sealed class HardwareRunnerTests
         Assert.That(ex.Message, Does.Contain("turboprop"));
     }
 
-    private static uint ExecuteFixture(
+    [Test]
+    public void LoaderProtocol_CapturesLogOutputsStdoutAndStderr()
+    {
+        using TempDirectory temp = new();
+        FakeLoaderPaths paths = InstallCustomTurboprop(temp, """
+        #!/bin/sh
+        /bin/cat >/dev/null
+        printf 'stderr-line\n' >&2
+        printf '\002trace-data\003CAFEBABE\n0000002A\n\004'
+        /bin/sleep 30
+        """);
+        using EnvironmentScope environment = CreateLoaderEnvironment(paths);
+
+        TestResult result = ExecuteFixture(
+            temp,
+            HardwareLoaderKind.Turboprop,
+            parameters: [new FixtureParameter(0x11223344U), new FixtureParameter(true)]);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Inputs, Is.EqualTo(new[] { 0x11223344U, 1U }));
+            Assert.That(result.Outputs, Is.EqualTo(new[] { 0xCAFEBABEU, 0x2AU }));
+            Assert.That(result.Log.ToArray(), Is.EqualTo(Encoding.ASCII.GetBytes("trace-data")));
+            Assert.That(result.StdOut.ToArray(), Is.EqualTo(Encoding.ASCII.GetBytes("\u0002trace-data\u0003CAFEBABE\n0000002A\n\u0004")));
+            Assert.That(result.StdErr.ToArray(), Is.EqualTo(Encoding.ASCII.GetBytes("stderr-line\n")));
+        });
+    }
+
+    [Test]
+    public void LoaderProtocol_TerminatesProcessAfterEot()
+    {
+        using TempDirectory temp = new();
+        string markerPath = temp.GetFullPath("completed.txt");
+        FakeLoaderPaths paths = InstallCustomTurboprop(temp, """
+        #!/bin/sh
+        /bin/cat >/dev/null
+        printf '\002\003CAFEBABE\n\004'
+        /bin/sleep 2
+        /usr/bin/touch "$BLADE_HW_TURBOPROP_COMPLETED"
+        """);
+        using EnvironmentScope environment = CreateLoaderEnvironment(paths);
+        environment.Set("BLADE_HW_TURBOPROP_COMPLETED", markerPath);
+
+        TestResult result = ExecuteFixture(temp, HardwareLoaderKind.Turboprop);
+        bool completed = SpinWait.SpinUntil(() => File.Exists(markerPath), 250);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Outputs, Is.EqualTo(new[] { 0xCAFEBABEU }));
+            Assert.That(completed, Is.False);
+        });
+    }
+
+    private static TestResult ExecuteFixture(
         TempDirectory temp,
         HardwareLoaderKind loader,
         bool turbopropNoVersionCheck = false,
@@ -253,7 +310,7 @@ public sealed class HardwareRunnerTests
             #!/bin/sh
             printf '%s\n' "$@" > "$BLADE_HW_TURBOPROP_ARGS"
             /bin/cat > "$BLADE_HW_TURBOPROP_STDIN"
-            printf '\002\003CAFEBABE\n'
+            printf '\002\003CAFEBABE\n\004'
             /bin/sleep 30
             """);
         }
@@ -268,7 +325,7 @@ public sealed class HardwareRunnerTests
                 last="$arg"
             done
             /bin/cp "$last" "$BLADE_HW_LOADP2_BINARY"
-            printf '\002\003CAFEBABE\n'
+            printf '\002\003CAFEBABE\n\004'
             /bin/cat >/dev/null
             """);
         }

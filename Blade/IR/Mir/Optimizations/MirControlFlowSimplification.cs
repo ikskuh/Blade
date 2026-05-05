@@ -36,14 +36,16 @@ public sealed class MirControlFlowSimplification : IMirOptimization
         Dictionary<MirBlockRef, MirBlock> byLabel = [];
         foreach (MirBlock block in blocks)
             byLabel[block.Ref] = block;
+        Dictionary<MirBlockRef, int> predecessorCounts = ComputePredecessorCounts(blocks);
+        MirBlockRef entryRef = blocks[0].Ref;
 
         List<MirBlock> rewritten = new(blocks.Count);
         foreach (MirBlock block in blocks)
         {
             MirTerminator terminator = block.Terminator switch
             {
-                MirGotoTerminator mirGoto => RewriteGotoThroughTrivialBlocks(mirGoto, byLabel),
-                MirBranchTerminator branch => RewriteBranchThroughTrivialBlocks(branch, byLabel),
+                MirGotoTerminator mirGoto => RewriteGotoThroughTrivialBlocks(mirGoto, byLabel, predecessorCounts, entryRef),
+                MirBranchTerminator branch => RewriteBranchThroughTrivialBlocks(branch, byLabel, predecessorCounts, entryRef),
                 _ => block.Terminator,
             };
 
@@ -55,12 +57,16 @@ public sealed class MirControlFlowSimplification : IMirOptimization
 
     private static MirGotoTerminator RewriteGotoThroughTrivialBlocks(
         MirGotoTerminator terminator,
-        IReadOnlyDictionary<MirBlockRef, MirBlock> byLabel)
+        IReadOnlyDictionary<MirBlockRef, MirBlock> byLabel,
+        IReadOnlyDictionary<MirBlockRef, int> predecessorCounts,
+        MirBlockRef entryRef)
     {
         (MirBlockRef label, IReadOnlyList<MirValueId> arguments) = ResolveSuccessor(
             terminator.Target,
             terminator.Arguments,
-            byLabel);
+            byLabel,
+            predecessorCounts,
+            entryRef);
 
         if (ReferenceEquals(label, terminator.Target) && ReferenceEquals(arguments, terminator.Arguments))
             return terminator;
@@ -70,16 +76,22 @@ public sealed class MirControlFlowSimplification : IMirOptimization
 
     private static MirBranchTerminator RewriteBranchThroughTrivialBlocks(
         MirBranchTerminator terminator,
-        IReadOnlyDictionary<MirBlockRef, MirBlock> byLabel)
+        IReadOnlyDictionary<MirBlockRef, MirBlock> byLabel,
+        IReadOnlyDictionary<MirBlockRef, int> predecessorCounts,
+        MirBlockRef entryRef)
     {
         (MirBlockRef trueLabel, IReadOnlyList<MirValueId> trueArguments) = ResolveSuccessor(
             terminator.TrueTarget,
             terminator.TrueArguments,
-            byLabel);
+            byLabel,
+            predecessorCounts,
+            entryRef);
         (MirBlockRef falseLabel, IReadOnlyList<MirValueId> falseArguments) = ResolveSuccessor(
             terminator.FalseTarget,
             terminator.FalseArguments,
-            byLabel);
+            byLabel,
+            predecessorCounts,
+            entryRef);
 
         if (ReferenceEquals(trueLabel, terminator.TrueTarget)
             && ReferenceEquals(falseLabel, terminator.FalseTarget)

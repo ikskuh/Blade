@@ -395,6 +395,69 @@ Variables never writen or taken mutable pointers from can be promoted into const
 
 Should also report warnings.
 
+## Inline asm should allow expression operands
+
+Use cases:
+```blade
+lut var foo: u32 = 0;
+
+asm {
+  RDLUT %1, #{&foo} // should be usable for getting the address of a variable
+  ADD %1, #{'A' - 10} // for better constants
+};
+```
+
+## Optimization for count-only loops
+
+```blade
+for(8) {
+  // ...
+}
+```
+
+should be lowered to when the loop count is comptime known and non-zero.
+
+```pasm
+  MOV     counter, #8
+nib_loop:
+  ...
+  DJNZ    counter, #nib_loop
+```
+
+If it's zero, the loop body can be fully omitted when lowering, and must emit a warning.
+
+The optimization can also be used for comptime-known captures with counter and ranges: 
+
+```blade
+
+for(10..20) -> value {
+  // ...
+}
+```
+
+can be lowered to
+
+```pasm
+  MOV     counter, #8
+  MOV     value,   #10
+nib_loop:
+  ...
+  ADD     value,   #1
+  DJNZ    counter, #nib_loop
+```
+
+which does not need to compare the iterator value, which saves a lot of cycles.
+
+## Allow `#{binding}` in inline asm
+
+```
+ADD {value}, #{HEX_CHAR_ASC_OFFSET}
+```
+
+should enforce the operand to be evaluated at comptime and be embedded as a constant.
+
+This still means we should can potentially lower the operand into a cog constant for deduplication/AUGx reasons.
+
 ## Task/Layout Refactoring
 
 ### Introduce true split-phase variables
@@ -425,4 +488,8 @@ In general, Layouts have to be conflict free for:
 ### Improvement on cog codegen
 
 We can actually fuse cog resource layouting and code layouting, as we know the code size in instructions.
+
+### Bug: Bad allocation
+
+Variable `extern cog var foo: u32;` without explicit placement gets automatically allocated a memory slot, which is definitly wrong.
 

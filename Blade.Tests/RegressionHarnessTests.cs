@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -723,6 +724,93 @@ public sealed class RegressionHarnessTests
             Assert.That(fixtureResult.HardwareAttempted, Is.True);
             Assert.That(fixtureResult.ArtifactDirectoryPath, Is.Not.Null);
             Assert.That(File.Exists(Path.Combine(fixtureResult.ArtifactDirectoryPath!, "issues.txt")), Is.True);
+        });
+    }
+
+    [Test]
+    public void HwFailFixture_WritesEscapedPerRunHardwareDumps()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        WriteHardwareRuntime(temp);
+        temp.WriteFile("Demonstrators/hw_dump_artifacts.blade", """
+        // EXPECT: pass-hw
+        // RUNS:
+        // - [0x1] = 0x10
+        // - [0x2] = 0x20
+        cog task main {
+            var x: u32 = 0;
+            _ = x;
+        }
+        """);
+
+        temp.MakeDir("tools");
+        WriteExecutable(temp.GetFullPath("tools/turboprop"), """
+        #!/bin/sh
+        count_file="$BLADE_TEST_TURBOPROP_COUNTER"
+        count=1
+        if [ -f "$count_file" ]; then
+            count=$(( $(/bin/cat "$count_file") + 1 ))
+        fi
+        printf '%s' "$count" > "$count_file"
+        /bin/cat >/dev/null
+        if [ "$count" -eq 1 ]; then
+            printf '\002alpha\r\nbeta\t\00300000010\n\004'
+            printf 'stderr-one\r\n' >&2
+        else
+            printf '\002second\n\00300000021\n\004'
+            printf 'stderr-two\004' >&2
+        fi
+        """);
+
+        using EnvironmentScope environment = new();
+        string? currentPath = Environment.GetEnvironmentVariable("PATH");
+        string toolSearchPath = string.IsNullOrWhiteSpace(currentPath)
+            ? temp.GetFullPath("tools")
+            : temp.GetFullPath("tools") + Path.PathSeparator + currentPath;
+        environment.Set("PATH", toolSearchPath);
+        environment.Set("BLADE_TEST_TURBOPROP_COUNTER", temp.GetFullPath("turboprop-count.txt"));
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = true,
+            HardwarePort = "/dev/fake-p2",
+            HardwareLoader = HardwareLoaderKind.Turboprop,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(item =>
+            item.RelativePath == "Demonstrators/hw_dump_artifacts.blade");
+        if (fixtureResult.Outcome == RegressionFixtureOutcome.Skipped)
+            Assert.Ignore("flexspin is not available in this environment");
+
+        Assert.That(fixtureResult.ArtifactDirectoryPath, Is.Not.Null);
+        string artifactDirectoryPath = fixtureResult.ArtifactDirectoryPath!;
+        string firstRunDumpPath = Path.Combine(artifactDirectoryPath, "hardware-run-01.txt");
+        string secondRunDumpPath = Path.Combine(artifactDirectoryPath, "hardware-run-02.txt");
+        string firstRunDump = File.ReadAllText(firstRunDumpPath);
+        string secondRunDump = File.ReadAllText(secondRunDumpPath);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.HwFail));
+            Assert.That(File.Exists(Path.Combine(artifactDirectoryPath, "issues.txt")), Is.True);
+            Assert.That(File.Exists(firstRunDumpPath), Is.True);
+            Assert.That(File.Exists(secondRunDumpPath), Is.True);
+            Assert.That(firstRunDump, Does.Contain("Run: 1"));
+            Assert.That(firstRunDump, Does.Contain("Arguments: [0x1]"));
+            Assert.That(firstRunDump, Does.Contain("Expected Output: 0x00000010"));
+            Assert.That(firstRunDump, Does.Contain("[0] 0x00000001 | unsigned 1 | signed 1"));
+            Assert.That(firstRunDump, Does.Contain("<CR><LF>" + Environment.NewLine + "beta<TAB>"));
+            Assert.That(firstRunDump, Does.Contain("00000010<LF>" + Environment.NewLine + "<EOT>"));
+            Assert.That(firstRunDump, Does.Contain("stderr-one<CR><LF>" + Environment.NewLine));
+            Assert.That(secondRunDump, Does.Contain("Run: 2"));
+            Assert.That(secondRunDump, Does.Contain("Arguments: [0x2]"));
+            Assert.That(secondRunDump, Does.Contain("Expected Output: 0x00000020"));
+            Assert.That(secondRunDump, Does.Contain("[0] 0x00000021 | unsigned 33 | signed 33"));
+            Assert.That(secondRunDump, Does.Contain("second<LF>" + Environment.NewLine + "<ETX>00000021<LF>" + Environment.NewLine + "<EOT>"));
+            Assert.That(secondRunDump, Does.Contain("stderr-two<EOT>"));
         });
     }
 
@@ -1931,5 +2019,41 @@ public sealed class RegressionHarnessTests
             .EnumerateArray()
             .Select(static element => element.GetString()!)
             .ToArray();
+    }
+
+    private static void WriteExecutable(string path, string content)
+    {
+        File.WriteAllText(path, content);
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(
+                path,
+                UnixFileMode.UserRead
+                    | UnixFileMode.UserWrite
+                    | UnixFileMode.UserExecute
+                    | UnixFileMode.GroupRead
+                    | UnixFileMode.GroupExecute
+                    | UnixFileMode.OtherRead
+                    | UnixFileMode.OtherExecute);
+        }
+    }
+
+    private sealed class EnvironmentScope : IDisposable
+    {
+        private readonly Dictionary<string, string?> previousValues = [];
+
+        public void Set(string name, string? value)
+        {
+            if (!this.previousValues.ContainsKey(name))
+                this.previousValues.Add(name, Environment.GetEnvironmentVariable(name));
+
+            Environment.SetEnvironmentVariable(name, value);
+        }
+
+        public void Dispose()
+        {
+            foreach ((string name, string? value) in this.previousValues)
+                Environment.SetEnvironmentVariable(name, value);
+        }
     }
 }

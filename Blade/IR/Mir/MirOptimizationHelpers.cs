@@ -159,7 +159,9 @@ internal static class MirOptimizationHelpers
     internal static (MirBlockRef Target, IReadOnlyList<MirValueId> Arguments) ResolveSuccessor(
         MirBlockRef target,
         IReadOnlyList<MirValueId> arguments,
-        IReadOnlyDictionary<MirBlockRef, MirBlock> byLabel)
+        IReadOnlyDictionary<MirBlockRef, MirBlock> byLabel,
+        IReadOnlyDictionary<MirBlockRef, int> predecessorCounts,
+        MirBlockRef entryRef)
     {
         MirBlockRef currentTarget = target;
         IReadOnlyList<MirValueId> currentArguments = arguments;
@@ -173,11 +175,119 @@ internal static class MirOptimizationHelpers
             Dictionary<MirValueId, MirValueId>? parameterMap = CreateParameterMap(block.Parameters, currentArguments);
             if (parameterMap is null)
                 break;
+            if (!CanThreadThroughTrivialBlock(block, byLabel, predecessorCounts, entryRef))
+                break;
 
             currentArguments = RewriteValues(next.Arguments, parameterMap);
             currentTarget = next.Target;
         }
 
         return (currentTarget, currentArguments);
+    }
+
+    private static bool CanThreadThroughTrivialBlock(
+        MirBlock block,
+        IReadOnlyDictionary<MirBlockRef, MirBlock> byLabel,
+        IReadOnlyDictionary<MirBlockRef, int> predecessorCounts,
+        MirBlockRef entryRef)
+    {
+        if (block.Parameters.Count == 0 || block.Terminator is not MirGotoTerminator gotoTerminator)
+            return true;
+
+        HashSet<MirValueId> trackedParameters = [];
+        foreach (MirBlockParameter parameter in block.Parameters)
+            trackedParameters.Add(parameter.Value);
+
+        MirBlockRef currentTarget = gotoTerminator.Target;
+        HashSet<MirBlockRef> seen = [block.Ref];
+        while (byLabel.TryGetValue(currentTarget, out MirBlock? currentBlock)
+            && seen.Add(currentTarget)
+            && IsTrivialGotoBlock(currentBlock)
+            && currentBlock.Terminator is MirGotoTerminator currentGoto)
+        {
+            currentTarget = currentGoto.Target;
+        }
+
+        if (!byLabel.TryGetValue(currentTarget, out MirBlock? mergeRoot))
+            return true;
+
+        if (ContainsTrackedUses(mergeRoot.Instructions, mergeRoot.Terminator, trackedParameters, mapping: null))
+            return false;
+
+        MirBlockRef mergedBlockRef = mergeRoot.Ref;
+        MirTerminator currentTerminator = mergeRoot.Terminator;
+        HashSet<MirBlockRef> mergeSeen = [mergedBlockRef];
+        while (currentTerminator is MirGotoTerminator currentGoto
+            && TryGetMergeableLinearSuccessor(
+                mergedBlockRef,
+                currentGoto.Target,
+                entryRef,
+                byLabel,
+                predecessorCounts,
+                out MirBlock successor))
+        {
+            Dictionary<MirValueId, MirValueId>? parameterMap = CreateParameterMap(successor.Parameters, currentGoto.Arguments);
+            if (parameterMap is null)
+                return true;
+
+            if (ContainsTrackedUses(successor.Instructions, successor.Terminator, trackedParameters, parameterMap))
+                return false;
+
+            mergedBlockRef = successor.Ref;
+            if (!mergeSeen.Add(mergedBlockRef))
+                return true;
+
+            currentTerminator = successor.Terminator.RewriteUses(parameterMap);
+        }
+
+        return true;
+    }
+
+    private static bool TryGetMergeableLinearSuccessor(
+        MirBlockRef currentBlockRef,
+        MirBlockRef targetRef,
+        MirBlockRef entryRef,
+        IReadOnlyDictionary<MirBlockRef, MirBlock> byLabel,
+        IReadOnlyDictionary<MirBlockRef, int> predecessorCounts,
+        out MirBlock target)
+    {
+        target = null!;
+        if (ReferenceEquals(targetRef, entryRef) || ReferenceEquals(targetRef, currentBlockRef))
+            return false;
+        if (!byLabel.TryGetValue(targetRef, out MirBlock? resolvedTarget))
+            return false;
+        if (predecessorCounts.GetValueOrDefault(resolvedTarget.Ref) != 1)
+            return false;
+
+        target = resolvedTarget;
+        return true;
+    }
+
+    private static bool ContainsTrackedUses(
+        IReadOnlyList<MirInstruction> instructions,
+        MirTerminator terminator,
+        IReadOnlySet<MirValueId> trackedParameters,
+        IReadOnlyDictionary<MirValueId, MirValueId>? mapping)
+    {
+        foreach (MirInstruction instruction in instructions)
+        {
+            MirInstruction rewritten = mapping is null ? instruction : instruction.RewriteUses(mapping);
+            if (ContainsTrackedUses(rewritten.Uses, trackedParameters))
+                return true;
+        }
+
+        MirTerminator rewrittenTerminator = mapping is null ? terminator : terminator.RewriteUses(mapping);
+        return ContainsTrackedUses(rewrittenTerminator.Uses, trackedParameters);
+    }
+
+    private static bool ContainsTrackedUses(IReadOnlyList<MirValueId> uses, IReadOnlySet<MirValueId> trackedParameters)
+    {
+        foreach (MirValueId use in uses)
+        {
+            if (trackedParameters.Contains(use))
+                return true;
+        }
+
+        return false;
     }
 }

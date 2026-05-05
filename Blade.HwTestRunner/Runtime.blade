@@ -1,4 +1,7 @@
-layout Runtime{
+layout Runtime
+{
+    extern cog var rt_result: u32 @(0);
+
     extern cog var rt_param0: u32 @(1);
     extern cog var rt_param1: u32 @(2);
     extern cog var rt_param2: u32 @(3);
@@ -7,7 +10,6 @@ layout Runtime{
     extern cog var rt_param5: u32 @(6);
     extern cog var rt_param6: u32 @(7);
     extern cog var rt_param7: u32 @(8);
-    extern cog var rt_result: u32 @(9);
 }
 
 hub const RT_F_CPU: u32   = 200_000_000;
@@ -20,25 +22,51 @@ hub const RT_UART_CLOCKS: u32 = RT_F_CPU / RT_BAUD;
 
 hub const RT_UART_CFG: u32 = (RT_F_CPU / RT_BAUD * 0x1_0000) | (8-1); // 115200 @ 8 bit
 
-hub const RT_START_MARKER: u8 = 0x02; // STX
-hub const RT_END_MARKER: u8 = 0x03;  // ETC
+hub const RT_START_MARKER: u8 = 0x02; // STX: Start of text
+hub const RT_END_MARKER: u8 = 0x03;  // ETX: End of text
+hub const RT_EOF_MARKER: u8 = 0x04;  // EOT: End of transmission
 
 hub const P_TT_01: u32 = 0x00000040;
 hub const P_ASYNC_TX: u32 = 0x0000003C;
 
 
-noinline leaf asm fn rt_write_hex_long(value: u32)
+// noinline leaf asm fn rt_write_hex_long(value: u32)
+// {
+//         MOV     %1, #8
+//   nib_loop:
+//         GETNIB  %2, {value}, #7
+//         CMP     %2, #10    WCZ
+// IF_GE   ADD     %2, #55 // == "A"-10 == 65-10
+// IF_LT   ADD     %2, #48 // == "0" == 0x30
+//         CALLPA  %2, {rt_write_byte}
+//         SHL     {value}, #4
+//         DJNZ    %1, #nib_loop
+//         RET
+// }
+
+// TODO: comptime const
+hub const HEX_DIGIT_ASC_OFFSET: u8 = '0';
+hub const HEX_CHAR_ASC_OFFSET: u8 = 'A' - 10;
+
+inline asm fn rt_hex_chr(value: nib) u8 {
+          CMP {value}, #10 WCZ
+  IF_GE   ADD {value}, {HEX_CHAR_ASC_OFFSET}
+  IF_LT   ADD {value}, {HEX_DIGIT_ASC_OFFSET}
+          MOV {return}, {value}
+}
+
+inline asm fn rt_get_top_nib(value: u32) nib {
+     GETNIB {return}, {value}, #7
+}
+
+noinline fn rt_write_hex_long(value: u32)
 {
-        MOV     %1, #8
-  nib_loop:
-        GETNIB  %2, {value}, #7
-        CMP     %2, #10    WCZ
-IF_GE   ADD     %2, #55 // == "A"-10 == 65-10
-IF_LT   ADD     %2, #48 // == "0" == 0x30
-        CALLPA  %2, {rt_write_byte}
-        SHL     {value}, #4
-        DJNZ    %1, #nib_loop
-        RET
+     for(8) {
+          const head: nib = rt_get_top_nib(value);
+          const char: u8 = rt_hex_chr(head);          
+          rt_write_byte(char);
+          value = value << 4;
+     }
 }
 
 noinline leaf asm fn rt_write_byte(chr: u8)
@@ -46,7 +74,7 @@ noinline leaf asm fn rt_write_byte(chr: u8)
     _loop:
         TESTP   {RT_TXD_PIN}        WC   // wait for empty buffer
 IF_NC   JMP     #_loop                  // if not empty, test again
-_RET_   WYPIN   {chr}, {RT_TXD_PIN}      // write PA
+        WYPIN   {chr}, {RT_TXD_PIN}      // write PA
 }
 
 inline asm volatile fn halt() {
@@ -77,6 +105,8 @@ cog task _start : Runtime
          LONG 0
     rt_param7:
          LONG 0
+    rt_result0:
+         LONG 0
     over:
     };
     
@@ -91,34 +121,32 @@ cog task _start : Runtime
     // => "CLK = XI * 20 with PLL enabled"
     @hubset(0x10009FB);
 
-     @WRPIN(P_TT_01 | P_ASYNC_TX, RT_TXD_PIN);
-     @WXPIN(RT_UART_CFG, RT_TXD_PIN);
+    @WRPIN(P_TT_01 | P_ASYNC_TX, RT_TXD_PIN);
+    @WXPIN(RT_UART_CFG, RT_TXD_PIN);
 
-     // enable smart pin
-     @DIRH(RT_TXD_PIN);
+    // enable smart pin
+    @DIRH(RT_TXD_PIN);
 
-     @WAITX(1_000_000);
+    @WAITX(1_000_000);
 
-     // Initialize hub stack pointer (PTRB) for rec fn (CALLB/RETB/PUSHB/POPB).
-     // Point well above the program binary so the stack does not clobber code/data.
-     asm volatile {
-          MOV PTRB, #0x10000
-     };
+    // Initialize hub stack pointer (PTRB) for rec fn (CALLB/RETB/PUSHB/POPB).
+    // Point well above the program binary so the stack does not clobber code/data.
+    asm volatile {
+        MOV PTRB, #0x10000
+    };
 
-     // First write must be without the "wait busy" logic as the pin would never trigger this!
-     // Write the "start of execution marker":
-     @WYPIN(RT_START_MARKER, RT_TXD_PIN);
+    // First write must be without the "wait busy" logic as the pin would never trigger this!
+    // Write the "start of execution marker":
+    @WYPIN(RT_START_MARKER, RT_TXD_PIN);
 
-     builtin.task_main();
+    builtin.task_main();
 
-     rt_write_byte(RT_END_MARKER);
-     rt_write_hex_long(rt_result);
-     rt_write_byte(0x0A);
+    rt_write_byte(RT_END_MARKER);
 
-     // CALLPB #$7E, #rt_write_hex_long
-     // CALLPB #$100, #rt_write_hex_long
-     // CALLPB #$1FF, #rt_write_hex_long
-     // CALLPB ##$CAFEBABE, #rt_write_hex_long
+    rt_write_hex_long(rt_result);
+    rt_write_byte(0x0A);
+
+    rt_write_byte(RT_EOF_MARKER);
 
     halt();
 }

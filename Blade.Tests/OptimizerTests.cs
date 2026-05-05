@@ -76,6 +76,97 @@ public class OptimizerTests
     }
 
     [Test]
+    public void MirOptimizer_DoesNotThreadParameterizedTrivialBlockWhenDroppedValueStaysLiveInMergedTail()
+    {
+        MirValueId condition = MirValue(0);
+        MirValueId carried = MirValue(1);
+        MirValueId loopIndex = MirValue(2);
+        MirValueId keptParameter = MirValue(3);
+        MirValueId droppedParameter = MirValue(4);
+        MirValueId forwarded = MirValue(5);
+        MirValueId incremented = MirValue(6);
+        MirValueId mergedValue = MirValue(7);
+        MirValueId combined = MirValue(8);
+        StoragePlace resultPlace = CreatePlace("result");
+        MirBlockRef bb0 = new();
+        MirBlockRef bb1 = new();
+        MirBlockRef bb2 = new();
+        MirBlockRef bb3 = new();
+        MirBlockRef bb4 = new();
+
+        MirModule module = CreateMirModule(functions: [
+            CreateMirFunction("f", isEntryPoint: false, FunctionKind.Default, [],
+            [
+                new MirBlock(bb0,
+                [
+                    new MirBlockParameter(condition, "cond", BuiltinTypes.Bool),
+                    new MirBlockParameter(carried, "value", BuiltinTypes.U32),
+                    new MirBlockParameter(loopIndex, "index", BuiltinTypes.U32),
+                ],
+                [],
+                new MirBranchTerminator(condition, bb1, bb4, [carried, loopIndex], [], Span)),
+                new MirBlock(bb1,
+                [
+                    new MirBlockParameter(keptParameter, "value", BuiltinTypes.U32),
+                    new MirBlockParameter(droppedParameter, "index", BuiltinTypes.U32),
+                ],
+                [],
+                new MirGotoTerminator(bb2, [keptParameter], Span)),
+                new MirBlock(bb2,
+                [
+                    new MirBlockParameter(forwarded, "value", BuiltinTypes.U32),
+                ],
+                [
+                    new MirBinaryInstruction(incremented, BuiltinTypes.U32, BoundBinaryOperatorKind.Add, forwarded, forwarded, Span),
+                ],
+                new MirGotoTerminator(bb3, [incremented], Span)),
+                new MirBlock(bb3,
+                [
+                    new MirBlockParameter(mergedValue, "next", BuiltinTypes.U32),
+                ],
+                [
+                    new MirBinaryInstruction(combined, BuiltinTypes.U32, BoundBinaryOperatorKind.Add, mergedValue, droppedParameter, Span),
+                    new MirStorePlaceInstruction(resultPlace, combined, Span),
+                ],
+                new MirReturnTerminator([], Span)),
+                new MirBlock(bb4, [], [], new MirReturnTerminator([], Span)),
+            ]),
+        ]);
+
+        MirModule optimized = MirOptimizer.Optimize(module, maxIterations: 4, enabledOptimizations:
+        [
+            OptimizationRegistry.GetMirOptimization("const-prop")!,
+            OptimizationRegistry.GetMirOptimization("copy-prop")!,
+            OptimizationRegistry.GetMirOptimization("cfg-simplify")!,
+            OptimizationRegistry.GetMirOptimization("dce")!,
+        ]);
+        MirFunction function = optimized.Functions[0];
+
+        Assert.That(function.Blocks[0].Terminator, Is.TypeOf<MirBranchTerminator>());
+        MirBranchTerminator branch = (MirBranchTerminator)function.Blocks[0].Terminator;
+        Assert.That(branch.TrueArguments, Has.Count.EqualTo(2));
+
+        foreach (MirBlock block in function.Blocks)
+        {
+            HashSet<MirValueId> available = [];
+            foreach (MirBlockParameter parameter in block.Parameters)
+                available.Add(parameter.Value);
+
+            foreach (MirInstruction instruction in block.Instructions)
+            {
+                foreach (MirValueId use in instruction.Uses)
+                    Assert.That(available.Contains(use), Is.True, $"Block contains a use of undefined MIR value {use}.");
+
+                if (instruction.Result is MirValueId result)
+                    available.Add(result);
+            }
+
+            foreach (MirValueId use in block.Terminator.Uses)
+                Assert.That(available.Contains(use), Is.True, $"Terminator contains a use of undefined MIR value {use}.");
+        }
+    }
+
+    [Test]
     public void MirOptimizer_DeadCodeEliminationPreservesValuesNeededAcrossSuccessorBlocks()
     {
         MirValueId condition = MirValue(0);
