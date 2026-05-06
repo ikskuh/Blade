@@ -14,6 +14,7 @@ public sealed class BoundProgram(
     BoundFunctionMember entryPointFunction,
     TaskSymbol launcherEntryPoint,
     BoundFunctionMember launcherEntryPointFunction,
+    FunctionSymbol? runtimeInitMemoryFunction,
     IReadOnlyList<BoundModule> modules,
     IReadOnlyList<GlobalVariableSymbol> globalVariables,
     IReadOnlyList<BoundFunctionMember> functions) : BoundNode(BoundNodeKind.Program, ComputeSpan(entryPointFunction))
@@ -42,6 +43,11 @@ public sealed class BoundProgram(
     /// Gets the bound function member that executes the runtime launcher body.
     /// </summary>
     public BoundFunctionMember LauncherEntryPointFunction { get; } = Requires.NotNull(launcherEntryPointFunction);
+
+    /// <summary>
+    /// Gets the runtime-only builtin function symbol for explicit generated memory initialization.
+    /// </summary>
+    public FunctionSymbol? RuntimeInitMemoryFunction { get; } = runtimeInitMemoryFunction;
 
     /// <summary>
     /// Gets every bound module participating in the compilation.

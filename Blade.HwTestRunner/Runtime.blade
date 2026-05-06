@@ -150,6 +150,7 @@ cog task _start : Runtime
     // Write the "start of execution marker":
     @WYPIN(RT_START_MARKER, RT_TXD_PIN);
 
+    builtin.init_memory();
     builtin.task_main();
 
     rt_write_byte(RT_END_MARKER);

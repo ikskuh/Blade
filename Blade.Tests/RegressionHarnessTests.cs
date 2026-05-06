@@ -242,6 +242,7 @@ public sealed class RegressionHarnessTests
         }
 
         cog task _start : Runtime {
+            builtin.init_memory();
             builtin.task_main();
         }
         """);
@@ -2004,6 +2005,7 @@ public sealed class RegressionHarnessTests
         }
 
         cog task _start : Runtime {
+            builtin.init_memory();
             builtin.task_main();
         }
         """);

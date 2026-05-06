@@ -131,6 +131,7 @@ public static class CompilerDriver
         import builtin;
 
         cog task _start {
+            builtin.init_memory();
             builtin.task_main();
         }
         """;

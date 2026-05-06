@@ -86,15 +86,26 @@ public static class MirLowerer
                 .ToList();
 
             List<MirFunction> functions = [];
+            IReadOnlyList<GlobalVariableSymbol> entryImageGlobals = image.IsEntryImage ? moduleGlobalSymbols : [];
             foreach (BoundFunctionMember functionMember in moduleFunctionMembers)
             {
                 if (ReferenceEquals(functionMember.Symbol, image.EntryFunction))
                 {
-                    functions.Add(LowerEntryPoint(functionMember, moduleGlobalSymbols, storagePlacesBySymbol, moduleStorageDefinitions));
+                    functions.Add(LowerEntryPoint(
+                        functionMember,
+                        entryImageGlobals,
+                        storagePlacesBySymbol,
+                        moduleStorageDefinitions,
+                        program.RuntimeInitMemoryFunction));
                     continue;
                 }
 
-                functions.Add(LowerFunction(functionMember, storagePlacesBySymbol, moduleStorageDefinitions));
+                functions.Add(LowerFunction(
+                    functionMember,
+                    entryImageGlobals,
+                    program.RuntimeInitMemoryFunction,
+                    storagePlacesBySymbol,
+                    moduleStorageDefinitions));
             }
 
             modules.Add(new MirModule(image, orderedModuleStoragePlaces, moduleStorageDefinitions, functions));
@@ -103,20 +114,112 @@ public static class MirLowerer
         return modules;
     }
 
+    internal static IReadOnlyList<GlobalVariableSymbol> CollectEntryImageGlobalsRequiringGeneratedInitialization(
+        BoundProgram program,
+        ImagePlan imagePlan,
+        LayoutSolution layoutSolution)
+    {
+        Requires.NotNull(program);
+        Requires.NotNull(imagePlan);
+        Requires.NotNull(layoutSolution);
+
+        (
+            List<StoragePlace> _,
+            List<StorageDefinition> storageDefinitions,
+            Dictionary<Symbol, StoragePlace> storagePlacesBySymbol) = CollectStoragePlaces(program, layoutSolution);
+        HashSet<StoragePlace> preInitializedStoragePlaces = [.. storageDefinitions.Select(static definition => definition.Place)];
+        HashSet<GlobalVariableSymbol> reachableStorageSymbols = [.. imagePlan.Images.SelectMany(static image => image.Storage)];
+        List<GlobalVariableSymbol> globals = [];
+
+        foreach (GlobalVariableSymbol symbol in program.GlobalVariables)
+        {
+            bool belongsToTask = GlobalBelongsToImage(symbol, imagePlan.EntryImage);
+            bool belongsToEntryAsUnclaimedTopLevel = !reachableStorageSymbols.Contains(symbol)
+                && symbol.DeclaringLayout is not TaskSymbol;
+            if (!imagePlan.EntryImage.Storage.Contains(symbol) && !belongsToTask && !belongsToEntryAsUnclaimedTopLevel)
+                continue;
+
+            if (TryGetGeneratedMemoryInitialization(symbol, storagePlacesBySymbol, preInitializedStoragePlaces, out _, out _))
+                globals.Add(symbol);
+        }
+
+        return globals;
+    }
+
+    private static bool TryGetGeneratedMemoryInitialization(
+        GlobalVariableSymbol global,
+        IReadOnlyDictionary<Symbol, StoragePlace> storagePlacesBySymbol,
+        ISet<StoragePlace> preInitializedStoragePlaces,
+        out StoragePlace place,
+        out BoundExpression initializer)
+    {
+        Requires.NotNull(global);
+        Requires.NotNull(storagePlacesBySymbol);
+        Requires.NotNull(preInitializedStoragePlaces);
+
+        if (global.Initializer is null)
+        {
+            place = null!;
+            initializer = null!;
+            return false;
+        }
+
+        if (!storagePlacesBySymbol.TryGetValue(global, out StoragePlace? resolvedPlace)
+            || resolvedPlace is null)
+        {
+            place = null!;
+            initializer = null!;
+            return false;
+        }
+
+        place = resolvedPlace;
+
+        if (global.DeclaringLayout is not null
+            && place.IsAllocatable
+            && place.ResolvedLayoutSlot is null)
+        {
+            place = null!;
+            initializer = null!;
+            return false;
+        }
+
+        if (preInitializedStoragePlaces.Contains(place)
+            && place.IsAllocatable
+            && place.StorageClass is AddressSpace.Cog or AddressSpace.Hub)
+        {
+            place = null!;
+            initializer = null!;
+            return false;
+        }
+
+        if (IsUndefinedInitializer(global.Initializer))
+        {
+            place = null!;
+            initializer = null!;
+            return false;
+        }
+
+        initializer = Requires.NotNull(global.Initializer);
+        return true;
+    }
+
     private static MirFunction LowerEntryPoint(
         BoundFunctionMember functionMember,
-        IReadOnlyList<GlobalVariableSymbol> imageGlobals,
+        IReadOnlyList<GlobalVariableSymbol> entryImageGlobals,
         IReadOnlyDictionary<Symbol, StoragePlace> storagePlacesBySymbol,
-        IReadOnlyList<StorageDefinition> storageDefinitions)
+        IReadOnlyList<StorageDefinition> storageDefinitions,
+        FunctionSymbol? runtimeInitMemoryFunction)
     {
         FunctionLoweringContext context = new(
             functionMember.Symbol,
             isEntryPoint: true,
             functionMember.Symbol.ReturnTypes,
+            entryImageGlobals,
+            runtimeInitMemoryFunction,
             storagePlacesBySymbol,
             storageDefinitions,
             functionMember.Symbol.ReturnSlots);
-        context.LowerEntryPointBody(imageGlobals, functionMember.Body);
+        context.LowerEntryPointBody(functionMember.Body);
         return context.Build();
     }
 
@@ -144,6 +247,8 @@ public static class MirLowerer
 
     private static MirFunction LowerFunction(
         BoundFunctionMember functionMember,
+        IReadOnlyList<GlobalVariableSymbol> entryImageGlobals,
+        FunctionSymbol? runtimeInitMemoryFunction,
         IReadOnlyDictionary<Symbol, StoragePlace> storagePlacesBySymbol,
         IReadOnlyList<StorageDefinition> storageDefinitions)
     {
@@ -152,6 +257,8 @@ public static class MirLowerer
             symbol,
             isEntryPoint: false,
             symbol.ReturnTypes,
+            entryImageGlobals,
+            runtimeInitMemoryFunction,
             storagePlacesBySymbol,
             storageDefinitions,
             symbol.ReturnSlots);
@@ -480,6 +587,8 @@ public static class MirLowerer
             private readonly bool _isEntryPoint;
         private readonly IReadOnlyList<BladeType> _returnTypes;
         private readonly IReadOnlyList<ReturnSlot> _returnSlots;
+        private readonly IReadOnlyList<GlobalVariableSymbol> _entryImageGlobals;
+        private readonly FunctionSymbol? _runtimeInitMemoryFunction;
         private readonly Dictionary<MirValueId, MirFlag> _flagValues = [];
         private readonly List<MirValueId> _pendingFlagReturns = [];
         private readonly List<BlockBuilder> _blocks = [];
@@ -496,6 +605,8 @@ public static class MirLowerer
             FunctionSymbol symbol,
             bool isEntryPoint,
             IReadOnlyList<BladeType> returnTypes,
+            IReadOnlyList<GlobalVariableSymbol> entryImageGlobals,
+            FunctionSymbol? runtimeInitMemoryFunction,
             IReadOnlyDictionary<Symbol, StoragePlace> storagePlacesBySymbol,
             IReadOnlyList<StorageDefinition> storageDefinitions,
             IReadOnlyList<ReturnSlot>? returnSlots = null)
@@ -503,6 +614,8 @@ public static class MirLowerer
             _symbol = Requires.NotNull(symbol);
             _isEntryPoint = isEntryPoint;
             _returnTypes = returnTypes;
+            _entryImageGlobals = Requires.NotNull(entryImageGlobals);
+            _runtimeInitMemoryFunction = runtimeInitMemoryFunction;
             _returnSlots = returnSlots ?? [];
             foreach ((Symbol storageSymbol, StoragePlace place) in storagePlacesBySymbol)
                 _storagePlacesBySymbol[storageSymbol] = place;
@@ -528,36 +641,8 @@ public static class MirLowerer
             }
         }
 
-        public void LowerEntryPointBody(
-            IReadOnlyList<GlobalVariableSymbol> globalVariables,
-            BoundBlockStatement body)
+        public void LowerEntryPointBody(BoundBlockStatement body)
         {
-            foreach (GlobalVariableSymbol global in globalVariables)
-            {
-                if (global.Initializer is null || !TryGetStoragePlace(global, out StoragePlace place))
-                    continue;
-
-                if (global.DeclaringLayout is not null
-                    && place.IsAllocatable
-                    && place.ResolvedLayoutSlot is null)
-                {
-                    continue;
-                }
-
-                if (_preInitializedStoragePlaces.Contains(place)
-                    && place.IsAllocatable
-                    && place.StorageClass is AddressSpace.Cog or AddressSpace.Hub)
-                {
-                    continue;
-                }
-
-                if (IsUndefinedInitializer(global.Initializer))
-                    continue;
-
-                MirValueId initializerValue = LowerExpression(global.Initializer);
-                EmitStorePlace(place, initializerValue, global.SourceSpan.Span);
-            }
-
             LowerStatement(body);
             EmitFallthroughReturn(body.Span);
         }
@@ -1595,6 +1680,16 @@ public static class MirLowerer
 
         private MirValueId LowerCallExpression(BoundCallExpression callExpression)
         {
+            if (_runtimeInitMemoryFunction is not null
+                && ReferenceEquals(callExpression.Function, _runtimeInitMemoryFunction))
+            {
+                foreach (BoundExpression argument in callExpression.Arguments)
+                    _ = LowerExpression(argument);
+
+                EmitGeneratedMemoryInitialization();
+                return EmitPlaceholderConstant(BuiltinTypes.Unknown, callExpression.Span);
+            }
+
             List<MirValueId> arguments = [];
             foreach (BoundExpression argument in callExpression.Arguments)
                 arguments.Add(LowerExpression(argument));
@@ -1608,6 +1703,31 @@ public static class MirLowerer
                 callExpression.Span));
 
             return result ?? EmitPlaceholderConstant(BuiltinTypes.Unknown, callExpression.Span);
+        }
+
+        private void EmitGeneratedMemoryInitialization()
+        {
+            foreach (GlobalVariableSymbol global in _entryImageGlobals)
+            {
+                if (!TryGetGeneratedInitialization(global, out StoragePlace place, out BoundExpression initializer))
+                    continue;
+
+                MirValueId initializerValue = LowerExpression(initializer);
+                EmitStorePlace(place, initializerValue, global.SourceSpan.Span);
+            }
+        }
+
+        private bool TryGetGeneratedInitialization(
+            GlobalVariableSymbol global,
+            out StoragePlace place,
+            out BoundExpression initializer)
+        {
+            return TryGetGeneratedMemoryInitialization(
+                global,
+                _storagePlacesBySymbol,
+                _preInitializedStoragePlaces,
+                out place,
+                out initializer);
         }
 
         private MirValueId LowerSpawnExpression(BoundSpawnExpression spawnExpression)

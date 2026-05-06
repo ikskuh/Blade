@@ -148,10 +148,10 @@ public static class ImagePlanner
         ISet<GlobalVariableSymbol> reachableStorage,
         ISet<TaskSymbol> spawnedTasks)
     {
-        if (!reachableFunctions.Add(function))
+        if (!functionsBySymbol.TryGetValue(function, out BoundFunctionMember? member))
             return;
 
-        if (!functionsBySymbol.TryGetValue(function, out BoundFunctionMember? member))
+        if (!reachableFunctions.Add(function))
             return;
 
         CollectReachableFromStatement(member.Body, functionsBySymbol, reachableFunctions, reachableStorage, spawnedTasks);

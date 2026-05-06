@@ -268,6 +268,7 @@ internal static class IrTestFactory
             entryPointFunction,
             entryPoint,
             entryPointFunction,
+            runtimeInitMemoryFunction: null,
             effectiveModules,
             effectiveGlobals,
             effectiveFunctions);

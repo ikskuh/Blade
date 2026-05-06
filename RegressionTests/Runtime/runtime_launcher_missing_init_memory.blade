@@ -4,10 +4,9 @@
 import builtin;
 
 layout RuntimeLayout {
-    cog var runtime_marker: u32 = 66;
+    cog var runtime_marker: [1]u32 = [66];
 }
 
 cog task _start : RuntimeLayout {
-    builtin.init_memory();
     builtin.task_main();
 }

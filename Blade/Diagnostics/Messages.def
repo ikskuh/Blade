@@ -492,6 +492,9 @@ located InlineAsmInvalidOperandAddressSpace: E0319
     message: $"Inline assembly operand '{operandText}' does not refer to a register binding."
     param:   string operandText
 
+located RuntimeLauncherMissingInitMemory: W0320
+    message: "Runtime launcher globals require generated initialization, but the launcher never calls 'builtin.init_memory()'."
+
 located UnsupportedLowering: E0401
     message: $"Backend lowering for '{lowering}' is not implemented yet."
     param:   string lowering

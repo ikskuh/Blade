@@ -19,6 +19,7 @@ public sealed class Binder
     private const string ProgramMainTaskName = "main";
     private const string RuntimeLauncherTaskName = "_start";
     private const string BuiltinTaskMainFunctionName = "task_main";
+    private const string BuiltinInitMemoryFunctionName = "init_memory";
     private readonly DiagnosticBag _diagnostics;
     private readonly LoadedCompilation _compilation;
     private readonly Dictionary<string, TypeSymbol> _typeAliases = new(StringComparer.Ordinal);
@@ -42,6 +43,7 @@ public sealed class Binder
     private readonly int _comptimeFuel;
     private readonly FunctionSymbol? _builtinTaskMainTarget;
     private FunctionSymbol? _builtinTaskMainFunction;
+    private FunctionSymbol? _builtinInitMemoryFunction;
     private int _anonymousStructIndex;
     private bool _suppressPointerStorageClassDiagnostics;
     private LayoutSymbol? _currentImplicitLayout;
@@ -161,6 +163,7 @@ public sealed class Binder
             Requires.NotNull(programMainEntryFunction),
             Requires.NotNull(entryPoint),
             Requires.NotNull(entryPointFunction),
+            runtimeBinder._builtinInitMemoryFunction,
             moduleDefinitionCache);
     }
 
@@ -309,6 +312,7 @@ public sealed class Binder
         BoundFunctionMember programEntryPointFunction,
         TaskSymbol launcherEntryPoint,
         BoundFunctionMember launcherEntryPointFunction,
+        FunctionSymbol? runtimeInitMemoryFunction,
         IReadOnlyDictionary<string, BoundModule> moduleDefinitionCache)
     {
         Requires.NotNull(rootModule);
@@ -352,6 +356,7 @@ public sealed class Binder
             launcherEntryPointFunction,
             launcherEntryPoint,
             launcherEntryPointFunction,
+            runtimeInitMemoryFunction,
             modules,
             globalVariables,
             functions);
@@ -608,6 +613,12 @@ public sealed class Binder
                 _builtinTaskMainFunction = cachedBuiltinTaskMainFunction;
             }
 
+            if (cachedRuntimeModule.ExportedSymbols.TryGetValue(BuiltinInitMemoryFunctionName, out Symbol? cachedBuiltinInitMemory)
+                && cachedBuiltinInitMemory is FunctionSymbol cachedBuiltinInitMemoryFunction)
+            {
+                _builtinInitMemoryFunction = cachedBuiltinInitMemoryFunction;
+            }
+
             return cachedRuntimeModule;
         }
 
@@ -627,6 +638,20 @@ public sealed class Binder
         builtinTaskMainFunction.ReturnSlots = _builtinTaskMainTarget.ReturnSlots;
         exportedSymbols.Add(BuiltinTaskMainFunctionName, builtinTaskMainFunction);
         _builtinTaskMainFunction = builtinTaskMainFunction;
+
+        Token initMemoryName = new(TokenKind.Identifier, new TextSpan(0, 0), BuiltinInitMemoryFunctionName);
+        FunctionSymbol builtinInitMemoryFunction = new(
+            BuiltinInitMemoryFunctionName,
+            new SyntheticFunctionSignatureSyntax(initMemoryName),
+            FunctionKind.Default,
+            isTopLevel: false,
+            storageClass: null,
+            FunctionInliningPolicy.Default,
+            SourceSpan.Synthetic());
+        builtinInitMemoryFunction.Parameters = [];
+        builtinInitMemoryFunction.ReturnSlots = [];
+        exportedSymbols.Add(BuiltinInitMemoryFunctionName, builtinInitMemoryFunction);
+        _builtinInitMemoryFunction = builtinInitMemoryFunction;
 
         BoundModule builtinRuntimeModule = new(
             BuiltinRuntimeModulePath,
@@ -3113,6 +3138,13 @@ public sealed class Binder
         if (expectedType is not null)
             bound = BindConversion(bound, expectedType, expression.Span, reportMismatch: true);
 
+        if (_builtinInitMemoryFunction is not null
+            && bound is BoundCallExpression { Function: var function }
+            && ReferenceEquals(function, _builtinInitMemoryFunction))
+        {
+            return bound;
+        }
+
         return TryFoldExpression(bound, reportDiagnostics: false, out BoundExpression folded)
             ? folded
             : bound;
@@ -3964,11 +3996,13 @@ public sealed class Binder
         FunctionSymbol function = maybeFunction;
         bool isBuiltinTaskMainCall = _builtinTaskMainTarget is not null
             && ReferenceEquals(function, _builtinTaskMainFunction);
+        bool isBuiltinInitMemoryCall = _builtinInitMemoryFunction is not null
+            && ReferenceEquals(function, _builtinInitMemoryFunction);
         FunctionSymbol targetFunction = isBuiltinTaskMainCall
             ? Requires.NotNull(_builtinTaskMainTarget)
             : function;
 
-        if (!isBuiltinTaskMainCall)
+        if (!isBuiltinTaskMainCall && !isBuiltinInitMemoryCall)
             ValidateFunctionLayoutSubset(targetFunction, callExpression.Callee.Span);
 
         List<BoundExpression> arguments = BindCallArguments(targetFunction, callExpression.Arguments, callExpression.Callee.Span);

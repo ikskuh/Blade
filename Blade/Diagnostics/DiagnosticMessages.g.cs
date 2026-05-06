@@ -137,6 +137,7 @@ public abstract partial class DiagnosticMessage
             "InlineAsmInvalidDirectOperand" => (DiagnosticSeverity.Error, 317),
             "InlineAsmInvalidImmediateOperandKind" => (DiagnosticSeverity.Error, 318),
             "InlineAsmInvalidOperandAddressSpace" => (DiagnosticSeverity.Error, 319),
+            "RuntimeLauncherMissingInitMemory" => (DiagnosticSeverity.Warning, 320),
             "UnsupportedLowering" => (DiagnosticSeverity.Error, 401),
             _ => null,
         };
@@ -266,6 +267,7 @@ public abstract partial class DiagnosticMessage
             317 => "InlineAsmInvalidDirectOperand",
             318 => "InlineAsmInvalidImmediateOperandKind",
             319 => "InlineAsmInvalidOperandAddressSpace",
+            320 => "RuntimeLauncherMissingInitMemory",
             401 => "UnsupportedLowering",
             _ => null,
         };
@@ -1640,6 +1642,11 @@ public sealed class InlineAsmInvalidOperandAddressSpaceError(SourceText source, 
     {
         return $"Inline assembly operand '{OperandText}' does not refer to a register binding.";
     }
+}
+
+public sealed class RuntimeLauncherMissingInitMemoryWarning(SourceText source, TextSpan span)
+    : LocatedDiagnosticMessage(source, span, "RuntimeLauncherMissingInitMemory", DiagnosticSeverity.Warning, 320, "Runtime launcher globals require generated initialization, but the launcher never calls 'builtin.init_memory()'.")
+{
 }
 
 public sealed class UnsupportedLoweringError(SourceText source, TextSpan span, string lowering)

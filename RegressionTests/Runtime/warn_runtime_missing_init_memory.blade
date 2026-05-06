@@ -1,0 +1,7 @@
+// EXPECT: pass
+// ARGS: --runtime=runtime_launcher_missing_init_memory.blade
+// DIAGNOSTICS: RuntimeLauncherMissingInitMemory
+
+cog task main {
+    var flag: u32 = 1;
+}

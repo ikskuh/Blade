@@ -505,3 +505,6 @@ All unpointed values can be erased.
 it can be safely replaced by "yield to INA", which is effectively a value discard.
 
 This means we should introduce this concept on a broader scale to implement it.
+
+## Inline asm support for `LONG {foo}`
+
