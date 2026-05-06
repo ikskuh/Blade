@@ -2,16 +2,31 @@
 // STAGE: final-asm
 // SEQUENCE:
 // - CALLPA ?, #f_three_ret
-// - MOV ?1, PA
 // - BITC ?2, #0
 // - BITZ ?3, #0
+// - MOV ?1, PA
+// SEQUENCE:
+// - f_three_ret
+// - three_ret_bb0
+// - MOV ?1, PA
+// - MOV PA, ?1
+// - ADD PA, ?2
+// - CMP ?1, ?2 WC
+// ! BITC
+// ! TESTB
+// - CMP ?1, ?2 WZ
+// ! BITZ
+// ! TESTB
+// - RET
 // CONTAINS:
 // - CALLPA ?, #f_two_ret
 // - BITC ?, #0
 // NOTE:
 //   Multi-return calls with bool extras must materialize both flag-backed extra
-//   results immediately after the call. The three-return case must extract C and
-//   Z separately; the two-return case must still extract C.
+//   results immediately after the call. The three-return caller must extract C and
+//   Z separately; the leaf three-return callee must leave the final compares live
+//   in hardware C/Z without BITC, BITZ, or TESTB in its body. The two-return case
+//   must still extract C.
 cog task main {
     
     noinline fn two_ret(a: u32, b: u32) -> u32, bool {

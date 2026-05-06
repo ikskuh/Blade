@@ -11,7 +11,6 @@ namespace Blade.IR.Asm;
 /// </summary>
 public sealed class BasicBlock(int startIndex, int endIndex)
 {
-
     /// <summary>Inclusive start index into the function's node list.</summary>
     public int StartIndex { get; } = startIndex;
 
@@ -19,10 +18,10 @@ public sealed class BasicBlock(int startIndex, int endIndex)
     public int EndIndex { get; } = endIndex;
 
     public Collection<int> SuccessorBlockIndices { get; } = new();
-    public HashSet<VirtualAsmRegister> Defs { get; } = [];
-    public HashSet<VirtualAsmRegister> Uses { get; } = [];
-    public HashSet<VirtualAsmRegister> LiveIn { get; } = [];
-    public HashSet<VirtualAsmRegister> LiveOut { get; } = [];
+    public HashSet<VirtualAsmValue> Defs { get; } = [];
+    public HashSet<VirtualAsmValue> Uses { get; } = [];
+    public HashSet<VirtualAsmValue> LiveIn { get; } = [];
+    public HashSet<VirtualAsmValue> LiveOut { get; } = [];
 
     /// <summary>
     /// Set of call instruction indices (into the function's node list)
@@ -37,40 +36,40 @@ public sealed class BasicBlock(int startIndex, int endIndex)
 public sealed class FunctionLiveness(
     AsmFunction function,
     IReadOnlyList<BasicBlock> blocks,
-    IReadOnlyDictionary<VirtualAsmRegister, HashSet<VirtualAsmRegister>> interferenceGraph,
-    HashSet<VirtualAsmRegister> liveAcrossCallRegisters,
-    IReadOnlyDictionary<int, HashSet<VirtualAsmRegister>> liveRegistersByCallInstruction,
-    IReadOnlyDictionary<int, HashSet<VirtualAsmRegister>> liveRegistersAfterInstruction)
+    IReadOnlyDictionary<VirtualAsmValue, HashSet<VirtualAsmValue>> interferenceGraph,
+    HashSet<VirtualAsmValue> liveAcrossCallRegisters,
+    IReadOnlyDictionary<int, HashSet<VirtualAsmValue>> liveRegistersByCallInstruction,
+    IReadOnlyDictionary<int, HashSet<VirtualAsmValue>> liveRegistersAfterInstruction)
 {
     public AsmFunction Function { get; } = Requires.NotNull(function);
     public IReadOnlyList<BasicBlock> Blocks { get; } = blocks;
 
     /// <summary>
-    /// Interference graph: register ID -> set of register IDs that interfere.
-    /// Two registers interfere if they are simultaneously live at any program point.
+    /// Interference graph: value -> set of values that interfere.
+    /// Two values interfere if they are simultaneously live at any program point.
     /// </summary>
-    public IReadOnlyDictionary<VirtualAsmRegister, HashSet<VirtualAsmRegister>> InterferenceGraph { get; } = interferenceGraph;
+    public IReadOnlyDictionary<VirtualAsmValue, HashSet<VirtualAsmValue>> InterferenceGraph { get; } = interferenceGraph;
 
     /// <summary>
-    /// Set of virtual register IDs that are live across at least one call instruction.
-    /// These registers must not share slots with the called function's registers.
+    /// Set of virtual values that are live across at least one call instruction.
+    /// These values must not share slots with the called function's values.
     /// </summary>
-    public HashSet<VirtualAsmRegister> LiveAcrossCallRegisters { get; } = liveAcrossCallRegisters;
+    public HashSet<VirtualAsmValue> LiveAcrossCallRegisters { get; } = liveAcrossCallRegisters;
 
     /// <summary>
     /// Per-call-site live set captured immediately before the call instruction executes.
     /// </summary>
-    public IReadOnlyDictionary<int, HashSet<VirtualAsmRegister>> LiveRegistersByCallInstruction { get; } = liveRegistersByCallInstruction;
+    public IReadOnlyDictionary<int, HashSet<VirtualAsmValue>> LiveRegistersByCallInstruction { get; } = liveRegistersByCallInstruction;
 
     /// <summary>
     /// Per-instruction live-out set after each instruction executes.
     /// </summary>
-    public IReadOnlyDictionary<int, HashSet<VirtualAsmRegister>> LiveRegistersAfterInstruction { get; } = liveRegistersAfterInstruction;
+    public IReadOnlyDictionary<int, HashSet<VirtualAsmValue>> LiveRegistersAfterInstruction { get; } = liveRegistersAfterInstruction;
 }
 
 /// <summary>
 /// Performs intra-function liveness analysis on ASMIR, producing an interference graph
-/// and identifying registers that are live across call instructions.
+/// and identifying values that are live across call instructions.
 /// </summary>
 public static class LivenessAnalyzer
 {
@@ -80,19 +79,13 @@ public static class LivenessAnalyzer
 
         IReadOnlyList<AsmNode> nodes = function.Nodes;
 
-        // Step 1: Build basic blocks and CFG
         List<BasicBlock> blocks = BuildBasicBlocks(nodes);
         Dictionary<ControlFlowLabelSymbol, int> labelToBlock = BuildLabelMap(nodes, blocks);
         BuildCfgEdges(nodes, blocks, labelToBlock);
-
-        // Step 2: Compute defs and uses per block
         ComputeDefsAndUses(nodes, blocks);
-
-        // Step 3: Iterative backward dataflow
         ComputeLiveness(blocks);
 
-        // Step 4: Build interference graph from instruction-level liveness
-        (Dictionary<VirtualAsmRegister, HashSet<VirtualAsmRegister>> interference, HashSet<VirtualAsmRegister> liveAcrossCall, Dictionary<int, HashSet<VirtualAsmRegister>> liveByCall, Dictionary<int, HashSet<VirtualAsmRegister>> liveAfterInstruction) =
+        (Dictionary<VirtualAsmValue, HashSet<VirtualAsmValue>> interference, HashSet<VirtualAsmValue> liveAcrossCall, Dictionary<int, HashSet<VirtualAsmValue>> liveByCall, Dictionary<int, HashSet<VirtualAsmValue>> liveAfterInstruction) =
             BuildInterferenceGraph(nodes, blocks);
 
         return new FunctionLiveness(function, blocks, interference, liveAcrossCall, liveByCall, liveAfterInstruction);
@@ -100,7 +93,6 @@ public static class LivenessAnalyzer
 
     private static List<BasicBlock> BuildBasicBlocks(IReadOnlyList<AsmNode> nodes)
     {
-        // Identify leaders: first node, labels, instruction after a control flow instruction
         HashSet<int> leaders = [0];
 
         for (int i = 0; i < nodes.Count; i++)
@@ -144,6 +136,7 @@ public static class LivenessAnalyzer
                     labelToBlock[label.Label] = b;
             }
         }
+
         return labelToBlock;
     }
 
@@ -168,7 +161,6 @@ public static class LivenessAnalyzer
 
             if (lastInstruction is null)
             {
-                // Block has no instructions (just labels/comments) — falls through
                 if (b + 1 < blocks.Count)
                     block.SuccessorBlockIndices.Add(b + 1);
                 continue;
@@ -182,14 +174,10 @@ public static class LivenessAnalyzer
             bool isReturn = hasForm && lastInstructionForm.IsReturn;
 
             if (isReturn)
-            {
-                // No successors
                 continue;
-            }
 
             if (isBranch)
             {
-                // Find branch target
                 AsmSymbolOperand? target = hasForm
                     ? FindImmediateSymbolTarget(lastInstruction)
                     : null;
@@ -197,16 +185,13 @@ public static class LivenessAnalyzer
                 if (target is { Symbol: ControlFlowLabelSymbol label } && labelToBlock.TryGetValue(label, out int targetBlock))
                     block.SuccessorBlockIndices.Add(targetBlock);
 
-                // Unconditional JMP without predicate has no fall-through
                 bool isUnconditionalJump = lastInstruction.Mnemonic == P2Mnemonic.JMP && lastInstruction.Condition is null;
                 if (!isUnconditionalJump && b + 1 < blocks.Count)
                     block.SuccessorBlockIndices.Add(b + 1);
             }
-            else
+            else if (b + 1 < blocks.Count)
             {
-                // Regular instruction — falls through
-                if (b + 1 < blocks.Count)
-                    block.SuccessorBlockIndices.Add(b + 1);
+                block.SuccessorBlockIndices.Add(b + 1);
             }
         }
     }
@@ -217,11 +202,12 @@ public static class LivenessAnalyzer
         {
             for (int i = block.StartIndex; i < block.EndIndex; i++)
             {
-                switch (nodes[i])
+                if (nodes[i] is AsmInstructionNode instruction)
                 {
-                    case AsmInstructionNode instruction:
-                        ProcessInstruction(instruction, block);
-                        break;
+                    if (P2InstructionMetadata.IsCall(instruction.Mnemonic, instruction.Operands.Count))
+                        block.CallIndices.Add(i);
+
+                    ProcessInstruction(instruction, block);
                 }
             }
         }
@@ -232,26 +218,24 @@ public static class LivenessAnalyzer
         if (P2InstructionMetadata.HasNoRegisterEffect(instruction.Mnemonic, instruction.Operands.Count))
             return;
 
-        List<VirtualAsmRegister> defs = [];
-        List<VirtualAsmRegister> uses = [];
+        List<VirtualAsmValue> defs = [];
+        List<VirtualAsmValue> uses = [];
         ExtractInstructionDefsUses(instruction, defs, uses);
 
-        foreach (VirtualAsmRegister register in uses)
+        foreach (VirtualAsmValue register in uses)
             AddUse(block, register);
 
-        foreach (VirtualAsmRegister register in defs)
+        foreach (VirtualAsmValue register in defs)
             AddDef(block, register);
     }
 
-    private static void AddUse(BasicBlock block, VirtualAsmRegister register)
+    private static void AddUse(BasicBlock block, VirtualAsmValue register)
     {
-        // A use is only recorded if the register was not already defined in this block
-        // (reaching definition from this block shadows the incoming value)
         if (!block.Defs.Contains(register))
             block.Uses.Add(register);
     }
 
-    private static void AddDef(BasicBlock block, VirtualAsmRegister register)
+    private static void AddDef(BasicBlock block, VirtualAsmValue register)
     {
         block.Defs.Add(register);
     }
@@ -262,130 +246,104 @@ public static class LivenessAnalyzer
         while (changed)
         {
             changed = false;
-            // Process blocks in reverse order for faster convergence
             for (int b = blocks.Count - 1; b >= 0; b--)
             {
                 BasicBlock block = blocks[b];
 
-                // LiveOut = union of LiveIn of all successors
                 foreach (int succIdx in block.SuccessorBlockIndices)
                 {
-                    foreach (VirtualAsmRegister reg in blocks[succIdx].LiveIn)
+                    foreach (VirtualAsmValue reg in blocks[succIdx].LiveIn)
                     {
                         if (block.LiveOut.Add(reg))
                             changed = true;
                     }
                 }
 
-                // LiveIn = Uses union (LiveOut - Defs)
-                foreach (VirtualAsmRegister reg in block.Uses)
+                foreach (VirtualAsmValue reg in block.Uses)
                 {
                     if (block.LiveIn.Add(reg))
                         changed = true;
                 }
 
-                foreach (VirtualAsmRegister reg in block.LiveOut)
+                foreach (VirtualAsmValue reg in block.LiveOut)
                 {
-                    if (!block.Defs.Contains(reg))
-                    {
-                        if (block.LiveIn.Add(reg))
-                            changed = true;
-                    }
+                    if (!block.Defs.Contains(reg) && block.LiveIn.Add(reg))
+                        changed = true;
                 }
             }
         }
     }
 
-    /// <summary>
-    /// Builds the interference graph by walking instructions within each block,
-    /// maintaining a precise live set. Also identifies registers live across calls.
-    /// </summary>
     private static (
-        Dictionary<VirtualAsmRegister, HashSet<VirtualAsmRegister>> Interference,
-        HashSet<VirtualAsmRegister> LiveAcrossCall,
-        Dictionary<int, HashSet<VirtualAsmRegister>> LiveByCallInstruction,
-        Dictionary<int, HashSet<VirtualAsmRegister>> LiveAfterInstruction)
+        Dictionary<VirtualAsmValue, HashSet<VirtualAsmValue>> Interference,
+        HashSet<VirtualAsmValue> LiveAcrossCall,
+        Dictionary<int, HashSet<VirtualAsmValue>> LiveByCallInstruction,
+        Dictionary<int, HashSet<VirtualAsmValue>> LiveAfterInstruction)
         BuildInterferenceGraph(IReadOnlyList<AsmNode> nodes, List<BasicBlock> blocks)
     {
-        Dictionary<VirtualAsmRegister, HashSet<VirtualAsmRegister>> interference = [];
-        HashSet<VirtualAsmRegister> liveAcrossCall = [];
-        Dictionary<int, HashSet<VirtualAsmRegister>> liveByCallInstruction = [];
-        Dictionary<int, HashSet<VirtualAsmRegister>> liveAfterInstruction = [];
+        Dictionary<VirtualAsmValue, HashSet<VirtualAsmValue>> interference = [];
+        HashSet<VirtualAsmValue> liveAcrossCall = [];
+        Dictionary<int, HashSet<VirtualAsmValue>> liveByCallInstruction = [];
+        Dictionary<int, HashSet<VirtualAsmValue>> liveAfterInstruction = [];
 
         foreach (BasicBlock block in blocks)
         {
-            // Start with LiveOut and walk backwards
-            HashSet<VirtualAsmRegister> live = new(block.LiveOut);
+            HashSet<VirtualAsmValue> live = new(block.LiveOut);
 
             for (int i = block.EndIndex - 1; i >= block.StartIndex; i--)
             {
-                switch (nodes[i])
+                if (nodes[i] is not AsmInstructionNode instruction)
+                    continue;
+
+                if (P2InstructionMetadata.HasNoRegisterEffect(instruction.Mnemonic, instruction.Operands.Count))
+                    continue;
+
+                liveAfterInstruction[i] = [.. live];
+
+                if (P2InstructionMetadata.IsCall(instruction.Mnemonic, instruction.Operands.Count))
                 {
-                    case AsmInstructionNode instruction:
+                    liveByCallInstruction[i] = [.. live];
+                    foreach (VirtualAsmValue reg in live)
+                        liveAcrossCall.Add(reg);
+                }
+
+                List<VirtualAsmValue> defs = [];
+                List<VirtualAsmValue> uses = [];
+                ExtractInstructionDefsUses(instruction, defs, uses);
+
+                if (instruction.Condition is null)
+                {
+                    foreach (VirtualAsmValue def in defs)
+                        live.Remove(def);
+                }
+
+                foreach (VirtualAsmValue def in defs)
+                {
+                    EnsureNode(interference, def);
+                    foreach (VirtualAsmValue other in live)
                     {
-                        if (P2InstructionMetadata.HasNoRegisterEffect(instruction.Mnemonic, instruction.Operands.Count))
-                            continue;
-
-                        liveAfterInstruction[i] = [.. live];
-
-                        // If this is a call, all currently-live registers are live across it
-                        if (P2InstructionMetadata.IsCall(instruction.Mnemonic, instruction.Operands.Count))
-                        {
-                            liveByCallInstruction[i] = [.. live];
-                            foreach (VirtualAsmRegister reg in live)
-                                liveAcrossCall.Add(reg);
-                        }
-
-                        // Extract defs and uses for this single instruction
-                        List<VirtualAsmRegister> defs = [];
-                        List<VirtualAsmRegister> uses = [];
-                        ExtractInstructionDefsUses(instruction, defs, uses);
-
-                        // Remove defs from live set (unless predicated — conditional def)
-                        if (instruction.Condition is null)
-                        {
-                            foreach (VirtualAsmRegister def in defs)
-                                live.Remove(def);
-                        }
-
-                        // All defs interfere with everything currently live
-                        foreach (VirtualAsmRegister def in defs)
-                        {
-                            EnsureNode(interference, def);
-                            foreach (VirtualAsmRegister other in live)
-                            {
-                                if (other != def)
-                                {
-                                    AddEdge(interference, def, other);
-                                }
-                            }
-                        }
-
-                        AddIntraInstructionReadWriteInterference(interference, instruction);
-
-                        // Phi moves are parallel copies at control-flow edges. Their source
-                        // registers must remain distinct from the other values already live
-                        // across the same phi-move bundle, even though they are only uses.
-                        if (instruction.IsPhiMove)
-                        {
-                            foreach (VirtualAsmRegister use in uses)
-                            {
-                                EnsureNode(interference, use);
-                                foreach (VirtualAsmRegister other in live)
-                                {
-                                    if (other != use)
-                                        AddEdge(interference, use, other);
-                                }
-                            }
-                        }
-
-                        // Add uses to live set
-                        foreach (VirtualAsmRegister use in uses)
-                            live.Add(use);
-
-                        break;
+                        if (other != def)
+                            AddEdge(interference, def, other);
                     }
                 }
+
+                AddIntraInstructionReadWriteInterference(interference, instruction);
+
+                if (instruction.IsPhiMove)
+                {
+                    foreach (VirtualAsmValue use in uses)
+                    {
+                        EnsureNode(interference, use);
+                        foreach (VirtualAsmValue other in live)
+                        {
+                            if (other != use)
+                                AddEdge(interference, use, other);
+                        }
+                    }
+                }
+
+                foreach (VirtualAsmValue use in uses)
+                    live.Add(use);
             }
         }
 
@@ -394,8 +352,8 @@ public static class LivenessAnalyzer
 
     private static void ExtractInstructionDefsUses(
         AsmInstructionNode instruction,
-        List<VirtualAsmRegister> defs,
-        List<VirtualAsmRegister> uses)
+        List<VirtualAsmValue> defs,
+        List<VirtualAsmValue> uses)
     {
         bool isPredicated = instruction.Condition is not null;
 
@@ -411,16 +369,27 @@ public static class LivenessAnalyzer
             {
                 if (operand is AsmRegisterOperand reg)
                 {
-                    uses.Add(reg.Register);
-                    defs.Add(reg.Register);
+                    uses.Add(reg.Value);
+                    defs.Add(reg.Value);
+                }
+                else if (operand is AsmFlagOperand flag)
+                {
+                    uses.Add(flag.Flag);
+                    defs.Add(flag.Flag);
                 }
             }
+
             return;
         }
 
         for (int operandIndex = 0; operandIndex < instruction.Operands.Count; operandIndex++)
         {
-            if (instruction.Operands[operandIndex] is not AsmRegisterOperand register)
+            VirtualAsmValue register;
+            if (instruction.Operands[operandIndex] is AsmRegisterOperand registerOperand)
+                register = registerOperand.Value;
+            else if (instruction.Operands[operandIndex] is AsmFlagOperand flagOperand)
+                register = flagOperand.Flag;
+            else
                 continue;
 
             P2OperandAccess access = P2InstructionMetadata.GetOperandAccess(
@@ -429,20 +398,20 @@ public static class LivenessAnalyzer
                 operandIndex);
 
             if (access is P2OperandAccess.Read or P2OperandAccess.ReadWrite)
-                uses.Add(register.Register);
+                uses.Add(register);
 
             if (access is P2OperandAccess.Write or P2OperandAccess.ReadWrite)
             {
                 if (isPredicated && access == P2OperandAccess.Write)
-                    uses.Add(register.Register);
+                    uses.Add(register);
 
-                defs.Add(register.Register);
+                defs.Add(register);
             }
         }
     }
 
     private static void AddIntraInstructionReadWriteInterference(
-        Dictionary<VirtualAsmRegister, HashSet<VirtualAsmRegister>> interference,
+        Dictionary<VirtualAsmValue, HashSet<VirtualAsmValue>> interference,
         AsmInstructionNode instruction)
     {
         if (instruction.Mnemonic == P2Mnemonic.MOV && instruction.Operands.Count == 2)
@@ -453,7 +422,12 @@ public static class LivenessAnalyzer
 
         for (int writeOperandIndex = 0; writeOperandIndex < instruction.Operands.Count; writeOperandIndex++)
         {
-            if (instruction.Operands[writeOperandIndex] is not AsmRegisterOperand writeOperand)
+            VirtualAsmValue writeRegister;
+            if (instruction.Operands[writeOperandIndex] is AsmRegisterOperand writeOperand)
+                writeRegister = writeOperand.Value;
+            else if (instruction.Operands[writeOperandIndex] is AsmFlagOperand writeFlag)
+                writeRegister = writeFlag.Flag;
+            else
                 continue;
 
             P2OperandAccess writeAccess = P2InstructionMetadata.GetOperandAccess(
@@ -463,14 +437,19 @@ public static class LivenessAnalyzer
             if (writeAccess is not P2OperandAccess.Write and not P2OperandAccess.ReadWrite)
                 continue;
 
-            EnsureNode(interference, writeOperand.Register);
+            EnsureNode(interference, writeRegister);
 
             for (int readOperandIndex = 0; readOperandIndex < instruction.Operands.Count; readOperandIndex++)
             {
                 if (readOperandIndex == writeOperandIndex)
                     continue;
 
-                if (instruction.Operands[readOperandIndex] is not AsmRegisterOperand readOperand)
+                VirtualAsmValue readRegister;
+                if (instruction.Operands[readOperandIndex] is AsmRegisterOperand readOperand)
+                    readRegister = readOperand.Value;
+                else if (instruction.Operands[readOperandIndex] is AsmFlagOperand readFlag)
+                    readRegister = readFlag.Flag;
+                else
                     continue;
 
                 P2OperandAccess readAccess = P2InstructionMetadata.GetOperandAccess(
@@ -480,8 +459,8 @@ public static class LivenessAnalyzer
                 if (readAccess is not P2OperandAccess.Read and not P2OperandAccess.ReadWrite)
                     continue;
 
-                if (readOperand.Register != writeOperand.Register)
-                    AddEdge(interference, writeOperand.Register, readOperand.Register);
+                if (readRegister != writeRegister)
+                    AddEdge(interference, writeRegister, readRegister);
             }
         }
     }
@@ -499,22 +478,22 @@ public static class LivenessAnalyzer
         return null;
     }
 
-    private static void EnsureNode(Dictionary<VirtualAsmRegister, HashSet<VirtualAsmRegister>> graph, VirtualAsmRegister register)
+    private static void EnsureNode(Dictionary<VirtualAsmValue, HashSet<VirtualAsmValue>> graph, VirtualAsmValue register)
     {
         if (!graph.ContainsKey(register))
             graph[register] = [];
     }
 
-    private static void AddEdge(Dictionary<VirtualAsmRegister, HashSet<VirtualAsmRegister>> graph, VirtualAsmRegister a, VirtualAsmRegister b)
+    private static void AddEdge(Dictionary<VirtualAsmValue, HashSet<VirtualAsmValue>> graph, VirtualAsmValue a, VirtualAsmValue b)
     {
-        if (!graph.TryGetValue(a, out HashSet<VirtualAsmRegister>? neighborsA))
+        if (!graph.TryGetValue(a, out HashSet<VirtualAsmValue>? neighborsA))
         {
             neighborsA = [];
             graph[a] = neighborsA;
         }
         neighborsA.Add(b);
 
-        if (!graph.TryGetValue(b, out HashSet<VirtualAsmRegister>? neighborsB))
+        if (!graph.TryGetValue(b, out HashSet<VirtualAsmValue>? neighborsB))
         {
             neighborsB = [];
             graph[b] = neighborsB;

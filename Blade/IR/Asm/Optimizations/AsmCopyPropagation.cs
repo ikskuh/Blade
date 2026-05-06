@@ -8,7 +8,7 @@ public sealed class AsmCopyPropagation : PerFunctionAsmOptimization
 {
     protected override AsmFunction? RunOnFunction(AsmFunction input)
     {
-        Dictionary<VirtualAsmRegister, AsmOperand> aliases = [];
+        Dictionary<VirtualAsmValue, AsmOperand> aliases = [];
         List<AsmNode> nodes = [];
         bool changed = false;
 
@@ -41,7 +41,7 @@ public sealed class AsmCopyPropagation : PerFunctionAsmOptimization
                     if (TryGetTrackedCopy(rewritten, out AsmRegisterOperand dest, out AsmOperand source)
                         && !OperandsEquivalent(dest, source))
                     {
-                        aliases[dest.Register] = ResolveAlias(source, aliases);
+                        aliases[dest.Value] = ResolveAlias(source, aliases);
                     }
                     nodes.Add(rewritten);
                     break;

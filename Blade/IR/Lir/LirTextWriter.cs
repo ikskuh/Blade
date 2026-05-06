@@ -73,7 +73,7 @@ public static class LirTextWriter
             if (i > 0)
                 sb.Append(", ");
             LirBlockParameter parameter = block.Parameters[i];
-            sb.Append(formatter.Format(parameter.Register));
+            sb.Append(formatter.Format(parameter.Value));
             sb.Append(':');
             sb.Append(parameter.Type.Name);
             sb.Append(' ');
@@ -97,7 +97,7 @@ public static class LirTextWriter
         }
 
         sb.Append("    ");
-        if (instruction.Destination is LirVirtualRegister destination)
+        if (instruction.Destination is VirtualLirValue destination)
         {
             sb.Append(formatter.Format(destination));
             sb.Append(':');
@@ -212,7 +212,9 @@ public static class LirTextWriter
     {
         return operand switch
         {
+            LirValueOperand value => formatter.Format(value.Value),
             LirRegisterOperand register => formatter.Format(register.Register),
+            LirFlagOperand flag => formatter.Format(flag.Flag),
             LirImmediateOperand immediate => $"{immediate.Value.Format()}:{immediate.Type.Name}",
             LirPlaceOperand place => $"%place({place.Place.EmittedName})",
             _ => Assert.UnreachableValue<string>($"Unhandled class {operand.GetType()}"),
@@ -242,6 +244,17 @@ public static class LirTextWriter
     private sealed class RegisterFormatter
     {
         private readonly Dictionary<LirVirtualRegister, int> _ids = [];
+        private readonly Dictionary<VirtualLirFlag, int> _flagIds = [];
+
+        public string Format(VirtualLirValue value)
+        {
+            return value switch
+            {
+                LirVirtualRegister register => Format(register),
+                VirtualLirFlag flag => Format(flag),
+                _ => Assert.UnreachableValue<string>(), // pragma: force-coverage
+            };
+        }
 
         public string Format(LirVirtualRegister register)
         {
@@ -252,6 +265,17 @@ public static class LirTextWriter
             }
 
             return $"%r{id}";
+        }
+
+        public string Format(VirtualLirFlag flag)
+        {
+            if (!_flagIds.TryGetValue(flag, out int id))
+            {
+                id = _flagIds.Count;
+                _flagIds.Add(flag, id);
+            }
+
+            return $"%f{id}";
         }
     }
 

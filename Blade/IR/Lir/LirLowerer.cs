@@ -20,16 +20,34 @@ public static class LirLowerer
 
     private static LirFunction LowerFunction(MirFunction mirFunction)
     {
-        Dictionary<MirValueId, LirVirtualRegister> registers = [];
+        Dictionary<MirValueId, VirtualLirValue> values = [];
         Dictionary<MirBlockRef, LirBlockRef> blockRefs = [];
 
-        LirVirtualRegister GetRegister(MirValueId value)
+        VirtualLirValue GetValue(MirValueId value)
         {
-            if (registers.TryGetValue(value, out LirVirtualRegister? register) && register is not null)
-                return register;
-            LirVirtualRegister fresh = new();
-            registers[value] = fresh;
+            if (values.TryGetValue(value, out VirtualLirValue? existing) && existing is not null)
+                return existing;
+
+            VirtualLirValue fresh = value switch
+            {
+                MirVirtualFlag => new VirtualLirFlag(),
+                MirVirtualRegister => new VirtualLirRegister(),
+                _ => Assert.UnreachableValue<VirtualLirValue>($"Unexpected MIR value type '{value.GetType().Name}'."), // pragma: force-coverage
+            };
+            values[value] = fresh;
             return fresh;
+        }
+
+        LirVirtualRegister GetRegister(MirValueId value) => (LirVirtualRegister)GetValue(value);
+
+        LirOperand GetValueOperand(MirValueId value)
+        {
+            return GetValue(value) switch
+            {
+                LirVirtualRegister register => new LirRegisterOperand(register),
+                VirtualLirFlag flag => new LirFlagOperand(flag),
+                _ => Assert.UnreachableValue<LirOperand>($"Unexpected LIR value type '{GetValue(value).GetType().Name}'."), // pragma: force-coverage
+            };
         }
 
         LirBlockRef GetBlockRef(MirBlockRef blockRef)
@@ -58,14 +76,14 @@ public static class LirLowerer
             List<LirBlockParameter> parameters = [];
             foreach (MirBlockParameter parameter in mirBlock.Parameters)
             {
-                LirVirtualRegister register = GetRegister(parameter.Value);
-                parameters.Add(new LirBlockParameter(register, parameter.Name, parameter.Type));
+                VirtualLirValue loweredValue = GetValue(parameter.Value);
+                parameters.Add(new LirBlockParameter(loweredValue, parameter.Name, parameter.Type));
             }
 
             List<LirInstruction> instructions = [];
             foreach (MirInstruction instruction in mirBlock.Instructions)
             {
-                instructions.Add(LowerInstruction(instruction, GetRegister, constValues));
+                instructions.Add(LowerInstruction(instruction, GetValue, GetRegister, GetValueOperand, constValues));
 
                 // Emit extra result extraction instructions for multi-return calls
                 if (instruction is MirCallInstruction { ExtraResults.Count: > 0 } callInstr)
@@ -73,7 +91,7 @@ public static class LirLowerer
                     for (int i = 0; i < callInstr.ExtraResults.Count; i++)
                     {
                         (MirValueId extraValue, BladeType extraType) = callInstr.ExtraResults[i];
-                        LirVirtualRegister extraDest = GetRegister(extraValue);
+                        VirtualLirValue extraDest = GetValue(extraValue);
                         ReturnPlacement placement = GetExtraResultPlacement(callInstr, i);
                         instructions.Add(new LirOpInstruction(
                             new LirCallExtractFlagOperation(placement == ReturnPlacement.FlagC ? MirFlag.C : MirFlag.Z),
@@ -92,7 +110,7 @@ public static class LirLowerer
                     for (int i = 0; i < spawnInstr.ExtraResults.Count; i++)
                     {
                         (MirValueId extraValue, BladeType extraType) = spawnInstr.ExtraResults[i];
-                        LirVirtualRegister extraDest = GetRegister(extraValue);
+                        VirtualLirValue extraDest = GetValue(extraValue);
                         instructions.Add(new LirOpInstruction(
                             new LirCallExtractFlagOperation(MirFlag.NC),
                             extraDest,
@@ -107,7 +125,7 @@ public static class LirLowerer
                 }
             }
 
-            LirTerminator terminator = LowerTerminator(mirBlock.Terminator, GetRegister, GetBlockRef);
+            LirTerminator terminator = LowerTerminator(mirBlock.Terminator, GetValueOperand, GetBlockRef);
             blocks.Add(new LirBlock(GetBlockRef(mirBlock.Ref), parameters, instructions, terminator));
         }
 
@@ -116,11 +134,13 @@ public static class LirLowerer
 
     private static LirInstruction LowerInstruction(
         MirInstruction instruction,
+        System.Func<MirValueId, VirtualLirValue> getValue,
         System.Func<MirValueId, LirVirtualRegister> getRegister,
+        System.Func<MirValueId, LirOperand> getValueOperand,
         IReadOnlyDictionary<MirValueId, BladeValue> constValues)
     {
-        LirVirtualRegister? destination = instruction.Result is MirValueId result
-            ? getRegister(result)
+        VirtualLirValue? destination = instruction.Result is MirValueId result
+            ? getValue(result)
             : null;
 
         return instruction switch
@@ -151,7 +171,7 @@ public static class LirLowerer
                 new LirMovOperation(),
                 destination,
                 copy.ResultType,
-                [new LirRegisterOperand(getRegister(copy.Source))],
+                [getValueOperand(copy.Source)],
                 hasSideEffects: false,
                 predicate: null,
                 writesC: false,
@@ -162,7 +182,7 @@ public static class LirLowerer
                 new LirUnaryOperation(unary.Operator),
                 destination,
                 unary.ResultType,
-                [new LirRegisterOperand(getRegister(unary.Operand))],
+                [getValueOperand(unary.Operand)],
                 hasSideEffects: false,
                 predicate: null,
                 writesC: false,
@@ -173,7 +193,7 @@ public static class LirLowerer
                 new LirBinaryOperation(binary.Operator, binary.ComparisonLoweringKind),
                 destination,
                 binary.ResultType,
-                [new LirRegisterOperand(getRegister(binary.Left)), new LirRegisterOperand(getRegister(binary.Right))],
+                [getValueOperand(binary.Left), getValueOperand(binary.Right)],
                 hasSideEffects: false,
                 predicate: null,
                 writesC: false,
@@ -206,7 +226,7 @@ public static class LirLowerer
                 new LirConvertOperation(),
                 destination,
                 convert.ResultType,
-                [new LirRegisterOperand(getRegister(convert.Operand))],
+                [getValueOperand(convert.Operand)],
                 hasSideEffects: false,
                 predicate: null,
                 writesC: false,
@@ -217,7 +237,7 @@ public static class LirLowerer
                 new LirStructLiteralOperation(LowerStructLiteralMembers(structLiteral.Fields)),
                 destination,
                 structLiteral.ResultType,
-                LowerStructLiteralOperands(structLiteral.Fields, getRegister),
+                LowerStructLiteralOperands(structLiteral.Fields, getValueOperand),
                 hasSideEffects: false,
                 predicate: null,
                 writesC: false,
@@ -272,7 +292,7 @@ public static class LirLowerer
                 new LirBitfieldInsertOperation(bitfieldInsert.Member),
                 destination,
                 bitfieldInsert.ResultType,
-                [new LirRegisterOperand(getRegister(bitfieldInsert.Receiver)), new LirRegisterOperand(getRegister(bitfieldInsert.Value))],
+                [new LirRegisterOperand(getRegister(bitfieldInsert.Receiver)), getValueOperand(bitfieldInsert.Value)],
                 hasSideEffects: false,
                 predicate: null,
                 writesC: false,
@@ -283,7 +303,7 @@ public static class LirLowerer
                 new LirInsertMemberOperation(insertMember.Member),
                 destination,
                 insertMember.ResultType,
-                [new LirRegisterOperand(getRegister(insertMember.Receiver)), new LirRegisterOperand(getRegister(insertMember.Value))],
+                [new LirRegisterOperand(getRegister(insertMember.Receiver)), getValueOperand(insertMember.Value)],
                 hasSideEffects: false,
                 predicate: null,
                 writesC: false,
@@ -294,7 +314,7 @@ public static class LirLowerer
                 new LirCallOperation(call.Function),
                 destination,
                 call.ResultType,
-                LowerOperands(call.Arguments, getRegister),
+                LowerOperands(call.Arguments, getValueOperand),
                 hasSideEffects: true,
                 predicate: null,
                 writesC: false,
@@ -305,7 +325,7 @@ public static class LirLowerer
                 new LirSpawnOperation(spawn.OperatorKind, spawn.Task, spawn.RequestedResultCount),
                 destination,
                 spawn.ResultType,
-                LowerOperands(spawn.Arguments, getRegister),
+                LowerOperands(spawn.Arguments, getValueOperand),
                 hasSideEffects: true,
                 predicate: null,
                 writesC: true,
@@ -330,7 +350,7 @@ public static class LirLowerer
                 [
                     new LirRegisterOperand(getRegister(storeIndex.Indexed)),
                     new LirRegisterOperand(getRegister(storeIndex.Index)),
-                    new LirRegisterOperand(getRegister(storeIndex.Value)),
+                    getValueOperand(storeIndex.Value),
                 ],
                 hasSideEffects: true,
                 predicate: null,
@@ -342,7 +362,7 @@ public static class LirLowerer
                 new LirStoreDerefOperation(storeDeref.PointerType, storeDeref.StorageClass),
                 destination: null,
                 resultType: storeDeref.ResultType,
-                [new LirRegisterOperand(getRegister(storeDeref.Address)), new LirRegisterOperand(getRegister(storeDeref.Value))],
+                [new LirRegisterOperand(getRegister(storeDeref.Address)), getValueOperand(storeDeref.Value)],
                 hasSideEffects: true,
                 predicate: null,
                 writesC: false,
@@ -353,7 +373,7 @@ public static class LirLowerer
                 new LirStorePlaceOperation(),
                 destination: null,
                 resultType: null,
-                [new LirPlaceOperand(storePlace.Place), new LirRegisterOperand(getRegister(storePlace.Value))],
+                [new LirPlaceOperand(storePlace.Place), getValueOperand(storePlace.Value)],
                 hasSideEffects: true,
                 predicate: null,
                 writesC: false,
@@ -364,7 +384,7 @@ public static class LirLowerer
                 new LirUpdatePlaceOperation(updatePlace.OperatorKind, updatePlace.PointerArithmeticStride),
                 destination: null,
                 resultType: null,
-                [new LirPlaceOperand(updatePlace.Place), new LirRegisterOperand(getRegister(updatePlace.Value))],
+                [new LirPlaceOperand(updatePlace.Place), getValueOperand(updatePlace.Value)],
                 hasSideEffects: true,
                 predicate: null,
                 writesC: false,
@@ -375,7 +395,7 @@ public static class LirLowerer
                 inlineAsm.Volatility,
                 inlineAsm.FlagOutput,
                 inlineAsm.ParsedLines,
-                LowerInlineAsmBindings(inlineAsm.Bindings, getRegister),
+                LowerInlineAsmBindings(inlineAsm.Bindings, getValueOperand),
                 inlineAsm.Span),
 
             MirYieldInstruction yield => new LirOpInstruction(
@@ -393,7 +413,7 @@ public static class LirLowerer
                 new LirYieldToOperation(yieldTo.TargetFunction),
                 destination: null,
                 resultType: null,
-                LowerOperands(yieldTo.Arguments, getRegister),
+                LowerOperands(yieldTo.Arguments, getValueOperand),
                 yieldTo.HasSideEffects,
                 predicate: null,
                 writesC: false,
@@ -480,27 +500,27 @@ public static class LirLowerer
 
     private static LirTerminator LowerTerminator(
         MirTerminator terminator,
-        System.Func<MirValueId, LirVirtualRegister> getRegister,
+        System.Func<MirValueId, LirOperand> getValueOperand,
         System.Func<MirBlockRef, LirBlockRef> getBlockRef)
     {
         return terminator switch
         {
             MirGotoTerminator mirGoto => new LirGotoTerminator(
                 getBlockRef(mirGoto.Target),
-                LowerOperands(mirGoto.Arguments, getRegister),
+                LowerOperands(mirGoto.Arguments, getValueOperand),
                 mirGoto.Span),
 
             MirBranchTerminator branch => new LirBranchTerminator(
-                new LirRegisterOperand(getRegister(branch.Condition)),
+                getValueOperand(branch.Condition),
                 getBlockRef(branch.TrueTarget),
                 getBlockRef(branch.FalseTarget),
-                LowerOperands(branch.TrueArguments, getRegister),
-                LowerOperands(branch.FalseArguments, getRegister),
+                LowerOperands(branch.TrueArguments, getValueOperand),
+                LowerOperands(branch.FalseArguments, getValueOperand),
                 branch.Span,
                 branch.ConditionFlag),
 
             MirReturnTerminator ret => new LirReturnTerminator(
-                LowerOperands(ret.Values, getRegister),
+                LowerOperands(ret.Values, getValueOperand),
                 ret.Span),
 
             MirUnreachableTerminator unreachable => new LirUnreachableTerminator(unreachable.Span),
@@ -510,11 +530,11 @@ public static class LirLowerer
 
     private static IReadOnlyList<LirOperand> LowerOperands(
         IReadOnlyList<MirValueId> values,
-        System.Func<MirValueId, LirVirtualRegister> getRegister)
+        System.Func<MirValueId, LirOperand> getValueOperand)
     {
         List<LirOperand> operands = new(values.Count);
         foreach (MirValueId value in values)
-            operands.Add(new LirRegisterOperand(getRegister(value)));
+            operands.Add(getValueOperand(value));
         return operands;
     }
 
@@ -535,7 +555,7 @@ public static class LirLowerer
 
     private static IReadOnlyList<LirInlineAsmBinding> LowerInlineAsmBindings(
         IReadOnlyList<MirInlineAsmBinding> bindings,
-        System.Func<MirValueId, LirVirtualRegister> getRegister)
+        System.Func<MirValueId, LirOperand> getValueOperand)
     {
         List<LirInlineAsmBinding> lowered = new(bindings.Count);
         foreach (MirInlineAsmBinding binding in bindings)
@@ -547,7 +567,7 @@ public static class LirLowerer
             }
             else if (binding.Value is MirValueId value)
             {
-                operand = new LirRegisterOperand(getRegister(value));
+                operand = getValueOperand(value);
             }
             else
             {
@@ -570,11 +590,11 @@ public static class LirLowerer
 
     private static IReadOnlyList<LirOperand> LowerStructLiteralOperands(
         IReadOnlyList<MirStructLiteralField> fields,
-        System.Func<MirValueId, LirVirtualRegister> getRegister)
+        System.Func<MirValueId, LirOperand> getValueOperand)
     {
         List<LirOperand> operands = new(fields.Count);
         foreach (MirStructLiteralField field in fields)
-            operands.Add(new LirRegisterOperand(getRegister(field.Value)));
+            operands.Add(getValueOperand(field.Value));
         return operands;
     }
 

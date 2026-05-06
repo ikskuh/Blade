@@ -346,7 +346,7 @@ public static class AsmLowerer
         public Dictionary<LirBlockRef, ControlFlowLabelSymbol> BlockLabels { get; } = [];
         public IReadOnlyDictionary<LirVirtualRegister, BladeType> RegisterTypes { get; } = BuildRegisterTypeMap(function);
         public RegisterAssociator Registers { get; } = new();
-        public Dictionary<VirtualAsmRegister, AsmRegisterConstraint> RegisterConstraints { get; } = [];
+        public Dictionary<VirtualAsmValue, AsmRegisterConstraint> RegisterConstraints { get; } = [];
         public Dictionary<LirVirtualRegister, IReadOnlyList<VirtualAsmRegister>> AggregateRegisters { get; } = [];
         public List<StoragePlace> SharedRegisterPlaces { get; } = [];
         public int NextInlineAsmBlockOrdinal { get; set; }
@@ -357,13 +357,6 @@ public static class AsmLowerer
         /// their corresponding iter/end pseudo-ops. Supports nesting.
         /// </summary>
         public Stack<ControlFlowLabelSymbol> RepEndLabelStack { get; } = new();
-
-        /// <summary>
-        /// Registers whose values are only consumed as hardware flags (by a flag-aware branch),
-        /// not as register values. Comparisons writing to these can skip materialization (WRZ/WRC).
-        /// Recomputed per block.
-        /// </summary>
-        public HashSet<LirVirtualRegister> FlagOnlyRegisters { get; } = [];
 
         public ControlFlowLabelSymbol GetBlockLabel(LirBlockRef blockRef)
         {
@@ -378,6 +371,16 @@ public static class AsmLowerer
         public VirtualAsmRegister GetRegister(LirVirtualRegister register)
         {
             return Registers.FromLir(register);
+        }
+
+        public VirtualAsmFlag GetFlag(VirtualLirFlag flag)
+        {
+            return Registers.FromLir(flag);
+        }
+
+        public VirtualAsmValue GetRegister(VirtualLirValue value)
+        {
+            return Registers.FromLir(value);
         }
 
         public AsmFunctionKey CurrentFunctionKey => new(Image, Function.Symbol);
@@ -431,9 +434,25 @@ public static class AsmLowerer
             return created[lane];
         }
 
+        public VirtualAsmValue GetRegisterLane(VirtualLirValue value, BladeType? type, int lane)
+        {
+            if (value is LirVirtualRegister register)
+                return GetRegisterLane(register, type, lane);
+
+            Assert.Invariant(!IsAggregateValueType(type), "Flag-valued LIR values cannot be aggregate lanes.");
+            Assert.Invariant(lane == 0, "Flag-valued LIR values only have lane 0.");
+            return GetRegister(value);
+        }
+
         public void TieRegisterToPlace(LirVirtualRegister register, StoragePlace place)
         {
             VirtualAsmRegister asmRegister = GetRegister(register);
+            RegisterConstraints[asmRegister] = new AsmRegisterConstraint(place);
+        }
+
+        public void TieRegisterToPlace(VirtualLirValue value, StoragePlace place)
+        {
+            VirtualAsmValue asmRegister = GetRegister(value);
             RegisterConstraints[asmRegister] = new AsmRegisterConstraint(place);
         }
 
@@ -443,15 +462,33 @@ public static class AsmLowerer
             RegisterConstraints[asmRegister] = new AsmRegisterConstraint(place);
         }
 
+        public void TieRegisterLaneToPlace(VirtualLirValue value, BladeType? type, int lane, StoragePlace place)
+        {
+            VirtualAsmValue asmRegister = GetRegisterLane(value, type, lane);
+            RegisterConstraints[asmRegister] = new AsmRegisterConstraint(place);
+        }
+
         public void FixRegisterToSpecialRegister(LirVirtualRegister register, P2SpecialRegister specialRegister)
         {
             VirtualAsmRegister asmRegister = GetRegister(register);
             RegisterConstraints[asmRegister] = new AsmRegisterConstraint(new P2Register(specialRegister));
         }
 
+        public void FixRegisterToSpecialRegister(VirtualLirValue value, P2SpecialRegister specialRegister)
+        {
+            VirtualAsmValue asmRegister = GetRegister(value);
+            RegisterConstraints[asmRegister] = new AsmRegisterConstraint(new P2Register(specialRegister));
+        }
+
         public void FixRegisterLaneToSpecialRegister(LirVirtualRegister register, BladeType? type, int lane, P2SpecialRegister specialRegister)
         {
             VirtualAsmRegister asmRegister = GetRegisterLane(register, type, lane);
+            RegisterConstraints[asmRegister] = new AsmRegisterConstraint(new P2Register(specialRegister));
+        }
+
+        public void FixRegisterLaneToSpecialRegister(VirtualLirValue value, BladeType? type, int lane, P2SpecialRegister specialRegister)
+        {
+            VirtualAsmValue asmRegister = GetRegisterLane(value, type, lane);
             RegisterConstraints[asmRegister] = new AsmRegisterConstraint(new P2Register(specialRegister));
         }
     }
@@ -506,8 +543,6 @@ public static class AsmLowerer
             {
                 EmitSpecializedFunctionEntryLoads(nodes, block, ctx);
             }
-
-            ComputeFlagOnlyRegisters(ctx, block);
 
             foreach (LirInstruction instruction in block.Instructions)
                 LowerInstruction(nodes, instruction, ctx);
@@ -851,7 +886,7 @@ public static class AsmLowerer
                         for (int lane = 0; lane < laneCount; lane++)
                         {
                             StoragePlace parameterPlace = info.ParameterPlaces[placeIndex++];
-                            ctx.TieRegisterLaneToPlace(parameter.Register, parameter.Type, lane, parameterPlace);
+                            ctx.TieRegisterLaneToPlace(parameter.Value, parameter.Type, lane, parameterPlace);
                             ctx.SharedRegisterPlaces.Add(parameterPlace);
                         }
                     }
@@ -872,7 +907,7 @@ public static class AsmLowerer
                         for (int lane = 0; lane < laneCount; lane++)
                         {
                             StoragePlace parameterPlace = info.ParameterPlaces[placeIndex++];
-                            ctx.TieRegisterLaneToPlace(parameter.Register, parameter.Type, lane, parameterPlace);
+                            ctx.TieRegisterLaneToPlace(parameter.Value, parameter.Type, lane, parameterPlace);
                             ctx.SharedRegisterPlaces.Add(parameterPlace);
                         }
                     }
@@ -893,7 +928,7 @@ public static class AsmLowerer
                         for (int lane = 0; lane < laneCount; lane++)
                         {
                             StoragePlace parameterPlace = info.ParameterPlaces[placeIndex++];
-                            ctx.TieRegisterLaneToPlace(parameter.Register, parameter.Type, lane, parameterPlace);
+                            ctx.TieRegisterLaneToPlace(parameter.Value, parameter.Type, lane, parameterPlace);
                         }
                     }
                     break;
@@ -914,7 +949,7 @@ public static class AsmLowerer
             for (int lane = 0; lane < laneCount; lane++)
             {
                 StoragePlace parameterPlace = info.ParameterPlaces[placeIndex++];
-                ctx.TieRegisterLaneToPlace(parameter.Register, parameter.Type, lane, parameterPlace);
+                ctx.TieRegisterLaneToPlace(parameter.Value, parameter.Type, lane, parameterPlace);
                 ctx.SharedRegisterPlaces.Add(parameterPlace);
             }
         }
@@ -936,51 +971,6 @@ public static class AsmLowerer
             CreatePlaceRegisterOperand(info.ParameterPlaces[0]),
             new AsmSymbolOperand(info.TransportRegister)));
     }
-    /// <summary>
-    /// Identifies registers whose values are consumed only as hardware flags, not as register
-    /// values. A comparison writing to such a register can skip materialization (WRZ/WRC).
-    /// </summary>
-    private static void ComputeFlagOnlyRegisters(LoweringContext ctx, LirBlock block)
-    {
-        ctx.FlagOnlyRegisters.Clear();
-
-        // Only relevant when the terminator is a flag-aware branch.
-        if (block.Terminator is not LirBranchTerminator branch || branch.ConditionFlag is null)
-            return;
-
-        Assert.Invariant(branch.Condition is LirRegisterOperand, "Flag-aware branch condition must be a register operand");
-        if (branch.Condition is not LirRegisterOperand condReg)
-            return;
-
-        LirVirtualRegister condRegister = condReg.Register;
-
-        // Check that no instruction in the block uses this register as an operand
-        // (other than the instruction that defines it).
-        foreach (LirInstruction instruction in block.Instructions)
-        {
-            foreach (LirOperand operand in instruction.Operands)
-            {
-                if (operand is LirRegisterOperand reg && ReferenceEquals(reg.Register, condRegister))
-                    return; // Used as an operand somewhere — need materialization.
-            }
-        }
-
-        // Also check terminator arguments (phi moves).
-        foreach (LirOperand operand in branch.TrueArguments)
-        {
-            if (operand is LirRegisterOperand reg && ReferenceEquals(reg.Register, condRegister))
-                return;
-        }
-
-        foreach (LirOperand operand in branch.FalseArguments)
-        {
-            if (operand is LirRegisterOperand reg && ReferenceEquals(reg.Register, condRegister))
-                return;
-        }
-
-        ctx.FlagOnlyRegisters.Add(condRegister);
-    }
-
     private static void LowerInstruction(List<AsmNode> nodes, LirInstruction instruction, LoweringContext ctx)
     {
         if (instruction is LirInlineAsmInstruction inlineAsm)
@@ -1408,7 +1398,10 @@ public static class AsmLowerer
         {
             long immediateValue = GetNumericImmediateValue(immediate);
             Assert.Invariant(immediateValue is 0 or 1, "Single-bit constants must normalize to 0 or 1.");
-            nodes.Add(Emit(immediateValue == 1 ? P2Mnemonic.BITH : P2Mnemonic.BITL, dest, new AsmImmediateOperand(0)));
+            if (op.Destination is VirtualLirFlag flagDestination)
+                nodes.Add(Emit(immediateValue == 1 ? P2Mnemonic.BITH : P2Mnemonic.BITL, new AsmFlagOperand(ctx.GetFlag(flagDestination)), new AsmImmediateOperand(0)));
+            else
+                nodes.Add(Emit(P2Mnemonic.MOV, dest, new AsmImmediateOperand(immediateValue)));
             return;
         }
 
@@ -1420,6 +1413,12 @@ public static class AsmLowerer
         if (IsAggregateValueType(op.ResultType))
         {
             CopyAggregateValue(nodes, op.Destination!, op.ResultType, op.Operands[0], ctx);
+            return;
+        }
+
+        if (IsSingleBitType(op.ResultType))
+        {
+            EmitSingleBitMove(nodes, op.Destination!, op.Operands[0], ctx);
             return;
         }
 
@@ -1985,118 +1984,144 @@ public static class AsmLowerer
         LirBinaryOperation operation,
         LoweringContext ctx)
     {
-        AsmRegisterOperand dest = DestReg(op, ctx);
         AsmRegisterOperand left = OpReg(op.Operands[0], ctx);
         AsmRegisterOperand right = OpReg(op.Operands[1], ctx);
-        bool isFlagOnly = op.Destination is { } d && ctx.FlagOnlyRegisters.Contains(d);
+        LirVirtualRegister? destinationRegister = op.Destination as LirVirtualRegister;
+        bool materializeComparisonResult = op.Destination is not null;
         BoundBinaryOperatorKind kind = operation.OperatorKind;
+
+        AsmRegisterOperand RequireDestinationRegister()
+        {
+            Assert.Invariant(destinationRegister is not null, $"Binary operator '{kind}' requires a register destination.");
+            return new AsmRegisterOperand(ctx.GetRegister(destinationRegister));
+        }
+
+        void MaterializeFlagValue(MirFlag flag)
+        {
+            Assert.Invariant(op.Destination is not null, $"Binary operator '{kind}' requires a destination.");
+            EmitCurrentLogicalFlagValue(nodes, op.Destination!, flag, ctx);
+        }
 
         switch (kind)
         {
             case BoundBinaryOperatorKind.Add:
-                nodes.Add(Emit(P2Mnemonic.MOV, dest, left));
-                nodes.Add(Emit(P2Mnemonic.ADD, dest, right));
+                AsmRegisterOperand addDest = RequireDestinationRegister();
+                nodes.Add(Emit(P2Mnemonic.MOV, addDest, left));
+                nodes.Add(Emit(P2Mnemonic.ADD, addDest, right));
                 break;
 
             case BoundBinaryOperatorKind.Subtract:
-                nodes.Add(Emit(P2Mnemonic.MOV, dest, left));
-                nodes.Add(Emit(P2Mnemonic.SUB, dest, right));
+                AsmRegisterOperand subtractDest = RequireDestinationRegister();
+                nodes.Add(Emit(P2Mnemonic.MOV, subtractDest, left));
+                nodes.Add(Emit(P2Mnemonic.SUB, subtractDest, right));
                 break;
 
             case BoundBinaryOperatorKind.Multiply:
+                AsmRegisterOperand multiplyDest = RequireDestinationRegister();
                 nodes.Add(Emit(P2Mnemonic.QMUL, left, right));
-                nodes.Add(Emit(P2Mnemonic.GETQX, dest));
+                nodes.Add(Emit(P2Mnemonic.GETQX, multiplyDest));
                 break;
 
             case BoundBinaryOperatorKind.Divide:
+                AsmRegisterOperand divideDest = RequireDestinationRegister();
                 nodes.Add(Emit(P2Mnemonic.QDIV, left, right));
-                nodes.Add(Emit(P2Mnemonic.GETQX, dest));
+                nodes.Add(Emit(P2Mnemonic.GETQX, divideDest));
                 break;
 
             case BoundBinaryOperatorKind.Modulo:
+                AsmRegisterOperand moduloDest = RequireDestinationRegister();
                 nodes.Add(Emit(P2Mnemonic.QDIV, left, right));
-                nodes.Add(Emit(P2Mnemonic.GETQY, dest));
+                nodes.Add(Emit(P2Mnemonic.GETQY, moduloDest));
                 break;
 
             case BoundBinaryOperatorKind.BitwiseAnd:
-                nodes.Add(Emit(P2Mnemonic.MOV, dest, left));
-                nodes.Add(Emit(P2Mnemonic.AND, dest, right));
+                AsmRegisterOperand andDest = RequireDestinationRegister();
+                nodes.Add(Emit(P2Mnemonic.MOV, andDest, left));
+                nodes.Add(Emit(P2Mnemonic.AND, andDest, right));
                 break;
 
             case BoundBinaryOperatorKind.BitwiseOr:
-                nodes.Add(Emit(P2Mnemonic.MOV, dest, left));
-                nodes.Add(Emit(P2Mnemonic.OR, dest, right));
+                AsmRegisterOperand orDest = RequireDestinationRegister();
+                nodes.Add(Emit(P2Mnemonic.MOV, orDest, left));
+                nodes.Add(Emit(P2Mnemonic.OR, orDest, right));
                 break;
 
             case BoundBinaryOperatorKind.BitwiseXor:
-                nodes.Add(Emit(P2Mnemonic.MOV, dest, left));
-                nodes.Add(Emit(P2Mnemonic.XOR, dest, right));
+                AsmRegisterOperand xorDest = RequireDestinationRegister();
+                nodes.Add(Emit(P2Mnemonic.MOV, xorDest, left));
+                nodes.Add(Emit(P2Mnemonic.XOR, xorDest, right));
                 break;
 
             case BoundBinaryOperatorKind.ShiftLeft:
-                nodes.Add(Emit(P2Mnemonic.MOV, dest, left));
-                nodes.Add(Emit(P2Mnemonic.SHL, dest, right));
+                AsmRegisterOperand shiftLeftDest = RequireDestinationRegister();
+                nodes.Add(Emit(P2Mnemonic.MOV, shiftLeftDest, left));
+                nodes.Add(Emit(P2Mnemonic.SHL, shiftLeftDest, right));
                 break;
 
             case BoundBinaryOperatorKind.ShiftRight:
-                nodes.Add(Emit(P2Mnemonic.MOV, dest, left));
-                nodes.Add(Emit(P2Mnemonic.SHR, dest, right));
+                AsmRegisterOperand shiftRightDest = RequireDestinationRegister();
+                nodes.Add(Emit(P2Mnemonic.MOV, shiftRightDest, left));
+                nodes.Add(Emit(P2Mnemonic.SHR, shiftRightDest, right));
                 break;
 
             case BoundBinaryOperatorKind.ArithmeticShiftLeft:
-                nodes.Add(Emit(P2Mnemonic.MOV, dest, left));
-                nodes.Add(Emit(P2Mnemonic.SAL, dest, right));
+                AsmRegisterOperand arithmeticShiftLeftDest = RequireDestinationRegister();
+                nodes.Add(Emit(P2Mnemonic.MOV, arithmeticShiftLeftDest, left));
+                nodes.Add(Emit(P2Mnemonic.SAL, arithmeticShiftLeftDest, right));
                 break;
 
             case BoundBinaryOperatorKind.ArithmeticShiftRight:
-                nodes.Add(Emit(P2Mnemonic.MOV, dest, left));
-                nodes.Add(Emit(P2Mnemonic.SAR, dest, right));
+                AsmRegisterOperand arithmeticShiftRightDest = RequireDestinationRegister();
+                nodes.Add(Emit(P2Mnemonic.MOV, arithmeticShiftRightDest, left));
+                nodes.Add(Emit(P2Mnemonic.SAR, arithmeticShiftRightDest, right));
                 break;
 
             case BoundBinaryOperatorKind.RotateLeft:
-                nodes.Add(Emit(P2Mnemonic.MOV, dest, left));
-                nodes.Add(Emit(P2Mnemonic.ROL, dest, right));
+                AsmRegisterOperand rotateLeftDest = RequireDestinationRegister();
+                nodes.Add(Emit(P2Mnemonic.MOV, rotateLeftDest, left));
+                nodes.Add(Emit(P2Mnemonic.ROL, rotateLeftDest, right));
                 break;
 
             case BoundBinaryOperatorKind.RotateRight:
-                nodes.Add(Emit(P2Mnemonic.MOV, dest, left));
-                nodes.Add(Emit(P2Mnemonic.ROR, dest, right));
+                AsmRegisterOperand rotateRightDest = RequireDestinationRegister();
+                nodes.Add(Emit(P2Mnemonic.MOV, rotateRightDest, left));
+                nodes.Add(Emit(P2Mnemonic.ROR, rotateRightDest, right));
                 break;
 
             case BoundBinaryOperatorKind.Equals:
                 nodes.Add(Emit(P2Mnemonic.CMP, left, right, flagEffect: P2FlagEffect.WZ));
-                if (!isFlagOnly)
-                    nodes.Add(Emit(P2Mnemonic.BITZ, dest, new AsmImmediateOperand(0)));
+                if (materializeComparisonResult)
+                    MaterializeFlagValue(MirFlag.Z);
                 break;
 
             case BoundBinaryOperatorKind.NotEquals:
                 nodes.Add(Emit(P2Mnemonic.CMP, left, right, flagEffect: P2FlagEffect.WZ));
-                if (!isFlagOnly)
-                    nodes.Add(Emit(P2Mnemonic.BITNZ, dest, new AsmImmediateOperand(0)));
+                if (materializeComparisonResult)
+                    MaterializeFlagValue(MirFlag.NZ);
                 break;
 
             case BoundBinaryOperatorKind.Less:
                 EmitOrderingCompare(nodes, operation, left, right, swapOperands: false);
-                if (!isFlagOnly)
-                    nodes.Add(Emit(P2Mnemonic.BITC, dest, new AsmImmediateOperand(0)));
+                if (materializeComparisonResult)
+                    MaterializeFlagValue(MirFlag.C);
                 break;
 
             case BoundBinaryOperatorKind.LessOrEqual:
                 EmitOrderingCompare(nodes, operation, left, right, swapOperands: true);
-                if (!isFlagOnly)
-                    nodes.Add(Emit(P2Mnemonic.BITNC, dest, new AsmImmediateOperand(0)));
+                if (materializeComparisonResult)
+                    MaterializeFlagValue(MirFlag.NC);
                 break;
 
             case BoundBinaryOperatorKind.Greater:
                 EmitOrderingCompare(nodes, operation, left, right, swapOperands: true);
-                if (!isFlagOnly)
-                    nodes.Add(Emit(P2Mnemonic.BITC, dest, new AsmImmediateOperand(0)));
+                if (materializeComparisonResult)
+                    MaterializeFlagValue(MirFlag.C);
                 break;
 
             case BoundBinaryOperatorKind.GreaterOrEqual:
                 EmitOrderingCompare(nodes, operation, left, right, swapOperands: false);
-                if (!isFlagOnly)
-                    nodes.Add(Emit(P2Mnemonic.BITNC, dest, new AsmImmediateOperand(0)));
+                if (materializeComparisonResult)
+                    MaterializeFlagValue(MirFlag.NC);
                 break;
 
             default:
@@ -2172,36 +2197,42 @@ public static class AsmLowerer
         LirUnaryOperation operation,
         LoweringContext ctx)
     {
-        AsmRegisterOperand dest = DestReg(op, ctx);
-        AsmRegisterOperand src = OpReg(op.Operands[0], ctx);
         BoundUnaryOperatorKind kind = operation.OperatorKind;
 
         switch (kind)
         {
             case BoundUnaryOperatorKind.Negation:
-                nodes.Add(Emit(P2Mnemonic.NEG, dest, src));
+                AsmRegisterOperand negDest = DestReg(op, ctx);
+                AsmRegisterOperand negSrc = OpReg(op.Operands[0], ctx);
+                nodes.Add(Emit(P2Mnemonic.NEG, negDest, negSrc));
                 break;
 
             case BoundUnaryOperatorKind.LogicalNot:
                 if (IsSingleBitType(op.ResultType))
                 {
-                    nodes.Add(Emit(P2Mnemonic.MOV, dest, src));
-                    nodes.Add(Emit(P2Mnemonic.BITNOT, dest, new AsmImmediateOperand(0)));
+                    EmitSingleBitTruthTest(nodes, op.Operands[0], P2FlagEffect.WC, ctx);
+                    EmitCurrentLogicalFlagValue(nodes, op.Destination!, MirFlag.NC, ctx);
                 }
                 else
                 {
-                    nodes.Add(Emit(P2Mnemonic.CMP, src, new AsmImmediateOperand(0), flagEffect: P2FlagEffect.WZ));
-                    nodes.Add(Emit(P2Mnemonic.WRZ, dest));
+                    AsmRegisterOperand notDest = DestReg(op, ctx);
+                    AsmRegisterOperand notSrc = OpReg(op.Operands[0], ctx);
+                    nodes.Add(Emit(P2Mnemonic.CMP, notSrc, new AsmImmediateOperand(0), flagEffect: P2FlagEffect.WZ));
+                    nodes.Add(Emit(P2Mnemonic.WRZ, notDest));
                 }
 
                 break;
 
             case BoundUnaryOperatorKind.BitwiseNot:
-                nodes.Add(Emit(P2Mnemonic.NOT, dest, src));
+                AsmRegisterOperand bitwiseNotDest = DestReg(op, ctx);
+                AsmRegisterOperand bitwiseNotSrc = OpReg(op.Operands[0], ctx);
+                nodes.Add(Emit(P2Mnemonic.NOT, bitwiseNotDest, bitwiseNotSrc));
                 break;
 
             case BoundUnaryOperatorKind.UnaryPlus:
-                nodes.Add(Emit(P2Mnemonic.MOV, dest, src));
+                AsmRegisterOperand unaryPlusDest = DestReg(op, ctx);
+                AsmRegisterOperand unaryPlusSrc = OpReg(op.Operands[0], ctx);
+                nodes.Add(Emit(P2Mnemonic.MOV, unaryPlusDest, unaryPlusSrc));
                 break;
 
             default:
@@ -2455,19 +2486,8 @@ public static class AsmLowerer
 
     private static void LowerCallExtractFlag(List<AsmNode> nodes, LirOpInstruction op, MirFlag flag, LoweringContext ctx)
     {
-        Assert.Invariant(op.Destination is not null, "call.extract pseudo-op must have a destination register");
-        LirVirtualRegister dest = op.Destination!;
-
-        AsmRegisterOperand destReg = new(ctx.GetRegister(dest));
-        P2Mnemonic opcode = flag switch
-        {
-            MirFlag.C => P2Mnemonic.BITC,
-            MirFlag.NC => P2Mnemonic.BITNC,
-            MirFlag.Z => P2Mnemonic.BITZ,
-            MirFlag.NZ => P2Mnemonic.BITNZ,
-            _ => Assert.UnreachableValue<P2Mnemonic>(), // pragma: force-coverage
-        };
-        nodes.Add(Emit(opcode, destReg, new AsmImmediateOperand(0)));
+        Assert.Invariant(op.Destination is not null, "call.extract pseudo-op must have a destination value");
+        EmitCurrentLogicalFlagValue(nodes, op.Destination!, flag, ctx);
     }
 
     private static void LowerIntrinsic(List<AsmNode> nodes, LirOpInstruction op, LoweringContext ctx)
@@ -2935,12 +2955,21 @@ public static class AsmLowerer
         IReadOnlyList<ReturnSlot> returnSlots = ctx.Function.ReturnSlots;
         for (int i = 1; i < ret.Values.Count && i < returnSlots.Count; i++)
         {
-            AsmOperand flagValue = LowerOperand(ret.Values[i], ctx);
             ReturnPlacement placement = returnSlots[i].Placement;
             if (placement == ReturnPlacement.FlagC)
-                nodes.Add(new AsmInstructionNode(P2Mnemonic.TESTB, [flagValue, new AsmImmediateOperand(0)], flagEffect: P2FlagEffect.WC));
+            {
+                if (TryElideReturnedHardwareFlagRestore(nodes, ret.Values[i], placement, ctx))
+                    continue;
+
+                EmitSingleBitTruthTest(nodes, ret.Values[i], P2FlagEffect.WC, ctx);
+            }
             else if (placement == ReturnPlacement.FlagZ)
-                nodes.Add(new AsmInstructionNode(P2Mnemonic.TESTB, [flagValue, new AsmImmediateOperand(0)], flagEffect: P2FlagEffect.WZ));
+            {
+                if (TryElideReturnedHardwareFlagRestore(nodes, ret.Values[i], placement, ctx))
+                    continue;
+
+                EmitSingleBitTruthTest(nodes, ret.Values[i], P2FlagEffect.WZ, ctx);
+            }
         }
 
         switch (ctx.Tier)
@@ -3005,61 +3034,97 @@ public static class AsmLowerer
             new AsmSymbolOperand(new ControlFlowLabelSymbol(DefaultHaltLabel), AsmSymbolAddressingMode.Immediate)));
     }
 
+    private static bool TryElideReturnedHardwareFlagRestore(
+        List<AsmNode> nodes,
+        LirOperand value,
+        ReturnPlacement placement,
+        LoweringContext ctx)
+    {
+        if (value is not LirFlagOperand flagOperand)
+            return false;
+
+        P2Mnemonic captureMnemonic = placement switch
+        {
+            ReturnPlacement.FlagC => P2Mnemonic.BITC,
+            ReturnPlacement.FlagZ => P2Mnemonic.BITZ,
+            _ => Assert.UnreachableValue<P2Mnemonic>(), // pragma: force-coverage
+        };
+
+        P2FlagEffect clobberingEffect = placement switch
+        {
+            ReturnPlacement.FlagC => P2FlagEffect.WC | P2FlagEffect.WCZ | P2FlagEffect.ANDC | P2FlagEffect.ORC | P2FlagEffect.XORC,
+            ReturnPlacement.FlagZ => P2FlagEffect.WZ | P2FlagEffect.WCZ | P2FlagEffect.ANDZ | P2FlagEffect.ORZ | P2FlagEffect.XORZ,
+            _ => Assert.UnreachableValue<P2FlagEffect>(), // pragma: force-coverage
+        };
+
+        VirtualAsmFlag asmFlag = ctx.GetFlag(flagOperand.Flag);
+        int captureIndex = -1;
+
+        for (int i = nodes.Count - 1; i >= 0; i--)
+        {
+            if (nodes[i] is not AsmInstructionNode instruction)
+                continue;
+
+            if (IsMatchingReturnedFlagSnapshot(instruction, asmFlag, captureMnemonic))
+            {
+                captureIndex = i;
+                break;
+            }
+        }
+
+        if (captureIndex < 0)
+            return false;
+
+        for (int i = captureIndex + 1; i < nodes.Count; i++)
+        {
+            if (nodes[i] is not AsmInstructionNode instruction)
+                continue;
+
+            if ((instruction.FlagEffect & clobberingEffect) != 0)
+                return false;
+
+            if (AsmOptimizationHelpers.EnumerateUsedRegisters(instruction).Contains(asmFlag))
+                return false;
+
+            if (AsmOptimizationHelpers.TryGetDefinedRegister(instruction, out VirtualAsmValue? definedValue)
+                && ReferenceEquals(definedValue, asmFlag))
+            {
+                return false;
+            }
+        }
+
+        nodes.RemoveAt(captureIndex);
+        return true;
+    }
+
+    private static bool IsMatchingReturnedFlagSnapshot(
+        AsmInstructionNode instruction,
+        VirtualAsmFlag flag,
+        P2Mnemonic captureMnemonic)
+    {
+        return instruction.Mnemonic == captureMnemonic
+            && instruction.Condition is null
+            && instruction.FlagEffect == P2FlagEffect.None
+            && instruction.Operands.Count == 2
+            && instruction.Operands[0] is AsmFlagOperand flagOperand
+            && ReferenceEquals(flagOperand.Flag, flag)
+            && instruction.Operands[1] is AsmImmediateOperand { Value: 0 };
+    }
+
     private static void LowerBranch(List<AsmNode> nodes, LoweringContext ctx, LirBranchTerminator branch)
     {
         ControlFlowLabelSymbol trueLabel = ctx.GetBlockLabel(branch.TrueTarget);
         ControlFlowLabelSymbol falseLabel = ctx.GetBlockLabel(branch.FalseTarget);
 
-        // Flag-aware branch: the condition already lives in a hardware flag (C or Z).
-        // Use predicated jumps directly — no register test needed.
-        if (branch.ConditionFlag is not null)
-        {
-            // The MirFlag encodes polarity: C/Z mean "true when flag set",
-            // NC/NZ mean "true when flag clear".
-            P2ConditionCode truePredicate = branch.ConditionFlag.Value switch
-            {
-                MirFlag.C => P2ConditionCode.IF_C,
-                MirFlag.NC => P2ConditionCode.IF_NC,
-                MirFlag.Z => P2ConditionCode.IF_Z,
-                MirFlag.NZ => P2ConditionCode.IF_NZ,
-                _ => Assert.UnreachableValue<P2ConditionCode>(), // pragma: force-coverage
-            };
-            P2ConditionCode falsePredicate = branch.ConditionFlag.Value switch
-            {
-                MirFlag.C => P2ConditionCode.IF_NC,
-                MirFlag.NC => P2ConditionCode.IF_C,
-                MirFlag.Z => P2ConditionCode.IF_NZ,
-                MirFlag.NZ => P2ConditionCode.IF_Z,
-                _ => Assert.UnreachableValue<P2ConditionCode>(), // pragma: force-coverage
-            };
-
-            if (branch.TrueArguments.Count == 0 && branch.FalseArguments.Count == 0)
-            {
-                nodes.Add(Emit(P2Mnemonic.JMP, new AsmSymbolOperand(falseLabel, AsmSymbolAddressingMode.Immediate), predicate: falsePredicate));
-                nodes.Add(Emit(P2Mnemonic.JMP, new AsmSymbolOperand(trueLabel, AsmSymbolAddressingMode.Immediate)));
-            }
-            else
-            {
-                EmitPhiMovesConditioned(nodes, branch.FalseArguments, ctx, branch.FalseTarget, falsePredicate);
-                nodes.Add(Emit(P2Mnemonic.JMP, new AsmSymbolOperand(falseLabel, AsmSymbolAddressingMode.Immediate), predicate: falsePredicate));
-                EmitPhiMoves(nodes, branch.TrueArguments, ctx, branch.TrueTarget);
-                nodes.Add(Emit(P2Mnemonic.JMP, new AsmSymbolOperand(trueLabel, AsmSymbolAddressingMode.Immediate)));
-            }
-
-            return;
-        }
-
-        // Register-based branch: test the condition register.
-        AsmRegisterOperand cond = OpReg(branch.Condition, ctx);
-
         if (branch.TrueArguments.Count == 0 && branch.FalseArguments.Count == 0)
         {
-            nodes.Add(Emit(P2Mnemonic.TJZ, cond, new AsmSymbolOperand(falseLabel, AsmSymbolAddressingMode.Immediate)));
+            EmitSingleBitTruthTest(nodes, branch.Condition, P2FlagEffect.WZ, ctx);
+            nodes.Add(Emit(P2Mnemonic.JMP, new AsmSymbolOperand(falseLabel, AsmSymbolAddressingMode.Immediate), predicate: P2ConditionCode.IF_Z));
             nodes.Add(Emit(P2Mnemonic.JMP, new AsmSymbolOperand(trueLabel, AsmSymbolAddressingMode.Immediate)));
         }
         else
         {
-            nodes.Add(Emit(P2Mnemonic.CMP, cond, new AsmImmediateOperand(0), flagEffect: P2FlagEffect.WZ));
+            EmitSingleBitTruthTest(nodes, branch.Condition, P2FlagEffect.WZ, ctx);
 
             // False path (Z=1, condition was zero)
             EmitPhiMovesConditioned(nodes, branch.FalseArguments, ctx, branch.FalseTarget, P2ConditionCode.IF_Z);
@@ -3093,11 +3158,17 @@ public static class AsmLowerer
         for (int i = 0; i < arguments.Count; i++)
         {
             LirBlockParameter parameter = targetParams[i];
+            if (IsSingleBitType(parameter.Type))
+            {
+                EmitSingleBitMove(nodes, parameter.Value, arguments[i], ctx, predicate, isPhiMove: true);
+                continue;
+            }
+
             int laneCount = GetAggregateLaneCount(parameter.Type);
             for (int lane = 0; lane < laneCount; lane++)
             {
                 AsmOperand src = LowerOperandLane(arguments[i], parameter.Type, lane, ctx);
-                AsmRegisterOperand paramReg = new(ctx.GetRegisterLane(parameter.Register, parameter.Type, lane));
+                AsmRegisterOperand paramReg = new(ctx.GetRegisterLane(parameter.Value, parameter.Type, lane));
                 nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [paramReg, src], predicate, isPhiMove: true));
             }
         }
@@ -3162,7 +3233,12 @@ public static class AsmLowerer
         foreach (LirBlock block in function.Blocks)
         {
             foreach (LirBlockParameter parameter in block.Parameters)
-                types[parameter.Register] = parameter.Type;
+            {
+                if (parameter.Value is LirVirtualRegister register)
+                {
+                    types[register] = parameter.Type;
+                }
+            }
 
             foreach (LirInstruction instruction in block.Instructions)
             {
@@ -3210,14 +3286,22 @@ public static class AsmLowerer
 
     private static AsmRegisterOperand OpReg(LirOperand operand, LoweringContext ctx)
     {
-        Assert.Invariant(operand is LirRegisterOperand, $"Expected register operand, got {operand.GetType().Name}");
-        return new AsmRegisterOperand(ctx.GetRegister(((LirRegisterOperand)operand).Register));
+        return operand switch
+        {
+            LirRegisterOperand register => new AsmRegisterOperand(ctx.GetRegister(register.Register)),
+            LirFlagOperand flag => new AsmRegisterOperand(ctx.GetRegister(flag.Flag)),
+            _ => Assert.UnreachableValue<AsmRegisterOperand>($"Expected register-backed operand, got {operand.GetType().Name}."), // pragma: force-coverage
+        };
     }
 
     private static AsmRegisterOperand OpRegLane(LirOperand operand, BladeType? type, int lane, LoweringContext ctx)
     {
-        Assert.Invariant(operand is LirRegisterOperand, $"Expected register operand, got {operand.GetType().Name}");
-        return new AsmRegisterOperand(ctx.GetRegisterLane(((LirRegisterOperand)operand).Register, type, lane));
+        return operand switch
+        {
+            LirRegisterOperand register => new AsmRegisterOperand(ctx.GetRegisterLane(register.Register, type, lane)),
+            LirFlagOperand flag => new AsmRegisterOperand(ctx.GetRegisterLane(flag.Flag, type, lane)),
+            _ => Assert.UnreachableValue<AsmRegisterOperand>($"Expected register-backed lane operand, got {operand.GetType().Name}."), // pragma: force-coverage
+        };
     }
 
     private static AsmOperand LowerOperandLane(LirOperand operand, BladeType? type, int lane, LoweringContext ctx)
@@ -3225,6 +3309,7 @@ public static class AsmLowerer
         return operand switch
         {
             LirRegisterOperand reg => new AsmRegisterOperand(ctx.GetRegisterLane(reg.Register, type, lane)),
+            LirFlagOperand flag => new AsmFlagOperand((VirtualAsmFlag)ctx.GetRegisterLane(flag.Flag, type, lane)),
             LirImmediateOperand imm when lane == 0 => LowerImmediateValue(imm.Value, ctx.StorageCatalog, ctx.Image),
             _ => Assert.UnreachableValue<AsmOperand>($"Operand '{operand.GetType().Name}' cannot be lowered as aggregate lane {lane}."), // pragma: force-coverage
         };
@@ -3232,12 +3317,15 @@ public static class AsmLowerer
 
     private static BladeType? GetRegisterOperandType(LirOperand operand, LoweringContext ctx)
     {
-        Assert.Invariant(operand is LirRegisterOperand, $"Expected register operand, got {operand.GetType().Name}");
-        LirVirtualRegister register = ((LirRegisterOperand)operand).Register;
-        return ctx.RegisterTypes.GetValueOrDefault(register);
+        return operand switch
+        {
+            LirRegisterOperand register => ctx.RegisterTypes.GetValueOrDefault(register.Register),
+            LirFlagOperand => BuiltinTypes.Bool,
+            _ => Assert.UnreachableValue<BladeType?>($"Expected register-backed operand, got {operand.GetType().Name}."), // pragma: force-coverage
+        };
     }
 
-    private static void ZeroAggregate(List<AsmNode> nodes, LirVirtualRegister register, BladeType? type, LoweringContext ctx)
+    private static void ZeroAggregate(List<AsmNode> nodes, VirtualLirValue register, BladeType? type, LoweringContext ctx)
     {
         int laneCount = GetAggregateLaneCount(type);
         for (int lane = 0; lane < laneCount; lane++)
@@ -3249,7 +3337,7 @@ public static class AsmLowerer
 
     private static void CopyAggregateValue(
         List<AsmNode> nodes,
-        LirVirtualRegister destination,
+        VirtualLirValue destination,
         BladeType? type,
         LirOperand source,
         LoweringContext ctx)
@@ -3259,7 +3347,7 @@ public static class AsmLowerer
 
     private static void CopyAggregateValueNonElidable(
         List<AsmNode> nodes,
-        LirVirtualRegister destination,
+        VirtualLirValue destination,
         BladeType? type,
         LirOperand source,
         LoweringContext ctx)
@@ -3269,7 +3357,7 @@ public static class AsmLowerer
 
     private static void CopyAggregateValueCore(
         List<AsmNode> nodes,
-        LirVirtualRegister destination,
+        VirtualLirValue destination,
         BladeType? type,
         LirOperand source,
         LoweringContext ctx,
@@ -3287,7 +3375,7 @@ public static class AsmLowerer
 
     private static bool TryCopyAggregateMemberLanes(
         List<AsmNode> nodes,
-        LirVirtualRegister destination,
+        VirtualLirValue destination,
         BladeType? memberType,
         LirOperand receiver,
         BladeType? receiverType,
@@ -3311,7 +3399,7 @@ public static class AsmLowerer
 
     private static bool TryStoreAggregateValueIntoAggregate(
         List<AsmNode> nodes,
-        LirVirtualRegister destination,
+        VirtualLirValue destination,
         BladeType? destinationType,
         int byteOffset,
         LirOperand value,
@@ -3338,9 +3426,101 @@ public static class AsmLowerer
         return operand switch
         {
             LirRegisterOperand reg => new AsmRegisterOperand(ctx.GetRegister(reg.Register)),
+            LirFlagOperand flag => new AsmFlagOperand(ctx.GetFlag(flag.Flag)),
             LirImmediateOperand imm => LowerImmediateValue(imm.Value, ctx.StorageCatalog, ctx.Image),
             LirPlaceOperand place => CreatePlaceOperand(ctx.ResolvePlace(place.Place)),
             _ => Assert.UnreachableValue<AsmOperand>(), // pragma: force-coverage
+        };
+    }
+
+    private static void EmitSingleBitTruthTest(
+        List<AsmNode> nodes,
+        LirOperand operand,
+        P2FlagEffect flagEffect,
+        LoweringContext ctx,
+        P2ConditionCode? predicate = null,
+        bool isPhiMove = false)
+    {
+        nodes.Add(new AsmInstructionNode(P2Mnemonic.TESTB, [LowerOperand(operand, ctx), new AsmImmediateOperand(0)], predicate, flagEffect, isPhiMove: isPhiMove));
+    }
+
+    private static void EmitCurrentLogicalFlagValue(
+        List<AsmNode> nodes,
+        VirtualLirValue destination,
+        MirFlag flag,
+        LoweringContext ctx,
+        P2ConditionCode? predicate = null,
+        bool isPhiMove = false)
+    {
+        switch (destination)
+        {
+            case VirtualLirFlag logicalFlag:
+                nodes.Add(new AsmInstructionNode(MapBitWriteMnemonic(flag), [new AsmFlagOperand(ctx.GetFlag(logicalFlag)), new AsmImmediateOperand(0)], predicate, isPhiMove: isPhiMove));
+                break;
+
+            case LirVirtualRegister register:
+                nodes.Add(new AsmInstructionNode(MapFlagToRegisterMnemonic(flag), [new AsmRegisterOperand(ctx.GetRegister(register))], predicate, isPhiMove: isPhiMove));
+                break;
+
+            default:
+                Assert.Unreachable($"Unexpected LIR value destination '{destination.GetType().Name}'."); // pragma: force-coverage
+                break; // pragma: force-coverage
+        }
+    }
+
+    private static void EmitSingleBitMove(
+        List<AsmNode> nodes,
+        VirtualLirValue destination,
+        LirOperand source,
+        LoweringContext ctx,
+        P2ConditionCode? predicate = null,
+        bool isPhiMove = false)
+    {
+        if (source is LirImmediateOperand immediate)
+        {
+            long immediateValue = GetNumericImmediateValue(immediate.Value);
+            Assert.Invariant(immediateValue is 0 or 1, "Single-bit moves must normalize immediates to 0 or 1.");
+            switch (destination)
+            {
+                case VirtualLirFlag flagDestination:
+                    nodes.Add(new AsmInstructionNode(immediateValue == 1 ? P2Mnemonic.BITH : P2Mnemonic.BITL, [new AsmFlagOperand(ctx.GetFlag(flagDestination)), new AsmImmediateOperand(0)], predicate, isPhiMove: isPhiMove));
+                    return;
+
+                case LirVirtualRegister registerDestination:
+                    nodes.Add(new AsmInstructionNode(P2Mnemonic.MOV, [new AsmRegisterOperand(ctx.GetRegister(registerDestination)), new AsmImmediateOperand(immediateValue)], predicate, isPhiMove: isPhiMove));
+                    return;
+
+                default:
+                    Assert.Unreachable($"Unexpected single-bit destination '{destination.GetType().Name}'."); // pragma: force-coverage
+                    return; // pragma: force-coverage
+            }
+        }
+
+        EmitSingleBitTruthTest(nodes, source, P2FlagEffect.WC, ctx, predicate, isPhiMove);
+        EmitCurrentLogicalFlagValue(nodes, destination, MirFlag.C, ctx, predicate, isPhiMove);
+    }
+
+    private static P2Mnemonic MapBitWriteMnemonic(MirFlag flag)
+    {
+        return flag switch
+        {
+            MirFlag.C => P2Mnemonic.BITC,
+            MirFlag.NC => P2Mnemonic.BITNC,
+            MirFlag.Z => P2Mnemonic.BITZ,
+            MirFlag.NZ => P2Mnemonic.BITNZ,
+            _ => Assert.UnreachableValue<P2Mnemonic>(), // pragma: force-coverage
+        };
+    }
+
+    private static P2Mnemonic MapFlagToRegisterMnemonic(MirFlag flag)
+    {
+        return flag switch
+        {
+            MirFlag.C => P2Mnemonic.WRC,
+            MirFlag.NC => P2Mnemonic.WRNC,
+            MirFlag.Z => P2Mnemonic.WRZ,
+            MirFlag.NZ => P2Mnemonic.WRNZ,
+            _ => Assert.UnreachableValue<P2Mnemonic>(), // pragma: force-coverage
         };
     }
 

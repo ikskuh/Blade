@@ -636,7 +636,7 @@ public static class MirLowerer
             for (int i = 0; i < _returnTypes.Count; i++)
             {
                 BladeType returnType = _returnTypes[i];
-                MirValueId value = NextValue();
+                MirValueId value = CreateValueForType(returnType);
                 _exitBlock.Parameters.Add(new MirBlockParameter(value, $"ret{i}", returnType));
             }
         }
@@ -698,7 +698,14 @@ public static class MirLowerer
             return block;
         }
 
-        private MirValueId NextValue() => new();
+        private MirValueId NextValue() => new MirVirtualRegister();
+
+        private MirValueId NextFlagValue() => new MirVirtualFlag();
+
+        private MirValueId CreateValueForType(BladeType type)
+        {
+            return NeedsFlagValueSpace(type) ? NextFlagValue() : NextValue();
+        }
 
         private void EnsureWritableBlock()
         {
@@ -839,12 +846,12 @@ public static class MirLowerer
 
             // When the inline asm has a flag output (@C or @Z), it produces a flag-typed result.
             // This value represents the flag state after the asm executes and can be used
-            // directly by branches or materialized to a register when needed.
+            // directly by branches or materialized later when needed.
             MirValueId? flagResult = null;
             BladeType? flagResultType = null;
             if (asmStatement.FlagOutput is not null)
             {
-                flagResult = NextValue();
+                flagResult = NextFlagValue();
                 flagResultType = BuiltinTypes.Bool;
                 MirFlag flag = asmStatement.FlagOutput == InlineAsmFlagOutput.C ? MirFlag.C : MirFlag.Z;
                 _flagValues[flagResult] = flag;
@@ -949,8 +956,8 @@ public static class MirLowerer
             List<(MirValueId Value, BladeType Type)> extraResults = [];
             for (int i = 1; i < targets.Count && i < callExpression.Function.ReturnTypes.Count; i++)
             {
-                MirValueId extraValue = NextValue();
                 BladeType extraType = callExpression.Function.ReturnTypes[i];
+                MirValueId extraValue = CreateValueForType(extraType);
                 extraResults.Add((extraValue, extraType));
             }
 
@@ -991,7 +998,7 @@ public static class MirLowerer
 
             List<(MirValueId Value, BladeType Type)> extraResults = [];
             if (targets.Count > 1)
-                extraResults.Add((NextValue(), BuiltinTypes.Bool));
+                extraResults.Add((NextFlagValue(), BuiltinTypes.Bool));
 
             _currentBlock.Instructions.Add(new MirSpawnInstruction(
                 primaryResult,
@@ -1173,7 +1180,7 @@ public static class MirLowerer
             _currentBlock = conditionBlock;
             ReplaceAutomaticEnvironment(conditionEnv);
             MirValueId currentIndex = ReadSymbol(forStatement.IndexVariable, BuiltinTypes.U32, forStatement.Span);
-            MirValueId condition = NextValue();
+            MirValueId condition = NextFlagValue();
             _currentBlock.Instructions.Add(new MirBinaryInstruction(
                 condition, BuiltinTypes.Bool, BoundBinaryOperatorKind.Less,
                 currentIndex, count, forStatement.Span));
@@ -1184,7 +1191,8 @@ public static class MirLowerer
                 exitBlock.Label,
                 BuildEnvironmentArguments(envSymbols, forStatement.Span),
                 BuildEnvironmentArguments(envSymbols, forStatement.Span),
-                forStatement.Span);
+                forStatement.Span,
+                MirFlag.C);
 
             // Body block.
             _loopStack.Push(new LoopContext(exitBlock.Label, conditionBlock.Label, envSymbols));
@@ -1320,7 +1328,7 @@ public static class MirLowerer
             Dictionary<Symbol, MirValueId> continueEnv = CreateEnvironmentParameters(continueBlock, envSymbols, "repfor");
             Dictionary<Symbol, MirValueId> exitEnv = CreateEnvironmentParameters(exitBlock, envSymbols, "repfor");
 
-            MirValueId hasIterations = NextValue();
+            MirValueId hasIterations = NextFlagValue();
             _currentBlock.Instructions.Add(new MirBinaryInstruction(
                 hasIterations,
                 BuiltinTypes.Bool,
@@ -1336,7 +1344,8 @@ public static class MirLowerer
                 exitBlock.Label,
                 entryArguments,
                 BuildEnvironmentArguments(envSymbols, repForStatement.Span),
-                repForStatement.Span);
+                repForStatement.Span,
+                MirFlag.C);
 
             _loopStack.Push(new LoopContext(exitBlock.Label, continueBlock.Label, envSymbols));
             _currentBlock = bodyBlock;
@@ -1787,7 +1796,7 @@ public static class MirLowerer
 
             MirValueId left = LowerExpression(binaryExpression.Left);
             MirValueId right = LowerExpression(binaryExpression.Right);
-            MirValueId result = NextValue();
+            MirValueId result = IsComparisonOperator(binaryExpression.Operator.Kind) ? NextFlagValue() : NextValue();
             ComparisonLoweringKind comparisonLoweringKind = GetComparisonLoweringKind(binaryExpression);
             _currentBlock.Instructions.Add(new MirBinaryInstruction(
                 result,
@@ -1850,6 +1859,16 @@ public static class MirLowerer
                 or BoundBinaryOperatorKind.GreaterOrEqual;
         }
 
+        private static bool IsComparisonOperator(BoundBinaryOperatorKind operatorKind)
+        {
+            return operatorKind is BoundBinaryOperatorKind.Equals
+                or BoundBinaryOperatorKind.NotEquals
+                or BoundBinaryOperatorKind.Less
+                or BoundBinaryOperatorKind.LessOrEqual
+                or BoundBinaryOperatorKind.Greater
+                or BoundBinaryOperatorKind.GreaterOrEqual;
+        }
+
         private static bool TryGetIntegerLiteralValue(BoundExpression expression, out long value)
         {
             if (expression is BoundLiteralExpression literal
@@ -1883,7 +1902,7 @@ public static class MirLowerer
             BlockBuilder rhsBlock = CreateBlock();
             BlockBuilder shortCircuitBlock = CreateBlock();
             BlockBuilder mergeBlock = CreateBlock();
-            MirValueId result = NextValue();
+            MirValueId result = CreateValueForType(BuiltinTypes.Bool);
             mergeBlock.Parameters.Add(new MirBlockParameter(result, "logic", BuiltinTypes.Bool));
             Dictionary<Symbol, MirValueId> mergeEnv = CreateEnvironmentParameters(mergeBlock, envSymbols, "logic");
 
@@ -1929,7 +1948,7 @@ public static class MirLowerer
             BlockBuilder thenBlock = CreateBlock();
             BlockBuilder elseBlock = CreateBlock();
             BlockBuilder mergeBlock = CreateBlock();
-            MirValueId result = NextValue();
+            MirValueId result = CreateValueForType(ifExpression.Type);
             mergeBlock.Parameters.Add(new MirBlockParameter(result, "ifexpr", ifExpression.Type));
             Dictionary<Symbol, MirValueId> mergeEnv = CreateEnvironmentParameters(mergeBlock, envSymbols, "ifexpr");
 
@@ -2197,8 +2216,9 @@ public static class MirLowerer
             Dictionary<Symbol, MirValueId> values = new(symbols.Count);
             foreach (Symbol symbol in symbols)
             {
-                MirValueId value = NextValue();
-                block.Parameters.Add(new MirBlockParameter(value, $"{prefix}_{symbol.Name}", GetSymbolType(symbol)));
+                BladeType type = GetSymbolType(symbol);
+                MirValueId value = CreateValueForType(type);
+                block.Parameters.Add(new MirBlockParameter(value, $"{prefix}_{symbol.Name}", type));
                 values[symbol] = value;
             }
 
@@ -2259,6 +2279,11 @@ public static class MirLowerer
                 or TokenKind.RotateLeftEqual
                 or TokenKind.RotateRightEqual;
         }
+
+            private static bool NeedsFlagValueSpace(BladeType type)
+            {
+                return type is ScalarTypeSymbol { BitWidth: 1 };
+            }
 
         private MirValueId EmitConstant(BladeValue value, TextSpan span)
         {

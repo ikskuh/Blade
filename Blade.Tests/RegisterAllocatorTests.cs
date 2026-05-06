@@ -80,8 +80,8 @@ public class RegisterAllocatorTests
 
         FunctionLiveness liveness = LivenessAnalyzer.Analyze(function);
 
-        Assert.That(liveness.InterferenceGraph.ContainsKey(srcA.Register), Is.True);
-        Assert.That(liveness.InterferenceGraph[srcA.Register].Contains(srcB.Register), Is.True);
+        Assert.That(liveness.InterferenceGraph.ContainsKey(srcA.Value), Is.True);
+        Assert.That(liveness.InterferenceGraph[srcA.Value].Contains(srcB.Value), Is.True);
     }
 
     private static IrBuildResult CreateBuildResult(AsmModule asmModule)

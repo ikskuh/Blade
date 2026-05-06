@@ -955,6 +955,7 @@ public static class FinalAssemblyWriter
         {
             AsmPhysicalRegisterOperand physical => physical.Name,
             AsmRegisterOperand register => register.Format(),
+            AsmFlagOperand flag => flag.Format(),
             AsmImmediateOperand immediate => immediate.Format(),
             AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Immediate } => "#0",
             AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Register } => "0",
@@ -974,6 +975,7 @@ public static class FinalAssemblyWriter
         {
             AsmPhysicalRegisterOperand physical => physical.Name,
             AsmRegisterOperand register => register.Format(),
+            AsmFlagOperand flag => flag.Format(),
             AsmImmediateOperand immediate => immediate.Format(),
             AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Immediate } => "#0",
             AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Register } => "0",

@@ -205,7 +205,7 @@ public static class MirInliner
                 List<MirBlockParameter> parameters = [];
                 foreach (MirBlockParameter parameter in calleeBlock.Parameters)
                 {
-                    MirValueId newValue = NextValue();
+                     MirValueId newValue = CloneValue(parameter.Value);
                     valueMap[parameter.Value] = newValue;
                     parameters.Add(new MirBlockParameter(newValue, parameter.Name, parameter.Type));
                 }
@@ -232,7 +232,7 @@ public static class MirInliner
             MirValueId? newResult = null;
             if (rewritten.Result is MirValueId oldResult)
             {
-                MirValueId fresh = NextValue();
+                 MirValueId fresh = CloneValue(oldResult);
                 valueMap[oldResult] = fresh;
                 newResult = fresh;
             }
@@ -381,7 +381,7 @@ public static class MirInliner
             return arguments;
         }
 
-        private static MirValueId NextValue() => new();
+        private static MirValueId NextValue() => new MirVirtualRegister();
 
         private MirCallInstruction CloneMirCallInstruction(
             MirCallInstruction call,
@@ -394,13 +394,23 @@ public static class MirInliner
                 clonedExtra = new(call.ExtraResults.Count);
                 foreach ((MirValueId extraVal, BladeType extraType) in call.ExtraResults)
                 {
-                    MirValueId newExtra = NextValue();
+                    MirValueId newExtra = CloneValue(extraVal);
                     valueMap[extraVal] = newExtra;
                     clonedExtra.Add((newExtra, extraType));
                 }
             }
 
             return new MirCallInstruction(newResult, call.ResultType, call.Function, call.Arguments, call.Span, clonedExtra);
+        }
+
+        private static MirValueId CloneValue(MirValueId source)
+        {
+            return source switch
+            {
+                MirVirtualFlag => new MirVirtualFlag(),
+                MirVirtualRegister => new MirVirtualRegister(),
+                _ => Assert.UnreachableValue<MirValueId>($"Unexpected MIR value type '{source.GetType().Name}'."), // pragma: force-coverage
+            };
         }
 
         public MirFunction ToImmutable()

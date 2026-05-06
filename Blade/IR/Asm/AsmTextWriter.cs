@@ -189,7 +189,8 @@ public static class AsmTextWriter
     {
         return operand switch
         {
-            AsmRegisterOperand register => formatter.Format(register.Register),
+            AsmRegisterOperand register => formatter.Format(register.Value),
+            AsmFlagOperand flag => formatter.FormatFlag(flag.Flag),
             _ => operand.Format(),
         };
     }
@@ -199,7 +200,9 @@ public static class AsmTextWriter
         return value switch
         {
             AsmInlineDataOperandValue operandValue when operandValue.Operand is AsmRegisterOperand register && !operandValue.PreserveImmediateSyntax
-                => formatter.Format(register.Register),
+                => formatter.Format(register.Value),
+            AsmInlineDataOperandValue operandValue when operandValue.Operand is AsmFlagOperand flag && !operandValue.PreserveImmediateSyntax
+                => formatter.FormatFlag(flag.Flag),
             AsmInlineDataOperandValue operandValue when operandValue.PreserveImmediateSyntax
                 => FormatOperand(operandValue.Operand, formatter),
             AsmInlineDataOperandValue operandValue
@@ -216,7 +219,8 @@ public static class AsmTextWriter
     {
         return operand switch
         {
-            AsmRegisterOperand register => formatter.Format(register.Register),
+            AsmRegisterOperand register => formatter.Format(register.Value),
+            AsmFlagOperand flag => formatter.FormatFlag(flag.Flag),
             AsmImmediateOperand immediate => immediate.Value.ToString(CultureInfo.InvariantCulture),
             AsmSymbolOperand symbol => symbol.Name,
             _ => operand.Format(),
@@ -225,17 +229,28 @@ public static class AsmTextWriter
 
     private sealed class RegisterFormatter
     {
-        private readonly Dictionary<VirtualAsmRegister, int> _ids = [];
+        private readonly Dictionary<VirtualAsmValue, int> _ids = [];
 
-        public string Format(VirtualAsmRegister register)
+        public string Format(VirtualAsmValue value)
         {
-            if (!_ids.TryGetValue(register, out int id))
+            if (!_ids.TryGetValue(value, out int id))
             {
                 id = _ids.Count;
-                _ids.Add(register, id);
+                _ids.Add(value, id);
             }
 
             return $"%r{id}";
+        }
+
+        public string FormatFlag(VirtualAsmFlag flag)
+        {
+            if (!_ids.TryGetValue(flag, out int id))
+            {
+                id = _ids.Count;
+                _ids.Add(flag, id);
+            }
+
+            return $"%f{id}";
         }
     }
 }

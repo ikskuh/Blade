@@ -3,8 +3,10 @@
 // CONTAINS:
 // - MOV ?, #1
 // - MOV ?, #0
-// - TJZ ?, #?
-// - TJZ ?, #?
+// - TESTB ?, #0 WZ
+// - TESTB ?, #0 WZ
+// - IF_Z JMP #?
+// - IF_Z JMP #?
 // NOTE:
 //   Bool values captured from multi-return calls and then converted via
 //   `if (flag) 1 else 0` must materialize concrete then/else assignments for both

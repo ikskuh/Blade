@@ -44,9 +44,9 @@ public sealed class LirBlock(
     public LirTerminator Terminator { get; } = terminator;
 }
 
-public sealed class LirBlockParameter(LirVirtualRegister register, string name, BladeType type)
+public sealed class LirBlockParameter(VirtualLirValue value, string name, BladeType type)
 {
-    public LirVirtualRegister Register { get; } = register;
+    public VirtualLirValue Value { get; } = Requires.NotNull(value);
     public string Name { get; } = name;
     public BladeType Type { get; } = type;
 }
@@ -55,9 +55,19 @@ public abstract class LirOperand
 {
 }
 
+public sealed class LirValueOperand(VirtualLirValue value) : LirOperand
+{
+    public VirtualLirValue Value { get; } = Requires.NotNull(value);
+}
+
 public sealed class LirRegisterOperand(LirVirtualRegister register) : LirOperand
 {
     public LirVirtualRegister Register { get; } = register;
+}
+
+public sealed class LirFlagOperand(VirtualLirFlag flag) : LirOperand
+{
+    public VirtualLirFlag Flag { get; } = flag;
 }
 
 public sealed class LirImmediateOperand(BladeValue value) : LirOperand
@@ -72,7 +82,7 @@ public sealed class LirPlaceOperand(StoragePlace place) : LirOperand
 }
 
 public abstract class LirInstruction(
-    LirVirtualRegister? destination,
+    VirtualLirValue? destination,
     BladeType? resultType,
     IReadOnlyList<LirOperand> operands,
     bool hasSideEffects,
@@ -81,7 +91,7 @@ public abstract class LirInstruction(
     bool writesZ,
     TextSpan span)
 {
-    public LirVirtualRegister? Destination { get; } = destination;
+    public VirtualLirValue? Destination { get; } = destination;
     public BladeType? ResultType { get; } = resultType;
     public IReadOnlyList<LirOperand> Operands { get; } = operands;
     public bool HasSideEffects { get; } = hasSideEffects;
@@ -565,7 +575,7 @@ public sealed class LirOpInstruction : LirInstruction
 {
     public LirOpInstruction(
         LirOperation operation,
-        LirVirtualRegister? destination,
+        VirtualLirValue? destination,
         BladeType? resultType,
         IReadOnlyList<LirOperand> operands,
         bool hasSideEffects,
@@ -578,7 +588,7 @@ public sealed class LirOpInstruction : LirInstruction
         LirOperation checkedOperation = Requires.NotNull(operation);
         Assert.Invariant(
             destination is null || resultType is not null,
-            "LIR instructions with destination registers must declare a result type.");
+            "LIR instructions with destination values must declare a result type.");
         Assert.Invariant(
             checkedOperation.IsValidResultType(resultType),
             $"Operation '{checkedOperation.DisplayName}' does not accept result type '{resultType?.Name ?? "<null>"}'.");

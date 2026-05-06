@@ -508,3 +508,9 @@ This means we should introduce this concept on a broader scale to implement it.
 
 ## Inline asm support for `LONG {foo}`
 
+
+## Bug: UnaryPlus should never reach AsmLowerer
+
+```cs
+case BoundUnaryOperatorKind.UnaryPlus:
+```

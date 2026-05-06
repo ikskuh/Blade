@@ -20,7 +20,7 @@ public sealed class AsmDeadRegisterElimination : PerFunctionAsmOptimization
             AsmNode node = input.Nodes[i];
             if (node is AsmInstructionNode instruction)
             {
-                IReadOnlySet<VirtualAsmRegister> liveAfterInstruction = liveness.LiveRegistersAfterInstruction.TryGetValue(i, out HashSet<VirtualAsmRegister>? liveSet)
+                IReadOnlySet<VirtualAsmValue> liveAfterInstruction = liveness.LiveRegistersAfterInstruction.TryGetValue(i, out HashSet<VirtualAsmValue>? liveSet)
                     ? liveSet
                     : [];
 
@@ -43,7 +43,7 @@ public sealed class AsmDeadRegisterElimination : PerFunctionAsmOptimization
 
     private static AsmFunction? RunStraightLine(AsmFunction input)
     {
-        HashSet<VirtualAsmRegister> live = [];
+        HashSet<VirtualAsmValue> live = [];
         List<AsmNode> kept = [];
         bool changed = false;
 
@@ -58,14 +58,14 @@ public sealed class AsmDeadRegisterElimination : PerFunctionAsmOptimization
                     continue;
                 }
 
-                if (TryGetDefinedRegister(instruction, out VirtualAsmRegister? definedRegister)
-                    && definedRegister is not null)
+                if (TryGetDefinedRegister(instruction, out VirtualAsmValue? definedValue)
+                    && definedValue is not null)
                 {
-                    live.Remove(definedRegister);
+                    live.Remove(definedValue);
                 }
 
-                foreach (VirtualAsmRegister usedRegister in EnumerateUsedRegisters(instruction))
-                    live.Add(usedRegister);
+                foreach (VirtualAsmValue usedValue in EnumerateUsedRegisters(instruction))
+                    live.Add(usedValue);
             }
 
             kept.Add(node);

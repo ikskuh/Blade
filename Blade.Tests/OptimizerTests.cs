@@ -547,7 +547,7 @@ public class OptimizerTests
         Assert.That(instructions, Has.Length.EqualTo(2));
         Assert.That(instructions[0].Operands[0], Is.TypeOf<AsmRegisterOperand>());
         Assert.That(instructions[1].Operands[1], Is.TypeOf<AsmRegisterOperand>());
-        Assert.That(((AsmRegisterOperand)instructions[1].Operands[1]).Register, Is.SameAs(r1.Register));
+        Assert.That(((AsmRegisterOperand)instructions[1].Operands[1]).Value, Is.SameAs(r1.Value));
     }
 
     [Test]

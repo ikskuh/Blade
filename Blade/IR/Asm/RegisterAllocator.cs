@@ -59,13 +59,13 @@ public static class RegisterAllocator
             livenessMap[function] = LivenessAnalyzer.Analyze(function);
 
         // Step 2: Intra-function graph coloring with MOV coalescing
-        Dictionary<AsmFunction, Dictionary<VirtualAsmRegister, int>> coloringMap = [];
+        Dictionary<AsmFunction, Dictionary<VirtualAsmValue, int>> coloringMap = [];
         Dictionary<AsmFunction, int> functionColorCounts = [];
         Dictionary<AsmFunction, Dictionary<int, AsmRegisterConstraint>> functionColorConstraints = [];
         foreach (AsmFunction function in module.Functions)
         {
             FunctionLiveness liveness = livenessMap[function];
-            (Dictionary<VirtualAsmRegister, int> coloring, int colorCount, Dictionary<int, AsmRegisterConstraint> colorConstraints) = ColorFunction(function, liveness);
+            (Dictionary<VirtualAsmValue, int> coloring, int colorCount, Dictionary<int, AsmRegisterConstraint> colorConstraints) = ColorFunction(function, liveness);
             coloringMap[function] = coloring;
             functionColorCounts[function] = colorCount;
             functionColorConstraints[function] = colorConstraints;
@@ -74,7 +74,7 @@ public static class RegisterAllocator
         // Step 3: Reconstruct call graph from ASMIR and do bottom-up packing
         Dictionary<AsmFunction, HashSet<AsmFunction>> callGraph = ReconstructCallGraph(module);
         (
-            Dictionary<AsmFunction, Dictionary<VirtualAsmRegister, AllocatedLocation>> registerLocationMap,
+            Dictionary<AsmFunction, Dictionary<VirtualAsmValue, AllocatedLocation>> registerLocationMap,
             Dictionary<StoragePlace, AllocatedLocation> placeLocationMap) = PackRegisters(
                 module,
                 cogResourceLayouts,
@@ -99,17 +99,17 @@ public static class RegisterAllocator
         {
             FunctionLiveness liveness = livenessMap[function];
             List<AsmNode> rewrittenNodes = new(function.Nodes.Count);
-            IReadOnlyDictionary<VirtualAsmRegister, int> registerOrder = ComputeRegisterOrder(function);
+            IReadOnlyDictionary<VirtualAsmValue, int> registerOrder = ComputeRegisterOrder(function);
 
             for (int i = 0; i < function.Nodes.Count; i++)
             {
                 if (TryGetRecursiveCallBundle(function.Nodes, i, out int callIndex, out int resultCopyIndex))
                 {
-                    List<VirtualAsmRegister> bundledLiveRegisters = [];
-                    if (liveness.LiveRegistersByCallInstruction.TryGetValue(callIndex, out HashSet<VirtualAsmRegister>? bundledLiveSet))
+                    List<VirtualAsmValue> bundledLiveRegisters = [];
+                    if (liveness.LiveRegistersByCallInstruction.TryGetValue(callIndex, out HashSet<VirtualAsmValue>? bundledLiveSet))
                         bundledLiveRegisters.AddRange(bundledLiveSet.OrderBy(register => registerOrder.GetValueOrDefault(register, int.MaxValue)));
 
-                    foreach (VirtualAsmRegister register in bundledLiveRegisters)
+                    foreach (VirtualAsmValue register in bundledLiveRegisters)
                         rewrittenNodes.Add(new AsmInstructionNode(P2Mnemonic.PUSHB, [new AsmRegisterOperand(register)]));
 
                     for (int bundleIndex = i; bundleIndex <= callIndex; bundleIndex++)
@@ -132,11 +132,11 @@ public static class RegisterAllocator
                     continue;
                 }
 
-                List<VirtualAsmRegister> liveRegisters = [];
-                if (liveness.LiveRegistersByCallInstruction.TryGetValue(i, out HashSet<VirtualAsmRegister>? liveSet))
+                List<VirtualAsmValue> liveRegisters = [];
+                if (liveness.LiveRegistersByCallInstruction.TryGetValue(i, out HashSet<VirtualAsmValue>? liveSet))
                     liveRegisters.AddRange(liveSet.OrderBy(register => registerOrder.GetValueOrDefault(register, int.MaxValue)));
 
-                foreach (VirtualAsmRegister register in liveRegisters)
+                foreach (VirtualAsmValue register in liveRegisters)
                     rewrittenNodes.Add(new AsmInstructionNode(P2Mnemonic.PUSHB, [new AsmRegisterOperand(register)]));
 
                 rewrittenNodes.Add(instruction);
@@ -212,15 +212,17 @@ public static class RegisterAllocator
             };
     }
 
-    private static IReadOnlyDictionary<VirtualAsmRegister, int> ComputeRegisterOrder(AsmFunction function)
+    private static IReadOnlyDictionary<VirtualAsmValue, int> ComputeRegisterOrder(AsmFunction function)
     {
-        Dictionary<VirtualAsmRegister, int> order = [];
+        Dictionary<VirtualAsmValue, int> order = [];
         int next = 0;
 
         void Track(AsmOperand operand)
         {
-            if (operand is AsmRegisterOperand register && !order.ContainsKey(register.Register))
-                order.Add(register.Register, next++);
+            if (operand is AsmRegisterOperand register && !order.ContainsKey(register.Value))
+                order.Add(register.Value, next++);
+            else if (operand is AsmFlagOperand flag && !order.ContainsKey(flag.Flag))
+                order.Add(flag.Flag, next++);
         }
 
         foreach (AsmNode node in function.Nodes)
@@ -241,14 +243,14 @@ public static class RegisterAllocator
     /// Colors the interference graph for a function, with MOV coalescing.
     /// Returns (virtualRegId -> color, totalColors).
     /// </summary>
-    private static (Dictionary<VirtualAsmRegister, int> Coloring, int ColorCount, Dictionary<int, AsmRegisterConstraint> ColorConstraints) ColorFunction(
+    private static (Dictionary<VirtualAsmValue, int> Coloring, int ColorCount, Dictionary<int, AsmRegisterConstraint> ColorConstraints) ColorFunction(
         AsmFunction function,
         FunctionLiveness liveness)
     {
-        IReadOnlyDictionary<VirtualAsmRegister, HashSet<VirtualAsmRegister>> interference = liveness.InterferenceGraph;
+        IReadOnlyDictionary<VirtualAsmValue, HashSet<VirtualAsmValue>> interference = liveness.InterferenceGraph;
 
         // Collect all register IDs
-        HashSet<VirtualAsmRegister> allRegs = [];
+        HashSet<VirtualAsmValue> allRegs = [];
         foreach (AsmNode node in function.Nodes)
         {
             if (node is AsmInstructionNode instruction)
@@ -256,7 +258,9 @@ public static class RegisterAllocator
                 foreach (AsmOperand operand in instruction.Operands)
                 {
                     if (operand is AsmRegisterOperand reg)
-                        allRegs.Add(reg.Register);
+                        allRegs.Add(reg.Value);
+                    else if (operand is AsmFlagOperand flag)
+                        allRegs.Add(flag.Flag);
                 }
             }
         }
@@ -265,49 +269,49 @@ public static class RegisterAllocator
             return ([], 0, []);
 
         // MOV coalescing: merge non-interfering registers connected by plain MOVs
-        Dictionary<VirtualAsmRegister, VirtualAsmRegister> coalesceMap = BuildCoalesceMap(function, interference, allRegs);
+        Dictionary<VirtualAsmValue, VirtualAsmValue> coalesceMap = BuildCoalesceMap(function, interference, allRegs);
 
         // Build coalesced interference graph
-        Dictionary<VirtualAsmRegister, HashSet<VirtualAsmRegister>> coalescedInterference = [];
-        foreach ((VirtualAsmRegister reg, HashSet<VirtualAsmRegister> neighbors) in interference)
+        Dictionary<VirtualAsmValue, HashSet<VirtualAsmValue>> coalescedInterference = [];
+        foreach ((VirtualAsmValue reg, HashSet<VirtualAsmValue> neighbors) in interference)
         {
-            VirtualAsmRegister canonical = Canonical(reg, coalesceMap);
-            if (!coalescedInterference.TryGetValue(canonical, out HashSet<VirtualAsmRegister>? set))
+            VirtualAsmValue canonical = Canonical(reg, coalesceMap);
+            if (!coalescedInterference.TryGetValue(canonical, out HashSet<VirtualAsmValue>? set))
             {
                 set = [];
                 coalescedInterference[canonical] = set;
             }
-            foreach (VirtualAsmRegister neighbor in neighbors)
+            foreach (VirtualAsmValue neighbor in neighbors)
             {
-                VirtualAsmRegister canonicalNeighbor = Canonical(neighbor, coalesceMap);
+                VirtualAsmValue canonicalNeighbor = Canonical(neighbor, coalesceMap);
                 if (canonicalNeighbor != canonical)
                     set.Add(canonicalNeighbor);
             }
         }
 
         // Ensure all registers appear in the graph
-        foreach (VirtualAsmRegister reg in allRegs)
+        foreach (VirtualAsmValue reg in allRegs)
         {
-            VirtualAsmRegister canonical = Canonical(reg, coalesceMap);
+            VirtualAsmValue canonical = Canonical(reg, coalesceMap);
             if (!coalescedInterference.ContainsKey(canonical))
                 coalescedInterference[canonical] = [];
         }
 
         // Greedy coloring ordered by interference degree (descending)
-        List<VirtualAsmRegister> order = coalescedInterference.Keys
+        List<VirtualAsmValue> order = coalescedInterference.Keys
             .OrderByDescending(r => coalescedInterference[r].Count)
             .ToList();
 
-        Dictionary<VirtualAsmRegister, int> canonicalColoring = [];
+        Dictionary<VirtualAsmValue, int> canonicalColoring = [];
         Dictionary<int, AsmRegisterConstraint> colorConstraints = [];
         int maxColor = 0;
 
-        foreach (VirtualAsmRegister reg in order)
+        foreach (VirtualAsmValue reg in order)
         {
             HashSet<int> usedColors = [];
-            if (coalescedInterference.TryGetValue(reg, out HashSet<VirtualAsmRegister>? neighbors))
+            if (coalescedInterference.TryGetValue(reg, out HashSet<VirtualAsmValue>? neighbors))
             {
-                foreach (VirtualAsmRegister neighbor in neighbors)
+                foreach (VirtualAsmValue neighbor in neighbors)
                 {
                     if (canonicalColoring.TryGetValue(neighbor, out int neighborColor))
                         usedColors.Add(neighborColor);
@@ -332,10 +336,10 @@ public static class RegisterAllocator
         }
 
         // Map all original register IDs to their colors (through coalesce map)
-        Dictionary<VirtualAsmRegister, int> coloring = [];
-        foreach (VirtualAsmRegister reg in allRegs)
+        Dictionary<VirtualAsmValue, int> coloring = [];
+        foreach (VirtualAsmValue reg in allRegs)
         {
-            VirtualAsmRegister canonical = Canonical(reg, coalesceMap);
+            VirtualAsmValue canonical = Canonical(reg, coalesceMap);
             coloring[reg] = canonicalColoring[canonical];
         }
 
@@ -346,14 +350,14 @@ public static class RegisterAllocator
     /// Finds pairs of registers connected by plain MOV that can be coalesced
     /// (assigned the same color) because they don't interfere.
     /// </summary>
-    private static Dictionary<VirtualAsmRegister, VirtualAsmRegister> BuildCoalesceMap(
+    private static Dictionary<VirtualAsmValue, VirtualAsmValue> BuildCoalesceMap(
         AsmFunction function,
-        IReadOnlyDictionary<VirtualAsmRegister, HashSet<VirtualAsmRegister>> interference,
-        HashSet<VirtualAsmRegister> allRegs)
+        IReadOnlyDictionary<VirtualAsmValue, HashSet<VirtualAsmValue>> interference,
+        HashSet<VirtualAsmValue> allRegs)
     {
         // Union-find style: coalesceMap[reg] -> canonical representative
-        Dictionary<VirtualAsmRegister, VirtualAsmRegister> parent = [];
-        foreach (VirtualAsmRegister reg in allRegs)
+        Dictionary<VirtualAsmValue, VirtualAsmValue> parent = [];
+        foreach (VirtualAsmValue reg in allRegs)
             parent[reg] = reg;
 
         foreach (AsmNode node in function.Nodes)
@@ -377,8 +381,8 @@ public static class RegisterAllocator
                 continue;
             }
 
-            VirtualAsmRegister destCanonical = Find(parent, dest.Register);
-            VirtualAsmRegister srcCanonical = Find(parent, src.Register);
+            VirtualAsmValue destCanonical = Find(parent, dest.Value);
+            VirtualAsmValue srcCanonical = Find(parent, src.Value);
 
             if (destCanonical == srcCanonical)
                 continue;
@@ -387,8 +391,8 @@ public static class RegisterAllocator
                 continue;
 
             // Check if they interfere
-            bool interferes = interference.TryGetValue(dest.Register, out HashSet<VirtualAsmRegister>? neighbors)
-                              && neighbors.Contains(src.Register);
+            bool interferes = interference.TryGetValue(dest.Value, out HashSet<VirtualAsmValue>? neighbors)
+                              && neighbors.Contains(src.Value);
 
             if (!interferes)
             {
@@ -400,7 +404,7 @@ public static class RegisterAllocator
         return parent;
     }
 
-    private static VirtualAsmRegister Find(Dictionary<VirtualAsmRegister, VirtualAsmRegister> parent, VirtualAsmRegister register)
+    private static VirtualAsmValue Find(Dictionary<VirtualAsmValue, VirtualAsmValue> parent, VirtualAsmValue register)
     {
         while (!ReferenceEquals(parent[register], register))
         {
@@ -410,13 +414,13 @@ public static class RegisterAllocator
         return register;
     }
 
-    private static VirtualAsmRegister Canonical(VirtualAsmRegister reg, Dictionary<VirtualAsmRegister, VirtualAsmRegister> coalesceMap)
+    private static VirtualAsmValue Canonical(VirtualAsmValue reg, Dictionary<VirtualAsmValue, VirtualAsmValue> coalesceMap)
         => Find(coalesceMap, reg);
 
     private static bool CanCoalesce(
-        IReadOnlyDictionary<VirtualAsmRegister, AsmRegisterConstraint> constraints,
-        VirtualAsmRegister left,
-        VirtualAsmRegister right)
+        IReadOnlyDictionary<VirtualAsmValue, AsmRegisterConstraint> constraints,
+        VirtualAsmValue left,
+        VirtualAsmValue right)
     {
         bool hasLeft = constraints.TryGetValue(left, out AsmRegisterConstraint? leftConstraint);
         bool hasRight = constraints.TryGetValue(right, out AsmRegisterConstraint? rightConstraint);
@@ -427,11 +431,11 @@ public static class RegisterAllocator
     }
 
     private static AsmRegisterConstraint? GetCanonicalConstraint(
-        VirtualAsmRegister canonical,
-        IReadOnlyDictionary<VirtualAsmRegister, AsmRegisterConstraint> constraints,
-        Dictionary<VirtualAsmRegister, VirtualAsmRegister> coalesceMap)
+        VirtualAsmValue canonical,
+        IReadOnlyDictionary<VirtualAsmValue, AsmRegisterConstraint> constraints,
+        Dictionary<VirtualAsmValue, VirtualAsmValue> coalesceMap)
     {
-        foreach ((VirtualAsmRegister register, AsmRegisterConstraint constraint) in constraints)
+        foreach ((VirtualAsmValue register, AsmRegisterConstraint constraint) in constraints)
         {
             if (coalesceMap.ContainsKey(register)
                 && ReferenceEquals(Canonical(register, coalesceMap), canonical))
@@ -520,13 +524,13 @@ public static class RegisterAllocator
     // ── Inter-function register packing ─────────────────────────────
 
     private static (
-        Dictionary<AsmFunction, Dictionary<VirtualAsmRegister, AllocatedLocation>> RegisterLocations,
+        Dictionary<AsmFunction, Dictionary<VirtualAsmValue, AllocatedLocation>> RegisterLocations,
         Dictionary<StoragePlace, AllocatedLocation> PlaceLocations)
         PackRegisters(
         AsmModule module,
         CogResourceLayoutSet cogResourceLayouts,
         Dictionary<AsmFunction, HashSet<AsmFunction>> callGraph,
-        Dictionary<AsmFunction, Dictionary<VirtualAsmRegister, int>> coloringMap,
+        Dictionary<AsmFunction, Dictionary<VirtualAsmValue, int>> coloringMap,
         Dictionary<AsmFunction, int> functionColorCounts,
         Dictionary<AsmFunction, Dictionary<int, AsmRegisterConstraint>> functionColorConstraints,
         Dictionary<AsmFunction, FunctionLiveness> livenessMap)
@@ -577,7 +581,7 @@ public static class RegisterAllocator
         {
             int colorCount = functionColorCounts.GetValueOrDefault(function, 0);
             FunctionLiveness liveness = livenessMap[function];
-            Dictionary<VirtualAsmRegister, int> coloring = coloringMap[function];
+            Dictionary<VirtualAsmValue, int> coloring = coloringMap[function];
             Dictionary<int, AsmRegisterConstraint> colorConstraints = functionColorConstraints.GetValueOrDefault(function) ?? [];
             bool foundLayout = cogResourceLayouts.TryGetLayout(function.OwningImage, out CogResourceLayout? functionLayout);
             Assert.Invariant(foundLayout, $"Function '{function.Symbol.Name}' must belong to one image layout.");
@@ -585,7 +589,7 @@ public static class RegisterAllocator
 
             // Determine which colors are live across calls
             HashSet<int> colorsLiveAcrossCall = [];
-            foreach (VirtualAsmRegister reg in liveness.LiveAcrossCallRegisters)
+            foreach (VirtualAsmValue reg in liveness.LiveAcrossCallRegisters)
             {
                 if (coloring.TryGetValue(reg, out int color))
                     colorsLiveAcrossCall.Add(color);
@@ -703,14 +707,14 @@ public static class RegisterAllocator
         }
 
         // Build the final mapping: (function, virtualRegId) -> allocated location
-        Dictionary<AsmFunction, Dictionary<VirtualAsmRegister, AllocatedLocation>> result = [];
+        Dictionary<AsmFunction, Dictionary<VirtualAsmValue, AllocatedLocation>> result = [];
         foreach (AsmFunction function in module.Functions)
         {
-            Dictionary<VirtualAsmRegister, int> coloring = coloringMap[function];
+            Dictionary<VirtualAsmValue, int> coloring = coloringMap[function];
             Dictionary<int, AllocatedLocation> colorToLocation = functionColorToLocation.GetValueOrDefault(function) ?? [];
-            Dictionary<VirtualAsmRegister, AllocatedLocation> regToLocation = [];
+            Dictionary<VirtualAsmValue, AllocatedLocation> regToLocation = [];
 
-            foreach ((VirtualAsmRegister register, int color) in coloring)
+            foreach ((VirtualAsmValue register, int color) in coloring)
             {
                 if (colorToLocation.TryGetValue(color, out AllocatedLocation location))
                     regToLocation[register] = location;
@@ -723,7 +727,7 @@ public static class RegisterAllocator
     }
 
     private static HashSet<StoragePlace> CollectCallClobberedPlaces(
-        IReadOnlyDictionary<AsmFunction, Dictionary<VirtualAsmRegister, int>> coloringMap,
+        IReadOnlyDictionary<AsmFunction, Dictionary<VirtualAsmValue, int>> coloringMap,
         IReadOnlyDictionary<AsmFunction, Dictionary<int, AsmRegisterConstraint>> functionColorConstraints,
         IReadOnlyDictionary<AsmFunction, FunctionLiveness> livenessMap)
     {
@@ -734,10 +738,10 @@ public static class RegisterAllocator
             if (!functionColorConstraints.TryGetValue(function, out Dictionary<int, AsmRegisterConstraint>? colorConstraints))
                 continue;
 
-            if (!coloringMap.TryGetValue(function, out Dictionary<VirtualAsmRegister, int>? coloring))
+            if (!coloringMap.TryGetValue(function, out Dictionary<VirtualAsmValue, int>? coloring))
                 continue;
 
-            foreach (VirtualAsmRegister liveRegister in liveness.LiveAcrossCallRegisters)
+            foreach (VirtualAsmValue liveRegister in liveness.LiveAcrossCallRegisters)
             {
                 if (!coloring.TryGetValue(liveRegister, out int color))
                     continue;
@@ -844,7 +848,7 @@ public static class RegisterAllocator
 
     private static AsmModule RewriteModule(
         AsmModule module,
-        Dictionary<AsmFunction, Dictionary<VirtualAsmRegister, AllocatedLocation>> registerLocationMap,
+        Dictionary<AsmFunction, Dictionary<VirtualAsmValue, AllocatedLocation>> registerLocationMap,
         Dictionary<StoragePlace, AllocatedLocation> placeLocationMap)
     {
         Dictionary<(ImageDescriptor Image, int Slot), AsmSpillSlotSymbol> slotSymbols = [];
@@ -864,7 +868,7 @@ public static class RegisterAllocator
         List<AsmFunction> functions = new(module.Functions.Count);
         foreach (AsmFunction function in module.Functions)
         {
-            Dictionary<VirtualAsmRegister, AllocatedLocation> regToLocation = registerLocationMap[function];
+            Dictionary<VirtualAsmValue, AllocatedLocation> regToLocation = registerLocationMap[function];
             List<AsmNode> rewrittenNodes = new(function.Nodes.Count);
 
             foreach (AsmNode node in function.Nodes)
@@ -981,12 +985,15 @@ public static class RegisterAllocator
     private static AsmOperand RewriteOperand(
         AsmOperand operand,
         ImageDescriptor functionImage,
-        IReadOnlyDictionary<VirtualAsmRegister, AllocatedLocation> regToLocation,
+        IReadOnlyDictionary<VirtualAsmValue, AllocatedLocation> regToLocation,
         IReadOnlyDictionary<StoragePlace, AllocatedLocation> placeLocationMap,
         Func<ImageDescriptor, int, AsmSpillSlotSymbol> getSlotSymbol)
     {
-        if (operand is AsmRegisterOperand reg && regToLocation.TryGetValue(reg.Register, out AllocatedLocation registerLocation))
+        if (operand is AsmRegisterOperand reg && regToLocation.TryGetValue(reg.Value, out AllocatedLocation registerLocation))
             return ToOperand(functionImage, registerLocation, getSlotSymbol);
+
+        if (operand is AsmFlagOperand flag && regToLocation.TryGetValue(flag.Flag, out AllocatedLocation flagLocation))
+            return ToOperand(functionImage, flagLocation, getSlotSymbol);
 
         if (operand is AsmSymbolOperand { Symbol: StoragePlace place, AddressingMode: AsmSymbolAddressingMode.Register }
             && place.IsInternalRegisterSlot

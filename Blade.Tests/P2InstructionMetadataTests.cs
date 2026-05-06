@@ -119,6 +119,10 @@ public class P2InstructionMetadataTests
         Assert.That(P2InstructionMetadata.GetOperandAccess(P2Mnemonic.CALL, 1, 0), Is.EqualTo(P2OperandAccess.Read));
         Assert.That(P2InstructionMetadata.GetOperandAccess(P2Mnemonic.JMP, 1, 0), Is.EqualTo(P2OperandAccess.Read));
         Assert.That(P2InstructionMetadata.GetOperandAccess(P2Mnemonic.ADD, 2, 0), Is.EqualTo(P2OperandAccess.ReadWrite));
+        Assert.That(P2InstructionMetadata.GetOperandAccess(P2Mnemonic.BITC, 2, 0), Is.EqualTo(P2OperandAccess.ReadWrite));
+        Assert.That(P2InstructionMetadata.GetOperandAccess(P2Mnemonic.BITNC, 2, 0), Is.EqualTo(P2OperandAccess.ReadWrite));
+        Assert.That(P2InstructionMetadata.GetOperandAccess(P2Mnemonic.BITZ, 2, 0), Is.EqualTo(P2OperandAccess.ReadWrite));
+        Assert.That(P2InstructionMetadata.GetOperandAccess(P2Mnemonic.BITNZ, 2, 0), Is.EqualTo(P2OperandAccess.ReadWrite));
         Assert.That(P2InstructionMetadata.GetOperandAccess(P2Mnemonic.ADD, 2, 1), Is.EqualTo(P2OperandAccess.Read));
         Assert.That(P2InstructionMetadata.GetOperandAccess(P2Mnemonic.GETNIB, 3, 2), Is.EqualTo(P2OperandAccess.None));
     }

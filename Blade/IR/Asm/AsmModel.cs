@@ -212,7 +212,7 @@ public sealed class AsmFunction(
     LirFunction sourceFunction,
     CallingConventionTier ccTier,
     IReadOnlyList<AsmNode> nodes,
-    IReadOnlyDictionary<VirtualAsmRegister, AsmRegisterConstraint>? registerConstraints = null,
+    IReadOnlyDictionary<VirtualAsmValue, AsmRegisterConstraint>? registerConstraints = null,
     IReadOnlyList<StoragePlace>? sharedRegisterPlaces = null) : IAsmSymbol
 {
     public AsmFunction(AsmFunction sourceFunction, IReadOnlyList<AsmNode> nodes)
@@ -234,7 +234,7 @@ public sealed class AsmFunction(
     public bool IsEntryPoint => SourceFunction.IsEntryPoint;
     public CallingConventionTier CcTier { get; } = ccTier;
     public IReadOnlyList<AsmNode> Nodes { get; } = nodes;
-    public IReadOnlyDictionary<VirtualAsmRegister, AsmRegisterConstraint> RegisterConstraints { get; } = registerConstraints ?? new Dictionary<VirtualAsmRegister, AsmRegisterConstraint>();
+    public IReadOnlyDictionary<VirtualAsmValue, AsmRegisterConstraint> RegisterConstraints { get; } = registerConstraints ?? new Dictionary<VirtualAsmValue, AsmRegisterConstraint>();
     public IReadOnlyList<StoragePlace> SharedRegisterPlaces { get; } = sharedRegisterPlaces ?? [];
     public SymbolType SymbolType => SymbolType.Function;
 }
@@ -332,6 +332,7 @@ public sealed class AsmInstructionNode : AsmNode
                 Assert.Invariant(!IsImmediateOnlyOperand(operandInfo), $"Operand {operandIndex} of '{form.Mnemonic}' requires immediate syntax.");
                 break;
             case AsmRegisterOperand:
+            case AsmFlagOperand:
             case AsmLabelRefOperand:
             case AsmPhysicalRegisterOperand:
             case AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Register }:
@@ -393,12 +394,23 @@ public enum AsmSymbolAddressingMode
 /// <summary>
 /// Virtual register operand (%r0, %r1, ...).
 /// </summary>
-public sealed class AsmRegisterOperand(VirtualAsmRegister register) : AsmOperand
+public sealed class AsmRegisterOperand(VirtualAsmValue value) : AsmOperand
 {
-    public VirtualAsmRegister Register { get; } = Requires.NotNull(register);
+    public VirtualAsmValue Value { get; } = Requires.NotNull(value);
 
     [ExcludeFromCodeCoverage]
     public override string Format() => throw new InvalidOperationException($"{nameof(AsmRegisterOperand)} cannot be formatted directly.");
+}
+
+/// <summary>
+/// Logical flag value stored in bit 0 of a virtual ASM register.
+/// </summary>
+public sealed class AsmFlagOperand(VirtualAsmFlag flag) : AsmOperand
+{
+    public VirtualAsmFlag Flag { get; } = Requires.NotNull(flag);
+
+    [ExcludeFromCodeCoverage]
+    public override string Format() => throw new InvalidOperationException($"{nameof(AsmFlagOperand)} cannot be formatted directly.");
 }
 
 /// <summary>

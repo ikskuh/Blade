@@ -379,7 +379,10 @@ internal static class LirOptimizationHelpers
 
         Dictionary<LirVirtualRegister, LirOperand> mapping = [];
         for (int i = 0; i < parameters.Count; i++)
-            mapping[parameters[i].Register] = arguments[i];
+        {
+            if (parameters[i].Value is LirVirtualRegister register)
+                mapping[register] = arguments[i];
+        }
         return mapping;
     }
 

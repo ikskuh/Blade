@@ -43,7 +43,8 @@ internal static class AsmOptimizationHelpers
 
         return (left, right) switch
         {
-            (AsmRegisterOperand lhs, AsmRegisterOperand rhs) => ReferenceEquals(lhs.Register, rhs.Register),
+            (AsmRegisterOperand lhs, AsmRegisterOperand rhs) => ReferenceEquals(lhs.Value, rhs.Value),
+            (AsmFlagOperand lhs, AsmFlagOperand rhs) => ReferenceEquals(lhs.Flag, rhs.Flag),
             (AsmImmediateOperand lhs, AsmImmediateOperand rhs) => lhs.Value == rhs.Value,
             (AsmSymbolOperand lhs, AsmSymbolOperand rhs) => SymbolOperandsEquivalent(lhs, rhs),
             (AsmPhysicalRegisterOperand lhs, AsmSymbolOperand rhs) => PhysicalAndSymbolEquivalent(lhs, rhs),
@@ -145,38 +146,60 @@ internal static class AsmOptimizationHelpers
         return true;
     }
 
-    internal static IEnumerable<VirtualAsmRegister> EnumerateUsedRegisters(AsmInstructionNode instruction)
+    internal static IEnumerable<VirtualAsmValue> EnumerateUsedRegisters(AsmInstructionNode instruction)
     {
         int startIndex = IsPlainMov(instruction) ? 1 : 0;
         for (int i = startIndex; i < instruction.Operands.Count; i++)
         {
             if (instruction.Operands[i] is AsmRegisterOperand register)
-                yield return register.Register;
+                yield return register.Value;
+            else if (instruction.Operands[i] is AsmFlagOperand flag)
+                yield return flag.Flag;
         }
     }
 
-    internal static bool TryGetDefinedRegister(AsmInstructionNode instruction, out VirtualAsmRegister? register)
+    internal static bool TryGetDefinedRegister(AsmInstructionNode instruction, out VirtualAsmValue? value)
     {
-        register = null;
+        value = null;
         if (IsBarrier(instruction))
             return false;
 
-        if (instruction.Operands.Count == 0 || instruction.Operands[0] is not AsmRegisterOperand destination)
+        if (instruction.Operands.Count == 0)
             return false;
 
-        register = destination.Register;
+        if (instruction.Operands[0] is AsmRegisterOperand destination)
+            value = destination.Value;
+        else if (instruction.Operands[0] is AsmFlagOperand flagDestination)
+            value = flagDestination.Flag;
+        else
+            return false;
+
         return true;
     }
 
-    internal static AsmOperand ResolveAlias(AsmOperand operand, IReadOnlyDictionary<VirtualAsmRegister, AsmOperand> aliases)
+    internal static AsmOperand ResolveAlias(AsmOperand operand, IReadOnlyDictionary<VirtualAsmValue, AsmOperand> aliases)
     {
         AsmOperand current = operand;
-        HashSet<VirtualAsmRegister> seen = [];
-        while (current is AsmRegisterOperand register
-            && aliases.TryGetValue(register.Register, out AsmOperand? next)
-            && seen.Add(register.Register))
+        HashSet<VirtualAsmValue> seen = [];
+        while (true)
         {
-            current = next;
+            if (current is AsmRegisterOperand register
+                && aliases.TryGetValue(register.Value, out AsmOperand? nextRegister)
+                && seen.Add(register.Value))
+            {
+                current = nextRegister;
+                continue;
+            }
+
+            if (current is AsmFlagOperand flag
+                && aliases.TryGetValue(flag.Flag, out AsmOperand? nextFlag)
+                && seen.Add(flag.Flag))
+            {
+                current = nextFlag;
+                continue;
+            }
+
+            break;
         }
 
         return current;
@@ -184,16 +207,18 @@ internal static class AsmOptimizationHelpers
 
     internal static void InvalidateAliases(
         AsmInstructionNode instruction,
-        IDictionary<VirtualAsmRegister, AsmOperand> aliases)
+        IDictionary<VirtualAsmValue, AsmOperand> aliases)
     {
         if (instruction.Operands.Count == 0)
             return;
 
         AsmOperand written = instruction.Operands[0];
         if (written is AsmRegisterOperand register)
-            aliases.Remove(register.Register);
+            aliases.Remove(register.Value);
+        else if (written is AsmFlagOperand flag)
+            aliases.Remove(flag.Flag);
 
-        foreach (VirtualAsmRegister alias in aliases.Keys.ToList())
+        foreach (VirtualAsmValue alias in aliases.Keys.ToList())
         {
             if (OperandsEquivalent(aliases[alias], written))
                 aliases.Remove(alias);
@@ -202,7 +227,7 @@ internal static class AsmOptimizationHelpers
 
     internal static AsmInstructionNode RewriteInstructionSources(
         AsmInstructionNode instruction,
-        IReadOnlyDictionary<VirtualAsmRegister, AsmOperand> aliases)
+        IReadOnlyDictionary<VirtualAsmValue, AsmOperand> aliases)
     {
         if (instruction.Operands.Count <= 1)
             return instruction;
@@ -256,13 +281,13 @@ internal static class AsmOptimizationHelpers
     internal static bool EndsWithTargetedLabel(IReadOnlyList<AsmNode> nodes, IReadOnlySet<ControlFlowLabelSymbol> targets)
         => nodes.Count > 0 && nodes[^1] is AsmLabelNode label && targets.Contains(label.Label);
 
-    internal static bool IsDeadInstruction(AsmInstructionNode instruction, IReadOnlySet<VirtualAsmRegister> live)
+    internal static bool IsDeadInstruction(AsmInstructionNode instruction, IReadOnlySet<VirtualAsmValue> live)
     {
         if (instruction.IsNonElidable)
             return false;
 
         if (TryGetTrackedCopy(instruction, out AsmRegisterOperand copyDestination, out _))
-            return !live.Contains(copyDestination.Register);
+            return !live.Contains(copyDestination.Value);
 
         if (!IsPureRegisterLocalInstruction(instruction)
             || instruction.Operands[0] is not AsmRegisterOperand destination)
@@ -270,7 +295,7 @@ internal static class AsmOptimizationHelpers
             return false;
         }
 
-        return !live.Contains(destination.Register);
+        return !live.Contains(destination.Value);
     }
 
     internal static bool UsesNonLinearControlFlow(AsmFunction function)

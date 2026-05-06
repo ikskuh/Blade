@@ -19,6 +19,7 @@ DEFAULT_OUTPUT = REPO_ROOT / "Blade" / "P2InstructionMetadata.g.cs"
 
 
 NO_REGISTER_EFFECT_MNEMONICS = frozenset({"NOP", "REP", "AUGS", "AUGD"})
+READWRITE_DESTINATION_MNEMONICS = frozenset({"BITC", "BITNC", "BITNZ", "BITZ"})
 PURE_REGISTER_LOCAL_MNEMONICS = frozenset(
     {
         "MOV",
@@ -322,6 +323,9 @@ def infer_d_operand_access(
 
     if is_branch:
         return "ReadWrite" if writes_destination else "Read"
+
+    if row.mnemonic in READWRITE_DESTINATION_MNEMONICS:
+        return "ReadWrite"
 
     if not writes_destination:
         return "Read"

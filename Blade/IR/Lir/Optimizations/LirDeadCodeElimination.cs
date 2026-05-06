@@ -37,16 +37,18 @@ public sealed class LirDeadCodeElimination : ILirOptimization
                 for (int i = block.Instructions.Count - 1; i >= 0; i--)
                 {
                     LirInstruction instruction = block.Instructions[i];
+                    LirVirtualRegister? destinationRegister = instruction.Destination as LirVirtualRegister;
                     bool keep = instruction.HasSideEffects
                         || instruction.Destination is null
-                        || live.Contains(instruction.Destination);
+                        || destinationRegister is null
+                        || live.Contains(destinationRegister);
 
                     if (!keep)
                         continue;
 
                     kept.Add(instruction);
-                    if (instruction.Destination is LirVirtualRegister destination)
-                        live.Remove(destination);
+                    if (destinationRegister is not null)
+                        live.Remove(destinationRegister);
 
                     foreach (LirVirtualRegister used in EnumerateInstructionUses(instruction))
                         live.Add(used);
@@ -192,7 +194,10 @@ public sealed class LirDeadCodeElimination : ILirOptimization
             return mapping;
 
         for (int i = 0; i < parameters.Count; i++)
-            mapping[parameters[i].Register] = arguments[i];
+        {
+            if (parameters[i].Value is LirVirtualRegister register)
+                mapping[register] = arguments[i];
+        }
 
         return mapping;
     }

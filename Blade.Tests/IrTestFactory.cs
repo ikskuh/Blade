@@ -23,7 +23,7 @@ internal static class IrTestFactory
     {
         if (!MirValues.TryGetValue(id, out MirValueId? value))
         {
-            value = new MirValueId();
+            value = new VirtualMirRegister();
             MirValues.Add(id, value);
         }
 
