@@ -61,9 +61,11 @@
 		<ProjectReference Include="../Tools/Blade.DiagnosticGen/Blade.DiagnosticGen.csproj">
 			<RunAsPreBuild>true</RunAsPreBuild>
 		</ProjectReference>
+		<ProjectReference Include="../Tools/Blade.P2MetadataGen/Blade.P2MetadataGen.csproj" />
 	</ItemGroup>
 
   <ItemGroup>
+    <None Include="../Data/P2InstructionMetadata.json" Link="Data/P2InstructionMetadata.json" />
     <None Include="Diagnostics/Messages.def" />
     <Compile Include="Diagnostics/DiagnosticMessages.g.cs" Condition="!Exists('Diagnostics/DiagnosticMessages.g.cs')" />
     <Compile Update="Diagnostics/DiagnosticMessages.g.cs"  Condition="Exists('Diagnostics/DiagnosticMessages.g.cs')">
@@ -98,6 +100,25 @@
     <!-- 3) Run A (capture stdout/stderr in build log) -->
     <Exec
       Command="dotnet &quot;%(PrebuildExe.Identity)&quot; &quot;Diagnostics/Messages.def&quot; &quot;Diagnostics/DiagnosticMessages.g.cs&quot;"
+      WorkingDirectory="$(MSBuildProjectDirectory)" StandardOutputImportance="High"
+      StandardErrorImportance="High" />
+  </Target>
+
+  <Target Name="GenerateP2InstructionMetadata" BeforeTargets="CoreCompile"
+    DependsOnTargets="ResolveProjectReferences" Condition="'$(DesignTimeBuild)' != 'true'">
+
+    <MSBuild Projects="..\Tools\Blade.P2MetadataGen\Blade.P2MetadataGen.csproj"
+      Targets="GetTargetPath">
+      <Output TaskParameter="TargetOutputs" ItemName="P2MetadataGenTargetPath" />
+    </MSBuild>
+
+    <Error Condition="'@(P2MetadataGenTargetPath)' == ''"
+      Text="Could not resolve Blade.P2MetadataGen target path." />
+
+    <Message Importance="High" Text="Running P2 metadata generator: @(P2MetadataGenTargetPath)" />
+
+    <Exec
+      Command="dotnet &quot;@(P2MetadataGenTargetPath)&quot; &quot;../Data/P2InstructionMetadata.json&quot; &quot;P2InstructionMetadata.g.cs&quot;"
       WorkingDirectory="$(MSBuildProjectDirectory)" StandardOutputImportance="High"
       StandardErrorImportance="High" />
   </Target>

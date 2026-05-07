@@ -4,6 +4,7 @@
   </Folder>
   <Folder Name="/Tools/">
     <Project Path="Tools/CoverageFilter/CoverageFilter.csproj" />
+    <Project Path="Tools/Blade.P2MetadataGen/Blade.P2MetadataGen.csproj" />
     <Project Path="Tools/Blade.Roslyn.Analyzers/Blade.Roslyn.Analyzers.csproj" />
     <Project Path="Tools/Blade.DiagnosticGen/Blade.DiagnosticGen.csproj" />
   </Folder>

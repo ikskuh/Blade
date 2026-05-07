@@ -2,11 +2,9 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
-import shlex
-import sys
-from dataclasses import dataclass
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import pandas as pd
@@ -15,7 +13,7 @@ import pandas as pd
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
 DEFAULT_WORKBOOK = REPO_ROOT / "Docs" / "propeller2-instructions.xlsx"
-DEFAULT_OUTPUT = REPO_ROOT / "Blade" / "P2InstructionMetadata.g.cs"
+DEFAULT_OUTPUT = REPO_ROOT / "Data" / "P2InstructionMetadata.json"
 
 
 NO_REGISTER_EFFECT_MNEMONICS = frozenset({"NOP", "REP", "AUGS", "AUGD"})
@@ -49,26 +47,27 @@ PURE_REGISTER_LOCAL_MNEMONICS = frozenset(
         "BITRND",
     }
 )
-SPECIAL_REGISTER_NAMES = (
-    "PA",
-    "PB",
-    "PTRA",
-    "PTRB",
-    "DIRA",
-    "DIRB",
-    "OUTA",
-    "OUTB",
-    "INA",
-    "INB",
-    "IJMP1",
-    "IRET1",
-    "IJMP2",
-    "IRET2",
-    "IJMP3",
-    "IRET3",
-)
-
+SPECIAL_REGISTER_INFO = {
+    "IJMP3": {"address": 0x1F0, "description": "INT3 call address."},
+    "IRET3": {"address": 0x1F1, "description": "INT3 return address."},
+    "IJMP2": {"address": 0x1F2, "description": "INT2 call address."},
+    "IRET2": {"address": 0x1F3, "description": "INT2 return address."},
+    "IJMP1": {"address": 0x1F4, "description": "INT1 call address."},
+    "IRET1": {"address": 0x1F5, "description": "INT1 return address."},
+    "PA": {"address": 0x1F6, "description": "Used with CALLPA, CALLD and LOC."},
+    "PB": {"address": 0x1F7, "description": "Used with CALLPB, CALLD and LOC."},
+    "PTRA": {"address": 0x1F8, "description": "Pointer A register."},
+    "PTRB": {"address": 0x1F9, "description": "Pointer B register."},
+    "DIRA": {"address": 0x1FA, "description": "I/O port A direction register."},
+    "DIRB": {"address": 0x1FB, "description": "I/O port B direction register."},
+    "OUTA": {"address": 0x1FC, "description": "I/O port A output register."},
+    "OUTB": {"address": 0x1FD, "description": "I/O port B output register."},
+    "INA": {"address": 0x1FE, "description": "I/O port A input register."},
+    "INB": {"address": 0x1FF, "description": "I/O port B input register."},
+}
+WRITTEN_REGISTER_ORDER = ("D", *SPECIAL_REGISTER_INFO.keys())
 FLAG_EFFECT_ORDER = (
+    "none",
     "WC",
     "WZ",
     "WCZ",
@@ -79,6 +78,18 @@ FLAG_EFFECT_ORDER = (
     "XORC",
     "XORZ",
 )
+FLAG_EFFECT_INFO = {
+    "none": {"targetFlag": "none", "operator": "none"},
+    "WC": {"targetFlag": "c", "operator": "set"},
+    "WZ": {"targetFlag": "z", "operator": "set"},
+    "WCZ": {"targetFlag": "both", "operator": "set"},
+    "ANDC": {"targetFlag": "c", "operator": "and"},
+    "ANDZ": {"targetFlag": "z", "operator": "and"},
+    "ORC": {"targetFlag": "c", "operator": "or"},
+    "ORZ": {"targetFlag": "z", "operator": "or"},
+    "XORC": {"targetFlag": "c", "operator": "xor"},
+    "XORZ": {"targetFlag": "z", "operator": "xor"},
+}
 
 
 @dataclass(frozen=True)
@@ -97,13 +108,48 @@ class SheetRow:
 
 
 @dataclass(frozen=True)
-class OperandInfo:
+class OperandModel:
     role: str
-    bit_width: int
+    type: str
+    bitWidth: int
     access: str
-    supports_immediate_syntax: bool
-    uses_immediate_symbol_syntax: bool
-    aug_prefix: str
+    supportsImmediate: str
+    augPrefix: str
+
+
+@dataclass(frozen=True)
+class ClassificationModel:
+    isCall: bool
+    isJump: bool
+    isBranch: bool
+    isReturn: bool
+    hasNoRegisterEffect: bool
+    isPureRegisterLocal: bool
+
+
+@dataclass(frozen=True)
+class InstructionFormModel:
+    isAlias: bool
+    summary: str | None
+    allowedFlagEffects: list[str]
+    operands: list[OperandModel]
+    writtenRegisters: list[str]
+    hwStackEffect: str
+    classification: ClassificationModel
+
+
+@dataclass(frozen=True)
+class MnemonicModel:
+    instructionForms: list[InstructionFormModel]
+
+
+@dataclass(frozen=True)
+class ExportModel:
+    conditionCodes: dict[str, dict[str, str | bool | None]]
+    modczOperands: dict[str, dict[str, str | bool | None]]
+    specialRegisters: dict[str, dict[str, int | str]]
+    flagEffects: dict[str, dict[str, str]]
+    mnemonics: dict[str, MnemonicModel]
 
 
 def normalize_text(value: object) -> str:
@@ -169,7 +215,10 @@ def parse_assembly_syntax(syntax: str) -> tuple[str, str, tuple[str, ...]]:
         token_text = match.group(1) or match.group(2) or ""
         tokens = tuple(part.strip().upper() for part in token_text.split("/") if part.strip())
         if tokens and all(token in FLAG_EFFECT_ORDER for token in tokens):
-            allowed_flag_effects = tokens
+            if match.group(1) is not None:
+                allowed_flag_effects = ("none", *tokens)
+            else:
+                allowed_flag_effects = tokens
             remainder = remainder[: match.start()].rstrip()
 
     return mnemonic, remainder, allowed_flag_effects
@@ -181,131 +230,174 @@ def count_operands(operand_text: str) -> int:
     return operand_text.count(",") + 1
 
 
-def load_prefix_names(workbook_path: Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    frame = pd.read_excel(workbook_path, sheet_name="Prefixes")
+def load_condition_codes(workbook_path: Path) -> dict[str, dict[str, str | bool | None]]:
+    return load_named_alias_entries(
+        workbook_path=workbook_path,
+        sheet_name="Prefixes",
+        parse_name=parse_prefix_name,
+    )
+
+
+def load_modcz_operands(workbook_path: Path) -> dict[str, dict[str, str | bool | None]]:
+    return load_named_alias_entries(
+        workbook_path=workbook_path,
+        sheet_name="MODCZ",
+        parse_name=lambda syntax: normalize_text(syntax).upper(),
+    )
+
+
+def load_named_alias_entries(
+    workbook_path: Path,
+    sheet_name: str,
+    parse_name,
+) -> dict[str, dict[str, str | bool | None]]:
+    frame = pd.read_excel(workbook_path, sheet_name=sheet_name)
     syntax_column = frame.columns[1]
+    encoding_column = frame.columns[3]
     alias_column = frame.columns[4]
 
-    names: list[str] = []
-    canonical_names: list[str] = []
+    rows: list[tuple[str, str, bool]] = []
     for _, row in frame.iterrows():
         syntax = normalize_text(row[syntax_column])
         if not syntax:
             continue
 
-        name = syntax.split(" ", 1)[0].upper()
-        names.append(name)
-        if normalize_text(row[alias_column]).lower() != "alias":
-            canonical_names.append(name)
-
-    return tuple(sorted(set(names))), tuple(sorted(set(canonical_names)))
-
-
-def load_modcz_operands(workbook_path: Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    frame = pd.read_excel(workbook_path, sheet_name="MODCZ")
-    syntax_column = frame.columns[1]
-    alias_column = frame.columns[4]
-
-    names: list[str] = []
-    canonical_names: list[str] = []
-    for _, row in frame.iterrows():
-        name = normalize_text(row[syntax_column]).upper()
+        name = parse_name(syntax)
         if not name:
             continue
 
-        names.append(name)
-        if normalize_text(row[alias_column]).lower() != "alias":
-            canonical_names.append(name)
+        rows.append(
+            (
+                name,
+                normalize_text(row[encoding_column]),
+                normalize_text(row[alias_column]).lower() == "alias",
+            )
+        )
 
-    return tuple(sorted(set(names))), tuple(sorted(set(canonical_names)))
+    canonical_by_encoding: dict[str, str] = {}
+    for name, encoding, is_alias in rows:
+        if is_alias:
+            continue
+        existing = canonical_by_encoding.get(encoding)
+        if existing is not None and existing != name:
+            raise ValueError(f"Conflicting canonical names in {sheet_name}: {existing} vs {name}")
+        canonical_by_encoding[encoding] = name
+
+    result: dict[str, dict[str, str | bool | None]] = {}
+    for name, encoding, is_alias in rows:
+        if name in result:
+            raise ValueError(f"Duplicate {sheet_name} key: {name}")
+
+        canonical_name = canonical_by_encoding.get(encoding)
+        if is_alias and canonical_name is None:
+            raise ValueError(f"Alias {name} in {sheet_name} has no canonical entry")
+
+        result[name] = {
+            "isAlias": is_alias,
+            "canonicalName": canonical_name if is_alias else None,
+        }
+
+    return result
 
 
-def aggregate_instruction_forms(rows: list[SheetRow]) -> list[dict[str, object]]:
-    grouped: dict[tuple[str, int], list[SheetRow]] = {}
+def parse_prefix_name(syntax: str) -> str:
+    return normalize_text(syntax).split(" ", 1)[0].upper()
+
+
+def aggregate_instruction_forms(rows: list[SheetRow]) -> dict[str, MnemonicModel]:
+    grouped_forms: dict[tuple[str, str, str], list[SheetRow]] = {}
     for row in rows:
-        grouped.setdefault((row.mnemonic, row.operand_count), []).append(row)
+        grouped_forms.setdefault((row.mnemonic, row.operand_text, row.group), []).append(row)
 
-    forms: list[dict[str, object]] = []
-    for (mnemonic, operand_count), group_rows in sorted(grouped.items()):
-        representative = group_rows[0]
-        allowed_flag_effects = sorted(
-            {
-                effect
-                for group_row in group_rows
-                for effect in group_row.allowed_flag_effects
-            },
-            key=lambda effect: FLAG_EFFECT_ORDER.index(effect),
+    forms_by_mnemonic: dict[str, list[InstructionFormModel]] = {}
+    for (mnemonic, _, _), group_rows in sorted(grouped_forms.items()):
+        forms_by_mnemonic.setdefault(mnemonic, []).append(build_instruction_form(group_rows))
+
+    result: dict[str, MnemonicModel] = {}
+    for mnemonic in sorted(forms_by_mnemonic):
+        result[mnemonic] = MnemonicModel(
+            instructionForms=forms_by_mnemonic[mnemonic],
         )
 
-        group_name = representative.group
-        upper_group_name = group_name.upper()
-        is_call = "CALL" in upper_group_name
-        is_return = "RETURN" in upper_group_name
-        is_branch = "BRANCH" in upper_group_name and not is_call and not is_return and "REPEAT" not in upper_group_name
-        operand_infos = merge_operand_layouts(
-            build_operand_infos(row, is_call, is_return, is_branch)
-            for row in group_rows
-        )
-        written_registers = merge_written_registers(parse_written_registers(row.register_write) for row in group_rows)
-        hw_stack_effect = merge_stack_effects(parse_hw_stack_effect(row.stack_rw) for row in group_rows)
-
-        forms.append(
-            {
-                "mnemonic": mnemonic,
-                "operand_count": operand_count,
-                "allowed_flag_effects": tuple(allowed_flag_effects),
-                "operand_infos": operand_infos,
-                "written_registers": written_registers,
-                "hw_stack_effect": hw_stack_effect,
-                "is_call": is_call,
-                "is_branch": is_branch,
-                "is_return": is_return,
-                "has_no_register_effect": mnemonic in NO_REGISTER_EFFECT_MNEMONICS,
-                "is_pure_register_local": mnemonic in PURE_REGISTER_LOCAL_MNEMONICS,
-            }
-        )
-
-    return forms
+    return result
 
 
-def build_operand_infos(
-    row: SheetRow,
-    is_call: bool,
-    is_return: bool,
-    is_branch: bool,
-) -> tuple[OperandInfo, OperandInfo, OperandInfo]:
-    operands = split_operands(row.operand_text)
-    d_access = infer_d_operand_access(row, operands, is_call, is_return, is_branch)
-    symbol_immediate_indices = infer_symbol_immediate_operand_indices(
-        row.operand_text,
-        row.operand_count,
-        row.group,
-        row.mnemonic,
+def build_instruction_form(group_rows: list[SheetRow]) -> InstructionFormModel:
+    representative = group_rows[0]
+    classification = classify_instruction(representative.group, representative.mnemonic)
+    operand_sets = [build_operand_models(row, classification) for row in group_rows]
+    operands = merge_operand_layouts(operand_sets)
+
+    descriptions = {row.description for row in group_rows if row.description}
+    summary = representative.description if len(descriptions) == 1 else None
+    allowed_flag_effects = sorted(
+        {effect for row in group_rows for effect in row.allowed_flag_effects},
+        key=lambda effect: FLAG_EFFECT_ORDER.index(effect),
     )
 
-    infos = [
-        create_operand_info(token, row.encoding, d_access, operand_index in symbol_immediate_indices)
-        for operand_index, token in enumerate(operands)
-    ]
-    while len(infos) < 3:
-        infos.append(OperandInfo("None", 0, "None", False, False, "None"))
+    written_registers = merge_written_registers(parse_written_registers(row.register_write) for row in group_rows)
+    hw_stack_effect = merge_stack_effects(parse_hw_stack_effect(row.stack_rw) for row in group_rows)
 
-    return infos[0], infos[1], infos[2]
+    return InstructionFormModel(
+        isAlias=representative.is_alias,
+        summary=summary,
+        allowedFlagEffects=allowed_flag_effects,
+        operands=operands,
+        writtenRegisters=written_registers,
+        hwStackEffect=hw_stack_effect,
+        classification=classification,
+    )
+
+
+def build_operand_models(row: SheetRow, classification: ClassificationModel) -> list[OperandModel]:
+    operands = split_operands(row.operand_text)
+    d_access = infer_d_operand_access(row, operands, classification)
+    models: list[OperandModel] = []
+
+    for token in operands:
+        role = infer_operand_role(token)
+        supports_immediate = infer_supports_immediate(token)
+        models.append(
+            OperandModel(
+                role=role,
+                type=infer_operand_type(row, token, role, classification),
+                bitWidth=infer_operand_bit_width(token, row.encoding, role),
+                access=infer_operand_access(role, d_access),
+                supportsImmediate=supports_immediate,
+                augPrefix=infer_aug_prefix(role, supports_immediate),
+            )
+        )
+
+    return models
 
 
 def split_operands(operand_text: str) -> tuple[str, ...]:
     if not operand_text:
         return ()
-
     return tuple(part.strip() for part in operand_text.split(","))
+
+
+def classify_instruction(group_name: str, mnemonic: str) -> ClassificationModel:
+    upper_group_name = group_name.upper()
+    is_call = "CALL" in upper_group_name
+    is_return = "RETURN" in upper_group_name
+    is_jump = upper_group_name in {"BRANCH A - JUMP", "BRANCH D - JUMP", "BRANCH D - SKIP", "BRANCH D - JUMP+SKIP"}
+    is_branch = upper_group_name in {"BRANCH S - MOD & TEST", "BRANCH S - TEST", "EVENTS - BRANCH"}
+
+    return ClassificationModel(
+        isCall=is_call,
+        isJump=is_jump,
+        isBranch=is_branch,
+        isReturn=is_return,
+        hasNoRegisterEffect=mnemonic in NO_REGISTER_EFFECT_MNEMONICS,
+        isPureRegisterLocal=mnemonic in PURE_REGISTER_LOCAL_MNEMONICS,
+    )
 
 
 def infer_d_operand_access(
     row: SheetRow,
     operands: tuple[str, ...],
-    is_call: bool,
-    is_return: bool,
-    is_branch: bool,
+    classification: ClassificationModel,
 ) -> str:
     if not any(infer_operand_role(token) == "D" for token in operands):
         return "None"
@@ -315,13 +407,13 @@ def infer_d_operand_access(
     if row.mnemonic == "LOC":
         return "Write"
 
-    if is_return:
+    if classification.isReturn:
         return "None"
 
-    if is_call:
+    if classification.isCall:
         return "Write" if writes_destination else "Read"
 
-    if is_branch:
+    if classification.isBranch:
         return "ReadWrite" if writes_destination else "Read"
 
     if row.mnemonic in READWRITE_DESTINATION_MNEMONICS:
@@ -352,57 +444,17 @@ def reads_existing_destination(description: str) -> bool:
     )
 
 
-def create_operand_info(
-    token: str,
-    encoding: str,
-    d_access: str,
-    uses_immediate_symbol_syntax: bool,
-) -> OperandInfo:
-    role = infer_operand_role(token)
-    supports_immediate_syntax = "#" in token
-    bit_width = infer_operand_bit_width(token, encoding, role)
-    access = infer_operand_access(role, d_access)
-    aug_prefix = infer_aug_prefix(role, supports_immediate_syntax)
-    return OperandInfo(role, bit_width, access, supports_immediate_syntax, uses_immediate_symbol_syntax, aug_prefix)
-
-
-def infer_symbol_immediate_operand_indices(
-    operand_text: str,
-    operand_count: int,
-    group_name: str,
-    mnemonic: str,
-) -> frozenset[int]:
-    if mnemonic == "LOC":
-        return frozenset({operand_count - 1}) if operand_count > 0 else frozenset()
-
-    upper_group_name = group_name.upper()
-
-    if mnemonic == "JMPREL":
-        return frozenset()
-
-    if "BRANCH" not in upper_group_name and "CALL" not in upper_group_name:
-        return frozenset()
-
-    if "RETURN" in upper_group_name or "REPEAT" in upper_group_name:
-        return frozenset()
-
-    if "BRANCH D -" in upper_group_name:
-        return frozenset({0}) if operand_count > 0 else frozenset()
-
-    if "BRANCH S -" in upper_group_name or "BRANCH A -" in upper_group_name:
-        return frozenset({operand_count - 1}) if operand_count > 0 else frozenset()
-
-    if operand_count == 1:
-        return frozenset({0})
-
-    if "#{\\}A" in operand_text or re.search(r"\bA\b", operand_text):
-        return frozenset({operand_count - 1}) if operand_count > 0 else frozenset()
-
-    return frozenset()
-
-
 def infer_operand_role(token: str) -> str:
     normalized = token.upper().replace("{", "").replace("}", "").replace("\\", "")
+    if normalized in {"C", "Z"}:
+        return "MODCZ"
+
+    if normalized == "PA/PB/PTRA/PTRB":
+        return "address register"
+
+    if normalized == "#A" or normalized == "A":
+        return "ADDR"
+
     if re.fullmatch(r"#?N", normalized):
         return "N"
 
@@ -412,7 +464,74 @@ def infer_operand_role(token: str) -> str:
     if re.search(r"(^|[^A-Z])D($|[^A-Z])", normalized):
         return "D"
 
-    return "None"
+    raise ValueError(f"Unsupported operand role token: {token}")
+
+
+def infer_supports_immediate(token: str) -> str:
+    if "{#}" in token:
+        return "optional"
+
+    if "#" in token:
+        return "required"
+
+    return "no"
+
+
+def infer_operand_type(
+    row: SheetRow,
+    token: str,
+    role: str,
+    classification: ClassificationModel,
+) -> str:
+    upper_group = row.group.upper()
+    upper_desc = row.description.upper()
+    upper_token = token.upper()
+
+    if role == "MODCZ":
+        return "modcz"
+
+    if "/P" in upper_token:
+        if "LOOKUP TABLE" in upper_group:
+            return "lut ptrexpr"
+        if "HUB RAM" in upper_group:
+            return "hub ptrexpr"
+
+    if is_branch_target_operand(row.group, role, classification):
+        return "branch target"
+
+    if role in {"D", "S"}:
+        if f"{role}[10:6]" in upper_desc and f"{role}[5:0]" in upper_desc:
+            return "pinrange"
+
+        if f"{role}[5:0]" in upper_desc and "PIN " in upper_desc:
+            return "pin"
+
+        if f"{role}[9:5]" in upper_desc and f"{role}[4:0]" in upper_desc and "BITS " in upper_desc:
+            return "bitrange"
+
+        if (
+            f"BIT {role}[4:0]" in upper_desc
+            or f"ABOVE BIT {role}[4:0]" in upper_desc
+            or f"FROM BIT {role}[4:0]" in upper_desc
+        ):
+            return "bit"
+
+    return "regular"
+
+
+def is_branch_target_operand(group_name: str, role: str, classification: ClassificationModel) -> bool:
+    upper_group = group_name.upper()
+
+    if upper_group in {"BRANCH S - MOD & TEST", "BRANCH S - TEST", "EVENTS - BRANCH", "BRANCH S - CALL"}:
+        return role == "S"
+
+    if upper_group in {"BRANCH D - JUMP", "BRANCH D - SKIP", "BRANCH D - JUMP+SKIP", "BRANCH D - CALL", "BRANCH D - CALL+SKIP"}:
+        return role == "D"
+
+    if upper_group in {"BRANCH A - JUMP", "BRANCH A - CALL"}:
+        return role == "ADDR"
+
+    return classification.isBranch and role in {"D", "S", "ADDR"}
 
 
 def infer_operand_bit_width(token: str, encoding: str, role: str) -> int:
@@ -425,10 +544,13 @@ def infer_operand_bit_width(token: str, encoding: str, role: str) -> int:
     if role == "N":
         return count_encoding_bits(encoding, "N")
 
-    upper_token = token.upper()
-    if "#{\\}A" in upper_token or re.search(r"(^|[^A-Z])A($|[^A-Z])", upper_token.replace("\\", "")):
+    if role == "MODCZ":
+        return 4
+
+    if role == "ADDR":
         return count_encoding_bits(encoding, "A")
 
+    upper_token = token.upper()
     if "PA/PB/PTRA/PTRB" in upper_token:
         return count_encoding_bits(encoding, "W")
 
@@ -443,14 +565,14 @@ def infer_operand_access(role: str, d_access: str) -> str:
     if role == "D":
         return d_access
 
-    if role == "S":
+    if role in {"S", "MODCZ", "ADDR"}:
         return "Read"
 
     return "None"
 
 
-def infer_aug_prefix(role: str, supports_immediate_syntax: bool) -> str:
-    if not supports_immediate_syntax:
+def infer_aug_prefix(role: str, supports_immediate: str) -> str:
+    if supports_immediate == "no":
         return "None"
 
     if role == "D":
@@ -462,30 +584,50 @@ def infer_aug_prefix(role: str, supports_immediate_syntax: bool) -> str:
     return "None"
 
 
-def merge_operand_layouts(layouts: object) -> tuple[OperandInfo, OperandInfo, OperandInfo]:
-    layout_list = list(layouts)
-    if not layout_list:
-        default = OperandInfo("None", 0, "None", False, False, "None")
-        return default, default, default
+def merge_operand_layouts(layouts: list[list[OperandModel]]) -> list[OperandModel]:
+    if not layouts:
+        return []
 
-    merged: list[OperandInfo] = []
-    for operand_index in range(3):
-        candidates = [layout[operand_index] for layout in layout_list]
-        role = candidates[0].role if all(candidate.role == candidates[0].role for candidate in candidates) else "None"
-        bit_width = candidates[0].bit_width if all(candidate.bit_width == candidates[0].bit_width for candidate in candidates) else max(candidate.bit_width for candidate in candidates)
-        supports_immediate_syntax = any(candidate.supports_immediate_syntax for candidate in candidates)
-        uses_immediate_symbol_syntax = any(candidate.uses_immediate_symbol_syntax for candidate in candidates)
-        aug_prefix = candidates[0].aug_prefix if all(candidate.aug_prefix == candidates[0].aug_prefix for candidate in candidates) else "None"
-        if not supports_immediate_syntax:
-            aug_prefix = "None"
+    operand_count = len(layouts[0])
+    if any(len(layout) != operand_count for layout in layouts):
+        raise ValueError("Cannot merge forms with differing operand counts")
+
+    merged: list[OperandModel] = []
+    for operand_index in range(operand_count):
+        candidates = [layout[operand_index] for layout in layouts]
+        first = candidates[0]
+
+        if any(candidate.role != first.role for candidate in candidates):
+            raise ValueError(f"Conflicting operand roles at position {operand_index}")
+
+        if any(candidate.type != first.type for candidate in candidates):
+            raise ValueError(f"Conflicting operand types at position {operand_index}")
+
+        if any(candidate.bitWidth != first.bitWidth for candidate in candidates):
+            raise ValueError(f"Conflicting operand widths at position {operand_index}")
+
+        if any(candidate.supportsImmediate != first.supportsImmediate for candidate in candidates):
+            raise ValueError(f"Conflicting immediate support at position {operand_index}")
+
+        if any(candidate.augPrefix != first.augPrefix for candidate in candidates):
+            raise ValueError(f"Conflicting AUG prefix at position {operand_index}")
 
         access = candidates[0].access
         for candidate in candidates[1:]:
             access = merge_operand_access(access, candidate.access)
 
-        merged.append(OperandInfo(role, bit_width, access, supports_immediate_syntax, uses_immediate_symbol_syntax, aug_prefix))
+        merged.append(
+            OperandModel(
+                role=first.role,
+                type=first.type,
+                bitWidth=first.bitWidth,
+                access=access,
+                supportsImmediate=first.supportsImmediate,
+                augPrefix=first.augPrefix,
+            )
+        )
 
-    return merged[0], merged[1], merged[2]
+    return merged
 
 
 def merge_operand_access(left: str, right: str) -> str:
@@ -509,21 +651,21 @@ def merge_operand_access(left: str, right: str) -> str:
     return "None"
 
 
-def parse_written_registers(register_write: str) -> frozenset[str]:
+def parse_written_registers(register_write: str) -> tuple[str, ...]:
     normalized = register_write.upper()
     if not normalized:
-        return frozenset()
+        return ()
 
     mapping = {
-        "D": frozenset({"D"}),
-        "D IF REG AND !WC": frozenset({"D"}),
-        "D IF REG AND WC": frozenset({"D"}),
-        "PA": frozenset({"PA"}),
-        "PB": frozenset({"PB"}),
-        "DIRX": frozenset({"DIRA", "DIRB"}),
-        "OUTX": frozenset({"OUTA", "OUTB"}),
-        "DIRX* + OUTX": frozenset({"DIRA", "DIRB", "OUTA", "OUTB"}),
-        "PER W": frozenset({"PA", "PB", "PTRA", "PTRB"}),
+        "D": ("D",),
+        "D IF REG AND !WC": ("D",),
+        "D IF REG AND WC": ("D",),
+        "PA": ("PA",),
+        "PB": ("PB",),
+        "DIRX": ("DIRA", "DIRB"),
+        "OUTX": ("OUTA", "OUTB"),
+        "DIRX* + OUTX": ("DIRA", "DIRB", "OUTA", "OUTB"),
+        "PER W": ("PA", "PB", "PTRA", "PTRB"),
     }
 
     if normalized not in mapping:
@@ -532,12 +674,12 @@ def parse_written_registers(register_write: str) -> frozenset[str]:
     return mapping[normalized]
 
 
-def merge_written_registers(register_sets: object) -> frozenset[str]:
+def merge_written_registers(register_sets: object) -> list[str]:
     merged: set[str] = set()
     for register_set in register_sets:
         merged.update(register_set)
 
-    return frozenset(sorted(merged))
+    return [name for name in WRITTEN_REGISTER_ORDER if name in merged]
 
 
 def parse_hw_stack_effect(stack_rw: str) -> str:
@@ -565,361 +707,26 @@ def merge_stack_effects(effects: object) -> str:
     return distinct.pop()
 
 
-def render_generated_source(
-    forms: list[dict[str, object]],
-    valid_mnemonics: tuple[str, ...],
-    condition_prefixes: tuple[str, ...],
-    canonical_condition_prefixes: tuple[str, ...],
-    modcz_operands: tuple[str, ...],
-    canonical_modcz_operands: tuple[str, ...],
-    generated_at: str,
-    command_line: str,
-    workbook_path: Path,
-) -> str:
-    all_flag_effects = sorted(
-        {
-            effect
-            for form in forms
-            for effect in form["allowed_flag_effects"]
-        },
-        key=lambda effect: FLAG_EFFECT_ORDER.index(effect),
-    )
+def build_export_model(workbook_path: Path) -> ExportModel:
+    instruction_rows = load_sheet_rows(workbook_path, "Instructions")
+    alias_rows = load_sheet_rows(workbook_path, "Aliases")
+    all_rows = instruction_rows + alias_rows
 
-    lines: list[str] = []
-    lines.extend(
-        [
-            "// <auto-generated>",
-            f"// Generated from {workbook_path.relative_to(REPO_ROOT).as_posix()}.",
-            f"// Generated at: {generated_at}",
-            f"// Command: {command_line}",
-            "// Do not edit this file manually. Regenerate it instead.",
-            "// </auto-generated>",
-            "",
-            "#nullable enable",
-            "",
-            "using System;",
-            "using System.Collections.Frozen;",
-            "using System.Collections.Generic;",
-            "",
-            "namespace Blade;",
-            "",
-            "public enum P2OperandAccess",
-            "{",
-            "    None,",
-            "    Read,",
-            "    Write,",
-            "    ReadWrite,",
-            "}",
-            "",
-            "public enum P2OperandRole",
-            "{",
-            "    None,",
-            "    D,",
-            "    S,",
-            "    N,",
-            "}",
-            "",
-            "public enum P2AugPrefixKind",
-            "{",
-            "    None,",
-            "    AUGD,",
-            "    AUGS,",
-            "}",
-            "",
-            "[Flags]",
-            "public enum P2WrittenRegister",
-            "{",
-            "    None = 0,",
-            "    D = 1 << 0,",
-            "    PA = 1 << 1,",
-            "    PB = 1 << 2,",
-            "    PTRA = 1 << 3,",
-            "    PTRB = 1 << 4,",
-            "    DIRA = 1 << 5,",
-            "    DIRB = 1 << 6,",
-            "    OUTA = 1 << 7,",
-            "    OUTB = 1 << 8,",
-            "}",
-            "",
-            "public enum P2HwStackEffect",
-            "{",
-            "    None,",
-            "    Push,",
-            "    Pop,",
-            "}",
-            "",
-            "[Flags]",
-            "public enum P2FlagEffect",
-            "{",
-            "    None = 0,",
-        ]
-    )
-
-    for index, effect in enumerate(FLAG_EFFECT_ORDER):
-        lines.append(f"    {effect} = 1 << {index},")
-
-    lines.extend(
-        [
-            "}",
-            "",
-            "public enum P2Mnemonic",
-            "{",
-        ]
-    )
-    for mnemonic in valid_mnemonics:
-        lines.append(f"    {mnemonic},")
-    lines.extend(
-        [
-            "}",
-            "",
-            "public enum P2ConditionCode",
-            "{",
-        ]
-    )
-    for prefix in condition_prefixes:
-        lines.append(f"    {render_condition_code_identifier(prefix)},")
-    lines.extend(
-        [
-            "}",
-            "",
-            "public enum P2ModczOperand",
-            "{",
-        ]
-    )
-    for operand in modcz_operands:
-        lines.append(f"    {operand},")
-    lines.extend(
-        [
-            "}",
-            "",
-            "public readonly record struct P2InstructionOperandInfo(",
-            "    P2OperandRole Role,",
-            "    int BitWidth,",
-            "    P2OperandAccess Access,",
-            "    bool SupportsImmediateSyntax,",
-            "    bool UsesImmediateSymbolSyntax,",
-            "    P2AugPrefixKind AugPrefix);",
-            "",
-            "public readonly record struct P2InstructionFormInfo(",
-            "    P2Mnemonic Mnemonic,",
-            "    int OperandCount,",
-            "    P2InstructionOperandInfo Operand0,",
-            "    P2InstructionOperandInfo Operand1,",
-            "    P2InstructionOperandInfo Operand2,",
-            "    P2WrittenRegister WrittenRegisters,",
-            "    P2HwStackEffect HwStackEffect,",
-            "    P2FlagEffect AllowedFlagEffects,",
-            "    bool IsCall,",
-            "    bool IsBranch,",
-            "    bool IsReturn,",
-            "    bool HasNoRegisterEffect,",
-            "    bool IsPureRegisterLocal)",
-            "{",
-            "    public bool IsControlFlow => IsCall || IsBranch || IsReturn;",
-            "",
-            "    public P2InstructionOperandInfo GetOperandInfo(int operandIndex)",
-            "        => operandIndex switch",
-            "        {",
-            "            0 => Operand0,",
-            "            1 => Operand1,",
-            "            2 => Operand2,",
-            "            _ => Assert.UnreachableValue<P2InstructionOperandInfo>(), // pragma: force-coverage",
-            "        };",
-            "}",
-            "",
-            "public static class P2InstructionMetadata",
-            "{",
-            "    private static readonly P2InstructionFormInfo?[][] FormsByMnemonic =",
-            "    [",
-        ]
-    )
-
-    grouped_forms: dict[str, list[dict[str, object]]] = {}
-    for form in forms:
-        grouped_forms.setdefault(form["mnemonic"], []).append(form)
-
-    valid_mnemonics_sorted = list(valid_mnemonics)
-
-    def render_form_initializer(form: dict[str, object]) -> str:
-        flag_expr = render_flag_effect_mask(form["allowed_flag_effects"])
-        return (
-            "new P2InstructionFormInfo("
-            f'Mnemonic: P2Mnemonic.{form["mnemonic"]}, '
-            f'OperandCount: {form["operand_count"]}, '
-            f'Operand0: {render_operand_info(form["operand_infos"][0])}, '
-            f'Operand1: {render_operand_info(form["operand_infos"][1])}, '
-            f'Operand2: {render_operand_info(form["operand_infos"][2])}, '
-            f'WrittenRegisters: {render_written_registers(form["written_registers"])}, '
-            f'HwStackEffect: P2HwStackEffect.{form["hw_stack_effect"]}, '
-            f"AllowedFlagEffects: {flag_expr}, "
-            f'IsCall: {render_bool(form["is_call"])}, '
-            f'IsBranch: {render_bool(form["is_branch"])}, '
-            f'IsReturn: {render_bool(form["is_return"])}, '
-            f'HasNoRegisterEffect: {render_bool(form["has_no_register_effect"])}, '
-            f'IsPureRegisterLocal: {render_bool(form["is_pure_register_local"])})'
-        )
-
-    for mnemonic in valid_mnemonics_sorted:
-        forms_for_mnemonic = {
-            int(form["operand_count"]): form
-            for form in grouped_forms.get(mnemonic, [])
-        }
-        max_operand_count = max(forms_for_mnemonic.keys(), default=-1)
-        lines.append("        [")
-        for operand_count in range(max_operand_count + 1):
-            form = forms_for_mnemonic.get(operand_count)
-            if form is None:
-                lines.append("            null,")
-            else:
-                lines.append(f"            {render_form_initializer(form)},")
-        lines.append("        ],")
-
-    lines.extend(
-        [
-            "    ];",
-            "",
-            "    public static string GetMnemonicText(P2Mnemonic mnemonic)",
-            "        => mnemonic.ToString();",
-            "",
-            "    public static bool TryParseMnemonic(string mnemonic, out P2Mnemonic parsed)",
-            "        => Enum.TryParse(mnemonic, ignoreCase: true, out parsed);",
-            "",
-            "    public static bool TryGetInstructionForm(P2Mnemonic mnemonic, int operandCount, out P2InstructionFormInfo info)",
-            "    {",
-            "        info = default;",
-            "        int mnemonicIndex = (int)mnemonic;",
-            "        if ((uint)mnemonicIndex >= (uint)FormsByMnemonic.Length)",
-            "            return false;",
-            "",
-            "        P2InstructionFormInfo?[] formsByOperandCount = FormsByMnemonic[mnemonicIndex];",
-            "        if ((uint)operandCount >= (uint)formsByOperandCount.Length)",
-            "            return false;",
-            "",
-            "        P2InstructionFormInfo? candidate = formsByOperandCount[operandCount];",
-            "        if (candidate is null)",
-            "            return false;",
-            "",
-            "        info = candidate.Value;",
-            "        return true;",
-            "    }",
-            "",
-            "    public static string GetConditionPrefixText(P2ConditionCode code)",
-            '        => code == P2ConditionCode.INST ? "<INST>" : code.ToString();',
-            "",
-            "    public static bool TryParseConditionCode(string name, out P2ConditionCode code)",
-            "    {",
-            "        if (string.Equals(name, \"<INST>\", StringComparison.OrdinalIgnoreCase))",
-            "        {",
-            "            code = P2ConditionCode.INST;",
-            "            return true;",
-            "        }",
-            "",
-            "        return Enum.TryParse(name, ignoreCase: true, out code);",
-            "    }",
-            "",
-            "    public static string GetModczOperandText(P2ModczOperand operand)",
-            "        => operand.ToString();",
-            "",
-            "    public static bool TryParseModczOperand(string name, out P2ModczOperand operand)",
-            "        => Enum.TryParse(name, ignoreCase: true, out operand);",
-            "",
-            "    public static bool AllowsFlagEffect(P2Mnemonic mnemonic, int operandCount, P2FlagEffect effect)",
-            "    {",
-            "        if (effect == P2FlagEffect.None)",
-            "            return true;",
-            "",
-            "        if (!TryGetInstructionForm(mnemonic, operandCount, out P2InstructionFormInfo info))",
-            "            return false;",
-            "",
-            "        return (info.AllowedFlagEffects & effect) == effect;",
-            "    }",
-            "",
-            "    public static bool TryParseFlagEffect(string name, out P2FlagEffect effect)",
-            "        => Enum.TryParse(name, ignoreCase: true, out effect) && effect != P2FlagEffect.None;",
-            "",
-            "    public static bool TryParseSpecialRegister(string name, out P2SpecialRegister register)",
-            "        => Enum.TryParse(name, ignoreCase: true, out register);",
-            "",
-            "    public static bool IsCall(P2Mnemonic mnemonic, int operandCount)",
-            "        => TryGetInstructionForm(mnemonic, operandCount, out P2InstructionFormInfo info) && info.IsCall;",
-            "",
-            "    public static bool IsReturn(P2Mnemonic mnemonic, int operandCount)",
-            "        => TryGetInstructionForm(mnemonic, operandCount, out P2InstructionFormInfo info) && info.IsReturn;",
-            "",
-            "    public static bool IsControlFlow(P2Mnemonic mnemonic, int operandCount)",
-            "        => TryGetInstructionForm(mnemonic, operandCount, out P2InstructionFormInfo info) && info.IsControlFlow;",
-            "",
-            "    public static bool HasNoRegisterEffect(P2Mnemonic mnemonic, int operandCount)",
-            "        => TryGetInstructionForm(mnemonic, operandCount, out P2InstructionFormInfo info) && info.HasNoRegisterEffect;",
-            "",
-            "    public static bool IsPureRegisterLocal(P2Mnemonic mnemonic, int operandCount)",
-            "        => TryGetInstructionForm(mnemonic, operandCount, out P2InstructionFormInfo info) && info.IsPureRegisterLocal;",
-            "",
-            "    public static P2InstructionOperandInfo GetOperandInfo(P2Mnemonic mnemonic, int operandCount, int operandIndex)",
-            "    {",
-            "        if (!TryGetInstructionForm(mnemonic, operandCount, out P2InstructionFormInfo info))",
-            "            return default;",
-            "",
-            "        if (operandIndex < 0 || operandIndex >= operandCount)",
-            "            return default;",
-            "",
-            "        return info.GetOperandInfo(operandIndex);",
-            "    }",
-            "",
-            "    public static bool UsesImmediateSyntax(P2Mnemonic mnemonic, int operandCount, int operandIndex)",
-            "        => GetOperandInfo(mnemonic, operandCount, operandIndex).SupportsImmediateSyntax;",
-            "",
-            "    public static bool UsesImmediateSymbolSyntax(P2Mnemonic mnemonic, int operandCount, int operandIndex)",
-            "        => GetOperandInfo(mnemonic, operandCount, operandIndex).UsesImmediateSymbolSyntax;",
-            "",
-            "    public static P2OperandAccess GetOperandAccess(P2Mnemonic mnemonic, int operandCount, int operandIndex)",
-            "        => GetOperandInfo(mnemonic, operandCount, operandIndex).Access;",
-            "}",
-            "",
-            "#nullable restore",
-            "",
-        ]
-    )
-
-    return "\n".join(lines)
-
-
-def render_bool(value: object) -> str:
-    return "true" if value else "false"
-
-
-def render_condition_code_identifier(name: str) -> str:
-    return "INST" if name == "<INST>" else name
-
-
-def render_flag_effect_mask(flag_effects: tuple[str, ...]) -> str:
-    if not flag_effects:
-        return "P2FlagEffect.None"
-
-    return " | ".join(f"P2FlagEffect.{effect}" for effect in flag_effects)
-
-
-def render_operand_info(info: OperandInfo) -> str:
-    return (
-        "new P2InstructionOperandInfo("
-        f"Role: P2OperandRole.{info.role}, "
-        f"BitWidth: {info.bit_width}, "
-        f"Access: P2OperandAccess.{info.access}, "
-        f"SupportsImmediateSyntax: {render_bool(info.supports_immediate_syntax)}, "
-        f"UsesImmediateSymbolSyntax: {render_bool(info.uses_immediate_symbol_syntax)}, "
-        f"AugPrefix: P2AugPrefixKind.{info.aug_prefix})"
+    return ExportModel(
+        conditionCodes=load_condition_codes(workbook_path),
+        modczOperands=load_modcz_operands(workbook_path),
+        specialRegisters={name: info for name, info in SPECIAL_REGISTER_INFO.items()},
+        flagEffects={name: FLAG_EFFECT_INFO[name] for name in FLAG_EFFECT_ORDER},
+        mnemonics=aggregate_instruction_forms(all_rows),
     )
 
 
-def render_written_registers(registers: frozenset[str]) -> str:
-    if not registers:
-        return "P2WrittenRegister.None"
-
-    return " | ".join(f"P2WrittenRegister.{register}" for register in sorted(registers))
+def render_json(model: ExportModel) -> str:
+    return json.dumps(asdict(model), indent=2, ensure_ascii=False) + "\n"
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Generate P2 instruction metadata C# source from the spreadsheet.")
+    parser = argparse.ArgumentParser(description="Export P2 instruction metadata as JSON from the spreadsheet.")
     parser.add_argument(
         "--workbook",
         type=Path,
@@ -930,7 +737,7 @@ def parse_args() -> argparse.Namespace:
         "--output",
         type=Path,
         default=DEFAULT_OUTPUT,
-        help=f"Path to the generated C# file. Defaults to {DEFAULT_OUTPUT.relative_to(REPO_ROOT)}.",
+        help=f"Path to the generated JSON file. Defaults to {DEFAULT_OUTPUT.relative_to(REPO_ROOT)}.",
     )
     return parser.parse_args()
 
@@ -940,30 +747,9 @@ def main() -> int:
     workbook_path = args.workbook.resolve()
     output_path = args.output.resolve()
 
-    instruction_rows = load_sheet_rows(workbook_path, "Instructions")
-    alias_rows = load_sheet_rows(workbook_path, "Aliases")
-    all_rows = instruction_rows + alias_rows
-
-    valid_mnemonics = tuple(sorted({row.mnemonic for row in all_rows}))
-    condition_prefixes, canonical_condition_prefixes = load_prefix_names(workbook_path)
-    modcz_operands, canonical_modcz_operands = load_modcz_operands(workbook_path)
-    forms = aggregate_instruction_forms(all_rows)
-
-    generated_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-    command_line = " ".join(shlex.quote(part) for part in [sys.executable, *sys.argv])
-    source = render_generated_source(
-        forms=forms,
-        valid_mnemonics=valid_mnemonics,
-        condition_prefixes=condition_prefixes,
-        canonical_condition_prefixes=canonical_condition_prefixes,
-        modcz_operands=modcz_operands,
-        canonical_modcz_operands=canonical_modcz_operands,
-        generated_at=generated_at,
-        command_line=command_line,
-        workbook_path=workbook_path,
-    )
-
-    output_path.write_text(source + "\n", encoding="utf-8")
+    model = build_export_model(workbook_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(render_json(model), encoding="utf-8")
     return 0
 
 

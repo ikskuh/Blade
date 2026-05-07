@@ -26,6 +26,7 @@
     <ProjectReference Include="..\Blade.HwTestRunner\Blade.HwTestRunner.csproj" />
     <ProjectReference Include="..\Blade.Regressions\Blade.Regressions.csproj" />
     <ProjectReference Include="..\Tools\Blade.DiagnosticGen\Blade.DiagnosticGen.csproj" />
+    <ProjectReference Include="..\Tools\Blade.P2MetadataGen\Blade.P2MetadataGen.csproj" />
   </ItemGroup>
 
 </Project>
