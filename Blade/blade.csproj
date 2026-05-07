@@ -18,9 +18,12 @@
   <PropertyGroup>
     <!-- 
       Configure the compiler for more exhaustive handling of enums to ease code coverage:
-      CS8120: The switch case is unreachable. It has already been handled by a previous case or it is impossible to match.
-      CS8509: The switch expression does not handle all possible values of its input type (it is not exhaustive). For example, the pattern '...' is not covered.
-      CS8510: The pattern is unreachable. It has already been handled by a previous arm of the switch expression or it is impossible to match.
+      CS8120: The switch case is unreachable. It has already been handled by a previous case or it is
+    impossible to match.
+      CS8509: The switch expression does not handle all possible values of its input type (it is not
+    exhaustive). For example, the pattern '...' is not covered.
+      CS8510: The pattern is unreachable. It has already been handled by a previous arm of the switch
+    expression or it is impossible to match.
       CS8518: An expression of type can never match the provided pattern.
       CS8519: The given expression never matches the provided pattern.
     -->
@@ -42,14 +45,61 @@
   <!-- Include our own code analyzer in the build, so we can detect stale code, even if it's public -->
   <ItemGroup>
     <ProjectReference
-        Include="..\Tools\Blade.Roslyn.Analyzers\Blade.Roslyn.Analyzers.csproj"
-        OutputItemType="Analyzer"
-        ReferenceOutputAssembly="false" />
-      
+      Include="..\Tools\Blade.Roslyn.Analyzers\Blade.Roslyn.Analyzers.csproj"
+      OutputItemType="Analyzer"
+      ReferenceOutputAssembly="false" />
+
   </ItemGroup>
   <PropertyGroup>
-      <!-- TODO: The function usage analysis is still problematic: -->
+    <!-- TODO: The function usage analysis is still problematic: -->
     <WarningsNotAsErrors>BLD0002</WarningsNotAsErrors>
   </PropertyGroup>
+
+  <!-- Invoke the code generator automatically during build -->
+
+	<ItemGroup>
+		<ProjectReference Include="../Tools/Blade.DiagnosticGen/Blade.DiagnosticGen.csproj">
+			<RunAsPreBuild>true</RunAsPreBuild>
+		</ProjectReference>
+	</ItemGroup>
+
+  <ItemGroup>
+    <None Include="Diagnostics/Messages.def" />
+    <Compile Include="Diagnostics/DiagnosticMessages.g.cs" Condition="!Exists('Diagnostics/DiagnosticMessages.g.cs')" />
+    <Compile Update="Diagnostics/DiagnosticMessages.g.cs"  Condition="Exists('Diagnostics/DiagnosticMessages.g.cs')">
+      <DependentUpon>Diagnostics/Messages.def</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
+  <Target Name="GenerateCode" DependsOnTargets="ResolveProjectReferences"
+    BeforeTargets="CoreCompile" Condition="'$(DesignTimeBuild)' != 'true'">
+
+    <!-- Resolve target paths of only the marked references -->
+    <ItemGroup>
+      <PrebuildProjects Include="@(ProjectReference)"
+        Condition="'%(ProjectReference.RunAsPreBuild)' == 'true'" />
+    </ItemGroup>
+
+    <MSBuild Projects="@(PrebuildProjects)" Targets="GetTargetPath" BuildInParallel="true">
+      <Output TaskParameter="TargetOutputs" ItemName="PrebuildTargetPaths" />
+    </MSBuild>
+
+    <!-- Filter to executables; fail early if none -->
+    <ItemGroup>
+      <PrebuildExe Include="@(PrebuildTargetPaths)"
+        Condition="'%(PrebuildTargetPaths.Extension)' == '.dll'" />
+    </ItemGroup>
+
+    <Error Condition="'@(PrebuildExe)' == ''"
+      Text="No executable ProjectReference marked with RunAsPreBuild=true. Ensure project A builds an .exe." />
+
+    <Message Importance="High" Text="Running pre-build step: %(PrebuildExe.Identity)" />
+
+    <!-- 3) Run A (capture stdout/stderr in build log) -->
+    <Exec
+      Command="dotnet &quot;%(PrebuildExe.Identity)&quot; &quot;Diagnostics/Messages.def&quot; &quot;Diagnostics/DiagnosticMessages.g.cs&quot;"
+      WorkingDirectory="$(MSBuildProjectDirectory)" StandardOutputImportance="High"
+      StandardErrorImportance="High" />
+  </Target>
 
 </Project>

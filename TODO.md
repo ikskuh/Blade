@@ -514,3 +514,11 @@ This means we should introduce this concept on a broader scale to implement it.
 ```cs
 case BoundUnaryOperatorKind.UnaryPlus:
 ```
+
+##  MIR/LIR/ASMIR Optimization: Common subexpression elimination
+
+Eliminate equal parts of the IR tree
+
+##  MIR/LIR/ASMIR Optimization: Equal block elimination
+
+Eliminate equal parts of the IR tree

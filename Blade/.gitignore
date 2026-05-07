@@ -1,0 +1,2 @@
+# Exclude all generated C# source files:
+*.g.cs
