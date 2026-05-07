@@ -362,7 +362,7 @@ public static class MirLowerer
             : null;
         P2SpecialRegister? specialRegisterAlias = placement is StoragePlacePlacement.FixedAlias or StoragePlacePlacement.ExternalAlias
             && symbol.StorageClass == AddressSpace.Cog
-            && P2InstructionMetadata.TryParseSpecialRegister(symbol.Name, out P2SpecialRegister specialRegister)
+            && P2MetadataSyntax.TryParseSpecialRegister(symbol.Name, out P2SpecialRegister specialRegister)
                 ? specialRegister
                 : null;
         StoragePlace place = new StoragePlace(symbol, placement, registerRole, specialRegisterAlias: specialRegisterAlias);

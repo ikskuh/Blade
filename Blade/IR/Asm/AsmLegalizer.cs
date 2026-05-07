@@ -96,10 +96,7 @@ public static class AsmLegalizer
         for (int operandIndex = 0; operandIndex < instruction.Operands.Count; operandIndex++)
         {
             AsmOperand operand = instruction.Operands[operandIndex];
-            P2InstructionOperandInfo operandInfo = P2InstructionMetadata.GetOperandInfo(
-                instruction.Mnemonic,
-                instruction.Operands.Count,
-                operandIndex);
+            P2InstructionOperandInfo operandInfo = instruction.Form.Operands[operandIndex];
 
             if (TryGetSymbolSharedConstantValue(instruction, operandIndex, operand, operandInfo, out AsmSharedConstantValue? symbolicValue))
             {
@@ -156,10 +153,7 @@ public static class AsmLegalizer
         for (int i = 0; i < instruction.Operands.Count; i++)
         {
             AsmOperand operand = instruction.Operands[i];
-            P2InstructionOperandInfo operandInfo = P2InstructionMetadata.GetOperandInfo(
-                instruction.Mnemonic,
-                instruction.Operands.Count,
-                i);
+            P2InstructionOperandInfo operandInfo = instruction.Form.Operands[i];
 
             if (TryGetSymbolSharedConstantValue(instruction, i, operand, operandInfo, out AsmSharedConstantValue? symbolicValue))
             {
@@ -173,7 +167,7 @@ public static class AsmLegalizer
 
             if (TryGetImmediateValue(operand, out uint uval))
             {
-                if (!operandInfo.SupportsImmediateSyntax || operandInfo.BitWidth <= 0)
+                if (!operandInfo.SupportsImmediate.SupportsImmediate() || operandInfo.BitWidth <= 0)
                     throw new InvalidOperationException($"Instruction '{instruction.Opcode}' operand {i} does not support immediate syntax.");
 
                 if (!FitsInOperandEncoding(instruction, i, operand, operandInfo, uval))
@@ -365,22 +359,22 @@ public static class AsmLegalizer
 
     private static bool CanUseNumericSharedConstant(P2InstructionOperandInfo operandInfo)
     {
-        return operandInfo.SupportsImmediateSyntax
+        return operandInfo.SupportsImmediate.SupportsImmediate()
             && operandInfo.BitWidth > 0
             && operandInfo.AugPrefix != P2AugPrefixKind.None;
     }
 
     private static bool CanUseSymbolSharedConstant(P2InstructionOperandInfo operandInfo)
     {
-        return operandInfo.SupportsImmediateSyntax
+        return operandInfo.SupportsImmediate.SupportsImmediate()
             && operandInfo.BitWidth > 0
-            && !operandInfo.UsesImmediateSymbolSyntax
+            && operandInfo.Type != P2OperandType.BranchTarget
             && !IsImmediateOnlyOperand(operandInfo);
     }
 
     private static bool IsImmediateOnlyOperand(P2InstructionOperandInfo operandInfo)
     {
-        return operandInfo.SupportsImmediateSyntax
+        return operandInfo.SupportsImmediate.RequiresImmediate()
             && operandInfo.Access == P2OperandAccess.None
             && operandInfo.Role == P2OperandRole.N;
     }

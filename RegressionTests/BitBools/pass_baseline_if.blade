@@ -1,0 +1,16 @@
+// EXPECT: pass
+// STAGE: final-asm
+// NOTE:
+//   Verifies the code generation for a basic comparison
+
+cog task main {
+    extern cog var input: u32;
+    extern cog var output: u32;
+
+    if(input == 0) {
+        output = 1;
+    }
+    else {
+        output = 0;
+    }
+}

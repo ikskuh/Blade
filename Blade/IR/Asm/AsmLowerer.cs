@@ -2509,17 +2509,16 @@ public static class AsmLowerer
 
     private static bool ShouldEmitIntrinsicDestination(P2Mnemonic mnemonic, int explicitOperandCount)
     {
-        if (P2InstructionMetadata.TryGetInstructionForm(mnemonic, explicitOperandCount + 1, out P2InstructionFormInfo formWithDestination))
-            return FormWritesOperand(formWithDestination);
+        IReadOnlyCollection<P2InstructionFormInfo> formsWithDestination = mnemonic.GetInstructionForms(explicitOperandCount + 1);
+        if (formsWithDestination.Count > 0)
+            return formsWithDestination.Any(FormWritesOperand);
 
-        return !P2InstructionMetadata.TryGetInstructionForm(mnemonic, explicitOperandCount, out _);
+        return mnemonic.GetInstructionForms(explicitOperandCount).Count == 0;
     }
 
     private static bool FormWritesOperand(P2InstructionFormInfo form)
     {
-        return OperandWrites(form.Operand0)
-            || OperandWrites(form.Operand1)
-            || OperandWrites(form.Operand2);
+        return form.Operands.Any(OperandWrites);
     }
 
     private static bool OperandWrites(P2InstructionOperandInfo operand)
@@ -3050,13 +3049,6 @@ public static class AsmLowerer
             _ => Assert.UnreachableValue<P2Mnemonic>(), // pragma: force-coverage
         };
 
-        P2FlagEffect clobberingEffect = placement switch
-        {
-            ReturnPlacement.FlagC => P2FlagEffect.WC | P2FlagEffect.WCZ | P2FlagEffect.ANDC | P2FlagEffect.ORC | P2FlagEffect.XORC,
-            ReturnPlacement.FlagZ => P2FlagEffect.WZ | P2FlagEffect.WCZ | P2FlagEffect.ANDZ | P2FlagEffect.ORZ | P2FlagEffect.XORZ,
-            _ => Assert.UnreachableValue<P2FlagEffect>(), // pragma: force-coverage
-        };
-
         VirtualAsmFlag asmFlag = ctx.GetFlag(flagOperand.Flag);
         int captureIndex = -1;
 
@@ -3080,7 +3072,7 @@ public static class AsmLowerer
             if (nodes[i] is not AsmInstructionNode instruction)
                 continue;
 
-            if ((instruction.FlagEffect & clobberingEffect) != 0)
+            if (ClobbersReturnedFlag(instruction.FlagEffect, placement))
                 return false;
 
             if (AsmOptimizationHelpers.EnumerateUsedRegisters(instruction).Contains(asmFlag))
@@ -3109,6 +3101,16 @@ public static class AsmLowerer
             && instruction.Operands[0] is AsmFlagOperand flagOperand
             && ReferenceEquals(flagOperand.Flag, flag)
             && instruction.Operands[1] is AsmImmediateOperand { Value: 0 };
+    }
+
+    private static bool ClobbersReturnedFlag(P2FlagEffect flagEffect, ReturnPlacement placement)
+    {
+        return placement switch
+        {
+            ReturnPlacement.FlagC => flagEffect is P2FlagEffect.WC or P2FlagEffect.WCZ or P2FlagEffect.ANDC or P2FlagEffect.ORC or P2FlagEffect.XORC,
+            ReturnPlacement.FlagZ => flagEffect is P2FlagEffect.WZ or P2FlagEffect.WCZ or P2FlagEffect.ANDZ or P2FlagEffect.ORZ or P2FlagEffect.XORZ,
+            _ => Assert.UnreachableValue<bool>(), // pragma: force-coverage
+        };
     }
 
     private static void LowerBranch(List<AsmNode> nodes, LoweringContext ctx, LirBranchTerminator branch)

@@ -33,12 +33,17 @@ public sealed class InlineAsmLabelLine(ControlFlowLabelSymbol label, string? tra
 public sealed class InlineAsmInstructionLine(
     P2ConditionCode? condition,
     P2Mnemonic mnemonic,
+    P2InstructionFormInfo form,
     IReadOnlyList<InlineAsmOperand> operands,
     P2FlagEffect? flagEffect,
     string? trailingComment) : InlineAsmLine(trailingComment)
 {
     public P2ConditionCode? Condition { get; } = condition;
     public P2Mnemonic Mnemonic { get; } = mnemonic;
+    /// <summary>
+    /// Resolved instruction-form metadata for the bound inline-assembly instruction.
+    /// </summary>
+    public P2InstructionFormInfo Form { get; } = Requires.NotNull(form);
     public IReadOnlyList<InlineAsmOperand> Operands { get; } = Requires.NotNull(operands);
     public P2FlagEffect? FlagEffect { get; } = flagEffect;
 }

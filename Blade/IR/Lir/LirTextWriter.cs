@@ -223,7 +223,7 @@ public static class LirTextWriter
 
     private static string FormatPredicate(P2ConditionCode predicate)
     {
-        string text = P2InstructionMetadata.GetConditionPrefixText(predicate);
+        string text = P2MetadataSyntax.GetConditionPrefixText(predicate);
         char[] chars = text.ToCharArray();
         for (int i = 0; i < chars.Length; i++)
             chars[i] = char.ToLowerInvariant(chars[i]);

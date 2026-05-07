@@ -106,7 +106,7 @@ internal static class AsmOptimizationHelpers
             if (instruction.Operands[operandIndex] is not AsmSymbolOperand)
                 continue;
 
-            if (P2InstructionMetadata.UsesImmediateSymbolSyntax(instruction.Mnemonic, instruction.Operands.Count, operandIndex))
+            if (instruction.Form.Operands[operandIndex].Type == P2OperandType.BranchTarget)
                 return true;
         }
 
@@ -121,7 +121,7 @@ internal static class AsmOptimizationHelpers
         if (instruction.Mnemonic is P2Mnemonic.PUSHB or P2Mnemonic.POPB)
             return true;
 
-        return P2InstructionMetadata.IsControlFlow(instruction.Mnemonic, instruction.Operands.Count)
+        return instruction.Form.IsControlFlow
             || HasImmediateSymbolOperand(instruction);
     }
 
@@ -131,7 +131,7 @@ internal static class AsmOptimizationHelpers
             || instruction.FlagEffect != P2FlagEffect.None
             || instruction.Operands.Count == 0
             || instruction.Operands[0] is not AsmRegisterOperand
-            || !P2InstructionMetadata.IsPureRegisterLocal(instruction.Mnemonic, instruction.Operands.Count))
+            || !instruction.Form.IsPureRegisterLocal)
         {
             return false;
         }
@@ -276,7 +276,7 @@ internal static class AsmOptimizationHelpers
     }
 
     internal static bool IsControlFlowInstruction(AsmInstructionNode instruction)
-        => P2InstructionMetadata.IsControlFlow(instruction.Mnemonic, instruction.Operands.Count);
+        => instruction.Form.IsControlFlow;
 
     internal static bool EndsWithTargetedLabel(IReadOnlyList<AsmNode> nodes, IReadOnlySet<ControlFlowLabelSymbol> targets)
         => nodes.Count > 0 && nodes[^1] is AsmLabelNode label && targets.Contains(label.Label);
@@ -305,9 +305,8 @@ internal static class AsmOptimizationHelpers
             if (function.Nodes[i] is not AsmInstructionNode instruction)
                 continue;
 
-            if (!P2InstructionMetadata.TryGetInstructionForm(instruction.Mnemonic, instruction.Operands.Count, out P2InstructionFormInfo form)
-                || !form.IsBranch
-                || form.IsReturn)
+            if (!instruction.Form.IsBranch
+                || instruction.Form.IsReturn)
             {
                 continue;
             }

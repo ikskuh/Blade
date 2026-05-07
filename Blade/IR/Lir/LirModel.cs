@@ -427,8 +427,8 @@ public sealed class LirIntrinsicOperation(P2Mnemonic mnemonic) : LirOperation
 
     public override bool IsValidResultType(BladeType? resultType) => true;
 
-    public override bool IsValidOperandCount(int operandCount) => P2InstructionMetadata.TryGetInstructionForm(Mnemonic, operandCount, out _)
-        || P2InstructionMetadata.TryGetInstructionForm(Mnemonic, operandCount + 1, out _);
+    public override bool IsValidOperandCount(int operandCount) => Mnemonic.GetInstructionForms(operandCount).Count > 0
+        || Mnemonic.GetInstructionForms(operandCount + 1).Count > 0;
 }
 
 public sealed class LirStoreIndexOperation(BladeType indexedType, AddressSpace storageClass) : LirOperation

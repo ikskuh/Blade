@@ -851,11 +851,11 @@ public static class FinalAssemblyWriter
                 sb.Append("    ");
                 if (instruction.Condition is P2ConditionCode condition)
                 {
-                    sb.Append(P2InstructionMetadata.GetConditionPrefixText(condition));
+                    sb.Append(P2MetadataSyntax.GetConditionPrefixText(condition));
                     sb.Append(' ');
                 }
 
-                sb.Append(P2InstructionMetadata.GetMnemonicText(instruction.Mnemonic));
+                sb.Append(instruction.Mnemonic.ToString());
                 if (instruction.Operands.Count > 0)
                 {
                     sb.Append(' ');

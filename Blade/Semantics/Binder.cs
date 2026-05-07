@@ -493,12 +493,14 @@ public sealed class Binder
                 new InlineAsmInstructionLine(
                     condition: null,
                     mnemonic: P2Mnemonic.COGID,
+                    form: Assert.NotNull(P2InstructionFormResolver.Resolve(P2Mnemonic.COGID, (IReadOnlyList<InlineAsmOperand>)[new InlineAsmBindingRefOperand(cogIdSlot)]).Form),
                     operands: [new InlineAsmBindingRefOperand(cogIdSlot)],
                     flagEffect: null,
                     trailingComment: null),
                 new InlineAsmInstructionLine(
                     condition: null,
                     mnemonic: P2Mnemonic.COGSTOP,
+                    form: Assert.NotNull(P2InstructionFormResolver.Resolve(P2Mnemonic.COGSTOP, (IReadOnlyList<InlineAsmOperand>)[new InlineAsmBindingRefOperand(cogIdSlot)]).Form),
                     operands: [new InlineAsmBindingRefOperand(cogIdSlot)],
                     flagEffect: null,
                     trailingComment: null),
@@ -2202,7 +2204,7 @@ public sealed class Binder
         P2ConditionCode? condition = null;
         if (instructionLine.Condition is Token conditionToken)
         {
-            if (!P2InstructionMetadata.TryParseConditionCode(conditionToken.Text, out P2ConditionCode parsedCondition))
+            if (!P2MetadataSyntax.TryParseConditionCode(conditionToken.Text, out P2ConditionCode parsedCondition))
             {
                 _diagnostics.Report(new InlineAsmUnknownConditionError(_diagnostics.CurrentSource, conditionToken.Span, conditionToken.Text));
                 return null;
@@ -2210,7 +2212,7 @@ public sealed class Binder
             condition = parsedCondition;
         }
 
-        if (!P2InstructionMetadata.TryParseMnemonic(instructionLine.Mnemonic.Text, out P2Mnemonic mnemonic))
+        if (!P2MetadataSyntax.TryParseMnemonic(instructionLine.Mnemonic.Text, out P2Mnemonic mnemonic))
         {
             _diagnostics.Report(new InlineAsmUnknownInstructionError(_diagnostics.CurrentSource, blockSpan, instructionLine.Mnemonic.Text));
             return null;
@@ -2226,16 +2228,20 @@ public sealed class Binder
             operands.Add(operand);
         }
 
-        if (!P2InstructionMetadata.TryGetInstructionForm(mnemonic, operands.Count, out _))
+        P2InstructionFormResolution resolution = P2InstructionFormResolver.Resolve(mnemonic, operands);
+        if (resolution.Kind == P2InstructionFormResolutionKind.NoMatch)
         {
-            _diagnostics.Report(new InlineAsmInvalidInstructionFormError(_diagnostics.CurrentSource, blockSpan, P2InstructionMetadata.GetMnemonicText(mnemonic), operands.Count));
+            _diagnostics.Report(new InlineAsmInvalidInstructionFormError(_diagnostics.CurrentSource, blockSpan, mnemonic.ToString(), operands.Count));
             return null;
         }
+        Assert.Invariant(
+            resolution.Kind == P2InstructionFormResolutionKind.Success && resolution.Form is not null,
+            $"Inline asm instruction '{mnemonic}/{operands.Count}' must resolve to a unique form.");
 
         P2FlagEffect? flagEffect = null;
         if (instructionLine.FlagEffect is Token flagToken)
         {
-            if (!P2InstructionMetadata.TryParseFlagEffect(flagToken.Text, out P2FlagEffect parsedFlagEffect))
+            if (!P2MetadataSyntax.TryParseFlagEffect(flagToken.Text, out P2FlagEffect parsedFlagEffect))
             {
                 _diagnostics.Report(new InlineAsmInvalidFlagEffectError(_diagnostics.CurrentSource, flagToken.Span, flagToken.Text));
                 return null;
@@ -2243,7 +2249,7 @@ public sealed class Binder
             flagEffect = parsedFlagEffect;
         }
 
-        return new InlineAsmInstructionLine(condition, mnemonic, operands, flagEffect, instructionLine.TrailingComment);
+        return new InlineAsmInstructionLine(condition, mnemonic, Assert.NotNull(resolution.Form), operands, flagEffect, instructionLine.TrailingComment);
     }
 
     private InlineAsmDataLine? BindInlineAsmDataLine(
@@ -2375,7 +2381,7 @@ public sealed class Binder
                     if (labels.TryGetValue(name, out ControlFlowLabelSymbol? label))
                         return new InlineAsmLabelOperand(label, InlineAsmAddressingMode.Immediate);
 
-                    if (P2InstructionMetadata.TryParseSpecialRegister(name, out _)
+                    if (P2MetadataSyntax.TryParseSpecialRegister(name, out _)
                         || availableBindings.ContainsKey(name))
                     {
                         _diagnostics.Report(new InlineAsmInvalidImmediateOperandKindError(
@@ -2410,7 +2416,7 @@ public sealed class Binder
         if (labels.TryGetValue(name, out ControlFlowLabelSymbol? label))
             return new InlineAsmLabelOperand(label, InlineAsmAddressingMode.Direct);
 
-        if (P2InstructionMetadata.TryParseSpecialRegister(name, out P2SpecialRegister register))
+        if (P2MetadataSyntax.TryParseSpecialRegister(name, out P2SpecialRegister register))
             return new InlineAsmSpecialRegisterOperand(register);
 
         if (availableBindings.TryGetValue(name, out InlineAsmVarBindingSlot? binding))
@@ -2523,7 +2529,7 @@ public sealed class Binder
                     if (labels.TryGetValue(name, out ControlFlowLabelSymbol? label))
                         return new InlineAsmDataLabelValue(label, addressingMode);
 
-                    if (P2InstructionMetadata.TryParseSpecialRegister(name, out P2SpecialRegister register))
+                    if (P2MetadataSyntax.TryParseSpecialRegister(name, out P2SpecialRegister register))
                         return new InlineAsmDataSpecialRegisterValue(register, addressingMode);
 
                     if (availableBindings.TryGetValue(name, out InlineAsmVarBindingSlot? binding))
@@ -2592,10 +2598,7 @@ public sealed class Binder
                     continue;
                 }
 
-                P2OperandAccess access = P2InstructionMetadata.GetOperandAccess(
-                    instruction.Mnemonic,
-                    instruction.Operands.Count,
-                    operandIndex);
+                P2OperandAccess access = instruction.Form.Operands[operandIndex].Access;
                 if (access is P2OperandAccess.Read or P2OperandAccess.ReadWrite)
                     _diagnostics.Report(new InlineAsmTempReadBeforeWriteWarning(_diagnostics.CurrentSource, blockSpan, tempBinding.PlaceholderText));
             }
@@ -4475,7 +4478,7 @@ public sealed class Binder
 
     private BoundExpression BindIntrinsicCallExpression(IntrinsicCallExpressionSyntax intrinsic)
     {
-        if (!P2InstructionMetadata.TryParseMnemonic(intrinsic.Name.Text, out P2Mnemonic mnemonic))
+        if (!P2MetadataSyntax.TryParseMnemonic(intrinsic.Name.Text, out P2Mnemonic mnemonic))
         {
             _diagnostics.Report(new UnknownBuiltinError(_diagnostics.CurrentSource, intrinsic.Name.Span, intrinsic.Name.Text));
             return new BoundErrorExpression(intrinsic.Span);

@@ -290,14 +290,18 @@ public sealed class AsmInstructionNode : AsmNode
         bool isPhiMove = false)
     {
         IReadOnlyList<AsmOperand> checkedOperands = Requires.NotNull(operands);
-        bool hasForm = P2InstructionMetadata.TryGetInstructionForm(mnemonic, checkedOperands.Count, out P2InstructionFormInfo form);
-        Assert.Invariant(hasForm, $"Instruction form '{mnemonic}/{checkedOperands.Count}' must exist.");
+        P2InstructionFormResolution resolution = P2InstructionFormResolver.Resolve(mnemonic, checkedOperands);
+        Assert.Invariant(
+            resolution.Kind == P2InstructionFormResolutionKind.Success && resolution.Form is not null,
+            $"Instruction form '{mnemonic}/{checkedOperands.Count}' must resolve uniquely.");
+        P2InstructionFormInfo form = Assert.NotNull(resolution.Form);
         for (int i = 0; i < checkedOperands.Count; i++)
         {
-            ValidateOperandCompatibility(form, checkedOperands[i], i);
+            ValidateOperandCompatibility(mnemonic, form, checkedOperands[i], i);
         }
 
         Mnemonic = mnemonic;
+        Form = form;
         Operands = checkedOperands;
         Condition = condition;
         FlagEffect = flagEffect;
@@ -306,30 +310,34 @@ public sealed class AsmInstructionNode : AsmNode
     }
 
     public P2Mnemonic Mnemonic { get; }
+    /// <summary>
+    /// Resolved instruction-form metadata for the instruction.
+    /// </summary>
+    public P2InstructionFormInfo Form { get; }
     public IReadOnlyList<AsmOperand> Operands { get; }
     public P2ConditionCode? Condition { get; }
     public P2FlagEffect FlagEffect { get; }
     public bool IsNonElidable { get; }
     public bool IsPhiMove { get; }
 
-    public string Opcode => P2InstructionMetadata.GetMnemonicText(Mnemonic);
+    public string Opcode => Mnemonic.ToString();
     public string? Predicate => Condition is P2ConditionCode condition
-        ? P2InstructionMetadata.GetConditionPrefixText(condition)
+        ? P2MetadataSyntax.GetConditionPrefixText(condition)
         : null;
 
-    private static void ValidateOperandCompatibility(P2InstructionFormInfo form, AsmOperand operand, int operandIndex)
+    private static void ValidateOperandCompatibility(P2Mnemonic mnemonic, P2InstructionFormInfo form, AsmOperand operand, int operandIndex)
     {
-        P2InstructionOperandInfo operandInfo = form.GetOperandInfo(operandIndex);
+        P2InstructionOperandInfo operandInfo = form.Operands[operandIndex];
         switch (operand)
         {
             case AsmImmediateOperand:
-                Assert.Invariant(operandInfo.SupportsImmediateSyntax, $"Operand {operandIndex} of '{form.Mnemonic}' does not allow immediate values.");
+                Assert.Invariant(operandInfo.SupportsImmediate.SupportsImmediate(), $"Operand {operandIndex} of '{mnemonic}' does not allow immediate values.");
                 break;
             case AsmSymbolOperand symbol when symbol.AddressingMode == AsmSymbolAddressingMode.Immediate:
-                Assert.Invariant(operandInfo.SupportsImmediateSyntax, $"Operand {operandIndex} of '{form.Mnemonic}' does not allow immediate symbols.");
+                Assert.Invariant(operandInfo.SupportsImmediate.SupportsImmediate(), $"Operand {operandIndex} of '{mnemonic}' does not allow immediate symbols.");
                 break;
             case AsmSymbolOperand symbol when symbol.AddressingMode == AsmSymbolAddressingMode.Register:
-                Assert.Invariant(!IsImmediateOnlyOperand(operandInfo), $"Operand {operandIndex} of '{form.Mnemonic}' requires immediate syntax.");
+                Assert.Invariant(!IsImmediateOnlyOperand(operandInfo), $"Operand {operandIndex} of '{mnemonic}' requires immediate syntax.");
                 break;
             case AsmRegisterOperand:
             case AsmFlagOperand:
@@ -340,7 +348,7 @@ public sealed class AsmInstructionNode : AsmNode
                 // forms once metadata exposes all required distinctions for these operand kinds.
                 break;
             case AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Immediate }:
-                Assert.Invariant(operandInfo.SupportsImmediateSyntax, $"Operand {operandIndex} of '{form.Mnemonic}' does not allow immediate values.");
+                Assert.Invariant(operandInfo.SupportsImmediate.SupportsImmediate(), $"Operand {operandIndex} of '{mnemonic}' does not allow immediate values.");
                 break;
             default:
                 Assert.Unreachable(); // pragma: force-coverage
@@ -349,7 +357,7 @@ public sealed class AsmInstructionNode : AsmNode
     }
 
     private static bool IsImmediateOnlyOperand(P2InstructionOperandInfo operandInfo)
-        => operandInfo.SupportsImmediateSyntax
+        => operandInfo.SupportsImmediate.RequiresImmediate()
             && operandInfo.Access == P2OperandAccess.None
             && operandInfo.Role == P2OperandRole.N;
 

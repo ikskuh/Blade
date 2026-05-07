@@ -226,7 +226,7 @@ public sealed class BoundIntrinsicCallExpression(P2Mnemonic mnemonic, IReadOnlyL
         if (normalized.StartsWith('@'))
             normalized = normalized[1..];
 
-        bool parsed = P2InstructionMetadata.TryParseMnemonic(normalized, out P2Mnemonic mnemonic);
+        bool parsed = P2MetadataSyntax.TryParseMnemonic(normalized, out P2Mnemonic mnemonic);
         Assert.Invariant(parsed, $"Intrinsic '{name}' must resolve to a valid P2 mnemonic.");
         return mnemonic;
     }

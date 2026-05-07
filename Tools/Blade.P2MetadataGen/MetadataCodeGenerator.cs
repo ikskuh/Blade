@@ -518,20 +518,27 @@ internal static class MetadataCodeGenerator
         writer.AppendLine("/// </summary>");
         writer.AppendLine("public static class P2SpecialRegisterExtensions");
         writer.AppendLine("{");
-        AppendStringArray(writer, "Texts", orderedSets.SpecialRegisters.Select(RenderStringLiteral));
-        AppendStringArray(writer, "Descriptions", orderedSets.SpecialRegisters.Select(name => RenderStringLiteral(model.SpecialRegisters[name].Description)));
         writer.AppendLine("    /// <summary>");
         writer.AppendLine("    /// Gets the text representation of the special register.");
         writer.AppendLine("    /// </summary>");
         writer.AppendLine("    public static string GetText(this P2SpecialRegister register)");
-        writer.AppendLine("        => Texts[GetIndex(register)];");
+        writer.AppendLine("        => register switch");
+        writer.AppendLine("        {");
+        foreach (string name in orderedSets.SpecialRegisters)
+            writer.AppendLine("            P2SpecialRegister." + ToEnumIdentifier(name) + " => " + RenderStringLiteral(name) + ",");
+        writer.AppendLine("            _ => throw new ArgumentOutOfRangeException(nameof(register), register, \"Unknown P2SpecialRegister value.\"),");
+        writer.AppendLine("        };");
         writer.AppendLine();
         writer.AppendLine("    /// <summary>");
         writer.AppendLine("    /// Gets the description of the special register.");
         writer.AppendLine("    /// </summary>");
         writer.AppendLine("    public static string GetDescription(this P2SpecialRegister register)");
-        writer.AppendLine("        => Descriptions[GetIndex(register)];");
-        AppendEnumIndexHelper(writer, "P2SpecialRegister", "Texts.Length");
+        writer.AppendLine("        => register switch");
+        writer.AppendLine("        {");
+        foreach (string name in orderedSets.SpecialRegisters)
+            writer.AppendLine("            P2SpecialRegister." + ToEnumIdentifier(name) + " => " + RenderStringLiteral(model.SpecialRegisters[name].Description) + ",");
+        writer.AppendLine("            _ => throw new ArgumentOutOfRangeException(nameof(register), register, \"Unknown P2SpecialRegister value.\"),");
+        writer.AppendLine("        };");
         writer.AppendLine("}");
         writer.AppendLine();
     }

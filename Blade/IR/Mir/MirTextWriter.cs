@@ -262,7 +262,7 @@ public static class MirTextWriter
 
             case MirIntrinsicCallInstruction intrinsic:
                 sb.Append("intrinsic @");
-                sb.Append(P2InstructionMetadata.GetMnemonicText(intrinsic.Mnemonic));
+                sb.Append(intrinsic.Mnemonic.ToString());
                 sb.Append('(');
                 WriteValueList(sb, intrinsic.Arguments, formatter);
                 sb.Append(')');

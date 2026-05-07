@@ -102,8 +102,7 @@ public static class LivenessAnalyzer
                 leaders.Add(i);
             }
             else if (nodes[i] is AsmInstructionNode instruction
-                     && P2InstructionMetadata.TryGetInstructionForm(instruction.Mnemonic, instruction.Operands.Count, out P2InstructionFormInfo form)
-                     && (form.IsBranch || form.IsReturn))
+                     && (instruction.Form.IsBranch || instruction.Form.IsReturn))
             {
                 if (i + 1 < nodes.Count)
                     leaders.Add(i + 1);
@@ -166,21 +165,15 @@ public static class LivenessAnalyzer
                 continue;
             }
 
-            bool hasForm = P2InstructionMetadata.TryGetInstructionForm(
-                lastInstruction.Mnemonic,
-                lastInstruction.Operands.Count,
-                out P2InstructionFormInfo lastInstructionForm);
-            bool isBranch = hasForm && lastInstructionForm.IsBranch;
-            bool isReturn = hasForm && lastInstructionForm.IsReturn;
+            bool isBranch = lastInstruction.Form.IsBranch;
+            bool isReturn = lastInstruction.Form.IsReturn;
 
             if (isReturn)
                 continue;
 
             if (isBranch)
             {
-                AsmSymbolOperand? target = hasForm
-                    ? FindImmediateSymbolTarget(lastInstruction)
-                    : null;
+                AsmSymbolOperand? target = FindImmediateSymbolTarget(lastInstruction);
 
                 if (target is { Symbol: ControlFlowLabelSymbol label } && labelToBlock.TryGetValue(label, out int targetBlock))
                     block.SuccessorBlockIndices.Add(targetBlock);
@@ -204,7 +197,7 @@ public static class LivenessAnalyzer
             {
                 if (nodes[i] is AsmInstructionNode instruction)
                 {
-                    if (P2InstructionMetadata.IsCall(instruction.Mnemonic, instruction.Operands.Count))
+                    if (instruction.Form.IsCall)
                         block.CallIndices.Add(i);
 
                     ProcessInstruction(instruction, block);
@@ -215,7 +208,7 @@ public static class LivenessAnalyzer
 
     private static void ProcessInstruction(AsmInstructionNode instruction, BasicBlock block)
     {
-        if (P2InstructionMetadata.HasNoRegisterEffect(instruction.Mnemonic, instruction.Operands.Count))
+        if (instruction.Form.HasNoRegisterEffect)
             return;
 
         List<VirtualAsmValue> defs = [];
@@ -295,12 +288,12 @@ public static class LivenessAnalyzer
                 if (nodes[i] is not AsmInstructionNode instruction)
                     continue;
 
-                if (P2InstructionMetadata.HasNoRegisterEffect(instruction.Mnemonic, instruction.Operands.Count))
+                if (instruction.Form.HasNoRegisterEffect)
                     continue;
 
                 liveAfterInstruction[i] = [.. live];
 
-                if (P2InstructionMetadata.IsCall(instruction.Mnemonic, instruction.Operands.Count))
+                if (instruction.Form.IsCall)
                 {
                     liveByCallInstruction[i] = [.. live];
                     foreach (VirtualAsmValue reg in live)
@@ -360,28 +353,6 @@ public static class LivenessAnalyzer
         if (instruction.Operands.Count == 0)
             return;
 
-        if (!P2InstructionMetadata.TryGetInstructionForm(
-                instruction.Mnemonic,
-                instruction.Operands.Count,
-                out _))
-        {
-            foreach (AsmOperand operand in instruction.Operands)
-            {
-                if (operand is AsmRegisterOperand reg)
-                {
-                    uses.Add(reg.Value);
-                    defs.Add(reg.Value);
-                }
-                else if (operand is AsmFlagOperand flag)
-                {
-                    uses.Add(flag.Flag);
-                    defs.Add(flag.Flag);
-                }
-            }
-
-            return;
-        }
-
         for (int operandIndex = 0; operandIndex < instruction.Operands.Count; operandIndex++)
         {
             VirtualAsmValue register;
@@ -392,10 +363,7 @@ public static class LivenessAnalyzer
             else
                 continue;
 
-            P2OperandAccess access = P2InstructionMetadata.GetOperandAccess(
-                instruction.Mnemonic,
-                instruction.Operands.Count,
-                operandIndex);
+            P2OperandAccess access = instruction.Form.Operands[operandIndex].Access;
 
             if (access is P2OperandAccess.Read or P2OperandAccess.ReadWrite)
                 uses.Add(register);
@@ -417,9 +385,6 @@ public static class LivenessAnalyzer
         if (instruction.Mnemonic == P2Mnemonic.MOV && instruction.Operands.Count == 2)
             return;
 
-        if (!P2InstructionMetadata.TryGetInstructionForm(instruction.Mnemonic, instruction.Operands.Count, out _))
-            return;
-
         for (int writeOperandIndex = 0; writeOperandIndex < instruction.Operands.Count; writeOperandIndex++)
         {
             VirtualAsmValue writeRegister;
@@ -430,10 +395,7 @@ public static class LivenessAnalyzer
             else
                 continue;
 
-            P2OperandAccess writeAccess = P2InstructionMetadata.GetOperandAccess(
-                instruction.Mnemonic,
-                instruction.Operands.Count,
-                writeOperandIndex);
+            P2OperandAccess writeAccess = instruction.Form.Operands[writeOperandIndex].Access;
             if (writeAccess is not P2OperandAccess.Write and not P2OperandAccess.ReadWrite)
                 continue;
 
@@ -452,10 +414,7 @@ public static class LivenessAnalyzer
                 else
                     continue;
 
-                P2OperandAccess readAccess = P2InstructionMetadata.GetOperandAccess(
-                    instruction.Mnemonic,
-                    instruction.Operands.Count,
-                    readOperandIndex);
+                P2OperandAccess readAccess = instruction.Form.Operands[readOperandIndex].Access;
                 if (readAccess is not P2OperandAccess.Read and not P2OperandAccess.ReadWrite)
                     continue;
 
@@ -469,7 +428,7 @@ public static class LivenessAnalyzer
     {
         for (int operandIndex = instruction.Operands.Count - 1; operandIndex >= 0; operandIndex--)
         {
-            if (!P2InstructionMetadata.UsesImmediateSymbolSyntax(instruction.Mnemonic, instruction.Operands.Count, operandIndex))
+            if (instruction.Form.Operands[operandIndex].Type != P2OperandType.BranchTarget)
                 continue;
 
             return instruction.Operands[operandIndex] as AsmSymbolOperand;

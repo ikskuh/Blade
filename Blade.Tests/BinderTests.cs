@@ -1633,5 +1633,33 @@ public class BinderTests
         Assert.That(diagnostics.Any(d => d.Code == "E0202"), Is.True);
     }
 
+    [Test]
+    public void InlineAsm_CalldAddressRegisterForm_BindsWithoutDiagnostics()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            cog task main() {
+                asm {
+                    CALLD PTRA, #0
+                };
+            }
+            """);
+
+        Assert.That(diagnostics, Is.Empty);
+    }
+
+    [Test]
+    public void InlineAsm_FlagEffectNoneToken_IsRejected()
+    {
+        (_, _, DiagnosticBag diagnostics) = Bind("""
+            cog task main() {
+                cog var x: u32 = 0;
+                asm {
+                    MOV {x}, {x} none
+                };
+            }
+            """);
+
+        Assert.That(diagnostics.Any(d => d.Code == "E0316"), Is.True);
+    }
 
 }

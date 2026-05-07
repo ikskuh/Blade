@@ -1,4 +1,6 @@
+using System.Linq;
 using Blade;
+using Blade.IR.Asm;
 
 namespace Blade.Tests;
 
@@ -6,124 +8,122 @@ namespace Blade.Tests;
 public class P2InstructionMetadataTests
 {
     [Test]
-    public void TryGetInstructionForm_ReturnsKnownForms()
+    public void MnemonicExtensions_ReturnKnownFormsAndMetadata()
     {
-        Assert.That(P2InstructionMetadata.TryGetInstructionForm(P2Mnemonic.ADD, 2, out P2InstructionFormInfo add), Is.True);
-        Assert.That(add.Mnemonic, Is.EqualTo(P2Mnemonic.ADD));
-        Assert.That(add.OperandCount, Is.EqualTo(2));
-        Assert.That(add.Operand0.Role, Is.EqualTo(P2OperandRole.D));
-        Assert.That(add.Operand0.Access, Is.EqualTo(P2OperandAccess.ReadWrite));
-        Assert.That(add.Operand0.BitWidth, Is.EqualTo(9));
-        Assert.That(add.Operand1.Role, Is.EqualTo(P2OperandRole.S));
-        Assert.That(add.Operand1.Access, Is.EqualTo(P2OperandAccess.Read));
-        Assert.That(add.Operand1.SupportsImmediateSyntax, Is.True);
-        Assert.That(add.Operand1.AugPrefix, Is.EqualTo(P2AugPrefixKind.AUGS));
-        Assert.That(add.WrittenRegisters, Is.EqualTo(P2WrittenRegister.D));
+        IReadOnlyCollection<P2InstructionFormInfo> addForms = P2Mnemonic.ADD.GetInstructionForms(2);
+        P2InstructionFormInfo add = addForms.Single();
+
+        Assert.That(add.Operands, Has.Count.EqualTo(2));
+        Assert.That(add.Operands[0].Role, Is.EqualTo(P2OperandRole.D));
+        Assert.That(add.Operands[0].Type, Is.EqualTo(P2OperandType.Regular));
+        Assert.That(add.Operands[0].Access, Is.EqualTo(P2OperandAccess.ReadWrite));
+        Assert.That(add.Operands[0].BitWidth, Is.EqualTo(9));
+        Assert.That(add.Operands[1].Role, Is.EqualTo(P2OperandRole.S));
+        Assert.That(add.Operands[1].SupportsImmediate, Is.EqualTo(P2ImmediateSupport.Optional));
+        Assert.That(add.Operands[1].AugPrefix, Is.EqualTo(P2AugPrefixKind.AUGS));
+        Assert.That(add.AllowedFlagEffects.Contains(P2FlagEffect.None), Is.True);
+        Assert.That(add.AllowedFlagEffects.Contains(P2FlagEffect.WC), Is.True);
+        Assert.That(add.AllowedFlagEffects.Contains(P2FlagEffect.ORC), Is.False);
+        Assert.That(add.WrittenRegisters.Contains(P2WrittenRegister.D), Is.True);
         Assert.That(add.IsControlFlow, Is.False);
 
-        Assert.That(P2InstructionMetadata.TryParseMnemonic("missing", out P2Mnemonic missing), Is.False);
-        Assert.That(P2InstructionMetadata.TryGetInstructionForm(P2Mnemonic.ADD, 7, out _), Is.False);
+        Assert.That(P2Mnemonic.ADD.GetInstructionForms(7), Is.Empty);
     }
 
     [Test]
-    public void ConditionModczAndFlagHelpers_RecognizeCanonicalAndAliasValues()
+    public void ConditionModczFlagAndRegisterExtensions_ReportExpectedValues()
     {
-        Assert.That(P2InstructionMetadata.TryParseConditionCode("if_c", out P2ConditionCode condition), Is.True);
-        Assert.That(condition, Is.EqualTo(P2ConditionCode.IF_C));
-        Assert.That(P2InstructionMetadata.GetConditionPrefixText(condition), Is.EqualTo("IF_C"));
-        Assert.That(P2InstructionMetadata.TryParseConditionCode("if_missing", out _), Is.False);
+        Assert.That(Enum.TryParse("IF_C", ignoreCase: true, out P2ConditionCode condition), Is.True);
+        Assert.That(condition.GetText(), Is.EqualTo("IF_C"));
+        Assert.That(P2ConditionCode.IF_A.GetCanonicalName(), Is.EqualTo(P2ConditionCode.IF_NC_AND_NZ));
+        Assert.That(P2ConditionCode.IF_A.IsAlias(), Is.True);
+        Assert.That(P2ConditionCode.IF_C.IsAlias(), Is.False);
 
-        Assert.That(P2InstructionMetadata.TryParseModczOperand("_set", out P2ModczOperand modcz), Is.True);
-        Assert.That(modcz, Is.EqualTo(P2ModczOperand._SET));
-        Assert.That(P2InstructionMetadata.GetModczOperandText(modcz), Is.EqualTo("_SET"));
-        Assert.That(P2InstructionMetadata.TryParseModczOperand("_bogus", out _), Is.False);
+        Assert.That(Enum.TryParse("_set", ignoreCase: true, out P2ModczOperand modcz), Is.True);
+        Assert.That(modcz.GetCanonicalName(), Is.EqualTo(P2ModczOperand._SET));
+        Assert.That(P2ModczOperand._E.GetCanonicalName(), Is.EqualTo(P2ModczOperand._Z));
+        Assert.That(P2ModczOperand._E.IsAlias(), Is.True);
 
-        Assert.That(P2InstructionMetadata.TryParseFlagEffect("orz", out P2FlagEffect effect), Is.True);
+        Assert.That(P2FlagEffectExtensions.TryParse("orz", out P2FlagEffect effect), Is.True);
         Assert.That(effect, Is.EqualTo(P2FlagEffect.ORZ));
-        Assert.That(P2InstructionMetadata.TryParseFlagEffect("bogus", out P2FlagEffect invalid), Is.False);
-        Assert.That(invalid, Is.EqualTo(P2FlagEffect.None));
+        Assert.That(effect.GetFlagName(), Is.EqualTo(P2FlagName.Z));
+        Assert.That(effect.GetOperator(), Is.EqualTo(P2FlagOperator.Or));
+        Assert.That(P2FlagEffectExtensions.TryParse("none", out P2FlagEffect noneEffect), Is.True);
+        Assert.That(noneEffect, Is.EqualTo(P2FlagEffect.None));
+        Assert.That(P2FlagEffect.None.GetFlagName(), Is.EqualTo(P2FlagName.None));
+        Assert.That(P2FlagEffect.None.GetOperator(), Is.EqualTo(P2FlagOperator.None));
+        Assert.That(P2FlagEffectExtensions.TryParse("bogus", out _), Is.False);
+
+        Assert.That(P2SpecialRegister.PTRA.GetText(), Is.EqualTo("PTRA"));
+        Assert.That(P2SpecialRegister.PTRA.GetDescription(), Does.Contain("Pointer A"));
     }
 
     [Test]
-    public void FlagAndControlFlowQueries_ReturnExpectedResults()
+    public void OperandAccessAndImmediateExtensions_ReportCapabilities()
     {
-        Assert.That(P2InstructionMetadata.AllowsFlagEffect(P2Mnemonic.ADD, 2, P2FlagEffect.None), Is.True);
-        Assert.That(P2InstructionMetadata.AllowsFlagEffect(P2Mnemonic.ADD, 2, P2FlagEffect.WC), Is.True);
-        Assert.That(P2InstructionMetadata.AllowsFlagEffect(P2Mnemonic.ADD, 2, P2FlagEffect.ORC), Is.False);
-        Assert.That(P2InstructionMetadata.AllowsFlagEffect((P2Mnemonic)(-1), 2, P2FlagEffect.WC), Is.False);
+        Assert.That(P2OperandAccess.ReadWrite.IsReading(), Is.True);
+        Assert.That(P2OperandAccess.ReadWrite.IsWriting(), Is.True);
+        Assert.That(P2OperandAccess.Read.IsReading(), Is.True);
+        Assert.That(P2OperandAccess.Read.IsWriting(), Is.False);
+        Assert.That(P2OperandAccess.Write.IsReading(), Is.False);
+        Assert.That(P2OperandAccess.Write.IsWriting(), Is.True);
+        Assert.That(P2OperandAccess.None.IsReading(), Is.False);
+        Assert.That(P2OperandAccess.None.IsWriting(), Is.False);
 
-        Assert.That(P2InstructionMetadata.IsCall(P2Mnemonic.CALL, 1), Is.True);
-        Assert.That(P2InstructionMetadata.IsReturn(P2Mnemonic.RET, 0), Is.True);
-        Assert.That(P2InstructionMetadata.IsControlFlow(P2Mnemonic.JMP, 1), Is.True);
-        Assert.That(P2InstructionMetadata.HasNoRegisterEffect(P2Mnemonic.NOP, 0), Is.True);
-        Assert.That(P2InstructionMetadata.IsPureRegisterLocal(P2Mnemonic.ABS, 1), Is.True);
-        Assert.That(P2InstructionMetadata.UsesImmediateSyntax(P2Mnemonic.CALL, 1, 0), Is.True);
-        Assert.That(P2InstructionMetadata.UsesImmediateSyntax(P2Mnemonic.CALL, 1, 1), Is.False);
-        Assert.That(P2InstructionMetadata.UsesImmediateSymbolSyntax(P2Mnemonic.CALL, 1, 0), Is.True);
-        Assert.That(P2InstructionMetadata.UsesImmediateSymbolSyntax(P2Mnemonic.MOV, 2, 1), Is.False);
-        Assert.That(P2InstructionMetadata.UsesImmediateSymbolSyntax(P2Mnemonic.JINT, 1, 0), Is.True);
-        Assert.That(P2InstructionMetadata.UsesImmediateSyntax(P2Mnemonic.GETNIB, 3, 2), Is.True);
-        Assert.That(P2InstructionMetadata.TryParseSpecialRegister("PTRA", out P2SpecialRegister register), Is.True);
-        Assert.That(register, Is.EqualTo(P2SpecialRegister.PTRA));
-        Assert.That(P2InstructionMetadata.TryParseSpecialRegister("NOT_A_REGISTER", out _), Is.False);
+        Assert.That(P2ImmediateSupport.No.SupportsImmediate(), Is.False);
+        Assert.That(P2ImmediateSupport.No.RequiresImmediate(), Is.False);
+        Assert.That(P2ImmediateSupport.Optional.SupportsImmediate(), Is.True);
+        Assert.That(P2ImmediateSupport.Optional.RequiresImmediate(), Is.False);
+        Assert.That(P2ImmediateSupport.Required.SupportsImmediate(), Is.True);
+        Assert.That(P2ImmediateSupport.Required.RequiresImmediate(), Is.True);
     }
 
     [Test]
-    public void OperandMetadata_ExposesRolesAugPrefixesAndSideEffects()
+    public void Calld_ExposesDistinctTwoOperandForms()
     {
-        Assert.That(P2InstructionMetadata.TryGetInstructionForm(P2Mnemonic.SETXFRQ, 1, out P2InstructionFormInfo setxfrq), Is.True);
-        Assert.That(setxfrq.Operand0, Is.EqualTo(new P2InstructionOperandInfo(P2OperandRole.D, 9, P2OperandAccess.Read, true, false, P2AugPrefixKind.AUGD)));
+        IReadOnlyCollection<P2InstructionFormInfo> calldForms = P2Mnemonic.CALLD.GetInstructionForms(2);
 
-        Assert.That(P2InstructionMetadata.TryGetInstructionForm(P2Mnemonic.SETNIB, 1, out P2InstructionFormInfo setnibAlias), Is.True);
-        Assert.That(setnibAlias.Operand0, Is.EqualTo(new P2InstructionOperandInfo(P2OperandRole.S, 9, P2OperandAccess.Read, true, false, P2AugPrefixKind.AUGS)));
-        Assert.That(setnibAlias.WrittenRegisters, Is.EqualTo(P2WrittenRegister.D));
-
-        Assert.That(P2InstructionMetadata.TryGetInstructionForm(P2Mnemonic.JINT, 1, out P2InstructionFormInfo jint), Is.True);
-        Assert.That(jint.Operand0, Is.EqualTo(new P2InstructionOperandInfo(P2OperandRole.S, 9, P2OperandAccess.Read, true, true, P2AugPrefixKind.AUGS)));
-
-        Assert.That(P2InstructionMetadata.TryGetInstructionForm(P2Mnemonic.AKPIN, 1, out P2InstructionFormInfo akpin), Is.True);
-        Assert.That(akpin.Operand0, Is.EqualTo(new P2InstructionOperandInfo(P2OperandRole.S, 9, P2OperandAccess.Read, true, false, P2AugPrefixKind.AUGS)));
-
-        Assert.That(P2InstructionMetadata.TryGetInstructionForm(P2Mnemonic.WRPIN, 2, out P2InstructionFormInfo wrpin), Is.True);
-        Assert.That(wrpin.Operand0, Is.EqualTo(new P2InstructionOperandInfo(P2OperandRole.D, 9, P2OperandAccess.Read, true, false, P2AugPrefixKind.AUGD)));
-        Assert.That(wrpin.Operand1, Is.EqualTo(new P2InstructionOperandInfo(P2OperandRole.S, 9, P2OperandAccess.Read, true, false, P2AugPrefixKind.AUGS)));
-
-        Assert.That(P2InstructionMetadata.TryGetInstructionForm(P2Mnemonic.GETNIB, 3, out P2InstructionFormInfo getnib), Is.True);
-        Assert.That(getnib.Operand0, Is.EqualTo(new P2InstructionOperandInfo(P2OperandRole.D, 9, P2OperandAccess.Write, false, false, P2AugPrefixKind.None)));
-        Assert.That(getnib.Operand1, Is.EqualTo(new P2InstructionOperandInfo(P2OperandRole.S, 9, P2OperandAccess.Read, true, false, P2AugPrefixKind.AUGS)));
-        Assert.That(getnib.Operand2, Is.EqualTo(new P2InstructionOperandInfo(P2OperandRole.N, 3, P2OperandAccess.None, true, false, P2AugPrefixKind.None)));
-
-        Assert.That(P2InstructionMetadata.TryGetInstructionForm(P2Mnemonic.CALLPA, 2, out P2InstructionFormInfo callpa), Is.True);
-        Assert.That(callpa.WrittenRegisters, Is.EqualTo(P2WrittenRegister.PA));
-        Assert.That(callpa.HwStackEffect, Is.EqualTo(P2HwStackEffect.Push));
-
-        Assert.That(P2InstructionMetadata.TryGetInstructionForm(P2Mnemonic.DIRH, 1, out P2InstructionFormInfo dirh), Is.True);
-        Assert.That(dirh.WrittenRegisters, Is.EqualTo(P2WrittenRegister.DIRA | P2WrittenRegister.DIRB));
-
-        Assert.That(P2InstructionMetadata.TryGetInstructionForm(P2Mnemonic.DRVH, 1, out P2InstructionFormInfo drvh), Is.True);
-        Assert.That(drvh.WrittenRegisters, Is.EqualTo(P2WrittenRegister.DIRA | P2WrittenRegister.DIRB | P2WrittenRegister.OUTA | P2WrittenRegister.OUTB));
-
-        Assert.That(P2InstructionMetadata.TryGetInstructionForm(P2Mnemonic.RET, 0, out P2InstructionFormInfo ret), Is.True);
-        Assert.That(ret.HwStackEffect, Is.EqualTo(P2HwStackEffect.Pop));
+        Assert.That(calldForms, Has.Count.EqualTo(2));
+        Assert.That(
+            calldForms.Select(form => form.Operands[0].Role),
+            Is.EquivalentTo(new[] { P2OperandRole.AddressRegister, P2OperandRole.D }));
+        Assert.That(
+            calldForms.Select(form => form.Operands[1].Role),
+            Is.EquivalentTo(new[] { P2OperandRole.ADDR, P2OperandRole.S }));
     }
 
     [Test]
-    public void GetOperandInfoAndAccess_HandlesCallsBranchesAndOutOfRangeCases()
+    public void AsmInstructionNode_ResolvesCalldFormsByOperandShape()
     {
-        Assert.That(P2InstructionMetadata.GetOperandInfo((P2Mnemonic)(-1), 1, 0), Is.EqualTo(default(P2InstructionOperandInfo)));
-        Assert.That(P2InstructionMetadata.GetOperandInfo(P2Mnemonic.ADD, 2, -1), Is.EqualTo(default(P2InstructionOperandInfo)));
-        Assert.That(P2InstructionMetadata.GetOperandInfo(P2Mnemonic.ADD, 2, 2), Is.EqualTo(default(P2InstructionOperandInfo)));
+        AsmInstructionNode addressRegisterForm = new(
+            P2Mnemonic.CALLD,
+            [
+                new AsmPhysicalRegisterOperand(new P2Register(P2SpecialRegister.PTRA)),
+                new AsmImmediateOperand(0),
+            ]);
+        AsmInstructionNode dataRegisterForm = new(
+            P2Mnemonic.CALLD,
+            [
+                IrTestFactory.AsmRegister(1),
+                new AsmImmediateOperand(0),
+            ]);
 
-        Assert.That(P2InstructionMetadata.GetOperandAccess((P2Mnemonic)(-1), 1, 0), Is.EqualTo(P2OperandAccess.None));
-        Assert.That(P2InstructionMetadata.GetOperandAccess(P2Mnemonic.RET, 0, 0), Is.EqualTo(P2OperandAccess.None));
-        Assert.That(P2InstructionMetadata.GetOperandAccess(P2Mnemonic.CALL, 1, 0), Is.EqualTo(P2OperandAccess.Read));
-        Assert.That(P2InstructionMetadata.GetOperandAccess(P2Mnemonic.JMP, 1, 0), Is.EqualTo(P2OperandAccess.Read));
-        Assert.That(P2InstructionMetadata.GetOperandAccess(P2Mnemonic.ADD, 2, 0), Is.EqualTo(P2OperandAccess.ReadWrite));
-        Assert.That(P2InstructionMetadata.GetOperandAccess(P2Mnemonic.BITC, 2, 0), Is.EqualTo(P2OperandAccess.ReadWrite));
-        Assert.That(P2InstructionMetadata.GetOperandAccess(P2Mnemonic.BITNC, 2, 0), Is.EqualTo(P2OperandAccess.ReadWrite));
-        Assert.That(P2InstructionMetadata.GetOperandAccess(P2Mnemonic.BITZ, 2, 0), Is.EqualTo(P2OperandAccess.ReadWrite));
-        Assert.That(P2InstructionMetadata.GetOperandAccess(P2Mnemonic.BITNZ, 2, 0), Is.EqualTo(P2OperandAccess.ReadWrite));
-        Assert.That(P2InstructionMetadata.GetOperandAccess(P2Mnemonic.ADD, 2, 1), Is.EqualTo(P2OperandAccess.Read));
-        Assert.That(P2InstructionMetadata.GetOperandAccess(P2Mnemonic.GETNIB, 3, 2), Is.EqualTo(P2OperandAccess.None));
+        Assert.That(addressRegisterForm.Form.Operands[0].Role, Is.EqualTo(P2OperandRole.AddressRegister));
+        Assert.That(addressRegisterForm.Form.Operands[1].Role, Is.EqualTo(P2OperandRole.ADDR));
+        Assert.That(dataRegisterForm.Form.Operands[0].Role, Is.EqualTo(P2OperandRole.D));
+        Assert.That(dataRegisterForm.Form.Operands[1].Role, Is.EqualTo(P2OperandRole.S));
+    }
+
+    [Test]
+    public void AsmInstructionNode_UsesGenericCalldFormForNonAddressRegister()
+    {
+        AsmInstructionNode genericRegisterForm = new(
+            P2Mnemonic.CALLD,
+            [
+                new AsmPhysicalRegisterOperand(new P2Register(P2SpecialRegister.DIRA)),
+                new AsmImmediateOperand(0),
+            ]);
+
+        Assert.That(genericRegisterForm.Form.Operands[0].Role, Is.EqualTo(P2OperandRole.D));
     }
 }

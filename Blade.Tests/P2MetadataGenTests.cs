@@ -24,7 +24,7 @@ public class P2MetadataGenTests
         Assert.That(generated, Does.Contain("IReadOnlySet<P2FlagEffect> AllowedFlagEffects"));
         Assert.That(generated, Does.Contain("IReadOnlySet<P2WrittenRegister> WrittenRegisters"));
         Assert.That(generated, Does.Contain("public bool IsControlFlow => IsCall || IsJump || IsBranch || IsReturn;"));
-        Assert.That(generated, Does.Contain("private sealed record class P2MnemonicInfo("));
+        Assert.That(generated, Does.Contain("public sealed record class P2MnemonicInfo("));
         Assert.That(generated, Does.Contain("public static class P2MnemonicExtensions"));
         Assert.That(generated, Does.Contain("public static class P2ConditionCodeExtensions"));
         Assert.That(generated, Does.Contain("public static class P2OperandAccessExtensions"));

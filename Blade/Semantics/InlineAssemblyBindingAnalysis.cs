@@ -31,9 +31,6 @@ public static class InlineAssemblyBindingAnalysis
             if (line is not InlineAsmInstructionLine instruction)
                 continue;
 
-            if (!P2InstructionMetadata.TryGetInstructionForm(instruction.Mnemonic, instruction.Operands.Count, out _))
-                return access;
-
             for (int operandIndex = 0; operandIndex < instruction.Operands.Count; operandIndex++)
             {
                 if (instruction.Operands[operandIndex] is not InlineAsmBindingRefOperand binding
@@ -42,10 +39,7 @@ public static class InlineAssemblyBindingAnalysis
                     continue;
                 }
 
-                P2OperandAccess operandAccess = P2InstructionMetadata.GetOperandAccess(
-                    instruction.Mnemonic,
-                    instruction.Operands.Count,
-                    operandIndex);
+                P2OperandAccess operandAccess = instruction.Form.Operands[operandIndex].Access;
                 InlineAsmBindingAccess bindingAccess = ToBindingAccess(operandAccess);
                 access[binding.Slot] = seenBindings.Add(binding.Slot)
                     ? bindingAccess
