@@ -10,7 +10,8 @@ internal static class AsmOptimizationHelpers
     internal static bool IsPlainMov(AsmInstructionNode instruction)
         => instruction.Mnemonic == P2Mnemonic.MOV
             && instruction.Condition is null
-            && instruction.FlagEffect == P2FlagEffect.None
+            && !instruction.FlagInput.Any
+            && instruction.FlagOutput.Effect == P2FlagEffect.None
             && instruction.Operands.Count == 2;
 
     internal static bool TryGetTrackedCopy(
@@ -44,7 +45,6 @@ internal static class AsmOptimizationHelpers
         return (left, right) switch
         {
             (AsmRegisterOperand lhs, AsmRegisterOperand rhs) => ReferenceEquals(lhs.Value, rhs.Value),
-            (AsmFlagOperand lhs, AsmFlagOperand rhs) => ReferenceEquals(lhs.Flag, rhs.Flag),
             (AsmImmediateOperand lhs, AsmImmediateOperand rhs) => lhs.Value == rhs.Value,
             (AsmSymbolOperand lhs, AsmSymbolOperand rhs) => SymbolOperandsEquivalent(lhs, rhs),
             (AsmPhysicalRegisterOperand lhs, AsmSymbolOperand rhs) => PhysicalAndSymbolEquivalent(lhs, rhs),
@@ -115,7 +115,7 @@ internal static class AsmOptimizationHelpers
 
     internal static bool IsBarrier(AsmInstructionNode instruction)
     {
-        if (instruction.Condition is not null || instruction.FlagEffect != P2FlagEffect.None)
+        if (instruction.Condition is not null || instruction.FlagInput.Any || instruction.FlagOutput.Effect != P2FlagEffect.None)
             return true;
 
         if (instruction.Mnemonic is P2Mnemonic.PUSHB or P2Mnemonic.POPB)
@@ -128,7 +128,8 @@ internal static class AsmOptimizationHelpers
     internal static bool IsPureRegisterLocalInstruction(AsmInstructionNode instruction)
     {
         if (instruction.Condition is not null
-            || instruction.FlagEffect != P2FlagEffect.None
+            || instruction.FlagInput.Any
+            || instruction.FlagOutput.Effect != P2FlagEffect.None
             || instruction.Operands.Count == 0
             || instruction.Operands[0] is not AsmRegisterOperand
             || !instruction.Form.IsPureRegisterLocal)
@@ -148,13 +149,16 @@ internal static class AsmOptimizationHelpers
 
     internal static IEnumerable<VirtualAsmValue> EnumerateUsedRegisters(AsmInstructionNode instruction)
     {
+        if (instruction.FlagInput.C is not null)
+            yield return instruction.FlagInput.C;
+        if (instruction.FlagInput.Z is not null)
+            yield return instruction.FlagInput.Z;
+
         int startIndex = IsPlainMov(instruction) ? 1 : 0;
         for (int i = startIndex; i < instruction.Operands.Count; i++)
         {
             if (instruction.Operands[i] is AsmRegisterOperand register)
                 yield return register.Value;
-            else if (instruction.Operands[i] is AsmFlagOperand flag)
-                yield return flag.Flag;
         }
     }
 
@@ -169,8 +173,6 @@ internal static class AsmOptimizationHelpers
 
         if (instruction.Operands[0] is AsmRegisterOperand destination)
             value = destination.Value;
-        else if (instruction.Operands[0] is AsmFlagOperand flagDestination)
-            value = flagDestination.Flag;
         else
             return false;
 
@@ -191,14 +193,6 @@ internal static class AsmOptimizationHelpers
                 continue;
             }
 
-            if (current is AsmFlagOperand flag
-                && aliases.TryGetValue(flag.Flag, out AsmOperand? nextFlag)
-                && seen.Add(flag.Flag))
-            {
-                current = nextFlag;
-                continue;
-            }
-
             break;
         }
 
@@ -215,8 +209,6 @@ internal static class AsmOptimizationHelpers
         AsmOperand written = instruction.Operands[0];
         if (written is AsmRegisterOperand register)
             aliases.Remove(register.Value);
-        else if (written is AsmFlagOperand flag)
-            aliases.Remove(flag.Flag);
 
         foreach (VirtualAsmValue alias in aliases.Keys.ToList())
         {
@@ -245,8 +237,9 @@ internal static class AsmOptimizationHelpers
             ? new AsmInstructionNode(
                 instruction.Mnemonic,
                 operands,
-                instruction.Condition,
-                instruction.FlagEffect,
+                flagInput: instruction.FlagInput,
+                condition: instruction.Condition,
+                flagOutput: instruction.FlagOutput,
                 instruction.IsNonElidable,
                 instruction.IsPhiMove)
             : instruction;
@@ -344,8 +337,10 @@ internal static class AsmOptimizationHelpers
         fused = null;
         if (first.IsNonElidable
             || second.IsNonElidable
-            || first.FlagEffect != P2FlagEffect.None
-            || second.FlagEffect != P2FlagEffect.None)
+            || first.FlagInput.Any
+            || second.FlagInput.Any
+            || first.FlagOutput.Effect != P2FlagEffect.None
+            || second.FlagOutput.Effect != P2FlagEffect.None)
         {
             return false;
         }
@@ -388,7 +383,7 @@ internal static class AsmOptimizationHelpers
         if (instruction.IsNonElidable)
             return false;
 
-        if (instruction.Condition is not null || instruction.FlagEffect != P2FlagEffect.None)
+        if (instruction.Condition is not null || instruction.FlagInput.Any || instruction.FlagOutput.Effect != P2FlagEffect.None)
             return false;
 
         if (instruction.Mnemonic == P2Mnemonic.NOP)

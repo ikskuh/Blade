@@ -1,14 +1,15 @@
 // EXPECT: pass
 // STAGE: final-asm
 // SEQUENCE:
-// - PUSHB PA
+// - PUSHB PB
 // - MOV PB, PA
-// - POPB PA
-// - QMUL PA, PB
+// - MOV PA, PA
+// - POPB PB
+// - QMUL PB, PA
 // NOTE:
-//   Recursive calls spill the live caller value across CALLB. The returned value
-//   must be copied out of PA before the restore POPB runs, or the multiply uses
-//   the restored caller value twice.
+//   Recursive calls spill the live caller value across CALLB. The recursive
+//   lowering now preserves the live caller input in PB and restores that register
+//   after the call before multiplying it with the returned PA result.
 cog task main {
     
     rec fn factorial(n: u32) -> u32 {

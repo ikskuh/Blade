@@ -350,6 +350,25 @@ public static class LivenessAnalyzer
     {
         bool isPredicated = instruction.Condition is not null;
 
+        if (instruction.FlagInput.C is not null)
+            uses.Add(instruction.FlagInput.C);
+        if (instruction.FlagInput.Z is not null)
+            uses.Add(instruction.FlagInput.Z);
+
+        void AddFlagDef(VirtualAsmFlag? flag)
+        {
+            if (flag is null)
+                return;
+
+            if (isPredicated)
+                uses.Add(flag);
+
+            defs.Add(flag);
+        }
+
+        AddFlagDef(instruction.FlagOutput.C);
+        AddFlagDef(instruction.FlagOutput.Z);
+
         if (instruction.Operands.Count == 0)
             return;
 
@@ -358,8 +377,6 @@ public static class LivenessAnalyzer
             VirtualAsmValue register;
             if (instruction.Operands[operandIndex] is AsmRegisterOperand registerOperand)
                 register = registerOperand.Value;
-            else if (instruction.Operands[operandIndex] is AsmFlagOperand flagOperand)
-                register = flagOperand.Flag;
             else
                 continue;
 
@@ -385,13 +402,33 @@ public static class LivenessAnalyzer
         if (instruction.Mnemonic == P2Mnemonic.MOV && instruction.Operands.Count == 2)
             return;
 
+        List<VirtualAsmValue> explicitReads = [];
+        if (instruction.FlagInput.C is not null)
+            explicitReads.Add(instruction.FlagInput.C);
+        if (instruction.FlagInput.Z is not null)
+            explicitReads.Add(instruction.FlagInput.Z);
+
+        List<VirtualAsmValue> explicitWrites = [];
+        if (instruction.FlagOutput.C is not null)
+            explicitWrites.Add(instruction.FlagOutput.C);
+        if (instruction.FlagOutput.Z is not null)
+            explicitWrites.Add(instruction.FlagOutput.Z);
+
+        foreach (VirtualAsmValue writeRegister in explicitWrites)
+        {
+            EnsureNode(interference, writeRegister);
+            foreach (VirtualAsmValue readRegister in explicitReads)
+            {
+                if (readRegister != writeRegister)
+                    AddEdge(interference, writeRegister, readRegister);
+            }
+        }
+
         for (int writeOperandIndex = 0; writeOperandIndex < instruction.Operands.Count; writeOperandIndex++)
         {
             VirtualAsmValue writeRegister;
             if (instruction.Operands[writeOperandIndex] is AsmRegisterOperand writeOperand)
                 writeRegister = writeOperand.Value;
-            else if (instruction.Operands[writeOperandIndex] is AsmFlagOperand writeFlag)
-                writeRegister = writeFlag.Flag;
             else
                 continue;
 
@@ -409,8 +446,6 @@ public static class LivenessAnalyzer
                 VirtualAsmValue readRegister;
                 if (instruction.Operands[readOperandIndex] is AsmRegisterOperand readOperand)
                     readRegister = readOperand.Value;
-                else if (instruction.Operands[readOperandIndex] is AsmFlagOperand readFlag)
-                    readRegister = readFlag.Flag;
                 else
                     continue;
 
@@ -418,6 +453,12 @@ public static class LivenessAnalyzer
                 if (readAccess is not P2OperandAccess.Read and not P2OperandAccess.ReadWrite)
                     continue;
 
+                if (readRegister != writeRegister)
+                    AddEdge(interference, writeRegister, readRegister);
+            }
+
+            foreach (VirtualAsmValue readRegister in explicitReads)
+            {
                 if (readRegister != writeRegister)
                     AddEdge(interference, writeRegister, readRegister);
             }

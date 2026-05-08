@@ -867,10 +867,10 @@ public static class FinalAssemblyWriter
                     }
                 }
 
-                if (instruction.FlagEffect != P2FlagEffect.None)
+                if (instruction.FlagOutput.Effect != P2FlagEffect.None)
                 {
                     sb.Append(' ');
-                    sb.Append(instruction.FlagEffect);
+                    sb.Append(instruction.FlagOutput.Effect);
                 }
 
                 sb.AppendLine();
@@ -955,7 +955,6 @@ public static class FinalAssemblyWriter
         {
             AsmPhysicalRegisterOperand physical => physical.Name,
             AsmRegisterOperand register => register.Format(),
-            AsmFlagOperand flag => flag.Format(),
             AsmImmediateOperand immediate => immediate.Format(),
             AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Immediate } => "#0",
             AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Register } => "0",
@@ -975,7 +974,6 @@ public static class FinalAssemblyWriter
         {
             AsmPhysicalRegisterOperand physical => physical.Name,
             AsmRegisterOperand register => register.Format(),
-            AsmFlagOperand flag => flag.Format(),
             AsmImmediateOperand immediate => immediate.Format(),
             AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Immediate } => "#0",
             AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Register } => "0",

@@ -221,8 +221,15 @@ public class WriterAndSymbolTests
             [
                 new AsmLabelNode("asm_fn_bb0"),
                 new AsmCommentNode("test"),
-                new AsmInstructionNode(P2Mnemonic.ADD, [AsmRegister(1), new AsmImmediateOperand(5)], P2ConditionCode.IF_C, flagEffect: P2FlagEffect.WCZ),
-                new AsmInstructionNode(P2Mnemonic.BITH, [new AsmFlagOperand(new VirtualAsmFlag()), new AsmImmediateOperand(0)]),
+                new AsmInstructionNode(
+                    P2Mnemonic.ADD,
+                    [AsmRegister(1), new AsmImmediateOperand(5)],
+                    condition: P2ConditionCode.IF_C,
+                    flagOutput: new AsmFlagOutput(P2FlagEffect.WCZ, new VirtualAsmFlag(), new VirtualAsmFlag())),
+                new AsmInstructionNode(
+                    P2Mnemonic.BITC,
+                    [AsmRegister(1), new AsmImmediateOperand(0)],
+                    flagInput: new AsmFlagInput(new VirtualAsmFlag(), null)),
                 new AsmInstructionNode(P2Mnemonic.MOV, [AsmRegister(1), new AsmImmediateOperand(1)]),
             ]),
         ]);
@@ -241,8 +248,8 @@ public class WriterAndSymbolTests
         Assert.That(lirText, Does.Contain("unreachable"));
 
         Assert.That(asmText, Does.Contain("' test"));
-        Assert.That(asmText, Does.Contain("IF_C ADD %r0, #5 WCZ"));
-        Assert.That(asmText, Does.Contain("BITH %f1, #0"));
+        Assert.That(asmText, Does.Contain("IF_C ADD %r0, #5 WCZ=(%f1, %f2)"));
+        Assert.That(asmText, Does.Contain("BITC %r0, #0 C=%f3"));
         Assert.That(asmText, Does.Contain("MOV %r0, #1"));
     }
 

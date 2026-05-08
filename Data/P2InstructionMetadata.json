@@ -565,7 +565,7 @@
         {
           "isAlias": false,
           "summary": "Set CT1 event to trigger on CT = D + S. Adds S into D.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -604,7 +604,7 @@
         {
           "isAlias": false,
           "summary": "Set CT2 event to trigger on CT = D + S. Adds S into D.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -643,7 +643,7 @@
         {
           "isAlias": false,
           "summary": "Set CT3 event to trigger on CT = D + S. Adds S into D.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -682,7 +682,7 @@
         {
           "isAlias": false,
           "summary": "Add bytes of S into bytes of D, with $FF saturation.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -853,7 +853,7 @@
         {
           "isAlias": true,
           "summary": "Acknowledge smart pins S[10:6]+S[5:0]..S[5:0]. Wraps within A/B pins. Prior SETQ D[4:0] overrides S[10:6].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -882,7 +882,7 @@
         {
           "isAlias": false,
           "summary": "Allow interrupts (default).",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [],
           "writtenRegisters": [],
           "hwStackEffect": "None",
@@ -902,7 +902,7 @@
         {
           "isAlias": true,
           "summary": "Alter D field of next instruction to D[13:5].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -929,7 +929,7 @@
         {
           "isAlias": false,
           "summary": "Alter D field of next instruction to (D[13:5] + S) & $1FF. D += sign-extended S[17:9].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -968,7 +968,7 @@
         {
           "isAlias": true,
           "summary": "Alter D field of next instruction to D[8:0].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -995,7 +995,7 @@
         {
           "isAlias": false,
           "summary": "Alter D field of next instruction to (D + S) & $1FF. D += sign-extended S[17:9].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -1034,7 +1034,7 @@
         {
           "isAlias": true,
           "summary": "Alter subsequent GETBYTE/ROLBYTE instruction. Next S field = D[10:2], N field = D[1:0].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -1061,7 +1061,7 @@
         {
           "isAlias": false,
           "summary": "Alter subsequent GETBYTE/ROLBYTE instruction. Next S field = (D[10:2] + S) & $1FF, N field = D[1:0]. D += sign-extended S[17:9].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -1100,7 +1100,7 @@
         {
           "isAlias": true,
           "summary": "Alter subsequent GETNIB/ROLNIB instruction. Next S field = D[11:3], N field = D[2:0].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -1127,7 +1127,7 @@
         {
           "isAlias": false,
           "summary": "Alter subsequent GETNIB/ROLNIB instruction. Next S field = (D[11:3] + S) & $1FF, N field = D[2:0]. D += sign-extended S[17:9].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -1166,7 +1166,7 @@
         {
           "isAlias": true,
           "summary": "Alter subsequent GETWORD/ROLWORD instruction. Next S field = D[9:1], N field = D[0].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -1193,7 +1193,7 @@
         {
           "isAlias": false,
           "summary": "Alter subsequent GETWORD/ROLWORD instruction. Next S field = ((D[9:1] + S) & $1FF), N field = D[0]. D += sign-extended S[17:9].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -1232,7 +1232,7 @@
         {
           "isAlias": true,
           "summary": "Execute D in place of next instruction. D stays same.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -1259,7 +1259,7 @@
         {
           "isAlias": false,
           "summary": "Substitute next instruction's I/R/D/S fields with fields from D, per S. Modify D per S.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -1298,7 +1298,7 @@
         {
           "isAlias": true,
           "summary": "Alter result register address (normally D field) of next instruction to D[8:0].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -1325,7 +1325,7 @@
         {
           "isAlias": false,
           "summary": "Alter result register address (normally D field) of next instruction to (D + S) & $1FF. D += sign-extended S[17:9].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -1364,7 +1364,7 @@
         {
           "isAlias": true,
           "summary": "Alter S field of next instruction to D[8:0].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -1391,7 +1391,7 @@
         {
           "isAlias": false,
           "summary": "Alter S field of next instruction to (D + S) & $1FF. D += sign-extended S[17:9].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -1430,7 +1430,7 @@
         {
           "isAlias": true,
           "summary": "Alter subsequent SETBYTE instruction. Next D field = D[10:2], N field = D[1:0].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -1457,7 +1457,7 @@
         {
           "isAlias": false,
           "summary": "Alter subsequent SETBYTE instruction. Next D field = (D[10:2] + S) & $1FF, N field = D[1:0]. D += sign-extended S[17:9].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -1496,7 +1496,7 @@
         {
           "isAlias": true,
           "summary": "Alter subsequent SETNIB instruction. Next D field = D[11:3], N field = D[2:0].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -1523,7 +1523,7 @@
         {
           "isAlias": false,
           "summary": "Alter subsequent SETNIB instruction. Next D field = (D[11:3] + S) & $1FF, N field = D[2:0]. D += sign-extended S[17:9].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -1562,7 +1562,7 @@
         {
           "isAlias": true,
           "summary": "Alter subsequent SETWORD instruction. Next D field = D[9:1], N field = D[0].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -1589,7 +1589,7 @@
         {
           "isAlias": false,
           "summary": "Alter subsequent SETWORD instruction. Next D field = (D[9:1] + S) & $1FF, N field = D[0]. D += sign-extended S[17:9].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -1716,7 +1716,7 @@
         {
           "isAlias": false,
           "summary": "Queue #n to be used as upper 23 bits for next #D occurrence, so that the next 9-bit #D will be augmented to 32 bits.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "N",
@@ -1745,7 +1745,7 @@
         {
           "isAlias": false,
           "summary": "Queue #n to be used as upper 23 bits for next #S occurrence, so that the next 9-bit #S will be augmented to 32 bits.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "N",
@@ -2110,7 +2110,7 @@
         {
           "isAlias": false,
           "summary": "Alpha-blend bytes of S into bytes of D, using SETPIV value.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -2149,7 +2149,7 @@
         {
           "isAlias": true,
           "summary": "Get LSB-justified bit mask of size (D[4:0] + 1) into D. D = ($0_0000_0002 << D[4:0]) - 1.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -2176,7 +2176,7 @@
         {
           "isAlias": false,
           "summary": "Get LSB-justified bit mask of size (S[4:0] + 1) into D. D = ($0_0000_0002 << S[4:0]) - 1.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -2215,7 +2215,7 @@
         {
           "isAlias": false,
           "summary": "If in debug ISR, set next break condition to D. Else, set BRK code to D[7:0] and unconditionally trigger BRK interrupt, if enabled.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -2244,7 +2244,7 @@
         {
           "isAlias": false,
           "summary": "Call to A by pushing {C, Z, 10'b0, PC[19:0]} onto stack. If R = 1 then PC += A, else PC = A. \"\\\" forces R = 0.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "ADDR",
@@ -2303,7 +2303,7 @@
         {
           "isAlias": false,
           "summary": "Call to A by writing {C, Z, 10'b0, PC[19:0]} to hub long at PTRA++. If R = 1 then PC += A, else PC = A. \"\\\" forces R = 0.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "ADDR",
@@ -2362,7 +2362,7 @@
         {
           "isAlias": false,
           "summary": "Call to A by writing {C, Z, 10'b0, PC[19:0]} to hub long at PTRB++. If R = 1 then PC += A, else PC = A. \"\\\" forces R = 0.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "ADDR",
@@ -2461,7 +2461,7 @@
         {
           "isAlias": false,
           "summary": "Call to A by writing {C, Z, 10'b0, PC[19:0]} to PA/PB/PTRA/PTRB (per W). If R = 1 then PC += A, else PC = A. \"\\\" forces R = 0.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "address register",
@@ -2503,7 +2503,7 @@
         {
           "isAlias": false,
           "summary": "Call to S** by pushing {C, Z, 10'b0, PC[19:0]} onto stack, copy D to PA.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -2542,7 +2542,7 @@
         {
           "isAlias": false,
           "summary": "Call to S** by pushing {C, Z, 10'b0, PC[19:0]} onto stack, copy D to PB.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -2877,7 +2877,7 @@
         {
           "isAlias": false,
           "summary": "Strobe \"attention\" of all cogs whose corresponding bits are high in D[15:0].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -2906,7 +2906,7 @@
         {
           "isAlias": false,
           "summary": "If in debug ISR, trigger asynchronous breakpoint in cog D[3:0]. Cog D[3:0] must have asynchronous breakpoint enabled.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -3011,7 +3011,7 @@
         {
           "isAlias": false,
           "summary": "Stop cog D[3:0].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -3040,7 +3040,7 @@
         {
           "isAlias": false,
           "summary": "Iterate CRC value in D using C and polynomial in S. If (C XOR D[0]) then D = (D >> 1) XOR S, else D = (D >> 1).",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -3079,7 +3079,7 @@
         {
           "isAlias": false,
           "summary": "Iterate CRC value in D using Q[31:28] and polynomial in S. Like CRCBIT x 4. Q = Q << 4. For long, use SETQ+'REP #1,#8'+CRCNIB.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -3162,7 +3162,7 @@
         {
           "isAlias": true,
           "summary": "Decode D[4:0] into D. D = 1 << D[4:0].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -3189,7 +3189,7 @@
         {
           "isAlias": false,
           "summary": "Decode S[4:0] into D. D = 1 << S[4:0].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -3508,7 +3508,7 @@
         {
           "isAlias": false,
           "summary": "Decrement D and jump to S** if result is $FFFF_FFFF.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -3547,7 +3547,7 @@
         {
           "isAlias": false,
           "summary": "Decrement D and jump to S** if result is not $FFFF_FFFF.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -3586,7 +3586,7 @@
         {
           "isAlias": false,
           "summary": "Decrement D and jump to S** if result is not zero.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -3625,7 +3625,7 @@
         {
           "isAlias": false,
           "summary": "Decrement D and jump to S** if result is zero.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -4036,7 +4036,7 @@
         {
           "isAlias": false,
           "summary": "Jump to D[9:0] in cog/LUT and set SKIPF pattern to D[31:10]. PC = {10'b0, D[9:0]}.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -4065,7 +4065,7 @@
         {
           "isAlias": false,
           "summary": "Set next block for when block wraps. D[13:0] = block size in 64-byte units (0 = max), S[19:0] = block start address.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -4609,7 +4609,7 @@
         {
           "isAlias": true,
           "summary": "Get byte established by prior ALTGB instruction into D.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -4636,7 +4636,7 @@
         {
           "isAlias": false,
           "summary": "Get byte N of S into D. D = {24'b0, S.BYTE[N]).",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -4717,7 +4717,7 @@
         {
           "isAlias": true,
           "summary": "Get nibble established by prior ALTGN instruction into D.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -4744,7 +4744,7 @@
         {
           "isAlias": false,
           "summary": "Get nibble N of S into D. D = {28'b0, S.NIBBLE[N]).",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -4791,7 +4791,7 @@
         {
           "isAlias": false,
           "summary": "Get current FIFO hub pointer into D.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -4950,7 +4950,7 @@
         {
           "isAlias": false,
           "summary": "Get four-channel oscilloscope samples into D. D = {ch3[7:0],ch2[7:0],ch1[7:0],ch0[7:0]}.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -4979,7 +4979,7 @@
         {
           "isAlias": true,
           "summary": "Get word established by prior ALTGW instruction into D.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -5006,7 +5006,7 @@
         {
           "isAlias": false,
           "summary": "Get word N of S into D. D = {16'b0, S.WORD[N]).",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -5053,7 +5053,7 @@
         {
           "isAlias": false,
           "summary": "Get the streamer's Goertzel X accumulator into D and the Y accumulator into the next instruction's S, clear accumulators.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -5084,7 +5084,7 @@
         {
           "isAlias": false,
           "summary": "Set hub configuration to D.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -5113,7 +5113,7 @@
         {
           "isAlias": false,
           "summary": "Increment D and jump to S** if result is not zero.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -5152,7 +5152,7 @@
         {
           "isAlias": false,
           "summary": "Increment D and jump to S** if result is zero.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -5235,7 +5235,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if ATN event flag is set.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -5264,7 +5264,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if CT1 event flag is set.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -5293,7 +5293,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if CT2 event flag is set.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -5322,7 +5322,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if CT3 event flag is set.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -5351,7 +5351,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if FBW event flag is set.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -5380,7 +5380,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if INT event flag is set.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -5409,7 +5409,7 @@
         {
           "isAlias": false,
           "summary": "Jump to A. If R = 1 then PC += A, else PC = A. \"\\\" forces R = 0.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "ADDR",
@@ -5468,7 +5468,7 @@
         {
           "isAlias": false,
           "summary": "Jump ahead/back by D instructions. For cogex, PC += D[19:0]. For hubex, PC += D[17:0] << 2.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -5497,7 +5497,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if ATN event flag is clear.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -5526,7 +5526,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if CT1 event flag is clear.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -5555,7 +5555,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if CT2 event flag is clear.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -5584,7 +5584,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if CT3 event flag is clear.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -5613,7 +5613,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if FBW event flag is clear.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -5642,7 +5642,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if INT event flag is clear.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -5671,7 +5671,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if PAT event flag is clear.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -5700,7 +5700,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if QMT event flag is clear.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -5729,7 +5729,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if SE1 event flag is clear.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -5758,7 +5758,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if SE2 event flag is clear.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -5787,7 +5787,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if SE3 event flag is clear.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -5816,7 +5816,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if SE4 event flag is clear.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -5845,7 +5845,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if XFI event flag is clear.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -5874,7 +5874,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if XMT event flag is clear.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -5903,7 +5903,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if XRL event flag is clear.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -5932,7 +5932,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if XRO event flag is clear.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -5961,7 +5961,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if PAT event flag is set.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -5990,7 +5990,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if QMT event flag is set.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -6019,7 +6019,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if SE1 event flag is set.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -6048,7 +6048,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if SE2 event flag is set.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -6077,7 +6077,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if SE3 event flag is set.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -6106,7 +6106,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if SE4 event flag is set.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -6135,7 +6135,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if XFI event flag is set.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -6164,7 +6164,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if XMT event flag is set.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -6193,7 +6193,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if XRL event flag is set.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -6222,7 +6222,7 @@
         {
           "isAlias": false,
           "summary": "Jump to S** if XRO event flag is set.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -6251,7 +6251,7 @@
         {
           "isAlias": false,
           "summary": "Get {12'b0, address[19:0]} into PA/PB/PTRA/PTRB (per W). If R = 1, address = PC + A, else address = A. \"\\\" forces R = 0.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "address register",
@@ -6359,7 +6359,7 @@
         {
           "isAlias": false,
           "summary": "Return LOCK D[3:0] for reallocation.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -6420,7 +6420,7 @@
         {
           "isAlias": false,
           "summary": "Merge bits of bytes in D. D = {D[31], D[23], D[15], D[7], ...D[24], D[16], D[8], D[0]}.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -6451,7 +6451,7 @@
         {
           "isAlias": false,
           "summary": "Merge bits of words in D. D = {D[31], D[15], D[30], D[14], ...D[17], D[1], D[16], D[0]}.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -6482,7 +6482,7 @@
         {
           "isAlias": false,
           "summary": "Mix bytes of S into bytes of D, using SETPIX and SETPIV values.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -6671,7 +6671,7 @@
         {
           "isAlias": false,
           "summary": "Move bytes within D, per S. D = {D.BYTE[S[7:6]], D.BYTE[S[5:4]], D.BYTE[S[3:2]], D.BYTE[S[1:0]]}.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -6752,7 +6752,7 @@
         {
           "isAlias": false,
           "summary": "Multiply bytes of S into bytes of D, where $FF = 1.0 and $00 = 0.0.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -6921,7 +6921,7 @@
         {
           "isAlias": false,
           "summary": "For each non-zero nibble in S, copy that nibble into the corresponding D nibble, else leave that D nibble the same.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -6960,7 +6960,7 @@
         {
           "isAlias": false,
           "summary": "For each non-zero bit pair in S, copy that bit pair into the corresponding D bits, else leave that D bit pair the same.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -7043,7 +7043,7 @@
         {
           "isAlias": false,
           "summary": "Used after SETQ. For each '1' bit in Q, copy the corresponding bit in S into D. D = (D & !Q) | (S & Q).",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -7506,7 +7506,7 @@
         {
           "isAlias": false,
           "summary": "Cancel INT1.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [],
           "writtenRegisters": [],
           "hwStackEffect": "None",
@@ -7526,7 +7526,7 @@
         {
           "isAlias": false,
           "summary": "Cancel INT2.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [],
           "writtenRegisters": [],
           "hwStackEffect": "None",
@@ -7546,7 +7546,7 @@
         {
           "isAlias": false,
           "summary": "Cancel INT3.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [],
           "writtenRegisters": [],
           "hwStackEffect": "None",
@@ -7566,7 +7566,7 @@
         {
           "isAlias": false,
           "summary": "No operation.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [],
           "writtenRegisters": [],
           "hwStackEffect": "None",
@@ -8570,7 +8570,7 @@
         {
           "isAlias": false,
           "summary": "Push D onto stack.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -8599,7 +8599,7 @@
         {
           "isAlias": true,
           "summary": "Write long in D[31:0] to hub address PTRA++.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -8628,7 +8628,7 @@
         {
           "isAlias": true,
           "summary": "Write long in D[31:0] to hub address PTRB++.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -8657,7 +8657,7 @@
         {
           "isAlias": false,
           "summary": "Begin CORDIC unsigned division of {SETQ value or 32'b0, D} / S. GETQX/GETQY retrieves quotient/remainder.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -8694,7 +8694,7 @@
         {
           "isAlias": false,
           "summary": "Begin CORDIC logarithm-to-number conversion of D. GETQX retrieves number.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -8723,7 +8723,7 @@
         {
           "isAlias": false,
           "summary": "Begin CORDIC unsigned division of {D, SETQ value or 32'b0} / S. GETQX/GETQY retrieves quotient/remainder.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -8760,7 +8760,7 @@
         {
           "isAlias": false,
           "summary": "Begin CORDIC number-to-logarithm conversion of D. GETQX retrieves log {5'whole_exponent, 27'fractional_exponent}.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -8789,7 +8789,7 @@
         {
           "isAlias": false,
           "summary": "Begin CORDIC unsigned multiplication of D * S. GETQX/GETQY retrieves lower/upper product.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -8826,7 +8826,7 @@
         {
           "isAlias": false,
           "summary": "Begin CORDIC rotation of point (D, SETQ value or 32'b0) by angle S. GETQX/GETQY retrieves X/Y.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -8863,7 +8863,7 @@
         {
           "isAlias": false,
           "summary": "Begin CORDIC square root of {S, D}. GETQX retrieves root.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -8900,7 +8900,7 @@
         {
           "isAlias": false,
           "summary": "Begin CORDIC vectoring of point (D, S). GETQX/GETQY retrieves length/angle.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -9141,7 +9141,7 @@
         {
           "isAlias": false,
           "summary": "Begin new fast hub read via FIFO. D[31] = no wait, D[13:0] = block size in 64-byte units (0 = max), S[19:0] = block start address.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -9352,7 +9352,7 @@
         {
           "isAlias": false,
           "summary": "Execute next D[8:0] instructions S times. If S = 0, repeat instructions infinitely. If D[8:0] = 0, nothing repeats.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -9389,7 +9389,7 @@
         {
           "isAlias": true,
           "summary": "Resume from INT0. (CALLD $1FE,$1FF WCZ)",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [],
           "writtenRegisters": [
             "D"
@@ -9411,7 +9411,7 @@
         {
           "isAlias": true,
           "summary": "Resume from INT1. (CALLD $1F4,$1F5 WCZ)",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [],
           "writtenRegisters": [
             "D"
@@ -9433,7 +9433,7 @@
         {
           "isAlias": true,
           "summary": "Resume from INT2. (CALLD $1F2,$1F3 WCZ)",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [],
           "writtenRegisters": [
             "D"
@@ -9455,7 +9455,7 @@
         {
           "isAlias": true,
           "summary": "Resume from INT3. (CALLD $1F0,$1F1 WCZ)",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [],
           "writtenRegisters": [
             "D"
@@ -9552,7 +9552,7 @@
         {
           "isAlias": true,
           "summary": "Return from INT0. (CALLD $1FF,$1FF WCZ)",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [],
           "writtenRegisters": [
             "D"
@@ -9574,7 +9574,7 @@
         {
           "isAlias": true,
           "summary": "Return from INT1. (CALLD $1FF,$1F5 WCZ)",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [],
           "writtenRegisters": [
             "D"
@@ -9596,7 +9596,7 @@
         {
           "isAlias": true,
           "summary": "Return from INT2. (CALLD $1FF,$1F3 WCZ)",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [],
           "writtenRegisters": [
             "D"
@@ -9618,7 +9618,7 @@
         {
           "isAlias": true,
           "summary": "Return from INT3. (CALLD $1FF,$1F1 WCZ)",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [],
           "writtenRegisters": [
             "D"
@@ -9640,7 +9640,7 @@
         {
           "isAlias": false,
           "summary": "Reverse D bits. D = D[0:31].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -9851,7 +9851,7 @@
         {
           "isAlias": false,
           "summary": "Expand 5:6:5 RGB value in D[15:0] into 8:8:8 value in D[31:8]. D = {D[15:11,15:13], D[10:5,10:9], D[4:0,4:2], 8'b0}.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -9882,7 +9882,7 @@
         {
           "isAlias": false,
           "summary": "Squeeze 8:8:8 RGB value in D[31:8] into 5:6:5 value in D[15:0]. D = {15'b0, D[31:27], D[23:18], D[15:11]}.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -9957,7 +9957,7 @@
         {
           "isAlias": true,
           "summary": "Rotate-left byte established by prior ALTGB instruction into D.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -9984,7 +9984,7 @@
         {
           "isAlias": false,
           "summary": "Rotate-left byte N of S into D. D = {D[23:0], S.BYTE[N]).",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -10031,7 +10031,7 @@
         {
           "isAlias": true,
           "summary": "Rotate-left nibble established by prior ALTGN instruction into D.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -10058,7 +10058,7 @@
         {
           "isAlias": false,
           "summary": "Rotate-left nibble N of S into D. D = {D[27:0], S.NIBBLE[N]).",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -10105,7 +10105,7 @@
         {
           "isAlias": true,
           "summary": "Rotate-left word established by prior ALTGW instruction into D.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -10132,7 +10132,7 @@
         {
           "isAlias": false,
           "summary": "Rotate-left word N of S into D. D = {D[15:0], S.WORD[N]).",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -10433,7 +10433,7 @@
         {
           "isAlias": false,
           "summary": "Set S[7:0] into byte N in D, keeping rest of D same.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -10476,7 +10476,7 @@
         {
           "isAlias": true,
           "summary": "Set S[7:0] into byte established by prior ALTSB instruction.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -10507,7 +10507,7 @@
         {
           "isAlias": false,
           "summary": "Set the colorspace converter \"CFRQ\" parameter to D[31:0].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -10536,7 +10536,7 @@
         {
           "isAlias": false,
           "summary": "Set the colorspace converter \"CI\" parameter to D[31:0].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -10565,7 +10565,7 @@
         {
           "isAlias": false,
           "summary": "Set the colorspace converter \"CMOD\" parameter to D[8:0].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -10594,7 +10594,7 @@
         {
           "isAlias": false,
           "summary": "Set the colorspace converter \"CQ\" parameter to D[31:0].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -10623,7 +10623,7 @@
         {
           "isAlias": false,
           "summary": "Set the colorspace converter \"CY\" parameter to D[31:0].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -10652,7 +10652,7 @@
         {
           "isAlias": false,
           "summary": "Set D field of D to S[8:0]. D = {D[31:18], S[8:0], D[8:0]}.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -10691,7 +10691,7 @@
         {
           "isAlias": false,
           "summary": "DAC3 = D[31:24], DAC2 = D[23:16], DAC1 = D[15:8], DAC0 = D[7:0].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -10720,7 +10720,7 @@
         {
           "isAlias": false,
           "summary": "Set INT1 source to D[3:0].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -10749,7 +10749,7 @@
         {
           "isAlias": false,
           "summary": "Set INT2 source to D[3:0].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -10778,7 +10778,7 @@
         {
           "isAlias": false,
           "summary": "Set INT3 source to D[3:0].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -10807,7 +10807,7 @@
         {
           "isAlias": false,
           "summary": "If D[0] = 1 then enable LUT sharing, where LUT writes within the adjacent odd/even companion cog are copied to this cog's LUT.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -10836,7 +10836,7 @@
         {
           "isAlias": false,
           "summary": "Set S[3:0] into nibble N in D, keeping rest of D same.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -10879,7 +10879,7 @@
         {
           "isAlias": true,
           "summary": "Set S[3:0] into nibble established by prior ALTSN instruction.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -10910,7 +10910,7 @@
         {
           "isAlias": false,
           "summary": "Set pin pattern for PAT event. C selects INA/INB, Z selects =/!=, D provides mask value, S provides match value.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -10947,7 +10947,7 @@
         {
           "isAlias": false,
           "summary": "Set BLNPIX/MIXPIX blend factor to D[7:0].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -10976,7 +10976,7 @@
         {
           "isAlias": false,
           "summary": "Set MIXPIX mode to D[5:0].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -11005,7 +11005,7 @@
         {
           "isAlias": false,
           "summary": "Set Q to D. Use before RDLONG/WRLONG/WMLONG to set block transfer. Also used before MUXQ/COGINIT/QDIV/QFRAC/QROTATE/WAITxxx.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -11034,7 +11034,7 @@
         {
           "isAlias": false,
           "summary": "Set Q to D. Use before RDLONG/WRLONG/WMLONG to set LUT block transfer.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -11063,7 +11063,7 @@
         {
           "isAlias": false,
           "summary": "Set R field of D to S[8:0]. D = {D[31:28], S[8:0], D[18:0]}.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -11102,7 +11102,7 @@
         {
           "isAlias": false,
           "summary": "Set S field of D to S[8:0]. D = {D[31:9], S[8:0]}.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -11141,7 +11141,7 @@
         {
           "isAlias": false,
           "summary": "Set four-channel oscilloscope enable to D[6] and set input pin base to D[5:2].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -11170,7 +11170,7 @@
         {
           "isAlias": false,
           "summary": "Set SE1 event configuration to D[8:0].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -11199,7 +11199,7 @@
         {
           "isAlias": false,
           "summary": "Set SE2 event configuration to D[8:0].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -11228,7 +11228,7 @@
         {
           "isAlias": false,
           "summary": "Set SE3 event configuration to D[8:0].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -11257,7 +11257,7 @@
         {
           "isAlias": false,
           "summary": "Set SE4 event configuration to D[8:0].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -11286,7 +11286,7 @@
         {
           "isAlias": false,
           "summary": "Set S[15:0] into word N in D, keeping rest of D same.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -11329,7 +11329,7 @@
         {
           "isAlias": true,
           "summary": "Set S[15:0] into word established by prior ALTSW instruction.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "S",
@@ -11360,7 +11360,7 @@
         {
           "isAlias": false,
           "summary": "Set streamer NCO frequency to D.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -11389,7 +11389,7 @@
         {
           "isAlias": false,
           "summary": "Relocate and periodically invert bits within D. Returns to original value on 32nd iteration. Forward pattern.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -11420,7 +11420,7 @@
         {
           "isAlias": false,
           "summary": "Relocate and periodically invert bits within D. Returns to original value on 32nd iteration. Reverse pattern.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -11583,7 +11583,7 @@
         {
           "isAlias": false,
           "summary": "Skip instructions per D. Subsequent instructions 0..31 get cancelled for each '1' bit in D[0]..D[31].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -11612,7 +11612,7 @@
         {
           "isAlias": false,
           "summary": "Skip cog/LUT instructions fast per D. Like SKIP, but instead of cancelling instructions, the PC leaps over them.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -11641,7 +11641,7 @@
         {
           "isAlias": false,
           "summary": "Split every 4th bit of D into bytes. D = {D[31], D[27], D[23], D[19], ...D[12], D[8], D[4], D[0]}.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -11672,7 +11672,7 @@
         {
           "isAlias": false,
           "summary": "Split odd/even bits of D into words. D = {D[31], D[29], D[27], D[25], ...D[6], D[4], D[2], D[0]}.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -11703,7 +11703,7 @@
         {
           "isAlias": false,
           "summary": "Stall Interrupts.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [],
           "writtenRegisters": [],
           "hwStackEffect": "None",
@@ -12401,7 +12401,7 @@
         {
           "isAlias": false,
           "summary": "Test D and jump to S** if D is full (D = $FFFF_FFFF).",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -12438,7 +12438,7 @@
         {
           "isAlias": false,
           "summary": "Test D and jump to S** if D is not full (D != $FFFF_FFFF).",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -12475,7 +12475,7 @@
         {
           "isAlias": false,
           "summary": "Test D and jump to S** if D is not signed (D[31] = 0).",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -12512,7 +12512,7 @@
         {
           "isAlias": false,
           "summary": "Test D and jump to S** if D is not zero.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -12549,7 +12549,7 @@
         {
           "isAlias": false,
           "summary": "Test D and jump to S** if D is signed (D[31] = 1).",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -12586,7 +12586,7 @@
         {
           "isAlias": false,
           "summary": "Test D and jump to S** if D overflowed (D[31] != C, C = 'correct sign' from last addition/subtraction).",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -12623,7 +12623,7 @@
         {
           "isAlias": false,
           "summary": "Test D and jump to S** if D is zero.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -12660,7 +12660,7 @@
         {
           "isAlias": false,
           "summary": "Trigger INT1, regardless of STALLI mode.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [],
           "writtenRegisters": [],
           "hwStackEffect": "None",
@@ -12680,7 +12680,7 @@
         {
           "isAlias": false,
           "summary": "Trigger INT2, regardless of STALLI mode.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [],
           "writtenRegisters": [],
           "hwStackEffect": "None",
@@ -12700,7 +12700,7 @@
         {
           "isAlias": false,
           "summary": "Trigger INT3, regardless of STALLI mode.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [],
           "writtenRegisters": [],
           "hwStackEffect": "None",
@@ -13129,7 +13129,7 @@
         {
           "isAlias": false,
           "summary": "Used after WRFAST. Write byte in D[7:0] into FIFO.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -13158,7 +13158,7 @@
         {
           "isAlias": false,
           "summary": "Used after WRFAST. Write long in D[31:0] into FIFO.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -13187,7 +13187,7 @@
         {
           "isAlias": false,
           "summary": "Used after WRFAST. Write word in D[15:0] into FIFO.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -13216,7 +13216,7 @@
         {
           "isAlias": false,
           "summary": "Write only non-$00 bytes in D[31:0] to hub address {#}S/PTRx. Prior SETQ/SETQ2 invokes cog/LUT block transfer.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -13253,7 +13253,7 @@
         {
           "isAlias": false,
           "summary": "Write byte in D[7:0] to hub address {#}S/PTRx.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -13290,7 +13290,7 @@
         {
           "isAlias": false,
           "summary": "Write 0 or 1 to D, according to C. D = {31'b0, C}.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -13321,7 +13321,7 @@
         {
           "isAlias": false,
           "summary": "Begin new fast hub write via FIFO. D[31] = no wait, D[13:0] = block size in 64-byte units (0 = max), S[19:0] = block start address.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -13358,7 +13358,7 @@
         {
           "isAlias": false,
           "summary": "Write long in D[31:0] to hub address {#}S/PTRx. Prior SETQ/SETQ2 invokes cog/LUT block transfer.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -13395,7 +13395,7 @@
         {
           "isAlias": false,
           "summary": "Write D to LUT address {#}S/PTRx.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -13432,7 +13432,7 @@
         {
           "isAlias": false,
           "summary": "Write 0 or 1 to D, according to !C. D = {31'b0, !C}.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -13463,7 +13463,7 @@
         {
           "isAlias": false,
           "summary": "Write 0 or 1 to D, according to !Z. D = {31'b0, !Z}.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -13494,7 +13494,7 @@
         {
           "isAlias": false,
           "summary": "Set mode of smart pins S[10:6]+S[5:0]..S[5:0] to D, acknowledge pins. Wraps within A/B pins. Prior SETQ D[4:0] overrides S[10:6].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -13531,7 +13531,7 @@
         {
           "isAlias": false,
           "summary": "Write word in D[15:0] to hub address {#}S/PTRx.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -13568,7 +13568,7 @@
         {
           "isAlias": false,
           "summary": "Write 0 or 1 to D, according to Z. D = {31'b0, Z}.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -13599,7 +13599,7 @@
         {
           "isAlias": false,
           "summary": "Set \"X\" of smart pins S[10:6]+S[5:0]..S[5:0] to D, acknowledge pins. Wraps within A/B pins. Prior SETQ D[4:0] overrides S[10:6].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -13636,7 +13636,7 @@
         {
           "isAlias": false,
           "summary": "Set \"Y\" of smart pins S[10:6]+S[5:0]..S[5:0] to D, acknowledge pins. Wraps within A/B pins. Prior SETQ D[4:0] overrides S[10:6].",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -13673,7 +13673,7 @@
         {
           "isAlias": false,
           "summary": "Buffer new streamer command to be issued on final NCO rollover of current command, continuing phase. Prior SETQ sets NCO frequency.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -13710,7 +13710,7 @@
         {
           "isAlias": false,
           "summary": "Issue streamer command immediately, zeroing phase. Prior SETQ sets NCO frequency.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -13791,7 +13791,7 @@
         {
           "isAlias": false,
           "summary": "Iterate D with xoroshiro32+ PRNG algorithm and put PRNG result into next instruction's S. D must be non-zero to iterate.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",
@@ -13822,7 +13822,7 @@
         {
           "isAlias": true,
           "summary": "Stop streamer immediately. Prior SETQ sets NCO frequency.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [],
           "writtenRegisters": [],
           "hwStackEffect": "None",
@@ -13842,7 +13842,7 @@
         {
           "isAlias": false,
           "summary": "Buffer new streamer command to be issued on final NCO rollover of current command, zeroing phase. Prior SETQ sets NCO frequency.",
-          "allowedFlagEffects": [],
+          "allowedFlagEffects": ["none"],
           "operands": [
             {
               "role": "D",

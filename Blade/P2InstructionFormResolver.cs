@@ -74,7 +74,7 @@ internal static class P2InstructionFormResolver
         if (operand is AsmLabelRefOperand)
             return !operandInfo.SupportsImmediate.RequiresImmediate() ? roleScore : -1;
 
-        if (operand is AsmRegisterOperand or AsmFlagOperand or AsmPhysicalRegisterOperand or AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Register })
+        if (operand is AsmRegisterOperand or AsmPhysicalRegisterOperand or AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Register })
         {
             return !operandInfo.SupportsImmediate.RequiresImmediate() && operandInfo.Type != P2OperandType.BranchTarget
                 ? roleScore

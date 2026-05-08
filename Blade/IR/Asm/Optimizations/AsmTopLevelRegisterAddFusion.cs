@@ -48,7 +48,8 @@ public sealed class AsmTopLevelRegisterAddFusion : PerFunctionAsmOptimization
             || update.IsNonElidable
             || store.IsNonElidable
             || update.Condition is not null
-            || update.FlagEffect != P2FlagEffect.None
+            || update.FlagInput.Any
+            || update.FlagOutput.Effect != P2FlagEffect.None
             || update.Mnemonic != P2Mnemonic.ADD
             || update.Operands.Count != 2)
         {

@@ -221,8 +221,6 @@ public static class RegisterAllocator
         {
             if (operand is AsmRegisterOperand register && !order.ContainsKey(register.Value))
                 order.Add(register.Value, next++);
-            else if (operand is AsmFlagOperand flag && !order.ContainsKey(flag.Flag))
-                order.Add(flag.Flag, next++);
         }
 
         foreach (AsmNode node in function.Nodes)
@@ -255,12 +253,19 @@ public static class RegisterAllocator
         {
             if (node is AsmInstructionNode instruction)
             {
+                if (instruction.FlagInput.C is not null)
+                    allRegs.Add(instruction.FlagInput.C);
+                if (instruction.FlagInput.Z is not null)
+                    allRegs.Add(instruction.FlagInput.Z);
+                if (instruction.FlagOutput.C is not null)
+                    allRegs.Add(instruction.FlagOutput.C);
+                if (instruction.FlagOutput.Z is not null)
+                    allRegs.Add(instruction.FlagOutput.Z);
+
                 foreach (AsmOperand operand in instruction.Operands)
                 {
                     if (operand is AsmRegisterOperand reg)
                         allRegs.Add(reg.Value);
-                    else if (operand is AsmFlagOperand flag)
-                        allRegs.Add(flag.Flag);
                 }
             }
         }
@@ -367,7 +372,8 @@ public static class RegisterAllocator
 
             if (instruction.Mnemonic != P2Mnemonic.MOV
                 || instruction.Condition is not null
-                || instruction.FlagEffect != P2FlagEffect.None
+                || instruction.FlagInput.Any
+                || instruction.FlagOutput.Effect != P2FlagEffect.None
                 || instruction.IsNonElidable
                 || instruction.IsPhiMove
                 || instruction.Operands.Count != 2)
@@ -883,9 +889,9 @@ public static class RegisterAllocator
                             rewrittenNodes.Add(new AsmInstructionNode(
                                 instruction.Mnemonic,
                                 operands,
-                                instruction.Condition,
-                                instruction.FlagEffect,
-                                instruction.IsNonElidable));
+                                condition: instruction.Condition,
+                                flagOutput: instruction.FlagOutput,
+                                isNonElidable: instruction.IsNonElidable));
                             break;
                         }
 
@@ -991,9 +997,6 @@ public static class RegisterAllocator
     {
         if (operand is AsmRegisterOperand reg && regToLocation.TryGetValue(reg.Value, out AllocatedLocation registerLocation))
             return ToOperand(functionImage, registerLocation, getSlotSymbol);
-
-        if (operand is AsmFlagOperand flag && regToLocation.TryGetValue(flag.Flag, out AllocatedLocation flagLocation))
-            return ToOperand(functionImage, flagLocation, getSlotSymbol);
 
         if (operand is AsmSymbolOperand { Symbol: StoragePlace place, AddressingMode: AsmSymbolAddressingMode.Register }
             && place.IsInternalRegisterSlot

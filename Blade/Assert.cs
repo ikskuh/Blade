@@ -69,14 +69,14 @@ internal static class Assert
     /// <param name="line"></param>
     /// <param name="member"></param>
     [DoesNotReturn]
-    public static void Unreachable(ParameterGuard guard = ParameterGuard.DoNotWriteThis, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
+    public static UnreachableException Unreachable(ParameterGuard guard = ParameterGuard.DoNotWriteThis, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
     {
         _ = guard;
         throw CreateUnreachableException("", file, line, member);
     }
 
     [DoesNotReturn]
-    public static void Unreachable(string message, ParameterGuard guard = ParameterGuard.DoNotWriteThis, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
+    public static UnreachableException Unreachable(string message, ParameterGuard guard = ParameterGuard.DoNotWriteThis, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
     {
         _ = guard;
         throw CreateUnreachableException(message, file, line, member);

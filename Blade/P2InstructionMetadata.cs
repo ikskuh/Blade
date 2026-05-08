@@ -56,3 +56,25 @@ public enum P2SpecialRegister
     /// <summary>I/O port B input register.</summary>
     INB = 0x1FF,
 }
+
+
+public static class P2FlagEffectExtensions2
+{
+    public static bool AffectsC(this P2FlagEffect flag) => flag switch
+    {
+        P2FlagEffect.None => false,
+        P2FlagEffect.WCZ => true,
+        P2FlagEffect.WC or P2FlagEffect.XORC or P2FlagEffect.ORC or P2FlagEffect.ANDC => true,
+        P2FlagEffect.WZ or P2FlagEffect.XORZ or P2FlagEffect.ORZ or P2FlagEffect.ANDZ => false,
+        _ => Assert.UnreachableValue<bool>(),
+    };
+
+    public static bool AffectsZ(this P2FlagEffect flag) => flag switch
+    {
+        P2FlagEffect.None => false,
+        P2FlagEffect.WCZ => true,
+        P2FlagEffect.WC or P2FlagEffect.XORC or P2FlagEffect.ORC or P2FlagEffect.ANDC => false,
+        P2FlagEffect.WZ or P2FlagEffect.XORZ or P2FlagEffect.ORZ or P2FlagEffect.ANDZ => true,
+        _ => Assert.UnreachableValue<bool>(),
+    };
+}

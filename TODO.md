@@ -522,3 +522,7 @@ Eliminate equal parts of the IR tree
 ##  MIR/LIR/ASMIR Optimization: Equal block elimination
 
 Eliminate equal parts of the IR tree
+
+## MIR/LIR/ASMIR Validator
+ 
+Implement a validator that checks if IR code is valid between all stages.

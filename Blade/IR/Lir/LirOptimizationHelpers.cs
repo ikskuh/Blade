@@ -135,6 +135,8 @@ internal static class LirOptimizationHelpers
             inlineAsm.FlagOutput,
             inlineAsm.ParsedLines,
             rewrittenBindings,
+            inlineAsm.Destination,
+            inlineAsm.ResultType,
             inlineAsm.Span);
     }
 
@@ -174,6 +176,8 @@ internal static class LirOptimizationHelpers
                     inlineAsm.FlagOutput,
                     inlineAsm.ParsedLines,
                     rewrittenBindings,
+                    inlineAsm.Destination,
+                    inlineAsm.ResultType,
                     inlineAsm.Span);
             }
 

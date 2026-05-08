@@ -38,7 +38,7 @@ public sealed class LirCopyPropagation : ILirOptimization
                 blocks.Add(new LirBlock(block.Ref, block.Parameters, instructions, terminator));
             }
 
-            functions.Add(new LirFunction(function.SourceFunction, blocks));
+            functions.Add(new LirFunction(function.SourceFunction, blocks, function.FlagValues));
         }
 
         LirModule result = new(input.SourceModule, input.StoragePlaces, input.StorageDefinitions, functions);

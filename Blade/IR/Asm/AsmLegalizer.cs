@@ -220,9 +220,9 @@ public static class AsmLegalizer
             nodes.Add(new AsmInstructionNode(
                 instruction.Mnemonic,
                 newOperands,
-                instruction.Condition,
-                instruction.FlagEffect,
-                instruction.IsNonElidable));
+                condition: instruction.Condition,
+                flagOutput: instruction.FlagOutput,
+                isNonElidable: instruction.IsNonElidable));
         }
         else
         {

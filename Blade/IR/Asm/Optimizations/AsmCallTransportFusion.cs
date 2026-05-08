@@ -15,12 +15,14 @@ public sealed class AsmCallTransportFusion : PerFunctionAsmOptimization
         {
             if (node is AsmInstructionNode callInstruction
                 && callInstruction.Condition is null
-                && callInstruction.FlagEffect == P2FlagEffect.None
+                && !callInstruction.FlagInput.Any
+                && callInstruction.FlagOutput.Effect == P2FlagEffect.None
                 && nodes.Count > 0
                 && nodes[^1] is AsmInstructionNode previousInstruction
                 && previousInstruction.Mnemonic == P2Mnemonic.MOV
                 && previousInstruction.Condition is null
-                && previousInstruction.FlagEffect == P2FlagEffect.None
+                && !previousInstruction.FlagInput.Any
+                && previousInstruction.FlagOutput.Effect == P2FlagEffect.None
                 && previousInstruction.Operands.Count == 2)
             {
                 if (callInstruction.Mnemonic == P2Mnemonic.CALL

@@ -21,7 +21,8 @@ public sealed class AsmRetFusion : PerFunctionAsmOptimization
                 && instruction.Mnemonic == P2Mnemonic.RET
                 && instruction.Condition is null
                 && instruction.Operands.Count == 0
-                && instruction.FlagEffect == P2FlagEffect.None
+                && !instruction.FlagInput.Any
+                && instruction.FlagOutput.Effect == P2FlagEffect.None
                 && i > 0
                 && nodes.Count > 0
                 && nodes[^1] is AsmInstructionNode previous
@@ -33,9 +34,9 @@ public sealed class AsmRetFusion : PerFunctionAsmOptimization
                 nodes[^1] = new AsmInstructionNode(
                     previous.Mnemonic,
                     previous.Operands,
-                    P2ConditionCode._RET_,
-                    previous.FlagEffect,
-                    previous.IsNonElidable);
+                    condition: P2ConditionCode._RET_,
+                    flagOutput: previous.FlagOutput,
+                    isNonElidable: previous.IsNonElidable);
                 changed = true;
                 continue;
             }

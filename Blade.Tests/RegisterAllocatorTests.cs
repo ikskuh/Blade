@@ -72,9 +72,9 @@ public class RegisterAllocatorTests
 
         AsmFunction function = CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
         [
-            new AsmInstructionNode(P2Mnemonic.MOV, [dstA, srcA], P2ConditionCode.IF_Z, isPhiMove: true),
-            new AsmInstructionNode(P2Mnemonic.MOV, [dstB, srcB], P2ConditionCode.IF_Z, isPhiMove: true),
-            new AsmInstructionNode(P2Mnemonic.JMP, [new AsmSymbolOperand(done, AsmSymbolAddressingMode.Immediate)], P2ConditionCode.IF_Z),
+            new AsmInstructionNode(P2Mnemonic.MOV, [dstA, srcA], condition: P2ConditionCode.IF_Z, isPhiMove: true),
+            new AsmInstructionNode(P2Mnemonic.MOV, [dstB, srcB], condition: P2ConditionCode.IF_Z, isPhiMove: true),
+            new AsmInstructionNode(P2Mnemonic.JMP, [new AsmSymbolOperand(done, AsmSymbolAddressingMode.Immediate)], condition: P2ConditionCode.IF_Z),
             new AsmLabelNode(done),
         ]);
 

@@ -31,7 +31,8 @@ public sealed class AsmCleanupSelfMov : PerFunctionAsmOptimization
 
             if (node is AsmInstructionNode instruction
                 && instruction.Mnemonic == P2Mnemonic.MOV
-                && instruction.FlagEffect == P2FlagEffect.None
+                && !instruction.FlagInput.Any
+                && instruction.FlagOutput.Effect == P2FlagEffect.None
                 && instruction.Operands.Count == 2
                 && OperandsEquivalent(instruction.Operands[0], instruction.Operands[1]))
             {

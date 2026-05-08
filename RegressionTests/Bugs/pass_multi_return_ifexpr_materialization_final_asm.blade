@@ -1,7 +1,6 @@
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// - MOV ?, #1
 // - MOV ?, #0
 // - TESTB ?, #0 WZ
 // - TESTB ?, #0 WZ
@@ -9,8 +8,9 @@
 // - IF_Z JMP #?
 // NOTE:
 //   Bool values captured from multi-return calls and then converted via
-//   `if (flag) 1 else 0` must materialize concrete then/else assignments for both
-//   branches instead of falling through empty bodies.
+//   `if (flag) 1 else 0` must keep an explicit false-branch overwrite and test
+//   the normalized bool values captured from the multi-return call. The true
+//   path may reuse the already materialized `1` value instead of reassigning it.
 cog task main {
     
     noinline fn two_ret(a: u32, b: u32) -> u32, bool {

@@ -70,6 +70,13 @@ public static class LirLowerer
             }
         }
 
+        Dictionary<VirtualLirFlag, MirFlag> flagValues = [];
+        foreach ((MirValueId value, MirFlag flag) in mirFunction.FlagValues)
+        {
+            if (GetValue(value) is VirtualLirFlag lirFlag)
+                flagValues[lirFlag] = flag;
+        }
+
         List<LirBlock> blocks = new(mirFunction.Blocks.Count);
         foreach (MirBlock mirBlock in mirFunction.Blocks)
         {
@@ -129,7 +136,7 @@ public static class LirLowerer
             blocks.Add(new LirBlock(GetBlockRef(mirBlock.Ref), parameters, instructions, terminator));
         }
 
-        return new LirFunction(mirFunction, blocks);
+        return new LirFunction(mirFunction, blocks, flagValues);
     }
 
     private static LirInstruction LowerInstruction(
@@ -396,6 +403,8 @@ public static class LirLowerer
                 inlineAsm.FlagOutput,
                 inlineAsm.ParsedLines,
                 LowerInlineAsmBindings(inlineAsm.Bindings, getValueOperand),
+                destination,
+                inlineAsm.ResultType,
                 inlineAsm.Span),
 
             MirYieldInstruction yield => new LirOpInstruction(

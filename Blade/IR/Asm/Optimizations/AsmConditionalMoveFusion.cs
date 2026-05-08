@@ -32,9 +32,9 @@ public sealed class AsmConditionalMoveFusion : PerFunctionAsmOptimization
                 nodes.Add(new AsmInstructionNode(
                     body.Mnemonic,
                     body.Operands,
-                    InvertPredicate(jump.Condition.Value),
-                    body.FlagEffect,
-                    body.IsNonElidable));
+                    condition: InvertPredicate(jump.Condition.Value),
+                    flagOutput: body.FlagOutput,
+                    isNonElidable: body.IsNonElidable));
                 nodes.Add(label);
                 changed = true;
                 i += 3;

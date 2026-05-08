@@ -942,14 +942,16 @@ public static class MirLowerer
             BladeType? primaryType = null;
             if (targets.Count > 0 && targets[0] is not BoundDiscardAssignmentTarget)
             {
-                primaryResult = NextValue();
+                primaryResult = CreatePrimaryCallResult(callExpression.Function);
                 primaryType = callExpression.Function.ReturnTypes[0];
+                RecordPrimaryCallResultFlag(callExpression.Function, primaryResult);
             }
             else if (targets.Count > 0)
             {
                 // Even for discards, we need a value ID so the call instruction has a result
-                primaryResult = NextValue();
+                primaryResult = CreatePrimaryCallResult(callExpression.Function);
                 primaryType = callExpression.Function.ReturnTypes[0];
+                RecordPrimaryCallResultFlag(callExpression.Function, primaryResult);
             }
 
             // Extra results for positions 1+
@@ -1703,7 +1705,10 @@ public static class MirLowerer
             foreach (BoundExpression argument in callExpression.Arguments)
                 arguments.Add(LowerExpression(argument));
 
-            MirValueId? result = callExpression.Type is VoidTypeSymbol ? null : NextValue();
+            MirValueId? result = callExpression.Type is VoidTypeSymbol
+                ? null
+                : CreatePrimaryCallResult(callExpression.Function);
+            RecordPrimaryCallResultFlag(callExpression.Function, result);
             _currentBlock.Instructions.Add(new MirCallInstruction(
                 result,
                 callExpression.Type is VoidTypeSymbol ? null : callExpression.Type,
@@ -1712,6 +1717,38 @@ public static class MirLowerer
                 callExpression.Span));
 
             return result ?? EmitPlaceholderConstant(BuiltinTypes.Unknown, callExpression.Span);
+        }
+
+        private MirValueId CreatePrimaryCallResult(FunctionSymbol function)
+        {
+            Requires.NotNull(function);
+            Assert.Invariant(function.ReturnSlots.Count > 0, "Primary call results require at least one return slot.");
+
+            return function.ReturnSlots[0].Placement switch
+            {
+                ReturnPlacement.Register => NextValue(),
+                ReturnPlacement.FlagC or ReturnPlacement.FlagZ => NextFlagValue(),
+                _ => Assert.UnreachableValue<MirValueId>(), // pragma: force-coverage
+            };
+        }
+
+        private void RecordPrimaryCallResultFlag(FunctionSymbol function, MirValueId? result)
+        {
+            Requires.NotNull(function);
+
+            if (result is null || function.ReturnSlots.Count == 0)
+                return;
+
+            switch (function.ReturnSlots[0].Placement)
+            {
+                case ReturnPlacement.FlagC:
+                    _flagValues[result] = MirFlag.C;
+                    break;
+
+                case ReturnPlacement.FlagZ:
+                    _flagValues[result] = MirFlag.Z;
+                    break;
+            }
         }
 
         private void EmitGeneratedMemoryInitialization()

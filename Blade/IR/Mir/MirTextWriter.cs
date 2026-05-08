@@ -483,17 +483,32 @@ public static class MirTextWriter
 
     private sealed class ValueFormatter
     {
-        private readonly Dictionary<MirValueId, int> _ids = [];
+        private readonly Dictionary<VirtualMirFlag, string> _flagIds = [];
+        private readonly Dictionary<VirtualMirRegister, string> _registerIds = [];
 
         public string Format(MirValueId value)
         {
-            if (!_ids.TryGetValue(value, out int id))
+            switch (value)
             {
-                id = _ids.Count;
-                _ids.Add(value, id);
-            }
+                case VirtualMirRegister register:
+                    if (!_registerIds.TryGetValue(register, out string? registerId))
+                    {
+                        registerId = $"%v{_registerIds.Count}";
+                        _registerIds.Add(register, registerId);
+                    }
+                    return registerId;
 
-            return $"%v{id}";
+                case VirtualMirFlag flag:
+                    if (!_flagIds.TryGetValue(flag, out string? flagId))
+                    {
+                        flagId = $"%f{_flagIds.Count}";
+                        _flagIds.Add(flag, flagId);
+                    }
+                    return flagId;
+                
+                default:
+                    throw Assert.Unreachable();
+            }
         }
     }
 

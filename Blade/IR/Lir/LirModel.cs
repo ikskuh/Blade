@@ -20,7 +20,10 @@ public sealed class LirModule(
     public IReadOnlyList<LirFunction> Functions { get; } = functions;
 }
 
-public sealed class LirFunction(MirFunction sourceFunction, IReadOnlyList<LirBlock> blocks)
+public sealed class LirFunction(
+    MirFunction sourceFunction,
+    IReadOnlyList<LirBlock> blocks,
+    IReadOnlyDictionary<VirtualLirFlag, MirFlag>? flagValues = null)
 {
     public MirFunction SourceFunction { get; } = Requires.NotNull(sourceFunction);
     public FunctionSymbol Symbol => SourceFunction.Symbol;
@@ -29,6 +32,7 @@ public sealed class LirFunction(MirFunction sourceFunction, IReadOnlyList<LirBlo
     public FunctionKind Kind => SourceFunction.Kind;
     public IReadOnlyList<BladeType> ReturnTypes => SourceFunction.ReturnTypes;
     public IReadOnlyList<ReturnSlot> ReturnSlots => SourceFunction.ReturnSlots;
+    public IReadOnlyDictionary<VirtualLirFlag, MirFlag> FlagValues { get; } = flagValues ?? new Dictionary<VirtualLirFlag, MirFlag>();
     public IReadOnlyList<LirBlock> Blocks { get; } = blocks;
 }
 
@@ -620,10 +624,12 @@ public sealed class LirInlineAsmInstruction(
     InlineAsmFlagOutput? flagOutput,
     IReadOnlyList<InlineAsmLine> parsedLines,
     IReadOnlyList<LirInlineAsmBinding> bindings,
+    VirtualLirValue? destination,
+    BladeType? resultType,
     TextSpan span)
     : LirInstruction(
-        destination: null,
-        resultType: null,
+        destination: destination,
+        resultType: resultType,
         operands: [],
         hasSideEffects: true,
         predicate: null,

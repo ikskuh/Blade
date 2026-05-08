@@ -1,5 +1,6 @@
 // EXPECT: pass
 // STAGE: final-asm
+// FLEXSPIN: forbidden
 // NOTE:
 //   Verifies the code generation for a basic comparison
 
@@ -11,6 +12,6 @@ cog task main {
         output = 1;
     }
     else {
-        output = 0;
+        output = 2;
     }
 }

@@ -276,6 +276,50 @@ public sealed class AsmLabelNode(ControlFlowLabelSymbol label) : AsmNode
 }
 
 /// <summary>
+/// Describes the input flags for an instruction, used for tracking flag dependencies and liveness in the register allocator.
+/// </summary>
+/// <param name="C">The carry flag input.</param>
+/// <param name="Z">The zero flag input.</param>
+public sealed record class AsmFlagInput(VirtualAsmFlag? C, VirtualAsmFlag? Z)
+{
+    public static AsmFlagInput None { get; } = new AsmFlagInput(null, null);
+
+    public bool Any => this.C is not null || this.Z is not null;
+}
+
+/// <summary>
+/// Describes the output flag effects of an instruction, used for tracking flag dependencies and liveness in the register allocator.
+/// </summary>
+public sealed class AsmFlagOutput
+{
+    public static AsmFlagOutput None { get; } = new AsmFlagOutput(P2FlagEffect.None, null, null);
+
+    public AsmFlagOutput(P2FlagEffect effect, VirtualAsmFlag? c, VirtualAsmFlag? z)
+    {
+        if (!effect.AffectsC() && (c is not null))
+        {
+            throw new ArgumentException("The flag effect does not produce a C flag output.", nameof(c));
+        }
+        if (!effect.AffectsZ() && (z is not null))
+        {
+            throw new ArgumentException("The flag effect does not produce a Z flag output.", nameof(z));
+        }
+
+        this.C = c;
+        this.Z = z;
+        this.Effect = effect;
+    }
+
+    public P2FlagEffect Effect { get; }
+
+    public VirtualAsmFlag? C { get; }
+
+    public VirtualAsmFlag? Z { get; }
+
+    public bool Any => this.C is not null || this.Z is not null;
+}
+
+/// <summary>
 /// Represents a PASM2 instruction with real P2 mnemonics, virtual registers,
 /// and optional flag effects / condition predicates.
 /// </summary>
@@ -284,8 +328,9 @@ public sealed class AsmInstructionNode : AsmNode
     public AsmInstructionNode(
         P2Mnemonic mnemonic,
         IReadOnlyList<AsmOperand> operands,
+        AsmFlagInput? flagInput = null,
         P2ConditionCode? condition = null,
-        P2FlagEffect flagEffect = P2FlagEffect.None,
+        AsmFlagOutput? flagOutput = null,
         bool isNonElidable = false,
         bool isPhiMove = false)
     {
@@ -304,19 +349,26 @@ public sealed class AsmInstructionNode : AsmNode
         Form = form;
         Operands = checkedOperands;
         Condition = condition;
-        FlagEffect = flagEffect;
         IsNonElidable = isNonElidable;
         IsPhiMove = isPhiMove;
+        FlagOutput = flagOutput ?? AsmFlagOutput.None;
+        FlagInput = flagInput ?? AsmFlagInput.None;
+
+        Assert.Invariant(form.AllowedFlagEffects.Contains(FlagOutput.Effect), $"Instruction '{mnemonic}' does not allow the specified flag effect.");
     }
 
     public P2Mnemonic Mnemonic { get; }
+
+    public AsmFlagOutput FlagOutput { get; }
+
+    public AsmFlagInput FlagInput { get; }
+
     /// <summary>
     /// Resolved instruction-form metadata for the instruction.
     /// </summary>
     public P2InstructionFormInfo Form { get; }
     public IReadOnlyList<AsmOperand> Operands { get; }
     public P2ConditionCode? Condition { get; }
-    public P2FlagEffect FlagEffect { get; }
     public bool IsNonElidable { get; }
     public bool IsPhiMove { get; }
 
@@ -340,7 +392,6 @@ public sealed class AsmInstructionNode : AsmNode
                 Assert.Invariant(!IsImmediateOnlyOperand(operandInfo), $"Operand {operandIndex} of '{mnemonic}' requires immediate syntax.");
                 break;
             case AsmRegisterOperand:
-            case AsmFlagOperand:
             case AsmLabelRefOperand:
             case AsmPhysicalRegisterOperand:
             case AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Register }:
@@ -408,17 +459,6 @@ public sealed class AsmRegisterOperand(VirtualAsmValue value) : AsmOperand
 
     [ExcludeFromCodeCoverage]
     public override string Format() => throw new InvalidOperationException($"{nameof(AsmRegisterOperand)} cannot be formatted directly.");
-}
-
-/// <summary>
-/// Logical flag value stored in bit 0 of a virtual ASM register.
-/// </summary>
-public sealed class AsmFlagOperand(VirtualAsmFlag flag) : AsmOperand
-{
-    public VirtualAsmFlag Flag { get; } = Requires.NotNull(flag);
-
-    [ExcludeFromCodeCoverage]
-    public override string Format() => throw new InvalidOperationException($"{nameof(AsmFlagOperand)} cannot be formatted directly.");
 }
 
 /// <summary>

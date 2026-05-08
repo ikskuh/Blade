@@ -91,10 +91,18 @@ public static class AsmTextWriter
                     }
                 }
 
-                if (instruction.FlagEffect != P2FlagEffect.None)
+                string flagInput = FormatFlagInput(instruction.FlagInput, formatter);
+                if (flagInput.Length > 0)
                 {
                     sb.Append(' ');
-                    sb.Append(FormatFlagEffect(instruction.FlagEffect));
+                    sb.Append(flagInput);
+                }
+
+                string flagOutput = FormatFlagOutput(instruction.FlagOutput, formatter);
+                if (flagOutput.Length > 0)
+                {
+                    sb.Append(' ');
+                    sb.Append(flagOutput);
                 }
 
                 sb.AppendLine();
@@ -180,9 +188,39 @@ public static class AsmTextWriter
         sb.AppendLine();
     }
 
-    private static string FormatFlagEffect(P2FlagEffect effect)
+    private static string FormatFlagInput(AsmFlagInput input, RegisterFormatter formatter)
     {
-        return effect == P2FlagEffect.None ? string.Empty : effect.ToString();
+        List<string> parts = [];
+        if (input.C is not null)
+            parts.Add($"C={formatter.FormatFlag(input.C)}");
+        if (input.Z is not null)
+            parts.Add($"Z={formatter.FormatFlag(input.Z)}");
+        return string.Join(", ", parts);
+    }
+
+    private static string FormatFlagOutput(AsmFlagOutput output, RegisterFormatter formatter)
+    {
+        if (output.Effect == P2FlagEffect.None)
+            return string.Empty;
+
+        if (!output.Any)
+            return output.Effect.ToString();
+
+        if (output.Effect == P2FlagEffect.WC && output.C is not null)
+            return $"WC={formatter.FormatFlag(output.C)}";
+
+        if (output.Effect == P2FlagEffect.WZ && output.Z is not null)
+            return $"WZ={formatter.FormatFlag(output.Z)}";
+
+        if (output.Effect == P2FlagEffect.WCZ && output.C is not null && output.Z is not null)
+            return $"WCZ=({formatter.FormatFlag(output.C)}, {formatter.FormatFlag(output.Z)})";
+
+        List<string> parts = [output.Effect.ToString()];
+        if (output.C is not null)
+            parts.Add($"WC={formatter.FormatFlag(output.C)}");
+        if (output.Z is not null)
+            parts.Add($"WZ={formatter.FormatFlag(output.Z)}");
+        return string.Join(" ", parts);
     }
 
     private static string FormatOperand(AsmOperand operand, RegisterFormatter formatter)
@@ -190,7 +228,6 @@ public static class AsmTextWriter
         return operand switch
         {
             AsmRegisterOperand register => formatter.Format(register.Value),
-            AsmFlagOperand flag => formatter.FormatFlag(flag.Flag),
             _ => operand.Format(),
         };
     }
@@ -201,8 +238,6 @@ public static class AsmTextWriter
         {
             AsmInlineDataOperandValue operandValue when operandValue.Operand is AsmRegisterOperand register && !operandValue.PreserveImmediateSyntax
                 => formatter.Format(register.Value),
-            AsmInlineDataOperandValue operandValue when operandValue.Operand is AsmFlagOperand flag && !operandValue.PreserveImmediateSyntax
-                => formatter.FormatFlag(flag.Flag),
             AsmInlineDataOperandValue operandValue when operandValue.PreserveImmediateSyntax
                 => FormatOperand(operandValue.Operand, formatter),
             AsmInlineDataOperandValue operandValue
@@ -220,7 +255,6 @@ public static class AsmTextWriter
         return operand switch
         {
             AsmRegisterOperand register => formatter.Format(register.Value),
-            AsmFlagOperand flag => formatter.FormatFlag(flag.Flag),
             AsmImmediateOperand immediate => immediate.Value.ToString(CultureInfo.InvariantCulture),
             AsmSymbolOperand symbol => symbol.Name,
             _ => operand.Format(),

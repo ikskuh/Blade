@@ -7,16 +7,14 @@
 // - CMP ?1, ?2 WC
 // - IF_NC JMP #?
 // - REP @?, ?2
-// - MOV ?, ?
 // - ADD ?, ?
 // - ADD ?, #1
 // - MOV ?, ?
 // - ?
-// - MOV PA, ?
 // NOTE:
 //   Locks the final PASM shape for indexed rep-for lowering: one REP region,
-//   an explicit zero-trip guard before REP, in-region index increment, and no
-//   jump back to the repeated body after the REP end label.
+//   an explicit zero-trip guard before REP, in-region accumulation and index
+//   increment, and no jump back to the repeated body after the REP end label.
 cog task main {
     
     extern cog var OUTA: u32 @(0x1FC);

@@ -79,7 +79,7 @@ internal static class LirInlineAsmImmediatePropagation
             }
 
             anyChanged |= functionChanged;
-            functions.Add(functionChanged ? new LirFunction(function.SourceFunction, blocks) : function);
+            functions.Add(functionChanged ? new LirFunction(function.SourceFunction, blocks, function.FlagValues) : function);
         }
 
         return anyChanged
@@ -123,6 +123,8 @@ internal static class LirInlineAsmImmediatePropagation
             inlineAsm.FlagOutput,
             inlineAsm.ParsedLines,
             rewrittenBindings,
+            inlineAsm.Destination,
+            inlineAsm.ResultType,
             inlineAsm.Span);
     }
 }
