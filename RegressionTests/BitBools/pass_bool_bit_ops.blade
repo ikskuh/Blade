@@ -1,7 +1,7 @@
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// - BITNC
+// - WRNC
 // - CMP
 // - IF_NZ
 // - ?1 LONG 0
@@ -9,7 +9,7 @@
 // NOTE:
 //   Exercises bool/bit register operations. Bool false static initialization
 //   should stay a zeroed register-file entry, while logical negation lowers via
-//   TESTB plus inverted-C bit materialization.
+//   TESTB plus inverted-C register materialization.
 //   CMP + predicated JMP for comparison branch without WRZ materialization.
 
 noinline fn negate_bool(x: bool) -> bool {

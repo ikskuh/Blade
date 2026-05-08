@@ -344,7 +344,7 @@ public static class AsmLowerer
         public DiagnosticBag? Diagnostics { get; } = diagnostics;
         public HashSet<UnsupportedLoweringKey> ReportedUnsupportedLowerings { get; } = [];
         public Dictionary<LirBlockRef, ControlFlowLabelSymbol> BlockLabels { get; } = [];
-        public Dictionary<VirtualLirFlag, MirFlag> LogicalFlagMeanings { get; } = [];
+        public Dictionary<VirtualLirFlag, MirFlag> LogicalFlagMeanings { get; } = function.FlagValues.ToDictionary();
         public IReadOnlyDictionary<LirVirtualRegister, BladeType> RegisterTypes { get; } = BuildRegisterTypeMap(function);
         public RegisterAssociator Registers { get; } = new();
         public Dictionary<VirtualAsmValue, AsmRegisterConstraint> RegisterConstraints { get; } = [];
@@ -542,6 +542,8 @@ public static class AsmLowerer
     {
         List<AsmNode> nodes = [];
 
+        PropagateLogicalFlagsThroughBlockParameters(ctx);
+
         if (ctx.Function.Blocks.Count > 0)
             ConstrainEntryBlockParameters(ctx, ctx.Function.Blocks[0]);
 
@@ -562,6 +564,116 @@ public static class AsmLowerer
         }
 
         return new AsmFunction(ctx.Image, ctx.Function, ctx.Tier, nodes, ctx.RegisterConstraints, ctx.SharedRegisterPlaces);
+    }
+
+    private static void PropagateLogicalFlagsThroughBlockParameters(LoweringContext ctx)
+    {
+        bool changed;
+        do
+        {
+            changed = false;
+
+            foreach (LirBlock block in ctx.Function.Blocks)
+            {
+                for (int parameterIndex = 0; parameterIndex < block.Parameters.Count; parameterIndex++)
+                {
+                    if (block.Parameters[parameterIndex].Value is not VirtualLirFlag parameterFlag
+                        || ctx.LogicalFlagMeanings.ContainsKey(parameterFlag))
+                    {
+                        continue;
+                    }
+
+                    if (!TryGetIncomingParameterFlagMeaning(ctx.Function, block.Ref, parameterIndex, ctx.LogicalFlagMeanings, out MirFlag parameterMeaning))
+                        continue;
+
+                    ctx.RecordLogicalFlagMeaning(parameterFlag, parameterMeaning);
+                    changed = true;
+                }
+            }
+        }
+        while (changed);
+    }
+
+    private static bool TryGetIncomingParameterFlagMeaning(
+        LirFunction function,
+        LirBlockRef target,
+        int parameterIndex,
+        IReadOnlyDictionary<VirtualLirFlag, MirFlag> knownFlags,
+        out MirFlag parameterMeaning)
+    {
+        parameterMeaning = default;
+        bool sawIncomingArgument = false;
+        bool allIncomingFlagsHaveSameMeaning = true;
+
+        foreach (LirBlock predecessor in function.Blocks)
+        {
+            foreach (IReadOnlyList<LirOperand> arguments in GetArgumentsForSuccessor(predecessor.Terminator, target))
+            {
+                if (parameterIndex >= arguments.Count)
+                    return false;
+
+                LirOperand argument = arguments[parameterIndex];
+                if (argument is LirFlagOperand flagOperand)
+                {
+                    if (!knownFlags.TryGetValue(flagOperand.Flag, out MirFlag incomingMeaning))
+                    {
+                        if (!sawIncomingArgument)
+                        {
+                            parameterMeaning = MirFlag.C;
+                            sawIncomingArgument = true;
+                        }
+
+                        allIncomingFlagsHaveSameMeaning = false;
+                        continue;
+                    }
+
+                    if (!sawIncomingArgument)
+                    {
+                        parameterMeaning = incomingMeaning;
+                        sawIncomingArgument = true;
+                        continue;
+                    }
+
+                    if (parameterMeaning != incomingMeaning)
+                        allIncomingFlagsHaveSameMeaning = false;
+
+                    continue;
+                }
+
+                if (argument is not LirImmediateOperand and not LirRegisterOperand)
+                    return false;
+
+                if (!sawIncomingArgument)
+                {
+                    parameterMeaning = MirFlag.C;
+                    sawIncomingArgument = true;
+                }
+
+                allIncomingFlagsHaveSameMeaning = false;
+            }
+        }
+
+        if (sawIncomingArgument && !allIncomingFlagsHaveSameMeaning)
+            parameterMeaning = MirFlag.C;
+
+        return sawIncomingArgument;
+    }
+
+    private static IEnumerable<IReadOnlyList<LirOperand>> GetArgumentsForSuccessor(LirTerminator terminator, LirBlockRef target)
+    {
+        switch (terminator)
+        {
+            case LirGotoTerminator gotoTerminator when gotoTerminator.Target == target:
+                yield return gotoTerminator.Arguments;
+                yield break;
+
+            case LirBranchTerminator branchTerminator:
+                if (branchTerminator.TrueTarget == target)
+                    yield return branchTerminator.TrueArguments;
+                if (branchTerminator.FalseTarget == target)
+                    yield return branchTerminator.FalseArguments;
+                yield break;
+        }
     }
 
     private static (
@@ -652,41 +764,41 @@ public static class AsmLowerer
                         preferredRegisters: i == 0 ? [new P2Register(P2SpecialRegister.PB), new P2Register(P2SpecialRegister.PA)] : null);
                 }
 
-                    ReturnSlot? registerReturnSlot = function.ReturnSlots
-                        .Where(static slot => slot.Placement == ReturnPlacement.Register)
-                        .Cast<ReturnSlot?>()
-                        .FirstOrDefault();
+                ReturnSlot? registerReturnSlot = function.ReturnSlots
+                    .Where(static slot => slot.Placement == ReturnPlacement.Register)
+                    .Cast<ReturnSlot?>()
+                    .FirstOrDefault();
 
-                    List<StoragePlace> registerReturnPlaces = [];
-                    if (registerReturnSlot is { } slot)
+                List<StoragePlace> registerReturnPlaces = [];
+                if (registerReturnSlot is { } slot)
+                {
+                    int returnLaneCount = GetAggregateLaneCount(slot.Type);
+                    if (parameterPlaces.Count > 0)
                     {
-                        int returnLaneCount = GetAggregateLaneCount(slot.Type);
-                        if (parameterPlaces.Count > 0)
+                        registerReturnPlaces.Add(parameterPlaces[0]);
+                        for (int lane = 1; lane < returnLaneCount; lane++)
                         {
-                            registerReturnPlaces.Add(parameterPlaces[0]);
-                            for (int lane = 1; lane < returnLaneCount; lane++)
-                            {
-                                StoragePlace returnPlace = CreateInternalRegisterPlace(
-                                    currentImage,
-                                    $"gen_{function.Name}_ret0_lane{lane}",
-                                    BuiltinTypes.U32,
-                                    StoragePlaceRegisterRole.InternalShared);
-                                registerReturnPlaces.Add(returnPlace);
-                                storageCatalog.AddSyntheticPlace(returnPlace);
-                            }
-                        }
-                        else
-                        {
-                            AddInternalRegisterPlaces(
+                            StoragePlace returnPlace = CreateInternalRegisterPlace(
                                 currentImage,
-                                storageCatalog,
-                                registerReturnPlaces,
-                                $"gen_{function.Name}_ret0",
-                                slot.Type,
-                                StoragePlaceRegisterRole.InternalShared,
-                                preferredRegisters: [new P2Register(P2SpecialRegister.PB), new P2Register(P2SpecialRegister.PA)]);
+                                $"gen_{function.Name}_ret0_lane{lane}",
+                                BuiltinTypes.U32,
+                                StoragePlaceRegisterRole.InternalShared);
+                            registerReturnPlaces.Add(returnPlace);
+                            storageCatalog.AddSyntheticPlace(returnPlace);
                         }
                     }
+                    else
+                    {
+                        AddInternalRegisterPlaces(
+                            currentImage,
+                            storageCatalog,
+                            registerReturnPlaces,
+                            $"gen_{function.Name}_ret0",
+                            slot.Type,
+                            StoragePlaceRegisterRole.InternalShared,
+                            preferredRegisters: [new P2Register(P2SpecialRegister.PB), new P2Register(P2SpecialRegister.PA)]);
+                    }
+                }
 
                 generalCallingConvention[functionKey] = new GeneralCallingConventionInfo(parameterPlaces, registerReturnPlaces);
             }
@@ -707,26 +819,26 @@ public static class AsmLowerer
                         preferredRegisters: i == 0 ? [new P2Register(P2SpecialRegister.PB), new P2Register(P2SpecialRegister.PA)] : null);
                 }
 
-                    ReturnSlot? registerReturnSlot = function.ReturnSlots
-                        .Where(static slot => slot.Placement == ReturnPlacement.Register)
-                        .Cast<ReturnSlot?>()
-                        .FirstOrDefault();
+                ReturnSlot? registerReturnSlot = function.ReturnSlots
+                    .Where(static slot => slot.Placement == ReturnPlacement.Register)
+                    .Cast<ReturnSlot?>()
+                    .FirstOrDefault();
 
-                    List<StoragePlace> registerReturnPlaces = [];
-                    if (registerReturnSlot is { } slot)
-                    {
-                        IReadOnlyList<P2Register> preferredReturnRegisters = parameterPlaces.Count > 0
-                            ? [new P2Register(P2SpecialRegister.PA), new P2Register(P2SpecialRegister.PB)]
-                            : [new P2Register(P2SpecialRegister.PB), new P2Register(P2SpecialRegister.PA)];
-                        AddInternalRegisterPlaces(
-                            currentImage,
-                            storageCatalog,
-                            registerReturnPlaces,
-                            $"rec_{function.Name}_ret0",
-                            slot.Type,
-                            StoragePlaceRegisterRole.InternalShared,
-                            preferredRegisters: preferredReturnRegisters);
-                    }
+                List<StoragePlace> registerReturnPlaces = [];
+                if (registerReturnSlot is { } slot)
+                {
+                    IReadOnlyList<P2Register> preferredReturnRegisters = parameterPlaces.Count > 0
+                        ? [new P2Register(P2SpecialRegister.PA), new P2Register(P2SpecialRegister.PB)]
+                        : [new P2Register(P2SpecialRegister.PB), new P2Register(P2SpecialRegister.PA)];
+                    AddInternalRegisterPlaces(
+                        currentImage,
+                        storageCatalog,
+                        registerReturnPlaces,
+                        $"rec_{function.Name}_ret0",
+                        slot.Type,
+                        StoragePlaceRegisterRole.InternalShared,
+                        preferredRegisters: preferredReturnRegisters);
+                }
 
                 recursiveCallingConvention[functionKey] = new RecursiveCallingConventionInfo(parameterPlaces, registerReturnPlaces);
             }
@@ -1105,7 +1217,15 @@ public static class AsmLowerer
         bool isVolatile = inlineAsm.Volatility == AsmVolatility.Volatile;
 
         if (TryLowerTypedInlineAsm(nodes, inlineAsm, bindings, localLabels, isVolatile))
+        {
+            if (inlineAsm.Destination is VirtualLirFlag logicalFlag
+                && inlineAsm.FlagOutput is InlineAsmFlagOutput flagOutput)
+            {
+                ctx.RecordLogicalFlagMeaning(logicalFlag, flagOutput == InlineAsmFlagOutput.C ? MirFlag.C : MirFlag.Z);
+            }
+
             return;
+        }
 
         // After label restriction (E0306), all valid inline asm should be typed-lowerable.
         Assert.Unreachable(); // pragma: force-coverage
@@ -1409,17 +1529,16 @@ public static class AsmLowerer
         {
             long immediateValue = GetNumericImmediateValue(immediate);
             Assert.Invariant(immediateValue is 0 or 1, "Single-bit constants must normalize to 0 or 1.");
+
             if (op.Destination is VirtualLirFlag flagDestination)
             {
-                ctx.RecordLogicalFlagMeaning(flagDestination, immediateValue == 1 ? MirFlag.Z : MirFlag.NZ);
-                nodes.Add(EmitWithFlagOutput(
-                    P2Mnemonic.CMP,
-                    new AsmImmediateOperand(0),
-                    new AsmImmediateOperand(immediateValue == 1 ? 0 : 1),
-                    CreateBoundFlagOutput(P2FlagEffect.WZ, immediateValue == 1 ? MirFlag.Z : MirFlag.NZ, ctx.GetFlag(flagDestination))));
+                EmitSingleBitTruthTest(nodes, new LirImmediateOperand(immediate), P2FlagEffect.WC, ctx);
+                EmitCurrentLogicalFlagValue(nodes, flagDestination, MirFlag.C, ctx);
             }
             else
+            {
                 nodes.Add(Emit(P2Mnemonic.MOV, dest, new AsmImmediateOperand(immediateValue)));
+            }
             return;
         }
 
@@ -2587,7 +2706,9 @@ public static class AsmLowerer
             return;
         }
 
-        AsmOperand valueOp = LowerOperand(op.Operands[1], ctx);
+        AsmOperand valueOp = IsSingleBitType(placeType)
+            ? LowerSingleBitValueOperand(nodes, op.Operands[1], ctx)
+            : LowerOperand(op.Operands[1], ctx);
 
         switch (storagePlace.StorageClass)
         {
@@ -3142,7 +3263,7 @@ public static class AsmLowerer
     {
         ControlFlowLabelSymbol trueLabel = ctx.GetBlockLabel(branch.TrueTarget);
         ControlFlowLabelSymbol falseLabel = ctx.GetBlockLabel(branch.FalseTarget);
-        bool hasExplicitFlagInput = TryGetBranchFlagInput(branch.Condition, ctx, out AsmFlagInput flagInput, out P2ConditionCode falsePredicate);
+        bool hasExplicitFlagInput = TryGetBranchFlagInput(branch, ctx, out AsmFlagInput flagInput, out P2ConditionCode falsePredicate);
 
         if (branch.TrueArguments.Count == 0 && branch.FalseArguments.Count == 0)
         {
@@ -3482,6 +3603,28 @@ public static class AsmLowerer
         };
     }
 
+    private static AsmOperand LowerSingleBitValueOperand(
+        List<AsmNode> nodes,
+        LirOperand operand,
+        LoweringContext ctx,
+        P2ConditionCode? predicate = null,
+        bool isPhiMove = false)
+    {
+        if (operand is not LirFlagOperand flagOperand)
+            return LowerOperand(operand, ctx);
+
+        MirFlag sourceMeaning = GetOrAssignCanonicalFlagMeaning(flagOperand.Flag, ctx);
+
+        VirtualAsmRegister tempRegister = new();
+        nodes.Add(new AsmInstructionNode(
+            MapFlagToRegisterMnemonic(sourceMeaning),
+            [new AsmRegisterOperand(tempRegister)],
+            flagInput: CreateFlagInput(sourceMeaning, ctx.GetFlag(flagOperand.Flag)),
+            condition: predicate,
+            isPhiMove: isPhiMove));
+        return new AsmRegisterOperand(tempRegister);
+    }
+
     private static void EmitSingleBitTruthTest(
         List<AsmNode> nodes,
         LirOperand operand,
@@ -3490,6 +3633,26 @@ public static class AsmLowerer
         P2ConditionCode? predicate = null,
         bool isPhiMove = false)
     {
+        if (operand is LirFlagOperand flagOperand)
+        {
+            MirFlag sourceMeaning = GetOrAssignCanonicalFlagMeaning(flagOperand.Flag, ctx);
+
+            VirtualAsmRegister tempRegister = new();
+            nodes.Add(new AsmInstructionNode(
+                MapFlagToRegisterMnemonic(sourceMeaning),
+                [new AsmRegisterOperand(tempRegister)],
+                flagInput: CreateFlagInput(sourceMeaning, ctx.GetFlag(flagOperand.Flag)),
+                condition: predicate,
+                isPhiMove: isPhiMove));
+            nodes.Add(new AsmInstructionNode(
+                P2Mnemonic.TESTB,
+                [new AsmRegisterOperand(tempRegister), new AsmImmediateOperand(0)],
+                condition: predicate,
+                flagOutput: CreateFlagOutput(flagEffect),
+                isPhiMove: isPhiMove));
+            return;
+        }
+
         nodes.Add(new AsmInstructionNode(
             P2Mnemonic.TESTB,
             [LowerOperand(operand, ctx), new AsmImmediateOperand(0)],
@@ -3541,14 +3704,8 @@ public static class AsmLowerer
             switch (destination)
             {
                 case VirtualLirFlag flagDestination:
-                    ctx.RecordLogicalFlagMeaning(flagDestination, immediateValue == 1 ? MirFlag.Z : MirFlag.NZ);
-                    nodes.Add(EmitWithFlagOutput(
-                        P2Mnemonic.CMP,
-                        new AsmImmediateOperand(0),
-                        new AsmImmediateOperand(immediateValue == 1 ? 0 : 1),
-                        CreateBoundFlagOutput(P2FlagEffect.WZ, immediateValue == 1 ? MirFlag.Z : MirFlag.NZ, ctx.GetFlag(flagDestination)),
-                        predicate,
-                        isPhiMove));
+                    EmitSingleBitTruthTest(nodes, immediate, P2FlagEffect.WC, ctx, predicate, isPhiMove);
+                    EmitCurrentLogicalFlagValue(nodes, flagDestination, MirFlag.C, ctx, predicate, isPhiMove);
                     return;
 
                 case LirVirtualRegister registerDestination:
@@ -3558,6 +3715,47 @@ public static class AsmLowerer
                         condition: predicate,
                         isPhiMove: isPhiMove));
                     return;
+
+                default:
+                    Assert.Unreachable($"Unexpected single-bit destination '{destination.GetType().Name}'."); // pragma: force-coverage
+                    return; // pragma: force-coverage
+            }
+        }
+
+        if (source is LirFlagOperand flagSource)
+        {
+            MirFlag sourceMeaning = GetOrAssignCanonicalFlagMeaning(flagSource.Flag, ctx);
+
+            AsmFlagInput sourceFlagInput = CreateFlagInput(sourceMeaning, ctx.GetFlag(flagSource.Flag));
+            switch (destination)
+            {
+                case LirVirtualRegister registerDestination:
+                    nodes.Add(new AsmInstructionNode(
+                        MapFlagToRegisterMnemonic(sourceMeaning),
+                        [new AsmRegisterOperand(ctx.GetRegister(registerDestination))],
+                        flagInput: sourceFlagInput,
+                        condition: predicate,
+                        isPhiMove: isPhiMove));
+                    return;
+
+                case VirtualLirFlag flagDestination:
+                    {
+                        VirtualAsmRegister tempRegister = new();
+                        nodes.Add(new AsmInstructionNode(
+                            MapFlagToRegisterMnemonic(sourceMeaning),
+                            [new AsmRegisterOperand(tempRegister)],
+                            flagInput: sourceFlagInput,
+                            condition: predicate,
+                            isPhiMove: isPhiMove));
+                        nodes.Add(new AsmInstructionNode(
+                            P2Mnemonic.TESTB,
+                            [new AsmRegisterOperand(tempRegister), new AsmImmediateOperand(0)],
+                            condition: predicate,
+                            flagOutput: CreateFlagOutput(P2FlagEffect.WC),
+                            isPhiMove: isPhiMove));
+                        EmitCurrentLogicalFlagValue(nodes, flagDestination, MirFlag.C, ctx, predicate, isPhiMove);
+                        return;
+                    }
 
                 default:
                     Assert.Unreachable($"Unexpected single-bit destination '{destination.GetType().Name}'."); // pragma: force-coverage
@@ -3579,6 +3777,15 @@ public static class AsmLowerer
             MirFlag.NZ => P2Mnemonic.WRNZ,
             _ => Assert.UnreachableValue<P2Mnemonic>(), // pragma: force-coverage
         };
+    }
+
+    private static MirFlag GetOrAssignCanonicalFlagMeaning(VirtualLirFlag flag, LoweringContext ctx)
+    {
+        if (ctx.TryGetLogicalFlagMeaning(flag, out MirFlag meaning))
+            return meaning;
+
+        ctx.RecordLogicalFlagMeaning(flag, MirFlag.C);
+        return MirFlag.C;
     }
 
     private static AsmSymbolOperand CreatePlaceOperand(StoragePlace place)
@@ -3605,13 +3812,14 @@ public static class AsmLowerer
     }
 
     private static bool TryGetBranchFlagInput(
-        LirOperand condition,
+        LirBranchTerminator branch,
         LoweringContext ctx,
         out AsmFlagInput flagInput,
         out P2ConditionCode falsePredicate)
     {
+        LirOperand condition = branch.Condition;
         if (condition is LirFlagOperand flagOperand
-            && ctx.TryGetLogicalFlagMeaning(flagOperand.Flag, out MirFlag flagMeaning))
+            && TryGetBranchConditionMeaning(branch, flagOperand.Flag, ctx, out MirFlag flagMeaning))
         {
             flagInput = CreateFlagInput(flagMeaning, ctx.GetFlag(flagOperand.Flag));
             falsePredicate = flagMeaning switch
@@ -3627,6 +3835,26 @@ public static class AsmLowerer
 
         flagInput = AsmFlagInput.None;
         falsePredicate = default;
+        return false;
+    }
+
+    private static bool TryGetBranchConditionMeaning(
+        LirBranchTerminator branch,
+        VirtualLirFlag flag,
+        LoweringContext ctx,
+        out MirFlag flagMeaning)
+    {
+        if (ctx.TryGetLogicalFlagMeaning(flag, out flagMeaning))
+            return true;
+
+        if (branch.ConditionFlag is MirFlag conditionFlag)
+        {
+            flagMeaning = conditionFlag;
+            ctx.RecordLogicalFlagMeaning(flag, conditionFlag);
+            return true;
+        }
+
+        flagMeaning = default;
         return false;
     }
 

@@ -15,6 +15,7 @@ public sealed class MirConstantPropagation : IMirOptimization
         List<MirFunction> functions = new(input.Functions.Count);
         foreach (MirFunction function in input.Functions)
         {
+            Dictionary<MirValueId, MirFlag> flagValues = new(function.FlagValues);
             List<MirBlock> blocks = new(function.Blocks.Count);
             foreach (MirBlock block in function.Blocks)
             {
@@ -78,9 +79,27 @@ public sealed class MirConstantPropagation : IMirOptimization
                     if (rewritten.Result is MirValueId valueId)
                     {
                         if (rewritten is MirConstantInstruction constant)
+                        {
                             constants[valueId] = constant.Value;
-                        else
+                            if (valueId is MirVirtualFlag && constant.ResultType is not null && IsSingleBitType(constant.ResultType))
+                                flagValues[valueId] = MirFlag.C;
+                        }
+                        else if (rewritten is MirCopyInstruction rewrittenCopy)
+                        {
+                            if (flagValues.TryGetValue(rewrittenCopy.Source, out MirFlag sourceFlag))
+                                flagValues[valueId] = sourceFlag;
+                            else if (valueId is MirVirtualFlag)
+                                flagValues.Remove(valueId);
+
                             constants.Remove(valueId);
+                        }
+                        else
+                        {
+                            constants.Remove(valueId);
+
+                            if (valueId is MirVirtualFlag && !function.FlagValues.ContainsKey(valueId))
+                                flagValues.Remove(valueId);
+                        }
                     }
 
                     instructions.Add(rewritten);
@@ -106,7 +125,7 @@ public sealed class MirConstantPropagation : IMirOptimization
                 function.ReturnTypes,
                 blocks,
                 function.ReturnSlots,
-                function.FlagValues));
+                flagValues));
         }
 
         MirModule result = new(input.Image, input.StoragePlaces, input.StorageDefinitions, functions);
@@ -134,5 +153,10 @@ public sealed class MirConstantPropagation : IMirOptimization
 
         instruction = new MirConstantInstruction(result, resultType, normalizedValue, span);
         return true;
+    }
+
+    private static bool IsSingleBitType(BladeType type)
+    {
+        return type is BoolTypeSymbol || type == BuiltinTypes.Bit;
     }
 }

@@ -374,6 +374,117 @@ internal static class LirOptimizationHelpers
         }
     }
 
+    internal static IEnumerable<VirtualLirValue> EnumerateInstructionValueUses(LirInstruction instruction)
+    {
+        if (instruction is LirInlineAsmInstruction inlineAsm)
+        {
+            foreach (LirInlineAsmBinding binding in inlineAsm.Bindings)
+            {
+                if (!InlineAssemblyBindingAnalysis.IncludesRead(binding.Access))
+                    continue;
+
+                switch (binding.Operand)
+                {
+                    case LirRegisterOperand register:
+                        yield return register.Register;
+                        break;
+                    case LirFlagOperand flag:
+                        yield return flag.Flag;
+                        break;
+                }
+            }
+
+            yield break;
+        }
+
+        foreach (LirOperand operand in instruction.Operands)
+        {
+            switch (operand)
+            {
+                case LirRegisterOperand register:
+                    yield return register.Register;
+                    break;
+                case LirFlagOperand flag:
+                    yield return flag.Flag;
+                    break;
+            }
+        }
+    }
+
+    internal static IEnumerable<VirtualLirValue> EnumerateTerminatorValueUses(LirTerminator terminator)
+    {
+        switch (terminator)
+        {
+            case LirGotoTerminator gotoTerminator:
+                foreach (LirOperand operand in gotoTerminator.Arguments)
+                {
+                    switch (operand)
+                    {
+                        case LirRegisterOperand register:
+                            yield return register.Register;
+                            break;
+                        case LirFlagOperand flag:
+                            yield return flag.Flag;
+                            break;
+                    }
+                }
+                break;
+
+            case LirBranchTerminator branch:
+                switch (branch.Condition)
+                {
+                    case LirRegisterOperand conditionRegister:
+                        yield return conditionRegister.Register;
+                        break;
+                    case LirFlagOperand conditionFlag:
+                        yield return conditionFlag.Flag;
+                        break;
+                }
+
+                foreach (LirOperand operand in branch.TrueArguments)
+                {
+                    switch (operand)
+                    {
+                        case LirRegisterOperand register:
+                            yield return register.Register;
+                            break;
+                        case LirFlagOperand flag:
+                            yield return flag.Flag;
+                            break;
+                    }
+                }
+
+                foreach (LirOperand operand in branch.FalseArguments)
+                {
+                    switch (operand)
+                    {
+                        case LirRegisterOperand register:
+                            yield return register.Register;
+                            break;
+                        case LirFlagOperand flag:
+                            yield return flag.Flag;
+                            break;
+                    }
+                }
+                break;
+
+            case LirReturnTerminator ret:
+                foreach (LirOperand operand in ret.Values)
+                {
+                    switch (operand)
+                    {
+                        case LirRegisterOperand register:
+                            yield return register.Register;
+                            break;
+                        case LirFlagOperand flag:
+                            yield return flag.Flag;
+                            break;
+                    }
+                }
+                break;
+        }
+    }
+
     internal static Dictionary<LirVirtualRegister, LirOperand>? CreateParameterMap(
         IReadOnlyList<LirBlockParameter> parameters,
         IReadOnlyList<LirOperand> arguments)

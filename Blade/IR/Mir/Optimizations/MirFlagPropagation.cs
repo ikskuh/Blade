@@ -54,6 +54,7 @@ public sealed class MirFlagPropagation : IMirOptimization
             }
 
             PropagateFlagsThroughBlockParameters(function, flagMap);
+            bool flagMapChanged = !FlagMapsEqual(function.FlagValues, flagMap);
 
             // Now rewrite branches that consume flag values.
             List<MirBlock> blocks = new(function.Blocks.Count);
@@ -80,6 +81,8 @@ public sealed class MirFlagPropagation : IMirOptimization
                 }
             }
 
+            anyChanged |= flagMapChanged;
+
             functions.Add(new MirFunction(
                 function.Symbol,
                 function.IsEntryPoint,
@@ -90,6 +93,22 @@ public sealed class MirFlagPropagation : IMirOptimization
         }
 
         return anyChanged ? new MirModule(input.Image, input.StoragePlaces, input.StorageDefinitions, functions) : null;
+    }
+
+    private static bool FlagMapsEqual(
+        IReadOnlyDictionary<MirValueId, MirFlag> left,
+        IReadOnlyDictionary<MirValueId, MirFlag> right)
+    {
+        if (left.Count != right.Count)
+            return false;
+
+        foreach ((MirValueId value, MirFlag flag) in left)
+        {
+            if (!right.TryGetValue(value, out MirFlag otherFlag) || otherFlag != flag)
+                return false;
+        }
+
+        return true;
     }
 
     private static void PropagateFlagsThroughBlockParameters(

@@ -2,15 +2,15 @@
 // STAGE: final-asm
 // CONTAINS:
 // - CMP
-// - BITZ
-// - BITNZ
-// - BITC
-// - BITNC
+// - WRZ
+// - WRNZ
+// - WRC
+// - WRNC
 // - WRBYTE
 // ! WRLONG
 // NOTE:
 //   Exercises comparison materialization where the bool result is stored
-//   to a hub variable, forcing BITZ/BITNZ/BITC/BITNC.
+//   to a hub variable, forcing WRZ/WRNZ/WRC/WRNC.
 
 hub var eq_out: bool = false;
 hub var ne_out: bool = false;

@@ -505,7 +505,7 @@ public static class MirTextWriter
                         _flagIds.Add(flag, flagId);
                     }
                     return flagId;
-                
+
                 default:
                     throw Assert.Unreachable();
             }

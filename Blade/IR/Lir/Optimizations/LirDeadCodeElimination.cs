@@ -21,7 +21,7 @@ public sealed class LirDeadCodeElimination : ILirOptimization
                     reachableBlocks[block.Ref] = block;
             }
 
-            IReadOnlyDictionary<LirBlockRef, HashSet<LirVirtualRegister>> liveOutByBlock = ComputeLiveOut(function, reachableBlocks);
+            IReadOnlyDictionary<LirBlockRef, HashSet<VirtualLirValue>> liveOutByBlock = ComputeLiveOut(function, reachableBlocks);
 
             List<LirBlock> blocks = [];
             foreach (LirBlock block in function.Blocks)
@@ -29,28 +29,26 @@ public sealed class LirDeadCodeElimination : ILirOptimization
                 if (!reachable.Contains(block.Ref))
                     continue;
 
-                HashSet<LirVirtualRegister> live = new(liveOutByBlock[block.Ref]);
-                foreach (LirVirtualRegister used in EnumerateTerminatorUses(block.Terminator))
+                HashSet<VirtualLirValue> live = new(liveOutByBlock[block.Ref]);
+                foreach (VirtualLirValue used in EnumerateTerminatorValueUses(block.Terminator))
                     live.Add(used);
 
                 List<LirInstruction> kept = [];
                 for (int i = block.Instructions.Count - 1; i >= 0; i--)
                 {
                     LirInstruction instruction = block.Instructions[i];
-                    LirVirtualRegister? destinationRegister = instruction.Destination as LirVirtualRegister;
                     bool keep = instruction.HasSideEffects
                         || instruction.Destination is null
-                        || destinationRegister is null
-                        || live.Contains(destinationRegister);
+                        || live.Contains(instruction.Destination);
 
                     if (!keep)
                         continue;
 
                     kept.Add(instruction);
-                    if (destinationRegister is not null)
-                        live.Remove(destinationRegister);
+                    if (instruction.Destination is VirtualLirValue destination)
+                        live.Remove(destination);
 
-                    foreach (LirVirtualRegister used in EnumerateInstructionUses(instruction))
+                    foreach (VirtualLirValue used in EnumerateInstructionValueUses(instruction))
                         live.Add(used);
                 }
 
@@ -65,12 +63,12 @@ public sealed class LirDeadCodeElimination : ILirOptimization
         return LirTextWriter.Write(result) != LirTextWriter.Write(input) ? result : null;
     }
 
-    private static IReadOnlyDictionary<LirBlockRef, HashSet<LirVirtualRegister>> ComputeLiveOut(
+    private static IReadOnlyDictionary<LirBlockRef, HashSet<VirtualLirValue>> ComputeLiveOut(
         LirFunction function,
         IReadOnlyDictionary<LirBlockRef, LirBlock> reachableBlocks)
     {
-        Dictionary<LirBlockRef, HashSet<LirVirtualRegister>> liveInByBlock = [];
-        Dictionary<LirBlockRef, HashSet<LirVirtualRegister>> liveOutByBlock = [];
+        Dictionary<LirBlockRef, HashSet<VirtualLirValue>> liveInByBlock = [];
+        Dictionary<LirBlockRef, HashSet<VirtualLirValue>> liveOutByBlock = [];
 
         foreach (LirBlock block in function.Blocks)
         {
@@ -91,8 +89,8 @@ public sealed class LirDeadCodeElimination : ILirOptimization
                 if (!reachableBlocks.ContainsKey(block.Ref))
                     continue;
 
-                HashSet<LirVirtualRegister> nextLiveOut = ComputeBlockLiveOut(block, reachableBlocks, liveInByBlock);
-                HashSet<LirVirtualRegister> nextLiveIn = ComputeBlockLiveIn(block, nextLiveOut);
+                HashSet<VirtualLirValue> nextLiveOut = ComputeBlockLiveOut(block, reachableBlocks, liveInByBlock);
+                HashSet<VirtualLirValue> nextLiveIn = ComputeBlockLiveIn(block, nextLiveOut);
 
                 if (!liveOutByBlock[block.Ref].SetEquals(nextLiveOut))
                 {
@@ -112,12 +110,12 @@ public sealed class LirDeadCodeElimination : ILirOptimization
         return liveOutByBlock;
     }
 
-    private static HashSet<LirVirtualRegister> ComputeBlockLiveOut(
+    private static HashSet<VirtualLirValue> ComputeBlockLiveOut(
         LirBlock block,
         IReadOnlyDictionary<LirBlockRef, LirBlock> reachableBlocks,
-        IReadOnlyDictionary<LirBlockRef, HashSet<LirVirtualRegister>> liveInByBlock)
+        IReadOnlyDictionary<LirBlockRef, HashSet<VirtualLirValue>> liveInByBlock)
     {
-        HashSet<LirVirtualRegister> liveOut = [];
+        HashSet<VirtualLirValue> liveOut = [];
 
         switch (block.Terminator)
         {
@@ -135,68 +133,74 @@ public sealed class LirDeadCodeElimination : ILirOptimization
     }
 
     private static void AddSuccessorLiveValues(
-        ISet<LirVirtualRegister> liveOut,
+        ISet<VirtualLirValue> liveOut,
         LirBlockRef successorRef,
         IReadOnlyList<LirOperand> successorArguments,
         IReadOnlyDictionary<LirBlockRef, LirBlock> reachableBlocks,
-        IReadOnlyDictionary<LirBlockRef, HashSet<LirVirtualRegister>> liveInByBlock)
+        IReadOnlyDictionary<LirBlockRef, HashSet<VirtualLirValue>> liveInByBlock)
     {
         if (!reachableBlocks.TryGetValue(successorRef, out LirBlock? successorCandidate)
             || successorCandidate is null
-            || !liveInByBlock.TryGetValue(successorRef, out HashSet<LirVirtualRegister>? successorLiveInCandidate)
+            || !liveInByBlock.TryGetValue(successorRef, out HashSet<VirtualLirValue>? successorLiveInCandidate)
             || successorLiveInCandidate is null)
         {
             return;
         }
 
         LirBlock successor = successorCandidate;
-        HashSet<LirVirtualRegister> successorLiveIn = successorLiveInCandidate;
-        Dictionary<LirVirtualRegister, LirOperand> successorParameterMap = CreateParameterMap(successor.Parameters, successorArguments);
+        HashSet<VirtualLirValue> successorLiveIn = successorLiveInCandidate;
+        Dictionary<VirtualLirValue, VirtualLirValue> successorParameterMap = CreateParameterMap(successor.Parameters, successorArguments);
 
-        foreach (LirVirtualRegister liveRegister in successorLiveIn)
+        foreach (VirtualLirValue liveValue in successorLiveIn)
         {
-            if (successorParameterMap.TryGetValue(liveRegister, out LirOperand? mappedOperand)
-                && mappedOperand is LirRegisterOperand registerOperand)
+            if (successorParameterMap.TryGetValue(liveValue, out VirtualLirValue? mappedOperand))
             {
-                liveOut.Add(registerOperand.Register);
+                liveOut.Add(mappedOperand);
                 continue;
             }
 
-            liveOut.Add(liveRegister);
+            liveOut.Add(liveValue);
         }
     }
 
-    private static HashSet<LirVirtualRegister> ComputeBlockLiveIn(LirBlock block, IReadOnlyCollection<LirVirtualRegister> liveOut)
+    private static HashSet<VirtualLirValue> ComputeBlockLiveIn(LirBlock block, IReadOnlyCollection<VirtualLirValue> liveOut)
     {
-        HashSet<LirVirtualRegister> live = new(liveOut);
-        foreach (LirVirtualRegister used in EnumerateTerminatorUses(block.Terminator))
+        HashSet<VirtualLirValue> live = new(liveOut);
+        foreach (VirtualLirValue used in EnumerateTerminatorValueUses(block.Terminator))
             live.Add(used);
 
         for (int instructionIndex = block.Instructions.Count - 1; instructionIndex >= 0; instructionIndex--)
         {
             LirInstruction instruction = block.Instructions[instructionIndex];
-            if (instruction.Destination is LirVirtualRegister destination)
+            if (instruction.Destination is VirtualLirValue destination)
                 live.Remove(destination);
 
-            foreach (LirVirtualRegister used in EnumerateInstructionUses(instruction))
+            foreach (VirtualLirValue used in EnumerateInstructionValueUses(instruction))
                 live.Add(used);
         }
 
         return live;
     }
 
-    private static Dictionary<LirVirtualRegister, LirOperand> CreateParameterMap(
+    private static Dictionary<VirtualLirValue, VirtualLirValue> CreateParameterMap(
         IReadOnlyList<LirBlockParameter> parameters,
         IReadOnlyList<LirOperand> arguments)
     {
-        Dictionary<LirVirtualRegister, LirOperand> mapping = [];
+        Dictionary<VirtualLirValue, VirtualLirValue> mapping = [];
         if (parameters.Count != arguments.Count)
             return mapping;
 
         for (int i = 0; i < parameters.Count; i++)
         {
-            if (parameters[i].Value is LirVirtualRegister register)
-                mapping[register] = arguments[i];
+            VirtualLirValue? value = arguments[i] switch
+            {
+                LirRegisterOperand register => register.Register,
+                LirFlagOperand flag => flag.Flag,
+                _ => null,
+            };
+
+            if (value is not null)
+                mapping[parameters[i].Value] = value;
         }
 
         return mapping;
