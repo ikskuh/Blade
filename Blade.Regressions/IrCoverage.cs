@@ -75,13 +75,16 @@ internal sealed class RegressionIrCoverageSession
         return new RegressionIrCoverageSession(guardFilePath, LoadGuardFile(guardFilePath));
     }
 
-    public void Record(IrBuildResult buildResult)
+    public void Record(CompilationOutput buildResult)
     {
         Requires.NotNull(buildResult);
 
+        if (buildResult.BoundProgram is not null)
+            RecordStage(IrCoverageGroup.Bound, buildResult.BoundProgram);
+
         foreach (IrCoverageStageAccessor accessor in StageAccessors)
         {
-            object? root = accessor.Property.GetValue(buildResult);
+            object? root = accessor.Property.GetValue(buildResult.Stages);
             if (root is null)
                 continue;
 
@@ -251,7 +254,7 @@ internal sealed class RegressionIrCoverageSession
     private static IReadOnlyList<IrCoverageStageAccessor> DiscoverStageAccessors()
     {
         List<IrCoverageStageAccessor> accessors = [];
-        foreach (PropertyInfo property in typeof(IrBuildResult).GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        foreach (PropertyInfo property in typeof(CompilationStageOutput).GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
             IrCoverageGroup? group = ClassifyStageRoot(property.PropertyType);
             if (group is null)

@@ -3,9 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using Blade.IR;
-using Blade.IR.Asm;
-using Blade.IR.Mir;
 
 namespace Blade;
 
@@ -37,7 +34,7 @@ internal static class Program
             RuntimeLauncherPath = options.RuntimeLauncherPath,
         };
 
-        CompilationResult compilation;
+        CompilationOutput compilation;
         if (options.FilePath == "-")
         {
             var stdinText = Console.In.ReadToEnd();
@@ -49,19 +46,17 @@ internal static class Program
         }
         sw.Stop();
 
-        CompilationMetrics metrics = new()
+        compilation.Metrics = new CompilationMetrics
         {
             TokenCount = compilation.TokenCount,
             MemberCount = compilation.Syntax.Members.Count,
             BoundFunctionCount = compilation.BoundProgram?.Functions.Count ?? 0,
-            MirFunctionCount = compilation.IrBuildResult?.MirModules.Sum(static module => module.Functions.Count) ?? 0,
+            MirFunctionCount = compilation.Stages.MirModules?.Sum(static module => module.Functions.Count) ?? 0,
             TimeMs = sw.Elapsed.TotalMilliseconds,
         };
 
-        ICompilerOutputWriter outputWriter = options.Json
-            ? new JsonOutputWriter()
-            : new StdioOutputWriter();
-        if (!outputWriter.TryWrite(options, compilation, metrics, out int exitCode, out string? outputError))
+        ICompilerOutputWriter outputWriter = new ReportOutputWriter();
+        if (!outputWriter.TryWrite(options, compilation, out int exitCode, out string? outputError))
         {
             Console.Error.WriteLine(outputError);
             return 1;

@@ -11,13 +11,22 @@ namespace Blade.IR;
 
 public static class IrPipeline
 {
-    public static IrBuildResult Build(BoundProgram boundProgram, IrPipelineOptions? options = null, DiagnosticBag? diagnostics = null)
+    /// <summary>
+    /// Builds the backend stages for one bound program, storing each completed stage in the supplied output container.
+    /// </summary>
+    public static void Build(BoundProgram boundProgram, CompilationStageOutput output, IrPipelineOptions? options = null, DiagnosticBag? diagnostics = null)
     {
+        Requires.NotNull(boundProgram);
+        Requires.NotNull(output);
+
         options ??= new IrPipelineOptions();
 
         ImagePlan imagePlan = ImagePlanner.Build(boundProgram);
+        output.ImagePlan = imagePlan;
         ImagePlacement imagePlacement = ImagePlacer.Place(imagePlan);
+        output.ImagePlacement = imagePlacement;
         LayoutSolution layoutSolution = LayoutSolver.SolveStableLayouts(boundProgram, imagePlacement, diagnostics);
+        output.LayoutSolution = layoutSolution;
         ReportMissingRuntimeInitMemory(boundProgram, imagePlan, layoutSolution, diagnostics);
         List<MirModule> mirModules = MirLowerer.Lower(boundProgram, imagePlan, layoutSolution).ToList();
 
@@ -31,6 +40,7 @@ public static class IrPipeline
                 enableSingleCallsiteInlining);
         }
         IReadOnlyList<MirModule> preOptimizationMirModules = mirModules.ToList();
+        output.PreOptimizationMirModules = preOptimizationMirModules;
 
         if (options.EnableMirOptimizations)
         {
@@ -42,9 +52,11 @@ public static class IrPipeline
                     options.EnabledMirOptimizations);
             }
         }
+        output.MirModules = mirModules.ToList();
 
         List<LirModule> lirModules = mirModules.ConvertAll(LirLowerer.Lower);
         IReadOnlyList<LirModule> preOptimizationLirModules = lirModules.ToList();
+        output.PreOptimizationLirModules = preOptimizationLirModules;
         if (options.EnableLirOptimizations)
         {
             for (int i = 0; i < lirModules.Count; i++)
@@ -55,9 +67,12 @@ public static class IrPipeline
                     options.EnabledLirOptimizations);
             }
         }
+        output.LirModules = lirModules.ToList();
 
         List<AsmModule> asmModules = lirModules.ConvertAll(module => AsmLowerer.Lower(module, imagePlan, diagnostics));
         IReadOnlyList<AsmModule> preOptimizationAsmModules = asmModules.ToList();
+        output.PreOptimizationAsmModules = preOptimizationAsmModules;
+        output.AsmModules = asmModules.ToList();
 
         CogResourceLayout placeholderEntryLayout = new(imagePlacement.EntryImage, 0, [], []);
         CogResourceLayoutSet placeholderCogResourceLayouts = new(
@@ -67,37 +82,12 @@ public static class IrPipeline
             new Dictionary<ImageDescriptor, CogResourceLayout>(),
             new Dictionary<StoragePlace, CogResourceLayout>(),
             0);
+        output.CogResourceLayouts = placeholderCogResourceLayouts;
 
-        IrBuildResult preEmit = new(
-            boundProgram,
-            imagePlan,
-            imagePlacement,
-            layoutSolution,
-            placeholderCogResourceLayouts,
-            preOptimizationMirModules,
-            mirModules,
-            preOptimizationLirModules,
-            lirModules,
-            preOptimizationAsmModules,
-            asmModules,
-            assemblyText: string.Empty);
-        EmitResult emitResult = CodegenPipeline.Emit(preEmit, new EmitOptions
+        CodegenPipeline.Emit(output, new EmitOptions
         {
             EnabledAsmirOptimizations = options.EnabledAsmirOptimizations,
         }, diagnostics);
-        return new IrBuildResult(
-            boundProgram,
-            imagePlan,
-            imagePlacement,
-            layoutSolution,
-            emitResult.CogResourceLayouts,
-            preOptimizationMirModules,
-            mirModules,
-            preOptimizationLirModules,
-            lirModules,
-            preOptimizationAsmModules,
-            emitResult.AsmModules,
-            emitResult.AssemblyText);
     }
 
     private static void ReportMissingRuntimeInitMemory(

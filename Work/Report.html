@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css">
+    <style>
+        h1 {
+            border-bottom: 1px solid silver;
+        }
+
+        h1:has(+h2.filename) {
+            margin-bottom: 0;
+        }
+
+        h2.filename {
+            margin-top: 0;
+            font-family: monospace;
+        }
+
+        label:checked {
+            background-color: red;
+        }
+
+        main {
+            display: flex;
+            gap: 0.25rem;
+            flex-wrap: wrap;
+        }
+
+        main::after {
+            content: "";
+            order: 2;
+            flex-basis: 100%;
+        }
+
+        main section {
+            display: contents;
+        }
+
+        section label {
+            order: 1;
+            flex: 1;
+            border: 2px silver ridge;
+            border-radius: 5px;
+            background-color: #EEE;
+            cursor: pointer;
+            white-space: nowrap;
+            line-height: 1.5rem;
+            font-size: 90%;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+        }
+
+        section label:has(input:checked) {
+            background-color: lightblue;
+        }
+
+
+        section .content {
+            order: 3;
+            flex: 1;
+            display: none;
+            overflow-x: scroll;
+
+            border: 1px solid silver;
+        }
+
+        section:has(input:checked) .content {
+            display: block;
+        }
+
+        section .content h3 {
+            margin: 0;
+            padding: 0.5rem;
+            border-bottom: 1px solid silver;
+            font-size: 100%;
+            background: lightblue;
+            display: flex;
+        }
+
+        section .content .btn-collapse,
+        section .content .btn-expand {
+            display: none;
+        }
+
+        section .content:has(details:not([open])) .btn-expand,
+        section .content:has(details[open]) .btn-collapse {
+            display: inline;
+        }
+
+        section .content h3 :first-child {
+            flex: 1;
+        }
+
+        section .content pre {
+            margin: 0.25rem;
+        }
+
+        pre.code .comment {
+            color: green;
+        }
+
+        pre.code .kw {
+            color: blue;
+        }
+
+        pre.code .type {
+            color: darkblue;
+        }
+
+        pre.code .func {
+            color: darkred;
+        }
+
+        pre.code .var {
+            color: darkviolet;
+        }
+    </style>
+    <script defer>
+        window.addEventListener("DOMContentLoaded", () => {
+            const symbols = new Set();
+            for (const el of document.querySelectorAll("[data-symbol]")) {
+                symbols.add(el.dataset.symbol);
+            }
+
+            const style = document.createElement("style");
+
+            for (const symbol of symbols) {
+                const attr = CSS.escape(symbol);
+                style.textContent += `body:has([data-symbol="${attr}"]:hover) [data-symbol="${attr}"] { background: yellow; }\n`;
+            }
+
+            document.head.appendChild(style);
+        });
+
+        function collapseAll(ctx) {
+            const content = ctx.target.closest("section .content");
+            for (const details of content.querySelectorAll("details")) {
+                details.removeAttribute("open");
+            }
+        }
+
+        function expandAll(ctx) {
+            const content = ctx.target.closest("section .content");
+            for (const details of content.querySelectorAll("details")) {
+                details.setAttribute("open", "");
+            }
+        }
+    </script>
+</head>
+
+<body>
+    <h1>Build Report</h1>
+    <h2 class="filename">RegressionTests/BitBools/pass_bool_bit_ops.blade</h2>
+
+    <main>
+        <section>
+            <!--  -->
+            <label><input type="checkbox">Bound</label>
+            <div class="content">
+                <h3>Bound</h3>
+                <pre>Program
+  Globals
+    t: bool
+      Literal<bool> false
+    a: u32
+      Literal<u32> 5
+    b: u32
+      Literal<u32> 10
+    OUTA: u32
+  EntryPoint main (Cog)
+    Block
+      ExprStmt
+        Call<void> init_memory
+      ExprStmt
+        Call<void> main
+  Functions
+    negate_bool (Default)
+      Block
+        Return
+          Unary<bool> LogicalNot
+            Symbol<bool> x
+    main (Default)
+      Block
+        If
+          Binary<bool> Equals
+            Symbol<u32> a
+            Symbol<u32> b
+          Block
+            Asm [Volatile] (no-flag)
+          Block
+            Asm [Volatile] (no-flag)
+        Assign (Equal)
+          TargetSymbol<bool> t
+          Call<bool> negate_bool
+            Symbol<bool> t
+        Assign (Equal)
+          TargetSymbol<u32> OUTA
+          Conversion<u32>
+            IfExpr<<int-literal>>
+              Symbol<bool> t
+              Literal<<int-literal>> 1
+              Literal<<int-literal>> 0
+  Modules
+    /home/felix/projects/nerdgruppe/blade/RegressionTests/BitBools/pass_bool_bit_ops.blade
+      Exports
+        main: TaskSymbol
+        negate_bool: function Default
+    /home/felix/projects/nerdgruppe/blade/<default-runtime>
+      Exports
+        builtin: module
+        _start: TaskSymbol
+    <builtin-runtime>
+      Exports
+        MemorySpace: type MemorySpace
+        IntRegs: LayoutSymbol
+        IO: LayoutSymbol
+        SFR: LayoutSymbol
+        task_main: function Default
+        init_memory: function Default
+    <builtin>
+      Exports
+        MemorySpace: type MemorySpace
+        IntRegs: LayoutSymbol
+        IO: LayoutSymbol
+        SFR: LayoutSymbol</pre>
+            </div>
+        </section>
+        <section>
+            <!-- ' 02_images.ir -->
+            <label><input type="checkbox">Images</label>
+            <div class="content">
+                <h3>Images</h3>
+                <pre>; Images v1
+image main entry mode=Cog
+{
+  functions
+    _start
+    main
+    negate_bool
+  storage
+    Cog OUTA
+    Cog a
+    Cog b
+    Cog t
+}</pre>
+            </div>
+        </section>
+        <section>
+            <!-- ' 03_layout_solution.ir -->
+            <label><input type="checkbox">Layout Solution</label>
+            <div class="content">
+                <h3>Layout Solution</h3>
+                <pre>; Layout Solution v1
+layout pass_bool_bit_ops.main
+{
+  Cog t @$1ED size=1 align=1
+  Cog b @$1EE size=1 align=1
+  Cog a @$1EF size=1 align=1
+}</pre>
+            </div>
+        </section>
+        <section>
+            <!--  -->
+            <label><input type="checkbox" checked>MIR (Preopt)</label>
+            <div class="content">
+                <h3>
+                    <span>MIR (Preopt)</span>
+                    <a class="btn-expand mdi mdi-expand-all" title="Expand all..." href="#"
+                        onclick="expandAll(event)"></a>
+                    <a class="btn-collapse mdi mdi-collapse-all" title="Collapse all..." href="#"
+                        onclick="collapseAll(event)"></a>
+                </h3>
+                <pre class="code lang-mir"><span class="comment">; MIR v1</span>
+
+<span class="comment">; image main</span>
+
+<details open><summary><span class="kw">fn</span> <span class="func">negate_bool</span> kind=Default returns=(<span class="type">bool</span>)</summary>{
+  bb0(<span class="var" data-symbol="%v0">%v0</span>:<span class="type">bool</span> x):
+    <span class="var" data-symbol="%v1">%v1</span>:<span class="type">bool</span> = <span class="func">unary.LogicalNot</span> <span class="var" data-symbol="%v0">%v0</span>
+    <span class="kw">goto</span> bb1(<span class="var" data-symbol="%v1">%v1</span>)
+  bb1(<span class="var" data-symbol="%f0">%f0</span>:<span class="type">bool</span> ret0):
+    <span class="kw">ret</span> <span class="var" data-symbol="%f0">%f0</span>
+}</details>
+
+<details open><summary><span class="kw">fn</span> main kind=Default returns=()</summary>{
+  bb0():
+    %v0:u32 = load.place g_a
+    %v1:u32 = load.place g_b
+    %f0:bool = binary.Equals %v0, %v1
+    branch cond=%f0 [flag:Z], true=bb2(), false=bb3()
+  bb1():
+    ret 
+  bb2():
+    inlineasm.volatile ; sidefx
+    goto bb4()
+  bb3():
+    inlineasm.volatile ; sidefx
+    goto bb4()
+  bb4():
+    %v2:bool = load.place g_t
+    %v3:bool = call negate_bool(%v2) ; sidefx
+    store.place g_t(%v3) ; sidefx
+    %v4:bool = load.place g_t
+    branch cond=%v4, true=bb5(), false=bb6()
+  bb5():
+    %v5:&lt;int-literal&gt; = const 1
+    goto bb7(%v5)
+  bb6():
+    %v6:&lt;int-literal&gt; = const 0
+    goto bb7(%v6)
+  bb7(%v7:&lt;int-literal&gt; ifexpr):
+    %v8:u32 = convert %v7
+    store.place OUTA(%v8) ; sidefx
+    goto bb1()
+}</details>
+
+<details open><summary><span class="kw">fn</span> _start kind=Default entry returns=()</summary>{
+  bb0():
+    %v0:&lt;unknown&gt; = const null
+    goto bb1()
+  bb1():
+    %v1:u32 = load.place g_a
+    %v2:u32 = load.place g_b
+    %f0:bool = binary.Equals %v1, %v2
+    branch cond=%f0 [flag:Z], true=bb3(), false=bb4()
+  bb2():
+    goto bb9()
+  bb3():
+    inlineasm.volatile ; sidefx
+    goto bb5()
+  bb4():
+    inlineasm.volatile ; sidefx
+    goto bb5()
+  bb5():
+    %v3:bool = load.place g_t
+    %v4:bool = call negate_bool(%v3) ; sidefx
+    store.place g_t(%v4) ; sidefx
+    %v5:bool = load.place g_t
+    branch cond=%v5, true=bb6(), false=bb7()
+  bb6():
+    %v6:&lt;int-literal&gt; = const 1
+    goto bb8(%v6)
+  bb7():
+    %v7:&lt;int-literal&gt; = const 0
+    goto bb8(%v7)
+  bb8(%v8:&lt;int-literal&gt; ifexpr):
+    %v9:u32 = convert %v8
+    store.place OUTA(%v9) ; sidefx
+    goto bb2()
+  bb9():
+    %v10:&lt;unknown&gt; = const null
+    goto bb10()
+  bb10():
+    ret 
+}</details></pre>
+            </div>
+        </section>
+        <section>
+            <!--  -->
+            <label><input type="checkbox">MIR</label>
+            <div class="content">
+                <h3>MIR</h3>
+                <pre>; MIR v1
+
+; image main
+
+fn negate_bool kind=Default returns=(bool)
+{
+  bb0(%v0:bool x):
+    %v1:bool = unary.LogicalNot %v0
+    ret %v1
+}
+
+fn main kind=Default returns=()
+{
+  bb0():
+    %v0:u32 = load.place g_a
+    %v1:u32 = load.place g_b
+    %f0:bool = binary.Equals %v0, %v1
+    branch cond=%f0 [flag:Z], true=bb1(), false=bb2()
+  bb1():
+    inlineasm.volatile ; sidefx
+    goto bb3()
+  bb2():
+    inlineasm.volatile ; sidefx
+    goto bb3()
+  bb3():
+    %v2:bool = load.place g_t
+    %v3:bool = call negate_bool(%v2) ; sidefx
+    store.place g_t(%v3) ; sidefx
+    %v4:bool = load.place g_t
+    branch cond=%v4, true=bb4(), false=bb5()
+  bb4():
+    %v5:&lt;int-literal&gt; = const 1
+    goto bb6(%v5)
+  bb5():
+    %v6:&lt;int-literal&gt; = const 0
+    goto bb6(%v6)
+  bb6(%v7:&lt;int-literal&gt; ifexpr):
+    %v8:u32 = convert %v7
+    store.place OUTA(%v8) ; sidefx
+    ret 
+}
+
+fn _start kind=Default entry returns=()
+{
+  bb0():
+    %v0:u32 = load.place g_a
+    %v1:u32 = load.place g_b
+    %f0:bool = binary.Equals %v0, %v1
+    branch cond=%f0 [flag:Z], true=bb1(), false=bb2()
+  bb1():
+    inlineasm.volatile ; sidefx
+    goto bb3()
+  bb2():
+    inlineasm.volatile ; sidefx
+    goto bb3()
+  bb3():
+    %v2:bool = load.place g_t
+    %v3:bool = call negate_bool(%v2) ; sidefx
+    store.place g_t(%v3) ; sidefx
+    %v4:bool = load.place g_t
+    branch cond=%v4, true=bb4(), false=bb5()
+  bb4():
+    %v5:<int-literal> = const 1
+    goto bb6(%v5)
+  bb5():
+    %v6:<int-literal> = const 0
+    goto bb6(%v6)
+  bb6(%v7:<int-literal> ifexpr):
+    %v8:u32 = convert %v7
+    store.place OUTA(%v8) ; sidefx
+    ret 
+}</pre>
+            </div>
+        </section>
+        <section>
+            <!--  -->
+            <label><input type="checkbox">LIR (Preopt)</label>
+            <div class="content">
+                <h3>LIR (Preopt)</h3>
+                <pre>; LIR v1
+
+; image main
+
+fn negate_bool kind=Default returns=(bool)
+{
+  bb0(%r0:bool x):
+    %r1:bool = unary.LogicalNot %r0
+    ret %r1
+}
+
+fn main kind=Default returns=()
+{
+  bb0():
+    %r0:u32 = load.place %place(g_a)
+    %r1:u32 = load.place %place(g_b)
+    %f0:bool = binary.Equals %r0, %r1
+    branch cond=%f0, true=bb1(), false=bb2()
+  bb1():
+    inlineasm.volatile ; sidefx
+    goto bb3()
+  bb2():
+    inlineasm.volatile ; sidefx
+    goto bb3()
+  bb3():
+    %r2:bool = load.place %place(g_t)
+    %r3:bool = call %r2 ; sidefx
+    store.place %place(g_t), %r3 ; sidefx
+    %r4:bool = load.place %place(g_t)
+    branch cond=%r4, true=bb4(), false=bb5()
+  bb4():
+    %r5:<int-literal> = const 1:<int-literal>
+    goto bb6(%r5)
+  bb5():
+    %r6:<int-literal> = const 0:<int-literal>
+    goto bb6(%r6)
+  bb6(%r7:<int-literal> ifexpr):
+    %r8:u32 = convert %r7
+    store.place %place(OUTA), %r8 ; sidefx
+    ret 
+}
+
+fn _start kind=Default entry returns=()
+{
+  bb0():
+    %r0:u32 = load.place %place(g_a)
+    %r1:u32 = load.place %place(g_b)
+    %f0:bool = binary.Equals %r0, %r1
+    branch cond=%f0, true=bb1(), false=bb2()
+  bb1():
+    inlineasm.volatile ; sidefx
+    goto bb3()
+  bb2():
+    inlineasm.volatile ; sidefx
+    goto bb3()
+  bb3():
+    %r2:bool = load.place %place(g_t)
+    %r3:bool = call %r2 ; sidefx
+    store.place %place(g_t), %r3 ; sidefx
+    %r4:bool = load.place %place(g_t)
+    branch cond=%r4, true=bb4(), false=bb5()
+  bb4():
+    %r5:<int-literal> = const 1:<int-literal>
+    goto bb6(%r5)
+  bb5():
+    %r6:<int-literal> = const 0:<int-literal>
+    goto bb6(%r6)
+  bb6(%r7:<int-literal> ifexpr):
+    %r8:u32 = convert %r7
+    store.place %place(OUTA), %r8 ; sidefx
+    ret 
+}</pre>
+            </div>
+        </section>
+        <section>
+            <!--  -->
+            <label><input type="checkbox">LIR</label>
+            <div class="content">
+                <h3>LIR</h3>
+                <pre>; LIR v1
+
+; image main
+
+fn negate_bool kind=Default returns=(bool)
+{
+  bb0(%r0:bool x):
+    %r1:bool = unary.LogicalNot %r0
+    ret %r1
+}
+
+fn main kind=Default returns=()
+{
+  bb0():
+    %r0:u32 = load.place %place(g_a)
+    %r1:u32 = load.place %place(g_b)
+    %f0:bool = binary.Equals %r0, %r1
+    branch cond=%f0, true=bb1(), false=bb2()
+  bb1():
+    inlineasm.volatile ; sidefx
+    goto bb3()
+  bb2():
+    inlineasm.volatile ; sidefx
+    goto bb3()
+  bb3():
+    %r2:bool = load.place %place(g_t)
+    %r3:bool = call %r2 ; sidefx
+    store.place %place(g_t), %r3 ; sidefx
+    %r4:bool = load.place %place(g_t)
+    branch cond=%r4, true=bb4(), false=bb5()
+  bb4():
+    %r5:<int-literal> = const 1:<int-literal>
+    goto bb6(%r5)
+  bb5():
+    %r6:<int-literal> = const 0:<int-literal>
+    goto bb6(%r6)
+  bb6(%r7:<int-literal> ifexpr):
+    %r8:u32 = convert %r7
+    store.place %place(OUTA), %r8 ; sidefx
+    ret 
+}
+
+fn _start kind=Default entry returns=()
+{
+  bb0():
+    %r0:u32 = load.place %place(g_a)
+    %r1:u32 = load.place %place(g_b)
+    %f0:bool = binary.Equals %r0, %r1
+    branch cond=%f0, true=bb1(), false=bb2()
+  bb1():
+    inlineasm.volatile ; sidefx
+    goto bb3()
+  bb2():
+    inlineasm.volatile ; sidefx
+    goto bb3()
+  bb3():
+    %r2:bool = load.place %place(g_t)
+    %r3:bool = call %r2 ; sidefx
+    store.place %place(g_t), %r3 ; sidefx
+    %r4:bool = load.place %place(g_t)
+    branch cond=%r4, true=bb4(), false=bb5()
+  bb4():
+    %r5:<int-literal> = const 1:<int-literal>
+    goto bb6(%r5)
+  bb5():
+    %r6:<int-literal> = const 0:<int-literal>
+    goto bb6(%r6)
+  bb6(%r7:<int-literal> ifexpr):
+    %r8:u32 = convert %r7
+    store.place %place(OUTA), %r8 ; sidefx
+    ret 
+}</pre>
+            </div>
+        </section>
+        <section>
+            <!--  -->
+            <label><input type="checkbox">ASMIR (Preopt)</label>
+            <div class="content">
+                <h3>ASMIR (Preopt)</h3>
+                <pre>; ASMIR v2
+
+; image main
+
+function _start entry [EntryPoint]
+{
+  _start_bb0:
+    MOV %r0, g_a
+    MOV %r1, g_b
+    CMP %r0, %r1 WZ=%f2
+    IF_NZ JMP #_start_bb2 Z=%f2
+    JMP #_start_bb1
+  _start_bb1:
+    .volatile_begin
+    ' inline asm volatile begin
+    COGATN #1
+    ' inline asm volatile end
+    .volatile_end
+    JMP #_start_bb3
+  _start_bb2:
+    .volatile_begin
+    ' inline asm volatile begin
+    COGATN #2
+    ' inline asm volatile end
+    .volatile_end
+    JMP #_start_bb3
+  _start_bb3:
+    MOV %r3, g_t
+    CALLPA %r3, #negate_bool
+    MOV %r4, PA
+    MOV g_t, %r4
+    MOV %r5, g_t
+    TESTB %r5, #0 WZ
+    IF_Z JMP #_start_bb5
+    JMP #_start_bb4
+  _start_bb4:
+    MOV %r6, #1
+    MOV %r7, %r6
+    JMP #_start_bb6
+  _start_bb5:
+    MOV %r8, #0
+    MOV %r7, %r8
+    JMP #_start_bb6
+  _start_bb6:
+    MOV %r9, %r7
+    MOV OUTA, %r9
+    ' halt: runtime hook
+    JMP #blade_halt
+}
+
+function negate_bool [Leaf]
+{
+  negate_bool_bb0:
+    MOV abi_leaf_negate_bool_arg0, PA
+    TESTB %r0, #0 WC
+    WRNC %r1
+    MOV PA, %r1
+    RET
+}
+
+data Register
+{
+  g_t: Long #0
+  g_a: Long #5
+  g_b: Long #10
+  g_top_yield_state: Long 0
+}
+
+data Constant
+{
+}
+
+data Lut
+{
+}
+
+data External
+{
+  extern OUTA
+}
+
+data Hub
+{
+}</pre>
+            </div>
+        </section>
+        <section>
+            <!--  -->
+            <label><input type="checkbox">ASMIR</label>
+            <div class="content">
+                <h3>ASMIR</h3>
+                <pre>; ASMIR v2
+
+; image main
+
+function _start entry [EntryPoint]
+{
+  _start_bb0:
+    MOV main_r490, g_a
+    MOV main_r491, g_b
+    CMP main_r490, main_r491 WZ=%f0
+    IF_NZ JMP #_start_bb2
+  _start_bb1:
+    .volatile_begin
+    ' inline asm volatile begin
+    COGATN #1
+    ' inline asm volatile end
+    .volatile_end
+    JMP #_start_bb3
+  _start_bb2:
+    .volatile_begin
+    ' inline asm volatile begin
+    COGATN #2
+    ' inline asm volatile end
+    .volatile_end
+  _start_bb3:
+    CALLPA g_t, #negate_bool
+    MOV g_t, PA
+    MOV main_r491, g_t
+    TESTB main_r491, #0 WZ
+    IF_Z JMP #_start_bb5
+  _start_bb4:
+    JMP #_start_bb6
+  _start_bb5:
+    MOV main_r491, #0
+  _start_bb6:
+    MOV main_r491, main_r491
+    MOV OUTA, main_r491
+    ' halt: runtime hook
+    JMP #blade_halt
+}
+
+function negate_bool [Leaf]
+{
+  negate_bool_bb0:
+    MOV main_r491, PA
+    TESTB main_r491, #0 WC
+    WRNC PA
+    RET
+}
+
+data Register
+{
+  g_t: Long #0
+  g_a: Long #5
+  g_b: Long #10
+  g_top_yield_state: Long 0
+  main_r490: Long 0
+  main_r491: Long 0
+}
+
+data Constant
+{
+}
+
+data Lut
+{
+}
+
+data External
+{
+  extern OUTA
+}
+
+data Hub
+{
+}</pre>
+            </div>
+        </section>
+        <section>
+            <!-- 35_image_memory_maps.ir -->
+            <label><input type="checkbox">Memory Maps</label>
+            <div class="content">
+                <h3>Memory Maps</h3>
+                <pre>; Image Memory Maps v1
+
+shared hub
+addr    value        allocated
+$00000  ?? ?? ?? ??  image main
+*
+$007FC  ?? ?? ?? ??  image main
+$00800  -- -- -- --  -
+*
+$80000  -- -- -- --  -
+
+image main entry mode=Cog
+cog
+addr  state      init   owner
+$000  allocated  -      code
+*
+$017  allocated  -      code
+$018  free       -      -
+*
+$1EB  free       -      -
+$1EC  allocated  -      top_yield_state
+$1ED  allocated  false  main.t
+$1EE  allocated  10     main.b
+$1EF  allocated  5      main.a
+$1F0  reserved   -      -
+*
+$1FF  reserved   -      -
+lut
+addr  state      init   owner
+$000  free       -      -
+*
+$1FF  free       -      -</pre>
+            </div>
+        </section>
+        <section>
+            <!--  -->
+            <label><input type="checkbox" checked>Assembly</label>
+            <div class="content">
+                <h3>Assembly</h3>
+                <pre>DAT
+    org 0
+    ' --- Blade compiler output ---
+
+    ' --- image main (Cog) ---
+    orgh
+  blade_image_base
+    org $0
+
+    ' function _start (EntryPoint)
+  blade_entry
+  f__start
+  _start_bb0
+    MOV main_r490, g_a
+    MOV main_r491, g_b
+    CMP main_r490, main_r491 WZ
+    IF_NZ JMP #_start_bb2
+  _start_bb1
+    ' inline asm volatile begin
+    COGATN #1
+    ' inline asm volatile end
+    JMP #_start_bb3
+  _start_bb2
+    ' inline asm volatile begin
+    COGATN #2
+    ' inline asm volatile end
+  _start_bb3
+    CALLPA g_t, #f_negate_bool
+    MOV g_t, PA
+    MOV main_r491, g_t
+    TESTB main_r491, #0 WZ
+    IF_Z JMP #_start_bb5
+  _start_bb4
+    JMP #_start_bb6
+  _start_bb5
+    MOV main_r491, #0
+  _start_bb6
+    MOV main_r491, main_r491
+    MOV OUTA, main_r491
+    ' halt: runtime hook
+    JMP #blade_halt
+
+    ' halt: default runtime hook
+  blade_halt
+    REP #1, #0
+    NOP
+
+    ' function negate_bool (Leaf)
+  f_negate_bool
+  negate_bool_bb0
+    MOV main_r491, PA
+    TESTB main_r491, #0 WC
+    WRNC PA
+    RET
+
+    ' --- cog data file ---
+    orgh blade_image_base + $7A8
+    org $1EA
+main_r490         LONG 0
+main_r491         LONG 0
+g_top_yield_state LONG 0
+g_t               LONG 0
+g_b               LONG 10
+g_a               LONG 5
+    fit $1F0</pre>
+            </div>
+        </section>
+    </main>
+</body>
+
+</html>

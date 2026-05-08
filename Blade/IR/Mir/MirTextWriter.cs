@@ -2,456 +2,441 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
-using Blade;
+using Blade.Reports;
 using Blade.Semantics;
+
+using static Blade.Reports.BasicTextSpanKind;
+using static Blade.Reports.SemanticTextSpanKind;
 
 namespace Blade.IR.Mir;
 
+/// <summary>
+/// Emits MIR modules as human-readable text.
+/// </summary>
 public static class MirTextWriter
 {
+    /// <summary>
+    /// Emits the supplied modules into the provided report builder.
+    /// </summary>
+    public static void Write(ITextReportBuilder builder, IReadOnlyList<MirModule> modules)
+    {
+        Requires.NotNull(builder);
+        Requires.NotNull(modules);
+
+        Writer writer = new(builder);
+        writer.WriteModules(modules);
+    }
+
+    /// <summary>
+    /// Renders one MIR module as plain text.
+    /// </summary>
     public static string Write(MirModule module)
     {
         Requires.NotNull(module);
         return Write([module]);
     }
 
+    /// <summary>
+    /// Renders the supplied modules as plain text.
+    /// </summary>
     public static string Write(IReadOnlyList<MirModule> modules)
     {
         Requires.NotNull(modules);
 
-        StringBuilder sb = new();
-        sb.AppendLine("; MIR v1");
-        sb.AppendLine();
-
-        foreach (MirModule module in modules)
-        {
-            sb.Append("; image ");
-            sb.AppendLine(module.Image.Task.Name);
-            sb.AppendLine();
-
-            foreach (MirFunction function in module.Functions)
-                WriteFunction(sb, function);
-        }
-
-        return sb.ToString();
+        StringBuilder builder = new();
+        Write(new PlainTextReportBuilder(builder), modules);
+        return builder.ToString();
     }
 
-    private static void WriteFunction(StringBuilder sb, MirFunction function)
+    private sealed class Writer(ITextReportBuilder builder) : TextReportBuilderBase(builder)
     {
-        ValueFormatter formatter = new();
-        BlockFormatter blockFormatter = new(function.Blocks);
-
-        sb.Append("fn ");
-        sb.Append(function.Name);
-        sb.Append(" kind=");
-        sb.Append(function.Kind);
-        if (function.IsEntryPoint)
-            sb.Append(" entry");
-        sb.Append(" returns=(");
-        for (int i = 0; i < function.ReturnTypes.Count; i++)
+        public void WriteModules(IReadOnlyList<MirModule> modules)
         {
-            if (i > 0)
-                sb.Append(", ");
-            sb.Append(function.ReturnTypes[i].Name);
+            AppendLine((Comment, "; MIR v1"));
+            NewLine();
+
+            foreach (MirModule module in modules)
+            {
+                AppendLine((Comment, $"; image {module.Image.Task.Name}"));
+                NewLine();
+
+                foreach (MirFunction function in module.Functions)
+                    WriteFunction(function);
+            }
         }
 
-        sb.AppendLine(")");
-        sb.AppendLine("{");
-
-        foreach (MirBlock block in function.Blocks)
-            WriteBlock(sb, block, formatter, blockFormatter);
-
-        sb.AppendLine("}");
-        sb.AppendLine();
-    }
-
-    private static void WriteBlock(StringBuilder sb, MirBlock block, ValueFormatter formatter, BlockFormatter blockFormatter)
-    {
-        sb.Append("  ");
-        sb.Append(blockFormatter.Format(block.Ref));
-        sb.Append('(');
-        for (int i = 0; i < block.Parameters.Count; i++)
+        private void WriteFunction(MirFunction function)
         {
-            if (i > 0)
-                sb.Append(", ");
-            MirBlockParameter parameter = block.Parameters[i];
-            sb.Append(formatter.Format(parameter.Value));
-            sb.Append(':');
-            sb.Append(parameter.Type.Name);
-            sb.Append(' ');
-            sb.Append(parameter.Name);
+            ValueFormatter formatter = new();
+            BlockFormatter blockFormatter = new(function.Blocks);
+
+            Append((Keyword, "fn"), ' ', (FunctionName, function, function.Name), ' ', (Keyword, "kind"), '=', (Literal, function.Kind.ToString()));
+            if (function.IsEntryPoint)
+                Append(' ', (Keyword, "entry"));
+            Append(' ', (Keyword, "returns"), '=', '(');
+            for (int i = 0; i < function.ReturnTypes.Count; i++)
+            {
+                if (i > 0)
+                    Append(',', ' ');
+                Append((TypeName, function.ReturnTypes[i], function.ReturnTypes[i].Name));
+            }
+
+            AppendLine(')');
+            AppendLine('{');
+
+            foreach (MirBlock block in function.Blocks)
+                WriteBlock(block, formatter, blockFormatter);
+
+            AppendLine('}');
+            NewLine();
         }
 
-        sb.AppendLine("):");
-        foreach (MirInstruction instruction in block.Instructions)
-            WriteInstruction(sb, instruction, formatter);
-
-        WriteTerminator(sb, block.Terminator, formatter, blockFormatter);
-    }
-
-    private static void WriteInstruction(StringBuilder sb, MirInstruction instruction, ValueFormatter formatter)
-    {
-        sb.Append("    ");
-        if (instruction.Result is MirValueId result)
+        private void WriteBlock(MirBlock block, ValueFormatter formatter, BlockFormatter blockFormatter)
         {
-            sb.Append(formatter.Format(result));
-            sb.Append(':');
-            sb.Append(instruction.ResultType?.Name ?? "<unknown>");
-            sb.Append(" = ");
+            Append(Space(2));
+            WriteBlockRef(block.Ref, blockFormatter);
+            Append('(');
+            for (int i = 0; i < block.Parameters.Count; i++)
+            {
+                if (i > 0)
+                    Append(',', ' ');
+
+                MirBlockParameter parameter = block.Parameters[i];
+                WriteValue(parameter.Value, formatter);
+                Append(':');
+                Append(TypeName, parameter.Type, parameter.Type.Name);
+                Append(' ');
+                Append(VariableName, parameter, parameter.Name);
+            }
+
+            AppendLine(')', ':');
+            foreach (MirInstruction instruction in block.Instructions)
+                WriteInstruction(instruction, formatter);
+
+            WriteTerminator(block.Terminator, formatter, blockFormatter);
         }
 
-        switch (instruction)
+        private void WriteInstruction(MirInstruction instruction, ValueFormatter formatter)
         {
-            case MirConstantInstruction constant:
-                sb.Append("const ");
-                sb.Append(FormatConstant(constant.Value));
-                break;
+            Append(Space(4));
+            if (instruction.Result is MirValueId result)
+            {
+                WriteValue(result, formatter);
+                Append(':');
+                if (instruction.ResultType is not null)
+                    Append(TypeName, instruction.ResultType, instruction.ResultType.Name);
+                else
+                    Append(Literal, "<unknown>");
+                Append(' ', '=', ' ');
+            }
 
-            case MirLoadPlaceInstruction loadPlace:
-                sb.Append("load.place ");
-                sb.Append(loadPlace.Place.EmittedName);
-                break;
+            switch (instruction)
+            {
+                case MirConstantInstruction constant:
+                    Append((Keyword, "const"), ' ', (Literal, FormatConstant(constant.Value)));
+                    break;
 
-            case MirCopyInstruction copy:
-                sb.Append("copy ");
-                sb.Append(formatter.Format(copy.Source));
-                break;
+                case MirLoadPlaceInstruction loadPlace:
+                    Append((Keyword, "load.place"), ' ', (VariableName, loadPlace.Place, loadPlace.Place.EmittedName));
+                    break;
 
-            case MirUnaryInstruction unary:
-                sb.Append("unary.");
-                sb.Append(unary.Operator);
-                sb.Append(' ');
-                sb.Append(formatter.Format(unary.Operand));
-                break;
+                case MirCopyInstruction copy:
+                    Append((Keyword, "copy"), ' ');
+                    WriteValue(copy.Source, formatter);
+                    break;
 
-            case MirBinaryInstruction binary:
-                sb.Append("binary.");
-                sb.Append(binary.Operator);
-                if (binary.ComparisonLoweringKind != ComparisonLoweringKind.Default)
-                {
-                    sb.Append('[');
-                    sb.Append(binary.ComparisonLoweringKind);
-                    sb.Append(']');
-                }
-                sb.Append(' ');
-                sb.Append(formatter.Format(binary.Left));
-                sb.Append(", ");
-                sb.Append(formatter.Format(binary.Right));
-                break;
+                case MirUnaryInstruction unary:
+                    Append((Keyword, "unary"), '.', (Literal, unary.Operator.ToString()), ' ');
+                    WriteValue(unary.Operand, formatter);
+                    break;
 
-            case MirPointerOffsetInstruction pointerOffset:
-                sb.Append("ptr.offset.");
-                sb.Append(pointerOffset.OperatorKind);
-                sb.Append('[');
-                sb.Append(pointerOffset.Stride);
-                sb.Append("] ");
-                sb.Append(formatter.Format(pointerOffset.BaseAddress));
-                sb.Append(", ");
-                sb.Append(formatter.Format(pointerOffset.Delta));
-                break;
+                case MirBinaryInstruction binary:
+                    Append((Keyword, "binary"), '.', (Literal, binary.Operator.ToString()));
+                    if (binary.ComparisonLoweringKind != ComparisonLoweringKind.Default)
+                        Append('[', (Literal, binary.ComparisonLoweringKind.ToString()), ']');
+                    Append(' ');
+                    WriteValue(binary.Left, formatter);
+                    Append(',', ' ');
+                    WriteValue(binary.Right, formatter);
+                    break;
 
-            case MirPointerDifferenceInstruction pointerDifference:
-                sb.Append("ptr.diff[");
-                sb.Append(pointerDifference.Stride);
-                sb.Append("] ");
-                sb.Append(formatter.Format(pointerDifference.Left));
-                sb.Append(", ");
-                sb.Append(formatter.Format(pointerDifference.Right));
-                break;
+                case MirPointerOffsetInstruction pointerOffset:
+                    Append((Keyword, "ptr.offset"), '.', (Literal, pointerOffset.OperatorKind.ToString()), '[', (Literal, pointerOffset.Stride.ToString(CultureInfo.InvariantCulture)), ']', ' ');
+                    WriteValue(pointerOffset.BaseAddress, formatter);
+                    Append(',', ' ');
+                    WriteValue(pointerOffset.Delta, formatter);
+                    break;
 
-            case MirConvertInstruction convert:
-                sb.Append("convert ");
-                sb.Append(formatter.Format(convert.Operand));
-                break;
+                case MirPointerDifferenceInstruction pointerDifference:
+                    Append((Keyword, "ptr.diff"), '[', (Literal, pointerDifference.Stride.ToString(CultureInfo.InvariantCulture)), ']', ' ');
+                    WriteValue(pointerDifference.Left, formatter);
+                    Append(',', ' ');
+                    WriteValue(pointerDifference.Right, formatter);
+                    break;
 
-            case MirStructLiteralInstruction structLiteral:
-                sb.Append("structlit");
-                foreach (MirStructLiteralField field in structLiteral.Fields)
-                {
-                    sb.Append('.');
-                    sb.Append(field.Member.Name);
-                }
-                if (structLiteral.Fields.Count > 0)
-                {
-                    sb.Append(' ');
-                    for (int i = 0; i < structLiteral.Fields.Count; i++)
+                case MirConvertInstruction convert:
+                    Append((Keyword, "convert"), ' ');
+                    WriteValue(convert.Operand, formatter);
+                    break;
+
+                case MirStructLiteralInstruction structLiteral:
+                    Append((Keyword, "structlit"));
+                    foreach (MirStructLiteralField field in structLiteral.Fields)
+                        Append('.', (Literal, field.Member.Name));
+                    if (structLiteral.Fields.Count > 0)
+                    {
+                        Append(' ');
+                        for (int i = 0; i < structLiteral.Fields.Count; i++)
+                        {
+                            if (i > 0)
+                                Append(',', ' ');
+                            WriteValue(structLiteral.Fields[i].Value, formatter);
+                        }
+                    }
+                    break;
+
+                case MirLoadMemberInstruction loadMember:
+                    Append((Keyword, "load.member"), '.', (Literal, loadMember.Member.Name), '.', (Literal, loadMember.Member.ByteOffset.ToString(CultureInfo.InvariantCulture)), ' ');
+                    WriteValue(loadMember.Receiver, formatter);
+                    break;
+
+                case MirLoadIndexInstruction loadIndex:
+                    Append((Keyword, "load.index"), '.', (Literal, FormatStorageClass(loadIndex.StorageClass)), ' ');
+                    WriteValue(loadIndex.Indexed, formatter);
+                    Append(',', ' ');
+                    WriteValue(loadIndex.Index, formatter);
+                    break;
+
+                case MirLoadDerefInstruction loadDeref:
+                    Append((Keyword, "load.deref"), '.', (Literal, FormatStorageClass(loadDeref.StorageClass)), ' ');
+                    WriteValue(loadDeref.Address, formatter);
+                    break;
+
+                case MirBitfieldExtractInstruction extract:
+                    Append((Keyword, "bitfield.extract"), '.', (Literal, extract.Member.BitOffset.ToString(CultureInfo.InvariantCulture)), '.', (Literal, extract.Member.BitWidth.ToString(CultureInfo.InvariantCulture)), ' ');
+                    WriteValue(extract.Receiver, formatter);
+                    break;
+
+                case MirBitfieldInsertInstruction insertBitfield:
+                    Append((Keyword, "bitfield.insert"), '.', (Literal, insertBitfield.Member.BitOffset.ToString(CultureInfo.InvariantCulture)), '.', (Literal, insertBitfield.Member.BitWidth.ToString(CultureInfo.InvariantCulture)), ' ');
+                    WriteValue(insertBitfield.Receiver, formatter);
+                    Append(',', ' ');
+                    WriteValue(insertBitfield.Value, formatter);
+                    break;
+
+                case MirInsertMemberInstruction insertMember:
+                    Append((Keyword, "insert.member"), '.', (Literal, insertMember.Member.Name), '.', (Literal, insertMember.Member.ByteOffset.ToString(CultureInfo.InvariantCulture)), ' ');
+                    WriteValue(insertMember.Receiver, formatter);
+                    Append(',', ' ');
+                    WriteValue(insertMember.Value, formatter);
+                    break;
+
+                case MirCallInstruction call:
+                    Append((Keyword, "call"), ' ', (FunctionName, call.Function, call.Function.Name), '(');
+                    WriteValueList(call.Arguments, formatter);
+                    Append(')');
+                    if (call.ExtraResults.Count > 0)
+                    {
+                        Append(' ', (Keyword, "extra"), '=', '[');
+                        for (int i = 0; i < call.ExtraResults.Count; i++)
+                        {
+                            if (i > 0)
+                                Append(',', ' ');
+                            WriteValue(call.ExtraResults[i].Value, formatter);
+                            Append(':');
+                            Append(TypeName, call.ExtraResults[i].Type, call.ExtraResults[i].Type.Name);
+                        }
+                        Append(']');
+                    }
+                    break;
+
+                case MirIntrinsicCallInstruction intrinsic:
+                    Append((Keyword, "intrinsic"), ' ', '@', (Literal, intrinsic.Mnemonic.ToString()), '(');
+                    WriteValueList(intrinsic.Arguments, formatter);
+                    Append(')');
+                    break;
+
+                case MirStoreIndexInstruction storeIndex:
+                    Append((Keyword, "store"), ' ', (Keyword, "index"), '.', (Literal, FormatStorageClass(storeIndex.StorageClass)), '(');
+                    WriteValue(storeIndex.Indexed, formatter);
+                    Append(',', ' ');
+                    WriteValue(storeIndex.Index, formatter);
+                    Append(',', ' ');
+                    WriteValue(storeIndex.Value, formatter);
+                    Append(')');
+                    break;
+
+                case MirStoreDerefInstruction storeDeref:
+                    Append((Keyword, "store"), ' ', (Keyword, "deref"), '.', (Literal, FormatStorageClass(storeDeref.StorageClass)), '(');
+                    WriteValue(storeDeref.Address, formatter);
+                    Append(',', ' ');
+                    WriteValue(storeDeref.Value, formatter);
+                    Append(')');
+                    break;
+
+                case MirStorePlaceInstruction storePlace:
+                    Append((Keyword, "store.place"), ' ', (VariableName, storePlace.Place, storePlace.Place.EmittedName), '(');
+                    WriteValue(storePlace.Value, formatter);
+                    Append(')');
+                    break;
+
+                case MirUpdatePlaceInstruction updatePlace:
+                    Append((Keyword, "update.place"), ' ', (VariableName, updatePlace.Place, updatePlace.Place.EmittedName), ' ', (Literal, updatePlace.OperatorKind.ToString()));
+                    if (updatePlace.PointerArithmeticStride is int stride)
+                        Append('[', (Literal, stride.ToString(CultureInfo.InvariantCulture)), ']');
+                    Append(' ');
+                    WriteValue(updatePlace.Value, formatter);
+                    break;
+
+                case MirInlineAsmInstruction inlineAsm:
+                    Append((Keyword, inlineAsm.Volatility == AsmVolatility.Volatile ? "inlineasm.volatile" : "inlineasm"));
+                    if (inlineAsm.FlagOutput is not null)
+                        Append(' ', '-', '>', ' ', '@', (Literal, Assert.NotNull(inlineAsm.FlagOutput.ToString())));
+                    if (inlineAsm.Bindings.Count > 0)
+                    {
+                        Append(' ');
+                        for (int i = 0; i < inlineAsm.Bindings.Count; i++)
+                        {
+                            if (i > 0)
+                                Append(',', ' ');
+
+                            MirInlineAsmBinding binding = inlineAsm.Bindings[i];
+                            Append((Literal, binding.PlaceholderText), '=');
+                            if (binding.Value is MirValueId value)
+                                WriteValue(value, formatter);
+                            else
+                                Append((VariableName, Assert.NotNull(binding.Place), Assert.NotNull(binding.Place?.EmittedName)));
+                            Append(':', (Literal, FormatInlineAsmAccess(binding.Access)));
+                        }
+                    }
+                    break;
+
+                case MirYieldInstruction:
+                    Append((Keyword, "yield"));
+                    break;
+
+                case MirYieldToInstruction yieldTo:
+                    Append((Keyword, "yieldto"), ':', (FunctionName, yieldTo.TargetFunction, yieldTo.TargetFunction.Name));
+                    if (yieldTo.Arguments.Count > 0)
+                    {
+                        Append(' ');
+                        WriteValueList(yieldTo.Arguments, formatter);
+                    }
+                    break;
+
+                case MirRepSetupInstruction repSetup:
+                    Append((Keyword, "rep.setup"), ' ');
+                    WriteValue(repSetup.Count, formatter);
+                    break;
+
+                case MirRepIterInstruction repIter:
+                    Append((Keyword, "rep.iter"), ' ');
+                    WriteValue(repIter.Count, formatter);
+                    break;
+
+                case MirRepForSetupInstruction repForSetup:
+                    Append((Keyword, "repfor.setup"), ' ');
+                    WriteValue(repForSetup.Start, formatter);
+                    Append(',', ' ');
+                    WriteValue(repForSetup.End, formatter);
+                    break;
+
+                case MirRepForIterInstruction repForIter:
+                    Append((Keyword, "repfor.iter"), ' ');
+                    for (int i = 0; i < repForIter.CarrierValues.Count; i++)
                     {
                         if (i > 0)
-                            sb.Append(", ");
-                        sb.Append(formatter.Format(structLiteral.Fields[i].Value));
+                            Append(',', ' ');
+
+                        WriteValue(repForIter.CarrierValues[i], formatter);
+                        Append(' ', '<', '-', ' ');
+                        WriteValue(repForIter.CurrentValues[i], formatter);
+                        if (repForIter.IndexCarrierOrdinal == i)
+                            Append(' ', '[', '+', (Literal, "1"), ']');
                     }
-                }
-                break;
+                    break;
 
-            case MirLoadMemberInstruction loadMember:
-                sb.Append("load.member.");
-                sb.Append(loadMember.Member.Name);
-                sb.Append('.');
-                sb.Append(loadMember.Member.ByteOffset);
-                sb.Append(' ');
-                sb.Append(formatter.Format(loadMember.Receiver));
-                break;
+                case MirNoIrqBeginInstruction:
+                    Append((Keyword, "noirq.begin"));
+                    break;
 
-            case MirLoadIndexInstruction loadIndex:
-                sb.Append("load.index.");
-                sb.Append(FormatStorageClass(loadIndex.StorageClass));
-                sb.Append(' ');
-                sb.Append(formatter.Format(loadIndex.Indexed));
-                sb.Append(", ");
-                sb.Append(formatter.Format(loadIndex.Index));
-                break;
+                case MirNoIrqEndInstruction:
+                    Append((Keyword, "noirq.end"));
+                    break;
 
-            case MirLoadDerefInstruction loadDeref:
-                sb.Append("load.deref.");
-                sb.Append(FormatStorageClass(loadDeref.StorageClass));
-                sb.Append(' ');
-                sb.Append(formatter.Format(loadDeref.Address));
-                break;
+                default:
+                    Assert.Unreachable($"Unhandled MIR instruction '{instruction.GetType().Name}'."); // pragma: force-coverage
+                    break; // pragma: force-coverage
+            }
 
-            case MirBitfieldExtractInstruction extract:
-                sb.Append("bitfield.extract.");
-                sb.Append(extract.Member.BitOffset);
-                sb.Append('.');
-                sb.Append(extract.Member.BitWidth);
-                sb.Append(' ');
-                sb.Append(formatter.Format(extract.Receiver));
-                break;
-
-            case MirBitfieldInsertInstruction insertBitfield:
-                sb.Append("bitfield.insert.");
-                sb.Append(insertBitfield.Member.BitOffset);
-                sb.Append('.');
-                sb.Append(insertBitfield.Member.BitWidth);
-                sb.Append(' ');
-                sb.Append(formatter.Format(insertBitfield.Receiver));
-                sb.Append(", ");
-                sb.Append(formatter.Format(insertBitfield.Value));
-                break;
-
-            case MirInsertMemberInstruction insertMember:
-                sb.Append("insert.member.");
-                sb.Append(insertMember.Member.Name);
-                sb.Append('.');
-                sb.Append(insertMember.Member.ByteOffset);
-                sb.Append(' ');
-                sb.Append(formatter.Format(insertMember.Receiver));
-                sb.Append(", ");
-                sb.Append(formatter.Format(insertMember.Value));
-                break;
-
-            case MirCallInstruction call:
-                sb.Append("call ");
-                sb.Append(call.Function.Name);
-                sb.Append('(');
-                WriteValueList(sb, call.Arguments, formatter);
-                sb.Append(')');
-                if (call.ExtraResults.Count > 0)
-                {
-                    sb.Append(" extra=[");
-                    for (int i = 0; i < call.ExtraResults.Count; i++)
-                    {
-                        if (i > 0)
-                            sb.Append(", ");
-                        sb.Append(formatter.Format(call.ExtraResults[i].Value));
-                        sb.Append(':');
-                        sb.Append(call.ExtraResults[i].Type.Name);
-                    }
-                    sb.Append(']');
-                }
-                break;
-
-            case MirIntrinsicCallInstruction intrinsic:
-                sb.Append("intrinsic @");
-                sb.Append(intrinsic.Mnemonic.ToString());
-                sb.Append('(');
-                WriteValueList(sb, intrinsic.Arguments, formatter);
-                sb.Append(')');
-                break;
-
-            case MirStoreIndexInstruction storeIndex:
-                sb.Append("store index.");
-                sb.Append(FormatStorageClass(storeIndex.StorageClass));
-                sb.Append('(');
-                sb.Append(formatter.Format(storeIndex.Indexed));
-                sb.Append(", ");
-                sb.Append(formatter.Format(storeIndex.Index));
-                sb.Append(", ");
-                sb.Append(formatter.Format(storeIndex.Value));
-                sb.Append(')');
-                break;
-
-            case MirStoreDerefInstruction storeDeref:
-                sb.Append("store deref.");
-                sb.Append(FormatStorageClass(storeDeref.StorageClass));
-                sb.Append('(');
-                sb.Append(formatter.Format(storeDeref.Address));
-                sb.Append(", ");
-                sb.Append(formatter.Format(storeDeref.Value));
-                sb.Append(')');
-                break;
-
-            case MirStorePlaceInstruction storePlace:
-                sb.Append("store.place ");
-                sb.Append(storePlace.Place.EmittedName);
-                sb.Append('(');
-                sb.Append(formatter.Format(storePlace.Value));
-                sb.Append(')');
-                break;
-
-            case MirUpdatePlaceInstruction updatePlace:
-                sb.Append("update.place ");
-                sb.Append(updatePlace.Place.EmittedName);
-                sb.Append(' ');
-                sb.Append(updatePlace.OperatorKind);
-                if (updatePlace.PointerArithmeticStride is int stride)
-                {
-                    sb.Append('[');
-                    sb.Append(stride);
-                    sb.Append(']');
-                }
-                sb.Append(' ');
-                sb.Append(formatter.Format(updatePlace.Value));
-                break;
-
-            case MirInlineAsmInstruction inlineAsm:
-                sb.Append(inlineAsm.Volatility == AsmVolatility.Volatile ? "inlineasm.volatile" : "inlineasm");
-                if (inlineAsm.FlagOutput is not null)
-                {
-                    sb.Append(" -> @");
-                    sb.Append(inlineAsm.FlagOutput);
-                }
-                if (inlineAsm.Bindings.Count > 0)
-                {
-                    sb.Append(' ');
-                    for (int i = 0; i < inlineAsm.Bindings.Count; i++)
-                    {
-                        if (i > 0)
-                            sb.Append(", ");
-                        MirInlineAsmBinding binding = inlineAsm.Bindings[i];
-                        sb.Append(binding.PlaceholderText);
-                        sb.Append('=');
-                        if (binding.Value is MirValueId value)
-                            sb.Append(formatter.Format(value));
-                        else
-                            sb.Append(binding.Place?.EmittedName ?? "<none>");
-                        sb.Append(':');
-                        sb.Append(FormatInlineAsmAccess(binding.Access));
-                    }
-                }
-                break;
-
-            case MirYieldInstruction:
-                sb.Append("yield");
-                break;
-
-            case MirYieldToInstruction yieldTo:
-                sb.Append("yieldto:");
-                sb.Append(yieldTo.TargetFunction.Name);
-                if (yieldTo.Arguments.Count > 0)
-                {
-                    sb.Append(' ');
-                    WriteValueList(sb, yieldTo.Arguments, formatter);
-                }
-                break;
-
-            case MirRepSetupInstruction repSetup:
-                sb.Append("rep.setup ");
-                sb.Append(formatter.Format(repSetup.Count));
-                break;
-
-            case MirRepIterInstruction repIter:
-                sb.Append("rep.iter ");
-                sb.Append(formatter.Format(repIter.Count));
-                break;
-
-            case MirRepForSetupInstruction repForSetup:
-                sb.Append("repfor.setup ");
-                sb.Append(formatter.Format(repForSetup.Start));
-                sb.Append(", ");
-                sb.Append(formatter.Format(repForSetup.End));
-                break;
-
-            case MirRepForIterInstruction repForIter:
-                sb.Append("repfor.iter ");
-                for (int i = 0; i < repForIter.CarrierValues.Count; i++)
-                {
-                    if (i > 0)
-                        sb.Append(", ");
-
-                    sb.Append(formatter.Format(repForIter.CarrierValues[i]));
-                    sb.Append(" <- ");
-                    sb.Append(formatter.Format(repForIter.CurrentValues[i]));
-                    if (repForIter.IndexCarrierOrdinal == i)
-                        sb.Append(" [+1]");
-                }
-                break;
-
-            case MirNoIrqBeginInstruction:
-                sb.Append("noirq.begin");
-                break;
-
-            case MirNoIrqEndInstruction:
-                sb.Append("noirq.end");
-                break;
+            if (instruction.HasSideEffects)
+                Append(' ', (Comment, "; sidefx"));
+            NewLine();
         }
 
-        if (instruction.HasSideEffects)
-            sb.Append(" ; sidefx");
-        sb.AppendLine();
-    }
-
-    private static void WriteTerminator(StringBuilder sb, MirTerminator terminator, ValueFormatter formatter, BlockFormatter blockFormatter)
-    {
-        sb.Append("    ");
-        switch (terminator)
+        private void WriteTerminator(MirTerminator terminator, ValueFormatter formatter, BlockFormatter blockFormatter)
         {
-            case MirGotoTerminator mirGoto:
-                sb.Append("goto ");
-                sb.Append(blockFormatter.Format(mirGoto.Target));
-                sb.Append('(');
-                WriteValueList(sb, mirGoto.Arguments, formatter);
-                sb.AppendLine(")");
-                break;
+            Append(Space(4));
+            switch (terminator)
+            {
+                case MirGotoTerminator mirGoto:
+                    Append((Keyword, "goto"), ' ');
+                    WriteBlockRef(mirGoto.Target, blockFormatter);
+                    Append('(');
+                    WriteValueList(mirGoto.Arguments, formatter);
+                    AppendLine(')');
+                    break;
 
-            case MirBranchTerminator branch:
-                sb.Append("branch cond=");
-                sb.Append(formatter.Format(branch.Condition));
-                if (branch.ConditionFlag is not null)
-                {
-                    sb.Append(" [flag:");
-                    sb.Append(branch.ConditionFlag.Value.ToString());
-                    sb.Append(']');
-                }
-                sb.Append(", true=");
-                sb.Append(blockFormatter.Format(branch.TrueTarget));
-                sb.Append('(');
-                WriteValueList(sb, branch.TrueArguments, formatter);
-                sb.Append("), false=");
-                sb.Append(blockFormatter.Format(branch.FalseTarget));
-                sb.Append('(');
-                WriteValueList(sb, branch.FalseArguments, formatter);
-                sb.AppendLine(")");
-                break;
+                case MirBranchTerminator branch:
+                    Append((Keyword, "branch"), ' ', (Keyword, "cond"), '=');
+                    WriteValue(branch.Condition, formatter);
+                    if (branch.ConditionFlag is not null)
+                        Append(' ', '[', (Keyword, "flag"), ':', (Literal, branch.ConditionFlag.Value.ToString()), ']');
+                    Append(',', ' ', (Keyword, "true"), '=');
+                    WriteBlockRef(branch.TrueTarget, blockFormatter);
+                    Append('(');
+                    WriteValueList(branch.TrueArguments, formatter);
+                    Append(')', ',', ' ', (Keyword, "false"), '=');
+                    WriteBlockRef(branch.FalseTarget, blockFormatter);
+                    Append('(');
+                    WriteValueList(branch.FalseArguments, formatter);
+                    AppendLine(')');
+                    break;
 
-            case MirReturnTerminator ret:
-                sb.Append("ret ");
-                WriteValueList(sb, ret.Values, formatter);
-                sb.AppendLine();
-                break;
+                case MirReturnTerminator ret:
+                    Append((Keyword, "ret"), ' ');
+                    WriteValueList(ret.Values, formatter);
+                    NewLine();
+                    break;
 
-            case MirUnreachableTerminator:
-                sb.AppendLine("unreachable");
-                break;
+                case MirUnreachableTerminator:
+                    AppendLine((Keyword, "unreachable"));
+                    break;
+
+                default:
+                    Assert.Unreachable($"Unhandled MIR terminator '{terminator.GetType().Name}'."); // pragma: force-coverage
+                    break; // pragma: force-coverage
+            }
         }
-    }
 
-    private static void WriteValueList(StringBuilder sb, IReadOnlyList<MirValueId> values, ValueFormatter formatter)
-    {
-        for (int i = 0; i < values.Count; i++)
+        private void WriteValueList(IReadOnlyList<MirValueId> values, ValueFormatter formatter)
         {
-            if (i > 0)
-                sb.Append(", ");
-            sb.Append(formatter.Format(values[i]));
+            for (int i = 0; i < values.Count; i++)
+            {
+                if (i > 0)
+                    Append(',', ' ');
+                WriteValue(values[i], formatter);
+            }
+        }
+
+        private void WriteValue(MirValueId value, ValueFormatter formatter)
+        {
+            Append(VariableName, value, formatter.Format(value));
+        }
+
+        private void WriteBlockRef(MirBlockRef blockRef, BlockFormatter formatter)
+        {
+            Append(VariableName, blockRef, formatter.Format(blockRef));
         }
     }
 
@@ -488,27 +473,34 @@ public static class MirTextWriter
 
         public string Format(MirValueId value)
         {
-            switch (value)
+            return value switch
             {
-                case VirtualMirRegister register:
-                    if (!_registerIds.TryGetValue(register, out string? registerId))
-                    {
-                        registerId = $"%v{_registerIds.Count}";
-                        _registerIds.Add(register, registerId);
-                    }
-                    return registerId;
+                VirtualMirRegister register => Format(register),
+                VirtualMirFlag flag => Format(flag),
+                _ => Assert.UnreachableValue<string>(),
+            };
+        }
 
-                case VirtualMirFlag flag:
-                    if (!_flagIds.TryGetValue(flag, out string? flagId))
-                    {
-                        flagId = $"%f{_flagIds.Count}";
-                        _flagIds.Add(flag, flagId);
-                    }
-                    return flagId;
-
-                default:
-                    throw Assert.Unreachable();
+        private string Format(VirtualMirRegister register)
+        {
+            if (!_registerIds.TryGetValue(register, out string? registerId))
+            {
+                registerId = $"%v{_registerIds.Count}";
+                _registerIds.Add(register, registerId);
             }
+
+            return registerId;
+        }
+
+        private string Format(VirtualMirFlag flag)
+        {
+            if (!_flagIds.TryGetValue(flag, out string? flagId))
+            {
+                flagId = $"%f{_flagIds.Count}";
+                _flagIds.Add(flag, flagId);
+            }
+
+            return flagId;
         }
     }
 
@@ -523,6 +515,8 @@ public static class MirTextWriter
         }
 
         public string Format(MirBlockRef blockRef)
-            => $"bb{_ids[blockRef]}";
+        {
+            return $"bb{_ids[blockRef]}";
+        }
     }
 }

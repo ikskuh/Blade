@@ -1,235 +1,279 @@
 using System.Collections.Generic;
 using System.Globalization;
-using System.Text;
-using Blade;
+using Blade.Reports;
+
+using static Blade.Reports.BasicTextSpanKind;
+using static Blade.Reports.SemanticTextSpanKind;
 
 namespace Blade.IR.Asm;
 
-public static class AsmTextWriter
+/// <summary>
+/// Emits ASMIR modules as human-readable text.
+/// </summary>
+public sealed class AsmTextWriter : TextReportBuilderBase
 {
-    public static string Write(AsmModule module)
+    private AsmTextWriter(ITextReportBuilder builder)
+        : base(builder)
     {
-        Requires.NotNull(module);
-        return Write([module]);
     }
 
-    public static string Write(IReadOnlyList<AsmModule> modules)
+    /// <summary>
+    /// Emits the supplied modules into the provided report builder.
+    /// </summary>
+    public static void Write(ITextReportBuilder builder, IReadOnlyList<AsmModule> modules)
     {
+        Requires.NotNull(builder);
         Requires.NotNull(modules);
 
-        StringBuilder sb = new();
-        sb.AppendLine("; ASMIR v2");
-        sb.AppendLine();
+        AsmTextWriter writer = new(builder);
+        writer.WriteModules(modules);
+    }
+
+    private void WriteModules(IReadOnlyList<AsmModule> modules)
+    {
+        AppendLine((Comment, "; ASMIR v2"));
+        NewLine();
 
         foreach (AsmModule module in modules)
         {
-            sb.Append("; image ");
-            sb.AppendLine(module.Image.Task.Name);
-            sb.AppendLine();
+            AppendLine((Comment, $"; image {module.Image.Task.Name}"));
+            NewLine();
 
             foreach (AsmFunction function in module.Functions)
-                WriteFunction(sb, function);
+                WriteFunction(function);
 
             foreach (AsmDataBlock block in module.DataBlocks)
-                WriteDataBlock(sb, block);
+                WriteDataBlock(block);
         }
-
-        return sb.ToString();
     }
 
-    private static void WriteFunction(StringBuilder sb, AsmFunction function)
+    private void WriteFunction(AsmFunction function)
     {
         RegisterFormatter formatter = new();
 
-        sb.Append("function ");
-        sb.Append(function.Name);
+        Append((Keyword, "function"), ' ', (FunctionName, function, function.Name));
         if (function.IsEntryPoint)
-            sb.Append(" entry");
-        sb.Append(" [");
-        sb.Append(function.CcTier);
-        sb.Append(']');
-        sb.AppendLine();
-        sb.AppendLine("{");
+            Append(' ', (Keyword, "entry"));
+        Append(' ', '[', (Literal, function.CcTier.ToString()), ']');
+        NewLine();
+        AppendLine('{');
         foreach (AsmNode node in function.Nodes)
-            WriteNode(sb, node, formatter);
-        sb.AppendLine("}");
-        sb.AppendLine();
+            WriteNode(node, formatter);
+        AppendLine('}');
+        NewLine();
     }
 
-    private static void WriteNode(StringBuilder sb, AsmNode node, RegisterFormatter formatter)
+    private void WriteNode(AsmNode node, RegisterFormatter formatter)
     {
         switch (node)
         {
             case AsmLabelNode label:
-                sb.Append("  ");
-                sb.Append(label.Name);
-                sb.AppendLine(":");
+                AppendLine(Space(2), (VariableName, label.Label, label.Name), ':');
                 break;
 
             case AsmCommentNode comment:
-                sb.Append("    ' ");
-                sb.AppendLine(comment.Text);
+                AppendLine(Space(4), (Comment, "' " + comment.Text));
                 break;
 
             case AsmInstructionNode instruction:
-                sb.Append("    ");
+                Append(Space(4));
                 if (instruction.Condition is P2ConditionCode condition)
-                {
-                    sb.Append(P2MetadataSyntax.GetConditionPrefixText(condition));
-                    sb.Append(' ');
-                }
+                    Append((Keyword, P2MetadataSyntax.GetConditionPrefixText(condition)), ' ');
 
-                sb.Append(instruction.Mnemonic.ToString());
+                Append(Keyword, instruction.Mnemonic.ToString());
                 if (instruction.Operands.Count > 0)
                 {
-                    sb.Append(' ');
+                    Append(' ');
                     for (int i = 0; i < instruction.Operands.Count; i++)
                     {
                         if (i > 0)
-                            sb.Append(", ");
-                        sb.Append(FormatOperand(instruction.Operands[i], formatter));
+                            Append(',', ' ');
+                        WriteInlineOperand(instruction.Operands[i], formatter);
                     }
                 }
 
-                string flagInput = FormatFlagInput(instruction.FlagInput, formatter);
-                if (flagInput.Length > 0)
-                {
-                    sb.Append(' ');
-                    sb.Append(flagInput);
-                }
+                WriteFlagInput(instruction.FlagInput, formatter);
+                WriteFlagOutput(instruction.FlagOutput, formatter);
 
-                string flagOutput = FormatFlagOutput(instruction.FlagOutput, formatter);
-                if (flagOutput.Length > 0)
-                {
-                    sb.Append(' ');
-                    sb.Append(flagOutput);
-                }
-
-                sb.AppendLine();
+                NewLine();
                 break;
 
             case AsmInlineDataNode inlineData:
-                sb.Append("    ");
-                sb.Append(inlineData.Directive);
+                Append(Space(4));
+                Append(Directive, inlineData.Directive.ToString());
                 if (inlineData.Values.Count > 0)
                 {
-                    sb.Append(' ');
+                    Append(' ');
                     for (int i = 0; i < inlineData.Values.Count; i++)
                     {
                         if (i > 0)
-                            sb.Append(", ");
-                        sb.Append(FormatInlineDataValue(inlineData.Values[i], formatter));
+                            Append(',', ' ');
+                        Append(Literal, FormatInlineDataValue(inlineData.Values[i], formatter));
                     }
                 }
 
-                sb.AppendLine();
+                NewLine();
                 break;
 
             case AsmVolatileRegionBeginNode:
-                sb.AppendLine("    .volatile_begin");
+                AppendLine(Space(4), (Directive, ".volatile_begin"));
                 break;
 
             case AsmVolatileRegionEndNode:
-                sb.AppendLine("    .volatile_end");
+                AppendLine(Space(4), (Directive, ".volatile_end"));
                 break;
+
+            default:
+                Assert.Unreachable($"Unhandled ASMIR node '{node.GetType().Name}'."); // pragma: force-coverage
+                break; // pragma: force-coverage
         }
     }
 
-    private static void WriteDataBlock(StringBuilder sb, AsmDataBlock block)
+    private void WriteDataBlock(AsmDataBlock block)
     {
-        sb.Append("data ");
-        sb.Append(block.Kind);
-        sb.AppendLine();
-        sb.AppendLine("{");
+        Append((Keyword, "data"), ' ', (Literal, block.Kind.ToString()));
+        NewLine();
+        AppendLine('{');
         foreach (AsmDataDefinition definition in block.Definitions)
-        {
-            switch (definition)
-            {
-                case AsmAllocatedStorageDefinition allocated:
-                    sb.Append("  ");
-                    sb.Append(allocated.Symbol.Name);
-                    sb.Append(": ");
-                    sb.Append(allocated.Directive);
-                    sb.Append(' ');
-                    if (allocated.InitialValues is null || allocated.InitialValues.Count == 0)
-                    {
-                        sb.Append('0');
-                    }
-                    else if (allocated.InitialValues.Count == 1)
-                    {
-                        sb.Append(allocated.InitialValues[0].Format());
-                    }
-                    else
-                    {
-                        for (int i = 0; i < allocated.InitialValues.Count; i++)
-                        {
-                            if (i > 0)
-                                sb.Append(", ");
-                            sb.Append(allocated.InitialValues[i].Format());
-                        }
-                    }
-                    if (allocated.Count > 1)
-                    {
-                        sb.Append(" [");
-                        sb.Append(allocated.Count);
-                        sb.Append(']');
-                    }
+            WriteDefinition(definition);
+        AppendLine('}');
+        NewLine();
+    }
 
-                    sb.AppendLine();
-                    break;
-                case AsmExternalBindingDefinition external:
-                    sb.Append("  extern ");
-                    sb.AppendLine(external.Symbol.Name);
-                    break;
-            }
+    private void WriteDefinition(AsmDataDefinition definition)
+    {
+        switch (definition)
+        {
+            case AsmAllocatedStorageDefinition allocated:
+                Append(Space(2), (VariableName, allocated.Symbol, allocated.Symbol.Name), ':', ' ', (Directive, allocated.Directive.ToString()), ' ');
+                WriteAllocatedValues(allocated);
+                NewLine();
+                break;
+
+            case AsmExternalBindingDefinition external:
+                AppendLine(Space(2), (Keyword, "extern"), ' ', (VariableName, external.Symbol, external.Symbol.Name));
+                break;
+
+            default:
+                Assert.Unreachable($"Unhandled ASMIR data definition '{definition.GetType().Name}'."); // pragma: force-coverage
+                break; // pragma: force-coverage
+        }
+    }
+
+    private void WriteInlineOperand(AsmOperand operand, RegisterFormatter formatter)
+    {
+        switch (operand)
+        {
+            case AsmRegisterOperand register:
+                Append(VariableName, register.Value, formatter.Format(register.Value));
+                return;
+
+            case AsmSymbolOperand symbol:
+                Append(VariableName, symbol.Symbol, symbol.Name);
+                return;
+
+            default:
+                Append(Literal, operand.Format());
+                return;
+        }
+    }
+
+    private void WriteAllocatedValues(AsmAllocatedStorageDefinition allocated)
+    {
+        if (allocated.InitialValues is null || allocated.InitialValues.Count == 0)
+        {
+            Append(Literal, "0");
+            if (allocated.Count > 1)
+                Append(' ', '[', (Literal, allocated.Count.ToString(CultureInfo.InvariantCulture)), ']');
+            return;
         }
 
-        sb.AppendLine("}");
-        sb.AppendLine();
+        if (allocated.InitialValues.Count == 1)
+        {
+            Append(Literal, allocated.InitialValues[0].Format());
+            if (allocated.Count > 1)
+                Append(' ', '[', (Literal, allocated.Count.ToString(CultureInfo.InvariantCulture)), ']');
+            return;
+        }
+
+        for (int i = 0; i < allocated.InitialValues.Count; i++)
+        {
+            if (i > 0)
+                Append(',', ' ');
+            Append(Literal, allocated.InitialValues[i].Format());
+        }
+
+        if (allocated.Count > 1)
+            Append(' ', '[', (Literal, allocated.Count.ToString(CultureInfo.InvariantCulture)), ']');
     }
 
-    private static string FormatFlagInput(AsmFlagInput input, RegisterFormatter formatter)
+    private void WriteFlagInput(AsmFlagInput input, RegisterFormatter formatter)
     {
-        List<string> parts = [];
         if (input.C is not null)
-            parts.Add($"C={formatter.FormatFlag(input.C)}");
+        {
+            Append(' ', (Keyword, "C"), '=');
+            Append((VariableName, input.C, formatter.FormatFlag(input.C)));
+        }
+
         if (input.Z is not null)
-            parts.Add($"Z={formatter.FormatFlag(input.Z)}");
-        return string.Join(", ", parts);
+        {
+            if (input.C is not null)
+                Append(',', ' ');
+            else
+                Append(' ');
+
+            Append((Keyword, "Z"), '=');
+            Append((VariableName, input.Z, formatter.FormatFlag(input.Z)));
+        }
     }
 
-    private static string FormatFlagOutput(AsmFlagOutput output, RegisterFormatter formatter)
+    private void WriteFlagOutput(AsmFlagOutput output, RegisterFormatter formatter)
     {
         if (output.Effect == P2FlagEffect.None)
-            return string.Empty;
+            return;
 
         if (!output.Any)
-            return output.Effect.ToString();
+        {
+            Append(' ', (Keyword, output.Effect.ToString()));
+            return;
+        }
 
         if (output.Effect == P2FlagEffect.WC && output.C is not null)
-            return $"WC={formatter.FormatFlag(output.C)}";
+        {
+            Append(' ', (Keyword, "WC"), '=');
+            Append((VariableName, output.C, formatter.FormatFlag(output.C)));
+            return;
+        }
 
         if (output.Effect == P2FlagEffect.WZ && output.Z is not null)
-            return $"WZ={formatter.FormatFlag(output.Z)}";
+        {
+            Append(' ', (Keyword, "WZ"), '=');
+            Append((VariableName, output.Z, formatter.FormatFlag(output.Z)));
+            return;
+        }
 
         if (output.Effect == P2FlagEffect.WCZ && output.C is not null && output.Z is not null)
-            return $"WCZ=({formatter.FormatFlag(output.C)}, {formatter.FormatFlag(output.Z)})";
-
-        List<string> parts = [output.Effect.ToString()];
-        if (output.C is not null)
-            parts.Add($"WC={formatter.FormatFlag(output.C)}");
-        if (output.Z is not null)
-            parts.Add($"WZ={formatter.FormatFlag(output.Z)}");
-        return string.Join(" ", parts);
-    }
-
-    private static string FormatOperand(AsmOperand operand, RegisterFormatter formatter)
-    {
-        return operand switch
         {
-            AsmRegisterOperand register => formatter.Format(register.Value),
-            _ => operand.Format(),
-        };
+            Append(' ', (Keyword, "WCZ"), '=', '(');
+            Append((VariableName, output.C, formatter.FormatFlag(output.C)));
+            Append(',', ' ');
+            Append((VariableName, output.Z, formatter.FormatFlag(output.Z)));
+            Append(')');
+            return;
+        }
+
+        Append(' ', (Keyword, output.Effect.ToString()));
+        if (output.C is not null)
+        {
+            Append(' ', (Keyword, "WC"), '=');
+            Append((VariableName, output.C, formatter.FormatFlag(output.C)));
+        }
+
+        if (output.Z is not null)
+        {
+            Append(' ', (Keyword, "WZ"), '=');
+            Append((VariableName, output.Z, formatter.FormatFlag(output.Z)));
+        }
     }
 
     private static string FormatInlineDataValue(AsmInlineDataValue value, RegisterFormatter formatter)
@@ -247,6 +291,15 @@ public static class AsmTextWriter
             AsmInlineDataRawSymbolValue raw
                 => raw.Name,
             _ => Assert.UnreachableValue<string>(), // pragma: force-coverage
+        };
+    }
+
+    private static string FormatOperand(AsmOperand operand, RegisterFormatter formatter)
+    {
+        return operand switch
+        {
+            AsmRegisterOperand register => formatter.Format(register.Value),
+            _ => operand.Format(),
         };
     }
 

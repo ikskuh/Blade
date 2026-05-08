@@ -3,6 +3,7 @@ using Blade.IR;
 using Blade.IR.Asm;
 using Blade.IR.Lir;
 using Blade.IR.Mir;
+using Blade.Reports;
 using Blade.Semantics;
 using Blade.Semantics.Bound;
 using Blade.Source;
@@ -66,7 +67,7 @@ public class WriterAndSymbolTests
     }
 
     [Test]
-    public void DumpBundleBuilder_ReturnsFinalAssemblyWhenNoExplicitDumpFlagsAreSet()
+    public void ReportSectionCatalog_ReturnsFinalAssemblyWhenAvailable()
     {
         BoundProgram program = IrTestFactory.CreateBoundProgram("/tmp/test.blade");
         MirModule mir = CreateMirModule();
@@ -76,17 +77,18 @@ public class WriterAndSymbolTests
         ImagePlacement imagePlacement = ImagePlacer.Place(imagePlan);
         LayoutSolution layoutSolution = LayoutSolver.SolveStableLayouts(program, imagePlacement);
         CogResourceLayoutSet cogResourceLayouts = IrTestFactory.CreateEmptyCogResourceLayouts(imagePlan);
-        IrBuildResult build = new(program, imagePlan, imagePlacement, layoutSolution, cogResourceLayouts, mir, mir, lir, lir, asm, asm, "DAT\n");
+        CompilationOutput output = CreateCompilationOutput(
+            program,
+            new IrBuildResult(imagePlan, imagePlacement, layoutSolution, cogResourceLayouts, mir, mir, lir, lir, asm, asm, "DAT\n"),
+            diagnostics: []);
 
-        IReadOnlyList<DumpArtifact> dumps = DumpBundleBuilder.Build(new DumpSelection(), build);
+        IReadOnlyList<object> dumps = ReportSectionCatalog.BuildSections(output).Cast<object>().ToList();
 
-        Assert.That(dumps.Select(static dump => dump.FileName), Is.EqualTo(new[] { "40_final.spin2" }));
-        Assert.That(dumps[0].Id, Is.EqualTo("final-asm"));
-        Assert.That(dumps[0].Content, Is.EqualTo("DAT\n"));
+        Assert.That(output.Stages.AssemblyText, Is.EqualTo("DAT\n"));
     }
 
     [Test]
-    public void DumpBundleBuilder_DumpBoundIncludesImagePlanAndLayoutSolution()
+    public void ReportSectionCatalog_IncludesBoundImagePlanAndLayoutSolution()
     {
         BoundProgram program = IrTestFactory.CreateBoundProgram("/tmp/test.blade");
         MirModule mir = CreateMirModule();
@@ -96,21 +98,21 @@ public class WriterAndSymbolTests
         ImagePlacement imagePlacement = ImagePlacer.Place(imagePlan);
         LayoutSolution layoutSolution = LayoutSolver.SolveStableLayouts(program, imagePlacement);
         CogResourceLayoutSet cogResourceLayouts = IrTestFactory.CreateEmptyCogResourceLayouts(imagePlan);
-        IrBuildResult build = new(program, imagePlan, imagePlacement, layoutSolution, cogResourceLayouts, mir, mir, lir, lir, asm, asm, "DAT\n");
+        CompilationOutput output = CreateCompilationOutput(
+            program,
+            new IrBuildResult(imagePlan, imagePlacement, layoutSolution, cogResourceLayouts, mir, mir, lir, lir, asm, asm, "DAT\n"),
+            diagnostics: []);
 
-        IReadOnlyList<DumpArtifact> dumps = DumpBundleBuilder.Build(new DumpSelection
-        {
-            DumpBound = true,
-        }, build);
+        IReadOnlyList<ReportSection> dumps = ReportSectionCatalog.BuildSections(output);
 
-        Assert.That(dumps.Select(static dump => dump.Id), Is.EqualTo(new[] { "bound", "images", "layout-solution" }));
-        Assert.That(dumps.Select(static dump => dump.FileName), Is.EqualTo(new[] { "00_bound.ir", "02_images.ir", "03_layout_solution.ir" }));
+        Assert.That(dumps.Take(3).Select(static dump => dump.Id), Is.EqualTo(new[] { "bound", "images", "layout-solution" }));
+        Assert.That(dumps.Take(3).Select(static dump => dump.FileName), Is.EqualTo(new[] { "00_bound.ir", "02_images.ir", "03_layout_solution.ir" }));
         Assert.That(dumps[1].Title, Is.EqualTo("Images"));
         Assert.That(dumps[2].Title, Is.EqualTo("Layout Solution"));
     }
 
     [Test]
-    public void DumpBundleBuilder_DumpMemoryMapAddsLateArtifact()
+    public void ReportSectionCatalog_AddsMemoryMapWhenLayoutAndCodegenStateExist()
     {
         CompilationResult compilation = CompilerDriver.Compile("""
             layout Shared {
@@ -122,22 +124,18 @@ public class WriterAndSymbolTests
             """, "<input>");
 
         Assert.That(compilation.Diagnostics, Is.Empty);
-        IrBuildResult build = Requires.NotNull(compilation.IrBuildResult);
+        IReadOnlyList<ReportSection> dumps = ReportSectionCatalog.BuildSections(compilation);
 
-        IReadOnlyList<DumpArtifact> dumps = DumpBundleBuilder.Build(new DumpSelection
-        {
-            DumpMemoryMap = true,
-        }, build);
-
-        Assert.That(dumps.Select(static dump => dump.Id), Is.EqualTo(new[] { "image-memory-maps" }));
-        Assert.That(dumps[0].FileName, Is.EqualTo("35_image_memory_maps.ir"));
-        Assert.That(dumps[0].Content, Does.Contain("; Image Memory Maps v1"));
-        Assert.That(dumps[0].Content, Does.Contain("shared hub"));
-        Assert.That(dumps[0].Content, Does.Contain("image main entry mode=Cog"));
+        ReportSection memoryMap = dumps.Single(static dump => dump.Id == "image-memory-maps");
+        Assert.That(memoryMap.FileName, Is.EqualTo("35_image_memory_maps.ir"));
+        string memoryMapText = memoryMap.RenderPlainText();
+        Assert.That(memoryMapText, Does.Contain("; Image Memory Maps v1"));
+        Assert.That(memoryMapText, Does.Contain("shared hub"));
+        Assert.That(memoryMapText, Does.Contain("image main entry mode=Cog"));
     }
 
     [Test]
-    public void DumpBundleBuilder_DumpMemoryMapCompressesFreeHubRows()
+    public void ReportSectionCatalog_CompressesFreeHubRowsInMemoryMap()
     {
         CompilationResult compilation = CompilerDriver.Compile("""
             layout Shared {
@@ -150,14 +148,9 @@ public class WriterAndSymbolTests
             """, "<input>");
 
         Assert.That(compilation.Diagnostics, Is.Empty);
-        IrBuildResult build = Requires.NotNull(compilation.IrBuildResult);
+        IReadOnlyList<ReportSection> dumps = ReportSectionCatalog.BuildSections(compilation);
 
-        IReadOnlyList<DumpArtifact> dumps = DumpBundleBuilder.Build(new DumpSelection
-        {
-            DumpMemoryMap = true,
-        }, build);
-
-        string content = dumps.Single().Content;
+        string content = dumps.Single(static dump => dump.Id == "image-memory-maps").RenderPlainText();
         string sharedHubSection = content[..content.IndexOf("\nimage ", StringComparison.Ordinal)];
         string imageSection = content[content.IndexOf("\nimage ", StringComparison.Ordinal)..];
         Assert.That(sharedHubSection, Does.Contain("addr    value        allocated"));
@@ -174,6 +167,13 @@ public class WriterAndSymbolTests
         Assert.That(imageSection, Does.Contain("$00B  free       -      -"));
         Assert.That(imageSection, Does.Contain("$1F0  reserved   -      -\n*\n$1FF  reserved   -      -"));
         Assert.That(imageSection, Does.Contain("lut\naddr  state      init   owner\n$000  free       -      -\n*\n$1FF  free       -      -"));
+    }
+
+    private static CompilationOutput CreateCompilationOutput(BoundProgram program, IrBuildResult stages, IReadOnlyList<Blade.Diagnostics.Diagnostic> diagnostics)
+    {
+        SourceText source = new(string.Empty, "/tmp/test.blade");
+        CompilationUnitSyntax syntax = new([], new Token(TokenKind.EndOfFile, Span, string.Empty));
+        return new CompilationOutput(source, syntax, program, stages, diagnostics, tokenCount: 0, CompilationStatus.Succeeded, crash: null);
     }
 
     [Test]
@@ -234,9 +234,9 @@ public class WriterAndSymbolTests
             ]),
         ]);
 
-        string mirText = MirTextWriter.Write(mir);
-        string lirText = LirTextWriter.Write(lir);
-        string asmText = AsmTextWriter.Write(asm);
+        string mirText = MirTextWriter.Write([mir]);
+        string lirText = LirTextWriter.Write([lir]);
+        string asmText = new ReportSection("asm", "ASM", "asm.ir", writer => AsmTextWriter.Write(writer, [asm])).RenderPlainText();
 
         Assert.That(mirText, Does.Contain("load.place"));
         Assert.That(mirText, Does.Contain("rep.setup"));

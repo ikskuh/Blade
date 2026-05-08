@@ -29,7 +29,8 @@ public class RegisterAllocatorTests
             ]),
         ]);
 
-        EmitResult emit = CodegenPipeline.Emit(CreateBuildResult(asmModule), new EmitOptions
+        IrBuildResult emit = CreateBuildResult(asmModule);
+        CodegenPipeline.Emit(emit, new EmitOptions
         {
             EnabledAsmirOptimizations = [OptimizationRegistry.GetAsmOptimization("cleanup-self-mov")!],
         });
@@ -53,7 +54,8 @@ public class RegisterAllocatorTests
             ]),
         ]);
 
-        EmitResult emit = CodegenPipeline.Emit(CreateBuildResult(asmModule), new EmitOptions
+        IrBuildResult emit = CreateBuildResult(asmModule);
+        CodegenPipeline.Emit(emit, new EmitOptions
         {
             EnabledAsmirOptimizations = [],
         });
@@ -86,13 +88,13 @@ public class RegisterAllocatorTests
 
     private static IrBuildResult CreateBuildResult(AsmModule asmModule)
     {
-        BoundProgram program = IrTestFactory.CreateBoundProgram("/tmp/test.blade");
         ImagePlan imagePlan = IrTestFactory.CreateImagePlanFromModule(asmModule);
+        BoundProgram program = IrTestFactory.CreateBoundProgram("/tmp/test.blade");
         ImagePlacement imagePlacement = ImagePlacer.Place(imagePlan);
         LayoutSolution layoutSolution = LayoutSolver.SolveStableLayouts(program, imagePlacement);
         CogResourceLayoutSet cogResourceLayouts = IrTestFactory.CreateSimpleCogResourceLayouts(asmModule, imagePlan, includeDefaultBladeHalt: false);
         MirModule mirModule = CreateMirModule();
         LirModule lirModule = CreateLirModule();
-        return new IrBuildResult(program, imagePlan, imagePlacement, layoutSolution, cogResourceLayouts, mirModule, mirModule, lirModule, lirModule, asmModule, asmModule, string.Empty);
+        return new IrBuildResult(imagePlan, imagePlacement, layoutSolution, cogResourceLayouts, mirModule, mirModule, lirModule, lirModule, asmModule, asmModule, string.Empty);
     }
 }

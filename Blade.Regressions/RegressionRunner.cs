@@ -13,6 +13,7 @@ using Blade;
 using Blade.Diagnostics;
 using Blade.HwTestRunner;
 using Blade.IR;
+using Blade.Reports;
 using Blade.Source;
 
 namespace Blade.Regressions;
@@ -646,7 +647,7 @@ public static class RegressionRunner
         RegressionIrCoverageSession? irCoverageSession)
     {
         CompilationOptions options = BuildCompilationOptions(configuration.HardwareRuntimePath, fixture.Expectation, fixture.AbsolutePath);
-        CompilationResult compilation = CompilerDriver.Compile(fixture.Text, fixture.AbsolutePath, options);
+        CompilationOutput compilation = CompilerDriver.Compile(fixture.Text, fixture.AbsolutePath, options);
         List<ActualDiagnostic> diagnostics = compilation.Diagnostics
             .Select(diag =>
             {
@@ -656,36 +657,24 @@ public static class RegressionRunner
             .ToList();
 
         Dictionary<RegressionStage, string> stageOutputs = [];
-        if (compilation.IrBuildResult is not null)
+        if (compilation.Stages.AssemblyText is not null)
         {
-            irCoverageSession?.Record(compilation.IrBuildResult);
-            IReadOnlyList<DumpArtifact> dumps = DumpBundleBuilder.Build(
-                new DumpSelection
-                {
-                    DumpBound = true,
-                    DumpMirPreOptimization = true,
-                    DumpMir = true,
-                    DumpLirPreOptimization = true,
-                    DumpLir = true,
-                    DumpAsmirPreOptimization = true,
-                    DumpAsmir = true,
-                    DumpFinalAsm = true,
-                },
-                compilation.IrBuildResult);
-            stageOutputs[RegressionStage.Bound] = dumps.Single(static dump => dump.FileName == "00_bound.ir").Content;
-            stageOutputs[RegressionStage.MirPreOptimization] = dumps.Single(static dump => dump.FileName == "05_mir_preopt.ir").Content;
-            stageOutputs[RegressionStage.Mir] = dumps.Single(static dump => dump.FileName == "10_mir.ir").Content;
-            stageOutputs[RegressionStage.LirPreOptimization] = dumps.Single(static dump => dump.FileName == "15_lir_preopt.ir").Content;
-            stageOutputs[RegressionStage.Lir] = dumps.Single(static dump => dump.FileName == "20_lir.ir").Content;
-            stageOutputs[RegressionStage.AsmirPreOptimization] = dumps.Single(static dump => dump.FileName == "25_asmir_preopt.ir").Content;
-            stageOutputs[RegressionStage.Asmir] = dumps.Single(static dump => dump.FileName == "30_asmir.ir").Content;
-            stageOutputs[RegressionStage.FinalAsm] = dumps.Single(static dump => dump.FileName == "40_final.spin2").Content;
+            irCoverageSession?.Record(compilation);
+            IReadOnlyList<ReportSection> dumps = ReportSectionCatalog.BuildSections(compilation);
+            stageOutputs[RegressionStage.Bound] = dumps.Single(static dump => dump.FileName == "00_bound.ir").RenderPlainText();
+            stageOutputs[RegressionStage.MirPreOptimization] = dumps.Single(static dump => dump.FileName == "05_mir_preopt.ir").RenderPlainText();
+            stageOutputs[RegressionStage.Mir] = dumps.Single(static dump => dump.FileName == "10_mir.ir").RenderPlainText();
+            stageOutputs[RegressionStage.LirPreOptimization] = dumps.Single(static dump => dump.FileName == "15_lir_preopt.ir").RenderPlainText();
+            stageOutputs[RegressionStage.Lir] = dumps.Single(static dump => dump.FileName == "20_lir.ir").RenderPlainText();
+            stageOutputs[RegressionStage.AsmirPreOptimization] = dumps.Single(static dump => dump.FileName == "25_asmir_preopt.ir").RenderPlainText();
+            stageOutputs[RegressionStage.Asmir] = dumps.Single(static dump => dump.FileName == "30_asmir.ir").RenderPlainText();
+            stageOutputs[RegressionStage.FinalAsm] = compilation.Stages.AssemblyText;
         }
 
         return new EvaluatedFixture(
             diagnostics,
             stageOutputs,
-            compilation.IrBuildResult?.AssemblyText,
+            compilation.Stages.AssemblyText,
             fixture.BodyText,
             null);
     }

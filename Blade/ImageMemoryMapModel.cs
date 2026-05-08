@@ -63,9 +63,15 @@ internal static class ImageMemoryMapModelBuilder
 
     private readonly record struct HubByteCell(HubByteKind Kind, byte Value, string Owner);
 
-    public static ImageMemoryMapModel Build(IrBuildResult buildResult)
+    public static ImageMemoryMapModel Build(CompilationStageOutput buildResult)
     {
         Requires.NotNull(buildResult);
+        Assert.Invariant(buildResult.MirModules is not null, "MIR modules are required for memory-map reporting.");
+        Assert.Invariant(buildResult.ImagePlan is not null, "Image plan is required for memory-map reporting.");
+        Assert.Invariant(buildResult.ImagePlacement is not null, "Image placement is required for memory-map reporting.");
+        Assert.Invariant(buildResult.LayoutSolution is not null, "Layout solution is required for memory-map reporting.");
+        Assert.Invariant(buildResult.CogResourceLayouts is not null, "COG resource layouts are required for memory-map reporting.");
+        Assert.Invariant(buildResult.AsmModules is not null, "ASMIR modules are required for memory-map reporting.");
 
         Dictionary<GlobalVariableSymbol, RuntimeBladeValue> initialValues = CollectInitialValues(buildResult.MirModules);
         IReadOnlyList<LayoutSymbol> sharedHubLayouts = CollectSharedHubLayouts(buildResult.ImagePlan);

@@ -14,20 +14,7 @@ internal static class CommandLineParser
         }
 
         string? filePath = null;
-        string? dumpDirectory = null;
-        bool dumpBound = false;
-        bool dumpMirPreOptimization = false;
-        bool dumpMir = false;
-        bool dumpLirPreOptimization = false;
-        bool dumpLir = false;
-        bool dumpAsmirPreOptimization = false;
-        bool dumpAsmir = false;
-        bool dumpMemoryMap = false;
-        bool dumpFinalAsm = false;
-        bool dumpAll = false;
-        bool json = false;
-        bool emitMetrics = false;
-        string? outputPath = null;
+        List<ReportTarget> reportTargets = [];
         List<string> compilerArgs = [];
 
         for (int i = 0; i < args.Length; i++)
@@ -35,81 +22,35 @@ internal static class CommandLineParser
             string arg = args[i];
             switch (arg)
             {
-                case "--dump-bound":
-                    dumpBound = true;
-                    break;
-
-                case "--dump-mir":
-                    dumpMir = true;
-                    break;
-
-                case "--dump-mir-preopt":
-                    dumpMirPreOptimization = true;
-                    break;
-
-                case "--dump-lir":
-                    dumpLir = true;
-                    break;
-
-                case "--dump-lir-preopt":
-                    dumpLirPreOptimization = true;
-                    break;
-
-                case "--dump-asmir":
-                    dumpAsmir = true;
-                    break;
-
-                case "--dump-asmir-preopt":
-                    dumpAsmirPreOptimization = true;
-                    break;
-
-                case "--dump-mmap":
-                    dumpMemoryMap = true;
-                    break;
-
-                case "--dump-final-asm":
-                    dumpFinalAsm = true;
-                    break;
-
-                case "--dump-all":
-                    dumpAll = true;
-                    break;
-
-                case "--json":
-                    json = true;
-                    break;
-
-                case "--metrics":
-                    emitMetrics = true;
-                    break;
-
                 case string value when CompilationOptionsCommandLine.IsCompilationOption(value):
                     compilerArgs.Add(value);
                     break;
 
-                case "--dump-dir":
+                case "--report":
                     if (i + 1 >= args.Length)
                     {
-                        Console.Error.WriteLine("error: missing value for --dump-dir");
+                        Console.Error.WriteLine("error: missing value for --report");
                         return null;
                     }
 
-                    dumpDirectory = args[++i];
-                    break;
-
-                case "--output":
-                    if (i + 1 >= args.Length)
+                    if (!TryParseReportTarget(args[++i], out ReportTarget? reportTarget, out string? reportError))
                     {
-                        Console.Error.WriteLine("error: missing value for --output");
+                        Console.Error.WriteLine(reportError);
                         return null;
                     }
 
-                    outputPath = args[++i];
+                    reportTargets.Add(reportTarget!);
                     break;
 
                 default:
                     if (arg.StartsWith("--", StringComparison.Ordinal))
                     {
+                        if (IsRemovedReportOption(arg))
+                        {
+                            Console.Error.WriteLine($"error: option '{arg}' has been removed; use --report <text|html|json>,<path> instead.");
+                            return null;
+                        }
+
                         Console.Error.WriteLine($"error: unknown option '{arg}'");
                         PrintUsage();
                         return null;
@@ -139,47 +80,23 @@ internal static class CommandLineParser
             return null;
         }
 
-        if (dumpAll)
+        int stdoutReportCount = 0;
+        foreach (ReportTarget reportTarget in reportTargets)
         {
-            dumpBound = true;
-            dumpMirPreOptimization = true;
-            dumpMir = true;
-            dumpLirPreOptimization = true;
-            dumpLir = true;
-            dumpAsmirPreOptimization = true;
-            dumpAsmir = true;
-            dumpMemoryMap = true;
-            dumpFinalAsm = true;
+            if (reportTarget.Path == "-")
+                stdoutReportCount++;
         }
 
-        if (dumpDirectory is not null && json)
+        if (stdoutReportCount > 1)
         {
-            Console.Error.WriteLine("error: --json cannot be combined with --dump-dir");
-            return null;
-        }
-
-        if (dumpDirectory is not null && outputPath is not null)
-        {
-            Console.Error.WriteLine("error: --output cannot be combined with --dump-dir");
+            Console.Error.WriteLine("error: only one --report target may write to stdout ('-').");
             return null;
         }
 
         return new CommandLineOptions
         {
             FilePath = filePath,
-            DumpBound = dumpBound,
-            DumpMirPreOptimization = dumpMirPreOptimization,
-            DumpMir = dumpMir,
-            DumpLirPreOptimization = dumpLirPreOptimization,
-            DumpLir = dumpLir,
-            DumpAsmirPreOptimization = dumpAsmirPreOptimization,
-            DumpAsmir = dumpAsmir,
-            DumpMemoryMap = dumpMemoryMap,
-            DumpFinalAsm = dumpFinalAsm,
-            DumpDirectory = dumpDirectory,
-            Json = json,
-            EmitMetrics = emitMetrics,
-            OutputPath = outputPath,
+            ReportTargets = reportTargets,
             EnableSingleCallsiteInlining = compilerOptions.EnableSingleCallsiteInlining,
             EnabledMirOptimizations = compilerOptions.EnabledMirOptimizations,
             EnabledLirOptimizations = compilerOptions.EnabledLirOptimizations,
@@ -194,25 +111,74 @@ internal static class CommandLineParser
     {
         Console.Error.WriteLine("Usage: blade <file.blade> [options]");
         Console.Error.WriteLine("Options:");
-        Console.Error.WriteLine("  --dump-bound");
-        Console.Error.WriteLine("  --dump-mir-preopt");
-        Console.Error.WriteLine("  --dump-mir");
-        Console.Error.WriteLine("  --dump-lir-preopt");
-        Console.Error.WriteLine("  --dump-lir");
-        Console.Error.WriteLine("  --dump-asmir-preopt");
-        Console.Error.WriteLine("  --dump-asmir");
-        Console.Error.WriteLine("  --dump-mmap");
-        Console.Error.WriteLine("  --dump-final-asm");
-        Console.Error.WriteLine("  --dump-all");
-        Console.Error.WriteLine("  --dump-dir <path>");
-        Console.Error.WriteLine("  --json");
-        Console.Error.WriteLine("  --metrics");
-        Console.Error.WriteLine("  --output <file>");
+        Console.Error.WriteLine("  --report <text|html|json>,<path>");
         Console.Error.WriteLine("  --comptime-fuel=<positive-integer>");
         Console.Error.WriteLine("  -fmir-opt=<csv> / -fno-mir-opt=<csv>");
         Console.Error.WriteLine("  -flir-opt=<csv> / -fno-lir-opt=<csv>");
         Console.Error.WriteLine("  -fasmir-opt=<csv> / -fno-asmir-opt=<csv>");
         Console.Error.WriteLine("  --module=<name>=<path>");
         Console.Error.WriteLine("  --runtime=<path>");
+    }
+
+    private static bool IsRemovedReportOption(string arg)
+    {
+        return arg is "--dump-bound"
+            or "--dump-mir-preopt"
+            or "--dump-mir"
+            or "--dump-lir-preopt"
+            or "--dump-lir"
+            or "--dump-asmir-preopt"
+            or "--dump-asmir"
+            or "--dump-mmap"
+            or "--dump-final-asm"
+            or "--dump-all"
+            or "--dump-dir"
+            or "--output"
+            or "--json"
+            or "--metrics";
+    }
+
+    private static bool TryParseReportTarget(string value, out ReportTarget? reportTarget, out string? error)
+    {
+        Requires.NotNull(value);
+
+        int separatorIndex = value.IndexOf(',', StringComparison.Ordinal);
+        if (separatorIndex <= 0 || separatorIndex == value.Length - 1)
+        {
+            reportTarget = null;
+            error = $"error: invalid --report target '{value}'; expected <text|html|json>,<path>.";
+            return false;
+        }
+
+        string formatText = value[..separatorIndex];
+        string path = value[(separatorIndex + 1)..];
+        if (path.Length == 0)
+        {
+            reportTarget = null;
+            error = $"error: invalid --report target '{value}'; missing output path.";
+            return false;
+        }
+
+        ReportFormat format;
+        switch (formatText)
+        {
+            case "text":
+                format = ReportFormat.Text;
+                break;
+            case "html":
+                format = ReportFormat.Html;
+                break;
+            case "json":
+                format = ReportFormat.Json;
+                break;
+            default:
+                reportTarget = null;
+                error = $"error: unknown report format '{formatText}'.";
+                return false;
+        }
+
+        reportTarget = new ReportTarget(format, path);
+        error = null;
+        return true;
     }
 }

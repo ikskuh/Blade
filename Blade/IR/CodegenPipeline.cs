@@ -7,9 +7,16 @@ namespace Blade.IR;
 
 public static class CodegenPipeline
 {
-    public static EmitResult Emit(IrBuildResult buildResult, EmitOptions? options = null, DiagnosticBag? diagnostics = null)
+    /// <summary>
+    /// Completes code generation for the supplied backend stage output.
+    /// </summary>
+    public static void Emit(CompilationStageOutput buildResult, EmitOptions? options = null, DiagnosticBag? diagnostics = null)
     {
         Requires.NotNull(buildResult);
+        Assert.Invariant(buildResult.AsmModules is not null, "ASMIR modules must be populated before code generation.");
+        Assert.Invariant(buildResult.ImagePlan is not null, "Image plan must be populated before code generation.");
+        Assert.Invariant(buildResult.ImagePlacement is not null, "Image placement must be populated before code generation.");
+        Assert.Invariant(buildResult.LayoutSolution is not null, "Layout solution must be populated before code generation.");
 
         options ??= new EmitOptions();
         List<AsmModule> asmModules = buildResult.AsmModules.ToList();
@@ -36,7 +43,12 @@ public static class CodegenPipeline
             includeDefaultBladeHalt: true,
             diagnostics);
         if (diagnostics?.HasErrors == true)
-            return new EmitResult(asmModules, cogResourceLayouts, string.Empty);
+        {
+            buildResult.AsmModules = asmModules;
+            buildResult.CogResourceLayouts = cogResourceLayouts;
+            buildResult.AssemblyText = null;
+            return;
+        }
 
         // Register allocation: virtual → physical
         if (options.EnableRegisterAllocation)
@@ -64,7 +76,8 @@ public static class CodegenPipeline
             }
         }
 
-        FinalAssembly finalAssembly = FinalAssemblyWriter.Build(asmModules, cogResourceLayouts);
-        return new EmitResult(asmModules, cogResourceLayouts, finalAssembly.Text);
+        buildResult.AsmModules = asmModules;
+        buildResult.CogResourceLayouts = cogResourceLayouts;
+        buildResult.AssemblyText = FinalAssemblyWriter.Write(asmModules, cogResourceLayouts);
     }
 }

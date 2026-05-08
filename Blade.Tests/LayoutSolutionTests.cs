@@ -32,8 +32,8 @@ public class LayoutSolutionTests
 
         Assert.That(result.Diagnostics, Is.Empty, string.Join(Environment.NewLine, result.Diagnostics));
 
-        Assert.That(result.IrBuildResult, Is.Not.Null);
-        IrBuildResult build = result.IrBuildResult!;
+        Assert.That(result.Stages.AssemblyText, Is.Not.Null);
+        IrBuildResult build = result.Stages;
         LayoutSolution solution = build.LayoutSolution;
         ImagePlacement placement = build.ImagePlacement;
 
@@ -79,7 +79,7 @@ public class LayoutSolutionTests
 
         Assert.That(result.Diagnostics, Is.Empty, string.Join(Environment.NewLine, result.Diagnostics));
 
-        IrBuildResult build = Requires.NotNull(result.IrBuildResult);
+        IrBuildResult build = result.Stages;
         LayoutSlot pair = build.LayoutSolution.Slots.Single(slot => slot.Symbol.Name == "pair");
         LayoutSlot head = build.LayoutSolution.Slots.Single(slot => slot.Symbol.Name == "head");
 
