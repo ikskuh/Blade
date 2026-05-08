@@ -98,7 +98,7 @@ public static class CompilerDriver
                 IrPipeline.Build(boundProgram, stages, pipelineOptions, diagnostics);
             }
 
-            CompilationStatus status = !diagnostics.HasErrors && (!effectiveOptions.EmitIr || stages.AssemblyText is not null)
+            CompilationStatus status = !diagnostics.HasErrors && (!effectiveOptions.EmitIr || stages.IsComplete)
                 ? CompilationStatus.Succeeded
                 : CompilationStatus.Failed;
             return CreateCompilationOutput(source, unit, boundProgram, stages, diagnostics.ToList(), loadedCompilation.RootModule.TokenCount, status, crash: null);

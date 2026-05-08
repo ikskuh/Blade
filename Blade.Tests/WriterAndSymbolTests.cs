@@ -10,6 +10,7 @@ using Blade.Source;
 using Blade.Syntax;
 using Blade.Syntax.Nodes;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 
 namespace Blade.Tests;
@@ -82,9 +83,11 @@ public class WriterAndSymbolTests
             new IrBuildResult(imagePlan, imagePlacement, layoutSolution, cogResourceLayouts, mir, mir, lir, lir, asm, asm, "DAT\n"),
             diagnostics: []);
 
-        IReadOnlyList<object> dumps = ReportSectionCatalog.BuildSections(output).Cast<object>().ToList();
+        IReadOnlyList<ReportSection> sections = ReportSectionCatalog.BuildSections(output);
+        ReportSection finalAssembly = sections.Single(static section => section.Id == "final-asm");
 
-        Assert.That(output.Stages.AssemblyText, Is.EqualTo("DAT\n"));
+        Assert.That(finalAssembly.FileName, Is.EqualTo("40_final.spin2"));
+        Assert.That(finalAssembly.RenderPlainText(), Does.Contain("DAT"));
     }
 
     [Test]
@@ -234,8 +237,8 @@ public class WriterAndSymbolTests
             ]),
         ]);
 
-        string mirText = MirTextWriter.Write([mir]);
-        string lirText = LirTextWriter.Write([lir]);
+        string mirText = RenderMirText([mir]);
+        string lirText = RenderLirText([lir]);
         string asmText = new ReportSection("asm", "ASM", "asm.ir", writer => AsmTextWriter.Write(writer, [asm])).RenderPlainText();
 
         Assert.That(mirText, Does.Contain("load.place"));
@@ -251,6 +254,20 @@ public class WriterAndSymbolTests
         Assert.That(asmText, Does.Contain("IF_C ADD %r0, #5 WCZ=(%f1, %f2)"));
         Assert.That(asmText, Does.Contain("BITC %r0, #0 C=%f3"));
         Assert.That(asmText, Does.Contain("MOV %r0, #1"));
+    }
+
+    private static string RenderMirText(IReadOnlyList<MirModule> modules)
+    {
+        using StringWriter writer = new();
+        MirTextWriter.Write(new PlainTextReportBuilder(writer), modules);
+        return writer.ToString();
+    }
+
+    private static string RenderLirText(IReadOnlyList<LirModule> modules)
+    {
+        using StringWriter writer = new();
+        LirTextWriter.Write(new PlainTextReportBuilder(writer), modules);
+        return writer.ToString();
     }
 
     [Test]

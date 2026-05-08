@@ -526,3 +526,6 @@ Eliminate equal parts of the IR tree
 ## MIR/LIR/ASMIR Validator
  
 Implement a validator that checks if IR code is valid between all stages.
+
+
+## Miscompilation: `rep loop` gets compiled to `JMP` loop

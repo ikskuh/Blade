@@ -657,7 +657,10 @@ public static class RegressionRunner
             .ToList();
 
         Dictionary<RegressionStage, string> stageOutputs = [];
-        if (compilation.Stages.AssemblyText is not null)
+        string? assemblyText = compilation.Status == CompilationStatus.Succeeded && compilation.Stages.IsComplete
+            ? compilation.Stages.RenderAssemblyText()
+            : null;
+        if (assemblyText is not null)
         {
             irCoverageSession?.Record(compilation);
             IReadOnlyList<ReportSection> dumps = ReportSectionCatalog.BuildSections(compilation);
@@ -668,13 +671,13 @@ public static class RegressionRunner
             stageOutputs[RegressionStage.Lir] = dumps.Single(static dump => dump.FileName == "20_lir.ir").RenderPlainText();
             stageOutputs[RegressionStage.AsmirPreOptimization] = dumps.Single(static dump => dump.FileName == "25_asmir_preopt.ir").RenderPlainText();
             stageOutputs[RegressionStage.Asmir] = dumps.Single(static dump => dump.FileName == "30_asmir.ir").RenderPlainText();
-            stageOutputs[RegressionStage.FinalAsm] = compilation.Stages.AssemblyText;
+            stageOutputs[RegressionStage.FinalAsm] = assemblyText;
         }
 
         return new EvaluatedFixture(
             diagnostics,
             stageOutputs,
-            compilation.Stages.AssemblyText,
+            assemblyText,
             fixture.BodyText,
             null);
     }

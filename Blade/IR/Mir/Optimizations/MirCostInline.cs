@@ -8,6 +8,6 @@ public sealed class MirCostInline : IMirOptimization
         Requires.NotNull(input);
 
         MirModule result = MirInliner.InlineCostBased(input, inlineCostThreshold: 12);
-        return MirTextWriter.Write(result) != MirTextWriter.Write(input) ? result : null;
+        return result.StructurallyEqualTo(input) ? null : result;
     }
 }

@@ -1,7 +1,11 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Runtime.InteropServices;
 using Blade.IR.Asm;
 using Blade.IR.Lir;
 using Blade.IR.Mir;
+using Blade.Reports;
 
 namespace Blade.IR;
 
@@ -60,8 +64,39 @@ public sealed class CompilationStageOutput
     /// </summary>
     public IReadOnlyList<AsmModule>? AsmModules { get; set; }
 
+    public bool IsComplete => this.AsmModules is not null
+                           && this.CogResourceLayouts is not null
+                           ;
+
     /// <summary>
-    /// Gets or sets the emitted final assembly text.
+    /// Renders the compilation output into the final assembly text.
     /// </summary>
-    public string? AssemblyText { get; set; }
+    /// <returns></returns>
+    public string RenderAssemblyText()
+    {
+        using var sw = new StringWriter();
+        this.RenderAssemblyText(sw);
+        return sw.ToString();
+    }
+
+    /// <summary>
+    /// Renders the compilation output into the final assembly text.
+    /// </summary>
+    /// <returns></returns>
+    public void RenderAssemblyText(TextWriter writer)
+    {
+        Requires.NotNull(writer);
+        this.RenderAssemblyText(new PlainTextReportBuilder(writer));
+        writer.Flush();
+    }
+
+    public void RenderAssemblyText(ITextReportBuilder writer)
+    {
+        Requires.NotNull(writer);
+        if (this.AsmModules == null || this.CogResourceLayouts == null)
+            throw new InvalidOperationException("Can only render the final assembly text when the output is complete.");
+
+        FinalAssemblyWriter.Write(writer, this.AsmModules, this.CogResourceLayouts);
+    }
+
 }

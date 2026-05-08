@@ -26,26 +26,6 @@ public static class LirTextWriter
         writer.WriteModules(modules);
     }
 
-    /// <summary>
-    /// Renders one LIR module as plain text.
-    /// </summary>
-    public static string Write(LirModule module)
-    {
-        Requires.NotNull(module);
-        return Write([module]);
-    }
-
-    /// <summary>
-    /// Renders the supplied modules as plain text.
-    /// </summary>
-    public static string Write(IReadOnlyList<LirModule> modules)
-    {
-        Requires.NotNull(modules);
-
-        StringBuilder builder = new();
-        Write(new PlainTextReportBuilder(builder), modules);
-        return builder.ToString();
-    }
 
     private sealed class Writer(ITextReportBuilder builder) : TextReportBuilderBase(builder)
     {
@@ -77,7 +57,7 @@ public static class LirTextWriter
             {
                 if (i > 0)
                     Append(',', ' ');
-                Append((TypeName, function.ReturnTypes[i], function.ReturnTypes[i].Name));
+                AppendType(function.ReturnTypes[i]);
             }
 
             AppendLine(')');
@@ -101,7 +81,7 @@ public static class LirTextWriter
                 LirBlockParameter parameter = block.Parameters[i];
                 WriteValue(parameter.Value, formatter);
                 Append(':');
-                Append(TypeName, parameter.Type, parameter.Type.Name);
+                AppendType(parameter.Type);
                 Append(' ');
                 Append(VariableName, parameter, parameter.Name);
             }
@@ -128,7 +108,7 @@ public static class LirTextWriter
                 WriteValue(destination, formatter);
                 Append(':');
                 if (instruction.ResultType is not null)
-                    Append(TypeName, instruction.ResultType, instruction.ResultType.Name);
+                    AppendType(instruction.ResultType);
                 else
                     Append(Literal, "<unknown>");
                 Append(' ', '=', ' ');
@@ -250,7 +230,8 @@ public static class LirTextWriter
                     return;
 
                 case LirImmediateOperand immediate:
-                    Append((Literal, immediate.Value.Format()), ':', (TypeName, immediate.Type, immediate.Type.Name));
+                    Append((Literal, immediate.Value.Format()), ':');
+                    AppendType(immediate.Type);
                     return;
 
                 case LirPlaceOperand place:

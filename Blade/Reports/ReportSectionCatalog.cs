@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using Blade.IR;
@@ -40,7 +41,7 @@ public sealed class ReportSection(string id, string title, string fileName, Acti
     /// </summary>
     public string RenderPlainText()
     {
-        StringBuilder sb = new();
+        using StringWriter sb = new();
         Emit(new PlainTextReportBuilder(sb));
         return sb.ToString();
     }
@@ -66,7 +67,8 @@ public static class ReportSectionCatalog
         AddLirSection(sections, "lir", "LIR", "20_lir.ir", output.Stages.LirModules);
         AddAsmSection(sections, "asmir-preopt", "ASMIR (Preopt)", "25_asmir_preopt.ir", output.Stages.PreOptimizationAsmModules);
         AddAsmSection(sections, "asmir", "ASMIR", "30_asmir.ir", output.Stages.AsmModules);
-        AddMemoryMapSection(sections, output.Stages);
+        AddMemoryMapSection(sections, output);
+        AddFinalAssemblySection(sections, output);
         return sections;
     }
 
@@ -106,8 +108,12 @@ public static class ReportSectionCatalog
         sections.Add(new ReportSection(id, title, fileName, writer => AsmTextWriter.Write(writer, modules)));
     }
 
-    private static void AddMemoryMapSection(List<ReportSection> sections, Blade.IR.CompilationStageOutput stages)
+    private static void AddMemoryMapSection(List<ReportSection> sections, CompilationOutput output)
     {
+        if (output.Status != CompilationStatus.Succeeded)
+            return;
+
+        Blade.IR.CompilationStageOutput stages = output.Stages;
         if (stages.ImagePlan is null
             || stages.ImagePlacement is null
             || stages.LayoutSolution is null
@@ -128,6 +134,18 @@ public static class ReportSectionCatalog
         }
 
         sections.Add(new ReportSection("image-memory-maps", "Image Memory Maps", "35_image_memory_maps.ir", writer => ImageMemoryMapDumpWriter.Write(writer, stages)));
+    }
+
+    private static void AddFinalAssemblySection(List<ReportSection> sections, CompilationOutput output)
+    {
+        if (output.Status != CompilationStatus.Succeeded)
+            return;
+
+        Blade.IR.CompilationStageOutput stages = output.Stages;
+        if (!stages.IsComplete)
+            return;
+
+        sections.Add(new ReportSection("final-asm", "Final Assembly", "40_final.spin2", stages.RenderAssemblyText));
     }
 
 }

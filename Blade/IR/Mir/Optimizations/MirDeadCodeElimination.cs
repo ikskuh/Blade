@@ -68,7 +68,7 @@ public sealed class MirDeadCodeElimination : IMirOptimization
         }
 
         MirModule result = new(input.Image, input.StoragePlaces, input.StorageDefinitions, functions);
-        return MirTextWriter.Write(result) != MirTextWriter.Write(input) ? result : null;
+        return result.StructurallyEqualTo(input) ? null : result;
     }
 
     private static (IReadOnlyDictionary<MirBlockRef, HashSet<MirValueId>> LiveIn, IReadOnlyDictionary<MirBlockRef, HashSet<MirValueId>> LiveOut)

@@ -1,6 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Globalization;
+using Blade.Semantics;
+
+using static Blade.Reports.BasicTextSpanKind;
+using static Blade.Reports.SemanticTextSpanKind;
 
 namespace Blade.Reports;
 
@@ -22,7 +27,7 @@ public abstract class TextReportBuilderBase(ITextReportBuilder builder)
         public static Span FromChar(char chr) => chr switch
         {
             _ when char.IsWhiteSpace(chr) => new BasicSpan(BasicTextSpanKind.Whitespace, chr.ToString()),
-            _ when "()[]{},.:+-*/%&|^~!=<>?".Contains(chr, StringComparison.Ordinal) => new BasicSpan(BasicTextSpanKind.Punctuation, chr.ToString()),
+            _ when "()[]{},.:+-*/%&|^~!=<>?@#".Contains(chr, StringComparison.Ordinal) => new BasicSpan(BasicTextSpanKind.Punctuation, chr.ToString()),
             _ => Assert.UnreachableValue<Span>($"No implicit conversion defined for character '{chr}'."),
         };
 
@@ -77,6 +82,69 @@ public abstract class TextReportBuilderBase(ITextReportBuilder builder)
     }
 
     /// <summary>
+    /// Appends a Blade type using structured spans instead of flattening complex syntax into one token.
+    /// </summary>
+    protected void AppendType(BladeType type)
+    {
+        Requires.NotNull(type);
+
+        switch (type)
+        {
+            case PointerLikeTypeSymbol pointer:
+                if (pointer is MultiPointerTypeSymbol)
+                    Append('[', '*', ']');
+                else
+                    Append('*');
+
+                AppendStorageClass(pointer.StorageClass);
+                if (pointer.IsConst)
+                    Append((Keyword, "const"), ' ');
+                if (pointer.IsVolatile)
+                    Append((Keyword, "volatile"), ' ');
+                if (pointer.Alignment is int knownAlignment)
+                {
+                    Append((Keyword, "align"), '(', (Literal, knownAlignment.ToString(CultureInfo.InvariantCulture)), ')', ' ');
+                }
+
+                AppendType(pointer.PointeeType);
+                return;
+
+            case ArrayTypeSymbol array:
+                Append('[');
+                if (array.Length is int knownLength)
+                    Append((Literal, knownLength.ToString(CultureInfo.InvariantCulture)));
+                Append(']');
+                AppendType(array.ElementType);
+                return;
+
+            case TypeValueTypeSymbol typeValue:
+                Append((Keyword, "type"), ' ');
+                AppendType(typeValue.ReferencedType);
+                return;
+
+            case FunctionTypeSymbol functionType:
+                Append((Keyword, "fn"), ' ', (FunctionName, functionType.Function, functionType.Function.Name));
+                return;
+
+            case LayoutTypeSymbol layoutType:
+                Append((Keyword, "layout"), ' ', (TypeName, layoutType, layoutType.Layout.Name));
+                return;
+
+            case TaskTypeSymbol taskType:
+                Append((Keyword, "task"), ' ', (TaskName, taskType.Task, taskType.Task.Name));
+                return;
+
+            case ModuleTypeSymbol moduleType:
+                Append((Keyword, "module"), ' ', (TypeName, moduleType, moduleType.Module.Name));
+                return;
+
+            default:
+                Append((TypeName, type, type.Name));
+                return;
+        }
+    }
+
+    /// <summary>
     /// Appends one styled text span.
     /// </summary>
     protected void Append(BasicTextSpanKind kind, string text)
@@ -125,6 +193,28 @@ public abstract class TextReportBuilderBase(ITextReportBuilder builder)
     {
         this.Append(kind, identity, text);
         this.NewLine();
+    }
+
+    private void AppendStorageClass(AddressSpace storageClass)
+    {
+        switch (storageClass)
+        {
+            case AddressSpace.Cog:
+                Append((Keyword, "cog"), ' ');
+                return;
+
+            case AddressSpace.Lut:
+                Append((Keyword, "lut"), ' ');
+                return;
+
+            case AddressSpace.Hub:
+                Append((Keyword, "hub"), ' ');
+                return;
+
+            default:
+                Assert.Unreachable($"Unexpected pointer storage class '{storageClass}'."); // pragma: force-coverage
+                return; // pragma: force-coverage
+        }
     }
 
     /// <summary>

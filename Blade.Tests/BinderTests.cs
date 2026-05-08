@@ -1,7 +1,9 @@
+using System.IO;
 using System.Linq;
 using System.Text;
 using Blade;
 using Blade.Diagnostics;
+using Blade.Reports;
 using Blade.Source;
 using Blade.Semantics;
 using Blade.Semantics.Bound;
@@ -120,13 +122,20 @@ public class BinderTests
         return program.Functions.Single(member => member.Symbol.Name == name);
     }
 
+    private static string RenderBoundTree(BoundProgram program)
+    {
+        using StringWriter writer = new();
+        BoundTreeWriter.Write(new PlainTextReportBuilder(writer), program);
+        return writer.ToString();
+    }
+
     [Test]
     public void TypedAssignment_InsertsImplicitConversionForIntegerLiteral()
     {
         (_, BoundProgram program, IReadOnlyList<Diagnostic> diagnostics) = Bind("cog var x: u32 = 0; x = 1;");
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
-        string dump = BoundTreeWriter.Write(program);
+        string dump = RenderBoundTree(program);
         Assert.That(dump, Does.Contain("Literal<u32> 1"));
     }
 
@@ -141,7 +150,7 @@ public class BinderTests
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
-        string dump = BoundTreeWriter.Write(program);
+        string dump = RenderBoundTree(program);
         Assert.That(dump, Does.Contain("Literal<u32> 3"));
     }
 
@@ -656,7 +665,7 @@ public class BinderTests
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
-        string dump = BoundTreeWriter.Write(program);
+        string dump = RenderBoundTree(program);
         Assert.That(dump, Does.Contain("Asm [Volatile]"));
     }
 
@@ -869,7 +878,7 @@ public class BinderTests
             """);
 
         Assert.That(diagnostics.Any(d => d.Code == "E0106"), Is.True);
-        string dump = BoundTreeWriter.Write(program);
+        string dump = RenderBoundTree(program);
         Assert.That(dump, Does.Contain("TargetError"));
     }
 
@@ -922,7 +931,7 @@ public class BinderTests
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
-        string dump = BoundTreeWriter.Write(program);
+        string dump = RenderBoundTree(program);
         Assert.That(dump, Does.Contain("Literal<Mode> 1"));
     }
 
@@ -939,7 +948,7 @@ public class BinderTests
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
-        string dump = BoundTreeWriter.Write(program);
+        string dump = RenderBoundTree(program);
         Assert.That(dump, Does.Contain("Literal<Mode> 1"));
     }
 
@@ -955,7 +964,7 @@ public class BinderTests
             """);
 
         Assert.That(diagnostics.Any(d => d.Code == "E0232"), Is.True);
-        string dump = BoundTreeWriter.Write(program);
+        string dump = RenderBoundTree(program);
         Assert.That(dump, Does.Contain("ErrorExpr"));
     }
 
@@ -1160,7 +1169,7 @@ public class BinderTests
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
-        string dump = BoundTreeWriter.Write(program);
+        string dump = RenderBoundTree(program);
         Assert.That(dump, Does.Contain("Member<u32> .lo"));
     }
 
@@ -1221,7 +1230,7 @@ public class BinderTests
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
-        string dump = BoundTreeWriter.Write(program);
+        string dump = RenderBoundTree(program);
         Assert.That(dump, Does.Contain("TargetBitfield<nib> .high"));
     }
 
@@ -1291,7 +1300,7 @@ public class BinderTests
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0), "Expected no diagnostics.");
-        string dump = BoundTreeWriter.Write(program);
+        string dump = RenderBoundTree(program);
         Assert.That(dump, Does.Contain("ArrayLit<[4]u32>"));
         Assert.That(dump, Does.Contain("[1]..."));
     }
@@ -1320,7 +1329,7 @@ public class BinderTests
             """);
 
         Assert.That(diagnostics.Count, Is.EqualTo(0));
-        string dump = BoundTreeWriter.Write(program);
+        string dump = RenderBoundTree(program);
         Assert.That(dump, Does.Contain("StructLit<Point>"));
     }
 
@@ -1376,7 +1385,7 @@ public class BinderTests
     {
         (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("cog var x: u32 = 'A';");
         Assert.That(diagnostics.Count, Is.EqualTo(0));
-        string dump = BoundTreeWriter.Write(program);
+        string dump = RenderBoundTree(program);
         Assert.That(dump, Does.Contain("65"));
     }
 
@@ -1385,7 +1394,7 @@ public class BinderTests
     {
         (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("cog var x: u32 = '\\n';");
         Assert.That(diagnostics.Count, Is.EqualTo(0));
-        string dump = BoundTreeWriter.Write(program);
+        string dump = RenderBoundTree(program);
         Assert.That(dump, Does.Contain("10"));
     }
 
@@ -1394,7 +1403,7 @@ public class BinderTests
     {
         (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("cog var a: [4]u8 = \"bye!\";");
         Assert.That(diagnostics.Count, Is.EqualTo(0));
-        string dump = BoundTreeWriter.Write(program);
+        string dump = RenderBoundTree(program);
         Assert.That(dump, Does.Contain("Literal<[4]u8> [98, 121, 101, 33]"));
     }
 
@@ -1404,7 +1413,7 @@ public class BinderTests
         // z"hi!" is 3 chars + NUL = 4 bytes, matching [4]u8
         (_, BoundProgram program, DiagnosticBag diagnostics) = Bind("cog var a: [4]u8 = z\"hi!\";");
         Assert.That(diagnostics.Count, Is.EqualTo(0));
-        string dump = BoundTreeWriter.Write(program);
+        string dump = RenderBoundTree(program);
         Assert.That(dump, Does.Contain("Literal<[4]u8> [104, 105, 33, 0]"));
     }
 

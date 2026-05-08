@@ -21,15 +21,6 @@ internal static class ImageMemoryMapDumpWriter
         writer.WriteModel(model);
     }
 
-    public static string Write(Blade.IR.CompilationStageOutput buildResult)
-    {
-        Requires.NotNull(buildResult);
-
-        StringBuilder builder = new();
-        Write(new PlainTextReportBuilder(builder), buildResult);
-        return builder.ToString();
-    }
-
     private sealed class Writer(ITextReportBuilder builder) : TextReportBuilderBase(builder)
     {
         public void WriteModel(ImageMemoryMapModel model)

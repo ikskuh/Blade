@@ -40,9 +40,9 @@ internal readonly struct TestCompilationStages
             LirModules = [lirModule],
             PreOptimizationAsmModules = [preOptimizationAsmModule],
             AsmModules = [asmModule],
-            AssemblyText = assemblyText,
         })
     {
+        _ = assemblyText;
     }
 
     public ImagePlan ImagePlan => Requires.NotNull(_inner.ImagePlan);
@@ -77,7 +77,7 @@ internal readonly struct TestCompilationStages
 
     public AsmModule AsmModule => GetSingleModule(AsmModules, "ASMIR");
 
-    public string AssemblyText => Requires.NotNull(_inner.AssemblyText);
+    public string AssemblyText => _inner.RenderAssemblyText();
 
     public static implicit operator TestCompilationStages(CompilationStageOutput build)
     {

@@ -14,6 +14,14 @@ namespace Blade.Tests;
 public class OptimizerTests
 {
     private static readonly TextSpan Span = new(0, 0);
+    private static readonly MethodInfo MirStructuralEqualityMethod = typeof(Blade.IR.Mir.MirModule).Assembly
+        .GetType("Blade.IR.Mir.MirStructuralEquality", throwOnError: true)!
+        .GetMethod("StructurallyEqualTo", BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static)!
+        ?? throw new InvalidOperationException("Missing MIR structural equality method.");
+    private static readonly MethodInfo LirStructuralEqualityMethod = typeof(Blade.IR.Lir.LirModule).Assembly
+        .GetType("Blade.IR.Lir.LirStructuralEquality", throwOnError: true)!
+        .GetMethod("StructurallyEqualTo", BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static)!
+        ?? throw new InvalidOperationException("Missing LIR structural equality method.");
 
     private static object? InvokePrivateStatic(Type type, string methodName, params object?[] arguments)
     {
@@ -22,6 +30,12 @@ public class OptimizerTests
         return method.Invoke(null, arguments);
     }
 
+    private static bool MirStructurallyEqualTo(MirModule left, MirModule right)
+        => (bool)(MirStructuralEqualityMethod.Invoke(null, [left, right]) ?? throw new InvalidOperationException("MIR structural equality returned null."));
+
+    private static bool LirStructurallyEqualTo(LirModule left, LirModule right)
+        => (bool)(LirStructuralEqualityMethod.Invoke(null, [left, right]) ?? throw new InvalidOperationException("LIR structural equality returned null."));
+
     private static MirConstantInstruction Constant(MirValueId result, RuntimeTypeSymbol type, object value)
         => new(result, type, new RuntimeBladeValue(type, value is int intValue ? (long)intValue : value is uint uintValue ? (long)uintValue : value), Span);
 
@@ -29,6 +43,132 @@ public class OptimizerTests
     {
         GlobalVariableSymbol symbol = (GlobalVariableSymbol)IrTestFactory.CreateVariableSymbol(name, BuiltinTypes.U32, AddressSpace.Cog, VariableScopeKind.GlobalStorage);
         return new StoragePlace(symbol, StoragePlacePlacement.Allocatable, StoragePlaceRegisterRole.Global, emittedName: $"g_{name}");
+    }
+
+    [Test]
+    public void MirStructuralEquality_AllowsAlphaEquivalentIdsAndIgnoresSpans()
+    {
+        FunctionSymbol symbol = new(
+            "f",
+            IrTestFactory.CreateFunctionDeclarationSyntax("f"),
+            FunctionKind.Default,
+            isTopLevel: false,
+            storageClass: null,
+            FunctionInliningPolicy.Default,
+            SourceSpan.Synthetic());
+        TaskSymbol task = new("main", symbol, AddressSpace.Cog, SourceSpan.Synthetic());
+        ImageDescriptor image = new(task, symbol, AddressSpace.Cog, isEntryImage: true, [symbol], []);
+
+        MirBlockRef leftBlock = new();
+        MirBlockRef rightBlock = new();
+        MirValueId leftParameter = new VirtualMirRegister();
+        MirValueId rightParameter = new VirtualMirRegister();
+        MirValueId leftResult = new VirtualMirFlag();
+        MirValueId rightResult = new VirtualMirFlag();
+
+        MirFunction leftFunction = new(
+            symbol,
+            isEntryPoint: true,
+            [BuiltinTypes.Bool],
+            [
+                new MirBlock(leftBlock,
+                [
+                    new MirBlockParameter(leftParameter, "value", BuiltinTypes.U32),
+                ],
+                [
+                    new MirBinaryInstruction(leftResult, BuiltinTypes.Bool, BoundBinaryOperatorKind.Equals, leftParameter, leftParameter, new TextSpan(1, 3)),
+                ],
+                new MirReturnTerminator([leftResult], new TextSpan(9, 2))),
+            ],
+            flagValues: new Dictionary<MirValueId, MirFlag> { [leftResult] = MirFlag.Z });
+        MirFunction rightFunction = new(
+            symbol,
+            isEntryPoint: true,
+            [BuiltinTypes.Bool],
+            [
+                new MirBlock(rightBlock,
+                [
+                    new MirBlockParameter(rightParameter, "value", BuiltinTypes.U32),
+                ],
+                [
+                    new MirBinaryInstruction(rightResult, BuiltinTypes.Bool, BoundBinaryOperatorKind.Equals, rightParameter, rightParameter, new TextSpan(40, 7)),
+                ],
+                new MirReturnTerminator([rightResult], new TextSpan(70, 1))),
+            ],
+            flagValues: new Dictionary<MirValueId, MirFlag> { [rightResult] = MirFlag.Z });
+
+        MirModule left = new(image, [], [], [leftFunction]);
+        MirModule right = new(image, [], [], [rightFunction]);
+
+        Assert.That(MirStructurallyEqualTo(left, right), Is.True);
+        Assert.That(MirStructurallyEqualTo(right, left), Is.True);
+    }
+
+    [Test]
+    public void MirStructuralEquality_DetectsDifferentFlagMapsAfterValueMapping()
+    {
+        FunctionSymbol symbol = new(
+            "f",
+            IrTestFactory.CreateFunctionDeclarationSyntax("f"),
+            FunctionKind.Default,
+            isTopLevel: false,
+            storageClass: null,
+            FunctionInliningPolicy.Default,
+            SourceSpan.Synthetic());
+        TaskSymbol task = new("main", symbol, AddressSpace.Cog, SourceSpan.Synthetic());
+        ImageDescriptor image = new(task, symbol, AddressSpace.Cog, isEntryImage: true, [symbol], []);
+
+        MirBlockRef leftBlock = new();
+        MirBlockRef rightBlock = new();
+        MirValueId leftResult = new VirtualMirFlag();
+        MirValueId rightResult = new VirtualMirFlag();
+
+        MirFunction leftFunction = new(
+            symbol,
+            isEntryPoint: false,
+            [],
+            [
+                new MirBlock(leftBlock, [],
+                [
+                    new MirConstantInstruction(leftResult, BuiltinTypes.Bool, BladeValue.Bool(true), Span),
+                ],
+                new MirReturnTerminator([], Span)),
+            ],
+            flagValues: new Dictionary<MirValueId, MirFlag> { [leftResult] = MirFlag.C });
+        MirFunction rightFunction = new(
+            symbol,
+            isEntryPoint: false,
+            [],
+            [
+                new MirBlock(rightBlock, [],
+                [
+                    new MirConstantInstruction(rightResult, BuiltinTypes.Bool, BladeValue.Bool(true), new TextSpan(8, 1)),
+                ],
+                new MirReturnTerminator([], new TextSpan(10, 1))),
+            ],
+            flagValues: new Dictionary<MirValueId, MirFlag> { [rightResult] = MirFlag.Z });
+
+        MirModule left = new(image, [], [], [leftFunction]);
+        MirModule right = new(image, [], [], [rightFunction]);
+
+        Assert.That(MirStructurallyEqualTo(left, right), Is.False);
+    }
+
+    [Test]
+    public void MirControlFlowSimplification_ReturnsNullWhenRewriteIsStructurallyEqual()
+    {
+        MirBlockRef block = new();
+        MirModule module = CreateMirModule(functions:
+        [
+            CreateMirFunction("f", isEntryPoint: false, FunctionKind.Default, [],
+            [
+                new MirBlock(block, [], [], new MirReturnTerminator([], Span)),
+            ]),
+        ]);
+
+        MirModule? result = new Blade.IR.Mir.Optimizations.MirControlFlowSimplification().Run(module);
+
+        Assert.That(result, Is.Null);
     }
 
     [Test]
@@ -334,6 +474,119 @@ public class OptimizerTests
         LirOpInstruction store = (LirOpInstruction)function.Blocks[0].Instructions[1];
         Assert.That(store.Operands[1], Is.TypeOf<LirRegisterOperand>());
         Assert.That(((LirRegisterOperand)store.Operands[1]).Register, Is.EqualTo(seed));
+    }
+
+    [Test]
+    public void LirStructuralEquality_AllowsAlphaEquivalentIdsAndIgnoresSpans()
+    {
+        FunctionSymbol symbol = new(
+            "f",
+            IrTestFactory.CreateFunctionDeclarationSyntax("f"),
+            FunctionKind.Default,
+            isTopLevel: false,
+            storageClass: null,
+            FunctionInliningPolicy.Default,
+            SourceSpan.Synthetic());
+        TaskSymbol task = new("main", symbol, AddressSpace.Cog, SourceSpan.Synthetic());
+        ImageDescriptor image = new(task, symbol, AddressSpace.Cog, isEntryImage: true, [symbol], []);
+        MirFunction sourceFunction = new(symbol, isEntryPoint: true, [BuiltinTypes.U32], []);
+        MirModule sourceModule = new(image, [], [], [sourceFunction]);
+
+        LirBlockRef leftBlock = new();
+        LirBlockRef rightBlock = new();
+        LirVirtualRegister leftParameter = new();
+        LirVirtualRegister rightParameter = new();
+        LirVirtualRegister leftResult = new();
+        LirVirtualRegister rightResult = new();
+
+        LirFunction leftFunction = new(
+            sourceFunction,
+            [
+                new LirBlock(leftBlock,
+                [
+                    new LirBlockParameter(leftParameter, "value", BuiltinTypes.U32),
+                ],
+                [
+                    new LirOpInstruction(new LirMovOperation(), leftResult, BuiltinTypes.U32,
+                        [new LirRegisterOperand(leftParameter)],
+                        hasSideEffects: false, predicate: null, writesC: false, writesZ: false, Span),
+                ],
+                new LirReturnTerminator([new LirRegisterOperand(leftResult)], Span)),
+            ]);
+        LirFunction rightFunction = new(
+            sourceFunction,
+            [
+                new LirBlock(rightBlock,
+                [
+                    new LirBlockParameter(rightParameter, "value", BuiltinTypes.U32),
+                ],
+                [
+                    new LirOpInstruction(new LirMovOperation(), rightResult, BuiltinTypes.U32,
+                        [new LirRegisterOperand(rightParameter)],
+                        hasSideEffects: false, predicate: null, writesC: false, writesZ: false, new TextSpan(14, 2)),
+                ],
+                new LirReturnTerminator([new LirRegisterOperand(rightResult)], new TextSpan(20, 3))),
+            ]);
+
+        LirModule left = new(sourceModule, [], [], [leftFunction]);
+        LirModule right = new(sourceModule, [], [], [rightFunction]);
+
+        Assert.That(LirStructurallyEqualTo(left, right), Is.True);
+        Assert.That(LirStructurallyEqualTo(right, left), Is.True);
+    }
+
+    [Test]
+    public void LirStructuralEquality_DetectsDifferentSourceFunction()
+    {
+        FunctionSymbol leftSymbol = new(
+            "f",
+            IrTestFactory.CreateFunctionDeclarationSyntax("f"),
+            FunctionKind.Default,
+            isTopLevel: false,
+            storageClass: null,
+            FunctionInliningPolicy.Default,
+            SourceSpan.Synthetic());
+        FunctionSymbol rightSymbol = new(
+            "f",
+            IrTestFactory.CreateFunctionDeclarationSyntax("f"),
+            FunctionKind.Default,
+            isTopLevel: false,
+            storageClass: null,
+            FunctionInliningPolicy.Default,
+            SourceSpan.Synthetic());
+        TaskSymbol leftTask = new("main", leftSymbol, AddressSpace.Cog, SourceSpan.Synthetic());
+        TaskSymbol rightTask = new("main", rightSymbol, AddressSpace.Cog, SourceSpan.Synthetic());
+        ImageDescriptor leftImage = new(leftTask, leftSymbol, AddressSpace.Cog, isEntryImage: true, [leftSymbol], []);
+        ImageDescriptor rightImage = new(rightTask, rightSymbol, AddressSpace.Cog, isEntryImage: true, [rightSymbol], []);
+        MirFunction leftSourceFunction = new(leftSymbol, isEntryPoint: true, [], []);
+        MirFunction rightSourceFunction = new(rightSymbol, isEntryPoint: true, [], []);
+        LirBlockRef leftBlock = new();
+        LirBlockRef rightBlock = new();
+
+        LirFunction leftFunction = new(leftSourceFunction, [new LirBlock(leftBlock, [], [], new LirReturnTerminator([], Span))]);
+        LirFunction rightFunction = new(rightSourceFunction, [new LirBlock(rightBlock, [], [], new LirReturnTerminator([], new TextSpan(3, 1)))]);
+
+        LirModule left = new(new MirModule(leftImage, [], [], [leftSourceFunction]), [], [], [leftFunction]);
+        LirModule right = new(new MirModule(rightImage, [], [], [rightSourceFunction]), [], [], [rightFunction]);
+
+        Assert.That(LirStructurallyEqualTo(left, right), Is.False);
+    }
+
+    [Test]
+    public void LirControlFlowSimplification_ReturnsNullWhenRewriteIsStructurallyEqual()
+    {
+        LirBlockRef block = new();
+        LirModule module = CreateLirModule(functions:
+        [
+            CreateLirFunction("f", isEntryPoint: false, FunctionKind.Default, [],
+            [
+                new LirBlock(block, [], [], new LirReturnTerminator([], Span)),
+            ]),
+        ]);
+
+        LirModule? result = new Blade.IR.Lir.Optimizations.LirControlFlowSimplification().Run(module);
+
+        Assert.That(result, Is.Null);
     }
 
     [Test]

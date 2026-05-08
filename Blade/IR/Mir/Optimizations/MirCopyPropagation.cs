@@ -48,6 +48,6 @@ public sealed class MirCopyPropagation : IMirOptimization
         }
 
         MirModule result2 = new(input.Image, input.StoragePlaces, input.StorageDefinitions, functions);
-        return MirTextWriter.Write(result2) != MirTextWriter.Write(input) ? result2 : null;
+        return result2.StructurallyEqualTo(input) ? null : result2;
     }
 }

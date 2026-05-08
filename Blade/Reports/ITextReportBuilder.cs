@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Net;
 using System.Text;
 
@@ -48,26 +49,27 @@ public interface ITextReportBuilder
     void NewLine();
 }
 
-internal sealed class PlainTextReportBuilder(StringBuilder builder) : ITextReportBuilder
+public sealed class PlainTextReportBuilder(TextWriter writer) : ITextReportBuilder
 {
-    private readonly StringBuilder _builder = builder;
+    private readonly TextWriter _writer = writer;
 
     public void Append(BasicTextSpanKind kind, string text)
     {
-        _builder.Append(text);
+        _writer.Write(text);
     }
 
     public void Append(SemanticTextSpanKind kind, object identity, string text)
     {
         Requires.NotNull(identity);
-        _builder.Append(text);
+        _writer.Write(text);
     }
 
     public void NewLine()
     {
-        _builder.AppendLine();
+        _writer.WriteLine();
     }
 }
+
 
 internal sealed class HtmlTextReporter(StringBuilder builder, HtmlSymbolRegistry symbolRegistry) : ITextReportBuilder
 {

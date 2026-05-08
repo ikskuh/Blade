@@ -42,7 +42,7 @@ internal sealed class ReportOutputWriter : ICompilerOutputWriter
 
     private static void WriteDefaultOutput(CompilationOutput compilation)
     {
-        IReportWriter writer = compilation.Status == CompilationStatus.Succeeded && compilation.Stages.AssemblyText is not null
+        IReportWriter writer = compilation.Status == CompilationStatus.Succeeded && compilation.Stages.IsComplete
             ? new TextReportWriter(bareFinalAssemblyOnly: true)
             : new TextReportWriter(bareFinalAssemblyOnly: false);
         writer.Write(Console.Out, compilation);

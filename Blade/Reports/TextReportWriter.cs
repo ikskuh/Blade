@@ -7,17 +7,12 @@ namespace Blade.Reports;
 /// <summary>
 /// Renders compilation output as plain text.
 /// </summary>
-public sealed class TextReportWriter : IReportWriter
+/// <remarks>
+/// Initializes a text report writer.
+/// </remarks>
+public sealed class TextReportWriter(bool bareFinalAssemblyOnly) : IReportWriter
 {
-    private readonly bool _bareFinalAssemblyOnly;
-
-    /// <summary>
-    /// Initializes a text report writer.
-    /// </summary>
-    public TextReportWriter(bool bareFinalAssemblyOnly)
-    {
-        _bareFinalAssemblyOnly = bareFinalAssemblyOnly;
-    }
+    private readonly bool _bareFinalAssemblyOnly = bareFinalAssemblyOnly;
 
     /// <summary>
     /// Writes the supplied compilation output as plain text.
@@ -27,9 +22,9 @@ public sealed class TextReportWriter : IReportWriter
         Requires.NotNull(writer);
         Requires.NotNull(report);
 
-        if (_bareFinalAssemblyOnly && report.Status == CompilationStatus.Succeeded && report.Stages.AssemblyText is not null)
+        if (_bareFinalAssemblyOnly && report.Status == CompilationStatus.Succeeded)
         {
-            writer.Write(report.Stages.AssemblyText);
+            report.Stages.RenderAssemblyText(writer);
             return;
         }
 

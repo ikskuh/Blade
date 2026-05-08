@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Text;
 using Blade.Reports;
 using Blade.Semantics;
+using Blade.Semantics.Bound;
 
 using static Blade.Reports.BasicTextSpanKind;
 using static Blade.Reports.SemanticTextSpanKind;
@@ -27,26 +28,6 @@ public static class MirTextWriter
         writer.WriteModules(modules);
     }
 
-    /// <summary>
-    /// Renders one MIR module as plain text.
-    /// </summary>
-    public static string Write(MirModule module)
-    {
-        Requires.NotNull(module);
-        return Write([module]);
-    }
-
-    /// <summary>
-    /// Renders the supplied modules as plain text.
-    /// </summary>
-    public static string Write(IReadOnlyList<MirModule> modules)
-    {
-        Requires.NotNull(modules);
-
-        StringBuilder builder = new();
-        Write(new PlainTextReportBuilder(builder), modules);
-        return builder.ToString();
-    }
 
     private sealed class Writer(ITextReportBuilder builder) : TextReportBuilderBase(builder)
     {
@@ -78,7 +59,7 @@ public static class MirTextWriter
             {
                 if (i > 0)
                     Append(',', ' ');
-                Append((TypeName, function.ReturnTypes[i], function.ReturnTypes[i].Name));
+                AppendType(function.ReturnTypes[i]);
             }
 
             AppendLine(')');
@@ -104,7 +85,7 @@ public static class MirTextWriter
                 MirBlockParameter parameter = block.Parameters[i];
                 WriteValue(parameter.Value, formatter);
                 Append(':');
-                Append(TypeName, parameter.Type, parameter.Type.Name);
+                AppendType(parameter.Type);
                 Append(' ');
                 Append(VariableName, parameter, parameter.Name);
             }
@@ -124,7 +105,7 @@ public static class MirTextWriter
                 WriteValue(result, formatter);
                 Append(':');
                 if (instruction.ResultType is not null)
-                    Append(TypeName, instruction.ResultType, instruction.ResultType.Name);
+                    AppendType(instruction.ResultType);
                 else
                     Append(Literal, "<unknown>");
                 Append(' ', '=', ' ');
@@ -244,7 +225,26 @@ public static class MirTextWriter
                                 Append(',', ' ');
                             WriteValue(call.ExtraResults[i].Value, formatter);
                             Append(':');
-                            Append(TypeName, call.ExtraResults[i].Type, call.ExtraResults[i].Type.Name);
+                            AppendType(call.ExtraResults[i].Type);
+                        }
+                        Append(']');
+                    }
+                    break;
+
+                case MirSpawnInstruction spawn:
+                    Append((Keyword, spawn.OperatorKind == BoundSpawnOperatorKind.Spawn ? "spawn" : "spawnpair"), ' ', (TaskName, spawn.Task, spawn.Task.Name), '(');
+                    WriteValueList(spawn.Arguments, formatter);
+                    Append(')', ' ', '[', (Literal, spawn.RequestedResultCount.ToString(CultureInfo.InvariantCulture)), ']');
+                    if (spawn.ExtraResults.Count > 0)
+                    {
+                        Append(' ', (Keyword, "extra"), '=', '[');
+                        for (int i = 0; i < spawn.ExtraResults.Count; i++)
+                        {
+                            if (i > 0)
+                                Append(',', ' ');
+                            WriteValue(spawn.ExtraResults[i].Value, formatter);
+                            Append(':');
+                            AppendType(spawn.ExtraResults[i].Type);
                         }
                         Append(']');
                     }

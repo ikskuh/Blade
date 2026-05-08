@@ -2,25 +2,29 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Text;
-using Blade;
 using Blade.IR;
+using Blade.Reports;
 using Blade.Semantics;
+
+using static Blade.Reports.BasicTextSpanKind;
+using static Blade.Reports.SemanticTextSpanKind;
 
 namespace Blade.IR.Asm;
 
-public static class FinalAssemblyWriter
+/// <summary>
+/// Emits final SPIN2 assembly from ASM modules and resolved storage layouts.
+/// </summary>
+public sealed class FinalAssemblyWriter : TextReportBuilderBase
 {
     private const string BladeImageBaseLabel = "blade_image_base";
     private const string BladeEntryLabel = "blade_entry";
-    private const string DefaultHaltLabel = "blade_halt";
-
+    private const string BladeHaltLabel = "blade_halt";
     private sealed class LabelNameEmitter
     {
         private readonly record struct ScopedControlFlowLabelKey(AsmFunctionKey Function, ControlFlowLabelSymbol Label);
 
-        private readonly Dictionary<object, string> _emittedNames = [];
-        private readonly Dictionary<string, int> _usedNames = new(StringComparer.Ordinal);
+        private readonly Dictionary<object, string> emittedNames = [];
+        private readonly Dictionary<string, int> usedNames = new(StringComparer.Ordinal);
 
         public string GetLabelName(IAsmSymbol symbol, AsmFunction? currentFunction = null)
         {
@@ -30,20 +34,19 @@ public static class FinalAssemblyWriter
                 return symbol.Name;
 
             object key = GetSymbolKey(symbol, currentFunction);
-            if (_emittedNames.TryGetValue(key, out string? existingName))
+            if (emittedNames.TryGetValue(key, out string? existingName))
                 return existingName;
 
             string emittedName = AllocateUniqueName(GetBaseName(symbol));
-            _emittedNames.Add(key, emittedName);
+            emittedNames.Add(key, emittedName);
             return emittedName;
         }
 
         public string GetReservedLabelName(string name)
         {
             Requires.NotNullOrWhiteSpace(name);
-            object key = name == DefaultHaltLabel
-                ? $"label:{DefaultHaltLabel}"
-                : $"reserved:{name}";
+
+            object key = $"reserved:{name}";
             return GetOrCreateName(key, BackendSymbolNaming.SanitizeIdentifier(name));
         }
 
@@ -58,11 +61,11 @@ public static class FinalAssemblyWriter
             Requires.NotNull(key);
             Requires.NotNullOrWhiteSpace(baseName);
 
-            if (_emittedNames.TryGetValue(key, out string? existingName))
+            if (emittedNames.TryGetValue(key, out string? existingName))
                 return existingName;
 
             string emittedName = AllocateUniqueName(baseName);
-            _emittedNames.Add(key, emittedName);
+            emittedNames.Add(key, emittedName);
             return emittedName;
         }
 
@@ -70,14 +73,14 @@ public static class FinalAssemblyWriter
         {
             Requires.NotNullOrWhiteSpace(baseName);
 
-            if (_usedNames.TryGetValue(baseName, out int seenCount))
+            if (usedNames.TryGetValue(baseName, out int seenCount))
             {
                 int nextCount = seenCount + 1;
-                _usedNames[baseName] = nextCount;
+                usedNames[baseName] = nextCount;
                 return $"{baseName}_{nextCount}";
             }
 
-            _usedNames.Add(baseName, 1);
+            usedNames.Add(baseName, 1);
             return baseName;
         }
 
@@ -88,14 +91,15 @@ public static class FinalAssemblyWriter
                 StoragePlace place when ShouldCollapseStorageLabel(place) => ("storage", place.EmittedName),
                 AsmFunction function => function.Key,
                 AsmFunctionReferenceSymbol functionReference => new AsmFunctionKey(functionReference.Image, functionReference.Function),
-                ControlFlowLabelSymbol label when currentFunction is not null && label.Name != DefaultHaltLabel => new ScopedControlFlowLabelKey(currentFunction.Key, label),
-                ControlFlowLabelSymbol { Name: DefaultHaltLabel } => $"label:{DefaultHaltLabel}",
+                ControlFlowLabelSymbol label when currentFunction is not null => new ScopedControlFlowLabelKey(currentFunction.Key, label),
                 _ => symbol,
             };
         }
 
         private static bool ShouldCollapseStorageLabel(StoragePlace place)
-            => place.Symbol.IsExtern || place.FixedAddress.HasValue;
+        {
+            return place.Symbol.IsExtern || place.FixedAddress.HasValue;
+        }
 
         private static string GetBaseName(IAsmSymbol symbol)
         {
@@ -109,37 +113,48 @@ public static class FinalAssemblyWriter
         }
     }
 
-    public static string Write(IReadOnlyList<AsmModule> modules, CogResourceLayoutSet cogResourceLayouts)
+    private readonly IReadOnlyList<AsmModule> modules;
+    private readonly CogResourceLayoutSet cogResourceLayouts;
+    private readonly LabelNameEmitter labelNames = new();
+
+    private FinalAssemblyWriter(ITextReportBuilder builder, IReadOnlyList<AsmModule> modules, CogResourceLayoutSet cogResourceLayouts)
+        : base(builder)
     {
-        return Build(modules, cogResourceLayouts).Text;
+        this.modules = Requires.NotNull(modules);
+        this.cogResourceLayouts = Requires.NotNull(cogResourceLayouts);
     }
 
-    public static FinalAssembly Build(IReadOnlyList<AsmModule> modules, CogResourceLayoutSet cogResourceLayouts)
+    /// <summary>
+    /// Emits the final assembly into the provided report builder.
+    /// </summary>
+    public static void Write(ITextReportBuilder builder, IReadOnlyList<AsmModule> modules, CogResourceLayoutSet cogResourceLayouts)
     {
+        Requires.NotNull(builder);
         Requires.NotNull(modules);
         Requires.NotNull(cogResourceLayouts);
 
-        LabelNameEmitter labelNames = new();
-        string conSectionContents = WriteConSectionContents(modules, cogResourceLayouts, labelNames);
-        string datSectionContents = WriteDatSectionContents(modules, cogResourceLayouts, labelNames, includeDefaultBladeHalt: true);
-        FinalAssembly assembly = FinalAssemblyComposer.Compose(conSectionContents, datSectionContents);
-        Assert.Invariant(!assembly.Text.Contains("##", StringComparison.Ordinal), "Final assembly must not contain implicit long-immediate syntax.");
-        return assembly;
+        FinalAssemblyWriter writer = new(builder, modules, cogResourceLayouts);
+        writer.WriteAssembly();
     }
 
-    public static string WriteConSectionContents(IReadOnlyList<AsmModule> modules, CogResourceLayoutSet cogResourceLayouts)
+    private void WriteAssembly()
     {
-        return WriteConSectionContents(modules, cogResourceLayouts, new LabelNameEmitter());
+        IReadOnlyList<AsmDataBlock> dataBlocks = MergeDataBlocks(this.modules);
+
+        if (HasConSectionContents(dataBlocks))
+        {
+            AppendLine((Keyword, "CON"));
+            WriteConSectionContents(dataBlocks);
+            NewLine();
+        }
+
+        AppendLine((Keyword, "DAT"));
+        AppendLine(Space(4), (Directive, "org"), ' ', (Literal, "0"));
+        WriteDatSectionContents(dataBlocks);
     }
 
-    private static string WriteConSectionContents(IReadOnlyList<AsmModule> modules, CogResourceLayoutSet cogResourceLayouts, LabelNameEmitter labelNames)
+    private void WriteConSectionContents(IReadOnlyList<AsmDataBlock> dataBlocks)
     {
-        Requires.NotNull(modules);
-        Requires.NotNull(cogResourceLayouts);
-        Requires.NotNull(labelNames);
-
-        IReadOnlyList<AsmDataBlock> dataBlocks = MergeDataBlocks(modules);
-        StringBuilder sb = new();
         AsmDataBlock? externalBlock = dataBlocks.FirstOrDefault(static block => block.Kind == AsmDataBlockKind.External);
         if (externalBlock is not null)
         {
@@ -149,72 +164,42 @@ public static class FinalAssemblyWriter
                 if (place.SpecialRegisterAlias.HasValue)
                     continue;
 
-                VirtualAddress? virtualAddress = place.ResolvedLayoutSlot?.Address ?? place.FixedAddress;
-                if (!virtualAddress.HasValue
-                    && cogResourceLayouts.TryGetAddress(place, out MemoryAddress memoryAddress))
-                {
-                    virtualAddress = memoryAddress.Virtual;
-                }
-
+                VirtualAddress? virtualAddress = ResolveVirtualAddress(place);
                 if (!virtualAddress.HasValue)
                     continue;
 
-                sb.Append("    ");
-                sb.Append(GetLabelName(place, labelNames));
-                sb.Append(" = $");
-                sb.Append(GetRawAddress(virtualAddress.Value).ToString("X", CultureInfo.InvariantCulture));
-                sb.AppendLine();
+                Append(Space(4));
+                AppendSymbolLabel(place, currentFunction: null);
+                Append(' ', '=', ' ', (Literal, FormatHexLiteral(GetRawAddress(virtualAddress.Value))));
+                NewLine();
             }
         }
 
         AsmDataBlock? lutBlock = dataBlocks.FirstOrDefault(static block => block.Kind == AsmDataBlockKind.Lut);
-        if (lutBlock is not null)
+        if (lutBlock is null)
+            return;
+
+        foreach (AsmAllocatedStorageDefinition definition in lutBlock.Definitions.OfType<AsmAllocatedStorageDefinition>())
         {
-            foreach (AsmAllocatedStorageDefinition definition in lutBlock.Definitions.OfType<AsmAllocatedStorageDefinition>())
-            {
-                if (definition.Symbol is not StoragePlace place)
-                    continue;
+            if (definition.Symbol is not StoragePlace place)
+                continue;
 
-                VirtualAddress? virtualAddress = place.ResolvedLayoutSlot?.Address ?? place.FixedAddress;
-                if (!virtualAddress.HasValue
-                    && cogResourceLayouts.TryGetAddress(place, out MemoryAddress memoryAddress))
-                {
-                    virtualAddress = memoryAddress.Virtual;
-                }
+            VirtualAddress? virtualAddress = ResolveVirtualAddress(place);
+            if (!virtualAddress.HasValue)
+                continue;
 
-                if (!virtualAddress.HasValue)
-                    continue;
-
-                sb.Append("    ");
-                sb.Append(GetLutVirtualAddressConstantName(place, labelNames));
-                sb.Append(" = $");
-                sb.Append(GetRawAddress(virtualAddress.Value).ToString("X", CultureInfo.InvariantCulture));
-                sb.AppendLine();
-            }
+            Append(Space(4));
+            AppendLutVirtualAddressConstantName(place);
+            Append(' ', '=', ' ', (Literal, FormatHexLiteral(GetRawAddress(virtualAddress.Value))));
+            NewLine();
         }
-
-        return sb.ToString();
     }
 
-    public static string WriteDatSectionContents(IReadOnlyList<AsmModule> modules, CogResourceLayoutSet cogResourceLayouts)
+    private void WriteDatSectionContents(IReadOnlyList<AsmDataBlock> dataBlocks)
     {
-        return WriteDatSectionContents(modules, cogResourceLayouts, new LabelNameEmitter(), includeDefaultBladeHalt: false);
-    }
+        IReadOnlyList<AsmFunction> functions = this.modules.SelectMany(static module => module.Functions).ToList();
 
-    private static string WriteDatSectionContents(
-        IReadOnlyList<AsmModule> modules,
-        CogResourceLayoutSet cogResourceLayouts,
-        LabelNameEmitter labelNames,
-        bool includeDefaultBladeHalt)
-    {
-        Requires.NotNull(modules);
-        Requires.NotNull(cogResourceLayouts);
-        Requires.NotNull(labelNames);
-
-        IReadOnlyList<AsmFunction> functions = modules.SelectMany(static module => module.Functions).ToList();
-        IReadOnlyList<AsmDataBlock> dataBlocks = MergeDataBlocks(modules);
-        StringBuilder sb = new();
-        sb.AppendLine("    ' --- Blade compiler output ---");
+        AppendLine(Space(4), (Comment, "' --- Blade compiler output ---"));
 
         Dictionary<ImageDescriptor, IReadOnlyList<AsmFunction>> functionsByImage = functions
             .GroupBy(static function => function.OwningImage)
@@ -222,20 +207,716 @@ public static class FinalAssemblyWriter
         AsmDataBlock? registerBlock = dataBlocks.FirstOrDefault(static candidate => candidate.Kind == AsmDataBlockKind.Register);
         AsmDataBlock? constantBlock = dataBlocks.FirstOrDefault(static candidate => candidate.Kind == AsmDataBlockKind.Constant);
 
-        foreach (CogResourceLayout imageLayout in cogResourceLayouts.Images)
+        foreach (CogResourceLayout imageLayout in this.cogResourceLayouts.Images)
         {
             WriteImageCodeBlock(
-                sb,
                 imageLayout,
-                functionsByImage.GetValueOrDefault(imageLayout.Image) ?? [],
-                labelNames,
-                includeDefaultBladeHalt,
-                cogResourceLayouts);
-            WriteImageCogStorageBlocks(sb, imageLayout, registerBlock, constantBlock, labelNames, cogResourceLayouts);
+                functionsByImage.GetValueOrDefault(imageLayout.Image) ?? []);
+            WriteImageCogStorageBlocks(imageLayout, registerBlock, constantBlock);
         }
 
-        WriteSharedStorageBlocks(sb, dataBlocks, labelNames, cogResourceLayouts);
-        return sb.ToString();
+        WriteSharedStorageBlocks(dataBlocks);
+    }
+
+    private void WriteImageCodeBlock(CogResourceLayout imageLayout, IReadOnlyList<AsmFunction> functions)
+    {
+        NewLine();
+        AppendLine(Space(4), (Comment, $"' --- image {imageLayout.Image.Task.Name} ({imageLayout.Image.ExecutionMode}) ---"));
+        WriteImageCodeOriginDirective(imageLayout);
+
+        foreach (AsmFunction function in functions)
+        {
+            NewLine();
+            AppendLine(Space(4), (Comment, $"' function {function.Name} ({function.CcTier})"));
+            if (function.IsEntryPoint && imageLayout.Image.IsEntryImage)
+                AppendLine(Space(2), (Literal, this.labelNames.GetReservedLabelName(BladeEntryLabel)));
+
+            Append(Space(2));
+            AppendSymbolLabel(function, currentFunction: null);
+            NewLine();
+            WriteFunctionNodes(function, function.Nodes);
+        }
+
+        if (imageLayout.Image.IsEntryImage && functions.Any(static function => function.IsEntryPoint))
+        {
+            NewLine();
+            AppendLine(Space(2), (Literal, this.labelNames.GetReservedLabelName(BladeHaltLabel)));
+            AppendLine(Space(4), (Keyword, "NOP"));
+            AppendLine(Space(4), (Keyword, "JMP"), ' ', (Literal, "#"), (Literal, this.labelNames.GetReservedLabelName(BladeHaltLabel)));
+        }
+    }
+
+    private void WriteFunctionNodes(AsmFunction function, IReadOnlyList<AsmNode> nodes)
+    {
+        foreach (AsmNode node in nodes)
+            WriteNode(node, function);
+    }
+
+    private void WriteSharedStorageBlocks(IReadOnlyList<AsmDataBlock> dataBlocks)
+    {
+        AsmDataBlock? hubBlock = dataBlocks.FirstOrDefault(static candidate => candidate.Kind == AsmDataBlockKind.Hub);
+        if (hubBlock?.Definitions.OfType<AsmAllocatedStorageDefinition>().Any() != true)
+            return;
+
+        NewLine();
+        WriteHubStorageBlock(hubBlock, "' --- hub file ---");
+    }
+
+    private void WriteImageCogStorageBlocks(CogResourceLayout imageLayout, AsmDataBlock? registerBlock, AsmDataBlock? constantBlock)
+    {
+        List<AsmAllocatedStorageDefinition> definitions = [];
+        if (registerBlock is not null)
+        {
+            definitions.AddRange(
+                registerBlock.Definitions.OfType<AsmAllocatedStorageDefinition>()
+                    .Where(definition => SymbolBelongsToImage(definition.Symbol, imageLayout.Image)));
+        }
+
+        if (constantBlock is not null)
+        {
+            definitions.AddRange(
+                constantBlock.Definitions.OfType<AsmAllocatedStorageDefinition>()
+                    .Where(definition => SymbolBelongsToImage(definition.Symbol, imageLayout.Image)));
+        }
+
+        NewLine();
+        AppendLine(Space(4), (Comment, "' --- cog data file ---"));
+
+        if (definitions.Count == 0)
+        {
+            if (imageLayout.Image.ExecutionMode is AddressSpace.Lut or AddressSpace.Hub)
+                AppendLine(Space(4), (Directive, "org"), ' ', (Literal, "$0"));
+            AppendLine(Space(4), (Directive, "fit"), ' ', (Literal, "$1F0"));
+            return;
+        }
+
+        definitions = definitions
+            .OrderBy(definition => ResolveCogAddress(definition.Symbol))
+            .ThenBy(definition => GetLabelName(definition.Symbol), StringComparer.Ordinal)
+            .ToList();
+
+        int maxLabelWidth = definitions.Max(definition => GetLabelName(definition.Symbol).Length);
+        int maxDirectiveWidth = definitions.Max(static definition => FormatDataDirective(definition.Directive).Length);
+
+        int? previousEndAddress = null;
+        foreach (AsmAllocatedStorageDefinition definition in definitions)
+        {
+            int address = ResolveCogAddress(definition.Symbol);
+            if (previousEndAddress != address)
+                WriteCogOriginDirective(ResolveCogPhysicalAddressBytes(definition.Symbol), address);
+
+            WriteAllocatedDefinition(definition, maxLabelWidth, maxDirectiveWidth);
+            previousEndAddress = address + GetDefinitionSizeInAddressUnits(definition);
+        }
+
+        AppendLine(Space(4), (Directive, "fit"), ' ', (Literal, "$1F0"));
+    }
+
+    private void WriteHubStorageBlock(AsmDataBlock block, string header)
+    {
+        List<AsmAllocatedStorageDefinition> placedDefinitions = block.Definitions
+            .OfType<AsmAllocatedStorageDefinition>()
+            .Where(definition => definition.Symbol is StoragePlace { ResolvedLayoutSlot: not null })
+            .OrderBy(static definition => GetRawAddress(((StoragePlace)definition.Symbol).ResolvedLayoutSlot!.Address))
+            .ThenBy(definition => definition.Symbol.Name, StringComparer.Ordinal)
+            .ToList();
+        List<AsmAllocatedStorageDefinition> sequentialDefinitions = block.Definitions
+            .OfType<AsmAllocatedStorageDefinition>()
+            .Where(definition => definition.Symbol is not StoragePlace { ResolvedLayoutSlot: not null })
+            .ToList();
+
+        AppendLine((Comment, header));
+        if (placedDefinitions.Count == 0 && sequentialDefinitions.Count == 0)
+            return;
+
+        AppendLine(Space(4), (Directive, "orgh"));
+
+        int maxLabelWidth = block.Definitions
+            .OfType<AsmAllocatedStorageDefinition>()
+            .Select(definition => GetLabelName(definition.Symbol).Length)
+            .DefaultIfEmpty(0)
+            .Max();
+        int maxDirectiveWidth = block.Definitions
+            .OfType<AsmAllocatedStorageDefinition>()
+            .Select(static definition => FormatDataDirective(definition.Directive).Length)
+            .DefaultIfEmpty(0)
+            .Max();
+
+        int currentAddress = this.cogResourceLayouts.Images.Count == 0
+            ? 0
+            : (int)this.cogResourceLayouts.Images[^1].Placement.HubEndAddressExclusive;
+        foreach (AsmAllocatedStorageDefinition definition in placedDefinitions)
+        {
+            StoragePlace place = (StoragePlace)definition.Symbol;
+            LayoutSlot slot = Assert.NotNull(place.ResolvedLayoutSlot);
+            int slotAddress = GetRawAddress(slot.Address);
+            int paddingBytes = slotAddress - currentAddress;
+            Assert.Invariant(paddingBytes >= 0, $"Hub storage address for '{place.Symbol.Name}' moved backwards.");
+            if (paddingBytes > 0)
+            {
+                Append(Space(4), (Directive, "BYTE"), ' ', (Literal, "0"), '[', (Literal, paddingBytes.ToString(CultureInfo.InvariantCulture)), ']');
+                NewLine();
+            }
+
+            WriteAllocatedDefinition(definition, maxLabelWidth, maxDirectiveWidth);
+            currentAddress = slotAddress + GetDefinitionSizeInAddressUnits(definition);
+        }
+
+        if (sequentialDefinitions.Count == 0)
+            return;
+
+        AsmDataBlock sequentialBlock = new(block.Kind, sequentialDefinitions);
+        WriteAllocatedBlockContents(sequentialBlock, maxLabelWidth, maxDirectiveWidth, emitAlignmentDirectives: true);
+    }
+
+    private void WriteAllocatedBlockContents(AsmDataBlock block, int maxLabelWidth, int maxDirectiveWidth, bool emitAlignmentDirectives)
+    {
+        List<AsmAllocatedStorageDefinition> definitions = block.Definitions
+            .OfType<AsmAllocatedStorageDefinition>()
+            .OrderByDescending(static definition => definition.AlignmentBytes)
+            .ThenBy(static definition => definition.Symbol.Name, StringComparer.Ordinal)
+            .ToList();
+        int currentAlignment = -1;
+
+        foreach (AsmAllocatedStorageDefinition definition in definitions)
+        {
+            if (emitAlignmentDirectives && definition.AlignmentBytes != currentAlignment)
+            {
+                currentAlignment = definition.AlignmentBytes;
+                if (currentAlignment >= 4)
+                    AppendLine(Space(4), (Directive, "ALIGNL"));
+                else if (currentAlignment == 2)
+                    AppendLine(Space(4), (Directive, "ALIGNW"));
+            }
+
+            WriteAllocatedDefinition(definition, maxLabelWidth, maxDirectiveWidth);
+        }
+    }
+
+    private void WriteAllocatedDefinition(AsmAllocatedStorageDefinition definition, int maxLabelWidth, int maxDirectiveWidth)
+    {
+        string label = GetLabelName(definition.Symbol);
+        string directive = FormatDataDirective(definition.Directive);
+
+        AppendSymbolLabel(definition.Symbol, currentFunction: null);
+        Append(Space(Math.Max(1, maxLabelWidth - label.Length + 1)));
+        Append((Directive, directive));
+        Append(Space(Math.Max(1, maxDirectiveWidth - directive.Length + 1)));
+        AppendDataValue(definition);
+        NewLine();
+    }
+
+    private void WriteImageCodeOriginDirective(CogResourceLayout imageLayout)
+    {
+        if (imageLayout.Image.IsEntryImage)
+        {
+            AppendLine(Space(4), (Directive, "orgh"));
+            AppendLine(Space(2), (Literal, this.labelNames.GetReservedLabelName(BladeImageBaseLabel)));
+        }
+        else
+        {
+            Append(Space(4), (Directive, "orgh"), ' ');
+            Append((Literal, FormatPhysicalAddressExpression(imageLayout.HubStartAddressBytes)));
+            NewLine();
+        }
+
+        switch (imageLayout.Image.ExecutionMode)
+        {
+            case AddressSpace.Cog:
+            case AddressSpace.Lut:
+                AppendLine(Space(4), (Directive, "org"), ' ', (Literal, "$0"));
+                break;
+
+            case AddressSpace.Hub:
+                break;
+
+            default:
+                Assert.Unreachable($"Unexpected execution mode '{imageLayout.Image.ExecutionMode}'."); // pragma: force-coverage
+                break; // pragma: force-coverage
+        }
+    }
+
+    private void WriteCogOriginDirective(int physicalAddressBytes, int virtualAddress)
+    {
+        Requires.NonNegative(physicalAddressBytes);
+        Requires.InRange(virtualAddress, 0, 0x1FF);
+
+        Append(Space(4), (Directive, "orgh"), ' ');
+        Append((Literal, FormatPhysicalAddressExpression(new HubAddress(physicalAddressBytes))));
+        NewLine();
+        AppendLine(Space(4), (Directive, "org"), ' ', (Literal, FormatHexLiteral(virtualAddress)));
+    }
+
+    private void WriteNode(AsmNode node, AsmFunction currentFunction)
+    {
+        switch (node)
+        {
+            case AsmLabelNode label:
+                Append(Space(2));
+                AppendSymbolLabel(label.Label, currentFunction);
+                NewLine();
+                break;
+
+            case AsmCommentNode comment:
+                AppendLine(Space(4), (Comment, "' " + comment.Text));
+                break;
+
+            case AsmVolatileRegionBeginNode:
+            case AsmVolatileRegionEndNode:
+                break;
+
+            case AsmInstructionNode instruction:
+                WriteInstructionNode(instruction, currentFunction);
+                break;
+
+            case AsmInlineDataNode inlineData:
+                WriteInlineDataNode(inlineData, currentFunction);
+                break;
+
+            default:
+                Assert.Unreachable($"Unhandled ASM node '{node.GetType().Name}'."); // pragma: force-coverage
+                break; // pragma: force-coverage
+        }
+    }
+
+    private void WriteInstructionNode(AsmInstructionNode instruction, AsmFunction currentFunction)
+    {
+        Append(Space(4));
+        if (instruction.Condition is P2ConditionCode condition)
+            Append((Keyword, P2MetadataSyntax.GetConditionPrefixText(condition)), ' ');
+
+        Append((Keyword, instruction.Mnemonic.ToString()));
+        if (instruction.Operands.Count > 0)
+        {
+            Append(' ');
+            for (int i = 0; i < instruction.Operands.Count; i++)
+            {
+                if (i > 0)
+                    Append(',', ' ');
+                AppendOperand(instruction.Operands[i], currentFunction);
+            }
+        }
+
+        if (instruction.FlagOutput.Effect != P2FlagEffect.None)
+            Append(' ', (Keyword, instruction.FlagOutput.Effect.ToString()));
+
+        NewLine();
+    }
+
+    private void WriteInlineDataNode(AsmInlineDataNode inlineData, AsmFunction currentFunction)
+    {
+        Append(Space(4), (Directive, FormatDataDirective(inlineData.Directive)));
+        if (inlineData.Values.Count > 0)
+        {
+            Append(' ');
+            for (int i = 0; i < inlineData.Values.Count; i++)
+            {
+                if (i > 0)
+                    Append(',', ' ');
+                AppendInlineDataValue(inlineData.Values[i], currentFunction);
+            }
+        }
+
+        NewLine();
+    }
+
+    private void AppendDataValue(AsmAllocatedStorageDefinition definition)
+    {
+        if (definition.Symbol is AsmSharedConstantSymbol constant)
+        {
+            AppendSharedConstantValue(constant.Value, definition.UseHexFormat, currentFunction: null);
+            return;
+        }
+
+        if (definition.InitialValues is null || definition.InitialValues.Count == 0)
+        {
+            Append((Literal, "0"));
+            if (definition.Count > 1)
+                Append('[', (Literal, definition.Count.ToString(CultureInfo.InvariantCulture)), ']');
+            return;
+        }
+
+        if (definition.InitialValues.Count == 1)
+        {
+            AppendDataOperand(definition.InitialValues[0], definition.UseHexFormat, currentFunction: null);
+            if (definition.Count > 1)
+                Append('[', (Literal, definition.Count.ToString(CultureInfo.InvariantCulture)), ']');
+            return;
+        }
+
+        for (int i = 0; i < definition.InitialValues.Count; i++)
+        {
+            if (i > 0)
+                Append(',', ' ');
+            AppendDataOperand(definition.InitialValues[i], definition.UseHexFormat, currentFunction: null);
+        }
+    }
+
+    private void AppendDataOperand(AsmOperand operand, bool useHexFormat, AsmFunction? currentFunction)
+    {
+        switch (operand)
+        {
+            case AsmImmediateOperand { Value: >= 0 } immediate when useHexFormat:
+                Append((Literal, $"${immediate.Value:X8}"));
+                return;
+
+            case AsmImmediateOperand immediate:
+                Append((Literal, immediate.Value.ToString(CultureInfo.InvariantCulture)));
+                return;
+
+            case AsmSymbolOperand symbol:
+                AppendSymbolOperand(symbol, currentFunction);
+                return;
+
+            default:
+                Append((Literal, operand.Format()));
+                return;
+        }
+    }
+
+    private void AppendSharedConstantValue(AsmSharedConstantValue value, bool useHexFormat, AsmFunction? currentFunction)
+    {
+        switch (value)
+        {
+            case AsmLiteralSharedConstantValue literal when useHexFormat:
+                Append((Literal, $"${literal.Value:X8}"));
+                return;
+
+            case AsmLiteralSharedConstantValue literal:
+                Append((Literal, unchecked((int)literal.Value).ToString(CultureInfo.InvariantCulture)));
+                return;
+
+            case AsmSymbolSharedConstantValue symbolic:
+                AppendOffsetExpression(
+                    () => AppendSymbolExpression(symbolic.Symbol, currentFunction, useLutVirtualAddressAlias: false),
+                    symbolic.Offset);
+                return;
+
+            case AsmLutVirtualAddressSharedConstantValue lut:
+                AppendOffsetExpression(
+                    () => AppendSymbolExpression(lut.Place, currentFunction, useLutVirtualAddressAlias: true),
+                    lut.Offset);
+                return;
+
+            default:
+                Assert.Unreachable($"Unhandled shared constant value '{value.GetType().Name}'."); // pragma: force-coverage
+                return; // pragma: force-coverage
+        }
+    }
+
+    private void AppendInlineDataValue(AsmInlineDataValue value, AsmFunction currentFunction)
+    {
+        switch (value)
+        {
+            case AsmInlineDataOperandValue operandValue when operandValue.PreserveImmediateSyntax:
+                AppendInlineDataImmediateOperand(operandValue.Operand, currentFunction);
+                return;
+
+            case AsmInlineDataOperandValue operandValue:
+                AppendInlineDataDirectOperand(operandValue.Operand, currentFunction);
+                return;
+
+            case AsmInlineDataRawSymbolValue raw when raw.PreserveImmediateSyntax:
+                Append((Literal, "#" + raw.Name));
+                return;
+
+            case AsmInlineDataRawSymbolValue raw:
+                Append((Literal, raw.Name));
+                return;
+
+            default:
+                Assert.Unreachable($"Unhandled inline data value '{value.GetType().Name}'."); // pragma: force-coverage
+                return; // pragma: force-coverage
+        }
+    }
+
+    private void AppendInlineDataImmediateOperand(AsmOperand operand, AsmFunction currentFunction)
+    {
+        switch (operand)
+        {
+            case AsmImmediateOperand immediate:
+                Append((Literal, "#" + immediate.Value.ToString(CultureInfo.InvariantCulture)));
+                return;
+
+            case AsmSymbolOperand symbol:
+                Append((Literal, "#"));
+                AppendSymbolLabel(symbol.Symbol, currentFunction);
+                return;
+
+            default:
+                AppendOperand(operand, currentFunction);
+                return;
+        }
+    }
+
+    private void AppendInlineDataDirectOperand(AsmOperand operand, AsmFunction currentFunction)
+    {
+        switch (operand)
+        {
+            case AsmImmediateOperand immediate:
+                Append((Literal, immediate.Value.ToString(CultureInfo.InvariantCulture)));
+                return;
+
+            case AsmSymbolOperand symbol:
+                AppendSymbolLabel(symbol.Symbol, currentFunction);
+                return;
+
+            default:
+                AppendOperand(operand, currentFunction);
+                return;
+        }
+    }
+
+    private void AppendOperand(AsmOperand operand, AsmFunction currentFunction)
+    {
+        switch (operand)
+        {
+            case AsmPhysicalRegisterOperand physical:
+                Append((Literal, physical.Name));
+                return;
+
+            case AsmRegisterOperand register:
+                Append((VariableName, register.Value, register.Format()));
+                return;
+
+            case AsmImmediateOperand immediate:
+                Append((Literal, immediate.Format()));
+                return;
+
+            case AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Immediate }:
+                Append((Literal, "#0"));
+                return;
+
+            case AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Register }:
+                Append((Literal, "0"));
+                return;
+
+            case AsmSymbolOperand symbol:
+                AppendSymbolOperand(symbol, currentFunction);
+                return;
+
+            case AsmLabelRefOperand labelRef:
+                Append('@');
+                AppendSymbolLabel(labelRef.Label, currentFunction);
+                return;
+
+            default:
+                Append((Literal, operand.Format()));
+                return;
+        }
+    }
+
+    private void AppendSymbolOperand(AsmSymbolOperand operand, AsmFunction? currentFunction)
+    {
+        if (operand.AddressingMode == AsmSymbolAddressingMode.Immediate)
+        {
+            AppendImmediateOffsetExpression(
+                () => AppendSymbolExpression(
+                    operand.Symbol,
+                    currentFunction,
+                    useLutVirtualAddressAlias: operand.Symbol.SymbolType == SymbolType.LutVariable),
+                operand.Offset);
+            return;
+        }
+
+        AppendOffsetExpression(
+            () => AppendSymbolExpression(operand.Symbol, currentFunction, useLutVirtualAddressAlias: false),
+            operand.Offset);
+    }
+
+    private void AppendImmediateOffsetExpression(Action appendBaseExpression, int offset)
+    {
+        Requires.NotNull(appendBaseExpression);
+
+        if (offset == 0)
+        {
+            Append((Literal, "#"));
+            appendBaseExpression();
+            return;
+        }
+
+        Append((Literal, "#("));
+        appendBaseExpression();
+        AppendOffsetSuffix(offset);
+        Append(')');
+    }
+
+    private void AppendOffsetExpression(Action appendBaseExpression, int offset)
+    {
+        Requires.NotNull(appendBaseExpression);
+
+        appendBaseExpression();
+        AppendOffsetSuffix(offset);
+    }
+
+    private void AppendOffsetSuffix(int offset)
+    {
+        if (offset == 0)
+            return;
+
+        if (offset > 0)
+            Append(' ', '+', ' ', (Literal, offset.ToString(CultureInfo.InvariantCulture)));
+        else
+            Append(' ', '-', ' ', (Literal, (-offset).ToString(CultureInfo.InvariantCulture)));
+    }
+
+    private void AppendSymbolExpression(IAsmSymbol symbol, AsmFunction? currentFunction, bool useLutVirtualAddressAlias)
+    {
+        Requires.NotNull(symbol);
+
+        if (symbol is AsmImageStartSymbol imageStart)
+        {
+            bool found = this.cogResourceLayouts.TryGetImageStartAddress(imageStart.Image, out HubAddress addressBytes);
+            Assert.Invariant(found, $"Missing image start address for task '{imageStart.Image.Task.Name}'.");
+            Append((Literal, FormatPhysicalAddressExpression(addressBytes)));
+            return;
+        }
+
+        if (useLutVirtualAddressAlias)
+        {
+            AppendLutVirtualAddressConstantName(symbol, currentFunction);
+            return;
+        }
+
+        AppendSymbolLabel(symbol, currentFunction);
+    }
+
+    private void AppendLutVirtualAddressConstantName(StoragePlace place)
+    {
+        Append((VariableName, place, this.labelNames.GetLutVirtualAddressConstantName(place)));
+    }
+
+    private void AppendLutVirtualAddressConstantName(IAsmSymbol symbol, AsmFunction? currentFunction)
+    {
+        if (symbol is StoragePlace place)
+        {
+            AppendLutVirtualAddressConstantName(place);
+            return;
+        }
+
+        AppendSymbolLabel(symbol, currentFunction);
+        Append((Literal, "_vaddr"));
+    }
+
+    private void AppendSymbolLabel(IAsmSymbol symbol, AsmFunction? currentFunction)
+    {
+        Requires.NotNull(symbol);
+
+        if (symbol is ControlFlowLabelSymbol { Name: BladeHaltLabel })
+        {
+            Append((Literal, this.labelNames.GetReservedLabelName(BladeHaltLabel)));
+            return;
+        }
+
+        string text = GetLabelName(symbol, currentFunction);
+        switch (symbol)
+        {
+            case AsmFunction function:
+                Append((FunctionName, function, text));
+                return;
+
+            case AsmFunctionReferenceSymbol functionReference:
+                Append((FunctionName, functionReference, text));
+                return;
+
+            case StoragePlace place:
+                Append((VariableName, place, text));
+                return;
+
+            case ControlFlowLabelSymbol label:
+                Append((VariableName, label, text));
+                return;
+
+            case AsmSharedConstantSymbol constant:
+                Append((VariableName, constant, text));
+                return;
+
+            case AsmSpillSlotSymbol spillSlot:
+                Append((VariableName, spillSlot, text));
+                return;
+
+            default:
+                Append((Literal, text));
+                return;
+        }
+    }
+
+    private VirtualAddress? ResolveVirtualAddress(StoragePlace place)
+    {
+        VirtualAddress? virtualAddress = place.ResolvedLayoutSlot?.Address ?? place.FixedAddress;
+        if (!virtualAddress.HasValue
+            && this.cogResourceLayouts.TryGetAddress(place, out MemoryAddress memoryAddress))
+        {
+            virtualAddress = memoryAddress.Virtual;
+        }
+
+        return virtualAddress;
+    }
+
+    private int ResolveCogAddress(IAsmSymbol symbol)
+    {
+        Requires.NotNull(symbol);
+
+        return symbol switch
+        {
+            StoragePlace { ResolvedLayoutSlot: LayoutSlot { StorageClass: AddressSpace.Cog } slot } => GetRawAddress(slot.Address),
+            StoragePlace place when this.cogResourceLayouts.TryGetAddress(place, out MemoryAddress stableAddress) => GetRawAddress(stableAddress.Virtual),
+            AsmSpillSlotSymbol spillSlot => (int)spillSlot.Slot,
+            AsmSharedConstantSymbol constant when this.cogResourceLayouts.TryGetAddress(constant, out MemoryAddress constantAddress) => GetRawAddress(constantAddress.Virtual),
+            _ => Assert.UnreachableValue<int>($"Missing COG address for symbol '{symbol.Name}'."), // pragma: force-coverage
+        };
+    }
+
+    private int ResolveCogPhysicalAddressBytes(IAsmSymbol symbol)
+    {
+        if (this.cogResourceLayouts.TryGetAddress(symbol, out MemoryAddress address))
+            return (int)address.Physical;
+
+        if (TryGetOwningImage(symbol, out ImageDescriptor? image)
+            && this.cogResourceLayouts.TryGetImageStartAddress(Assert.NotNull(image), out HubAddress owningImageStart)
+            && this.cogResourceLayouts.TryGetAddress(symbol, out MemoryAddress virtualAddress))
+        {
+            return checked((int)owningImageStart + (GetRawAddress(virtualAddress.Virtual) * 4));
+        }
+
+        if (this.cogResourceLayouts.Images.Count == 1
+            && this.cogResourceLayouts.TryGetAddress(symbol, out MemoryAddress singleImageVirtualAddress))
+        {
+            return checked((int)this.cogResourceLayouts.EntryImage.HubStartAddressBytes + (GetRawAddress(singleImageVirtualAddress.Virtual) * 4));
+        }
+
+        if (symbol is AsmSpillSlotSymbol spillSlot
+            && this.cogResourceLayouts.TryGetImageStartAddress(spillSlot.Image, out HubAddress spillImageStart))
+        {
+            return checked((int)spillImageStart + ((int)spillSlot.Slot * 4));
+        }
+
+        return Assert.UnreachableValue<int>($"Missing physical hub address for symbol '{symbol.Name}'."); // pragma: force-coverage
+    }
+
+    private string GetLabelName(IAsmSymbol symbol, AsmFunction? currentFunction = null)
+    {
+        return this.labelNames.GetLabelName(symbol, currentFunction);
+    }
+
+    private string FormatPhysicalAddressExpression(HubAddress addressBytes)
+    {
+        int rawAddressBytes = (int)addressBytes;
+        Requires.NonNegative(rawAddressBytes);
+        if (rawAddressBytes == 0)
+            return this.labelNames.GetReservedLabelName(BladeImageBaseLabel);
+
+        return $"{this.labelNames.GetReservedLabelName(BladeImageBaseLabel)} + ${rawAddressBytes:X}";
+    }
+
+    private static bool HasConSectionContents(IReadOnlyList<AsmDataBlock> dataBlocks)
+    {
+        AsmDataBlock? externalBlock = dataBlocks.FirstOrDefault(static block => block.Kind == AsmDataBlockKind.External);
+        if (externalBlock?.Definitions.OfType<AsmExternalBindingDefinition>().Any() == true)
+            return true;
+
+        AsmDataBlock? lutBlock = dataBlocks.FirstOrDefault(static block => block.Kind == AsmDataBlockKind.Lut);
+        return lutBlock?.Definitions.OfType<AsmAllocatedStorageDefinition>().Any() == true;
     }
 
     private static IReadOnlyList<AsmDataBlock> MergeDataBlocks(IReadOnlyList<AsmModule> modules)
@@ -280,461 +961,6 @@ public static class FinalAssemblyWriter
         };
     }
 
-    private static void WriteImageCodeBlock(
-        StringBuilder sb,
-        CogResourceLayout imageLayout,
-        IReadOnlyList<AsmFunction> functions,
-        LabelNameEmitter labelNames,
-        bool includeDefaultBladeHalt,
-        CogResourceLayoutSet cogResourceLayouts)
-    {
-        sb.AppendLine();
-        sb.Append("    ' --- image ");
-        sb.Append(imageLayout.Image.Task.Name);
-        sb.Append(" (");
-        sb.Append(imageLayout.Image.ExecutionMode);
-        sb.AppendLine(") ---");
-        WriteImageCodeOriginDirective(sb, imageLayout, labelNames);
-
-        foreach (AsmFunction function in functions)
-        {
-            sb.AppendLine();
-            sb.Append("    ' function ");
-            sb.Append(function.Name);
-            sb.Append(" (");
-            sb.Append(function.CcTier);
-            sb.AppendLine(")");
-            if (function.IsEntryPoint && imageLayout.Image.IsEntryImage)
-            {
-                sb.Append("  ");
-                sb.AppendLine(labelNames.GetReservedLabelName(BladeEntryLabel));
-            }
-            sb.Append("  ");
-            sb.AppendLine(GetLabelName(function, labelNames));
-            WriteFunctionNodes(sb, function, function.Nodes, labelNames, cogResourceLayouts);
-            if (includeDefaultBladeHalt && function.IsEntryPoint && imageLayout.Image.IsEntryImage)
-                WriteDefaultBladeHalt(sb, labelNames);
-        }
-    }
-
-    private static void WriteFunctionNodes(
-        StringBuilder sb,
-        AsmFunction function,
-        IReadOnlyList<AsmNode> nodes,
-        LabelNameEmitter labelNames,
-        CogResourceLayoutSet cogResourceLayouts)
-    {
-        foreach (AsmNode node in nodes)
-            WriteNode(sb, node, function, labelNames, cogResourceLayouts);
-    }
-
-    private static void WriteDefaultBladeHalt(StringBuilder sb, LabelNameEmitter labelNames)
-    {
-        sb.AppendLine();
-        sb.AppendLine("    ' halt: default runtime hook");
-        sb.Append("  ");
-        sb.AppendLine(labelNames.GetReservedLabelName(DefaultHaltLabel));
-        sb.AppendLine("    REP #1, #0");
-        sb.AppendLine("    NOP");
-    }
-
-    private static void WriteSharedStorageBlocks(
-        StringBuilder sb,
-        IReadOnlyList<AsmDataBlock> dataBlocks,
-        LabelNameEmitter labelNames,
-        CogResourceLayoutSet cogResourceLayouts)
-    {
-        AsmDataBlock? hubBlock = dataBlocks.FirstOrDefault(static candidate => candidate.Kind == AsmDataBlockKind.Hub);
-        if (hubBlock?.Definitions.OfType<AsmAllocatedStorageDefinition>().Any() == true)
-        {
-            sb.AppendLine();
-            WriteStorageBlock(sb, hubBlock, "' --- hub file ---", labelNames, AddressSpace.Hub, cogResourceLayouts);
-        }
-    }
-
-    private static void WriteImageCogStorageBlocks(
-        StringBuilder sb,
-        CogResourceLayout imageLayout,
-        AsmDataBlock? registerBlock,
-        AsmDataBlock? constantBlock,
-        LabelNameEmitter labelNames,
-        CogResourceLayoutSet cogResourceLayouts)
-    {
-        List<AsmAllocatedStorageDefinition> definitions = [];
-        if (registerBlock is not null)
-            definitions.AddRange(registerBlock.Definitions.OfType<AsmAllocatedStorageDefinition>().Where(definition => SymbolBelongsToImage(definition.Symbol, imageLayout.Image)));
-        if (constantBlock is not null)
-            definitions.AddRange(constantBlock.Definitions.OfType<AsmAllocatedStorageDefinition>().Where(definition => SymbolBelongsToImage(definition.Symbol, imageLayout.Image)));
-
-        sb.AppendLine();
-        sb.AppendLine("    ' --- cog data file ---");
-
-        if (definitions.Count == 0)
-        {
-            if (imageLayout.Image.ExecutionMode is AddressSpace.Lut or AddressSpace.Hub)
-                sb.AppendLine("    org $0");
-            sb.AppendLine("    fit $1F0");
-            return;
-        }
-
-        definitions = definitions
-            .OrderBy(definition => ResolveCogAddress(definition.Symbol, cogResourceLayouts))
-            .ThenBy(definition => GetLabelName(definition.Symbol, labelNames), StringComparer.Ordinal)
-            .ToList();
-
-        int maxLabelWidth = definitions.Max(definition => GetLabelName(definition.Symbol, labelNames).Length);
-        int maxDirectiveWidth = definitions.Max(static definition => FormatDataDirective(definition.Directive).Length);
-
-        int? previousEndAddress = null;
-        foreach (AsmAllocatedStorageDefinition definition in definitions)
-        {
-            int address = ResolveCogAddress(definition.Symbol, cogResourceLayouts);
-            if (previousEndAddress != address)
-                WriteCogOriginDirective(sb, ResolveCogPhysicalAddressBytes(definition.Symbol, cogResourceLayouts), address, labelNames);
-
-            WriteAllocatedDefinition(sb, definition, labelNames, maxLabelWidth, maxDirectiveWidth, cogResourceLayouts);
-            previousEndAddress = address + GetDefinitionSizeInAddressUnits(definition);
-        }
-
-        sb.AppendLine("    fit $1F0");
-    }
-
-    private static void WriteStorageBlock(
-        StringBuilder sb,
-        AsmDataBlock block,
-        string header,
-        LabelNameEmitter labelNames,
-        AddressSpace storageClass,
-        CogResourceLayoutSet cogResourceLayouts)
-    {
-        if (storageClass == AddressSpace.Hub)
-        {
-            WriteHubStorageBlock(sb, block, header, labelNames, cogResourceLayouts);
-            return;
-        }
-
-        List<AsmAllocatedStorageDefinition> placedDefinitions = block.Definitions
-            .OfType<AsmAllocatedStorageDefinition>()
-            .Where(definition => definition.Symbol is StoragePlace { ResolvedLayoutSlot: not null })
-            .OrderBy(static definition => GetRawAddress(((StoragePlace)definition.Symbol).ResolvedLayoutSlot!.Address))
-            .ThenBy(definition => definition.Symbol.Name, StringComparer.Ordinal)
-            .ToList();
-        if (placedDefinitions.Count == 0)
-        {
-            if (storageClass == AddressSpace.Lut)
-                sb.AppendLine("    org $200");
-            else
-                sb.AppendLine("    orgh");
-
-            WriteAllocatedBlock(sb, block, header, labelNames, cogResourceLayouts, emitAlignmentDirectives: storageClass == AddressSpace.Hub);
-            return;
-        }
-
-        List<AsmAllocatedStorageDefinition> sequentialDefinitions = block.Definitions
-            .OfType<AsmAllocatedStorageDefinition>()
-            .Where(definition => definition.Symbol is not StoragePlace { ResolvedLayoutSlot: not null })
-            .ToList();
-
-        sb.AppendLine();
-        sb.AppendLine(header);
-
-        int maxLabelWidth = block.Definitions
-            .OfType<AsmAllocatedStorageDefinition>()
-            .Select(definition => GetLabelName(definition.Symbol, labelNames).Length)
-            .DefaultIfEmpty(0)
-            .Max();
-        int maxDirectiveWidth = block.Definitions
-            .OfType<AsmAllocatedStorageDefinition>()
-            .Select(static definition => FormatDataDirective(definition.Directive).Length)
-            .DefaultIfEmpty(0)
-            .Max();
-
-        int nextAddress = 0;
-        foreach (AsmAllocatedStorageDefinition definition in placedDefinitions)
-        {
-            StoragePlace place = (StoragePlace)definition.Symbol;
-            LayoutSlot slot = Assert.NotNull(place.ResolvedLayoutSlot);
-            WriteOriginDirective(sb, storageClass, GetRawAddress(slot.Address));
-            WriteAllocatedDefinition(sb, definition, labelNames, maxLabelWidth, maxDirectiveWidth, cogResourceLayouts);
-            nextAddress = Math.Max(nextAddress, GetRawAddress(slot.Address) + GetDefinitionSizeInAddressUnits(definition));
-        }
-
-        if (sequentialDefinitions.Count == 0)
-            return;
-
-        WriteOriginDirective(sb, storageClass, nextAddress);
-        AsmDataBlock sequentialBlock = new(block.Kind, sequentialDefinitions);
-        WriteAllocatedBlockContents(
-            sb,
-            sequentialBlock,
-            labelNames,
-            maxLabelWidth,
-            maxDirectiveWidth,
-            cogResourceLayouts,
-            emitAlignmentDirectives: storageClass == AddressSpace.Hub);
-    }
-
-    private static void WriteHubStorageBlock(
-        StringBuilder sb,
-        AsmDataBlock block,
-        string header,
-        LabelNameEmitter labelNames,
-        CogResourceLayoutSet cogResourceLayouts)
-    {
-        List<AsmAllocatedStorageDefinition> placedDefinitions = block.Definitions
-            .OfType<AsmAllocatedStorageDefinition>()
-            .Where(definition => definition.Symbol is StoragePlace { ResolvedLayoutSlot: not null })
-            .OrderBy(static definition => GetRawAddress(((StoragePlace)definition.Symbol).ResolvedLayoutSlot!.Address))
-            .ThenBy(definition => definition.Symbol.Name, StringComparer.Ordinal)
-            .ToList();
-        List<AsmAllocatedStorageDefinition> sequentialDefinitions = block.Definitions
-            .OfType<AsmAllocatedStorageDefinition>()
-            .Where(definition => definition.Symbol is not StoragePlace { ResolvedLayoutSlot: not null })
-            .ToList();
-
-        sb.AppendLine();
-        sb.AppendLine(header);
-
-        if (placedDefinitions.Count == 0 && sequentialDefinitions.Count == 0)
-            return;
-
-        sb.AppendLine("    orgh");
-
-        int maxLabelWidth = block.Definitions
-            .OfType<AsmAllocatedStorageDefinition>()
-            .Select(definition => GetLabelName(definition.Symbol, labelNames).Length)
-            .DefaultIfEmpty(0)
-            .Max();
-        int maxDirectiveWidth = block.Definitions
-            .OfType<AsmAllocatedStorageDefinition>()
-            .Select(static definition => FormatDataDirective(definition.Directive).Length)
-            .DefaultIfEmpty(0)
-            .Max();
-
-        int currentAddress = cogResourceLayouts.Images.Count == 0
-            ? 0
-            : (int)cogResourceLayouts.Images[^1].Placement.HubEndAddressExclusive;
-        foreach (AsmAllocatedStorageDefinition definition in placedDefinitions)
-        {
-            StoragePlace place = (StoragePlace)definition.Symbol;
-            LayoutSlot slot = Assert.NotNull(place.ResolvedLayoutSlot);
-            int slotAddress = GetRawAddress(slot.Address);
-            int paddingBytes = slotAddress - currentAddress;
-            Assert.Invariant(paddingBytes >= 0, $"Hub storage address for '{place.Symbol.Name}' moved backwards.");
-            if (paddingBytes > 0)
-            {
-                sb.Append("    BYTE 0[");
-                sb.Append(paddingBytes.ToString(CultureInfo.InvariantCulture));
-                sb.AppendLine("]");
-            }
-
-            WriteAllocatedDefinition(sb, definition, labelNames, maxLabelWidth, maxDirectiveWidth, cogResourceLayouts);
-            currentAddress = slotAddress + GetDefinitionSizeInAddressUnits(definition);
-        }
-
-        if (sequentialDefinitions.Count == 0)
-            return;
-
-        AsmDataBlock sequentialBlock = new(block.Kind, sequentialDefinitions);
-        WriteAllocatedBlockContents(
-            sb,
-            sequentialBlock,
-            labelNames,
-            maxLabelWidth,
-            maxDirectiveWidth,
-            cogResourceLayouts,
-            emitAlignmentDirectives: true);
-    }
-
-    private static void WriteAllocatedBlock(
-        StringBuilder sb,
-        AsmDataBlock block,
-        string header,
-        LabelNameEmitter labelNames,
-        CogResourceLayoutSet cogResourceLayouts,
-        bool emitAlignmentDirectives = false)
-    {
-        List<AsmAllocatedStorageDefinition> definitions = block.Definitions
-            .OfType<AsmAllocatedStorageDefinition>()
-            .OrderByDescending(static definition => definition.AlignmentBytes)
-            .ThenBy(static definition => definition.Symbol.Name, StringComparer.Ordinal)
-            .ToList();
-
-        sb.AppendLine();
-        sb.AppendLine(header);
-        if (definitions.Count == 0)
-            return;
-
-        int maxLabelWidth = definitions.Max(definition => GetLabelName(definition.Symbol, labelNames).Length);
-        int maxDirectiveWidth = definitions.Max(static definition => FormatDataDirective(definition.Directive).Length);
-        WriteAllocatedBlockContents(sb, block, labelNames, maxLabelWidth, maxDirectiveWidth, cogResourceLayouts, emitAlignmentDirectives);
-    }
-
-    private static void WriteAllocatedBlockContents(
-        StringBuilder sb,
-        AsmDataBlock block,
-        LabelNameEmitter labelNames,
-        int maxLabelWidth,
-        int maxDirectiveWidth,
-        CogResourceLayoutSet cogResourceLayouts,
-        bool emitAlignmentDirectives)
-    {
-        List<AsmAllocatedStorageDefinition> definitions = block.Definitions
-            .OfType<AsmAllocatedStorageDefinition>()
-            .OrderByDescending(static definition => definition.AlignmentBytes)
-            .ThenBy(static definition => definition.Symbol.Name, StringComparer.Ordinal)
-            .ToList();
-        int currentAlignment = -1;
-
-        foreach (AsmAllocatedStorageDefinition definition in definitions)
-        {
-            if (emitAlignmentDirectives && definition.AlignmentBytes != currentAlignment)
-            {
-                currentAlignment = definition.AlignmentBytes;
-                if (currentAlignment >= 4)
-                    sb.AppendLine("    ALIGNL");
-                else if (currentAlignment == 2)
-                    sb.AppendLine("    ALIGNW");
-            }
-
-            WriteAllocatedDefinition(sb, definition, labelNames, maxLabelWidth, maxDirectiveWidth, cogResourceLayouts);
-        }
-    }
-
-    private static void WriteAllocatedDefinition(
-        StringBuilder sb,
-        AsmAllocatedStorageDefinition definition,
-        LabelNameEmitter labelNames,
-        int maxLabelWidth,
-        int maxDirectiveWidth,
-        CogResourceLayoutSet cogResourceLayouts)
-    {
-        string label = GetLabelName(definition.Symbol, labelNames);
-        string directive = FormatDataDirective(definition.Directive);
-        string value = FormatDataValue(definition, labelNames, cogResourceLayouts);
-
-        sb.Append(label.PadRight(maxLabelWidth));
-        sb.Append(' ');
-        sb.Append(directive.PadRight(maxDirectiveWidth));
-        sb.Append(' ');
-        sb.Append(value);
-        sb.AppendLine();
-    }
-
-    private static void WriteOriginDirective(StringBuilder sb, AddressSpace storageClass, int address)
-    {
-        Requires.NotNull(sb);
-        Requires.NonNegative(address);
-
-        switch (storageClass)
-        {
-            case AddressSpace.Lut:
-                int lutOrigin = checked(0x200 + address);
-                sb.Append("    org $");
-                sb.AppendLine(lutOrigin.ToString("X", CultureInfo.InvariantCulture));
-                break;
-
-            case AddressSpace.Hub:
-                if (address == 0)
-                {
-                    sb.AppendLine("    orgh");
-                    break;
-                }
-
-                sb.Append("    orgh $");
-                sb.AppendLine(address.ToString("X", CultureInfo.InvariantCulture));
-                break;
-
-            default:
-                Assert.Unreachable($"Unexpected storage origin class '{storageClass}'."); // pragma: force-coverage
-                break; // pragma: force-coverage
-        }
-    }
-
-    private static void WriteImageCodeOriginDirective(StringBuilder sb, CogResourceLayout imageLayout, LabelNameEmitter labelNames)
-    {
-        if (imageLayout.Image.IsEntryImage)
-        {
-            sb.AppendLine("    orgh");
-            sb.Append("  ");
-            sb.AppendLine(labelNames.GetReservedLabelName(BladeImageBaseLabel));
-        }
-        else
-        {
-            sb.Append("    orgh ");
-            sb.AppendLine(FormatPhysicalAddressExpression(imageLayout.HubStartAddressBytes, labelNames));
-        }
-
-        switch (imageLayout.Image.ExecutionMode)
-        {
-            case AddressSpace.Cog:
-                sb.AppendLine("    org $0");
-                break;
-            case AddressSpace.Lut:
-                sb.AppendLine("    org $200");
-                break;
-            case AddressSpace.Hub:
-                break;
-            default:
-                Assert.Unreachable($"Unexpected execution mode '{imageLayout.Image.ExecutionMode}'."); // pragma: force-coverage
-                break; // pragma: force-coverage
-        }
-    }
-
-    private static void WriteCogOriginDirective(StringBuilder sb, int physicalAddressBytes, int virtualAddress, LabelNameEmitter labelNames)
-    {
-        Requires.NotNull(sb);
-        Requires.NonNegative(physicalAddressBytes);
-        Requires.InRange(virtualAddress, 0, 0x1FF);
-
-        sb.Append("    orgh ");
-        sb.AppendLine(FormatPhysicalAddressExpression(new HubAddress(physicalAddressBytes), labelNames));
-        sb.Append("    org $");
-        sb.AppendLine(virtualAddress.ToString("X", CultureInfo.InvariantCulture));
-    }
-
-    private static int ResolveCogAddress(IAsmSymbol symbol, CogResourceLayoutSet cogResourceLayouts)
-    {
-        Requires.NotNull(symbol);
-        Requires.NotNull(cogResourceLayouts);
-
-        return symbol switch
-        {
-            StoragePlace { ResolvedLayoutSlot: LayoutSlot { StorageClass: AddressSpace.Cog } slot } => GetRawAddress(slot.Address),
-            StoragePlace place when cogResourceLayouts.TryGetAddress(place, out MemoryAddress stableAddress) => GetRawAddress(stableAddress.Virtual),
-            AsmSpillSlotSymbol spillSlot => (int)spillSlot.Slot,
-            AsmSharedConstantSymbol constant when cogResourceLayouts.TryGetAddress(constant, out MemoryAddress constantAddress) => GetRawAddress(constantAddress.Virtual),
-            _ => Assert.UnreachableValue<int>($"Missing COG address for symbol '{symbol.Name}'."), // pragma: force-coverage
-        };
-    }
-
-    private static int ResolveCogPhysicalAddressBytes(IAsmSymbol symbol, CogResourceLayoutSet cogResourceLayouts)
-    {
-        if (cogResourceLayouts.TryGetAddress(symbol, out MemoryAddress address))
-            return (int)address.Physical;
-
-        if (TryGetOwningImage(symbol, out ImageDescriptor? image)
-            && cogResourceLayouts.TryGetImageStartAddress(Assert.NotNull(image), out HubAddress owningImageStart)
-            && cogResourceLayouts.TryGetAddress(symbol, out MemoryAddress virtualAddress))
-        {
-            return checked((int)owningImageStart + (GetRawAddress(virtualAddress.Virtual) * 4));
-        }
-
-        if (cogResourceLayouts.Images.Count == 1
-            && cogResourceLayouts.TryGetAddress(symbol, out MemoryAddress singleImageVirtualAddress))
-        {
-            return checked((int)cogResourceLayouts.EntryImage.HubStartAddressBytes + (GetRawAddress(singleImageVirtualAddress.Virtual) * 4));
-        }
-
-        if (symbol is AsmSpillSlotSymbol spillSlot
-            && cogResourceLayouts.TryGetImageStartAddress(spillSlot.Image, out HubAddress spillImageStart))
-        {
-            return checked((int)spillImageStart + ((int)spillSlot.Slot * 4));
-        }
-
-        return Assert.UnreachableValue<int>($"Missing physical hub address for symbol '{symbol.Name}'."); // pragma: force-coverage
-    }
-
     private static int GetDefinitionSizeInAddressUnits(AsmAllocatedStorageDefinition definition)
     {
         Requires.NotNull(definition);
@@ -762,307 +988,9 @@ public static class FinalAssemblyWriter
         };
     }
 
-    private static string FormatDataValue(AsmAllocatedStorageDefinition definition, LabelNameEmitter labelNames, CogResourceLayoutSet cogResourceLayouts)
+    private static string FormatHexLiteral(int value)
     {
-        if (definition.Symbol is AsmSharedConstantSymbol constant)
-            return FormatSharedConstantValue(constant.Value, definition.UseHexFormat, labelNames, cogResourceLayouts);
-
-        if (definition.InitialValues is null || definition.InitialValues.Count == 0)
-            return definition.Count > 1 ? $"0[{definition.Count}]" : "0";
-
-        if (definition.InitialValues.Count == 1)
-        {
-            string initializer = FormatDataOperand(definition.InitialValues[0], definition.UseHexFormat, labelNames, cogResourceLayouts);
-            return definition.Count > 1 ? $"{initializer}[{definition.Count}]" : initializer;
-        }
-
-        List<string> values = new(definition.InitialValues.Count);
-        foreach (AsmOperand operand in definition.InitialValues)
-            values.Add(FormatDataOperand(operand, definition.UseHexFormat, labelNames, cogResourceLayouts));
-        return string.Join(", ", values);
-    }
-
-    private static string FormatDataOperand(AsmOperand operand, bool useHexFormat, LabelNameEmitter labelNames, CogResourceLayoutSet cogResourceLayouts)
-    {
-        return operand switch
-        {
-            AsmImmediateOperand { Value: >= 0 } immediate when useHexFormat => $"${immediate.Value:X8}",
-            AsmImmediateOperand immediate => immediate.Value.ToString(CultureInfo.InvariantCulture),
-            AsmSymbolOperand symbol => FormatDataSymbolOperand(symbol, labelNames, cogResourceLayouts),
-            _ => operand.Format(),
-        };
-    }
-
-    private static string FormatSharedConstantValue(
-        AsmSharedConstantValue value,
-        bool useHexFormat,
-        LabelNameEmitter labelNames,
-        CogResourceLayoutSet cogResourceLayouts)
-    {
-        return value switch
-        {
-            AsmLiteralSharedConstantValue literal when useHexFormat => $"${literal.Value:X8}",
-            AsmLiteralSharedConstantValue literal => unchecked((int)literal.Value).ToString(CultureInfo.InvariantCulture),
-            AsmSymbolSharedConstantValue symbolic => FormatOffsetExpression(
-                FormatSymbolExpression(symbolic.Symbol, labelNames, cogResourceLayouts, currentFunction: null, useLutVirtualAddressAlias: false),
-                symbolic.Offset),
-            AsmLutVirtualAddressSharedConstantValue lut => FormatOffsetExpression(
-                FormatSymbolExpression(lut.Place, labelNames, cogResourceLayouts, currentFunction: null, useLutVirtualAddressAlias: true),
-                lut.Offset),
-            _ => Assert.UnreachableValue<string>(), // pragma: force-coverage
-        };
-    }
-
-    private static string FormatDataSymbolOperand(AsmSymbolOperand operand, LabelNameEmitter labelNames, CogResourceLayoutSet cogResourceLayouts)
-    {
-        Requires.NotNull(operand);
-        Requires.NotNull(labelNames);
-        Requires.NotNull(cogResourceLayouts);
-
-        return FormatOffsetExpression(
-            FormatSymbolExpression(operand.Symbol, labelNames, cogResourceLayouts, currentFunction: null, useLutVirtualAddressAlias: false),
-            operand.Offset);
-    }
-
-    private static void WriteNode(
-        StringBuilder sb,
-        AsmNode node,
-        AsmFunction currentFunction,
-        LabelNameEmitter labelNames,
-        CogResourceLayoutSet cogResourceLayouts)
-    {
-        switch (node)
-        {
-            case AsmLabelNode label:
-                sb.Append("  ");
-                sb.AppendLine(GetLabelName(label.Label, labelNames, currentFunction));
-                break;
-
-            case AsmCommentNode comment:
-                sb.Append("    ' ");
-                sb.AppendLine(comment.Text);
-                break;
-
-            case AsmVolatileRegionBeginNode:
-            case AsmVolatileRegionEndNode:
-                break;
-
-            case AsmInstructionNode instruction:
-                sb.Append("    ");
-                if (instruction.Condition is P2ConditionCode condition)
-                {
-                    sb.Append(P2MetadataSyntax.GetConditionPrefixText(condition));
-                    sb.Append(' ');
-                }
-
-                sb.Append(instruction.Mnemonic.ToString());
-                if (instruction.Operands.Count > 0)
-                {
-                    sb.Append(' ');
-                    for (int i = 0; i < instruction.Operands.Count; i++)
-                    {
-                        if (i > 0)
-                            sb.Append(", ");
-                        sb.Append(FormatOperand(instruction, i, labelNames, cogResourceLayouts, currentFunction));
-                    }
-                }
-
-                if (instruction.FlagOutput.Effect != P2FlagEffect.None)
-                {
-                    sb.Append(' ');
-                    sb.Append(instruction.FlagOutput.Effect);
-                }
-
-                sb.AppendLine();
-                break;
-
-            case AsmInlineDataNode inlineData:
-                sb.Append("    ");
-                sb.Append(FormatDataDirective(inlineData.Directive));
-                if (inlineData.Values.Count > 0)
-                {
-                    sb.Append(' ');
-                    for (int i = 0; i < inlineData.Values.Count; i++)
-                    {
-                        if (i > 0)
-                            sb.Append(", ");
-                        sb.Append(FormatInlineDataValue(inlineData.Values[i], labelNames, cogResourceLayouts, currentFunction));
-                    }
-                }
-
-                sb.AppendLine();
-                break;
-        }
-    }
-
-    private static string FormatInlineDataValue(
-        AsmInlineDataValue value,
-        LabelNameEmitter labelNames,
-        CogResourceLayoutSet cogResourceLayouts,
-        AsmFunction currentFunction)
-    {
-        return value switch
-        {
-            AsmInlineDataOperandValue operandValue when operandValue.PreserveImmediateSyntax
-                => FormatInlineDataImmediateOperand(operandValue.Operand, labelNames, cogResourceLayouts, currentFunction),
-            AsmInlineDataOperandValue operandValue
-                => FormatInlineDataDirectOperand(operandValue.Operand, labelNames, cogResourceLayouts, currentFunction),
-            AsmInlineDataRawSymbolValue raw when raw.PreserveImmediateSyntax
-                => "#" + raw.Name,
-            AsmInlineDataRawSymbolValue raw
-                => raw.Name,
-            _ => Assert.UnreachableValue<string>(), // pragma: force-coverage
-        };
-    }
-
-    private static string FormatInlineDataImmediateOperand(
-        AsmOperand operand,
-        LabelNameEmitter labelNames,
-        CogResourceLayoutSet cogResourceLayouts,
-        AsmFunction currentFunction)
-    {
-        return operand switch
-        {
-            AsmImmediateOperand immediate => "#" + immediate.Value.ToString(CultureInfo.InvariantCulture),
-            AsmSymbolOperand symbol => "#" + GetLabelName(symbol.Symbol, labelNames, currentFunction),
-            _ => FormatOperandOperandOnly(operand, labelNames, cogResourceLayouts, currentFunction),
-        };
-    }
-
-    private static string FormatInlineDataDirectOperand(
-        AsmOperand operand,
-        LabelNameEmitter labelNames,
-        CogResourceLayoutSet cogResourceLayouts,
-        AsmFunction currentFunction)
-    {
-        return operand switch
-        {
-            AsmImmediateOperand immediate => immediate.Value.ToString(CultureInfo.InvariantCulture),
-            AsmSymbolOperand symbol => GetLabelName(symbol.Symbol, labelNames, currentFunction),
-            _ => FormatOperandOperandOnly(operand, labelNames, cogResourceLayouts, currentFunction),
-        };
-    }
-
-    private static string FormatOperand(
-        AsmInstructionNode instruction,
-        int operandIndex,
-        LabelNameEmitter labelNames,
-        CogResourceLayoutSet cogResourceLayouts,
-        AsmFunction currentFunction)
-    {
-        AsmOperand operand = instruction.Operands[operandIndex];
-        return operand switch
-        {
-            AsmPhysicalRegisterOperand physical => physical.Name,
-            AsmRegisterOperand register => register.Format(),
-            AsmImmediateOperand immediate => immediate.Format(),
-            AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Immediate } => "#0",
-            AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Register } => "0",
-            AsmSymbolOperand symbol => FormatSymbolOperand(symbol, labelNames, cogResourceLayouts, currentFunction),
-            AsmLabelRefOperand labelRef => FormatLabelRefOperand(labelRef, labelNames, currentFunction),
-            _ => operand.Format(),
-        };
-    }
-
-    private static string FormatOperandOperandOnly(
-        AsmOperand operand,
-        LabelNameEmitter labelNames,
-        CogResourceLayoutSet cogResourceLayouts,
-        AsmFunction currentFunction)
-    {
-        return operand switch
-        {
-            AsmPhysicalRegisterOperand physical => physical.Name,
-            AsmRegisterOperand register => register.Format(),
-            AsmImmediateOperand immediate => immediate.Format(),
-            AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Immediate } => "#0",
-            AsmAltPlaceholderOperand { Kind: AltPlaceholderKind.Register } => "0",
-            AsmSymbolOperand symbol => FormatSymbolOperand(symbol, labelNames, cogResourceLayouts, currentFunction),
-            AsmLabelRefOperand labelRef => FormatLabelRefOperand(labelRef, labelNames, currentFunction),
-            _ => operand.Format(),
-        };
-    }
-
-    private static string FormatLabelRefOperand(AsmLabelRefOperand operand, LabelNameEmitter labelNames, AsmFunction currentFunction)
-    {
-        Requires.NotNull(operand);
-        Requires.NotNull(labelNames);
-        Requires.NotNull(currentFunction);
-        return $"@{GetLabelName(operand.Label, labelNames, currentFunction)}";
-    }
-
-    private static string FormatSymbolOperand(
-        AsmSymbolOperand operand,
-        LabelNameEmitter labelNames,
-        CogResourceLayoutSet cogResourceLayouts,
-        AsmFunction currentFunction)
-    {
-        Requires.NotNull(operand);
-        Requires.NotNull(labelNames);
-        Requires.NotNull(cogResourceLayouts);
-        Requires.NotNull(currentFunction);
-
-        if (operand.AddressingMode == AsmSymbolAddressingMode.Immediate)
-        {
-            return FormatImmediateOffsetExpression(
-                FormatSymbolExpression(operand.Symbol, labelNames, cogResourceLayouts, currentFunction, useLutVirtualAddressAlias: operand.Symbol.SymbolType == SymbolType.LutVariable),
-                operand.Offset);
-        }
-
-        return FormatOffsetExpression(
-            FormatSymbolExpression(operand.Symbol, labelNames, cogResourceLayouts, currentFunction, useLutVirtualAddressAlias: false),
-            operand.Offset);
-    }
-
-    private static string FormatImmediateOffsetExpression(string baseExpression, int offset)
-    {
-        if (offset == 0)
-            return $"#{baseExpression}";
-
-        return $"#({FormatOffsetExpression(baseExpression, offset)})";
-    }
-
-    private static string FormatSymbolExpression(
-        IAsmSymbol symbol,
-        LabelNameEmitter labelNames,
-        CogResourceLayoutSet cogResourceLayouts,
-        AsmFunction? currentFunction,
-        bool useLutVirtualAddressAlias)
-    {
-        Requires.NotNull(symbol);
-        Requires.NotNull(labelNames);
-        Requires.NotNull(cogResourceLayouts);
-
-        if (symbol is AsmImageStartSymbol imageStart)
-        {
-            bool found = cogResourceLayouts.TryGetImageStartAddress(imageStart.Image, out HubAddress addressBytes);
-            Assert.Invariant(found, $"Missing image start address for task '{imageStart.Image.Task.Name}'.");
-            return FormatPhysicalAddressExpression(addressBytes, labelNames);
-        }
-
-        if (useLutVirtualAddressAlias)
-            return GetLutVirtualAddressConstantName(symbol, labelNames, currentFunction);
-
-        return GetLabelName(symbol, labelNames, currentFunction);
-    }
-
-    private static string FormatOffsetExpression(string baseExpression, int offset)
-    {
-        Requires.NotNull(baseExpression);
-
-        if (offset == 0)
-            return baseExpression;
-
-        return offset > 0
-            ? $"{baseExpression} + {offset}"
-            : $"{baseExpression} - {-offset}";
-    }
-
-    private static string GetLabelName(IAsmSymbol symbol, LabelNameEmitter labelNames, AsmFunction? currentFunction = null)
-    {
-        Requires.NotNull(symbol);
-        Requires.NotNull(labelNames);
-        return labelNames.GetLabelName(symbol, currentFunction);
+        return "$" + value.ToString("X", CultureInfo.InvariantCulture);
     }
 
     private static string GetUnscopedFunctionIdentifier(FunctionSymbol function)
@@ -1080,34 +1008,6 @@ public static class FinalAssemblyWriter
             AsmSpillSlotSymbol spill => ReferenceEquals(spill.Image, image),
             _ => false,
         };
-    }
-
-    private static string GetLutVirtualAddressConstantName(StoragePlace place, LabelNameEmitter labelNames)
-    {
-        Requires.NotNull(place);
-        Requires.NotNull(labelNames);
-        return labelNames.GetLutVirtualAddressConstantName(place);
-    }
-
-    private static string GetLutVirtualAddressConstantName(IAsmSymbol symbol, LabelNameEmitter labelNames, AsmFunction? currentFunction)
-    {
-        Requires.NotNull(symbol);
-        Requires.NotNull(labelNames);
-
-        if (symbol is StoragePlace place)
-            return GetLutVirtualAddressConstantName(place, labelNames);
-
-        return $"{GetLabelName(symbol, labelNames, currentFunction)}_vaddr";
-    }
-
-    private static string FormatPhysicalAddressExpression(HubAddress addressBytes, LabelNameEmitter labelNames)
-    {
-        int rawAddressBytes = (int)addressBytes;
-        Requires.NonNegative(rawAddressBytes);
-        if (rawAddressBytes == 0)
-            return labelNames.GetReservedLabelName(BladeImageBaseLabel);
-
-        return $"{labelNames.GetReservedLabelName(BladeImageBaseLabel)} + ${rawAddressBytes:X}";
     }
 
     private static int GetRawAddress(VirtualAddress address)

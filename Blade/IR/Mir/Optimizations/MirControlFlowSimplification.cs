@@ -25,7 +25,7 @@ public sealed class MirControlFlowSimplification : IMirOptimization
         }
 
         MirModule result = new(input.Image, input.StoragePlaces, input.StorageDefinitions, functions);
-        return MirTextWriter.Write(result) != MirTextWriter.Write(input) ? result : null;
+        return result.StructurallyEqualTo(input) ? null : result;
     }
 
     private static IReadOnlyList<MirBlock> ThreadTrivialGotoBlocks(IReadOnlyList<MirBlock> blocks)

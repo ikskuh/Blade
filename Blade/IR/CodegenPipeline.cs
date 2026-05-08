@@ -46,7 +46,6 @@ public static class CodegenPipeline
         {
             buildResult.AsmModules = asmModules;
             buildResult.CogResourceLayouts = cogResourceLayouts;
-            buildResult.AssemblyText = null;
             return;
         }
 
@@ -78,6 +77,5 @@ public static class CodegenPipeline
 
         buildResult.AsmModules = asmModules;
         buildResult.CogResourceLayouts = cogResourceLayouts;
-        buildResult.AssemblyText = FinalAssemblyWriter.Write(asmModules, cogResourceLayouts);
     }
 }

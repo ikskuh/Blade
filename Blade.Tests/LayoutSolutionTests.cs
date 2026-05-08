@@ -32,7 +32,8 @@ public class LayoutSolutionTests
 
         Assert.That(result.Diagnostics, Is.Empty, string.Join(Environment.NewLine, result.Diagnostics));
 
-        Assert.That(result.Stages.AssemblyText, Is.Not.Null);
+        Assert.That(result.Stages.IsComplete, Is.True);
+        string assemblyText = result.Stages.RenderAssemblyText();
         IrBuildResult build = result.Stages;
         LayoutSolution solution = build.LayoutSolution;
         ImagePlacement placement = build.ImagePlacement;
@@ -54,13 +55,13 @@ public class LayoutSolutionTests
             Assert.That(counter.SizeInAddressUnits, Is.EqualTo(4));
         });
 
-        Assert.That(build.AssemblyText, Does.Contain("orgh"));
-        Assert.That(build.AssemblyText, Does.Match(@"(?m)^\s*org \$[0-9A-F]+$"));
-        Assert.That(build.AssemblyText, Does.Contain("g_head_vaddr = $100"));
-        Assert.That(build.AssemblyText, Does.Contain("g_tail_vaddr = $0"));
-        Assert.That(build.AssemblyText, Does.Contain("WRLUT"));
-        Assert.That(build.AssemblyText, Does.Match(@"g_counter\s+WORD\s+0\[2\]"));
-        Assert.That(build.AssemblyText, Does.Match(@"g_flag\s+LONG\s+3"));
+        Assert.That(assemblyText, Does.Contain("orgh"));
+        Assert.That(assemblyText, Does.Match(@"(?m)^\s*org \$[0-9A-F]+$"));
+        Assert.That(assemblyText, Does.Contain("g_head_vaddr = $100"));
+        Assert.That(assemblyText, Does.Contain("g_tail_vaddr = $0"));
+        Assert.That(assemblyText, Does.Contain("WRLUT"));
+        Assert.That(assemblyText, Does.Match(@"g_counter\s+WORD\s+0\[2\]"));
+        Assert.That(assemblyText, Does.Match(@"g_flag\s+LONG\s+3"));
     }
 
     [Test]
@@ -80,6 +81,7 @@ public class LayoutSolutionTests
         Assert.That(result.Diagnostics, Is.Empty, string.Join(Environment.NewLine, result.Diagnostics));
 
         IrBuildResult build = result.Stages;
+        string assemblyText = result.Stages.RenderAssemblyText();
         LayoutSlot pair = build.LayoutSolution.Slots.Single(slot => slot.Symbol.Name == "pair");
         LayoutSlot head = build.LayoutSolution.Slots.Single(slot => slot.Symbol.Name == "head");
 
@@ -91,10 +93,10 @@ public class LayoutSolutionTests
             Assert.That(build.CogResourceLayouts.MaximumCodeSizeLongs, Is.LessThan(GetRawAddress(head.Address)));
         });
 
-        Assert.That(build.AssemblyText, Does.Contain("fit $1F0"));
-        Assert.That(build.AssemblyText, Does.Match(@"(?m)^\s*org \$[0-9A-F]+$"));
-        Assert.That(build.AssemblyText, Does.Match(@"g_head\s+LONG\s+1"));
-        Assert.That(build.AssemblyText, Does.Match(@"g_pair\s+LONG\s+0\[2\]"));
+        Assert.That(assemblyText, Does.Contain("fit $1F0"));
+        Assert.That(assemblyText, Does.Match(@"(?m)^\s*org \$[0-9A-F]+$"));
+        Assert.That(assemblyText, Does.Match(@"g_head\s+LONG\s+1"));
+        Assert.That(assemblyText, Does.Match(@"g_pair\s+LONG\s+0\[2\]"));
     }
 
     [Test]

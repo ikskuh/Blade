@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.IO;
 using System.Text;
 using Blade.Reports;
 
@@ -25,18 +26,6 @@ public static class BoundTreeWriter
         writer.WriteProgram(program);
     }
 
-    /// <summary>
-    /// Renders the supplied bound program as plain text.
-    /// </summary>
-    public static string Write(BoundProgram program)
-    {
-        Requires.NotNull(program);
-
-        StringBuilder builder = new();
-        Write(new PlainTextReportBuilder(builder), program);
-        return builder.ToString();
-    }
-
     private sealed class Writer(ITextReportBuilder builder) : TextReportBuilderBase(builder)
     {
         public void WriteProgram(BoundProgram program)
@@ -46,7 +35,9 @@ public static class BoundTreeWriter
             WriteIndentedLine(1, (Keyword, "Globals"));
             foreach (GlobalVariableSymbol global in program.GlobalVariables)
             {
-                WriteIndentedLine(2, (VariableName, global, global.Name), ':', ' ', (TypeName, global.Type, global.Type.Name));
+                Append(Space(2 * 2), (VariableName, global, global.Name), ':', ' ');
+                AppendType(global.Type);
+                NewLine();
                 if (global.Initializer is not null)
                     WriteExpression(3, global.Initializer);
             }
@@ -83,7 +74,8 @@ public static class BoundTreeWriter
             switch (symbol)
             {
                 case TypeSymbol typeSymbol:
-                    Append((Keyword, "type"), ' ', (TypeName, typeSymbol.Type, typeSymbol.Type.Name));
+                    Append((Keyword, "type"), ' ');
+                    AppendType(typeSymbol.Type);
                     break;
 
                 case FunctionSymbol functionSymbol:
@@ -91,7 +83,8 @@ public static class BoundTreeWriter
                     break;
 
                 case GlobalVariableSymbol globalVariable:
-                    Append((Keyword, "global"), ' ', (TypeName, globalVariable.Type, globalVariable.Type.Name));
+                    Append((Keyword, "global"), ' ');
+                    AppendType(globalVariable.Type);
                     break;
 
                 case ModuleSymbol:
@@ -117,7 +110,9 @@ public static class BoundTreeWriter
                     break;
 
                 case BoundVariableDeclarationStatement variableDecl:
-                    WriteIndentedLine(indent, (Keyword, "VarDecl"), ' ', (VariableName, variableDecl.Symbol, variableDecl.Symbol.Name), ':', ' ', (TypeName, variableDecl.Symbol.Type, variableDecl.Symbol.Type.Name));
+                    Append(Space(indent * 2), (Keyword, "VarDecl"), ' ', (VariableName, variableDecl.Symbol, variableDecl.Symbol.Name), ':', ' ');
+                    AppendType(variableDecl.Symbol.Type);
+                    NewLine();
                     if (variableDecl.Initializer is not null)
                         WriteExpression(indent + 1, variableDecl.Initializer);
                     break;
@@ -392,6 +387,10 @@ public static class BoundTreeWriter
                     WriteExpression(indent + 1, deref.Expression);
                     break;
 
+                case BoundDiscardAssignmentTarget discard:
+                    WriteTypedNodeHeader(indent, "TargetDiscard", discard.Type);
+                    break;
+
                 case BoundErrorAssignmentTarget:
                     WriteIndentedLine(indent, (Keyword, "TargetError"));
                     break;
@@ -404,7 +403,9 @@ public static class BoundTreeWriter
 
         private void WriteTypedNodeHeader(int indent, string name, BladeType type, params Span[] suffix)
         {
-            Append(Space(indent * 2), (Keyword, name), '<', (TypeName, type, type.Name), '>');
+            Append(Space(indent * 2), (Keyword, name), '<');
+            AppendType(type);
+            Append('>');
             if (suffix.Length > 0)
             {
                 Append(' ');

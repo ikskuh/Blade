@@ -19,7 +19,7 @@ public sealed class LirControlFlowSimplification : ILirOptimization
         }
 
         LirModule result = new(input.SourceModule, input.StoragePlaces, input.StorageDefinitions, functions);
-        return LirTextWriter.Write(result) != LirTextWriter.Write(input) ? result : null;
+        return result.StructurallyEqualTo(input) ? null : result;
     }
 
     private static IReadOnlyList<LirBlock> ThreadTrivialGotoBlocks(IReadOnlyList<LirBlock> blocks)

@@ -60,7 +60,7 @@ public sealed class LirDeadCodeElimination : ILirOptimization
         }
 
         LirModule result = new(input.SourceModule, input.StoragePlaces, input.StorageDefinitions, functions);
-        return LirTextWriter.Write(result) != LirTextWriter.Write(input) ? result : null;
+        return result.StructurallyEqualTo(input) ? null : result;
     }
 
     private static IReadOnlyDictionary<LirBlockRef, HashSet<VirtualLirValue>> ComputeLiveOut(

@@ -169,7 +169,13 @@ public sealed class AsmTextWriter : TextReportBuilderBase
                 return;
 
             case AsmSymbolOperand symbol:
+                if (symbol.AddressingMode == AsmSymbolAddressingMode.Immediate)
+                    Append('#');
                 Append(VariableName, symbol.Symbol, symbol.Name);
+                if (symbol.Offset > 0)
+                    Append(' ', '+', ' ', (Literal, symbol.Offset.ToString(CultureInfo.InvariantCulture)));
+                else if (symbol.Offset < 0)
+                    Append(' ', '-', ' ', (Literal, (-symbol.Offset).ToString(CultureInfo.InvariantCulture)));
                 return;
 
             default:
