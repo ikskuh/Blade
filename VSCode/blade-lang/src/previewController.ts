@@ -1,15 +1,12 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import {
-    type BladeCompilationReport,
-    type BladeDiagnostic,
     resolveBladeExecutable,
     selectBladeWorkingDirectory,
     startBladeCompilation,
     type BladeCompilationOutcome,
 } from "./bladeCompiler";
 import { LatestOnlyJobRunner } from "./latestOnlyJobRunner";
-import { renderCompilationReportHtml } from "./previewHtml";
 
 const PreviewRefreshDelayMs = 250;
 
@@ -64,10 +61,10 @@ class BladePreviewSession implements vscode.Disposable {
                 preserveFocus: true,
             },
             {
+                enableScripts: true,
                 enableFindWidget: true,
-                enableCommandUris: true,
             });
-        this.panel.webview.html = renderReport(emptyReport());
+        this.panel.webview.html = renderPlaceholder("Compiling...");
 
         this.disposables.push(this.panel.onDidDispose(() => {
             this.disposeCore(false);
@@ -134,8 +131,8 @@ class BladePreviewSession implements vscode.Disposable {
             return;
 
         switch (completion.value.kind) {
-            case "report":
-                this.panel.webview.html = renderReport(completion.value.report);
+            case "html-report":
+                this.panel.webview.html = completion.value.html;
                 break;
 
             case "execution-error":
@@ -196,34 +193,31 @@ function buildPreviewTitle(documentUri: vscode.Uri): string {
     return `Blade Preview: ${name}`;
 }
 
-function renderReport(report: BladeCompilationReport): string {
-    return renderCompilationReportHtml(report, buildDiagnosticLink);
+function renderPlaceholder(message: string): string {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body {
+    margin: 0;
+    padding: 16px;
+    background: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+    font-family: var(--vscode-font-family);
+}
+</style>
+</head>
+<body>
+<p>${escapeHtml(message)}</p>
+</body>
+</html>`;
 }
 
-function buildDiagnosticLink(diagnostic: BladeDiagnostic): { href: string; label: string } | undefined {
-    if (diagnostic.file === undefined)
-        return undefined;
-
-    const label = diagnostic.line !== undefined
-        ? `${diagnostic.file}:${diagnostic.line}`
-        : diagnostic.file;
-    const argument = {
-        file: diagnostic.file,
-        line: diagnostic.line ?? 1,
-    };
-
-    return {
-        href: `command:blade.openDiagnosticLocation?${encodeURIComponent(JSON.stringify([argument]))}`,
-        label,
-    };
-}
-
-function emptyReport(): BladeCompilationReport {
-    return {
-        diagnostics: [],
-        dumps: [],
-        metrics: {},
-        result: null,
-        success: true,
-    };
+function escapeHtml(value: string): string {
+    return value
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
 }

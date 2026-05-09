@@ -1,28 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams, type SpawnOptionsWithoutStdio } from "node:child_process";
 import * as path from "node:path";
 
-export interface BladeDiagnostic {
-    readonly code?: string;
-    readonly file?: string;
-    readonly line?: number;
-    readonly message?: string;
-}
-
-export interface BladeDumpArtifact {
-    readonly content: string;
-    readonly fileName: string;
-    readonly id: string;
-    readonly title: string;
-}
-
-export interface BladeCompilationReport {
-    readonly diagnostics: readonly BladeDiagnostic[];
-    readonly dumps: readonly BladeDumpArtifact[];
-    readonly metrics: Readonly<Record<string, unknown>>;
-    readonly result: string | null;
-    readonly success: boolean;
-}
-
 export interface BladePathVariables {
     readonly cwd?: string;
     readonly env?: Readonly<Record<string, string | undefined>>;
@@ -37,8 +15,8 @@ export interface BladeCompilationRequest {
 }
 
 export interface BladeCompilationSuccess {
-    readonly kind: "report";
-    readonly report: BladeCompilationReport;
+    readonly html: string;
+    readonly kind: "html-report";
 }
 
 export interface BladeCompilationExecutionFailure {
@@ -74,14 +52,6 @@ export type SpawnProcess = (
     args: readonly string[],
     options: SpawnOptionsWithoutStdio) => SpawnedProcess;
 
-interface BladeJsonReport {
-    readonly diagnostics?: unknown;
-    readonly dumps?: unknown;
-    readonly metrics?: unknown;
-    readonly result?: unknown;
-    readonly success?: unknown;
-}
-
 export function resolveBladeExecutable(
     configuredPath: string | null | undefined,
     variables: BladePathVariables = {}): string {
@@ -113,41 +83,16 @@ export function interpretBladeCompilerOutput(
     stderr: string,
     exitCode: number | null,
     signal: NodeJS.Signals | null): BladeCompilationOutcome {
-    let parsedReport: BladeJsonReport;
-
-    try {
-        parsedReport = parseJsonReport(stdout);
-    }
-    catch {
+    if (!looksLikeHtml(stdout)) {
         return {
             kind: "execution-error",
-            message: buildExecutionFailureMessage("Blade compiler returned invalid JSON output.", stderr, exitCode, signal),
-        };
-    }
-
-    if (typeof parsedReport.success !== "boolean") {
-        return {
-            kind: "execution-error",
-            message: buildExecutionFailureMessage("Blade compiler JSON output was missing the success flag.", stderr, exitCode, signal),
-        };
-    }
-
-    if (parsedReport.success && typeof parsedReport.result !== "string") {
-        return {
-            kind: "execution-error",
-            message: buildExecutionFailureMessage("Blade compiler JSON output did not include assembly text.", stderr, exitCode, signal),
+            message: buildExecutionFailureMessage("Blade compiler returned invalid HTML output.", stderr, exitCode, signal),
         };
     }
 
     return {
-        kind: "report",
-        report: {
-            diagnostics: asDiagnostics(parsedReport.diagnostics),
-            dumps: asDumps(parsedReport.dumps),
-            metrics: asMetrics(parsedReport.metrics),
-            result: typeof parsedReport.result === "string" ? parsedReport.result : null,
-            success: parsedReport.success,
-        },
+        html: stdout,
+        kind: "html-report",
     };
 }
 
@@ -173,7 +118,7 @@ export function startBladeCompilation(
         try {
             childProcess = spawnProcess(
                 request.executablePath,
-                ["--json", "--dump-all", "-"],
+                ["--report", "html,-", "-"],
                 {
                     cwd: request.cwd,
                     windowsHide: true,
@@ -318,69 +263,6 @@ function expandBladePathVariables(value: string, variables: BladePathVariables):
     });
 }
 
-function parseJsonReport(stdout: string): BladeJsonReport {
-    const parsed = JSON.parse(stdout) as unknown;
-    if (!isRecord(parsed))
-        throw new Error("Blade compiler JSON output was not an object.");
-
-    return parsed;
-}
-
-function asDiagnostics(value: unknown): readonly BladeDiagnostic[] {
-    if (!Array.isArray(value))
-        return [];
-
-    const diagnostics: BladeDiagnostic[] = [];
-    for (const item of value) {
-        if (!isRecord(item))
-            continue;
-
-        diagnostics.push({
-            code: typeof item.code === "string" ? item.code : undefined,
-            file: typeof item.file === "string" ? item.file : undefined,
-            line: typeof item.line === "number" ? item.line : undefined,
-            message: typeof item.message === "string" ? item.message : undefined,
-        });
-    }
-
-    return diagnostics;
-}
-
-function asDumps(value: unknown): readonly BladeDumpArtifact[] {
-    if (!Array.isArray(value))
-        return [];
-
-    const dumps: BladeDumpArtifact[] = [];
-    for (const item of value) {
-        if (!isRecord(item))
-            continue;
-
-        if (typeof item.id !== "string"
-            || typeof item.title !== "string"
-            || typeof item.fileName !== "string"
-            || typeof item.content !== "string")
-        {
-            continue;
-        }
-
-        dumps.push({
-            content: item.content,
-            fileName: item.fileName,
-            id: item.id,
-            title: item.title,
-        });
-    }
-
-    return dumps;
-}
-
-function asMetrics(value: unknown): Readonly<Record<string, unknown>> {
-    if (!isRecord(value))
-        return {};
-
-    return value;
-}
-
 function buildExecutionFailureMessage(
     prefix: string,
     stderr: string,
@@ -399,6 +281,8 @@ function buildExecutionFailureMessage(
     return prefix;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null;
+function looksLikeHtml(stdout: string): boolean {
+    const trimmed = stdout.trimStart();
+    return trimmed.startsWith("<!DOCTYPE html>")
+        || trimmed.startsWith("<html");
 }

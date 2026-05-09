@@ -63,101 +63,42 @@ test("selectBladeWorkingDirectory uses the first workspace folder for untitled d
     assert.equal(cwd, "/workspace/project");
 });
 
-test("interpretBladeCompilerOutput returns the full successful JSON report", () => {
+test("interpretBladeCompilerOutput returns compiler HTML output", () => {
     const outcome = interpretBladeCompilerOutput(
-        JSON.stringify({
-            success: true,
-            diagnostics: [],
-            dumps: [
-                {
-                    id: "bound",
-                    title: "Bound",
-                    fileName: "00_bound.ir",
-                    content: "Program",
-                },
-            ],
-            metrics: {
-                token_count: 2,
-            },
-            result: "org 0\nmov r0, #1\n",
-        }),
+        "<!DOCTYPE html><html><body>report</body></html>",
         "",
         0,
         null);
 
     assert.deepEqual(outcome, {
-        kind: "report",
-        report: {
-            diagnostics: [],
-            dumps: [
-                {
-                    id: "bound",
-                    title: "Bound",
-                    fileName: "00_bound.ir",
-                    content: "Program",
-                },
-            ],
-            metrics: {
-                token_count: 2,
-            },
-            result: "org 0\nmov r0, #1\n",
-            success: true,
-        },
+        html: "<!DOCTYPE html><html><body>report</body></html>",
+        kind: "html-report",
     });
 });
 
-test("interpretBladeCompilerOutput preserves diagnostics in a failed JSON report", () => {
+test("interpretBladeCompilerOutput accepts compiler HTML output even on failed exit codes", () => {
     const outcome = interpretBladeCompilerOutput(
-        JSON.stringify({
-            success: false,
-            diagnostics: [
-                {
-                    code: "E0202",
-                    line: 4,
-                    message: "Expected expression.",
-                },
-            ],
-            dumps: [],
-            metrics: {
-                token_count: 4,
-            },
-            result: null,
-        }),
+        "<html><body>failed report</body></html>",
         "ignored text diagnostics",
         1,
         null);
 
     assert.deepEqual(outcome, {
-        kind: "report",
-        report: {
-            diagnostics: [
-                {
-                    code: "E0202",
-                    file: undefined,
-                    line: 4,
-                    message: "Expected expression.",
-                },
-            ],
-            dumps: [],
-            metrics: {
-                token_count: 4,
-            },
-            result: null,
-            success: false,
-        },
+        html: "<html><body>failed report</body></html>",
+        kind: "html-report",
     });
 });
 
-test("interpretBladeCompilerOutput reports invalid JSON output as an execution error", () => {
+test("interpretBladeCompilerOutput reports invalid HTML output as an execution error", () => {
     const outcome = interpretBladeCompilerOutput("not json", "spawn stderr", 1, null);
 
     assert.deepEqual(outcome, {
         kind: "execution-error",
-        message: "Blade compiler returned invalid JSON output. spawn stderr",
+        message: "Blade compiler returned invalid HTML output. spawn stderr",
     });
 });
 
-test("startBladeCompilation requests json and all dumps", async () => {
+test("startBladeCompilation requests html reports on stdout", async () => {
     let capturedArgs: readonly string[] | undefined;
 
     const fakeSpawn: SpawnProcess = (_command, args) => {
@@ -183,7 +124,7 @@ test("startBladeCompilation requests json and all dumps", async () => {
         kind: "execution-error",
         message: "Blade compiler invocation failed: spawn ENOENT",
     });
-    assert.deepEqual(capturedArgs, ["--json", "--dump-all", "-"]);
+    assert.deepEqual(capturedArgs, ["--report", "html,-"]);
 });
 
 class FakeChildProcess extends EventEmitter implements SpawnedProcess {
