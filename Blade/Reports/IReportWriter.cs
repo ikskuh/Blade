@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 
 namespace Blade.Reports;
@@ -8,7 +9,12 @@ namespace Blade.Reports;
 public interface IReportWriter
 {
     /// <summary>
+    /// Gets the supported property keys for this report writer.
+    /// </summary>
+    IReadOnlySet<string> PropertyKeys { get; }
+
+    /// <summary>
     /// Writes the supplied compilation output in this report format.
     /// </summary>
-    void Write(TextWriter writer, CompilationOutput report);
+    void Write(TextWriter writer, CompilationOutput report, IReadOnlyDictionary<string, string> properties);
 }

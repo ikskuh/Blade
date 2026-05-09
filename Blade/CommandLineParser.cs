@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Blade.Reports;
 
 namespace Blade;
 
@@ -47,7 +48,7 @@ internal static class CommandLineParser
                     {
                         if (IsRemovedReportOption(arg))
                         {
-                            Console.Error.WriteLine($"error: option '{arg}' has been removed; use --report <text|html|json>,<path> instead.");
+                            Console.Error.WriteLine($"error: option '{arg}' has been removed; use --report <text|html|json>,<path>(,<key>=<value>)* instead.");
                             return null;
                         }
 
@@ -111,7 +112,7 @@ internal static class CommandLineParser
     {
         Console.Error.WriteLine("Usage: blade <file.blade> [options]");
         Console.Error.WriteLine("Options:");
-        Console.Error.WriteLine("  --report <text|html|json>,<path>");
+        Console.Error.WriteLine("  --report <text|html|json>,<path>(,<key>=<value>)*");
         Console.Error.WriteLine("  --comptime-fuel=<positive-integer>");
         Console.Error.WriteLine("  -fmir-opt=<csv> / -fno-mir-opt=<csv>");
         Console.Error.WriteLine("  -flir-opt=<csv> / -fno-lir-opt=<csv>");
@@ -142,23 +143,16 @@ internal static class CommandLineParser
     {
         Requires.NotNull(value);
 
-        int separatorIndex = value.IndexOf(',', StringComparison.Ordinal);
-        if (separatorIndex <= 0 || separatorIndex == value.Length - 1)
+        string[] fields = value.Split(',', StringSplitOptions.None);
+        if (fields.Length < 2 || fields[0].Length == 0 || fields[1].Length == 0)
         {
             reportTarget = null;
-            error = $"error: invalid --report target '{value}'; expected <text|html|json>,<path>.";
+            error = $"error: invalid --report target '{value}'; expected <text|html|json>,<path>(,<key>=<value>)*.";
             return false;
         }
 
-        string formatText = value[..separatorIndex];
-        string path = value[(separatorIndex + 1)..];
-        if (path.Length == 0)
-        {
-            reportTarget = null;
-            error = $"error: invalid --report target '{value}'; missing output path.";
-            return false;
-        }
-
+        string formatText = fields[0];
+        string path = fields[1];
         ReportFormat format;
         switch (formatText)
         {
@@ -177,7 +171,47 @@ internal static class CommandLineParser
                 return false;
         }
 
-        reportTarget = new ReportTarget(format, path);
+        IReportWriter writer = ReportWriterFactory.CreateWriter(format);
+        Dictionary<string, string> properties = new(StringComparer.Ordinal);
+        for (int i = 2; i < fields.Length; i++)
+        {
+            string propertyField = fields[i];
+            int equalsIndex = propertyField.IndexOf('=', StringComparison.Ordinal);
+            if (equalsIndex < 0)
+            {
+                reportTarget = null;
+                error = $"error: invalid report property '{propertyField}' in --report target '{value}'; expected <key>=<value>.";
+                return false;
+            }
+
+            if (equalsIndex == 0)
+            {
+                reportTarget = null;
+                error = $"error: invalid report property '{propertyField}' in --report target '{value}'; property key must not be empty.";
+                return false;
+            }
+
+            string propertyKey = propertyField[..equalsIndex];
+            string propertyValue = propertyField[(equalsIndex + 1)..];
+            if (!properties.TryAdd(propertyKey, propertyValue))
+            {
+                reportTarget = null;
+                error = $"error: duplicate report property '{propertyKey}' in --report target '{value}'.";
+                return false;
+            }
+        }
+
+        foreach (string propertyKey in properties.Keys)
+        {
+            if (writer.PropertyKeys.Contains(propertyKey))
+                continue;
+
+            reportTarget = null;
+            error = $"error: unknown report property '{propertyKey}' for format '{formatText}'.";
+            return false;
+        }
+
+        reportTarget = new ReportTarget(writer, path, properties);
         error = null;
         return true;
     }

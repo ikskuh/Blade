@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.IO;
 using Blade.Diagnostics;
 using Blade.Source;
@@ -12,15 +14,23 @@ namespace Blade.Reports;
 /// </remarks>
 public sealed class TextReportWriter(bool bareFinalAssemblyOnly) : IReportWriter
 {
+    private static readonly IReadOnlySet<string> SupportedPropertyKeys = new HashSet<string>(StringComparer.Ordinal);
     private readonly bool _bareFinalAssemblyOnly = bareFinalAssemblyOnly;
+
+    /// <summary>
+    /// Gets the supported property keys for the plain-text report writer.
+    /// </summary>
+    public IReadOnlySet<string> PropertyKeys => SupportedPropertyKeys;
 
     /// <summary>
     /// Writes the supplied compilation output as plain text.
     /// </summary>
-    public void Write(TextWriter writer, CompilationOutput report)
+    public void Write(TextWriter writer, CompilationOutput report, IReadOnlyDictionary<string, string> properties)
     {
         Requires.NotNull(writer);
         Requires.NotNull(report);
+        Requires.NotNull(properties);
+        Assert.Invariant(properties.Count == 0);
 
         if (_bareFinalAssemblyOnly && report.Status == CompilationStatus.Succeeded)
         {

@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -10,18 +12,26 @@ namespace Blade.Reports;
 /// </summary>
 public sealed class JsonReportWriter : IReportWriter
 {
+    private static readonly IReadOnlySet<string> SupportedPropertyKeys = new HashSet<string>(StringComparer.Ordinal);
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
     };
 
     /// <summary>
+    /// Gets the supported property keys for the JSON report writer.
+    /// </summary>
+    public IReadOnlySet<string> PropertyKeys => SupportedPropertyKeys;
+
+    /// <summary>
     /// Writes the supplied compilation output as JSON.
     /// </summary>
-    public void Write(TextWriter writer, CompilationOutput report)
+    public void Write(TextWriter writer, CompilationOutput report, IReadOnlyDictionary<string, string> properties)
     {
         Requires.NotNull(writer);
         Requires.NotNull(report);
+        Requires.NotNull(properties);
+        Assert.Invariant(properties.Count == 0);
 
         JsonCompilationOutput json = new()
         {

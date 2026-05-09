@@ -118,7 +118,7 @@ export function startBladeCompilation(
         try {
             childProcess = spawnProcess(
                 request.executablePath,
-                ["--report", "html,-", "-"],
+                ["--report", "html,-,theme=vscode", "-"],
                 {
                     cwd: request.cwd,
                     windowsHide: true,

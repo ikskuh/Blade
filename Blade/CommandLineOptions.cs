@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Blade.IR;
+using Blade.Reports;
 
 namespace Blade;
 

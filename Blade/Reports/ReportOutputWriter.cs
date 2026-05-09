@@ -1,12 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using Blade.Reports;
 
-namespace Blade;
+namespace Blade.Reports;
 
 internal sealed class ReportOutputWriter : ICompilerOutputWriter
 {
+    private static readonly IReadOnlyDictionary<string, string> EmptyProperties = new Dictionary<string, string>(StringComparer.Ordinal);
+
     public bool TryWrite(
         CommandLineOptions options,
         CompilationOutput compilation,
@@ -32,7 +33,7 @@ internal sealed class ReportOutputWriter : ICompilerOutputWriter
             error = null;
             return true;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
         {
             error = $"error: failed to write report output: {ex.Message}";
             exitCode = 1;
@@ -43,32 +44,20 @@ internal sealed class ReportOutputWriter : ICompilerOutputWriter
     private static void WriteDefaultOutput(CompilationOutput compilation)
     {
         IReportWriter writer = compilation.Status == CompilationStatus.Succeeded && compilation.Stages.IsComplete
-            ? new TextReportWriter(bareFinalAssemblyOnly: true)
-            : new TextReportWriter(bareFinalAssemblyOnly: false);
-        writer.Write(Console.Out, compilation);
+            ? ReportWriterFactory.CreateWriter(ReportFormat.Assembly)
+            : ReportWriterFactory.CreateWriter(ReportFormat.Text);
+        writer.Write(Console.Out, compilation, EmptyProperties);
     }
 
     private static void WriteTarget(CompilationOutput compilation, ReportTarget target)
     {
-        IReportWriter writer = CreateWriter(target.Format);
         if (target.Path == "-")
         {
-            writer.Write(Console.Out, compilation);
+            target.Writer.Write(Console.Out, compilation, target.Properties);
             return;
         }
 
         using StreamWriter streamWriter = new(target.Path);
-        writer.Write(streamWriter, compilation);
-    }
-
-    private static IReportWriter CreateWriter(ReportFormat format)
-    {
-        return format switch
-        {
-            ReportFormat.Text => new TextReportWriter(bareFinalAssemblyOnly: false),
-            ReportFormat.Html => new HtmlReportWriter(),
-            ReportFormat.Json => new JsonReportWriter(),
-            _ => Assert.UnreachableValue<IReportWriter>(), // pragma: force-coverage
-        };
+        target.Writer.Write(streamWriter, compilation, target.Properties);
     }
 }

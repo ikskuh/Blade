@@ -1,8 +1,10 @@
 using System.IO;
 using System.Reflection;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Blade.Reports;
 using Blade.Source;
 
 namespace Blade.Tests;
@@ -81,23 +83,15 @@ public class ProgramTests
     }
 
     [Test]
-    public void CommandLineOptions_Parse_RecognizesReportTargets()
+    public void CommandLineOptions_Parse_RecognizesHtmlThemeProperty()
     {
-        object? options = ParseOptions(
-            "input.blade",
-            "--report",
-            "text,-",
-            "--report",
-            "json,report.json");
+        object? options = ParseOptions("input.blade", "--report", "html,report.html,theme=vscode");
 
         Assert.That(options, Is.Not.Null);
-        Assert.That(GetProperty<string>(options!, "FilePath"), Is.EqualTo("input.blade"));
         IReadOnlyList<ReportTarget> reportTargets = GetProperty<IReadOnlyList<ReportTarget>>(options!, "ReportTargets");
-        Assert.That(reportTargets.Select(static target => (target.Format, target.Path)), Is.EqualTo(new[]
-        {
-            (ReportFormat.Text, "-"),
-            (ReportFormat.Json, "report.json"),
-        }));
+        Assert.That(reportTargets, Has.Count.EqualTo(1));
+        Assert.That(reportTargets[0].Writer, Is.TypeOf<HtmlReportWriter>());
+        Assert.That(reportTargets[0].Properties["theme"], Is.EqualTo("vscode"));
     }
 
     [Test]
@@ -114,6 +108,22 @@ public class ProgramTests
         (object? badFormat, _, string badFormatErr) = CaptureConsole(() => ParseOptions("input.blade", "--report", "yaml,out.yaml"));
         Assert.That(badFormat, Is.Null);
         Assert.That(badFormatErr, Does.Contain("unknown report format"));
+
+        (object? malformedProperty, _, string malformedPropertyErr) = CaptureConsole(() => ParseOptions("input.blade", "--report", "html,out.html,theme"));
+        Assert.That(malformedProperty, Is.Null);
+        Assert.That(malformedPropertyErr, Does.Contain("expected <key>=<value>"));
+
+        (object? emptyPropertyKey, _, string emptyPropertyKeyErr) = CaptureConsole(() => ParseOptions("input.blade", "--report", "html,out.html,=dark"));
+        Assert.That(emptyPropertyKey, Is.Null);
+        Assert.That(emptyPropertyKeyErr, Does.Contain("must not be empty"));
+
+        (object? duplicatePropertyKey, _, string duplicatePropertyKeyErr) = CaptureConsole(() => ParseOptions("input.blade", "--report", "html,out.html,theme=dark,theme=light"));
+        Assert.That(duplicatePropertyKey, Is.Null);
+        Assert.That(duplicatePropertyKeyErr, Does.Contain("duplicate report property 'theme'"));
+
+        (object? unknownPropertyKey, _, string unknownPropertyKeyErr) = CaptureConsole(() => ParseOptions("input.blade", "--report", "html,out.html,palette=dark"));
+        Assert.That(unknownPropertyKey, Is.Null);
+        Assert.That(unknownPropertyKeyErr, Does.Contain("unknown report property 'palette'"));
 
         (object? duplicateStdout, _, string duplicateStdoutErr) = CaptureConsole(() => ParseOptions("input.blade", "--report", "text,-", "--report", "json,-"));
         Assert.That(duplicateStdout, Is.Null);
@@ -212,7 +222,12 @@ public class ProgramTests
             Assert.That(exitCode, Is.EqualTo(0));
             Assert.That(stdout, Is.Empty);
             Assert.That(stderr, Is.Empty);
-            Assert.That(File.ReadAllText(htmlPath), Does.Contain("<!DOCTYPE html>"));
+            string html = File.ReadAllText(htmlPath);
+            Assert.That(html, Does.Contain("<!DOCTYPE html>"));
+            Assert.That(html, Does.Contain("<table class=\"metrics-table\">"));
+            Assert.That(html, Does.Not.Contain(">Status<"));
+            Assert.That(html, Does.Not.Contain("<section class=\"diagnostics\">"));
+            Assert.That(html, Does.Contain("<label><input type=\"checkbox\" checked>Final Assembly</label>"));
 
             using JsonDocument document = JsonDocument.Parse(File.ReadAllText(jsonPath));
             JsonElement root = document.RootElement;
@@ -227,6 +242,56 @@ public class ProgramTests
                 File.Delete(htmlPath);
             if (File.Exists(jsonPath))
                 File.Delete(jsonPath);
+        }
+    }
+
+    [Test]
+    public void EntryPoint_CanWriteHtmlReportWithVsCodeTheme()
+    {
+        string filePath = Path.Combine(Path.GetTempPath(), $"blade-report-theme-{Guid.NewGuid():N}.blade");
+        string htmlPath = Path.Combine(Path.GetTempPath(), $"blade-report-theme-{Guid.NewGuid():N}.html");
+        File.WriteAllText(filePath, "cog task main { }");
+
+        try
+        {
+            (int exitCode, string stdout, string stderr) = CaptureConsole(() => InvokeEntryPoint([filePath, "--report", $"html,{htmlPath},theme=vscode"]));
+
+            Assert.That(exitCode, Is.EqualTo(0));
+            Assert.That(stdout, Is.Empty);
+            Assert.That(stderr, Is.Empty);
+
+            string html = File.ReadAllText(htmlPath);
+            Assert.That(html, Does.Contain("<body class=\"theme-vscode\" style=\""));
+            Assert.That(html, Does.Contain("--vscode-editor-background: #000000;"));
+            Assert.That(html, Does.Contain("--report-background: var(--vscode-editor-background);"));
+        }
+        finally
+        {
+            if (File.Exists(filePath))
+                File.Delete(filePath);
+            if (File.Exists(htmlPath))
+                File.Delete(htmlPath);
+        }
+    }
+
+    [Test]
+    public void EntryPoint_RejectsUnknownHtmlTheme()
+    {
+        string filePath = Path.Combine(Path.GetTempPath(), $"blade-report-theme-invalid-{Guid.NewGuid():N}.blade");
+        File.WriteAllText(filePath, "cog task main { }");
+
+        try
+        {
+            (int exitCode, string stdout, string stderr) = CaptureConsole(() => InvokeEntryPoint([filePath, "--report", "html,-,theme=midnight"]));
+
+            Assert.That(exitCode, Is.EqualTo(1));
+            Assert.That(stdout, Is.Empty);
+            Assert.That(stderr, Does.Contain("unknown html report theme 'midnight'"));
+        }
+        finally
+        {
+            if (File.Exists(filePath))
+                File.Delete(filePath);
         }
     }
 
@@ -248,6 +313,30 @@ public class ProgramTests
             Assert.That(root.GetProperty("status").GetString(), Is.EqualTo("failed"));
             Assert.That(root.GetProperty("diagnostics").GetArrayLength(), Is.EqualTo(1));
             Assert.That(root.GetProperty("sections").GetArrayLength(), Is.GreaterThanOrEqualTo(1));
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
+    }
+
+    [Test]
+    public void EntryPoint_WritesHtmlDiagnosticsAboveTabView()
+    {
+        string filePath = Path.Combine(Path.GetTempPath(), $"blade-html-fail-{Guid.NewGuid():N}.blade");
+        File.WriteAllText(filePath, "cog task main { x = 1; }");
+
+        try
+        {
+            (int exitCode, string stdout, string stderr) = CaptureConsole(() => InvokeEntryPoint([filePath, "--report", "html,-"]));
+
+            Assert.That(exitCode, Is.EqualTo(1));
+            Assert.That(stderr, Is.Empty);
+            Assert.That(stdout, Does.Contain("<section class=\"diagnostics\">"));
+            Assert.That(stdout, Does.Contain("href=\"file://"));
+            Assert.That(stdout.IndexOf("<section class=\"diagnostics\">", StringComparison.Ordinal), Is.LessThan(stdout.IndexOf("<main>", StringComparison.Ordinal)));
+            Assert.That(stdout, Does.Contain("<table class=\"metrics-table\">"));
+            Assert.That(stdout, Does.Not.Contain(">Status<"));
         }
         finally
         {
@@ -392,6 +481,20 @@ public class ProgramTests
                 File.Delete(filePath);
             if (Directory.Exists(outputDirectory))
                 Directory.Delete(outputDirectory, recursive: true);
+        }
+    }
+
+    private sealed class SpyReportWriter(IReadOnlySet<string> propertyKeys) : IReportWriter
+    {
+        public IReadOnlyDictionary<string, string>? ReceivedProperties { get; private set; }
+
+        public IReadOnlySet<string> PropertyKeys { get; } = propertyKeys;
+
+        public void Write(TextWriter writer, CompilationOutput report, IReadOnlyDictionary<string, string> properties)
+        {
+            Requires.NotNull(writer);
+            Requires.NotNull(properties);
+            this.ReceivedProperties = new Dictionary<string, string>(properties, StringComparer.Ordinal);
         }
     }
 }
