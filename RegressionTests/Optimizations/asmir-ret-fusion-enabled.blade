@@ -7,22 +7,22 @@
 // - -fno-asmir-opt=*
 // - -fasmir-opt=ret-fusion
 // CONTAINS:
-// - _RET_ MOV PB, PB
+// - _RET_ MOV PA, #10
 // NOTE:
 //   Positive case for ASMIR ret-fusion: the RET should fuse into the preceding
 //   register handoff instead of surviving as a standalone terminator.
 cog task main {
     
-    cog var sink: u32 = 0;
-    var input: u32 = 1;
+    cog var sink1: u32 = 0;
+    cog var sink2: bool = false;
+    cog var sink3: bool = false;
     
-    noinline fn leaf_id(x: u32) -> u32 {
-        return x;
+    noinline asm fn fusable() -> u32, bool@C, bool@Z {
+        MOV INA, #0 WCZ
+        MOV {return}, #10
+        RET
     }
     
-    noinline fn wrap(x: u32) -> u32 {
-        return leaf_id(x);
-    }
     
-    sink = wrap(input);
+    sink1, sink2, sink3 = fusable();
 }

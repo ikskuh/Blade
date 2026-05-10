@@ -3099,26 +3099,13 @@ public static class AsmLowerer
             }
         }
 
-        // Set flags for additional return values (C and Z)
-        IReadOnlyList<ReturnSlot> returnSlots = ctx.Function.ReturnSlots;
-        for (int i = 1; i < ret.Values.Count && i < returnSlots.Count; i++)
-        {
-            ReturnPlacement placement = returnSlots[i].Placement;
-            if (placement == ReturnPlacement.FlagC)
-            {
-                if (TryElideReturnedHardwareFlagRestore(nodes, ret.Values[i], placement, ctx))
-                    continue;
+        (LirOperand? cReturnValue, LirOperand? zReturnValue) = GetReturnedFlagValues(ret, ctx.Function.ReturnSlots);
+        PrepareReturnedFlags(nodes, cReturnValue, zReturnValue, ctx);
 
-                EmitSingleBitTruthTest(nodes, ret.Values[i], P2FlagEffect.WC, ctx);
-            }
-            else if (placement == ReturnPlacement.FlagZ)
-            {
-                if (TryElideReturnedHardwareFlagRestore(nodes, ret.Values[i], placement, ctx))
-                    continue;
-
-                EmitSingleBitTruthTest(nodes, ret.Values[i], P2FlagEffect.WZ, ctx);
-            }
-        }
+        bool returnsC = cReturnValue is not null;
+        bool returnsZ = zReturnValue is not null;
+        bool hasReturnedFlags = returnsC || returnsZ;
+        P2FlagEffect returnRestoreEffect = GetReturnRestoreFlagEffect(returnsC, returnsZ);
 
         switch (ctx.Tier)
         {
@@ -3128,10 +3115,15 @@ public static class AsmLowerer
                 break;
 
             case CallingConventionTier.Recursive:
-                nodes.Add(Emit(P2Mnemonic.RETB));
+                nodes.Add(new AsmInstructionNode(
+                    P2Mnemonic.RETB,
+                    [],
+                    flagOutput: CreateFlagOutput(returnRestoreEffect),
+                    isNonElidable: hasReturnedFlags));
                 break;
 
             case CallingConventionTier.Interrupt:
+                Assert.Invariant(!hasReturnedFlags, "Interrupt returns must not carry flag return values.");
                 FunctionKind kind = ctx.Function.Kind;
                 if (ctx.ContainsYield)
                 {
@@ -3155,13 +3147,20 @@ public static class AsmLowerer
                     FunctionKind.Int3 => P2Mnemonic.RETI3,
                     _ => P2Mnemonic.RET,
                 };
-                nodes.Add(Emit(retInsn));
+                nodes.Add(new AsmInstructionNode(
+                    retInsn,
+                    [],
+                    isNonElidable: false));
                 break;
 
             case CallingConventionTier.General:
             case CallingConventionTier.SecondOrder:
             case CallingConventionTier.Leaf:
-                nodes.Add(Emit(P2Mnemonic.RET));
+                nodes.Add(new AsmInstructionNode(
+                    P2Mnemonic.RET,
+                    [],
+                    flagOutput: CreateFlagOutput(returnRestoreEffect),
+                    isNonElidable: hasReturnedFlags));
                 break;
 
             case CallingConventionTier.Coroutine:
@@ -3174,89 +3173,133 @@ public static class AsmLowerer
         }
     }
 
+    private static (LirOperand? CValue, LirOperand? ZValue) GetReturnedFlagValues(
+        LirReturnTerminator ret,
+        IReadOnlyList<ReturnSlot> returnSlots)
+    {
+        LirOperand? cValue = null;
+        LirOperand? zValue = null;
+
+        for (int i = 1; i < ret.Values.Count && i < returnSlots.Count; i++)
+        {
+            ReturnPlacement placement = returnSlots[i].Placement;
+            if (placement == ReturnPlacement.FlagC)
+                cValue = ret.Values[i];
+            else if (placement == ReturnPlacement.FlagZ)
+                zValue = ret.Values[i];
+        }
+
+        return (cValue, zValue);
+    }
+
+    private static void PrepareReturnedFlags(
+        List<AsmNode> nodes,
+        LirOperand? cValue,
+        LirOperand? zValue,
+        LoweringContext ctx)
+    {
+        if (cValue is LirFlagOperand cFlag
+            && zValue is LirFlagOperand zFlag)
+        {
+            if (TryPrepareDualReturnedFlags(nodes, cFlag, zFlag, ctx))
+                return;
+
+            EmitSingleBitTruthTest(nodes, cFlag, P2FlagEffect.WC, ctx);
+            EmitSingleBitTruthTest(nodes, zFlag, P2FlagEffect.WZ, ctx);
+            return;
+        }
+
+        if (zValue is LirFlagOperand zReturnFlag)
+            PrepareSingleReturnedFlag(nodes, ReturnPlacement.FlagZ, zReturnFlag, ctx);
+        else if (zValue is not null)
+            EmitSingleBitTruthTest(nodes, zValue, P2FlagEffect.WZ, ctx);
+
+        if (cValue is LirFlagOperand cReturnFlag)
+            PrepareSingleReturnedFlag(nodes, ReturnPlacement.FlagC, cReturnFlag, ctx);
+        else if (cValue is not null)
+            EmitSingleBitTruthTest(nodes, cValue, P2FlagEffect.WC, ctx);
+    }
+
+    private static bool TryPrepareDualReturnedFlags(
+        List<AsmNode> nodes,
+        LirFlagOperand cFlag,
+        LirFlagOperand zFlag,
+        LoweringContext ctx)
+    {
+        MirFlag cMeaning = GetOrAssignCanonicalFlagMeaning(cFlag.Flag, ctx);
+        MirFlag zMeaning = GetOrAssignCanonicalFlagMeaning(zFlag.Flag, ctx);
+        VirtualAsmFlag cAsmFlag = ctx.GetFlag(cFlag.Flag);
+        VirtualAsmFlag zAsmFlag = ctx.GetFlag(zFlag.Flag);
+
+        bool cUsesCarry = cMeaning is MirFlag.C or MirFlag.NC;
+        bool zUsesCarry = zMeaning is MirFlag.C or MirFlag.NC;
+        if (cUsesCarry == zUsesCarry && !ReferenceEquals(cAsmFlag, zAsmFlag))
+            return false;
+
+        P2ModczOperand cOperand = GetReturnFlagModczOperand(cMeaning);
+        P2ModczOperand zOperand = GetReturnFlagModczOperand(zMeaning);
+        if (cOperand == P2ModczOperand._C && zOperand == P2ModczOperand._Z)
+            return true;
+
+        nodes.Add(new AsmInstructionNode(
+            P2Mnemonic.MODCZ,
+            [new AsmModczOperand(cOperand), new AsmModczOperand(zOperand)]));
+        return true;
+    }
+
+    private static void PrepareSingleReturnedFlag(
+        List<AsmNode> nodes,
+        ReturnPlacement placement,
+        LirFlagOperand flagOperand,
+        LoweringContext ctx)
+    {
+        MirFlag meaning = GetOrAssignCanonicalFlagMeaning(flagOperand.Flag, ctx);
+        P2ModczOperand operand = GetReturnFlagModczOperand(meaning);
+
+        if (placement == ReturnPlacement.FlagC)
+        {
+            if (operand != P2ModczOperand._C)
+                nodes.Add(new AsmInstructionNode(P2Mnemonic.MODC, [new AsmModczOperand(operand)]));
+            return;
+        }
+
+        Assert.Invariant(placement == ReturnPlacement.FlagZ, $"Unexpected flag return placement '{placement}'.");
+        if (operand != P2ModczOperand._Z)
+            nodes.Add(new AsmInstructionNode(P2Mnemonic.MODZ, [new AsmModczOperand(operand)]));
+    }
+
+    private static P2ModczOperand GetReturnFlagModczOperand(MirFlag meaning)
+    {
+        return meaning switch
+        {
+            MirFlag.C => P2ModczOperand._C,
+            MirFlag.NC => P2ModczOperand._NC,
+            MirFlag.Z => P2ModczOperand._Z,
+            MirFlag.NZ => P2ModczOperand._NZ,
+            _ => Assert.UnreachableValue<P2ModczOperand>(), // pragma: force-coverage
+        };
+    }
+
+    private static P2FlagEffect GetReturnRestoreFlagEffect(bool returnsC, bool returnsZ)
+    {
+        if (returnsC && returnsZ)
+            return P2FlagEffect.None;
+
+        if (returnsC)
+            return P2FlagEffect.WZ;
+
+        if (returnsZ)
+            return P2FlagEffect.WC;
+
+        return P2FlagEffect.WCZ;
+    }
+
     private static void EmitHaltJump(List<AsmNode> nodes)
     {
         nodes.Add(new AsmCommentNode("halt: runtime hook"));
         nodes.Add(Emit(
             P2Mnemonic.JMP,
             new AsmSymbolOperand(new ControlFlowLabelSymbol(DefaultHaltLabel), AsmSymbolAddressingMode.Immediate)));
-    }
-
-    private static bool TryElideReturnedHardwareFlagRestore(
-        List<AsmNode> nodes,
-        LirOperand value,
-        ReturnPlacement placement,
-        LoweringContext ctx)
-    {
-        if (value is not LirFlagOperand flagOperand)
-            return false;
-
-        P2Mnemonic captureMnemonic = placement switch
-        {
-            ReturnPlacement.FlagC => P2Mnemonic.BITC,
-            ReturnPlacement.FlagZ => P2Mnemonic.BITZ,
-            _ => Assert.UnreachableValue<P2Mnemonic>(), // pragma: force-coverage
-        };
-
-        VirtualAsmFlag asmFlag = ctx.GetFlag(flagOperand.Flag);
-        int captureIndex = -1;
-
-        for (int i = nodes.Count - 1; i >= 0; i--)
-        {
-            if (nodes[i] is not AsmInstructionNode instruction)
-                continue;
-
-            if (IsMatchingReturnedFlagSnapshot(instruction, asmFlag, captureMnemonic))
-            {
-                captureIndex = i;
-                break;
-            }
-        }
-
-        if (captureIndex < 0)
-            return false;
-
-        for (int i = captureIndex + 1; i < nodes.Count; i++)
-        {
-            if (nodes[i] is not AsmInstructionNode instruction)
-                continue;
-
-            if (ClobbersReturnedFlag(instruction.FlagOutput.Effect, placement))
-                return false;
-
-            if (AsmOptimizationHelpers.EnumerateUsedRegisters(instruction).Contains(asmFlag))
-                return false;
-
-            if (AsmOptimizationHelpers.TryGetDefinedRegister(instruction, out VirtualAsmValue? definedValue)
-                && ReferenceEquals(definedValue, asmFlag))
-            {
-                return false;
-            }
-        }
-
-        nodes.RemoveAt(captureIndex);
-        return true;
-    }
-
-    private static bool IsMatchingReturnedFlagSnapshot(
-        AsmInstructionNode instruction,
-        VirtualAsmFlag flag,
-        P2Mnemonic captureMnemonic)
-    {
-        _ = instruction;
-        _ = flag;
-        _ = captureMnemonic;
-        return false;
-    }
-
-    private static bool ClobbersReturnedFlag(P2FlagEffect flagEffect, ReturnPlacement placement)
-    {
-        return placement switch
-        {
-            ReturnPlacement.FlagC => flagEffect is P2FlagEffect.WC or P2FlagEffect.WCZ or P2FlagEffect.ANDC or P2FlagEffect.ORC or P2FlagEffect.XORC,
-            ReturnPlacement.FlagZ => flagEffect is P2FlagEffect.WZ or P2FlagEffect.WCZ or P2FlagEffect.ANDZ or P2FlagEffect.ORZ or P2FlagEffect.XORZ,
-            _ => Assert.UnreachableValue<bool>(), // pragma: force-coverage
-        };
     }
 
     private static void LowerBranch(List<AsmNode> nodes, LoweringContext ctx, LirBranchTerminator branch)

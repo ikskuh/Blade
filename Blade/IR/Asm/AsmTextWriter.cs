@@ -168,6 +168,10 @@ public sealed class AsmTextWriter : TextReportBuilderBase
                 Append(VariableName, register.Value, formatter.Format(register.Value));
                 return;
 
+            case AsmModczOperand modcz:
+                Append(Keyword, modcz.Value.ToString());
+                return;
+
             case AsmSymbolOperand symbol:
                 if (symbol.AddressingMode == AsmSymbolAddressingMode.Immediate)
                     Append('#');

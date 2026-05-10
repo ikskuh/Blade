@@ -71,6 +71,9 @@ internal static class P2InstructionFormResolver
                 : -1;
         }
 
+        if (operand is AsmModczOperand)
+            return operandInfo.Role == P2OperandRole.MODCZ && operandInfo.Type == P2OperandType.Modcz ? roleScore + 1 : -1;
+
         if (operand is AsmLabelRefOperand)
             return !operandInfo.SupportsImmediate.RequiresImmediate() ? roleScore : -1;
 

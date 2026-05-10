@@ -256,6 +256,81 @@ public class WriterAndSymbolTests
         Assert.That(asmText, Does.Contain("MOV %r0, #1"));
     }
 
+    [Test]
+    public void CompilerDriver_LowersReturnFlagMasksAndModczPaths()
+    {
+        CompilationResult compilation = CompilerDriver.Compile("""
+            cog task main {
+                noinline fn ret_c(a: u32, b: u32) -> u32, bool {
+                    return a + b, (a < b);
+                }
+
+                noinline fn ret_z(a: u32, b: u32) -> u32, bool@Z {
+                    return a + b, (a == b);
+                }
+
+                noinline fn ret_cz(a: u32, b: u32) -> u32, bool, bool {
+                    return a + b, (a < b), (a == b);
+                }
+
+                noinline fn ret_modcz(a: u32, b: u32) -> u32, bool@C, bool@Z {
+                    return a + b, (a == b), (a < b);
+                }
+
+                cog var left: u32 = 5;
+                cog var right: u32 = 5;
+                cog var sum: u32 = 0;
+                cog var c_flag: bool = false;
+                cog var z_flag: bool = false;
+
+                sum, c_flag = ret_c(left, right);
+                sum, z_flag = ret_z(left, right);
+                sum, c_flag, z_flag = ret_cz(left, right);
+                sum, c_flag, z_flag = ret_modcz(left, right);
+            }
+            """, "<input>");
+
+        Assert.That(compilation.Diagnostics, Is.Empty);
+        string assemblyText = compilation.Stages.RenderAssemblyText();
+
+        Assert.That(assemblyText, Does.Contain("RET WZ"));
+        Assert.That(assemblyText, Does.Contain("RET WC"));
+        Assert.That(assemblyText, Does.Contain("MODCZ _Z, _C"));
+        Assert.That(assemblyText, Does.Contain("CMP"));
+    }
+
+    [Test]
+    public void AsmWritersAndHelpers_SupportModczOperands()
+    {
+        AsmModule asm = CreateAsmModule(functions:
+        [
+            CreateAsmFunction("asm_modcz", isEntryPoint: false, CallingConventionTier.General,
+            [
+                new AsmLabelNode("asm_modcz_bb0"),
+                new AsmInstructionNode(
+                    P2Mnemonic.MODCZ,
+                    [new AsmModczOperand(P2ModczOperand._Z), new AsmModczOperand(P2ModczOperand._C)]),
+                new AsmInstructionNode(P2Mnemonic.RET, [], flagOutput: new AsmFlagOutput(P2FlagEffect.WZ, null, null)),
+            ]),
+        ]);
+
+        string asmText = new ReportSection("asm", "ASM", "asm.ir", writer => AsmTextWriter.Write(writer, [asm])).RenderPlainText();
+
+        using StringWriter finalAssemblyWriter = new();
+        FinalAssemblyWriter.Write(
+            new PlainTextReportBuilder(finalAssemblyWriter),
+            [asm],
+            IrTestFactory.CreateEmptyCogResourceLayouts(IrTestFactory.CreateSingleEntryImagePlan(IrTestFactory.CreateBoundProgram("/tmp/test.blade").EntryPoint)));
+        string finalAssembly = finalAssemblyWriter.ToString();
+
+        Type helpersType = typeof(FinalAssemblyWriter).Assembly.GetType("Blade.IR.Asm.AsmOptimizationHelpers", throwOnError: true)!;
+        MethodInfo operandsEquivalent = helpersType.GetMethod("OperandsEquivalent", BindingFlags.Static | BindingFlags.NonPublic)!;
+
+        Assert.That(asmText, Does.Contain("MODCZ _Z, _C"));
+        Assert.That(finalAssembly, Does.Contain("MODCZ _Z, _C"));
+        Assert.That((bool)operandsEquivalent.Invoke(null, [new AsmModczOperand(P2ModczOperand._Z), new AsmModczOperand(P2ModczOperand._Z)])!, Is.True);
+    }
+
     private static string RenderMirText(IReadOnlyList<MirModule> modules)
     {
         using StringWriter writer = new();

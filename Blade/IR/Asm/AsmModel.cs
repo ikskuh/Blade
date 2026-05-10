@@ -391,6 +391,11 @@ public sealed class AsmInstructionNode : AsmNode
             case AsmSymbolOperand symbol when symbol.AddressingMode == AsmSymbolAddressingMode.Register:
                 Assert.Invariant(!IsImmediateOnlyOperand(operandInfo), $"Operand {operandIndex} of '{mnemonic}' requires immediate syntax.");
                 break;
+            case AsmModczOperand:
+                Assert.Invariant(
+                    operandInfo.Role == P2OperandRole.MODCZ && operandInfo.Type == P2OperandType.Modcz,
+                    $"Operand {operandIndex} of '{mnemonic}' requires a MODCZ operand.");
+                break;
             case AsmRegisterOperand:
             case AsmLabelRefOperand:
             case AsmPhysicalRegisterOperand:
@@ -470,6 +475,16 @@ public sealed class AsmImmediateOperand(long value) : AsmOperand
     public long Value { get; } = value;
 
     public override string Format() => $"#{Value}";
+}
+
+/// <summary>
+/// MODC/MODZ/MODCZ operand.
+/// </summary>
+public sealed class AsmModczOperand(P2ModczOperand value) : AsmOperand
+{
+    public P2ModczOperand Value { get; } = value;
+
+    public override string Format() => Value.ToString();
 }
 
 /// <summary>

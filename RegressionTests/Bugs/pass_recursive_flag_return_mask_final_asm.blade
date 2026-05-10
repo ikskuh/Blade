@@ -1,0 +1,29 @@
+// EXPECT: pass
+// STAGE: final-asm
+// SEQUENCE:
+// - f_rec_less
+// - RETB WZ
+// NOTE:
+//   Exercises recursive calling convention flag returns. A single C-backed bool
+//   return from a `rec fn` must preserve C and restore only Z via `RETB WZ`.
+cog task main {
+    
+    rec fn rec_less(a: u32, b: u32, steps_left: u32) -> u32, bool {
+        if (steps_left == 0) {
+            return a + b, (a < b);
+        }
+
+        var sum_next: u32 = 0;
+        var less_next: bool = false;
+        sum_next, less_next = rec_less(a, b, steps_left - 1);
+        return sum_next, less_next;
+    }
+    
+    cog var left: u32 = 1;
+    cog var right: u32 = 2;
+    cog var recursion_depth: u32 = 1;
+    cog var sum: u32 = 0;
+    cog var less: bool = false;
+    
+    sum, less = rec_less(left, right, recursion_depth);
+}

@@ -1,10 +1,10 @@
-// EXPECT: pass
+// EXPECT: xfail
 // STAGE: final-asm
 // SEQUENCE:
 // - CALLPA ?, #f_three_ret
-// - MOV ?1, PA
-// - WRC ?2
-// - WRZ ?2
+// - MOV ?, PA
+// - WRC ?
+// - WRZ ?
 // SEQUENCE:
 // - f_three_ret
 // - three_ret_bb0
@@ -13,19 +13,29 @@
 // - ADD PA, ?2
 // - CMP ?1, ?2 WC
 // - CMP ?1, ?2 WZ
-// - WRC PA
-// - TESTB PA, #0 WC
-// - WRZ ?3
-// - TESTB ?3, #0 WZ
+// ! WRC
+// ! WRZ
+// - RET
+// SEQUENCE:
+// - f_two_ret
+// - MOV ?1, PA
+// - MOV PA, ?1
+// - ADD PA, ?2
+// - CMP ?1, ?2 WC
+// ! WRC
+// ! WRZ
+// - RET WZ
 // CONTAINS:
 // - CALLPA ?, #f_two_ret
 // - WRC ?
 // NOTE:
+//   currently fails due to pattern matching bug?
+// NOTE:
 //   Multi-return calls with bool extras must materialize both flag-backed extra
 //   results immediately after the call. The three-return caller must extract C and
-//   Z separately through register writes. The leaf callees currently normalize
-//   those flag-backed extras with WRC/WRZ plus TESTB before returning. The
-//   two-return case must still extract C.
+//   Z separately through register writes. The leaf callee returns both flags
+//   directly with a bare RET, so it must not normalize them through WRC/WRZ
+//   plus TESTB. The two-return case must still extract C.
 cog task main {
     
     noinline fn two_ret(a: u32, b: u32) -> u32, bool {

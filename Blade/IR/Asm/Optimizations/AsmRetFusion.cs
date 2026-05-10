@@ -21,6 +21,7 @@ public sealed class AsmRetFusion : PerFunctionAsmOptimization
                 && instruction.Mnemonic == P2Mnemonic.RET
                 && instruction.Condition is null
                 && instruction.Operands.Count == 0
+                && !instruction.IsNonElidable
                 && !instruction.FlagInput.Any
                 && instruction.FlagOutput.Effect == P2FlagEffect.None
                 && i > 0

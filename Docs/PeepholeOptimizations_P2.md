@@ -172,9 +172,10 @@ instruction before `RET WCZ` can be folded:
 ```
 
 Here we *cannot* simply do `_RET_ CMP x, y WCZ` because `_RET_` restores
-the caller's C/Z. The `RET WCZ` form preserves the subroutine's flags for the
-caller, so `_RET_` is not applicable when the subroutine needs to return flag
-state. This is a non-optimization that must be guarded against.
+the caller's C/Z. The plain `RET` form preserves the subroutine's current flags
+for the caller, while `RET WCZ` restores both caller flags, so `_RET_` is not
+applicable when the subroutine needs to return flag state. This is a
+non-optimization that must be guarded against.
 
 ### 2.3 `_RET_` on Hub Read/Write
 

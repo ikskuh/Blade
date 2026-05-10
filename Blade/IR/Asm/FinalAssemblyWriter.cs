@@ -564,6 +564,10 @@ public sealed class FinalAssemblyWriter : TextReportBuilderBase
                 Append((Literal, immediate.Value.ToString(CultureInfo.InvariantCulture)));
                 return;
 
+            case AsmModczOperand modcz:
+                Append((Keyword, modcz.Value.ToString()));
+                return;
+
             case AsmSymbolOperand symbol:
                 AppendSymbolOperand(symbol, currentFunction);
                 return;

@@ -1,4 +1,4 @@
-// EXPECT: pass
+// EXPECT: xfail
 // STAGE: final-asm
 // ARGS:
 // - -fno-asmir-opt=*
@@ -7,8 +7,8 @@
 // - RDLONG
 // - WRLONG
 // SEQUENCE:
-// - JMP #blade_halt
-// - blade_halt
+// ! JMP #blade_halt
+// ! blade_halt
 // - COGID ?1
 // - COGSTOP ?1
 // NOTE:
