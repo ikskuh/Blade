@@ -30,21 +30,11 @@ public sealed class RegressionRunOptions
     public bool Json { get; init; }
 }
 
-public sealed class RegressionRunResult
+public sealed record class RegressionRunResult(
+    string RepositoryRootPath,
+    IReadOnlyList<RegressionFixtureResult> FixtureResults,
+    RegressionIrCoverageReport? IrCoverageReport = null)
 {
-    public RegressionRunResult(
-        string repositoryRootPath,
-        IReadOnlyList<RegressionFixtureResult> fixtureResults,
-        RegressionIrCoverageReport? irCoverageReport = null)
-    {
-        RepositoryRootPath = repositoryRootPath;
-        FixtureResults = fixtureResults;
-        IrCoverageReport = irCoverageReport;
-    }
-
-    public string RepositoryRootPath { get; }
-    public IReadOnlyList<RegressionFixtureResult> FixtureResults { get; }
-    public RegressionIrCoverageReport? IrCoverageReport { get; }
     public int OkCount => FixtureResults.Count(result => result.Outcome == RegressionFixtureOutcome.Ok);
     public int FailCount => FixtureResults.Count(result => result.Outcome == RegressionFixtureOutcome.Fail);
     public int XFailCount => FixtureResults.Count(result => result.Outcome == RegressionFixtureOutcome.XFail);
@@ -58,306 +48,19 @@ public sealed class RegressionRunResult
         && !(IrCoverageReport?.HasRegressions ?? false);
 }
 
-public sealed class RegressionFixtureResult
-{
-    public RegressionFixtureResult(
-        string relativePath,
-        RegressionFixtureOutcome outcome,
-        string summary,
-        IReadOnlyList<string> details,
-        string? artifactDirectoryPath,
-        bool hardwareAttempted = false)
-    {
-        RelativePath = relativePath;
-        Outcome = outcome;
-        Summary = summary;
-        Details = details;
-        ArtifactDirectoryPath = artifactDirectoryPath;
-        HardwareAttempted = hardwareAttempted;
-    }
-
-    public string RelativePath { get; }
-    public RegressionFixtureOutcome Outcome { get; }
-    public string Summary { get; }
-    public IReadOnlyList<string> Details { get; }
-    public string? ArtifactDirectoryPath { get; }
-    public bool HardwareAttempted { get; }
-}
-
-public enum RegressionFixtureOutcome
-{
-    Ok,
-    Fail,
-    XFail,
-    XPass,
-    Skipped,
-    HwFail,
-    HwErr,
-}
-
-public enum RegressionFixtureKind
-{
-    Blade,
-    BladeCrash,
-}
-
-public enum RegressionExpectationKind
-{
-    Pass,
-    PassHw,
-    Fail,
-    XFail,
-    XPass,
-    XFailHw,
-}
+public sealed record class RegressionFixtureResult(
+    string RelativePath,
+    RegressionFixtureOutcome Outcome,
+    string Summary,
+    IReadOnlyList<string> Details,
+    string? ArtifactDirectoryPath,
+    bool HardwareAttempted
+);
 
 internal enum RegressionCompileStatus
 {
     Accepted,
     Rejected,
-}
-
-public enum RegressionStage
-{
-    Bound,
-    MirPreOptimization,
-    Mir,
-    LirPreOptimization,
-    Lir,
-    AsmirPreOptimization,
-    Asmir,
-    FinalAsm,
-}
-
-public enum FlexspinExpectation
-{
-    Auto,
-    Required,
-    Forbidden,
-}
-
-public sealed class RegressionFixture
-{
-    public RegressionFixture(
-        string absolutePath,
-        string relativePath,
-        RegressionFixtureKind kind,
-        string text,
-        string bodyText,
-        RegressionExpectation expectation)
-    {
-        AbsolutePath = absolutePath;
-        RelativePath = relativePath;
-        Kind = kind;
-        Text = text;
-        BodyText = bodyText;
-        Expectation = expectation;
-    }
-
-    public string AbsolutePath { get; }
-    public string RelativePath { get; }
-    public RegressionFixtureKind Kind { get; }
-    public string Text { get; }
-    public string BodyText { get; }
-    public RegressionExpectation Expectation { get; }
-}
-
-internal enum RegressionPoolExpectation
-{
-    Accept,
-    Reject,
-    Encoded,
-}
-
-internal sealed class RegressionPoolConfiguration
-{
-    public RegressionPoolConfiguration(string absolutePath, string relativePath, RegressionPoolExpectation expectation)
-    {
-        AbsolutePath = absolutePath;
-        RelativePath = relativePath;
-        Expectation = expectation;
-    }
-
-    public string AbsolutePath { get; }
-    public string RelativePath { get; }
-    public RegressionPoolExpectation Expectation { get; }
-}
-
-internal sealed class DiscoveredRegressionFixture
-{
-    public DiscoveredRegressionFixture(string absolutePath, string relativePath, RegressionPoolExpectation poolExpectation)
-    {
-        AbsolutePath = absolutePath;
-        RelativePath = relativePath;
-        PoolExpectation = poolExpectation;
-    }
-
-    public string AbsolutePath { get; }
-    public string RelativePath { get; }
-    public RegressionPoolExpectation PoolExpectation { get; }
-}
-
-internal sealed class RegressionSuiteConfiguration
-{
-    public RegressionSuiteConfiguration(
-        string repositoryRootPath,
-        string configPath,
-        IReadOnlyList<RegressionPoolConfiguration> pools,
-        string? hardwareRuntimePath,
-        string? irCoverageGuardPath)
-    {
-        RepositoryRootPath = repositoryRootPath;
-        ConfigPath = configPath;
-        Pools = pools;
-        HardwareRuntimePath = hardwareRuntimePath;
-        IrCoverageGuardPath = irCoverageGuardPath;
-    }
-
-    public string RepositoryRootPath { get; }
-    public string ConfigPath { get; }
-    public IReadOnlyList<RegressionPoolConfiguration> Pools { get; }
-    public string? HardwareRuntimePath { get; }
-    public string? IrCoverageGuardPath { get; }
-}
-
-public enum SnippetKind
-{
-    Positive,
-    Negative,
-    Count,
-}
-
-public sealed class SnippetItem
-{
-    private SnippetItem(SnippetKind kind, string text, int count)
-    {
-        Kind = kind;
-        Text = text;
-        Count = count;
-    }
-
-    public SnippetKind Kind { get; }
-    public string Text { get; }
-    public int Count { get; }
-
-    public static SnippetItem Positive(string text) => new(SnippetKind.Positive, text, 0);
-    public static SnippetItem Negative(string text) => new(SnippetKind.Negative, text, 0);
-
-    public static SnippetItem ExactCount(string text, int count)
-    {
-        return new SnippetItem(SnippetKind.Count, text, count);
-    }
-}
-
-public sealed class SnippetBlock
-{
-    public SnippetBlock(IReadOnlyList<SnippetItem> items)
-    {
-        Items = items;
-    }
-
-    public IReadOnlyList<SnippetItem> Items { get; }
-}
-
-public sealed class HardwareRunExpectation
-{
-    public HardwareRunExpectation(
-        IReadOnlyList<FixtureParameter> parameters,
-        IReadOnlyList<string> parameterLiterals,
-        IReadOnlyList<uint> expectedOutputs)
-    {
-        Parameters = parameters;
-        ParameterLiterals = parameterLiterals;
-        ExpectedOutputs = expectedOutputs;
-    }
-
-    public IReadOnlyList<FixtureParameter> Parameters { get; }
-    public IReadOnlyList<string> ParameterLiterals { get; }
-    public IReadOnlyList<uint> ExpectedOutputs { get; }
-}
-
-public sealed class RegressionExpectation
-{
-    public RegressionExpectation(
-        RegressionExpectationKind expectationKind,
-        RegressionStage? stage,
-        IReadOnlyList<SnippetBlock> containsBlocks,
-        IReadOnlyList<SnippetBlock> sequenceBlocks,
-        IReadOnlyList<SnippetBlock> exactBlocks,
-        IReadOnlyList<string> looseDiagnosticNames,
-        IReadOnlyList<ExpectedDiagnostic> exactDiagnostics,
-        FlexspinExpectation flexspinExpectation,
-        IReadOnlyList<string> compilerArgs,
-        IReadOnlyList<HardwareRunExpectation> hardwareRuns)
-    {
-        ExpectationKind = expectationKind;
-        Stage = stage;
-        ContainsBlocks = containsBlocks;
-        SequenceBlocks = sequenceBlocks;
-        ExactBlocks = exactBlocks;
-        LooseDiagnosticNames = looseDiagnosticNames;
-        ExactDiagnostics = exactDiagnostics;
-        FlexspinExpectation = flexspinExpectation;
-        CompilerArgs = compilerArgs;
-        HardwareRuns = hardwareRuns;
-    }
-
-    public RegressionExpectationKind ExpectationKind { get; }
-    public RegressionStage? Stage { get; }
-    public IReadOnlyList<SnippetBlock> ContainsBlocks { get; }
-    public IReadOnlyList<SnippetBlock> SequenceBlocks { get; }
-    public IReadOnlyList<SnippetBlock> ExactBlocks { get; }
-    public IReadOnlyList<string> LooseDiagnosticNames { get; }
-    public IReadOnlyList<ExpectedDiagnostic> ExactDiagnostics { get; }
-    public FlexspinExpectation FlexspinExpectation { get; }
-    public IReadOnlyList<string> CompilerArgs { get; }
-    public IReadOnlyList<HardwareRunExpectation> HardwareRuns { get; }
-    public bool HasCodeAssertions => ContainsBlocks.Count > 0 || SequenceBlocks.Count > 0 || ExactBlocks.Count > 0;
-    public bool HasDiagnosticAssertions => LooseDiagnosticNames.Count > 0 || ExactDiagnostics.Count > 0;
-}
-
-public sealed class ExpectedDiagnostic
-{
-    public ExpectedDiagnostic(string name, int? line, string? message)
-    {
-        Name = name;
-        Line = line;
-        Message = message;
-    }
-
-    public string Name { get; }
-    public int? Line { get; }
-    public string? Message { get; }
-
-    public string Display()
-    {
-        List<string> parts = [];
-        if (Line is not null)
-            parts.Add($"L{Line.Value}");
-        parts.Add(Name);
-        string joined = string.Join(", ", parts);
-        if (Message is null)
-            return joined;
-        return $"{joined}: {Message}";
-    }
-}
-
-public sealed class ActualDiagnostic
-{
-    public ActualDiagnostic(string name, DiagnosticSeverity severity, int line, string message)
-    {
-        Name = name;
-        Severity = severity;
-        Line = line;
-        Message = message;
-    }
-
-    public string Name { get; }
-    public DiagnosticSeverity Severity { get; }
-    public int Line { get; }
-    public string Message { get; }
-
-    public string Display() => $"L{Line}, {Name}: {Message}";
 }
 
 public static class RegressionRunner
@@ -375,7 +78,7 @@ public static class RegressionRunner
         bool isFullRun = effectiveOptions.Filters.Count == 0;
 
         FlexspinProbeResult flexspinProbe = FlexspinRunner.ProbeAvailability();
-        List<DiscoveredRegressionFixture> fixtures = DiscoverFixtures(configuration, effectiveOptions.Filters);
+        List<DiscoveredRegressionFixture> fixtures = RegressionPool.DiscoverFixtures(configuration, effectiveOptions.Filters);
         List<RegressionFixtureResult> fixtureResults = [];
         ArtifactWriter artifactWriter = new(repositoryRootPath, effectiveOptions.WriteFailureArtifacts);
         RegressionIrCoverageSession? irCoverageSession = RegressionIrCoverageSession.TryCreate(configuration.IrCoverageGuardPath, isFullRun);
@@ -397,50 +100,6 @@ public static class RegressionRunner
         RegressionIrCoverageReport? irCoverageReport = irCoverageSession?.Complete();
         return new RegressionRunResult(repositoryRootPath, fixtureResults, irCoverageReport);
     }
-
-    private static List<DiscoveredRegressionFixture> DiscoverFixtures(
-        RegressionSuiteConfiguration configuration,
-        IReadOnlyList<string> filters)
-    {
-        Dictionary<string, DiscoveredRegressionFixture> fixturesByPath = new(PathComparer.Instance);
-        foreach (RegressionPoolConfiguration pool in configuration.Pools)
-        {
-            AddFixturePaths(fixturesByPath, configuration.RepositoryRootPath, pool, "*.blade");
-            AddFixturePaths(fixturesByPath, configuration.RepositoryRootPath, pool, "*.blade.crash");
-        }
-
-        IEnumerable<DiscoveredRegressionFixture> filteredPaths = fixturesByPath.Values;
-        if (filters.Count > 0)
-        {
-            filteredPaths = filteredPaths.Where(path =>
-                filters.Any(filter => path.RelativePath.Contains(filter, StringComparison.OrdinalIgnoreCase)));
-        }
-
-        return filteredPaths
-            .OrderBy(path => path.RelativePath, StringComparer.Ordinal)
-            .ToList();
-    }
-
-    private static void AddFixturePaths(
-        Dictionary<string, DiscoveredRegressionFixture> fixturesByPath,
-        string repositoryRootPath,
-        RegressionPoolConfiguration pool,
-        string searchPattern)
-    {
-        string[] discovered = Directory.GetFiles(pool.AbsolutePath, searchPattern, SearchOption.AllDirectories);
-        foreach (string fixturePath in discovered)
-        {
-            string absolutePath = Path.GetFullPath(fixturePath);
-            string relativePath = Path.GetRelativePath(repositoryRootPath, absolutePath).Replace('\\', '/');
-            DiscoveredRegressionFixture fixture = new(absolutePath, relativePath, pool.Expectation);
-            if (!fixturesByPath.TryAdd(absolutePath, fixture))
-            {
-                throw new InvalidOperationException(FormattableString.Invariant(
-                    $"Fixture '{relativePath}' was discovered more than once. Check for overlapping regression pools."));
-            }
-        }
-    }
-
     private static RegressionFixtureResult EvaluateFixture(
         RegressionSuiteConfiguration configuration,
         DiscoveredRegressionFixture discoveredFixture,
@@ -470,7 +129,7 @@ public static class RegressionRunner
             if (fixture.Kind == RegressionFixtureKind.BladeCrash)
             {
                 _ = ExecuteBladeCrashFixture(fixture);
-                return new RegressionFixtureResult(relativePath, RegressionFixtureOutcome.Ok, "ok", [], null);
+                return new RegressionFixtureResult(relativePath, RegressionFixtureOutcome.Ok, "ok", [], null, false);
             }
 
             EvaluatedFixture evaluatedFixture = ExecuteFixture(configuration, fixture, irCoverageSession);
@@ -479,7 +138,10 @@ public static class RegressionRunner
             bool hardwareAttempted = false;
 
             nonHardwareIssues.AddRange(EvaluateDiagnostics(fixture.Expectation, evaluatedFixture.Diagnostics));
-            nonHardwareIssues.AddRange(EvaluateCodeAssertions(fixture, evaluatedFixture));
+            CodeAssertionEvaluationResult codeAssertionResult = EvaluateCodeAssertions(fixture, evaluatedFixture);
+            nonHardwareIssues.AddRange(codeAssertionResult.Issues);
+            if (codeAssertionResult.MatcherTraceReport is not null)
+                evaluatedFixture = evaluatedFixture.WithMatcherTrace(codeAssertionResult.MatcherTraceReport);
             if (ShouldRunFlexspin(fixture) && !flexspinProbe.IsAvailable)
             {
                 List<string> details =
@@ -487,7 +149,7 @@ public static class RegressionRunner
                     "skipped: flexspin is not available",
                     $"flexspin probe: {flexspinProbe.ProbeSummary}",
                 ];
-                return new RegressionFixtureResult(relativePath, RegressionFixtureOutcome.Skipped, "skipped", details, null);
+                return new RegressionFixtureResult(relativePath, RegressionFixtureOutcome.Skipped, "skipped", details, null, false);
             }
 
             nonHardwareIssues.AddRange(EvaluateFlexspin(fixture, evaluatedFixture));
@@ -584,7 +246,7 @@ public static class RegressionRunner
                     []));
             string summary = "fixture evaluation crashed";
             string? artifactDirectoryPath = artifactWriter.WriteFailureArtifacts(syntheticFixture, failedFixture, summary, details);
-            return new RegressionFixtureResult(relativePath, RegressionFixtureOutcome.Fail, summary, details, artifactDirectoryPath);
+            return new RegressionFixtureResult(relativePath, RegressionFixtureOutcome.Fail, summary, details, artifactDirectoryPath, false);
         }
     }
 
@@ -618,7 +280,8 @@ public static class RegressionRunner
             RegressionFixtureOutcome.Fail,
             message,
             details,
-            artifactDirectoryPath);
+            artifactDirectoryPath,
+            false);
     }
 
     private static RegressionFixtureKind DetermineFixtureKindOrDefault(string fixturePath)
@@ -679,6 +342,7 @@ public static class RegressionRunner
             stageOutputs,
             assemblyText,
             fixture.BodyText,
+            null,
             null);
     }
 
@@ -804,194 +468,454 @@ public static class RegressionRunner
         return true;
     }
 
-    private static List<string> EvaluateCodeAssertions(RegressionFixture fixture, EvaluatedFixture evaluatedFixture)
+    private static CodeAssertionEvaluationResult EvaluateCodeAssertions(RegressionFixture fixture, EvaluatedFixture evaluatedFixture)
     {
         List<string> issues = [];
         RegressionExpectation expectation = fixture.Expectation;
         if (!expectation.HasCodeAssertions)
-            return issues;
+            return new CodeAssertionEvaluationResult(issues, null);
 
         if (fixture.Kind != RegressionFixtureKind.Blade)
         {
             issues.Add("only .blade fixtures support code assertions");
-            return issues;
+            return new CodeAssertionEvaluationResult(issues, null);
         }
 
         if (expectation.Stage is null)
         {
             issues.Add("fixture has code assertions but no STAGE");
-            return issues;
+            return new CodeAssertionEvaluationResult(issues, null);
         }
 
         if (!evaluatedFixture.StageOutputs.TryGetValue(expectation.Stage.Value, out string? actualText))
         {
             issues.Add($"requested stage '{StageName(expectation.Stage.Value)}' is unavailable");
-            return issues;
+            return new CodeAssertionEvaluationResult(issues, null);
         }
 
-        NormalizedText normalizedActual = CodeNormalizer.NormalizeBladeStage(expectation.Stage.Value, actualText);
-        issues.AddRange(EvaluateNormalizedAssertions(expectation, normalizedActual, expectation.Stage.Value));
-        return issues;
+        NormalizedSourceText normalizedActual = CodeNormalizer.NormalizeBladeStage(expectation.Stage.Value, actualText);
+        return EvaluateNormalizedAssertions(expectation, normalizedActual, expectation.Stage.Value);
     }
 
-    private static List<string> EvaluateNormalizedAssertions(
+    private static CodeAssertionEvaluationResult EvaluateNormalizedAssertions(
         RegressionExpectation expectation,
-        NormalizedText normalizedActual,
+        NormalizedSourceText normalizedActual,
         RegressionStage? stage)
     {
         List<string> issues = [];
+        List<MatcherTraceBlock> blocks = [];
 
+        int containsBlockNumber = 1;
         foreach (SnippetBlock block in expectation.ContainsBlocks)
-            EvaluateContainsAssertions(block, normalizedActual, stage, issues);
+        {
+            blocks.Add(EvaluateContainsAssertions(block, normalizedActual, stage, containsBlockNumber, issues));
+            containsBlockNumber++;
+        }
 
+        int sequenceBlockNumber = 1;
         foreach (SnippetBlock block in expectation.SequenceBlocks)
-            EvaluateSequenceAssertions(block, normalizedActual, stage, requireExactGaps: false, issues);
+        {
+            blocks.Add(EvaluateSequenceAssertions(
+                block,
+                normalizedActual,
+                stage,
+                requireExactGaps: false,
+                MatcherTraceBlockKind.Sequence,
+                sequenceBlockNumber,
+                issues));
+            sequenceBlockNumber++;
+        }
 
+        int exactBlockNumber = 1;
         foreach (SnippetBlock block in expectation.ExactBlocks)
-            EvaluateSequenceAssertions(block, normalizedActual, stage, requireExactGaps: true, issues);
+        {
+            blocks.Add(EvaluateSequenceAssertions(
+                block,
+                normalizedActual,
+                stage,
+                requireExactGaps: true,
+                MatcherTraceBlockKind.Exact,
+                exactBlockNumber,
+                issues));
+            exactBlockNumber++;
+        }
 
-        return issues;
+        return new CodeAssertionEvaluationResult(issues, new MatcherTraceReport(stage, blocks));
     }
 
-    private static void EvaluateContainsAssertions(
+    private static MatcherTraceBlock EvaluateContainsAssertions(
         SnippetBlock block,
-        NormalizedText normalizedActual,
+        NormalizedSourceText normalizedActual,
         RegressionStage? stage,
+        int blockNumber,
         List<string> issues)
     {
         PatternBindings bindings = new();
-        foreach (SnippetItem item in block.Items)
+        List<MatcherTraceItem> itemTraces = [];
+        string? failureReason = null;
+
+        for (int itemNumber = 0; itemNumber < block.Items.Count; itemNumber++)
         {
-            Pattern pattern = Pattern.Compile(PrepareExpectedCode(item.Text, stage));
+            SnippetItem item = block.Items[itemNumber];
+            List<MatcherTraceMatch> matches = [];
+            bool succeeded = true;
+            string? itemFailureReason = null;
 
             switch (item.Kind)
             {
                 case SnippetKind.Positive:
-                    if (!SnippetMatcher.Contains(normalizedActual, pattern, bindings))
-                        issues.Add($"missing snippet: {item.Text}");
-                    break;
+                    {
+                        if (SnippetMatcher.IndexOf(normalizedActual, item.Pattern, 0, bindings) is not PatternMatch match)
+                        {
+                            itemFailureReason = $"missing snippet: {item.Pattern}";
+                            issues.Add(itemFailureReason);
+                            succeeded = false;
+                            failureReason ??= itemFailureReason;
+                        }
+                        else
+                        {
+                            matches.Add(CreateTraceMatch(normalizedActual, match, bindings));
+                        }
+
+                        break;
+                    }
 
                 case SnippetKind.Negative:
-                    PatternBindings negativeBindings = bindings.Clone();
-                    if (SnippetMatcher.Contains(normalizedActual, pattern, negativeBindings))
-                        issues.Add($"unexpected snippet present: {item.Text}");
-                    break;
+                    {
+                        PatternBindings negativeBindings = bindings.Clone();
+                        if (SnippetMatcher.IndexOf(normalizedActual, item.Pattern, 0, negativeBindings) is PatternMatch match)
+                        {
+                            itemFailureReason = $"unexpected snippet present: {item.Pattern}";
+                            issues.Add(itemFailureReason);
+                            succeeded = false;
+                            failureReason ??= itemFailureReason;
+                            matches.Add(CreateTraceMatch(normalizedActual, match, negativeBindings));
+                        }
+
+                        break;
+                    }
 
                 case SnippetKind.Count:
-                    int actualCount = SnippetMatcher.CountOccurrences(normalizedActual, pattern, bindings);
-                    if (actualCount != item.Count)
-                        issues.Add($"expected {item.Count} occurrence(s) of snippet, found {actualCount}: {item.Text}");
-                    break;
+                    {
+                        int index = 0;
+                        PatternBindings countBindings = bindings.Clone();
+                        while (index < normalizedActual.LineCount)
+                        {
+                            if (SnippetMatcher.IndexOf(normalizedActual, item.Pattern, index, countBindings) is not PatternMatch match)
+                                break;
+
+                            matches.Add(CreateTraceMatch(normalizedActual, match, countBindings));
+                            index = match.EndLineIndexExclusive;
+                        }
+
+                        if (matches.Count != item.Count)
+                        {
+                            itemFailureReason = $"expected {item.Count} occurrence(s) of snippet, found {matches.Count}: {item.Pattern}";
+                            issues.Add(itemFailureReason);
+                            succeeded = false;
+                            failureReason ??= itemFailureReason;
+                        }
+
+                        if (matches.Count > 0)
+                            bindings.ReplaceWith(countBindings);
+                        break;
+                    }
+
+                default:
+                    throw new UnreachableException();
             }
+
+            itemTraces.Add(new MatcherTraceItem(
+                itemNumber + 1,
+                item,
+                matches,
+                bindings.Snapshot(),
+                succeeded,
+                itemFailureReason,
+                0,
+                null,
+                null,
+                null));
         }
+
+        return new MatcherTraceBlock(
+            MatcherTraceBlockKind.Contains,
+            blockNumber,
+            itemTraces,
+            bindings.Snapshot(),
+            null,
+            failureReason is null,
+            failureReason);
     }
 
-    private static void EvaluateSequenceAssertions(
+    private static MatcherTraceBlock EvaluateSequenceAssertions(
         SnippetBlock block,
-        NormalizedText normalizedActual,
+        NormalizedSourceText normalizedActual,
         RegressionStage? stage,
         bool requireExactGaps,
+        MatcherTraceBlockKind blockKind,
+        int blockNumber,
         List<string> issues)
     {
         PatternBindings sequenceBindings = new();
         int index = 0;
         int previousPositiveEnd = 0;
         bool sawAdvancingItem = false;
-        List<SnippetItem> pendingNegatives = [];
+        List<(SnippetItem Item, int ItemNumber)> pendingNegatives = [];
+        List<MatcherTraceItem> itemTraces = [];
+        string? failureReason = null;
 
-        foreach (SnippetItem item in block.Items)
+        for (int itemNumber = 0; itemNumber < block.Items.Count; itemNumber++)
         {
-            Pattern pattern = Pattern.Compile(PrepareExpectedCode(item.Text, stage));
-
-            switch (item.Kind)
+            SnippetItem item = block.Items[itemNumber];
+            if (item.Kind == SnippetKind.Negative)
             {
-                case SnippetKind.Negative:
-                    pendingNegatives.Add(item);
-                    break;
-
-                case SnippetKind.Positive:
-                {
-                    if (SnippetMatcher.IndexOf(normalizedActual, pattern, index, sequenceBindings) is not PatternMatch match)
-                    {
-                        issues.Add($"missing ordered snippet: {item.Text}");
-                        return;
-                    }
-
-                    if (requireExactGaps && sawAdvancingItem && !CodeNormalizer.IsIgnorableGap(normalizedActual.Text[previousPositiveEnd..match.Start]))
-                        issues.Add($"unexpected text between exact snippets before: {item.Text}");
-
-                    CheckPendingNegatives(normalizedActual, previousPositiveEnd, match.Start, pendingNegatives, stage, sequenceBindings, issues);
-                    pendingNegatives.Clear();
-                    previousPositiveEnd = match.End;
-                    index = previousPositiveEnd;
-                    sawAdvancingItem = true;
-                    break;
-                }
-
-                case SnippetKind.Count:
-                {
-                    int countIndex = index;
-                    for (int i = 0; i < item.Count; i++)
-                    {
-                        if (SnippetMatcher.IndexOf(normalizedActual, pattern, countIndex, sequenceBindings) is not PatternMatch match)
-                        {
-                            issues.Add($"expected {item.Count} occurrence(s) of ordered snippet, found {i}: {item.Text}");
-                            return;
-                        }
-
-                        bool firstMatchInItem = i == 0;
-                        if (requireExactGaps && (sawAdvancingItem || !firstMatchInItem) && !CodeNormalizer.IsIgnorableGap(normalizedActual.Text[previousPositiveEnd..match.Start]))
-                            issues.Add($"unexpected text between exact snippets before: {item.Text}");
-
-                        if (firstMatchInItem)
-                        {
-                            CheckPendingNegatives(normalizedActual, previousPositiveEnd, match.Start, pendingNegatives, stage, sequenceBindings, issues);
-                            pendingNegatives.Clear();
-                        }
-
-                        previousPositiveEnd = match.End;
-                        countIndex = match.End;
-                        sawAdvancingItem = true;
-                    }
-
-                    index = countIndex;
-                    break;
-                }
+                pendingNegatives.Add((item, itemNumber + 1));
+                continue;
             }
+
+            if (item.Kind == SnippetKind.Positive)
+            {
+                if (SnippetMatcher.IndexOf(normalizedActual, item.Pattern, index, sequenceBindings) is not PatternMatch match)
+                {
+                    string itemFailureReason = $"missing ordered snippet: {item.Pattern}";
+                    issues.Add(itemFailureReason);
+                    failureReason ??= itemFailureReason;
+                    itemTraces.Add(new MatcherTraceItem(
+                        itemNumber + 1,
+                        item,
+                        [],
+                        sequenceBindings.Snapshot(),
+                        false,
+                        itemFailureReason,
+                        index,
+                        null,
+                        null,
+                        null));
+                    return new MatcherTraceBlock(blockKind, blockNumber, itemTraces, sequenceBindings.Snapshot(), index, false, failureReason);
+                }
+
+                string? exactGapFailure = ValidateExactGap(normalizedActual, previousPositiveEnd, match.StartLineIndex, requireExactGaps, sawAdvancingItem, item.Pattern, issues);
+                if (exactGapFailure is not null)
+                    failureReason ??= exactGapFailure;
+
+                List<MatcherTraceItem> negativeTraces = CheckPendingNegatives(
+                    normalizedActual,
+                    previousPositiveEnd,
+                    match.StartLineIndex,
+                    pendingNegatives,
+                    stage,
+                    sequenceBindings,
+                    issues,
+                    ref failureReason);
+                itemTraces.AddRange(negativeTraces);
+                pendingNegatives.Clear();
+
+                itemTraces.Add(new MatcherTraceItem(
+                    itemNumber + 1,
+                    item,
+                    [CreateTraceMatch(normalizedActual, match, sequenceBindings)],
+                    sequenceBindings.Snapshot(),
+                    exactGapFailure is null,
+                    exactGapFailure,
+                    index,
+                    requireExactGaps && sawAdvancingItem ? previousPositiveEnd : null,
+                    requireExactGaps && sawAdvancingItem ? match.StartLineIndex : null,
+                    requireExactGaps && sawAdvancingItem ? normalizedActual.GetGapText(previousPositiveEnd, match.StartLineIndex) : null));
+
+                previousPositiveEnd = match.EndLineIndexExclusive;
+                index = previousPositiveEnd;
+                sawAdvancingItem = true;
+                continue;
+            }
+
+            if (item.Kind == SnippetKind.Count)
+            {
+                List<MatcherTraceMatch> matches = [];
+                int countIndex = index;
+                int gapStartBeforeCount = previousPositiveEnd;
+                string? itemFailureReason = null;
+                string? exactGapFailure = null;
+                int? firstMatchStart = null;
+
+                for (int i = 0; i < item.Count; i++)
+                {
+                    if (SnippetMatcher.IndexOf(normalizedActual, item.Pattern, countIndex, sequenceBindings) is not PatternMatch match)
+                    {
+                        itemFailureReason = $"expected {item.Count} occurrence(s) of ordered snippet, found {i}: {item.Pattern}";
+                        issues.Add(itemFailureReason);
+                        failureReason ??= itemFailureReason;
+                        break;
+                    }
+
+                    firstMatchStart ??= match.StartLineIndex;
+                    bool shouldCheckGap = requireExactGaps && (sawAdvancingItem || i > 0);
+                    string? gapFailure = ValidateExactGap(normalizedActual, previousPositiveEnd, match.StartLineIndex, shouldCheckGap, shouldCheckGap, item.Pattern, issues);
+                    if (gapFailure is not null)
+                    {
+                        exactGapFailure ??= gapFailure;
+                        failureReason ??= gapFailure;
+                    }
+
+                    matches.Add(CreateTraceMatch(normalizedActual, match, sequenceBindings));
+                    previousPositiveEnd = match.EndLineIndexExclusive;
+                    countIndex = match.EndLineIndexExclusive;
+                    sawAdvancingItem = true;
+                }
+
+                if (firstMatchStart is not null)
+                {
+                    List<MatcherTraceItem> negativeTraces = CheckPendingNegatives(
+                        normalizedActual,
+                        gapStartBeforeCount,
+                        firstMatchStart.Value,
+                        pendingNegatives,
+                        stage,
+                        sequenceBindings,
+                        issues,
+                        ref failureReason);
+                    itemTraces.AddRange(negativeTraces);
+                }
+
+                pendingNegatives.Clear();
+
+                itemTraces.Add(new MatcherTraceItem(
+                    itemNumber + 1,
+                    item,
+                    matches,
+                    sequenceBindings.Snapshot(),
+                    itemFailureReason is null && exactGapFailure is null,
+                    itemFailureReason ?? exactGapFailure,
+                    index,
+                    requireExactGaps && matches.Count > 0 ? index : null,
+                    requireExactGaps && matches.Count > 0 ? matches[0].LineIndex : null,
+                    requireExactGaps && matches.Count > 0 ? normalizedActual.GetGapText(index, matches[0].LineIndex) : null));
+
+                if (itemFailureReason is not null)
+                    return new MatcherTraceBlock(blockKind, blockNumber, itemTraces, sequenceBindings.Snapshot(), countIndex, false, failureReason);
+
+                index = countIndex;
+                continue;
+            }
+
+            throw new UnreachableException();
         }
 
         if (pendingNegatives.Count > 0)
-            CheckPendingNegatives(normalizedActual, previousPositiveEnd, normalizedActual.Text.Length, pendingNegatives, stage, sequenceBindings, issues);
+        {
+            List<MatcherTraceItem> negativeTraces = CheckPendingNegatives(
+                normalizedActual,
+                previousPositiveEnd,
+                normalizedActual.LineCount,
+                pendingNegatives,
+                stage,
+                sequenceBindings,
+                issues,
+                ref failureReason);
+            itemTraces.AddRange(negativeTraces);
+        }
+
+        return new MatcherTraceBlock(blockKind, blockNumber, itemTraces, sequenceBindings.Snapshot(), index, failureReason is null, failureReason);
     }
 
-    private static void CheckPendingNegatives(
-        NormalizedText normalizedActual,
+    private static List<MatcherTraceItem> CheckPendingNegatives(
+        NormalizedSourceText normalizedActual,
         int gapStart,
         int gapEnd,
-        List<SnippetItem> pendingNegatives,
+        List<(SnippetItem Item, int ItemNumber)> pendingNegatives,
         RegressionStage? stage,
         PatternBindings bindings,
-        List<string> issues)
+        List<string> issues,
+        ref string? failureReason)
     {
-        if (gapStart >= gapEnd)
-            return;
-
-        NormalizedText gap = new(normalizedActual.Text[gapStart..gapEnd]);
-        foreach (SnippetItem negative in pendingNegatives)
+        List<MatcherTraceItem> traces = [];
+        foreach ((SnippetItem negative, int itemNumber) in pendingNegatives)
         {
-            Pattern normalizedNeg = Pattern.Compile(PrepareExpectedCode(negative.Text, stage));
+            Pattern normalizedNeg = negative.Pattern;
             PatternBindings negativeBindings = bindings.Clone();
-            if (SnippetMatcher.Contains(gap, normalizedNeg, negativeBindings))
-                issues.Add($"unexpected snippet in sequence gap: {negative.Text}");
+            List<MatcherTraceMatch> matches = [];
+            bool succeeded = true;
+            string? itemFailureReason = null;
+
+            if (gapStart < gapEnd)
+            {
+                if (SnippetMatcher.IndexOf(normalizedActual, normalizedNeg, gapStart, gapEnd, negativeBindings) is PatternMatch absoluteMatch)
+                {
+                    matches.Add(CreateTraceMatch(normalizedActual, absoluteMatch, negativeBindings));
+                    itemFailureReason = $"unexpected snippet in sequence gap: {negative.Pattern}";
+                    issues.Add(itemFailureReason);
+                    succeeded = false;
+                    failureReason ??= itemFailureReason;
+                }
+            }
+
+            traces.Add(new MatcherTraceItem(
+                itemNumber,
+                negative,
+                matches,
+                bindings.Snapshot(),
+                succeeded,
+                itemFailureReason,
+                0,
+                gapStart,
+                gapEnd,
+                normalizedActual.GetGapText(gapStart, gapEnd)));
         }
+
+        return traces;
     }
 
-    private static string PrepareExpectedCode(string text, RegressionStage? stage)
+    private static string? ValidateExactGap(
+        NormalizedSourceText normalizedActual,
+        int gapStartLineIndex,
+        int gapEndLineIndex,
+        bool requireExactGaps,
+        bool shouldCheckGap,
+        Pattern pattern,
+        List<string> issues)
     {
-        if (stage is null)
-            return CodeNormalizer.StripAssemblyComments(text);
+        if (!requireExactGaps || !shouldCheckGap)
+            return null;
 
-        return CodeNormalizer.StripStageComments(stage.Value, text);
+        if (gapStartLineIndex >= gapEndLineIndex)
+            return null;
+
+        string issue = $"unexpected text between exact snippets before: {pattern.Source}";
+        issues.Add(issue);
+        return issue;
+    }
+
+    private static MatcherTraceMatch CreateTraceMatch(
+        NormalizedSourceText normalizedActual,
+        PatternMatch match,
+        PatternBindings bindings)
+    {
+        NormalizedSourceLine line = normalizedActual.GetLine(match.StartLineIndex);
+        return new MatcherTraceMatch(
+            match.StartLineIndex,
+            line.Text.Text,
+            line.SourceLineNumber,
+            line.Text.Text,
+            bindings.Snapshot());
+    }
+
+    private static string DescribePattern(Pattern pattern)
+    {
+        StringBuilder builder = new();
+        for (int index = 0; index < pattern.Parts.Count; index++)
+        {
+            if (builder.Length > 0)
+                builder.Append(' ');
+
+            PatternPart part = pattern.Parts[index];
+            builder.Append(part.IsWildcard
+                ? part.BindingNumber is int bindingNumber
+                    ? $"?{bindingNumber.ToString(CultureInfo.InvariantCulture)}"
+                    : "?"
+                : part.Literal);
+        }
+
+        return builder.ToString();
     }
 
     private static List<string> EvaluateFlexspin(RegressionFixture fixture, EvaluatedFixture evaluatedFixture)
@@ -1399,1022 +1323,97 @@ public static class RegressionRunner
     }
 }
 
-internal sealed class EvaluatedFixture
+internal sealed class EvaluatedFixture(
+    IReadOnlyList<ActualDiagnostic> diagnostics,
+    IReadOnlyDictionary<RegressionStage, string> stageOutputs,
+    string? finalAssemblyText,
+    string bodyText,
+    byte[]? hardwareBinary,
+    MatcherTraceReport? matcherTraceReport)
 {
-    public EvaluatedFixture(
-        IReadOnlyList<ActualDiagnostic> diagnostics,
-        IReadOnlyDictionary<RegressionStage, string> stageOutputs,
-        string? finalAssemblyText,
-        string bodyText,
-        byte[]? hardwareBinary)
-    {
-        Diagnostics = diagnostics;
-        StageOutputs = stageOutputs;
-        FinalAssemblyText = finalAssemblyText;
-        BodyText = bodyText;
-        HardwareBinary = hardwareBinary;
-    }
-
-    public IReadOnlyList<ActualDiagnostic> Diagnostics { get; }
-    public IReadOnlyDictionary<RegressionStage, string> StageOutputs { get; }
-    public string? FinalAssemblyText { get; }
-    public string BodyText { get; }
-    public byte[]? HardwareBinary { get; }
+    public IReadOnlyList<ActualDiagnostic> Diagnostics { get; } = diagnostics;
+    public IReadOnlyDictionary<RegressionStage, string> StageOutputs { get; } = stageOutputs;
+    public string? FinalAssemblyText { get; } = finalAssemblyText;
+    public string BodyText { get; } = bodyText;
+    public byte[]? HardwareBinary { get; } = hardwareBinary;
+    public MatcherTraceReport? MatcherTraceReport { get; } = matcherTraceReport;
 
     public EvaluatedFixture WithHardwareBinary(byte[] hardwareBinary)
     {
-        return new EvaluatedFixture(Diagnostics, StageOutputs, FinalAssemblyText, BodyText, hardwareBinary);
+        return new EvaluatedFixture(Diagnostics, StageOutputs, FinalAssemblyText, BodyText, hardwareBinary, MatcherTraceReport);
+    }
+
+    public EvaluatedFixture WithMatcherTrace(MatcherTraceReport matcherTraceReport)
+    {
+        return new EvaluatedFixture(Diagnostics, StageOutputs, FinalAssemblyText, BodyText, HardwareBinary, matcherTraceReport);
     }
 
     public static EvaluatedFixture ForAssembly(string bodyText)
     {
-        return new EvaluatedFixture([], new Dictionary<RegressionStage, string>(), null, bodyText, null);
+        return new EvaluatedFixture([], new Dictionary<RegressionStage, string>(), null, bodyText, null, null);
     }
 
     public static EvaluatedFixture Empty(string relativePath)
     {
         _ = relativePath;
-        return new EvaluatedFixture([], new Dictionary<RegressionStage, string>(), null, string.Empty, null);
+        return new EvaluatedFixture([], new Dictionary<RegressionStage, string>(), null, string.Empty, null, null);
     }
 }
 
-internal static class RegressionFixtureParser
+internal sealed class CodeAssertionEvaluationResult(IReadOnlyList<string> issues, MatcherTraceReport? matcherTraceReport)
 {
-    private const int HardwareVectorWidth = 8;
-
-    private static readonly Regex DirectiveRegex = new(
-        @"^(?<name>EXPECT|NOTE|DIAGNOSTICS|STAGE|CONTAINS|SEQUENCE|EXACT|FLEXSPIN|ARGS|RUNS):(?<value>.*)$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    private static readonly Regex MarkerRegex = new(
-        @"^(?<name>[A-Z][A-Z0-9-]*):(?<value>.*)$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    private static readonly Regex ExpectDirectiveRegex = new(
-        @"^EXPECT:(?<value>.*)$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    private static readonly Regex ExactDiagnosticRegex = new(
-        @"^(?:L(?<line>\d+)\s*,\s*)?(?<name>[A-Za-z_][A-Za-z0-9_]*)(?:\s*:\s*(?<message>.+))?$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    private static readonly Regex HardwareRunRegex = new(
-        @"^\[(?<parameters>[^\]]*)\]\s*=\s*(?<expected>.+)$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    public static RegressionFixture Parse(DiscoveredRegressionFixture discoveredFixture)
-    {
-        RegressionFixtureKind kind = DetermineFixtureKind(discoveredFixture.AbsolutePath);
-        if (kind == RegressionFixtureKind.BladeCrash)
-        {
-            if (discoveredFixture.PoolExpectation != RegressionPoolExpectation.Encoded)
-                throw new InvalidOperationException(".blade.crash fixtures are only valid in encoded pools.");
-
-            return new RegressionFixture(
-                discoveredFixture.AbsolutePath,
-                discoveredFixture.RelativePath,
-                kind,
-                string.Empty,
-                string.Empty,
-                CreateDefaultExpectation(RegressionExpectationKind.Pass));
-        }
-
-        string text = File.ReadAllText(discoveredFixture.AbsolutePath);
-        RegressionExpectation expectation;
-        string bodyText;
-        bool requireFailDiagnosticAssertions = false;
-
-        switch (discoveredFixture.PoolExpectation)
-        {
-            case RegressionPoolExpectation.Accept:
-                expectation = CreateDefaultExpectation(RegressionExpectationKind.Pass);
-                bodyText = text;
-                break;
-
-            case RegressionPoolExpectation.Reject:
-                expectation = CreateDefaultExpectation(RegressionExpectationKind.Fail);
-                bodyText = text;
-                break;
-
-            case RegressionPoolExpectation.Encoded:
-                HeaderScanResult headerScan = HeaderScanResult.Scan(text);
-                if (headerScan.HasDirectiveHeader)
-                {
-                    expectation = ParseExpectation(headerScan);
-                    requireFailDiagnosticAssertions = true;
-                }
-                else
-                {
-                    expectation = CreateDefaultExpectation(RegressionExpectationKind.Pass);
-                }
-
-                bodyText = headerScan.BodyText;
-                break;
-
-            default:
-                throw new InvalidOperationException(FormattableString.Invariant(
-                    $"Unsupported regression pool expectation '{discoveredFixture.PoolExpectation}'."));
-        }
-
-        ValidateExpectation(expectation, requireFailDiagnosticAssertions);
-        return new RegressionFixture(discoveredFixture.AbsolutePath, discoveredFixture.RelativePath, kind, text, bodyText, expectation);
-    }
-
-    private static IEnumerable<string> EnumerateExpectedDiagnosticNames(RegressionExpectation expectation)
-    {
-        foreach (string name in expectation.LooseDiagnosticNames)
-            yield return name;
-        foreach (ExpectedDiagnostic diagnostic in expectation.ExactDiagnostics)
-            yield return diagnostic.Name;
-    }
-
-    private static RegressionFixtureKind DetermineFixtureKind(string fixturePath)
-    {
-        if (fixturePath.EndsWith(".blade.crash", StringComparison.Ordinal))
-            return RegressionFixtureKind.BladeCrash;
-
-        string extension = Path.GetExtension(fixturePath);
-        return extension switch
-        {
-            ".blade" => RegressionFixtureKind.Blade,
-            _ => throw new InvalidOperationException($"Unsupported regression fixture extension '{extension}'."),
-        };
-    }
-
-    private static RegressionExpectation CreateDefaultExpectation(RegressionExpectationKind expectationKind)
-    {
-        return new RegressionExpectation(
-            expectationKind,
-            null,
-            [],
-            [],
-            [],
-            [],
-            [],
-            FlexspinExpectation.Auto,
-            [],
-            []);
-    }
-
-    private static void ValidateExpectation(RegressionExpectation expectation, bool requireFailDiagnosticAssertions)
-    {
-        if (expectation.HasCodeAssertions && expectation.Stage is null)
-            throw new InvalidOperationException("Blade fixtures with code assertions must specify STAGE.");
-
-        if (requireFailDiagnosticAssertions
-            && expectation.ExpectationKind == RegressionExpectationKind.Fail
-            && !expectation.HasDiagnosticAssertions)
-        {
-            throw new InvalidOperationException("EXPECT: fail requires at least one DIAGNOSTICS expectation.");
-        }
-
-        if (requireFailDiagnosticAssertions
-            && expectation.ExpectationKind == RegressionExpectationKind.XPass
-            && !expectation.HasDiagnosticAssertions)
-        {
-            throw new InvalidOperationException("EXPECT: xpass requires at least one DIAGNOSTICS expectation.");
-        }
-
-        if (expectation.ExpectationKind != RegressionExpectationKind.PassHw
-                && expectation.ExpectationKind != RegressionExpectationKind.XFailHw
-                && expectation.HardwareRuns.Count > 0)
-            throw new InvalidOperationException("RUNS is only valid with EXPECT: pass-hw or EXPECT: xfail-hw.");
-
-        if (expectation.ExpectationKind == RegressionExpectationKind.PassHw && expectation.HardwareRuns.Count == 0)
-            throw new InvalidOperationException("EXPECT: pass-hw requires RUNS.");
-
-        if (expectation.ExpectationKind == RegressionExpectationKind.XFailHw && expectation.HardwareRuns.Count == 0)
-            throw new InvalidOperationException("EXPECT: xfail-hw requires RUNS.");
-
-        if ((expectation.ExpectationKind == RegressionExpectationKind.Pass
-                || expectation.ExpectationKind == RegressionExpectationKind.PassHw
-                || expectation.ExpectationKind == RegressionExpectationKind.XFailHw)
-            && EnumerateExpectedDiagnosticNames(expectation)
-                .Any(static name => DiagnosticMessage.GetSeverity(name) == DiagnosticSeverity.Error))
-        {
-            throw new InvalidOperationException($"EXPECT: {ExpectationName(expectation.ExpectationKind)} cannot be combined with error diagnostic expectations.");
-        }
-
-        ValidateAdvancingSnippetBlocks(expectation.SequenceBlocks, "SEQUENCE");
-        ValidateAdvancingSnippetBlocks(expectation.ExactBlocks, "EXACT");
-    }
-
-    private static void ValidateAdvancingSnippetBlocks(IReadOnlyList<SnippetBlock> blocks, string directiveName)
-    {
-        foreach (SnippetBlock block in blocks)
-        {
-            if (block.Items.All(static item => item.Kind == SnippetKind.Negative))
-                throw new InvalidOperationException($"{directiveName} block requires at least one '-' or count item.");
-        }
-    }
-
-    private static RegressionExpectation ParseExpectation(HeaderScanResult headerScan)
-    {
-        RegressionExpectationKind expectationKind = RegressionExpectationKind.Pass;
-        RegressionStage? stage = null;
-        List<SnippetBlock> containsBlocks = [];
-        List<SnippetBlock> sequenceBlocks = [];
-        List<SnippetBlock> exactBlocks = [];
-        List<string> looseDiagnosticNames = [];
-        List<ExpectedDiagnostic> exactDiagnostics = [];
-        FlexspinExpectation flexspinExpectation = FlexspinExpectation.Auto;
-        List<string> compilerArgs = [];
-        List<HardwareRunExpectation> hardwareRuns = [];
-        List<SnippetItem>? activeSnippetItems = null;
-        HeaderBlock? activeBlock = null;
-
-        foreach (HeaderLine line in headerScan.HeaderLines)
-        {
-            if (!line.IsComment)
-                continue;
-
-            string trimmed = line.Content.TrimStart();
-            if (trimmed.Length == 0)
-                continue;
-
-            Match directiveMatch = DirectiveRegex.Match(trimmed);
-            if (directiveMatch.Success)
-            {
-                string directiveName = directiveMatch.Groups["name"].Value;
-                string directiveValue = directiveMatch.Groups["value"].Value.Trim();
-                activeSnippetItems = null;
-                activeBlock = directiveName switch
-                {
-                    "NOTE" => HeaderBlock.Note,
-                    "DIAGNOSTICS" when directiveValue.Length == 0 => HeaderBlock.ExactDiagnostics,
-                    "CONTAINS" => HeaderBlock.Contains,
-                    "SEQUENCE" => HeaderBlock.Sequence,
-                    "EXACT" => HeaderBlock.Exact,
-                    "ARGS" => HeaderBlock.Args,
-                    "RUNS" => HeaderBlock.Runs,
-                    _ => null,
-                };
-
-                switch (directiveName)
-                {
-                    case "EXPECT":
-                        expectationKind = directiveValue switch
-                        {
-                            "pass" => RegressionExpectationKind.Pass,
-                            "pass-hw" => RegressionExpectationKind.PassHw,
-                            "fail" => RegressionExpectationKind.Fail,
-                            "xfail" => RegressionExpectationKind.XFail,
-                            "xpass" => RegressionExpectationKind.XPass,
-                            "xfail-hw" => RegressionExpectationKind.XFailHw,
-                            _ => throw new InvalidOperationException($"Unsupported EXPECT value '{directiveValue}'."),
-                        };
-                        break;
-
-                    case "NOTE":
-                        break;
-
-                    case "DIAGNOSTICS":
-                        if (directiveValue.Length > 0)
-                            looseDiagnosticNames.AddRange(ParseLooseDiagnosticNames(directiveValue));
-                        break;
-
-                    case "STAGE":
-                        stage = directiveValue switch
-                        {
-                            "bound" => RegressionStage.Bound,
-                            "mir-preopt" => RegressionStage.MirPreOptimization,
-                            "mir" => RegressionStage.Mir,
-                            "lir-preopt" => RegressionStage.LirPreOptimization,
-                            "lir" => RegressionStage.Lir,
-                            "asmir-preopt" => RegressionStage.AsmirPreOptimization,
-                            "asmir" => RegressionStage.Asmir,
-                            "final-asm" => RegressionStage.FinalAsm,
-                            _ => throw new InvalidOperationException($"Unsupported STAGE value '{directiveValue}'."),
-                        };
-                        break;
-
-                    case "CONTAINS":
-                        if (directiveValue.Length > 0)
-                            throw new InvalidOperationException("CONTAINS only supports block form.");
-                        activeSnippetItems = [];
-                        containsBlocks.Add(new SnippetBlock(activeSnippetItems));
-                        break;
-
-                    case "SEQUENCE":
-                        if (directiveValue.Length > 0)
-                            throw new InvalidOperationException("SEQUENCE only supports block form.");
-                        activeSnippetItems = [];
-                        sequenceBlocks.Add(new SnippetBlock(activeSnippetItems));
-                        break;
-
-                    case "EXACT":
-                        if (directiveValue.Length > 0)
-                            throw new InvalidOperationException("EXACT only supports block form.");
-                        activeSnippetItems = [];
-                        exactBlocks.Add(new SnippetBlock(activeSnippetItems));
-                        break;
-
-                    case "ARGS":
-                        if (directiveValue.Length > 0)
-                            compilerArgs.AddRange(SplitHeaderArgs(directiveValue));
-                        break;
-
-                    case "RUNS":
-                        if (directiveValue.Length > 0)
-                            throw new InvalidOperationException("RUNS only supports block form.");
-                        break;
-
-                    case "FLEXSPIN":
-                        flexspinExpectation = directiveValue switch
-                        {
-                            "required" => FlexspinExpectation.Required,
-                            "forbidden" => FlexspinExpectation.Forbidden,
-                            _ => throw new InvalidOperationException($"Unsupported FLEXSPIN value '{directiveValue}'."),
-                        };
-                        break;
-                }
-
-                continue;
-            }
-
-            if (activeBlock is null)
-            {
-                Match markerMatch = MarkerRegex.Match(trimmed);
-                if (markerMatch.Success)
-                    throw new InvalidOperationException($"Unsupported header directive '{markerMatch.Groups["name"].Value}'.");
-
-                throw new InvalidOperationException("Header comments after EXPECT must use a supported directive or NOTE block.");
-            }
-
-            switch (activeBlock.Value)
-            {
-                case HeaderBlock.Note:
-                    break;
-
-                case HeaderBlock.Contains:
-                    if (activeSnippetItems is null)
-                        throw new InvalidOperationException("CONTAINS block started without an item buffer.");
-                    activeSnippetItems.Add(ParseSnippetItem(trimmed, "CONTAINS"));
-                    break;
-
-                case HeaderBlock.Sequence:
-                    if (activeSnippetItems is null)
-                        throw new InvalidOperationException("SEQUENCE block started without an item buffer.");
-                    activeSnippetItems.Add(ParseSnippetItem(trimmed, "SEQUENCE"));
-                    break;
-
-                case HeaderBlock.Exact:
-                    if (activeSnippetItems is null)
-                        throw new InvalidOperationException("EXACT block started without an item buffer.");
-                    activeSnippetItems.Add(ParseSnippetItem(trimmed, "EXACT"));
-                    break;
-
-                case HeaderBlock.Args:
-                    compilerArgs.Add(ParseBulletItem(trimmed, "ARGS"));
-                    break;
-
-                case HeaderBlock.Runs:
-                    hardwareRuns.Add(ParseHardwareRunExpectation(ParseBulletItem(trimmed, "RUNS")));
-                    break;
-
-                case HeaderBlock.ExactDiagnostics:
-                    exactDiagnostics.Add(ParseExactDiagnostic(ParseBulletItem(trimmed, "DIAGNOSTICS")));
-                    break;
-
-                default:
-                    throw new InvalidOperationException($"Unknown header block '{activeBlock.Value}'.");
-            }
-        }
-
-        return new RegressionExpectation(
-            expectationKind,
-            stage,
-            containsBlocks,
-            sequenceBlocks,
-            exactBlocks,
-            looseDiagnosticNames,
-            exactDiagnostics,
-            flexspinExpectation,
-            compilerArgs,
-            hardwareRuns);
-    }
-
-    private static string ExpectationName(RegressionExpectationKind expectationKind)
-    {
-        return expectationKind switch
-        {
-            RegressionExpectationKind.Pass => "pass",
-            RegressionExpectationKind.PassHw => "pass-hw",
-            RegressionExpectationKind.Fail => "fail",
-            RegressionExpectationKind.XFail => "xfail",
-            RegressionExpectationKind.XPass => "xpass",
-            RegressionExpectationKind.XFailHw => "xfail-hw",
-            _ => throw new InvalidOperationException($"Unknown expectation kind '{expectationKind}'."),
-        };
-    }
-
-    private static IReadOnlyList<string> SplitHeaderArgs(string text)
-    {
-        return text.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-    }
-
-    private static IReadOnlyList<string> ParseLooseDiagnosticNames(string text)
-    {
-        string[] parts = text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        foreach (string part in parts)
-        {
-            if (DiagnosticMessage.GetByName(part) is null)
-                throw new InvalidOperationException($"Invalid diagnostic name '{part}'.");
-        }
-
-        return parts;
-    }
-
-    private static readonly Regex CountPrefixRegex = new(
-        @"^(?<count>\d+)x\s+(?<text>.+)$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    private static string ParseBulletItem(string trimmed, string directiveName)
-    {
-        if (!trimmed.StartsWith('-'))
-            throw new InvalidOperationException($"{directiveName} block entries must begin with '-'.");
-        return trimmed[1..].TrimStart();
-    }
-
-    private static SnippetItem ParseSnippetItem(string trimmed, string directiveName)
-    {
-        if (trimmed.StartsWith('-'))
-            return SnippetItem.Positive(RequireSnippetText(trimmed[1..].TrimStart(), directiveName));
-
-        if (trimmed.StartsWith('!'))
-            return SnippetItem.Negative(RequireSnippetText(trimmed[1..].TrimStart(), directiveName));
-
-        Match countMatch = CountPrefixRegex.Match(trimmed);
-        if (countMatch.Success)
-        {
-            int count = int.Parse(countMatch.Groups["count"].Value, CultureInfo.InvariantCulture);
-            if (count == 0)
-                throw new InvalidOperationException($"{directiveName} count prefixes must be greater than zero. Use '!' for negative assertions.");
-
-            string text = RequireSnippetText(countMatch.Groups["text"].Value, directiveName);
-            return SnippetItem.ExactCount(text, count);
-        }
-
-        throw new InvalidOperationException(
-            $"{directiveName} block entries must begin with '-', '!', or a count prefix (e.g. '3x').");
-    }
-
-    private static string RequireSnippetText(string text, string directiveName)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-            throw new InvalidOperationException($"{directiveName} block entries must include snippet text.");
-
-        return text;
-    }
-
-    private static ExpectedDiagnostic ParseExactDiagnostic(string itemText)
-    {
-        Match match = ExactDiagnosticRegex.Match(itemText);
-        if (!match.Success)
-            throw new InvalidOperationException($"Invalid DIAGNOSTICS block entry '{itemText}'.");
-
-        int? line = null;
-        if (match.Groups["line"].Success)
-            line = int.Parse(match.Groups["line"].Value, CultureInfo.InvariantCulture);
-
-        string? message = null;
-        if (match.Groups["message"].Success)
-            message = match.Groups["message"].Value;
-
-        string name = match.Groups["name"].Value;
-        if (DiagnosticMessage.GetByName(name) is null)
-            throw new InvalidOperationException($"Invalid diagnostic name '{name}'.");
-
-        return new ExpectedDiagnostic(name, line, message);
-    }
-
-    private static HardwareRunExpectation ParseHardwareRunExpectation(string text)
-    {
-        Match match = HardwareRunRegex.Match(text);
-        if (!match.Success)
-            throw new InvalidOperationException($"Invalid RUNS entry '{text}'. Expected '[ ... ] = value' or '[ ... ] = [ ... ]'.");
-
-        string parametersText = match.Groups["parameters"].Value.Trim();
-        List<string> parameterLiterals = [];
-        List<FixtureParameter> parameters = [];
-        if (parametersText.Length > 0)
-        {
-            string[] parts = parametersText.Split(',', StringSplitOptions.TrimEntries);
-            if (parts.Any(static part => part.Length == 0))
-                throw new InvalidOperationException($"Invalid RUNS entry '{text}'. Parameters must be comma-separated values.");
-
-            foreach (string part in parts)
-            {
-                parameterLiterals.Add(part);
-                parameters.Add(new FixtureParameter(ParseHardwareLiteral(part)));
-            }
-        }
-
-        if (parameters.Count > HardwareVectorWidth)
-            throw new InvalidOperationException($"Invalid RUNS entry '{text}'. Hardware fixtures support at most 8 parameters.");
-
-        string expectedLiteral = match.Groups["expected"].Value.Trim();
-        IReadOnlyList<uint> expectedOutputs = ParseExpectedHardwareOutputs(expectedLiteral, text);
-        return new HardwareRunExpectation(ZeroFillHardwareParameters(parameters), parameterLiterals, expectedOutputs);
-    }
-
-    private static IReadOnlyList<uint> ParseExpectedHardwareOutputs(string expectedLiteral, string runText)
-    {
-        if (expectedLiteral.StartsWith('['))
-        {
-            if (!expectedLiteral.EndsWith(']'))
-                throw new InvalidOperationException($"Invalid hardware literal '{expectedLiteral}'.");
-
-            string contents = expectedLiteral[1..^1].Trim();
-            if (contents.Length == 0)
-                throw new InvalidOperationException($"Invalid RUNS entry '{runText}'. Expected output arrays must contain between 1 and 8 values.");
-
-            string[] parts = contents.Split(',', StringSplitOptions.TrimEntries);
-            if (parts.Any(static part => part.Length == 0))
-                throw new InvalidOperationException($"Invalid RUNS entry '{runText}'. Expected output arrays must be comma-separated values.");
-
-            if (parts.Length > HardwareVectorWidth)
-                throw new InvalidOperationException($"Invalid RUNS entry '{runText}'. Hardware fixtures support at most 8 expected outputs.");
-
-            List<uint> values = [];
-            foreach (string part in parts)
-                values.Add(ParseHardwareLiteral(part));
-
-            return ZeroFillHardwareValues(values);
-        }
-
-        return ZeroFillHardwareValues([ParseHardwareLiteral(expectedLiteral)]);
-    }
-
-    private static uint[] ZeroFillHardwareValues(IReadOnlyList<uint> values)
-    {
-        uint[] padded = new uint[HardwareVectorWidth];
-        int copyCount = Math.Min(values.Count, HardwareVectorWidth);
-        for (int i = 0; i < copyCount; i++)
-            padded[i] = values[i];
-
-        return padded;
-    }
-
-    private static FixtureParameter[] ZeroFillHardwareParameters(IReadOnlyList<FixtureParameter> parameters)
-    {
-        FixtureParameter[] padded = new FixtureParameter[HardwareVectorWidth];
-        int copyCount = Math.Min(parameters.Count, HardwareVectorWidth);
-        for (int i = 0; i < copyCount; i++)
-            padded[i] = parameters[i];
-
-        return padded;
-    }
-
-    private static uint ParseHardwareLiteral(string text)
-    {
-        try
-        {
-            if (text.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-                return Convert.ToUInt32(text[2..], 16);
-
-            if (text.Length > 0 && text[0] == '-')
-            {
-                int value = int.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture);
-                return unchecked((uint)value);
-            }
-
-            return Convert.ToUInt32(text, 10);
-        }
-        catch (Exception ex) when (ex is FormatException or OverflowException)
-        {
-            throw new InvalidOperationException($"Invalid hardware literal '{text}'.", ex);
-        }
-    }
-
-    private enum HeaderBlock
-    {
-        Note,
-        ExactDiagnostics,
-        Contains,
-        Sequence,
-        Exact,
-        Args,
-        Runs,
-    }
-
-    private readonly record struct HeaderLine(bool IsComment, string Content);
-
-    private sealed class HeaderScanResult
-    {
-        private HeaderScanResult(IReadOnlyList<HeaderLine> headerLines, string bodyText, bool hasDirectiveHeader)
-        {
-            HeaderLines = headerLines;
-            BodyText = bodyText;
-            HasDirectiveHeader = hasDirectiveHeader;
-        }
-
-        public IReadOnlyList<HeaderLine> HeaderLines { get; }
-        public string BodyText { get; }
-        public bool HasDirectiveHeader { get; }
-
-        public static HeaderScanResult Scan(string text)
-        {
-            string[] lines = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
-            List<HeaderLine> headerLines = [];
-            int bodyStartIndex = 0;
-            bool headerStarted = false;
-
-            while (bodyStartIndex < lines.Length)
-            {
-                string line = lines[bodyStartIndex];
-                if (string.IsNullOrWhiteSpace(line))
-                {
-                    if (headerStarted)
-                        break;
-
-                    headerLines.Add(new HeaderLine(false, string.Empty));
-                    bodyStartIndex++;
-                    continue;
-                }
-
-                if (TryStripCommentPrefix(line, out string? content))
-                {
-                    headerLines.Add(new HeaderLine(true, content));
-                    headerStarted |= ExpectDirectiveRegex.IsMatch(content.TrimStart());
-                    bodyStartIndex++;
-                    continue;
-                }
-
-                break;
-            }
-
-            bool hasExpectDirective = headerLines.Any(line =>
-                line.IsComment
-                && ExpectDirectiveRegex.IsMatch(line.Content.TrimStart()));
-
-            bool startsWithExpectDirective = lines.Length > 0
-                && TryStripCommentPrefix(lines[0], out string? firstLineContent)
-                && ExpectDirectiveRegex.IsMatch(firstLineContent.TrimStart());
-
-            if (hasExpectDirective && !startsWithExpectDirective)
-                throw new InvalidOperationException("EXPECT must be the first line of the file.");
-
-            bool hasDirectiveHeader = startsWithExpectDirective;
-
-            string bodyText = hasDirectiveHeader
-                ? string.Join('\n', lines.Skip(bodyStartIndex))
-                : text;
-            return new HeaderScanResult(headerLines, bodyText, hasDirectiveHeader);
-        }
-
-        private static bool TryStripCommentPrefix(string line, out string content)
-        {
-            string trimmedStart = line.TrimStart();
-            if (trimmedStart.StartsWith("//", StringComparison.Ordinal))
-            {
-                int prefixIndex = line.IndexOf("//", StringComparison.Ordinal);
-                content = line[(prefixIndex + 2)..];
-                if (content.StartsWith(' '))
-                    content = content[1..];
-                return true;
-            }
-
-            content = string.Empty;
-            return false;
-        }
-    }
+    public IReadOnlyList<string> Issues { get; } = issues;
+    public MatcherTraceReport? MatcherTraceReport { get; } = matcherTraceReport;
 }
 
-internal readonly record struct NormalizedText(string Text);
-
-internal static class CodeNormalizer
+internal enum MatcherTraceBlockKind
 {
-    private static readonly Regex WordBoundaryRegex = new(
-        @"\b",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    private static readonly Regex WhitespaceRegex = new(
-        @"\s+",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    public static NormalizedText NormalizeBladeStage(RegressionStage stage, string text)
-    {
-        return stage switch
-        {
-            RegressionStage.Bound => NormalizeText(StripStageComments(stage, text)),
-            RegressionStage.MirPreOptimization => NormalizeText(StripStageComments(stage, text)),
-            RegressionStage.Mir => NormalizeText(StripStageComments(stage, text)),
-            RegressionStage.LirPreOptimization => NormalizeText(StripStageComments(stage, text)),
-            RegressionStage.Lir => NormalizeText(StripStageComments(stage, text)),
-            RegressionStage.AsmirPreOptimization => NormalizeText(StripStageComments(stage, text)),
-            RegressionStage.Asmir => NormalizeText(StripStageComments(stage, text)),
-            RegressionStage.FinalAsm => NormalizeText(StripStageComments(stage, text)),
-            _ => throw new InvalidOperationException($"Unknown stage '{stage}'."),
-        };
-    }
-
-    public static NormalizedText NormalizeAssemblyText(string text)
-    {
-        return NormalizeText(StripAssemblyComments(text));
-    }
-
-    public static bool IsIgnorableGap(string text)
-    {
-        return text.All(static ch => ch == ' ');
-    }
-
-    public static NormalizedText NormalizeText(string text)
-    {
-        string separated = WordBoundaryRegex.Replace(text, " ");
-        string collapsed = WhitespaceRegex.Replace(separated, " ");
-        return new NormalizedText(collapsed.Trim());
-    }
-
-    public static string StripStageComments(RegressionStage stage, string text)
-    {
-        return stage switch
-        {
-            RegressionStage.Bound => StripSemicolonComments(text),
-            RegressionStage.MirPreOptimization => StripSemicolonComments(text),
-            RegressionStage.Mir => StripSemicolonComments(text),
-            RegressionStage.LirPreOptimization => StripSemicolonComments(text),
-            RegressionStage.Lir => StripSemicolonComments(text),
-            RegressionStage.AsmirPreOptimization => StripAssemblyComments(text),
-            RegressionStage.Asmir => StripAssemblyComments(text),
-            RegressionStage.FinalAsm => StripAssemblyComments(text),
-            _ => throw new InvalidOperationException($"Unknown stage '{stage}'."),
-        };
-    }
-
-    private static string StripSemicolonComments(string text)
-    {
-        StringBuilder builder = new();
-        foreach (string line in SplitLines(text))
-        {
-            int commentIndex = line.IndexOf(';', StringComparison.Ordinal);
-            string kept = commentIndex >= 0 ? line[..commentIndex] : line;
-            builder.AppendLine(kept);
-        }
-
-        return builder.ToString();
-    }
-
-    public static string StripAssemblyComments(string text)
-    {
-        StringBuilder builder = new();
-        foreach (string line in SplitLines(text))
-        {
-            string kept = StripComment(line, "'");
-            builder.AppendLine(kept);
-        }
-
-        return builder.ToString();
-    }
-
-    private static string StripComment(string text, string token)
-    {
-        int commentIndex = text.IndexOf(token, StringComparison.Ordinal);
-        return commentIndex >= 0 ? text[..commentIndex] : text;
-    }
-
-    private static IEnumerable<string> SplitLines(string text)
-    {
-        return text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
-    }
+    Contains,
+    Sequence,
+    Exact,
 }
 
-internal static class SnippetMatcher
+internal sealed class MatcherTraceReport(RegressionStage? stage, IReadOnlyList<MatcherTraceBlock> blocks)
 {
-    private static readonly Regex WildcardTokenRegex = new(
-        @"\?(\d+)?",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    public static bool Contains(NormalizedText haystack, Pattern pattern, PatternBindings bindings)
-    {
-        return IndexOf(haystack, pattern, 0, bindings) is not null;
-    }
-
-    public static PatternMatch? IndexOf(NormalizedText haystack, Pattern pattern, int startIndex, PatternBindings bindings)
-    {
-        for (int index = startIndex; index <= haystack.Text.Length; index++)
-        {
-            PatternBindings candidateBindings = bindings.Clone();
-            if (pattern.TryMatchAt(haystack.Text, index, candidateBindings, out int end))
-            {
-                bindings.ReplaceWith(candidateBindings);
-                return new PatternMatch(index, end);
-            }
-        }
-
-        return null;
-    }
-
-    public static int CountOccurrences(NormalizedText haystack, Pattern pattern, PatternBindings bindings)
-    {
-        int count = 0;
-        int index = 0;
-        PatternBindings countBindings = bindings.Clone();
-        while (index <= haystack.Text.Length)
-        {
-            if (IndexOf(haystack, pattern, index, countBindings) is not PatternMatch match)
-                break;
-
-            count++;
-            index = match.End;
-        }
-
-        if (count > 0)
-            bindings.ReplaceWith(countBindings);
-        return count;
-    }
+    public RegressionStage? Stage { get; } = stage;
+    public IReadOnlyList<MatcherTraceBlock> Blocks { get; } = blocks;
 }
 
-internal readonly record struct PatternMatch(int Start, int End);
+internal sealed record class MatcherTraceBlock(
+    MatcherTraceBlockKind Kind,
+    int BlockNumber,
+    IReadOnlyList<MatcherTraceItem> Items,
+    IReadOnlyList<PatternBindingCapture> FinalBindings,
+    int? FinalCursorLineIndex,
+    bool Succeeded,
+    string? FailureReason
+    );
 
-internal sealed class PatternBindings
-{
-    private readonly Dictionary<int, string> _bindings;
+internal sealed record class MatcherTraceItem(
+    int ItemNumber,
+    SnippetItem Snippet,
+    IReadOnlyList<MatcherTraceMatch> Matches,
+    IReadOnlyList<PatternBindingCapture> BindingsAfterItem,
+    bool Succeeded,
+    string? FailureReason,
+    int? SearchStartLineIndex,
+    int? GapStartLineIndex,
+    int? GapEndLineIndex,
+    string? GapText);
 
-    public PatternBindings()
-    {
-        _bindings = new Dictionary<int, string>();
-    }
+internal sealed record class MatcherTraceMatch(
+    int LineIndex,
+    string MatchedText,
+    int? SourceLineNumber,
+    string? LineText,
+    IReadOnlyList<PatternBindingCapture> Bindings);
 
-    private PatternBindings(Dictionary<int, string> bindings)
-    {
-        _bindings = bindings;
-    }
-
-    public PatternBindings Clone()
-    {
-        return new PatternBindings(new Dictionary<int, string>(_bindings));
-    }
-
-    public bool TryBind(int number, string value)
-    {
-        if (_bindings.TryGetValue(number, out string? bound))
-            return string.Equals(bound, value, StringComparison.Ordinal);
-
-        _bindings.Add(number, value);
-        return true;
-    }
-
-    public void ReplaceWith(PatternBindings other)
-    {
-        _bindings.Clear();
-        foreach ((int key, string value) in other._bindings)
-            _bindings.Add(key, value);
-    }
-}
-
-internal sealed class Pattern
-{
-    private static readonly Regex WildcardTokenRegex = new(
-        @"\?(\d+)?",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    public Pattern(string[] sequences, int?[] patterns)
-    {
-        Requires.NotNull(sequences);
-        Requires.NotNull(patterns);
-        Requires.That(sequences.Length == patterns.Length + 1);
-        Requires.That(sequences.Skip(1).Take(sequences.Length - 2).All(static sequence => sequence.Length > 0));
-        Sequences = sequences;
-        Patterns = patterns;
-    }
-
-    public string[] Sequences { get; }
-    public int?[] Patterns { get; }
-
-    public static Pattern Compile(string text)
-    {
-        List<string> sequences = [];
-        List<int?> patterns = [];
-        int lastEnd = 0;
-        MatchCollection wildcardMatches = WildcardTokenRegex.Matches(text);
-
-        foreach (Match wildcardMatch in wildcardMatches)
-        {
-            sequences.Add(NormalizePatternSequence(text[lastEnd..wildcardMatch.Index], sequences.Count, wildcardMatches.Count));
-            int? binding = wildcardMatch.Groups[1].Success
-                ? int.Parse(wildcardMatch.Groups[1].Value, CultureInfo.InvariantCulture)
-                : null;
-            patterns.Add(binding);
-            lastEnd = wildcardMatch.Index + wildcardMatch.Length;
-        }
-
-        sequences.Add(NormalizePatternSequence(text[lastEnd..], sequences.Count, wildcardMatches.Count));
-        return new Pattern(sequences.ToArray(), patterns.ToArray());
-    }
-
-    public bool TryMatchAt(string text, int start, PatternBindings bindings, out int end)
-    {
-        end = start;
-        if (!MatchesLiteral(text, Sequences[0], end, isFirstSequence: true, out end))
-            return false;
-
-        for (int patternIndex = 0; patternIndex < Patterns.Length; patternIndex++)
-        {
-            if (!TryConsumeIdentifier(text, end, out string identifier, out end))
-                return false;
-
-            int? bindingNumber = Patterns[patternIndex];
-            if (bindingNumber is not null && !bindings.TryBind(bindingNumber.Value, identifier))
-                return false;
-
-            if (!MatchesLiteral(text, Sequences[patternIndex + 1], end, isFirstSequence: false, out end))
-                return false;
-        }
-
-        return HasTrailingBoundary(text, end);
-    }
-
-    private static string NormalizePatternSequence(string text, int sequenceIndex, int patternCount)
-    {
-        string sequence = CodeNormalizer.NormalizeText(text).Text;
-        bool beforeWildcard = sequenceIndex < patternCount;
-        bool afterWildcard = sequenceIndex > 0;
-
-        if (sequence.Length == 0)
-        {
-            if (beforeWildcard && afterWildcard)
-                return " ";
-
-            return string.Empty;
-        }
-
-        if (afterWildcard && !sequence.StartsWith(' '))
-            sequence = " " + sequence;
-
-        if (beforeWildcard && !sequence.EndsWith(' '))
-            sequence += " ";
-
-        return sequence;
-    }
-
-    private static bool MatchesLiteral(string text, string literal, int start, bool isFirstSequence, out int end)
-    {
-        end = start;
-        if (literal.Length == 0)
-            return true;
-
-        if (start + literal.Length > text.Length)
-            return false;
-
-        if (!text.AsSpan(start, literal.Length).SequenceEqual(literal.AsSpan()))
-            return false;
-
-        if (isFirstSequence && IsWordAtStart(literal) && start > 0 && IsIdentifierChar(text[start - 1]))
-            return false;
-
-        end = start + literal.Length;
-        return true;
-    }
-
-    private static bool HasTrailingBoundary(string text, int end)
-    {
-        if (end == 0 || end >= text.Length)
-            return true;
-
-        if (!IsIdentifierChar(text[end - 1]))
-            return true;
-
-        return !IsIdentifierChar(text[end]);
-    }
-
-    private static bool IsWordAtStart(string literal)
-    {
-        return literal.Length > 0 && IsIdentifierChar(literal[0]);
-    }
-
-    private static bool TryConsumeIdentifier(string text, int start, out string identifier, out int end)
-    {
-        identifier = string.Empty;
-        end = start;
-        if (start >= text.Length || !IsIdentifierChar(text[start]))
-            return false;
-
-        while (end < text.Length && IsIdentifierChar(text[end]))
-            end++;
-
-        identifier = text[start..end];
-        return true;
-    }
-
-    private static bool IsIdentifierChar(char ch)
-    {
-        return char.IsLetterOrDigit(ch) || ch == '_';
-    }
-}
-
-internal sealed class ArtifactWriter
+internal sealed class ArtifactWriter(string repositoryRootPath, bool enabled)
 {
     private const int MaxRunRoots = 10;
-    private readonly string _repositoryRootPath;
-    private readonly bool _enabled;
+    private readonly string _repositoryRootPath = repositoryRootPath;
+    private readonly bool _enabled = enabled;
     private string? _runRootPath;
-
-    public ArtifactWriter(string repositoryRootPath, bool enabled)
-    {
-        _repositoryRootPath = repositoryRootPath;
-        _enabled = enabled;
-    }
 
     public string? WriteFailureArtifacts(
         RegressionFixture fixture,
@@ -2439,6 +1438,13 @@ internal sealed class ArtifactWriter
             File.WriteAllLines(
                 Path.Combine(artifactDirectoryPath, "diagnostics.txt"),
                 evaluatedFixture.Diagnostics.Select(diagnostic => diagnostic.Display()));
+
+            if (evaluatedFixture.MatcherTraceReport is not null)
+            {
+                File.WriteAllText(
+                    Path.Combine(artifactDirectoryPath, "matcher-trace.txt"),
+                    MatcherTraceFormatter.Format(evaluatedFixture.MatcherTraceReport));
+            }
         }
 
         if (evaluatedFixture.FinalAssemblyText is not null)
@@ -2508,276 +1514,23 @@ internal sealed class ArtifactWriter
     }
 }
 
-internal static class RegressionConfigurationLoader
+internal sealed class FlexspinProbeResult(bool isAvailable, string probeSummary)
 {
-    private static readonly JsonDocumentOptions JsonOptions = new()
-    {
-        AllowTrailingCommas = true,
-        CommentHandling = JsonCommentHandling.Skip,
-    };
-
-    public static RegressionSuiteConfiguration Load(RegressionRunOptions options)
-    {
-        string repositoryRootPath = RepositoryLayout.FindRepositoryRoot(options.RepositoryRootPath, options.ConfigPath);
-        string configPath = RepositoryLayout.FindConfigurationPath(repositoryRootPath, options.ConfigPath);
-        if (!File.Exists(configPath))
-            throw new InvalidOperationException($"Regression config file was not found: {configPath}");
-
-        byte[] jsonBytes = File.ReadAllBytes(configPath);
-        ReadOnlyMemory<byte> jsonMemory = jsonBytes;
-        if (jsonBytes.Length >= 3
-            && jsonBytes[0] == 0xEF
-            && jsonBytes[1] == 0xBB
-            && jsonBytes[2] == 0xBF)
-        {
-            jsonMemory = jsonBytes.AsMemory(3);
-        }
-
-        using JsonDocument document = JsonDocument.Parse(jsonMemory, JsonOptions);
-
-        JsonElement root = document.RootElement;
-        if (root.ValueKind != JsonValueKind.Object)
-            throw new InvalidOperationException("Regression config root must be a JSON object.");
-
-        string configDirectoryPath = Path.GetDirectoryName(configPath)
-            ?? throw new InvalidOperationException("Regression config path has no parent directory.");
-
-        List<RegressionPoolConfiguration> pools = LoadPools(root, configDirectoryPath, repositoryRootPath);
-        string? hardwareRuntimePath = LoadOptionalFilePath(root, "hardwareRuntimePath", configDirectoryPath);
-        string? irCoverageGuardPath = LoadOptionalFilePath(root, "irCoverageGuardPath", configDirectoryPath);
-
-        return new RegressionSuiteConfiguration(
-            repositoryRootPath,
-            configPath,
-            pools,
-            hardwareRuntimePath,
-            irCoverageGuardPath);
-    }
-
-    private static List<RegressionPoolConfiguration> LoadPools(
-        JsonElement root,
-        string configDirectoryPath,
-        string repositoryRootPath)
-    {
-        if (!root.TryGetProperty("pools", out JsonElement poolsElement))
-            throw new InvalidOperationException("Regression config is missing required property 'pools'.");
-        if (poolsElement.ValueKind != JsonValueKind.Array)
-            throw new InvalidOperationException("Regression config property 'pools' must be an array.");
-
-        List<RegressionPoolConfiguration> pools = [];
-        HashSet<string> seenPaths = new(PathComparer.Instance);
-        int index = 0;
-        foreach (JsonElement poolElement in poolsElement.EnumerateArray())
-        {
-            if (poolElement.ValueKind != JsonValueKind.Object)
-            {
-                throw new InvalidOperationException(FormattableString.Invariant(
-                    $"Regression pool at index {index} must be an object."));
-            }
-
-            string path = ReadRequiredString(poolElement, "path", index);
-            string expect = ReadRequiredString(poolElement, "expect", index);
-            string absolutePath = ResolveDirectoryPath(path, configDirectoryPath, index);
-            if (!seenPaths.Add(absolutePath))
-            {
-                throw new InvalidOperationException(FormattableString.Invariant(
-                    $"Regression pool path '{path}' is duplicated in regressions.cfg.json."));
-            }
-
-            pools.Add(new RegressionPoolConfiguration(
-                absolutePath,
-                Path.GetRelativePath(repositoryRootPath, absolutePath).Replace('\\', '/'),
-                ParsePoolExpectation(expect, index)));
-            index++;
-        }
-
-        return pools;
-    }
-
-    private static string ReadRequiredString(JsonElement element, string propertyName, int index)
-    {
-        if (!element.TryGetProperty(propertyName, out JsonElement property))
-        {
-            throw new InvalidOperationException(FormattableString.Invariant(
-                $"Regression pool at index {index} is missing required property '{propertyName}'."));
-        }
-
-        if (property.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(property.GetString()))
-        {
-            throw new InvalidOperationException(FormattableString.Invariant(
-                $"Regression pool at index {index} property '{propertyName}' must be a non-empty string."));
-        }
-
-        return property.GetString()!;
-    }
-
-    private static RegressionPoolExpectation ParsePoolExpectation(string expect, int index)
-    {
-        return expect switch
-        {
-            "accept" => RegressionPoolExpectation.Accept,
-            "reject" => RegressionPoolExpectation.Reject,
-            "encoded" => RegressionPoolExpectation.Encoded,
-            _ => throw new InvalidOperationException(FormattableString.Invariant(
-                $"Regression pool at index {index} has unsupported expect value '{expect}'.")),
-        };
-    }
-
-    private static string ResolveDirectoryPath(string path, string configDirectoryPath, int index)
-    {
-        string absolutePath = Path.GetFullPath(Path.IsPathRooted(path)
-            ? path
-            : Path.Combine(configDirectoryPath, path));
-
-        if (!Directory.Exists(absolutePath))
-        {
-            throw new InvalidOperationException(FormattableString.Invariant(
-                $"Regression pool at index {index} points to a missing directory: {path}"));
-        }
-
-        return absolutePath;
-    }
-
-    private static string? LoadOptionalFilePath(JsonElement root, string propertyName, string configDirectoryPath)
-    {
-        if (!root.TryGetProperty(propertyName, out JsonElement property))
-            return null;
-
-        if (property.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(property.GetString()))
-        {
-            throw new InvalidOperationException(FormattableString.Invariant(
-                $"Regression config property '{propertyName}' must be a non-empty string when present."));
-        }
-
-        string configuredPath = property.GetString()!;
-        string absolutePath = Path.GetFullPath(Path.IsPathRooted(configuredPath)
-            ? configuredPath
-            : Path.Combine(configDirectoryPath, configuredPath));
-
-        if (!File.Exists(absolutePath))
-        {
-            throw new InvalidOperationException(FormattableString.Invariant(
-                $"Regression config property '{propertyName}' points to a missing file: {configuredPath}"));
-        }
-
-        return absolutePath;
-    }
+    public bool IsAvailable { get; } = isAvailable;
+    public string ProbeSummary { get; } = probeSummary;
 }
 
-internal static class RepositoryLayout
+internal sealed class FlexspinResult(bool succeeded, IReadOnlyList<string> outputLines)
 {
-    private const string DefaultConfigFileName = "regressions.cfg.json";
-
-    public static string FindRepositoryRoot(string? explicitRootPath, string? explicitConfigPath)
-    {
-        if (explicitRootPath is not null)
-            return Path.GetFullPath(explicitRootPath);
-
-        if (explicitConfigPath is not null)
-        {
-            string configPath = Path.GetFullPath(explicitConfigPath);
-            return Path.GetDirectoryName(configPath)
-                ?? throw new InvalidOperationException("Configured regression config path has no parent directory.");
-        }
-
-        string configPathFromSearch = FindDefaultConfigurationPath();
-        return Path.GetDirectoryName(configPathFromSearch)
-            ?? throw new InvalidOperationException("Located regression config path has no parent directory.");
-    }
-
-    public static string FindConfigurationPath(string repositoryRootPath, string? explicitConfigPath)
-    {
-        return explicitConfigPath is not null
-            ? Path.GetFullPath(explicitConfigPath)
-            : Path.Combine(repositoryRootPath, DefaultConfigFileName);
-    }
-
-    private static string FindDefaultConfigurationPath()
-    {
-        string[] candidates =
-        [
-            Environment.CurrentDirectory,
-            AppContext.BaseDirectory,
-        ];
-
-        foreach (string candidate in candidates)
-        {
-            string? current = Path.GetFullPath(candidate);
-            while (current is not null)
-            {
-                string configPath = Path.Combine(current, DefaultConfigFileName);
-                if (File.Exists(configPath))
-                    return configPath;
-
-                DirectoryInfo? parent = Directory.GetParent(current);
-                current = parent?.FullName;
-            }
-        }
-
-        throw new InvalidOperationException("Unable to locate regressions.cfg.json.");
-    }
+    public bool Succeeded { get; } = succeeded;
+    public IReadOnlyList<string> OutputLines { get; } = outputLines;
 }
 
-internal sealed class PathComparer : IEqualityComparer<string>
+internal sealed class FlexspinBinaryResult(bool succeeded, IReadOnlyList<string> outputLines, byte[]? binaryBytes)
 {
-    public static PathComparer Instance { get; } = new();
-
-    private readonly StringComparer comparer = OperatingSystem.IsWindows()
-        ? StringComparer.OrdinalIgnoreCase
-        : StringComparer.Ordinal;
-
-    private PathComparer()
-    {
-    }
-
-    public bool Equals(string? x, string? y)
-    {
-        return comparer.Equals(x, y);
-    }
-
-    public int GetHashCode(string obj)
-    {
-        return comparer.GetHashCode(obj);
-    }
-}
-
-
-internal sealed class FlexspinProbeResult
-{
-    public FlexspinProbeResult(bool isAvailable, string probeSummary)
-    {
-        IsAvailable = isAvailable;
-        ProbeSummary = probeSummary;
-    }
-
-    public bool IsAvailable { get; }
-    public string ProbeSummary { get; }
-}
-
-internal sealed class FlexspinResult
-{
-    public FlexspinResult(bool succeeded, IReadOnlyList<string> outputLines)
-    {
-        Succeeded = succeeded;
-        OutputLines = outputLines;
-    }
-
-    public bool Succeeded { get; }
-    public IReadOnlyList<string> OutputLines { get; }
-}
-
-internal sealed class FlexspinBinaryResult
-{
-    public FlexspinBinaryResult(bool succeeded, IReadOnlyList<string> outputLines, byte[]? binaryBytes)
-    {
-        Succeeded = succeeded;
-        OutputLines = outputLines;
-        BinaryBytes = binaryBytes;
-    }
-
-    public bool Succeeded { get; }
-    public IReadOnlyList<string> OutputLines { get; }
-    public byte[]? BinaryBytes { get; }
+    public bool Succeeded { get; } = succeeded;
+    public IReadOnlyList<string> OutputLines { get; } = outputLines;
+    public byte[]? BinaryBytes { get; } = binaryBytes;
 }
 
 internal static class FlexspinRunner
@@ -2973,6 +1726,155 @@ internal sealed class HardwareRunCapture
     public HardwareRunExpectation Expectation { get; }
 
     public TestResult Result { get; }
+}
+
+internal static class MatcherTraceFormatter
+{
+    public static string Format(MatcherTraceReport report)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+
+        StringBuilder builder = new();
+        builder.Append("Stage: ");
+        builder.AppendLine(report.Stage is RegressionStage stage ? RegressionRunner.StageName(stage) : "<none>");
+
+        foreach (MatcherTraceBlock block in report.Blocks)
+        {
+            builder.AppendLine();
+            builder.Append(BlockKindName(block.Kind));
+            builder.Append(" block ");
+            builder.Append(block.BlockNumber.ToString(CultureInfo.InvariantCulture));
+            builder.Append(": ");
+            builder.AppendLine(block.Succeeded ? "PASS" : "FAIL");
+
+            if (block.FinalCursorLineIndex is int finalCursorLineIndex)
+            {
+                builder.Append("Final cursor line index: ");
+                builder.AppendLine(finalCursorLineIndex.ToString(CultureInfo.InvariantCulture));
+            }
+
+            AppendBindings(builder, "Bindings", block.FinalBindings);
+
+            if (!string.IsNullOrWhiteSpace(block.FailureReason))
+            {
+                builder.Append("Failure: ");
+                builder.AppendLine(block.FailureReason);
+            }
+
+            foreach (MatcherTraceItem item in block.Items.OrderBy(static item => item.ItemNumber))
+            {
+                builder.AppendLine();
+                builder.Append("Item ");
+                builder.Append(item.ItemNumber.ToString(CultureInfo.InvariantCulture));
+                builder.Append(": ");
+                builder.Append(ItemKindName(item.Snippet));
+                builder.Append(' ');
+                builder.AppendLine(item.Succeeded ? "PASS" : "FAIL");
+                builder.Append("Snippet: ");
+                builder.AppendLine(item.Snippet.Pattern.Source);
+
+                if (item.SearchStartLineIndex is int searchStartLineIndex)
+                {
+                    builder.Append("Search start line index: ");
+                    builder.AppendLine(searchStartLineIndex.ToString(CultureInfo.InvariantCulture));
+                }
+
+                if (item.GapStartLineIndex is int gapStartLineIndex && item.GapEndLineIndex is int gapEndLineIndex)
+                {
+                    builder.Append("Gap lines: [");
+                    builder.Append(gapStartLineIndex.ToString(CultureInfo.InvariantCulture));
+                    builder.Append(", ");
+                    builder.Append(gapEndLineIndex.ToString(CultureInfo.InvariantCulture));
+                    builder.AppendLine(")");
+                    builder.Append("Gap text: ");
+                    builder.AppendLine(string.IsNullOrEmpty(item.GapText) ? "<empty>" : item.GapText);
+                }
+
+                AppendBindings(builder, "Bindings after item", item.BindingsAfterItem);
+
+                if (!string.IsNullOrWhiteSpace(item.FailureReason))
+                {
+                    builder.Append("Failure: ");
+                    builder.AppendLine(item.FailureReason);
+                }
+
+                if (item.Matches.Count == 0)
+                {
+                    builder.AppendLine("Matches: none");
+                    continue;
+                }
+
+                builder.AppendLine("Matches:");
+                for (int matchIndex = 0; matchIndex < item.Matches.Count; matchIndex++)
+                {
+                    MatcherTraceMatch match = item.Matches[matchIndex];
+                    builder.Append("  [");
+                    builder.Append((matchIndex + 1).ToString(CultureInfo.InvariantCulture));
+                    builder.Append("] line index ");
+                    builder.AppendLine(match.LineIndex.ToString(CultureInfo.InvariantCulture));
+                    if (match.SourceLineNumber is int sourceLineNumber)
+                    {
+                        builder.Append("      source line ");
+                        builder.Append(sourceLineNumber.ToString(CultureInfo.InvariantCulture));
+                        builder.Append(": ");
+                        builder.AppendLine(match.LineText ?? "<unknown>");
+                    }
+                    else
+                    {
+                        builder.AppendLine("      source line: <unknown>");
+                    }
+
+                    builder.Append("      matched: ");
+                    builder.AppendLine(match.MatchedText);
+                    AppendBindings(builder, "      matched bindings", match.Bindings);
+                }
+            }
+        }
+
+        return builder.ToString();
+    }
+
+    private static void AppendBindings(StringBuilder builder, string title, IReadOnlyList<PatternBindingCapture> bindings)
+    {
+        builder.Append(title);
+        builder.Append(": ");
+        if (bindings.Count == 0)
+        {
+            builder.AppendLine("none");
+            return;
+        }
+
+        builder.AppendLine();
+        foreach (PatternBindingCapture binding in bindings)
+        {
+            builder.Append("  ?");
+            builder.Append(binding.Number.ToString(CultureInfo.InvariantCulture));
+            builder.Append(" = ");
+            builder.AppendLine(binding.Value);
+        }
+    }
+
+    private static string BlockKindName(MatcherTraceBlockKind kind)
+    {
+        return kind switch
+        {
+            MatcherTraceBlockKind.Contains => "CONTAINS",
+            MatcherTraceBlockKind.Sequence => "SEQUENCE",
+            MatcherTraceBlockKind.Exact => "EXACT",
+            _ => throw new UnreachableException(),
+        };
+    }
+
+    private static string ItemKindName(SnippetItem item)
+    {
+        return item.Kind switch
+        {
+            SnippetKind.Positive => "positive",
+            SnippetKind.Negative => "negative",
+            SnippetKind.Count => $"{item.Count.ToString(CultureInfo.InvariantCulture)}x",
+            _ => throw new UnreachableException(),
+        };
+    }
 }
 
 internal static class HardwareResultDumpFormatter

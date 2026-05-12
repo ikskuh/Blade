@@ -20,7 +20,8 @@ public sealed class RegressionHarnessTests
             RegressionFixtureOutcome.Ok,
             "ok",
             [],
-            artifactDirectoryPath: null);
+            null,
+            false);
         RegressionFixtureResult failResult = new(
             "Demonstrators/Language/integer_literals.blade",
             RegressionFixtureOutcome.Fail,
@@ -29,7 +30,8 @@ public sealed class RegressionHarnessTests
                 "unexpected diagnostic: L5, UnexpectedToken: Expected ';', got '456'.",
                 "FlexSpin validation was required, but no assembly text was available",
             ],
-            artifactDirectoryPath: "/repo/.artifacts/regressions/run/fail");
+            "/repo/.artifacts/regressions/run/fail",
+            false);
         RegressionFixtureResult xfailResult = new(
             "RegressionTests/ExpectedFailures/hub_string_walk.blade",
             RegressionFixtureOutcome.XFail,
@@ -37,7 +39,8 @@ public sealed class RegressionHarnessTests
             [
                 "missing diagnostic UndefinedName: expected at least 1, got 0",
             ],
-            artifactDirectoryPath: null);
+            null,
+            false);
         RegressionRunResult result = new("/repo", [passResult, failResult, xfailResult]);
 
         string report = RegressionReportFormatter.Format(result);
@@ -68,7 +71,8 @@ public sealed class RegressionHarnessTests
             [
                 "skipped: flexspin is not available",
             ],
-            artifactDirectoryPath: null);
+            null,
+            false);
         RegressionRunResult result = new("/repo", [skipResult]);
 
         string report = RegressionReportFormatter.Format(result);
@@ -92,7 +96,8 @@ public sealed class RegressionHarnessTests
                 "   at Blade.CompilerDriver.CompileFile(String filePath)",
                 "   at Blade.Regressions.RegressionRunner.ExecuteBladeCrashFixture(RegressionFixture fixture)",
             ],
-            artifactDirectoryPath: null);
+            null,
+            false);
         RegressionRunResult result = new("/repo", [failResult]);
 
         string report = RegressionReportFormatter.Format(result);
@@ -111,13 +116,15 @@ public sealed class RegressionHarnessTests
             RegressionFixtureOutcome.Ok,
             "ok",
             [],
-            artifactDirectoryPath: null);
+            null,
+            false);
         RegressionFixtureResult hwFailedResult = new(
             "Demonstrators/HwTest/hw_exec.blade",
             RegressionFixtureOutcome.HwErr,
             "hardware run 1 [] failed: port not found",
             ["hardware run 1 [] failed: port not found"],
-            artifactDirectoryPath: null);
+            null,
+            false);
         RegressionRunResult result = new("/repo", [passResult, hwFailedResult]);
 
         string report = RegressionReportFormatter.Format(result);
@@ -818,6 +825,261 @@ public sealed class RegressionHarnessTests
     }
 
     [Test]
+    public void MatcherTraceFormatter_RendersBindingsMatchLocationsAndFailures()
+    {
+        object traceReport = EvaluateMatcherTraceReport(
+            """
+            MOV PA, #0
+            ADD PA, #1
+            MOV PB, #0
+            ADD PB, #1
+            NOP
+            RET
+            """);
+
+        string traceText = RenderMatcherTraceReport(traceReport);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(traceText, Does.Contain("Stage: final-asm"));
+            Assert.That(traceText, Does.Contain("CONTAINS block 1: FAIL"));
+            Assert.That(traceText, Does.Contain("SEQUENCE block 1: PASS"));
+            Assert.That(traceText, Does.Contain("SEQUENCE block 2: FAIL"));
+            Assert.That(traceText, Does.Contain("SEQUENCE block 3: FAIL"));
+            Assert.That(traceText, Does.Contain("EXACT block 1: FAIL"));
+            Assert.That(traceText, Does.Contain("?1 = PA"));
+            Assert.That(traceText, Does.Contain("Search start line index: 0"));
+            Assert.That(traceText, Does.Contain("source line 1: MOV PA , # 0"));
+            Assert.That(traceText, Does.Contain("line index 0"));
+            Assert.That(traceText, Does.Contain("matched: MOV PA , # 0"));
+            Assert.That(traceText, Does.Contain("expected 3 occurrence(s) of snippet, found 1: Pattern { Source = ADD ?1, #1"));
+            Assert.That(traceText, Does.Contain("unexpected snippet in sequence gap: Pattern { Source = MOV PB, #0"));
+            Assert.That(traceText, Does.Contain("missing ordered snippet: Pattern { Source = JMP #done"));
+            Assert.That(traceText, Does.Contain("unexpected text between exact snippets before: RET"));
+            Assert.That(traceText, Does.Contain("Bindings: none"));
+        });
+    }
+
+    [Test]
+    public void SequenceLabelPattern_MatchesStandaloneLabelLine_NotCallOperandSubstring()
+    {
+        RegressionExpectation expectation = new(
+            RegressionExpectationKind.Pass,
+            RegressionStage.FinalAsm,
+            [],
+            [
+                new SnippetBlock(
+                [
+                    CreatePositiveSnippetItem("f_two_ret"),
+                    CreatePositiveSnippetItem("MOV ?1, PA"),
+                ]),
+            ],
+            [],
+            [],
+            [],
+            FlexspinExpectation.Forbidden,
+            [],
+            []);
+
+        CodeAssertionTestResult result = EvaluateMatcherTrace(expectation,
+            """
+            CALLPA main_r487, #f_two_ret
+            f_two_ret
+            MOV main_r487, PA
+            """);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Issues, Is.Empty);
+            Assert.That(result.TraceText, Does.Contain("SEQUENCE block 1: PASS"));
+            Assert.That(result.TraceText, Does.Contain("source line 2: f_two_ret"));
+            Assert.That(result.TraceText, Does.Not.Contain("source line 1: CALLPA main_r487 , # f_two_ret" + Environment.NewLine + "      matched: f_two_ret"));
+        });
+    }
+
+    [Test]
+    public void ContainsFragmentPattern_DoesNotMatchInsideLongerInstructionLine()
+    {
+        RegressionExpectation expectation = new(
+            RegressionExpectationKind.Pass,
+            RegressionStage.FinalAsm,
+            [
+                new SnippetBlock(
+                [
+                    CreatePositiveSnippetItem("ADD"),
+                ]),
+            ],
+            [],
+            [],
+            [],
+            [],
+            FlexspinExpectation.Forbidden,
+            [],
+            []);
+
+        CodeAssertionTestResult result = EvaluateMatcherTrace(expectation,
+            """
+            ADD PA, #1
+            """);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Issues, Has.Count.EqualTo(1));
+            Assert.That(result.Issues[0], Does.StartWith("missing snippet: Pattern { Source = ADD"));
+            Assert.That(result.TraceText, Does.Contain("CONTAINS block 1: FAIL"));
+            Assert.That(result.TraceText, Does.Contain("Matches: none"));
+        });
+    }
+
+    [Test]
+    public void CodeNormalizer_NormalizeText_SplitsSegmentsAndRejectsLineFeeds()
+    {
+        NormalizedText normalized = NormalizeMatcherLine("MOV PA, #0");
+        IReadOnlyList<string> segments = GetNormalizedSegments(normalized);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(segments, Is.EqualTo(new[] { "MOV", "PA", ",", "#", "0" }));
+            Assert.That(AssertThrowsFromNormalizeMatcherLine("MOV\nPA"), Is.TypeOf<ArgumentException>());
+        });
+    }
+
+    [Test]
+    public void CodeNormalizer_NormalizeBladeStageAndAssemblyText_HandleSingleLineSegments()
+    {
+        string semicolonText =
+            """
+            MOV PA, #0 ; comment
+
+            ADD PA, #1
+            """;
+        string assemblyText =
+            """
+            MOV PA, #0 ' comment
+
+            ADD PA, #1
+            """;
+
+        foreach (RegressionStage stage in new[]
+                 {
+                     RegressionStage.Bound,
+                     RegressionStage.MirPreOptimization,
+                     RegressionStage.Mir,
+                     RegressionStage.LirPreOptimization,
+                     RegressionStage.Lir,
+                 })
+        {
+            NormalizedSourceText normalized = NormalizeBladeStage(stage, semicolonText);
+            Assert.That(GetNormalizedLineTexts(normalized), Is.EqualTo(new[] { "MOV PA , # 0", "ADD PA , # 1" }));
+            Assert.That(GetNormalizedSourceLineNumbers(normalized), Is.EqualTo(new[] { 1, 3 }));
+        }
+
+        foreach (RegressionStage stage in new[]
+                 {
+                     RegressionStage.AsmirPreOptimization,
+                     RegressionStage.Asmir,
+                     RegressionStage.FinalAsm,
+                 })
+        {
+            NormalizedSourceText normalized = NormalizeBladeStage(stage, assemblyText);
+            Assert.That(GetNormalizedLineTexts(normalized), Is.EqualTo(new[] { "MOV PA , # 0", "ADD PA , # 1" }));
+            Assert.That(GetNormalizedSourceLineNumbers(normalized), Is.EqualTo(new[] { 1, 3 }));
+        }
+
+        NormalizedSourceText normalizedAssembly = NormalizeAssemblyText(assemblyText);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(GetNormalizedGapText(normalizedAssembly, 0, 2), Is.EqualTo("MOV PA , # 0" + Environment.NewLine + "ADD PA , # 1"));
+            Assert.That(GetNormalizedGapText(normalizedAssembly, 1, 1), Is.Empty);
+            Assert.That(AssertThrowsFromNormalizeBladeStage((RegressionStage)int.MaxValue, "MOV PA, #0"), Is.TypeOf<InvalidOperationException>());
+        });
+    }
+
+    [Test]
+    public void SnippetMatcher_ContainsAndCountOccurrences_WorkOnNormalizedLines()
+    {
+        NormalizedSourceText haystack = NormalizeMatcherSourceText(
+            """
+            MOV PA, #0
+            ADD PA, #1
+            MOV PB, #0
+            ADD PB, #1
+            """);
+
+        Pattern containsPattern = CompileMatcherPattern("MOV ?1, #0");
+        PatternBindings containsBindings = CreatePatternBindings();
+        Pattern countPattern = CompileMatcherPattern("ADD ?, #1");
+        PatternBindings countBindings = CreatePatternBindings();
+        Pattern missingPattern = CompileMatcherPattern("RET");
+        PatternBindings missingBindings = CreatePatternBindings();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(SnippetMatcherContains(haystack, containsPattern, containsBindings), Is.True);
+            Assert.That(SnippetMatcherContains(haystack, missingPattern, missingBindings), Is.False);
+            Assert.That(SnippetMatcherCountOccurrences(haystack, countPattern, countBindings), Is.EqualTo(2));
+            Assert.That(SnippetMatcherCountOccurrences(haystack, missingPattern, CreatePatternBindings()), Is.EqualTo(0));
+        });
+    }
+
+    [Test]
+    public void PatternMatching_RejectsMultiLinePatternsAndNonIdentifierWildcardMatches()
+    {
+        Pattern pattern = CompileMatcherPattern("MOV ?");
+        NormalizedText line = NormalizeMatcherLine("MOV ,");
+        PatternBindings bindings = CreatePatternBindings();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(PatternTryMatchLine(pattern, line, bindings), Is.False);
+            Assert.That(AssertThrowsFromCompileMatcherPattern("MOV\n?"), Is.TypeOf<ArgumentException>());
+        });
+    }
+
+    [Test]
+    public void ArtifactWriter_WritesMatcherTraceArtifact_WhenTraceReportPresent()
+    {
+        using TempDirectory temp = new();
+
+        object traceReport = EvaluateMatcherTraceReport(
+            """
+            MOV PA, #0
+            ADD PA, #1
+            MOV PB, #0
+            ADD PB, #1
+            NOP
+            RET
+            """);
+
+        object evaluatedFixture = CreateEvaluatedFixtureWithMatcherTrace("Demonstrators/matcher_trace.blade", traceReport);
+        object writer = CreateArtifactWriter(temp.Path, enabled: true);
+        RegressionFixture fixture = new(
+            temp.GetFullPath("Demonstrators/matcher_trace.blade"),
+            "Demonstrators/matcher_trace.blade",
+            RegressionFixtureKind.Blade,
+            string.Empty,
+            string.Empty,
+            CreateMatcherTraceExpectation());
+
+        string artifactDirectoryPath = InvokeArtifactWriter(
+            writer,
+            fixture,
+            evaluatedFixture,
+            "failed",
+            ["failed"]);
+        string matcherTracePath = Path.Combine(artifactDirectoryPath, "matcher-trace.txt");
+        string matcherTraceText = File.ReadAllText(matcherTracePath);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(File.Exists(matcherTracePath), Is.True);
+            Assert.That(matcherTraceText, Does.Contain("CONTAINS block 1: FAIL"));
+            Assert.That(matcherTraceText, Does.Contain("?1 = PA"));
+        });
+    }
+
+    [Test]
     public void RegressionJsonFormatter_EmitsCamelCaseEnumStrings()
     {
         RegressionFixtureResult fixtureResult = new(
@@ -825,8 +1087,8 @@ public sealed class RegressionHarnessTests
             RegressionFixtureOutcome.HwErr,
             "failed",
             ["detail"],
-            artifactDirectoryPath: "/repo/.artifacts/regressions/run/fail",
-            hardwareAttempted: true);
+            "/repo/.artifacts/regressions/run/fail",
+            true);
         RegressionRunResult result = new("/repo", [fixtureResult]);
 
         using JsonDocument document = JsonDocument.Parse(RegressionJsonFormatter.Format(result));
@@ -1683,7 +1945,7 @@ public sealed class RegressionHarnessTests
         Assert.Multiple(() =>
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(fixtureResult.Details, Has.Some.Contains("missing ordered snippet: AND ?1, #20"));
+            Assert.That(fixtureResult.Details, Has.Some.Contains("missing ordered snippet: Pattern { Source = AND ?1, #20"));
         });
     }
 
@@ -1987,6 +2249,264 @@ public sealed class RegressionHarnessTests
         WriteRegressionConfig(temp);
     }
 
+    private static RegressionExpectation CreateMatcherTraceExpectation()
+    {
+        return new RegressionExpectation(
+            RegressionExpectationKind.Pass,
+            RegressionStage.FinalAsm,
+            [
+                new SnippetBlock(
+                [
+                    CreatePositiveSnippetItem("MOV ?1, #0"),
+                    CreateExactCountSnippetItem("ADD ?1, #1", 3),
+                ]),
+            ],
+            [
+                new SnippetBlock(
+                [
+                    CreatePositiveSnippetItem("MOV ?1, #0"),
+                    CreatePositiveSnippetItem("ADD ?1, #1"),
+                ]),
+                new SnippetBlock(
+                [
+                    CreatePositiveSnippetItem("MOV PA, #0"),
+                    CreateNegativeSnippetItem("MOV PB, #0"),
+                    CreatePositiveSnippetItem("RET"),
+                ]),
+                new SnippetBlock(
+                [
+                    CreatePositiveSnippetItem("MOV PB, #0"),
+                    CreatePositiveSnippetItem("JMP #done"),
+                ]),
+            ],
+            [
+                new SnippetBlock(
+                [
+                    CreatePositiveSnippetItem("MOV PA, #0"),
+                    CreatePositiveSnippetItem("RET"),
+                ]),
+            ],
+            [],
+            [],
+            FlexspinExpectation.Forbidden,
+            [],
+            []);
+    }
+
+    private static SnippetItem CreatePositiveSnippetItem(string text)
+    {
+        return SnippetItem.Positive(CompileSnippetPattern(text));
+    }
+
+    private static SnippetItem CreateNegativeSnippetItem(string text)
+    {
+        return SnippetItem.Negative(CompileSnippetPattern(text));
+    }
+
+    private static SnippetItem CreateExactCountSnippetItem(string text, int count)
+    {
+        return SnippetItem.ExactCount(CompileSnippetPattern(text), count);
+    }
+
+    private static Pattern CompileSnippetPattern(string text)
+    {
+        return Pattern.Compile(text);
+    }
+
+    private static object EvaluateMatcherTraceReport(string rawText)
+    {
+        return EvaluateMatcherTrace(CreateMatcherTraceExpectation(), rawText).TraceReport;
+    }
+
+    private static NormalizedSourceText NormalizeMatcherSourceText(string rawText)
+    {
+        return CodeNormalizer.NormalizeSourceText(rawText);
+    }
+
+    private static NormalizedSourceText NormalizeBladeStage(RegressionStage stage, string rawText)
+    {
+        return CodeNormalizer.NormalizeBladeStage(stage, rawText);
+    }
+
+    private static NormalizedSourceText NormalizeAssemblyText(string rawText)
+    {
+        return NormalizeBladeStage(RegressionStage.FinalAsm, rawText);
+    }
+
+    private static NormalizedText NormalizeMatcherLine(string rawText)
+    {
+        return CodeNormalizer.NormalizeText(rawText);
+    }
+
+    private static Exception AssertThrowsFromNormalizeMatcherLine(string rawText)
+    {
+        try
+        {
+            _ = NormalizeMatcherLine(rawText);
+            throw new AssertionException("NormalizeMatcherLine was expected to throw.");
+        }
+        catch (Exception ex)
+        {
+            return ex;
+        }
+    }
+
+    private static Exception AssertThrowsFromCompileMatcherPattern(string rawText)
+    {
+        try
+        {
+            _ = CompileMatcherPattern(rawText);
+            throw new AssertionException("CompileMatcherPattern was expected to throw.");
+        }
+        catch (Exception ex)
+        {
+            return ex;
+        }
+    }
+
+    private static Exception AssertThrowsFromNormalizeBladeStage(RegressionStage stage, string rawText)
+    {
+        try
+        {
+            _ = NormalizeBladeStage(stage, rawText);
+            throw new AssertionException("NormalizeBladeStage was expected to throw.");
+        }
+        catch (Exception ex)
+        {
+            return ex;
+        }
+    }
+
+    private static IReadOnlyList<string> GetNormalizedSegments(NormalizedText normalizedText)
+    {
+        return normalizedText.Segments;
+    }
+
+    private static IReadOnlyList<string> GetNormalizedLineTexts(NormalizedSourceText normalizedSourceText)
+    {
+        return GetNormalizedLines(normalizedSourceText)
+            .Select(GetNormalizedLineText)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<int> GetNormalizedSourceLineNumbers(NormalizedSourceText normalizedSourceText)
+    {
+        return GetNormalizedLines(normalizedSourceText)
+            .Select(GetNormalizedSourceLineNumber)
+            .ToArray();
+    }
+
+    private static string GetNormalizedGapText(NormalizedSourceText normalizedSourceText, int startLineIndex, int endLineIndex)
+    {
+        return normalizedSourceText.GetGapText(startLineIndex, endLineIndex);
+    }
+
+    private static Pattern CompileMatcherPattern(string text)
+    {
+        return Pattern.Compile(text);
+    }
+
+    private static PatternBindings CreatePatternBindings()
+    {
+        return new PatternBindings();
+    }
+
+    private static bool SnippetMatcherContains(NormalizedSourceText haystack, Pattern pattern, PatternBindings bindings)
+    {
+        return SnippetMatcher.Contains(haystack, pattern, bindings);
+    }
+
+    private static int SnippetMatcherCountOccurrences(NormalizedSourceText haystack, Pattern pattern, PatternBindings bindings)
+    {
+        return SnippetMatcher.CountOccurrences(haystack, pattern, bindings);
+    }
+
+    private static bool PatternTryMatchLine(Pattern pattern, NormalizedText normalizedLine, PatternBindings bindings)
+    {
+        return pattern.TryMatchLine(normalizedLine, bindings);
+    }
+
+    private static IReadOnlyList<NormalizedSourceLine> GetNormalizedLines(NormalizedSourceText normalizedSourceText)
+    {
+        return normalizedSourceText.Lines;
+    }
+
+    private static string GetNormalizedLineText(NormalizedSourceLine normalizedSourceLine)
+    {
+        return normalizedSourceLine.Text.Text;
+    }
+
+    private static int GetNormalizedSourceLineNumber(NormalizedSourceLine normalizedSourceLine)
+    {
+        return normalizedSourceLine.SourceLineNumber;
+    }
+
+    private static string RenderMatcherTraceReport(object traceReport)
+    {
+        Type formatterType = typeof(RegressionRunner).Assembly.GetType("Blade.Regressions.MatcherTraceFormatter")
+            ?? throw new InvalidOperationException("MatcherTraceFormatter type not found.");
+        MethodInfo formatMethod = formatterType.GetMethod(
+            "Format",
+            BindingFlags.Public | BindingFlags.Static)
+            ?? throw new InvalidOperationException("MatcherTraceFormatter.Format method not found.");
+        return (string)formatMethod.Invoke(null, [traceReport])!;
+    }
+
+    private static CodeAssertionTestResult EvaluateMatcherTrace(RegressionExpectation expectation, string rawText)
+    {
+        NormalizedSourceText normalizedText = NormalizeMatcherSourceText(rawText);
+        MethodInfo method = typeof(RegressionRunner).GetMethod(
+            "EvaluateNormalizedAssertions",
+            BindingFlags.NonPublic | BindingFlags.Static)!;
+        object evaluationResult = method.Invoke(null, [expectation, normalizedText, RegressionStage.FinalAsm])!;
+        PropertyInfo issuesProperty = evaluationResult.GetType().GetProperty("Issues")!;
+        PropertyInfo matcherTraceReportProperty = evaluationResult.GetType().GetProperty("MatcherTraceReport")!;
+        IReadOnlyList<string> issues = (IReadOnlyList<string>)(issuesProperty.GetValue(evaluationResult)
+            ?? throw new InvalidOperationException("Issues were null."));
+        object traceReport = matcherTraceReportProperty.GetValue(evaluationResult)
+            ?? throw new InvalidOperationException("MatcherTraceReport was null.");
+        return new CodeAssertionTestResult(issues, traceReport, RenderMatcherTraceReport(traceReport));
+    }
+
+    private static object CreateEvaluatedFixtureWithMatcherTrace(string relativePath, object traceReport)
+    {
+        Type evaluatedFixtureType = typeof(RegressionRunner).Assembly.GetType("Blade.Regressions.EvaluatedFixture")
+            ?? throw new InvalidOperationException("EvaluatedFixture type not found.");
+        MethodInfo emptyMethod = evaluatedFixtureType.GetMethod(
+            "Empty",
+            BindingFlags.Public | BindingFlags.Static)
+            ?? throw new InvalidOperationException("EvaluatedFixture.Empty method not found.");
+        object emptyFixture = emptyMethod.Invoke(null, [relativePath])
+            ?? throw new InvalidOperationException("EvaluatedFixture.Empty returned null.");
+        MethodInfo withMatcherTraceMethod = evaluatedFixtureType.GetMethod(
+            "WithMatcherTrace",
+            BindingFlags.Public | BindingFlags.Instance)
+            ?? throw new InvalidOperationException("EvaluatedFixture.WithMatcherTrace method not found.");
+        return withMatcherTraceMethod.Invoke(emptyFixture, [traceReport])
+            ?? throw new InvalidOperationException("EvaluatedFixture.WithMatcherTrace returned null.");
+    }
+
+    private static object CreateArtifactWriter(string repositoryRootPath, bool enabled)
+    {
+        Type artifactWriterType = typeof(RegressionRunner).Assembly.GetType("Blade.Regressions.ArtifactWriter")
+            ?? throw new InvalidOperationException("ArtifactWriter type not found.");
+        return Activator.CreateInstance(artifactWriterType, repositoryRootPath, enabled)
+            ?? throw new InvalidOperationException("ArtifactWriter instance creation failed.");
+    }
+
+    private static string InvokeArtifactWriter(
+        object writer,
+        RegressionFixture fixture,
+        object evaluatedFixture,
+        string summary,
+        IReadOnlyList<string> issues)
+    {
+        MethodInfo method = writer.GetType().GetMethod("WriteFailureArtifacts")
+            ?? throw new InvalidOperationException("ArtifactWriter.WriteFailureArtifacts method not found.");
+        return (string?)method.Invoke(writer, [fixture, evaluatedFixture, summary, issues, null])
+            ?? throw new InvalidOperationException("ArtifactWriter.WriteFailureArtifacts returned null.");
+    }
+
     private static void WriteHardwareRuntime(TempDirectory temp)
     {
         temp.WriteFile("Blade.HwTestRunner/Runtime.blade", """
@@ -2107,5 +2627,19 @@ public sealed class RegressionHarnessTests
             foreach ((string name, string? value) in this.previousValues)
                 Environment.SetEnvironmentVariable(name, value);
         }
+    }
+
+    private sealed class CodeAssertionTestResult
+    {
+        public CodeAssertionTestResult(IReadOnlyList<string> issues, object traceReport, string traceText)
+        {
+            Issues = issues;
+            TraceReport = traceReport;
+            TraceText = traceText;
+        }
+
+        public IReadOnlyList<string> Issues { get; }
+        public object TraceReport { get; }
+        public string TraceText { get; }
     }
 }

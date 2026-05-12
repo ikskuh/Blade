@@ -90,3 +90,6 @@ dotnet_diagnostic.CA1308.severity = none
 
 # "Provide a method named 'ToInt32' or 'FromLutAddress' as an alternate for operator op_Explicit
 dotnet_diagnostic.CA2225.severity = none
+
+[Blade.Regressions/*.cs]
+dotnet_diagnostic.CA1062.severity = none

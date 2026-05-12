@@ -320,7 +320,7 @@ public class WriterAndSymbolTests
         FinalAssemblyWriter.Write(
             new PlainTextReportBuilder(finalAssemblyWriter),
             [asm],
-            IrTestFactory.CreateEmptyCogResourceLayouts(IrTestFactory.CreateSingleEntryImagePlan(IrTestFactory.CreateBoundProgram("/tmp/test.blade").EntryPoint)));
+            IrTestFactory.CreateSimpleCogResourceLayouts(asm));
         string finalAssembly = finalAssemblyWriter.ToString();
 
         Type helpersType = typeof(FinalAssemblyWriter).Assembly.GetType("Blade.IR.Asm.AsmOptimizationHelpers", throwOnError: true)!;

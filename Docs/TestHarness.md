@@ -154,7 +154,7 @@ The strict form supports these entry shapes:
 
 ### `CONTAINS`
 
-Every listed snippet is matched after comment and token-safe whitespace normalization. Each `CONTAINS` block is evaluated independently, so numbered wildcards bind only within the block where they appear.
+Every listed snippet is matched against a single full normalized line after comment and token-safe whitespace normalization. Snippets never match substrings inside longer lines, and they never span multiple lines. Each `CONTAINS` block is evaluated independently, so numbered wildcards bind only within the block where they appear.
 
 Items use a prefix to indicate the assertion kind:
 
@@ -174,7 +174,7 @@ Items use a prefix to indicate the assertion kind:
 
 ### `SEQUENCE`
 
-The listed snippets must appear in order after normalization. Each `SEQUENCE` block is evaluated independently, so numbered wildcards bind only within the block where they appear. The same item prefixes as `CONTAINS` apply:
+The listed snippets must appear in order as full normalized lines. Each `SEQUENCE` block is evaluated independently, so numbered wildcards bind only within the block where they appear. The same item prefixes as `CONTAINS` apply:
 
 - `- snippet` — find this snippet at or after the current position
 - `! snippet` — this snippet must not appear between the previous and next advancing match; when first or last, it applies to the prefix or suffix gap
@@ -212,9 +212,9 @@ Use `?N` (e.g. `?1`, `?2`) for numbered wildcards that bind on first use and mus
 // - ADD ?, ?1
 ```
 
-This matches `MOV PA, #0` followed by `ADD <anything>, PA` — `?1` captured `PA` on the first occurrence and requires the same value on the second.
+This matches a full normalized line `MOV PA, #0` followed by a full normalized line `ADD <anything>, PA` — `?1` captured `PA` on the first occurrence and requires the same value on the second.
 
-Snippet matching is token-safe: whitespace is normalized, but identifiers are not fused. For example, `ANDN ?1, #10` followed by `AND ?1, #20` cannot match `ANDN FOO, #10` followed by `AND NFOO, #20`.
+Snippet matching is token-safe: whitespace is normalized, but identifiers are not fused. For example, `ANDN ?1, #10` followed by `AND ?1, #20` cannot match `ANDN FOO, #10` followed by `AND NFOO, #20`. Label-only snippets such as `f_two_ret` are valid when the emitted normalized line is exactly that label.
 
 Comment stripping depends on the selected stage:
 
@@ -223,7 +223,7 @@ Comment stripping depends on the selected stage:
 
 ### `EXACT`
 
-`EXACT` uses the same prefixed block syntax as `SEQUENCE`, but it does not allow unexpected normalized text between advancing matches. Prefix and suffix text outside the first and last advancing match is allowed. Each `EXACT` block is evaluated independently, and a block with only `!` items is malformed.
+`EXACT` uses the same prefixed block syntax as `SEQUENCE`, but it does not allow unexpected normalized lines between advancing matches. Prefix and suffix text outside the first and last advancing match is allowed. Each `EXACT` block is evaluated independently, and a block with only `!` items is malformed.
 
 ```blade
 // EXPECT: pass
@@ -234,6 +234,8 @@ Comment stripping depends on the selected stage:
 cog task main {
 }
 ```
+
+When a fixture with code assertions fails and failure artifacts are enabled, the regression harness also writes `matcher-trace.txt` into the fixture artifact directory. That trace records per-block bindings, resolved match locations, normalized matched lines, and the concrete failure state for `CONTAINS`, `SEQUENCE`, and `EXACT` matching.
 
 
 ### `ARGS`

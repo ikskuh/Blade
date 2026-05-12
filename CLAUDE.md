@@ -1,4 +1,4 @@
-# CLAUDE.md — Blade Compiler Project
+# Blade Compiler Project
 
 ## What is Blade?
 
@@ -33,6 +33,8 @@ Your task is completed when:
 
 - Prefer clarity over brevity. No `var` where the type isn't obvious from the RHS.
 - Result types / error returns for expected failures. Exceptions only for bugs.
+- Use `record class` with primary constructors instead of manually implemented "structure" classes:
+  - Use `record class Point(int X, int Y);` instead of `class Point { public Point(int x, int y) { this.X = x; this.Y = y;} public int X { get }; public int Y { get }; }`
 - Every runtime error path handled, never swallowed.
   - Violation of invariants is not a runtime error, it's a bug.
     Bugs get hidden if "handled". Assert invariants instead of handling invariant violation.
@@ -43,7 +45,7 @@ Your task is completed when:
 - Argument validation via `Blade/Requires.cs` (`Requires.NotNull`, `.NonNegative`, `.Positive`, `.InRange`).
 - `Blade/.editorconfig` is the analyzer rule source of truth.
 - In-source suppressions (`#pragma`, attributes) only for single occurrences with a clear explanation.
-- Prefer primary constructors for data classes
+- Use primary constructors for classes whenever applicable. Do not force a class to use a primary constructor if not.
 - Don't use trinary operators for control flow. Use local variables or switch pattern matching instead.
 - We prefer "one file per responsibility" over split functionality. Some files or classes like `Binder` or `AsmLowerer` have a really large surface, but still only have a single task. These tasks are complex and it's better to keep code that belongs together in a single file.
 - Never use default values for parameters. Explicitly pass parameters or use a proper options struct if a lot of parameter values would be necessary.
@@ -83,6 +85,7 @@ Your task is completed when:
 - Do not preserve obsolete constructors, overloads, helper properties, or test-only shims just to avoid fallout.
 - Make tests fit the compiler, not the compiler fit outdated tests. If a test only validates an obsolete abstraction boundary, rewrite or delete the test instead of reintroducing the old behavior.
 - Prefer carrying references to prior-stage objects over recreating identity from names. MIR should point to bound/semantic objects, LIR should point to MIR objects, and ASM should point to LIR or dedicated ASM symbol objects as appropriate.
+- Code only referenced in tests does not count as referenced. If a function is only required that a test compiles, we can safely delete that function.
 
 ## Definition Of Done
 
