@@ -4,8 +4,8 @@
 // - -fno-mir-opt=*
 // - -fmir-opt=const-prop
 // CONTAINS:
-// - const 42
-// ! binary.Add
+// - %?:u32 = const 42
+// ! %?:u32 = binary.Add ?, ?
 // NOTE:
 //   Positive case for MIR const-prop: the folded constant should replace the add.
 cog task main {

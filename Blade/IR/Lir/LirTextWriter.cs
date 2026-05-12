@@ -96,13 +96,8 @@ public static class LirTextWriter
 
         private void WriteInstruction(LirInstruction instruction, RegisterFormatter formatter)
         {
-            if (instruction is LirInlineAsmInstruction inlineAsm)
-            {
-                WriteInlineAsmInstruction(inlineAsm, formatter);
-                return;
-            }
-
             Append(Space(4));
+
             if (instruction.Destination is VirtualLirValue destination)
             {
                 WriteValue(destination, formatter);
@@ -114,8 +109,13 @@ public static class LirTextWriter
                 Append(' ', '=', ' ');
             }
 
-            if (instruction.Predicate is P2ConditionCode predicate)
-                Append('[', (Literal, FormatPredicate(predicate)), ']', ' ');
+            WriteInstructionModifiers(instruction);
+
+            if (instruction is LirInlineAsmInstruction inlineAsm)
+            {
+                WriteInlineAsmInstruction(inlineAsm, formatter);
+                return;
+            }
 
             Append(Keyword, instruction.DisplayName);
             Append(' ');
@@ -128,15 +128,12 @@ public static class LirTextWriter
                 if (instruction.WritesZ)
                     Append(Literal, "Z");
             }
-
-            if (instruction.HasSideEffects)
-                Append(' ', (Comment, "; sidefx"));
             NewLine();
         }
 
         private void WriteInlineAsmInstruction(LirInlineAsmInstruction instruction, RegisterFormatter formatter)
         {
-            Append(Space(4), (Keyword, instruction.Volatility == AsmVolatility.Volatile ? "inlineasm.volatile" : "inlineasm"));
+            WriteInlineAsmKeyword(instruction.Volatility);
             if (instruction.FlagOutput is not null)
             {
                 Append(' ', '-', '>', ' ', '@', (Keyword, instruction.FlagOutput.Value.ToString()));
@@ -157,7 +154,24 @@ public static class LirTextWriter
                 }
             }
 
-            AppendLine(' ', (Comment, "; sidefx"));
+            NewLine();
+        }
+
+        private void WriteInstructionModifiers(LirInstruction instruction)
+        {
+            if (instruction.Predicate is P2ConditionCode predicate)
+                Append('[', (Literal, FormatPredicate(predicate)), ']', ' ');
+
+            if (instruction.HasSideEffects)
+                Append((Keyword, "sidefx"), ' ');
+        }
+
+        private void WriteInlineAsmKeyword(AsmVolatility volatility)
+        {
+            if (volatility == AsmVolatility.Volatile)
+                Append((Keyword, "volatile"), ' ');
+
+            Append((Keyword, "inlineasm"));
         }
 
         private void WriteTerminator(LirTerminator terminator, RegisterFormatter formatter, BlockFormatter blockFormatter)

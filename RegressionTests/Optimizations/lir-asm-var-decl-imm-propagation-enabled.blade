@@ -5,7 +5,7 @@
 // - -fno-lir-opt=*
 // - -flir-opt=asm-var-decl-imm-propagation
 // CONTAINS:
-// - inlineasm x=13:u32:r ; sidefx
+// - sidefx inlineasm x=13:u32:r, %0=%r1:w
 
 cog task main {
     var x: u32 = 13;

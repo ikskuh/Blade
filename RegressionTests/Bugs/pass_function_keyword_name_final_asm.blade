@@ -2,8 +2,8 @@
 // STAGE: final-asm
 // CONTAINS:
 // - f_step
-// - #f_step
-// ! #step
+// - CALLPA ?, #f_step
+// ! CALLPA ?, #step
 // NOTE:
 //   Function names that collide with PASM mnemonics must be prefixed during
 //   final assembly emission so both labels and symbol references remain valid.

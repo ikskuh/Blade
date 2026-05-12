@@ -1,4 +1,4 @@
-// EXPECT: xfail
+// EXPECT: pass
 // STAGE: final-asm
 // SEQUENCE:
 // - CALLPA ?, #f_three_ret
@@ -13,8 +13,8 @@
 // - ADD PA, ?2
 // - CMP ?1, ?2 WC
 // - CMP ?1, ?2 WZ
-// ! WRC
-// ! WRZ
+// ! WRC ?
+// ! WRZ ?
 // - RET
 // SEQUENCE:
 // - f_two_ret
@@ -22,14 +22,12 @@
 // - MOV PA, ?1
 // - ADD PA, ?2
 // - CMP ?1, ?2 WC
-// ! WRC
-// ! WRZ
+// ! WRC ?
+// ! WRZ ?
 // - RET WZ
 // CONTAINS:
 // - CALLPA ?, #f_two_ret
 // - WRC ?
-// NOTE:
-//   currently fails due to pattern matching bug?
 // NOTE:
 //   Multi-return calls with bool extras must materialize both flag-backed extra
 //   results immediately after the call. The three-return caller must extract C and

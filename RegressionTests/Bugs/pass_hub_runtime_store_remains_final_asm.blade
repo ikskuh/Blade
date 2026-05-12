@@ -2,7 +2,7 @@
 // STAGE: final-asm
 // CONTAINS:
 // - g_data LONG 1
-// - WRLONG
+// - WRLONG ?, ?
 // NOTE:
 //   The hub-init fix must not remove legitimate runtime writes. An explicit
 //   top-level assignment still needs a WRLONG in the emitted code.

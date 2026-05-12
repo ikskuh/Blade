@@ -111,6 +111,8 @@ public static class MirTextWriter
                 Append(' ', '=', ' ');
             }
 
+            WriteInstructionModifiers(instruction);
+
             switch (instruction)
             {
                 case MirConstantInstruction constant:
@@ -289,7 +291,7 @@ public static class MirTextWriter
                     break;
 
                 case MirInlineAsmInstruction inlineAsm:
-                    Append((Keyword, inlineAsm.Volatility == AsmVolatility.Volatile ? "inlineasm.volatile" : "inlineasm"));
+                    WriteInlineAsmKeyword(inlineAsm.Volatility);
                     if (inlineAsm.FlagOutput is not null)
                         Append(' ', '-', '>', ' ', '@', (Literal, Assert.NotNull(inlineAsm.FlagOutput.ToString())));
                     if (inlineAsm.Bindings.Count > 0)
@@ -368,10 +370,21 @@ public static class MirTextWriter
                     Assert.Unreachable($"Unhandled MIR instruction '{instruction.GetType().Name}'."); // pragma: force-coverage
                     break; // pragma: force-coverage
             }
-
-            if (instruction.HasSideEffects)
-                Append(' ', (Comment, "; sidefx"));
             NewLine();
+        }
+
+        private void WriteInstructionModifiers(MirInstruction instruction)
+        {
+            if (instruction.HasSideEffects)
+                Append((Keyword, "sidefx"), ' ');
+        }
+
+        private void WriteInlineAsmKeyword(AsmVolatility volatility)
+        {
+            if (volatility == AsmVolatility.Volatile)
+                Append((Keyword, "volatile"), ' ');
+
+            Append((Keyword, "inlineasm"));
         }
 
         private void WriteTerminator(MirTerminator terminator, ValueFormatter formatter, BlockFormatter blockFormatter)

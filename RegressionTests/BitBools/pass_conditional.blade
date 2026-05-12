@@ -1,10 +1,10 @@
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// - CMP
-// - IF_NZ
-// ! WRZ
-// ! TJZ
+// - CMP ?, ? WZ
+// - IF_NZ JMP #?
+// ! WRZ ?
+// ! TJZ ?
 // NOTE:
 //   Verifies that a comparison used only as a branch condition emits
 //   CMP + predicated JMP without materializing to a register.

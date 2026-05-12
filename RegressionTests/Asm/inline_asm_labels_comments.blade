@@ -1,8 +1,8 @@
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// - NOP
-// - JMP
+// - __asm_0_0_loop_start
+// - JMP #__asm_0_0_loop_start
 // NOTE:
 //   Covers inline asm lowering with labels and comments.
 //   Exercises AsmLowerer L918-923 (label lowering with comments).

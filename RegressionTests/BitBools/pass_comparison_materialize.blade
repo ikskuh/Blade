@@ -1,13 +1,13 @@
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// - CMP
-// - WRZ
-// - WRNZ
-// - WRC
-// - WRNC
-// - WRBYTE
-// ! WRLONG
+// - CMP ?, ? ?
+// - WRZ ?
+// - WRNZ ?
+// - WRC ?
+// - WRNC ?
+// - WRBYTE ?, ?
+// ! WRLONG ?, ?
 // NOTE:
 //   Exercises comparison materialization where the bool result is stored
 //   to a hub variable, forcing WRZ/WRNZ/WRC/WRNC.

@@ -1,7 +1,7 @@
 // EXPECT: pass
 // STAGE: mir
 // CONTAINS:
-// - ptr.offset
+// - %?:[*]cog u32 = ptr.offset.Add[1] %?, %?
 // NOTE:
 //   Covers pointer offset operations through the MIR pipeline.
 //   Exercises MirPointerOffsetInstruction lowering.

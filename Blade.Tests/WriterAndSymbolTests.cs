@@ -242,10 +242,12 @@ public class WriterAndSymbolTests
         string asmText = new ReportSection("asm", "ASM", "asm.ir", writer => AsmTextWriter.Write(writer, [asm])).RenderPlainText();
 
         Assert.That(mirText, Does.Contain("load.place"));
+        Assert.That(mirText, Does.Not.Contain("sidefx load.place"));
         Assert.That(mirText, Does.Contain("rep.setup"));
         Assert.That(mirText, Does.Contain("unreachable"));
 
         Assert.That(lirText, Does.Contain("[if_c] mov"));
+        Assert.That(lirText, Does.Not.Contain("[if_c] sidefx mov"));
         Assert.That(lirText, Does.Contain("flags=CZ"));
         Assert.That(lirText, Does.Contain("[104, 101, 108, 108, 111]:[5]u8"));
         Assert.That(lirText, Does.Contain("unreachable"));
@@ -254,6 +256,117 @@ public class WriterAndSymbolTests
         Assert.That(asmText, Does.Contain("IF_C ADD %r0, #5 WCZ=(%f1, %f2)"));
         Assert.That(asmText, Does.Contain("BITC %r0, #0 C=%f3"));
         Assert.That(asmText, Does.Contain("MOV %r0, #1"));
+    }
+
+    [Test]
+    public void MirAndLirTextWriters_RenderStructuralInstructionModifiers()
+    {
+        StoragePlace place = IrTestFactory.CreateStoragePlace("sink", emittedName: "g_sink");
+        FunctionSymbol callee = CreateMirFunction("callee", isEntryPoint: false, FunctionKind.Default, [BuiltinTypes.U32], []).Symbol;
+
+        MirModule mir = CreateMirModule(functions: [
+            CreateMirFunction("mir_fx", isEntryPoint: true, FunctionKind.Default, [],
+            [
+                new MirBlock(MirBlockRef("bb0"), [new MirBlockParameter(MirValue(0), "input", BuiltinTypes.U32)],
+                [
+                    new MirCallInstruction(MirValue(1), BuiltinTypes.U32, callee, [MirValue(0)], Span),
+                    new MirStorePlaceInstruction(place, MirValue(1), Span),
+                    new MirInlineAsmInstruction(
+                        volatility: AsmVolatility.NonVolatile,
+                        flagOutput: null,
+                        parsedLines: [],
+                        bindings:
+                        [
+                            new MirInlineAsmBinding(
+                                new InlineAsmVarBindingSlot("x"),
+                                IrTestFactory.CreateVariableSymbol("x"),
+                                MirValue(1),
+                                null,
+                                InlineAsmBindingAccess.ReadWrite),
+                        ],
+                        span: Span),
+                    new MirInlineAsmInstruction(
+                        volatility: AsmVolatility.Volatile,
+                        flagOutput: null,
+                        parsedLines: [],
+                        bindings:
+                        [
+                            new MirInlineAsmBinding(
+                                new InlineAsmVarBindingSlot("y"),
+                                IrTestFactory.CreateVariableSymbol("y"),
+                                MirValue(1),
+                                null,
+                                InlineAsmBindingAccess.ReadWrite),
+                        ],
+                        span: Span),
+                ], new MirUnreachableTerminator(Span)),
+            ]),
+        ]);
+
+        LirModule lir = CreateLirModule(functions: [
+            CreateLirFunction("lir_fx", isEntryPoint: false, FunctionKind.Default, [],
+            [
+                new LirBlock(LirBlockRef("bb0"), [],
+                [
+                    new LirOpInstruction(
+                        operation: new LirStorePlaceOperation(),
+                        destination: null,
+                        resultType: null,
+                        operands: [new LirPlaceOperand(place), new LirImmediateOperand(BladeValue.U32(7))],
+                        hasSideEffects: true,
+                        predicate: P2ConditionCode.IF_C,
+                        writesC: false,
+                        writesZ: false,
+                        span: Span),
+                    new LirInlineAsmInstruction(
+                        volatility: AsmVolatility.NonVolatile,
+                        flagOutput: null,
+                        parsedLines: [],
+                        bindings:
+                        [
+                            new LirInlineAsmBinding(
+                                new InlineAsmVarBindingSlot("x"),
+                                IrTestFactory.CreateVariableSymbol("x"),
+                                new LirRegisterOperand(LirRegister(0)),
+                                InlineAsmBindingAccess.ReadWrite),
+                        ],
+                        destination: null,
+                        resultType: null,
+                        span: Span),
+                    new LirInlineAsmInstruction(
+                        volatility: AsmVolatility.Volatile,
+                        flagOutput: null,
+                        parsedLines: [],
+                        bindings:
+                        [
+                            new LirInlineAsmBinding(
+                                new InlineAsmVarBindingSlot("y"),
+                                IrTestFactory.CreateVariableSymbol("y"),
+                                new LirRegisterOperand(LirRegister(1)),
+                                InlineAsmBindingAccess.ReadWrite),
+                        ],
+                        destination: null,
+                        resultType: null,
+                        span: Span),
+                ], new LirUnreachableTerminator(Span)),
+            ]),
+        ]);
+
+        string mirText = RenderMirText([mir]);
+        string lirText = RenderLirText([lir]);
+
+        Assert.That(mirText, Does.Contain("= sidefx call callee("));
+        Assert.That(mirText, Does.Contain("sidefx store.place g_sink("));
+        Assert.That(mirText, Does.Contain("sidefx inlineasm x="));
+        Assert.That(mirText, Does.Contain("sidefx volatile inlineasm y="));
+        Assert.That(mirText, Does.Not.Contain("; sidefx"));
+        Assert.That(mirText, Does.Not.Contain("inlineasm.volatile"));
+
+        Assert.That(lirText, Does.Contain("[if_c] sidefx store.place"));
+        Assert.That(lirText, Does.Contain("sidefx inlineasm x="));
+        Assert.That(lirText, Does.Contain("sidefx volatile inlineasm y="));
+        Assert.That(lirText, Does.Not.Contain("; sidefx"));
+        Assert.That(lirText, Does.Not.Contain("inlineasm.volatile"));
     }
 
     [Test]

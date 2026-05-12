@@ -1,13 +1,13 @@
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// - QMUL
-// - GETQX
-// - QDIV
-// - SAL
-// - SAR
-// - ROL
-// - ROR
+// - QMUL ?, #3
+// - GETQX ?
+// - QDIV ?, #2
+// - SAL ?, #1
+// - SAR ?, #1
+// - ROL ?, #4
+// - ROR ?, #2
 // NOTE:
 //   Exercises the full reference-defined fused assignment surface that lowers
 //   through update.place.

@@ -4,7 +4,7 @@
 // - -fno-mir-opt=*
 // - -fno-lir-opt=*
 // CONTAINS:
-// - binary.Add
+// - %?:u32 = binary.Add %?, %?
 // NOTE:
 //   Negative case for LIR dce: the dead addition is still present.
 cog task main {

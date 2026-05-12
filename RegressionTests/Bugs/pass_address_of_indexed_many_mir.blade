@@ -1,8 +1,8 @@
 // EXPECT: pass
 // STAGE: mir
 // CONTAINS:
-// - const &values
-// - ptr.offset.Add[1]
+// - %?:[*]cog u32 = const &values
+// - %?:*cog u32 = ptr.offset.Add[1] %?, %?
 // NOTE:
 //   Taking the address of an indexed [*] pointer element should reuse the
 //   pointer value directly and add the index without the old InvalidAddressOfTarget rejection.

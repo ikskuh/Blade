@@ -1,12 +1,12 @@
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// - GETNIB
-// - GETBYTE
-// - TESTB
-// - SETNIB
-// - SETBYTE
-// - BITC
+// - GETNIB ?, ?, #0
+// - GETBYTE ?, ?, #1
+// - TESTB ?, #16 WC
+// - SETNIB ?, ?, #1
+// - SETBYTE ?, ?, #1
+// - BITC ?, #16
 // NOTE:
 //   Shows aligned bitfield reads and writes lowering to specialized P2 instructions.
 

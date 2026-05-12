@@ -1,9 +1,9 @@
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// - RDLONG
-// - WRLONG
-// - SHL
+// - RDLONG ?, ?
+// - WRLONG ?, ?
+// - SHL ?, #2
 // NOTE:
 //   Hub array access emits RDLONG/WRLONG with index scaling.
 //   Uses undefined init because array literal lowering is not yet implemented.

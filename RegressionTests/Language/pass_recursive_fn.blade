@@ -6,13 +6,13 @@
 // - MOV ?3, PA
 // - MOV OUTA, ?3
 // CONTAINS:
-// - PUSHB
-// - POPB
-// - RETB
-// ! abi_rec_factorial_arg0
-// ! g_rec_factorial_ret0
-// ! WRLONG
-// ! RDLONG
+// - PUSHB ?
+// - POPB ?
+// - RETB WCZ
+// ! abi_rec_factorial_arg0 LONG ?
+// ! g_rec_factorial_ret0 LONG ?
+// ! WRLONG ?, ?
+// ! RDLONG ?, ?
 // SEQUENCE:
 // - ?4
 // - PUSHB PB

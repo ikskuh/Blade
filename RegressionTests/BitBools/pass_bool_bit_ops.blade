@@ -1,11 +1,11 @@
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// - WRNC
-// - CMP
-// - IF_NZ
+// - WRNC ?
+// - CMP ?, ? WZ
+// - IF_NZ JMP #?
 // - ?1 LONG 0
-// ! WRZ
+// ! WRZ ?
 // NOTE:
 //   Exercises bool/bit register operations. Bool false static initialization
 //   should stay a zeroed register-file entry, while logical negation lowers via

@@ -5,7 +5,7 @@
 // - -fno-lir-opt=*
 // - -flir-opt=cfg-simplify
 // CONTAINS:
-// - branch cond=%r0, true=bb2(), false=bb1(
+// - branch cond=%r0, true=bb2(), false=bb1(%r1)
 // ! branch cond=%r0, true=bb2(), false=bb3()
 // NOTE:
 //   Positive case for LIR cfg-simplify: the trivial false-edge block should be threaded away.

@@ -3,11 +3,10 @@
 // ARGS:
 // - -fmir-opt=dce
 // CONTAINS:
-// - ALTS
-// - MOV ?, 0
+// - ALTS ?
 // - MOV ?, #1
 // - ALTS ?, ?
-// 2x ALTS
+// 1x ALTS ?
 // 2x MOV ?, 0
 // NOTE:
 //   Discarded volatile cog pointer reads survive MIR DCE and lower through

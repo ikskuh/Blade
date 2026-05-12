@@ -3,8 +3,8 @@
 // ARGS:
 // - -fno-mir-opt=*
 // CONTAINS:
-// - call add1(
-// - call demo(
+// - %?:u32 = sidefx call add1(%?)
+// - %?:u32 = sidefx call demo(%?)
 // NOTE:
 //   Negative case for MIR cost-inline: with MIR optimizations disabled, both calls remain.
 cog task main {

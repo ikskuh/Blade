@@ -3,9 +3,9 @@
 // CONTAINS:
 // - MOV PB, ?1
 // - CALLB #?2
-// - RETB
-// ! abi_rec_countdown_arg0
-// ! g_rec_countdown_ret0
+// - RETB WCZ
+// ! abi_rec_countdown_arg0 LONG ?
+// ! g_rec_countdown_ret0 LONG ?
 // NOTE:
 //   Covers recursive ABI lowering for a void-returning rec fn so the
 //   shared PB argument slot is exercised without allocating a return slot.

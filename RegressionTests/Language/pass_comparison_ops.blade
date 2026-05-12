@@ -1,11 +1,11 @@
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// - CMP
-// - IF_NZ
-// - IF_Z
-// - IF_NC
-// - IF_C
+// - CMP ?, ? WC
+// - IF_NZ JMP #?
+// - IF_Z JMP #?
+// - IF_NC JMP #?
+// - IF_C JMP #?
 // NOTE:
 //   Exercises comparison operators. Because each comparison result is used
 //   only as a branch condition, the compiler emits CMP + predicated JMP

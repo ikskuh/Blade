@@ -5,14 +5,15 @@
 // - g_eq_out BYTE 0
 // - g_ne_out BYTE 0
 // SEQUENCE:
-// - RDBYTE
-// - CMP
-// - WRZ
-// - WRBYTE
-// - RDBYTE
-// - CMP
-// - WRNZ
-// - WRBYTE
+// - RDBYTE ?, ?
+// - CMP ?, ? WZ
+// - WRZ ?
+// - WRBYTE ?, ?
+// - MOV ?, #1
+// - RDBYTE ?, ?
+// - CMP ?, ? WZ
+// - WRNZ ?
+// - WRBYTE ?, ?
 // NOTE:
 //   Bare enum literals in == and != should infer their enum type from the
 //   opposite operand. The sample forces final codegen to load enum bytes from

@@ -17,7 +17,13 @@ Each pool declares a relative `path` plus an `expect` mode:
 - `reject` means the files are compiled without parsing in-file regression headers and must produce at least one error diagnostic
 - `encoded` means the files use the normal `EXPECT` header format described below
 
-Only `*.blade` and `*.blade.crash` files are discovered. `.blade.crash` fixtures are only valid in `encoded` pools.
+Only `*.blade` and `*.blade.crash` files are discovered. `.blade.crash` fixtures are only valid in `encoded` pools, and they pass when the compiler returns without throwing, even if the compile produced diagnostics.
+
+Optional CLI filters are matched against repository-relative fixture paths.
+
+- a plain filter such as `Demonstrators/foo.blade` must match that relative path exactly
+- filters only act as globs when they use wildcard syntax such as `Demonstrators/*.blade` or `**/foo.blade`
+- a filter run that matches zero fixtures is treated as an error
 
 Any `.blade` file in an `encoded` pool without a harness header is treated as:
 

@@ -4,10 +4,12 @@
 // - CALLPA PA, #f_test_helper
 // SEQUENCE:
 // - f_test_helper
+// - test_helper_bb0
+// - ?1
 // - TESTP #62 WC
 // - IF_NC JMP #?1
 // - WYPIN #65, #62
-// - RET
+// - RET WCZ
 
 hub const TX_PIN: u32 = 62;
 

@@ -1,9 +1,9 @@
 // EXPECT: pass
 // STAGE: final-asm
 // SEQUENCE:
-// - MOV
-// - ADD
-// - MOV
+// - MOV ?, #10
+// - ADD ?, #20
+// - MOV ?, ?
 // NOTE:
 //   `asm fn` bodies can use `%N` scratch registers without declaring locals.
 
