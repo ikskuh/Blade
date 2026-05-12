@@ -318,14 +318,6 @@ see topic
 
 - Support comptime comparison for `==` and `!=` on types in the language.
 
-## header comment parsing in regression tester is broken
-
-```blade
-// EXPECT: fail
-
-// this is not a header comment anymore
-```
-
 ## Design Issue: `yieldto` from module constructor
 
 In the original design, `yieldto` was only allowed on the top-level code.
