@@ -434,8 +434,6 @@ internal static class RegressionFixtureParser
                     throw new InvalidOperationException($"{directiveName} count prefixes must be greater than zero. Use '!' for negative assertions.");
                 return SnippetItem.ExactCount(pattern, count);
         }
-
-        throw new InvalidOperationException($"{directiveName} block entries must begin with '-', '!', or a count prefix (e.g. '3x').");
     }
 
     private static ExpectedDiagnostic ParseExactDiagnostic(string itemText)

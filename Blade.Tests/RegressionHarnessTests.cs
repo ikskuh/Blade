@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Versioning;
+using System.Text;
 using System.Text.Json;
 using Blade.HwTestRunner;
 using Blade.Regressions;
@@ -198,6 +200,38 @@ public sealed class RegressionHarnessTests
         Assert.That(
             remainingEntries,
             Does.Contain(Path.GetFileName(Path.GetDirectoryName(failedFixture.ArtifactDirectoryPath!))));
+    }
+
+    [Test]
+    public void ArtifactWriterFailure_DoesNotMaskFixtureFailure()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/artifact_write_failure.blade", """
+        cog task main {
+            missing_symbol();
+        }
+        """);
+        temp.MakeDir(".artifacts");
+        temp.WriteFile(".artifacts/regressions", "blocked");
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = true,
+            Filters = [DemonstratorFilter("artifact_write_failure.blade")],
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
+            Assert.That(fixtureResult.Summary, Is.Not.EqualTo("fixture evaluation crashed"));
+            Assert.That(fixtureResult.Details, Has.Some.Contains("expected compilation to succeed, but it produced error diagnostics"));
+            Assert.That(fixtureResult.Details, Has.Some.StartsWith("failed to write failure artifacts:"));
+            Assert.That(fixtureResult.ArtifactDirectoryPath, Is.Null);
+        });
     }
 
     [Test]
@@ -501,6 +535,17 @@ public sealed class RegressionHarnessTests
     }
 
     [Test]
+    public void RegressionCommandLine_RejectsUnknownOption()
+    {
+        Exception ex = AssertThrowsFromParseRegressionCommandLine("--wat");
+        Assert.Multiple(() =>
+        {
+            Assert.That(ex, Is.TypeOf<InvalidOperationException>());
+            Assert.That(ex.Message, Is.EqualTo("Unknown option '--wat'."));
+        });
+    }
+
+    [Test]
     public void RegressionRunner_UsesConfigPathOverride()
     {
         using TempDirectory temp = new();
@@ -699,6 +744,155 @@ public sealed class RegressionHarnessTests
     }
 
     [Test]
+    public void XFailHwFixture_WithSuccessfulHardwareRun_IsReportedAsUnexpectedSuccess()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        WriteHardwareRuntime(temp);
+        temp.WriteFile("Demonstrators/hw_xfail_unexpected_success.blade", """
+        // EXPECT: xfail-hw
+        // RUNS:
+        // - [] = 0x0
+        cog task main {
+            var x: u32 = 0;
+            _ = x;
+        }
+        """);
+        temp.MakeDir("tools");
+        WriteExecutable(temp.GetFullPath("tools/turboprop"), """
+        #!/bin/sh
+        /bin/cat >/dev/null
+        printf '\002ok\n\00300000000\n\004'
+        """);
+
+        using EnvironmentScope environment = new();
+        string? currentPath = Environment.GetEnvironmentVariable("PATH");
+        string toolSearchPath = string.IsNullOrWhiteSpace(currentPath)
+            ? temp.GetFullPath("tools")
+            : temp.GetFullPath("tools") + Path.PathSeparator + currentPath;
+        environment.Set("PATH", toolSearchPath);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+            HardwarePort = "/dev/fake-p2",
+            HardwareLoader = HardwareLoaderKind.Turboprop,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(item =>
+            item.RelativePath == "Demonstrators/hw_xfail_unexpected_success.blade");
+        if (fixtureResult.Outcome == RegressionFixtureOutcome.Skipped)
+            Assert.Ignore("flexspin is not available in this environment");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Fail));
+            Assert.That(fixtureResult.HardwareAttempted, Is.True);
+            Assert.That(fixtureResult.Details, Has.Some.EqualTo("all hardware runs unexpectedly produced the correct result"));
+        });
+    }
+
+    [Test]
+    public void PassHwFixture_WithSuccessfulHardwareRun_ReturnsOk()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        WriteHardwareRuntime(temp);
+        temp.WriteFile("Demonstrators/hw_pass_success.blade", """
+        // EXPECT: pass-hw
+        // RUNS:
+        // - [] = 0x0
+        cog task main {
+            var x: u32 = 0;
+            _ = x;
+        }
+        """);
+        temp.MakeDir("tools");
+        WriteExecutable(temp.GetFullPath("tools/turboprop"), """
+        #!/bin/sh
+        /bin/cat >/dev/null
+        printf '\002ok\n\00300000000\n\004'
+        """);
+
+        using EnvironmentScope environment = new();
+        string? currentPath = Environment.GetEnvironmentVariable("PATH");
+        string toolSearchPath = string.IsNullOrWhiteSpace(currentPath)
+            ? temp.GetFullPath("tools")
+            : temp.GetFullPath("tools") + Path.PathSeparator + currentPath;
+        environment.Set("PATH", toolSearchPath);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+            HardwarePort = "/dev/fake-p2",
+            HardwareLoader = HardwareLoaderKind.Turboprop,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(item =>
+            item.RelativePath == "Demonstrators/hw_pass_success.blade");
+        if (fixtureResult.Outcome == RegressionFixtureOutcome.Skipped)
+            Assert.Ignore("flexspin is not available in this environment");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.True, RegressionReportFormatter.Format(result));
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Ok));
+            Assert.That(fixtureResult.HardwareAttempted, Is.True);
+            Assert.That(fixtureResult.Summary, Is.EqualTo("ok"));
+        });
+    }
+
+    [Test]
+    public void HardwareExecution_WhenStderrWriteFails_ReturnsTechnicalErrorWithStackTrace()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        WriteHardwareRuntime(temp);
+        temp.WriteFile("Demonstrators/hw_stderr_failure.blade", """
+        // EXPECT: pass-hw
+        // RUNS:
+        // - [] = 0x0
+        cog task main {
+            var x: u32 = 0;
+            _ = x;
+        }
+        """);
+
+        TextWriter originalError = Console.Error;
+        Console.SetError(new ThrowingTextWriter("stderr write failed"));
+        try
+        {
+            RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+            {
+                RepositoryRootPath = temp.Path,
+                WriteFailureArtifacts = false,
+                HardwarePort = "/dev/fake-p2",
+            });
+
+            RegressionFixtureResult fixtureResult = result.FixtureResults.Single(item =>
+                item.RelativePath == "Demonstrators/hw_stderr_failure.blade");
+            if (fixtureResult.Outcome == RegressionFixtureOutcome.Skipped)
+                Assert.Ignore("flexspin is not available in this environment");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.Succeeded, Is.False);
+                Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.HwErr));
+                Assert.That(fixtureResult.Details, Has.Some.EqualTo("hardware execution failed: stderr write failed"));
+                Assert.That(fixtureResult.Details, Has.Some.EqualTo("Exception stack trace:"));
+                Assert.That(fixtureResult.Details, Has.Some.Contains("InvalidOperationException: stderr write failed"));
+            });
+        }
+        finally
+        {
+            Console.SetError(originalError);
+        }
+    }
+
+    [Test]
     public void HwErrFixture_WritesArtifactsWhenEnabled()
     {
         using TempDirectory temp = new();
@@ -852,9 +1046,9 @@ public sealed class RegressionHarnessTests
             Assert.That(traceText, Does.Contain("source line 1: MOV PA , # 0"));
             Assert.That(traceText, Does.Contain("line index 0"));
             Assert.That(traceText, Does.Contain("matched: MOV PA , # 0"));
-            Assert.That(traceText, Does.Contain("expected 3 occurrence(s) of snippet, found 1: Pattern { Source = ADD ?1, #1"));
-            Assert.That(traceText, Does.Contain("unexpected snippet in sequence gap: Pattern { Source = MOV PB, #0"));
-            Assert.That(traceText, Does.Contain("missing ordered snippet: Pattern { Source = JMP #done"));
+            Assert.That(traceText, Does.Contain("expected 3 occurrence(s) of snippet, found 1: ADD ?1, #1"));
+            Assert.That(traceText, Does.Contain("unexpected snippet in sequence gap: MOV PB, #0"));
+            Assert.That(traceText, Does.Contain("missing ordered snippet: JMP #done"));
             Assert.That(traceText, Does.Contain("unexpected text between exact snippets before: RET"));
             Assert.That(traceText, Does.Contain("Bindings: none"));
         });
@@ -925,9 +1119,44 @@ public sealed class RegressionHarnessTests
         Assert.Multiple(() =>
         {
             Assert.That(result.Issues, Has.Count.EqualTo(1));
-            Assert.That(result.Issues[0], Does.StartWith("missing snippet: Pattern { Source = ADD"));
+            Assert.That(result.Issues[0], Is.EqualTo("missing snippet: ADD"));
             Assert.That(result.TraceText, Does.Contain("CONTAINS block 1: FAIL"));
             Assert.That(result.TraceText, Does.Contain("Matches: none"));
+        });
+    }
+
+    [Test]
+    public void SequenceCountFailure_StillReportsPendingNegativeGapFailuresWhenNoCountMatchExists()
+    {
+        RegressionExpectation expectation = new(
+            RegressionExpectationKind.Pass,
+            RegressionStage.FinalAsm,
+            [],
+            [
+                new SnippetBlock(
+                [
+                    CreateNegativeSnippetItem("MOV PB, #0"),
+                    CreateExactCountSnippetItem("ADD PA, #1", 2),
+                ]),
+            ],
+            [],
+            [],
+            [],
+            FlexspinExpectation.Forbidden,
+            [],
+            []);
+
+        CodeAssertionTestResult result = EvaluateMatcherTrace(expectation,
+            """
+            MOV PB, #0
+            RET
+            """);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Issues, Has.Some.EqualTo("expected 2 occurrence(s) of ordered snippet, found 0: ADD PA, #1"));
+            Assert.That(result.Issues, Has.Some.EqualTo("unexpected snippet in sequence gap: MOV PB, #0"));
+            Assert.That(result.TraceText, Does.Contain("Item 1: negative FAIL"));
         });
     }
 
@@ -1080,6 +1309,107 @@ public sealed class RegressionHarnessTests
     }
 
     [Test]
+    public void FlexspinRunner_RunAndBuildBinary_DeleteTemporaryDirectories()
+    {
+        if (OperatingSystem.IsWindows())
+            Assert.Ignore("Unix shell stubs are required for this test.");
+
+        using TempDirectory temp = new();
+        temp.MakeDir("tools");
+        string toolsPath = temp.GetFullPath("tools");
+        string flexspinPath = Path.Combine(toolsPath, "flexspin");
+        WriteExecutable(flexspinPath, """
+        #!/usr/bin/env bash
+        set -eu
+        log_dir="$(dirname "$0")"
+        if [ "${1:-}" = "--version" ]; then
+            echo "flexspin 6.9.10"
+            exit 0
+        fi
+        if [ "${2:-}" = "-b" ]; then
+            binary_path="$4"
+            source_path="$5"
+            printf '%s' "$source_path" > "$log_dir/build-source-path.txt"
+            printf '\001\002\003' > "$binary_path"
+            printf 'build stdout\n'
+            printf 'build stderr\n' >&2
+            exit 0
+        fi
+
+        source_path="$4"
+        printf '%s' "$source_path" > "$log_dir/run-source-path.txt"
+        printf 'run stdout\n'
+        printf 'run stderr\n' >&2
+        """);
+
+        using EnvironmentScope environment = new();
+        environment.Set("PATH", toolsPath + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH"));
+
+        object buildResult = InvokeFlexspinBuildBinary(
+            """
+            DAT
+            org 0
+            nop
+            """);
+        object runResult = InvokeFlexspinRun(
+            """
+            DAT
+            org 0
+            nop
+            """);
+
+        string buildSourcePath = File.ReadAllText(Path.Combine(toolsPath, "build-source-path.txt"));
+        string runSourcePath = File.ReadAllText(Path.Combine(toolsPath, "run-source-path.txt"));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(GetFlexspinSucceeded(buildResult), Is.True);
+            Assert.That(GetFlexspinBinaryBytes(buildResult), Is.EqualTo(new byte[] { 0x01, 0x02, 0x03 }));
+            Assert.That(GetFlexspinSucceeded(runResult), Is.True);
+            Assert.That(GetFlexspinOutputLines(buildResult), Is.EqualTo(new[] { "build stdout", "build stderr" }));
+            Assert.That(GetFlexspinOutputLines(runResult), Is.EqualTo(new[] { "run stdout", "run stderr" }));
+            Assert.That(Directory.Exists(Path.GetDirectoryName(buildSourcePath)!), Is.False);
+            Assert.That(Directory.Exists(Path.GetDirectoryName(runSourcePath)!), Is.False);
+        });
+    }
+
+    [Test]
+    public void FlexspinRunner_DeleteTempDirectory_WritesWarningWhenCleanupFails()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            Assert.Ignore("Linux permission semantics are required for this test.");
+            return;
+        }
+
+        using TempDirectory temp = new();
+        string parentPath = temp.GetFullPath("temp-parent");
+        string childPath = temp.GetFullPath("temp-parent/temp-child");
+        Directory.CreateDirectory(childPath);
+        string stderrText = string.Empty;
+        TextWriter originalError = Console.Error;
+        StringWriter stderr = new();
+        Console.SetError(stderr);
+        try
+        {
+            SetReadExecuteUnixDirectoryMode(parentPath);
+            InvokeDeleteTempDirectory(childPath);
+            stderrText = stderr.ToString();
+        }
+        finally
+        {
+            SetFullAccessUnixDirectoryMode(parentPath);
+            Console.SetError(originalError);
+        }
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(Directory.Exists(childPath), Is.True);
+            Assert.That(stderrText, Does.Contain("warning: failed to delete temp directory"));
+        });
+    }
+
+    [Test]
     public void RegressionJsonFormatter_EmitsCamelCaseEnumStrings()
     {
         RegressionFixtureResult fixtureResult = new(
@@ -1119,6 +1449,117 @@ public sealed class RegressionHarnessTests
         });
 
         Assert.That(result.FixtureResults.Select(item => item.RelativePath), Is.EqualTo(["Demonstrators/two.blade"]));
+    }
+
+    [Test]
+    public void RegressionRunner_Filter_GlobCanSelectMultipleFixtures()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/one.blade", "fn one() -> u32 { return 1; }");
+        temp.WriteFile("Demonstrators/two.blade", "fn two() -> u32 { return 2; }");
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+            Filters = ["Demonstrators/*.blade"],
+        });
+
+        Assert.That(result.FixtureResults.Select(item => item.RelativePath), Is.EqualTo(["Demonstrators/one.blade", "Demonstrators/two.blade"]));
+    }
+
+    [Test]
+    public void RegressionRunner_Filter_BareFilenameWithoutGlobFailsClearly()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/two.blade", "fn two() -> u32 { return 2; }");
+
+        InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() => RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+            Filters = ["two.blade"],
+        }))!;
+
+        Assert.That(ex.Message, Is.EqualTo("No regression fixtures matched the supplied filter(s): 'two.blade'"));
+    }
+
+    [Test]
+    public void RegressionRunner_Filter_EmptyFilterFailsClearly()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/two.blade", "fn two() -> u32 { return 2; }");
+
+        InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() => RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+            Filters = [string.Empty],
+        }))!;
+
+        Assert.That(ex.Message, Is.EqualTo("No regression fixtures matched the supplied filter(s): ''"));
+    }
+
+    [Test]
+    public void RegressionRunner_Filter_DoubleStarGlobCanCrossDirectories()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.MakeDir("Demonstrators/Nested");
+        temp.WriteFile("Demonstrators/Nested/two.blade", "fn two() -> u32 { return 2; }");
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+            Filters = ["**/two.blade"],
+        });
+
+        Assert.That(result.FixtureResults.Select(item => item.RelativePath), Is.EqualTo(["Demonstrators/Nested/two.blade"]));
+    }
+
+    [Test]
+    public void RegressionRunner_Filter_QuestionMarkWildcardMatchesSingleCharacter()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        temp.WriteFile("Demonstrators/ab.blade", "fn one() -> u32 { return 1; }");
+        temp.WriteFile("Demonstrators/ac.blade", "fn two() -> u32 { return 2; }");
+        temp.WriteFile("Demonstrators/abc.blade", "fn three() -> u32 { return 3; }");
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+            Filters = ["Demonstrators/a?.blade"],
+        });
+
+        Assert.That(result.FixtureResults.Select(item => item.RelativePath), Is.EqualTo(["Demonstrators/ab.blade", "Demonstrators/ac.blade"]));
+    }
+
+    [Test]
+    public void RegressionRunner_ThrowsWhenNoFixturesAreDiscovered()
+    {
+        using TempDirectory temp = new();
+        temp.MakeDir("Examples");
+        WriteRegressionConfig(temp, """
+        {
+            "pools": [
+                { "path": "Examples", "expect": "encoded" }
+            ]
+        }
+        """);
+
+        InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() => RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        }))!;
+
+        Assert.That(ex.Message, Is.EqualTo("No regression fixtures were discovered."));
     }
 
     [Test]
@@ -1607,7 +2048,7 @@ public sealed class RegressionHarnessTests
         {
             RepositoryRootPath = temp.Path,
             WriteFailureArtifacts = false,
-            Filters = ["fail_without_diagnostics.blade"],
+            Filters = [DemonstratorFilter("fail_without_diagnostics.blade")],
         });
 
         RegressionFixtureResult fixtureResult = result.FixtureResults.Single();
@@ -1634,7 +2075,7 @@ public sealed class RegressionHarnessTests
         {
             RepositoryRootPath = temp.Path,
             WriteFailureArtifacts = false,
-            Filters = ["xpass_without_diagnostics.blade"],
+            Filters = [DemonstratorFilter("xpass_without_diagnostics.blade")],
         });
 
         RegressionFixtureResult fixtureResult = result.FixtureResults.Single();
@@ -1675,7 +2116,7 @@ public sealed class RegressionHarnessTests
         {
             RepositoryRootPath = temp.Path,
             WriteFailureArtifacts = false,
-            Filters = ["contains_independent_bindings.blade"],
+            Filters = [DemonstratorFilter("contains_independent_bindings.blade")],
         });
 
         Assert.That(result.Succeeded, Is.True, RegressionReportFormatter.Format(result));
@@ -1710,7 +2151,7 @@ public sealed class RegressionHarnessTests
         {
             RepositoryRootPath = temp.Path,
             WriteFailureArtifacts = false,
-            Filters = ["sequence_independent_bindings.blade"],
+            Filters = [DemonstratorFilter("sequence_independent_bindings.blade")],
         });
 
         Assert.That(result.Succeeded, Is.True, RegressionReportFormatter.Format(result));
@@ -1757,13 +2198,13 @@ public sealed class RegressionHarnessTests
         {
             RepositoryRootPath = temp.Path,
             WriteFailureArtifacts = false,
-            Filters = ["exact_allows_outer_text.blade"],
+            Filters = [DemonstratorFilter("exact_allows_outer_text.blade")],
         });
         RegressionRunResult failingResult = RegressionRunner.Run(new RegressionRunOptions
         {
             RepositoryRootPath = temp.Path,
             WriteFailureArtifacts = false,
-            Filters = ["exact_rejects_interleaved_text.blade"],
+            Filters = [DemonstratorFilter("exact_rejects_interleaved_text.blade")],
         });
 
         RegressionFixtureResult failingFixture = failingResult.FixtureResults.Single();
@@ -1829,25 +2270,25 @@ public sealed class RegressionHarnessTests
         {
             RepositoryRootPath = temp.Path,
             WriteFailureArtifacts = false,
-            Filters = ["sequence_negative_edges.blade"],
+            Filters = [DemonstratorFilter("sequence_negative_edges.blade")],
         });
         RegressionRunResult exactPassingResult = RegressionRunner.Run(new RegressionRunOptions
         {
             RepositoryRootPath = temp.Path,
             WriteFailureArtifacts = false,
-            Filters = ["exact_negative_edges.blade"],
+            Filters = [DemonstratorFilter("exact_negative_edges.blade")],
         });
         RegressionRunResult failingResult = RegressionRunner.Run(new RegressionRunOptions
         {
             RepositoryRootPath = temp.Path,
             WriteFailureArtifacts = false,
-            Filters = ["sequence_only_negative.blade"],
+            Filters = [DemonstratorFilter("sequence_only_negative.blade")],
         });
         RegressionRunResult exactFailingResult = RegressionRunner.Run(new RegressionRunOptions
         {
             RepositoryRootPath = temp.Path,
             WriteFailureArtifacts = false,
-            Filters = ["exact_only_negative.blade"],
+            Filters = [DemonstratorFilter("exact_only_negative.blade")],
         });
 
         RegressionFixtureResult failingFixture = failingResult.FixtureResults.Single();
@@ -1894,13 +2335,13 @@ public sealed class RegressionHarnessTests
         {
             RepositoryRootPath = temp.Path,
             WriteFailureArtifacts = false,
-            Filters = ["count_positive.blade"],
+            Filters = [DemonstratorFilter("count_positive.blade")],
         });
         RegressionRunResult failingResult = RegressionRunner.Run(new RegressionRunOptions
         {
             RepositoryRootPath = temp.Path,
             WriteFailureArtifacts = false,
-            Filters = ["count_zero.blade"],
+            Filters = [DemonstratorFilter("count_zero.blade")],
         });
 
         RegressionFixtureResult failingFixture = failingResult.FixtureResults.Single();
@@ -1938,14 +2379,14 @@ public sealed class RegressionHarnessTests
         {
             RepositoryRootPath = temp.Path,
             WriteFailureArtifacts = false,
-            Filters = ["wildcard_identifier_fusion.blade"],
+            Filters = [DemonstratorFilter("wildcard_identifier_fusion.blade")],
         });
 
         RegressionFixtureResult fixtureResult = result.FixtureResults.Single();
         Assert.Multiple(() =>
         {
             Assert.That(result.Succeeded, Is.False);
-            Assert.That(fixtureResult.Details, Has.Some.Contains("missing ordered snippet: Pattern { Source = AND ?1, #20"));
+            Assert.That(fixtureResult.Details, Has.Some.Contains("missing ordered snippet: AND ?1, #20"));
         });
     }
 
@@ -1968,7 +2409,7 @@ public sealed class RegressionHarnessTests
         {
             RepositoryRootPath = temp.Path,
             WriteFailureArtifacts = false,
-            Filters = ["header_blank_line_terminates.blade"],
+            Filters = [DemonstratorFilter("header_blank_line_terminates.blade")],
         });
 
         RegressionFixtureResult fixtureResult = result.FixtureResults.Single();
@@ -1999,7 +2440,7 @@ public sealed class RegressionHarnessTests
         {
             RepositoryRootPath = temp.Path,
             WriteFailureArtifacts = false,
-            Filters = ["header_whitespace_line_terminates.blade"],
+            Filters = [DemonstratorFilter("header_whitespace_line_terminates.blade")],
         });
 
         RegressionFixtureResult fixtureResult = result.FixtureResults.Single();
@@ -2021,7 +2462,7 @@ public sealed class RegressionHarnessTests
         RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
         {
             RepositoryRootPath = temp.Path,
-            Filters = ["syntax_failure.blade.crash"],
+            Filters = [RegressionTestFilter("syntax_failure.blade.crash")],
             WriteFailureArtifacts = false,
         });
 
@@ -2046,7 +2487,7 @@ public sealed class RegressionHarnessTests
         RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
         {
             RepositoryRootPath = temp.Path,
-            Filters = ["invalid_utf8.blade.crash"],
+            Filters = [RegressionTestFilter("invalid_utf8.blade.crash")],
             WriteFailureArtifacts = false,
         });
 
@@ -2247,6 +2688,16 @@ public sealed class RegressionHarnessTests
         temp.WriteFile("justfile", "fuzz:\n    false\n");
         temp.WriteFile("Examples/smoke.blade", "cog task main { }");
         WriteRegressionConfig(temp);
+    }
+
+    private static string DemonstratorFilter(string fileName)
+    {
+        return $"Demonstrators/{fileName}";
+    }
+
+    private static string RegressionTestFilter(string fileName)
+    {
+        return $"RegressionTests/{fileName}";
     }
 
     private static RegressionExpectation CreateMatcherTraceExpectation()
@@ -2582,6 +3033,71 @@ public sealed class RegressionHarnessTests
         return (RegressionRunOptions)parseMethod.Invoke(null, [args])!;
     }
 
+    private static Exception AssertThrowsFromParseRegressionCommandLine(params string[] args)
+    {
+        try
+        {
+            _ = ParseRegressionCommandLine(args);
+            throw new AssertionException("ParseRegressionCommandLine was expected to throw.");
+        }
+        catch (TargetInvocationException ex) when (ex.InnerException is not null)
+        {
+            return ex.InnerException;
+        }
+    }
+
+    private static object InvokeFlexspinBuildBinary(string sourceText)
+    {
+        Type runnerType = typeof(RegressionRunner).Assembly.GetType("Blade.Regressions.FlexspinRunner")
+            ?? throw new InvalidOperationException("FlexspinRunner type not found.");
+        MethodInfo method = runnerType.GetMethod("BuildBinary", BindingFlags.Public | BindingFlags.Static)
+            ?? throw new InvalidOperationException("FlexspinRunner.BuildBinary method not found.");
+        return method.Invoke(null, [sourceText])
+            ?? throw new InvalidOperationException("FlexspinRunner.BuildBinary returned null.");
+    }
+
+    private static object InvokeFlexspinRun(string sourceText)
+    {
+        Type runnerType = typeof(RegressionRunner).Assembly.GetType("Blade.Regressions.FlexspinRunner")
+            ?? throw new InvalidOperationException("FlexspinRunner type not found.");
+        MethodInfo method = runnerType.GetMethod("Run", BindingFlags.Public | BindingFlags.Static)
+            ?? throw new InvalidOperationException("FlexspinRunner.Run method not found.");
+        return method.Invoke(null, [sourceText])
+            ?? throw new InvalidOperationException("FlexspinRunner.Run returned null.");
+    }
+
+    private static void InvokeDeleteTempDirectory(string tempDirectoryPath)
+    {
+        Type runnerType = typeof(RegressionRunner).Assembly.GetType("Blade.Regressions.FlexspinRunner")
+            ?? throw new InvalidOperationException("FlexspinRunner type not found.");
+        MethodInfo method = runnerType.GetMethod("DeleteTempDirectory", BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new InvalidOperationException("FlexspinRunner.DeleteTempDirectory method not found.");
+        _ = method.Invoke(null, [tempDirectoryPath]);
+    }
+
+    private static bool GetFlexspinSucceeded(object result)
+    {
+        PropertyInfo property = result.GetType().GetProperty("Succeeded")
+            ?? throw new InvalidOperationException("Flexspin result Succeeded property not found.");
+        return (bool)(property.GetValue(result)
+            ?? throw new InvalidOperationException("Flexspin result Succeeded property returned null."));
+    }
+
+    private static byte[]? GetFlexspinBinaryBytes(object result)
+    {
+        PropertyInfo property = result.GetType().GetProperty("BinaryBytes")
+            ?? throw new InvalidOperationException("Flexspin binary result BinaryBytes property not found.");
+        return (byte[]?)property.GetValue(result);
+    }
+
+    private static IReadOnlyList<string> GetFlexspinOutputLines(object result)
+    {
+        PropertyInfo property = result.GetType().GetProperty("OutputLines")
+            ?? throw new InvalidOperationException("Flexspin result OutputLines property not found.");
+        return (IReadOnlyList<string>)(property.GetValue(result)
+            ?? throw new InvalidOperationException("Flexspin result OutputLines property returned null."));
+    }
+
     private static string[] ReadGuardArray(TempDirectory temp, string groupName, string arrayName)
     {
         using JsonDocument document = JsonDocument.Parse(temp.ReadFile("RegressionTests/ir-regression-guard.json", System.Text.Encoding.UTF8));
@@ -2610,6 +3126,18 @@ public sealed class RegressionHarnessTests
         }
     }
 
+    [SupportedOSPlatform("linux")]
+    private static void SetReadExecuteUnixDirectoryMode(string path)
+    {
+        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+    }
+
+    [SupportedOSPlatform("linux")]
+    private static void SetFullAccessUnixDirectoryMode(string path)
+    {
+        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+    }
+
     private sealed class EnvironmentScope : IDisposable
     {
         private readonly Dictionary<string, string?> previousValues = [];
@@ -2626,6 +3154,17 @@ public sealed class RegressionHarnessTests
         {
             foreach ((string name, string? value) in this.previousValues)
                 Environment.SetEnvironmentVariable(name, value);
+        }
+    }
+
+    private sealed class ThrowingTextWriter(string message) : TextWriter
+    {
+        public override Encoding Encoding => Encoding.UTF8;
+
+        public override void WriteLine(string? value)
+        {
+            _ = value;
+            throw new InvalidOperationException(message);
         }
     }
 

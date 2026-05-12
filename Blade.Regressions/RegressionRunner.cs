@@ -79,6 +79,7 @@ public static class RegressionRunner
 
         FlexspinProbeResult flexspinProbe = FlexspinRunner.ProbeAvailability();
         List<DiscoveredRegressionFixture> fixtures = RegressionPool.DiscoverFixtures(configuration, effectiveOptions.Filters);
+        EnsureFixturesDiscovered(effectiveOptions.Filters, fixtures);
         List<RegressionFixtureResult> fixtureResults = [];
         ArtifactWriter artifactWriter = new(repositoryRootPath, effectiveOptions.WriteFailureArtifacts);
         RegressionIrCoverageSession? irCoverageSession = RegressionIrCoverageSession.TryCreate(configuration.IrCoverageGuardPath, isFullRun);
@@ -181,7 +182,8 @@ public static class RegressionRunner
                 string? hardwareArtifactDirectoryPath = null;
                 if (ShouldWriteArtifacts(hardwareOutcome))
                 {
-                    hardwareArtifactDirectoryPath = artifactWriter.WriteFailureArtifacts(
+                    hardwareArtifactDirectoryPath = TryWriteFailureArtifacts(
+                        artifactWriter,
                         fixture,
                         evaluatedFixture,
                         hardwareSummary,
@@ -212,7 +214,7 @@ public static class RegressionRunner
             string summary = BuildSummary(fixture.Expectation, evaluatedFixture, outcome, finalIssues);
             string? artifactDirectoryPath = null;
             if (ShouldWriteArtifacts(outcome))
-                artifactDirectoryPath = artifactWriter.WriteFailureArtifacts(fixture, evaluatedFixture, summary, finalIssues);
+                artifactDirectoryPath = TryWriteFailureArtifacts(artifactWriter, fixture, evaluatedFixture, summary, finalIssues, null);
 
             return new RegressionFixtureResult(
                 relativePath,
@@ -245,7 +247,7 @@ public static class RegressionRunner
                     [],
                     []));
             string summary = "fixture evaluation crashed";
-            string? artifactDirectoryPath = artifactWriter.WriteFailureArtifacts(syntheticFixture, failedFixture, summary, details);
+            string? artifactDirectoryPath = TryWriteFailureArtifacts(artifactWriter, syntheticFixture, failedFixture, summary, details, null);
             return new RegressionFixtureResult(relativePath, RegressionFixtureOutcome.Fail, summary, details, artifactDirectoryPath, false);
         }
     }
@@ -274,7 +276,7 @@ public static class RegressionRunner
                 []));
         EvaluatedFixture emptyFixture = EvaluatedFixture.Empty(discoveredFixture.RelativePath);
         List<string> details = [message];
-        string? artifactDirectoryPath = artifactWriter.WriteFailureArtifacts(syntheticFixture, emptyFixture, message, details);
+        string? artifactDirectoryPath = TryWriteFailureArtifacts(artifactWriter, syntheticFixture, emptyFixture, message, details, null);
         return new RegressionFixtureResult(
             discoveredFixture.RelativePath,
             RegressionFixtureOutcome.Fail,
@@ -289,6 +291,47 @@ public static class RegressionRunner
         return fixturePath.EndsWith(".blade.crash", StringComparison.Ordinal)
             ? RegressionFixtureKind.BladeCrash
             : RegressionFixtureKind.Blade;
+    }
+
+    private static void EnsureFixturesDiscovered(
+        IReadOnlyList<string> filters,
+        IReadOnlyList<DiscoveredRegressionFixture> fixtures)
+    {
+        if (fixtures.Count > 0)
+            return;
+
+        if (filters.Count == 0)
+            throw new InvalidOperationException("No regression fixtures were discovered.");
+
+        string filterList = string.Join(", ", filters.Select(static filter => $"'{filter}'"));
+        throw new InvalidOperationException($"No regression fixtures matched the supplied filter(s): {filterList}");
+    }
+
+    private static string? TryWriteFailureArtifacts(
+        ArtifactWriter artifactWriter,
+        RegressionFixture fixture,
+        EvaluatedFixture evaluatedFixture,
+        string summary,
+        List<string> issues,
+        IReadOnlyList<HardwareRunCapture>? hardwareRuns)
+    {
+        try
+        {
+            return artifactWriter.WriteFailureArtifacts(fixture, evaluatedFixture, summary, issues, hardwareRuns);
+        }
+        catch (Exception ex) when (IsArtifactPersistenceException(ex))
+        {
+            issues.Add($"failed to write failure artifacts: {ex.Message}");
+            return null;
+        }
+    }
+
+    private static bool IsArtifactPersistenceException(Exception ex)
+    {
+        return ex is IOException
+            or UnauthorizedAccessException
+            or NotSupportedException
+            or PathTooLongException;
     }
 
     private static EvaluatedFixture ExecuteFixture(
@@ -567,7 +610,7 @@ public static class RegressionRunner
                     {
                         if (SnippetMatcher.IndexOf(normalizedActual, item.Pattern, 0, bindings) is not PatternMatch match)
                         {
-                            itemFailureReason = $"missing snippet: {item.Pattern}";
+                            itemFailureReason = $"missing snippet: {item.Pattern.Source}";
                             issues.Add(itemFailureReason);
                             succeeded = false;
                             failureReason ??= itemFailureReason;
@@ -585,7 +628,7 @@ public static class RegressionRunner
                         PatternBindings negativeBindings = bindings.Clone();
                         if (SnippetMatcher.IndexOf(normalizedActual, item.Pattern, 0, negativeBindings) is PatternMatch match)
                         {
-                            itemFailureReason = $"unexpected snippet present: {item.Pattern}";
+                            itemFailureReason = $"unexpected snippet present: {item.Pattern.Source}";
                             issues.Add(itemFailureReason);
                             succeeded = false;
                             failureReason ??= itemFailureReason;
@@ -610,7 +653,7 @@ public static class RegressionRunner
 
                         if (matches.Count != item.Count)
                         {
-                            itemFailureReason = $"expected {item.Count} occurrence(s) of snippet, found {matches.Count}: {item.Pattern}";
+                            itemFailureReason = $"expected {item.Count} occurrence(s) of snippet, found {matches.Count}: {item.Pattern.Source}";
                             issues.Add(itemFailureReason);
                             succeeded = false;
                             failureReason ??= itemFailureReason;
@@ -678,7 +721,7 @@ public static class RegressionRunner
             {
                 if (SnippetMatcher.IndexOf(normalizedActual, item.Pattern, index, sequenceBindings) is not PatternMatch match)
                 {
-                    string itemFailureReason = $"missing ordered snippet: {item.Pattern}";
+                    string itemFailureReason = $"missing ordered snippet: {item.Pattern.Source}";
                     issues.Add(itemFailureReason);
                     failureReason ??= itemFailureReason;
                     itemTraces.Add(new MatcherTraceItem(
@@ -742,7 +785,7 @@ public static class RegressionRunner
                 {
                     if (SnippetMatcher.IndexOf(normalizedActual, item.Pattern, countIndex, sequenceBindings) is not PatternMatch match)
                     {
-                        itemFailureReason = $"expected {item.Count} occurrence(s) of ordered snippet, found {i}: {item.Pattern}";
+                        itemFailureReason = $"expected {item.Count} occurrence(s) of ordered snippet, found {i}: {item.Pattern.Source}";
                         issues.Add(itemFailureReason);
                         failureReason ??= itemFailureReason;
                         break;
@@ -763,12 +806,13 @@ public static class RegressionRunner
                     sawAdvancingItem = true;
                 }
 
-                if (firstMatchStart is not null)
+                if (pendingNegatives.Count > 0)
                 {
+                    int negativeGapEnd = firstMatchStart ?? normalizedActual.LineCount;
                     List<MatcherTraceItem> negativeTraces = CheckPendingNegatives(
                         normalizedActual,
                         gapStartBeforeCount,
-                        firstMatchStart.Value,
+                        negativeGapEnd,
                         pendingNegatives,
                         stage,
                         sequenceBindings,
@@ -837,15 +881,15 @@ public static class RegressionRunner
             bool succeeded = true;
             string? itemFailureReason = null;
 
-            if (gapStart < gapEnd)
-            {
-                if (SnippetMatcher.IndexOf(normalizedActual, normalizedNeg, gapStart, gapEnd, negativeBindings) is PatternMatch absoluteMatch)
+                if (gapStart < gapEnd)
                 {
-                    matches.Add(CreateTraceMatch(normalizedActual, absoluteMatch, negativeBindings));
-                    itemFailureReason = $"unexpected snippet in sequence gap: {negative.Pattern}";
-                    issues.Add(itemFailureReason);
-                    succeeded = false;
-                    failureReason ??= itemFailureReason;
+                    if (SnippetMatcher.IndexOf(normalizedActual, normalizedNeg, gapStart, gapEnd, negativeBindings) is PatternMatch absoluteMatch)
+                    {
+                        matches.Add(CreateTraceMatch(normalizedActual, absoluteMatch, negativeBindings));
+                        itemFailureReason = $"unexpected snippet in sequence gap: {negative.Pattern.Source}";
+                        issues.Add(itemFailureReason);
+                        succeeded = false;
+                        failureReason ??= itemFailureReason;
                 }
             }
 
@@ -897,25 +941,6 @@ public static class RegressionRunner
             line.SourceLineNumber,
             line.Text.Text,
             bindings.Snapshot());
-    }
-
-    private static string DescribePattern(Pattern pattern)
-    {
-        StringBuilder builder = new();
-        for (int index = 0; index < pattern.Parts.Count; index++)
-        {
-            if (builder.Length > 0)
-                builder.Append(' ');
-
-            PatternPart part = pattern.Parts[index];
-            builder.Append(part.IsWildcard
-                ? part.BindingNumber is int bindingNumber
-                    ? $"?{bindingNumber.ToString(CultureInfo.InvariantCulture)}"
-                    : "?"
-                : part.Literal);
-        }
-
-        return builder.ToString();
     }
 
     private static List<string> EvaluateFlexspin(RegressionFixture fixture, EvaluatedFixture evaluatedFixture)
@@ -1027,7 +1052,9 @@ public static class RegressionRunner
                 catch (Exception ex)
                 {
                     return HardwareExecutionResult.Error(
-                        [$"hardware run {i + 1} {FormatHardwareRunArguments(run)} failed: {ex.Message}"],
+                        BuildHardwareExecutionErrorDetails(
+                            $"hardware run {i + 1} {FormatHardwareRunArguments(run)} failed: {ex.Message}",
+                            ex),
                         binaryResult.BinaryBytes,
                         [.. completedRuns]);
                 }
@@ -1049,9 +1076,16 @@ public static class RegressionRunner
         catch (Exception ex)
         {
             return HardwareExecutionResult.Error(
-                [$"hardware execution failed: {ex.Message}"],
+                BuildHardwareExecutionErrorDetails($"hardware execution failed: {ex.Message}", ex),
                 binaryResult.BinaryBytes);
         }
+    }
+
+    private static List<string> BuildHardwareExecutionErrorDetails(string summary, Exception ex)
+    {
+        List<string> details = [summary, "Exception stack trace:"];
+        details.AddRange(SplitLines(ex.ToString()));
+        return details;
     }
 
     private static TestResult NormalizeHardwareTestResult(TestResult result)
@@ -1579,55 +1613,66 @@ internal static class FlexspinRunner
     {
         string tempDirectoryPath = Path.Combine(Path.GetTempPath(), "blade-regressions", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDirectoryPath);
-        string sourcePath = Path.Combine(tempDirectoryPath, "fixture.spin2");
-        string binaryPath = Path.Combine(tempDirectoryPath, "fixture.bin");
-        File.WriteAllText(sourcePath, sourceText);
+        try
+        {
+            string sourcePath = Path.Combine(tempDirectoryPath, "fixture.spin2");
+            string binaryPath = Path.Combine(tempDirectoryPath, "fixture.bin");
+            File.WriteAllText(sourcePath, sourceText);
 
-        ProcessStartInfo startInfo = CreateStartInfo();
-        startInfo.ArgumentList.Add("-2");
-        startInfo.ArgumentList.Add("-b");
-        startInfo.ArgumentList.Add("-o");
-        startInfo.ArgumentList.Add(binaryPath);
-        startInfo.ArgumentList.Add(sourcePath);
+            ProcessStartInfo startInfo = CreateStartInfo();
+            startInfo.ArgumentList.Add("-2");
+            startInfo.ArgumentList.Add("-b");
+            startInfo.ArgumentList.Add("-o");
+            startInfo.ArgumentList.Add(binaryPath);
+            startInfo.ArgumentList.Add(sourcePath);
 
-        using Process process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("Failed to start flexspin.");
-        string stdout = process.StandardOutput.ReadToEnd();
-        string stderr = process.StandardError.ReadToEnd();
-        process.WaitForExit();
+            using Process process = Process.Start(startInfo)
+                ?? throw new InvalidOperationException("Failed to start flexspin.");
+            string stdout = process.StandardOutput.ReadToEnd();
+            string stderr = process.StandardError.ReadToEnd();
+            process.WaitForExit();
 
-        List<string> outputLines = CombineOutputLines(stdout, stderr);
-        byte[]? binaryBytes = process.ExitCode == 0 && File.Exists(binaryPath)
-            ? File.ReadAllBytes(binaryPath)
-            : null;
+            List<string> outputLines = CombineOutputLines(stdout, stderr);
+            byte[]? binaryBytes = process.ExitCode == 0 && File.Exists(binaryPath)
+                ? File.ReadAllBytes(binaryPath)
+                : null;
 
-        DeleteTempDirectory(tempDirectoryPath);
-        return new FlexspinBinaryResult(process.ExitCode == 0, outputLines, binaryBytes);
+            return new FlexspinBinaryResult(process.ExitCode == 0, outputLines, binaryBytes);
+        }
+        finally
+        {
+            DeleteTempDirectory(tempDirectoryPath);
+        }
     }
 
     private static FlexspinResult RunCore(string sourceText)
     {
         string tempDirectoryPath = Path.Combine(Path.GetTempPath(), "blade-regressions", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDirectoryPath);
-        string sourcePath = Path.Combine(tempDirectoryPath, "fixture.spin2");
-        File.WriteAllText(sourcePath, sourceText);
+        try
+        {
+            string sourcePath = Path.Combine(tempDirectoryPath, "fixture.spin2");
+            File.WriteAllText(sourcePath, sourceText);
 
-        ProcessStartInfo startInfo = CreateStartInfo();
-        startInfo.ArgumentList.Add("-2");
-        startInfo.ArgumentList.Add("-c");
-        startInfo.ArgumentList.Add("-q");
-        startInfo.ArgumentList.Add(sourcePath);
+            ProcessStartInfo startInfo = CreateStartInfo();
+            startInfo.ArgumentList.Add("-2");
+            startInfo.ArgumentList.Add("-c");
+            startInfo.ArgumentList.Add("-q");
+            startInfo.ArgumentList.Add(sourcePath);
 
-        using Process process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("Failed to start flexspin.");
-        string stdout = process.StandardOutput.ReadToEnd();
-        string stderr = process.StandardError.ReadToEnd();
-        process.WaitForExit();
+            using Process process = Process.Start(startInfo)
+                ?? throw new InvalidOperationException("Failed to start flexspin.");
+            string stdout = process.StandardOutput.ReadToEnd();
+            string stderr = process.StandardError.ReadToEnd();
+            process.WaitForExit();
 
-        List<string> outputLines = CombineOutputLines(stdout, stderr);
-        DeleteTempDirectory(tempDirectoryPath);
-
-        return new FlexspinResult(process.ExitCode == 0, outputLines);
+            List<string> outputLines = CombineOutputLines(stdout, stderr);
+            return new FlexspinResult(process.ExitCode == 0, outputLines);
+        }
+        finally
+        {
+            DeleteTempDirectory(tempDirectoryPath);
+        }
     }
 
     private static ProcessStartInfo CreateStartInfo()
@@ -1652,15 +1697,20 @@ internal static class FlexspinRunner
 
     internal static void DeleteTempDirectory(string tempDirectoryPath)
     {
+        if (!Directory.Exists(tempDirectoryPath))
+            return;
+
         try
         {
             Directory.Delete(tempDirectoryPath, recursive: true);
         }
-        catch (IOException)
+        catch (IOException ex)
         {
+            Console.Error.WriteLine($"warning: failed to delete temp directory '{tempDirectoryPath}': {ex.Message}");
         }
-        catch (UnauthorizedAccessException)
+        catch (UnauthorizedAccessException ex)
         {
+            Console.Error.WriteLine($"warning: failed to delete temp directory '{tempDirectoryPath}': {ex.Message}");
         }
     }
 }
@@ -2293,6 +2343,9 @@ internal static class RegressionCommandLine
                     break;
 
                 default:
+                    if (arg.Length > 0 && arg[0] == '-')
+                        throw new InvalidOperationException($"Unknown option '{arg}'.");
+
                     filters.Add(arg);
                     break;
             }

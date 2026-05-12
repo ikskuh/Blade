@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
 
 namespace Blade.Regressions;
 
@@ -56,14 +58,89 @@ internal static class RegressionPool
 
         IEnumerable<DiscoveredRegressionFixture> filteredPaths = fixturesByPath.Values;
         if (filters.Count > 0)
-        {
-            filteredPaths = filteredPaths.Where(path =>
-                filters.Any(filter => path.RelativePath.Contains(filter, StringComparison.OrdinalIgnoreCase)));
-        }
+            filteredPaths = filteredPaths.Where(path => MatchesAnyFilter(path.RelativePath, filters));
 
         return filteredPaths
             .OrderBy(path => path.RelativePath, StringComparer.Ordinal)
             .ToList();
+    }
+
+    private static bool MatchesAnyFilter(string relativePath, IReadOnlyList<string> filters)
+    {
+        foreach (string filter in filters)
+        {
+            if (MatchesFilter(relativePath, filter))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool MatchesFilter(string relativePath, string filter)
+    {
+        string normalizedFilter = NormalizeRelativePath(filter);
+        if (normalizedFilter.Length == 0)
+            return false;
+
+        if (!IsGlobFilter(normalizedFilter))
+            return PathComparer.Instance.Equals(relativePath, normalizedFilter);
+
+        Regex pattern = CreateGlobRegex(normalizedFilter);
+        return pattern.IsMatch(relativePath);
+    }
+
+    private static string NormalizeRelativePath(string path)
+    {
+        return path.Replace('\\', '/');
+    }
+
+    private static bool IsGlobFilter(string filter)
+    {
+        return filter.Contains('*', StringComparison.Ordinal)
+            || filter.Contains('?', StringComparison.Ordinal);
+    }
+
+    private static Regex CreateGlobRegex(string filter)
+    {
+        StringBuilder builder = new();
+        builder.Append('^');
+        for (int index = 0; index < filter.Length; index++)
+        {
+            char ch = filter[index];
+            switch (ch)
+            {
+                case '*':
+                    if (index + 1 < filter.Length && filter[index + 1] == '*')
+                    {
+                        builder.Append(".*");
+                        index++;
+                    }
+                    else
+                    {
+                        builder.Append(@"[^/]*");
+                    }
+
+                    break;
+
+                case '?':
+                    builder.Append(@"[^/]");
+                    break;
+
+                case '/':
+                    builder.Append('/');
+                    break;
+
+                default:
+                    builder.Append(Regex.Escape(ch.ToString()));
+                    break;
+            }
+        }
+
+        builder.Append('$');
+        RegexOptions options = OperatingSystem.IsWindows()
+            ? RegexOptions.CultureInvariant | RegexOptions.IgnoreCase
+            : RegexOptions.CultureInvariant;
+        return new Regex(builder.ToString(), options);
     }
 
     private static void AddFixturePaths(
