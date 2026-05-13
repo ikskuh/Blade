@@ -17,8 +17,6 @@ namespace Blade.IR.Asm;
 public sealed class FinalAssemblyWriter : TextReportBuilderBase
 {
     private const string BladeImageBaseLabel = "blade_image_base";
-    private const string BladeEntryLabel = "blade_entry";
-    private const string BladeHaltLabel = "blade_halt";
     private sealed class LabelNameEmitter
     {
         private readonly record struct ScopedControlFlowLabelKey(AsmFunctionKey Function, ControlFlowLabelSymbol Label);
@@ -228,21 +226,10 @@ public sealed class FinalAssemblyWriter : TextReportBuilderBase
         {
             NewLine();
             AppendLine(Space(4), (Comment, $"' function {function.Name} ({function.CcTier})"));
-            if (function.IsEntryPoint && imageLayout.Image.IsEntryImage)
-                AppendLine(Space(2), (Literal, this.labelNames.GetReservedLabelName(BladeEntryLabel)));
-
             Append(Space(2));
             AppendSymbolLabel(function, currentFunction: null);
             NewLine();
             WriteFunctionNodes(function, function.Nodes);
-        }
-
-        if (imageLayout.Image.IsEntryImage && functions.Any(static function => function.IsEntryPoint))
-        {
-            NewLine();
-            AppendLine(Space(2), (Literal, this.labelNames.GetReservedLabelName(BladeHaltLabel)));
-            AppendLine(Space(4), (Keyword, "NOP"));
-            AppendLine(Space(4), (Keyword, "JMP"), ' ', (Literal, "#"), (Literal, this.labelNames.GetReservedLabelName(BladeHaltLabel)));
         }
     }
 
@@ -805,12 +792,6 @@ public sealed class FinalAssemblyWriter : TextReportBuilderBase
     private void AppendSymbolLabel(IAsmSymbol symbol, AsmFunction? currentFunction)
     {
         Requires.NotNull(symbol);
-
-        if (symbol is ControlFlowLabelSymbol { Name: BladeHaltLabel })
-        {
-            Append((Literal, this.labelNames.GetReservedLabelName(BladeHaltLabel)));
-            return;
-        }
 
         string text = GetLabelName(symbol, currentFunction);
         switch (symbol)

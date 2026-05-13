@@ -20,8 +20,6 @@ namespace Blade.IR.Asm;
 /// </summary>
 public static class AsmLowerer
 {
-    private const string DefaultHaltLabel = "blade_halt";
-
     private enum UnsupportedLoweringKind
     {
         LoadMember,
@@ -3108,13 +3106,12 @@ public static class AsmLowerer
         switch (ctx.Tier)
         {
             case CallingConventionTier.EntryPoint:
-                // Entry point "returns" by transferring control into the runtime halt hook.
-                // TODO: Replace with "unreachable", as the entry points must never return
-                nodes.Add(new AsmCommentNode("halt: runtime hook"));
-                nodes.Add(Emit(
-                    P2Mnemonic.JMP,
-                    new AsmSymbolOperand(new ControlFlowLabelSymbol(DefaultHaltLabel), AsmSymbolAddressingMode.Immediate))
-                );
+                // Entry point "returns" by shutting down the core
+
+                var cogIdReg = new VirtualAsmRegister();
+                nodes.Add(Emit(P2Mnemonic.COGID, new AsmRegisterOperand(cogIdReg)));
+                nodes.Add(Emit(P2Mnemonic.COGSTOP, new AsmRegisterOperand(cogIdReg)));
+
                 break;
 
             case CallingConventionTier.Recursive:
