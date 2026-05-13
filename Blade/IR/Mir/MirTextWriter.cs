@@ -422,10 +422,6 @@ public static class MirTextWriter
                     NewLine();
                     break;
 
-                case MirUnreachableTerminator:
-                    AppendLine((Keyword, "unreachable"));
-                    break;
-
                 default:
                     Assert.Unreachable($"Unhandled MIR terminator '{terminator.GetType().Name}'."); // pragma: force-coverage
                     break; // pragma: force-coverage

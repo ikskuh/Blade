@@ -39,21 +39,6 @@ hub const RT_EOF_MARKER: u8 = 0x04;  // EOT: End of transmission
 hub const P_TT_01: u32 = 0x00000040;
 hub const P_ASYNC_TX: u32 = 0x0000003C;
 
-
-// noinline leaf asm fn rt_write_hex_long(value: u32)
-// {
-//         MOV     %1, #8
-//   nib_loop:
-//         GETNIB  %2, {value}, #7
-//         CMP     %2, #10    WCZ
-// IF_GE   ADD     %2, #55 // == "A"-10 == 65-10
-// IF_LT   ADD     %2, #48 // == "0" == 0x30
-//         CALLPA  %2, {rt_write_byte}
-//         SHL     {value}, #4
-//         DJNZ    %1, #nib_loop
-//         RET
-// }
-
 // TODO: comptime const
 hub const HEX_DIGIT_ASC_OFFSET: u8 = '0';
 hub const HEX_CHAR_ASC_OFFSET: u8 = 'A' - 10;

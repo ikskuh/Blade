@@ -682,5 +682,3 @@ public sealed class LirReturnTerminator(IReadOnlyList<LirOperand> values, TextSp
 {
     public IReadOnlyList<LirOperand> Values { get; } = values;
 }
-
-public sealed class LirUnreachableTerminator(TextSpan span) : LirTerminator(span);

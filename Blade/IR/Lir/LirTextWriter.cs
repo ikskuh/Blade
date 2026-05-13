@@ -207,10 +207,6 @@ public static class LirTextWriter
                     NewLine();
                     break;
 
-                case LirUnreachableTerminator:
-                    AppendLine((Keyword, "unreachable"));
-                    break;
-
                 default:
                     Assert.Unreachable($"Unhandled LIR terminator '{terminator.GetType().Name}'."); // pragma: force-coverage
                     break; // pragma: force-coverage

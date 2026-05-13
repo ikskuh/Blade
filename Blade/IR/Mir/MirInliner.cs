@@ -205,7 +205,7 @@ public static class MirInliner
                 List<MirBlockParameter> parameters = [];
                 foreach (MirBlockParameter parameter in calleeBlock.Parameters)
                 {
-                     MirValueId newValue = CloneValue(parameter.Value);
+                    MirValueId newValue = CloneValue(parameter.Value);
                     valueMap[parameter.Value] = newValue;
                     parameters.Add(new MirBlockParameter(newValue, parameter.Name, parameter.Type));
                 }
@@ -232,7 +232,7 @@ public static class MirInliner
             MirValueId? newResult = null;
             if (rewritten.Result is MirValueId oldResult)
             {
-                 MirValueId fresh = CloneValue(oldResult);
+                MirValueId fresh = CloneValue(oldResult);
                 valueMap[oldResult] = fresh;
                 newResult = fresh;
             }
@@ -308,31 +308,29 @@ public static class MirInliner
                         branch.ConditionFlag);
 
                 case MirReturnTerminator ret:
-                {
-                    List<MirValueId> gotoArgs = [];
-
-                    if (call.Result is MirValueId)
                     {
-                        Assert.Invariant(ret.Values.Count > 0, "Inlined function return must have a value when call has a result");
-                        gotoArgs.Add(ret.Values[0]);
+                        List<MirValueId> gotoArgs = [];
+
+                        if (call.Result is not null)
+                        {
+                            Assert.Invariant(ret.Values.Count > 0, "Inlined function return must have a value when call has a result");
+                            gotoArgs.Add(ret.Values[0]);
+                        }
+
+                        // Pass extra return values for multi-return
+                        for (int i = 0; i < call.ExtraResults.Count; i++)
+                        {
+                            int retIndex = i + 1;
+                            Assert.Invariant(retIndex < ret.Values.Count, "Inlined function return must have enough values for all extra results");
+                            gotoArgs.Add(ret.Values[retIndex]);
+                        }
+
+                        return new MirGotoTerminator(returnTargetLabel, gotoArgs, ret.Span);
                     }
 
-                    // Pass extra return values for multi-return
-                    for (int i = 0; i < call.ExtraResults.Count; i++)
-                    {
-                        int retIndex = i + 1;
-                        Assert.Invariant(retIndex < ret.Values.Count, "Inlined function return must have enough values for all extra results");
-                        gotoArgs.Add(ret.Values[retIndex]);
-                    }
-
-                    return new MirGotoTerminator(returnTargetLabel, gotoArgs, ret.Span);
-                }
-
-                case MirUnreachableTerminator unreachable:
-                    return new MirUnreachableTerminator(unreachable.Span);
+                default:
+                    throw Assert.Unreachable($"Unexpected terminator type '{rewritten.GetType().Name}' in callee function '{call.Function.Name}' during inlining.");
             }
-
-            return rewritten;
         }
 
         private MutableBlock CreateAfterBlock(

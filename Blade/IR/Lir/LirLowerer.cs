@@ -532,8 +532,7 @@ public static class LirLowerer
                 LowerOperands(ret.Values, getValueOperand),
                 ret.Span),
 
-            MirUnreachableTerminator unreachable => new LirUnreachableTerminator(unreachable.Span),
-            _ => new LirUnreachableTerminator(new TextSpan(0, 0)),
+            _ => Assert.UnreachableValue<LirTerminator>($"Unexpected MIR terminator type '{terminator.GetType().Name}'."), // pragma: force-coverage
         };
     }
 

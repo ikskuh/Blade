@@ -238,7 +238,6 @@ internal static class MirStructuralEquality
                 && ValueListsEqual(lhs.TrueArguments, rhs.TrueArguments, context)
                 && ValueListsEqual(lhs.FalseArguments, rhs.FalseArguments, context),
             (MirReturnTerminator lhs, MirReturnTerminator rhs) => ValueListsEqual(lhs.Values, rhs.Values, context),
-            (MirUnreachableTerminator, MirUnreachableTerminator) => true,
             _ => false,
         };
     }

@@ -80,9 +80,9 @@ public class MirModelTests
         Assert.That(rewrittenBranch.TrueArguments, Is.EqualTo(new[] { mapping[t0] }));
         Assert.That(rewrittenBranch.FalseArguments, Is.EqualTo(new[] { mapping[f0] }));
 
-        MirUnreachableTerminator unreachable = new(Span);
-        Assert.That(unreachable.Uses, Is.Empty);
-        Assert.That(unreachable.RewriteUses(mapping), Is.SameAs(unreachable));
+        MirReturnTerminator ret = new([], Span);
+        Assert.That(ret.Uses, Is.Empty);
+        Assert.That(ret.RewriteUses(mapping), Is.SameAs(ret));
 
         MirValueId value = MirValue(4);
         MirInlineAsmInstruction inlineAsm = new(

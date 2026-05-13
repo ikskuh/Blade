@@ -202,7 +202,7 @@ public class WriterAndSymbolTests
                 [
                     new MirLoadPlaceInstruction(MirValue(1), BuiltinTypes.U32, place, Span),
                     new MirRepSetupInstruction(MirValue(1), Span),
-                ], new MirUnreachableTerminator(Span)),
+                ], new MirReturnTerminator([MirValue(1)], Span)),
             ]),
         ]);
 
@@ -214,7 +214,7 @@ public class WriterAndSymbolTests
                     new LirOpInstruction(new LirMovOperation(), LirRegister(0), BuiltinTypes.U32,
                         [new LirImmediateOperand(BladeValue.U8Array([104, 101, 108, 108, 111]))],
                         hasSideEffects: false, predicate: P2ConditionCode.IF_C, writesC: true, writesZ: true, Span),
-                ], new LirUnreachableTerminator(Span)),
+                ], new LirReturnTerminator([new LirRegisterOperand(LirRegister(0))], Span)),
             ]),
         ]);
 
@@ -244,13 +244,13 @@ public class WriterAndSymbolTests
         Assert.That(mirText, Does.Contain("load.place"));
         Assert.That(mirText, Does.Not.Contain("sidefx load.place"));
         Assert.That(mirText, Does.Contain("rep.setup"));
-        Assert.That(mirText, Does.Contain("unreachable"));
+        Assert.That(mirText, Does.Contain("ret %v1"));
 
         Assert.That(lirText, Does.Contain("[if_c] mov"));
         Assert.That(lirText, Does.Not.Contain("[if_c] sidefx mov"));
         Assert.That(lirText, Does.Contain("flags=CZ"));
         Assert.That(lirText, Does.Contain("[104, 101, 108, 108, 111]:[5]u8"));
-        Assert.That(lirText, Does.Contain("unreachable"));
+        Assert.That(lirText, Does.Contain("ret %r0"));
 
         Assert.That(asmText, Does.Contain("' test"));
         Assert.That(asmText, Does.Contain("IF_C ADD %r0, #5 WCZ=(%f1, %f2)"));
@@ -299,7 +299,7 @@ public class WriterAndSymbolTests
                                 InlineAsmBindingAccess.ReadWrite),
                         ],
                         span: Span),
-                ], new MirUnreachableTerminator(Span)),
+                ], new MirReturnTerminator([], Span)),
             ]),
         ]);
 
@@ -348,7 +348,7 @@ public class WriterAndSymbolTests
                         destination: null,
                         resultType: null,
                         span: Span),
-                ], new LirUnreachableTerminator(Span)),
+                ], new LirReturnTerminator([], Span)),
             ]),
         ]);
 

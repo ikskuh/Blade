@@ -3040,10 +3040,8 @@ public static class AsmLowerer
                 LowerReturn(nodes, ctx, ret);
                 break;
 
-            case LirUnreachableTerminator:
-                nodes.Add(new AsmCommentNode("unreachable"));
-                EmitHaltJump(nodes);
-                break;
+            default:
+                throw Assert.Unreachable($"Unexpected terminator type: {terminator.GetType().Name}"); // pragma: force-coverage
         }
     }
 
@@ -3111,7 +3109,12 @@ public static class AsmLowerer
         {
             case CallingConventionTier.EntryPoint:
                 // Entry point "returns" by transferring control into the runtime halt hook.
-                EmitHaltJump(nodes);
+                // TODO: Replace with "unreachable", as the entry points must never return
+                nodes.Add(new AsmCommentNode("halt: runtime hook"));
+                nodes.Add(Emit(
+                    P2Mnemonic.JMP,
+                    new AsmSymbolOperand(new ControlFlowLabelSymbol(DefaultHaltLabel), AsmSymbolAddressingMode.Immediate))
+                );
                 break;
 
             case CallingConventionTier.Recursive:
@@ -3292,14 +3295,6 @@ public static class AsmLowerer
             return P2FlagEffect.WC;
 
         return P2FlagEffect.WCZ;
-    }
-
-    private static void EmitHaltJump(List<AsmNode> nodes)
-    {
-        nodes.Add(new AsmCommentNode("halt: runtime hook"));
-        nodes.Add(Emit(
-            P2Mnemonic.JMP,
-            new AsmSymbolOperand(new ControlFlowLabelSymbol(DefaultHaltLabel), AsmSymbolAddressingMode.Immediate)));
     }
 
     private static void LowerBranch(List<AsmNode> nodes, LoweringContext ctx, LirBranchTerminator branch)

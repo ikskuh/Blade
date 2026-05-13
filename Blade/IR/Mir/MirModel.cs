@@ -21,9 +21,9 @@ public sealed class MirModule(
     IReadOnlyList<MirFunction> functions)
 {
     public ImageDescriptor Image { get; } = Requires.NotNull(image);
-    public IReadOnlyList<StoragePlace> StoragePlaces { get; } = storagePlaces;
-    public IReadOnlyList<StorageDefinition> StorageDefinitions { get; } = storageDefinitions;
-    public IReadOnlyList<MirFunction> Functions { get; } = functions;
+    public IReadOnlyList<StoragePlace> StoragePlaces { get; } = Requires.NotNull(storagePlaces);
+    public IReadOnlyList<StorageDefinition> StorageDefinitions { get; } = Requires.NotNull(storageDefinitions);
+    public IReadOnlyList<MirFunction> Functions { get; } = Requires.NotNull(functions);
 }
 
 public sealed class MirFunction(
@@ -39,10 +39,10 @@ public sealed class MirFunction(
     public bool IsEntryPoint { get; } = isEntryPoint;
     public FunctionKind Kind => Symbol.Kind;
     public FunctionInliningPolicy InliningPolicy => Symbol.InliningPolicy;
-    public IReadOnlyList<BladeType> ReturnTypes { get; } = returnTypes;
+    public IReadOnlyList<BladeType> ReturnTypes { get; } = Requires.NotNull(returnTypes);
     public IReadOnlyList<ReturnSlot> ReturnSlots { get; } = returnSlots ?? [];
     public IReadOnlyDictionary<MirValueId, MirFlag> FlagValues { get; } = flagValues ?? new Dictionary<MirValueId, MirFlag>();
-    public IReadOnlyList<MirBlock> Blocks { get; } = blocks;
+    public IReadOnlyList<MirBlock> Blocks { get; } = Requires.NotNull(blocks);
 }
 
 public sealed class MirBlock(
@@ -52,16 +52,16 @@ public sealed class MirBlock(
     MirTerminator terminator)
 {
     public MirBlockRef Ref { get; } = Requires.NotNull(blockRef);
-    public IReadOnlyList<MirBlockParameter> Parameters { get; } = parameters;
-    public IReadOnlyList<MirInstruction> Instructions { get; } = instructions;
-    public MirTerminator Terminator { get; } = terminator;
+    public IReadOnlyList<MirBlockParameter> Parameters { get; } = Requires.NotNull(parameters);
+    public IReadOnlyList<MirInstruction> Instructions { get; } = Requires.NotNull(instructions);
+    public MirTerminator Terminator { get; } = Requires.NotNull(terminator);
 }
 
 public sealed class MirBlockParameter(MirValueId value, string name, BladeType type)
 {
-    public MirValueId Value { get; } = value;
-    public string Name { get; } = name;
-    public BladeType Type { get; } = type;
+    public MirValueId Value { get; } = Requires.NotNull(value);
+    public string Name { get; } = Requires.NotNull(name);
+    public BladeType Type { get; } = Requires.NotNull(type);
 }
 
 public abstract class MirInstruction(MirValueId? result, BladeType? resultType, TextSpan span, bool hasSideEffects)
@@ -88,7 +88,7 @@ public sealed class MirConstantInstruction(MirValueId result, BladeType type, Bl
 public sealed class MirLoadPlaceInstruction(MirValueId result, BladeType type, StoragePlace place, TextSpan span)
     : MirInstruction(result, type, span, hasSideEffects: false)
 {
-    public StoragePlace Place { get; } = place;
+    public StoragePlace Place { get; } = Requires.NotNull(place);
 
     public override IReadOnlyList<MirValueId> Uses => [];
 
@@ -97,7 +97,7 @@ public sealed class MirLoadPlaceInstruction(MirValueId result, BladeType type, S
 
 public sealed class MirCopyInstruction(MirValueId result, BladeType type, MirValueId source, TextSpan span) : MirInstruction(result, type, span, hasSideEffects: false)
 {
-    public MirValueId Source { get; } = source;
+    public MirValueId Source { get; } = Requires.NotNull(source);
 
     public override IReadOnlyList<MirValueId> Uses => [Source];
 
@@ -111,7 +111,7 @@ public sealed class MirCopyInstruction(MirValueId result, BladeType type, MirVal
 public sealed class MirUnaryInstruction(MirValueId result, BladeType type, BoundUnaryOperatorKind op, MirValueId operand, TextSpan span) : MirInstruction(result, type, span, hasSideEffects: false)
 {
     public BoundUnaryOperatorKind Operator { get; } = op;
-    public MirValueId Operand { get; } = operand;
+    public MirValueId Operand { get; } = Requires.NotNull(operand);
 
     public override IReadOnlyList<MirValueId> Uses => [Operand];
 
@@ -132,8 +132,8 @@ public sealed class MirBinaryInstruction(
     ComparisonLoweringKind comparisonLoweringKind = ComparisonLoweringKind.Default) : MirInstruction(result, type, span, hasSideEffects: false)
 {
     public BoundBinaryOperatorKind Operator { get; } = op;
-    public MirValueId Left { get; } = left;
-    public MirValueId Right { get; } = right;
+    public MirValueId Left { get; } = Requires.NotNull(left);
+    public MirValueId Right { get; } = Requires.NotNull(right);
     public ComparisonLoweringKind ComparisonLoweringKind { get; } = comparisonLoweringKind;
 
     public override IReadOnlyList<MirValueId> Uses => [Left, Right];
@@ -158,8 +158,8 @@ public sealed class MirPointerOffsetInstruction(
     TextSpan span) : MirInstruction(result, type, span, hasSideEffects: false)
 {
     public BoundBinaryOperatorKind OperatorKind { get; } = operatorKind;
-    public MirValueId BaseAddress { get; } = baseAddress;
-    public MirValueId Delta { get; } = delta;
+    public MirValueId BaseAddress { get; } = Requires.NotNull(baseAddress);
+    public MirValueId Delta { get; } = Requires.NotNull(delta);
     public int Stride { get; } = stride;
 
     public override IReadOnlyList<MirValueId> Uses => [BaseAddress, Delta];
@@ -182,8 +182,8 @@ public sealed class MirPointerDifferenceInstruction(
     int stride,
     TextSpan span) : MirInstruction(result, type, span, hasSideEffects: false)
 {
-    public MirValueId Left { get; } = left;
-    public MirValueId Right { get; } = right;
+    public MirValueId Left { get; } = Requires.NotNull(left);
+    public MirValueId Right { get; } = Requires.NotNull(right);
     public int Stride { get; } = stride;
 
     public override IReadOnlyList<MirValueId> Uses => [Left, Right];
@@ -200,7 +200,7 @@ public sealed class MirPointerDifferenceInstruction(
 
 public sealed class MirConvertInstruction(MirValueId result, BladeType type, MirValueId operand, TextSpan span) : MirInstruction(result, type, span, hasSideEffects: false)
 {
-    public MirValueId Operand { get; } = operand;
+    public MirValueId Operand { get; } = Requires.NotNull(operand);
 
     public override IReadOnlyList<MirValueId> Uses => [Operand];
 
@@ -213,13 +213,13 @@ public sealed class MirConvertInstruction(MirValueId result, BladeType type, Mir
 
 public sealed class MirStructLiteralField(AggregateMemberSymbol member, MirValueId value)
 {
-    public AggregateMemberSymbol Member { get; } = member;
-    public MirValueId Value { get; } = value;
+    public AggregateMemberSymbol Member { get; } = Requires.NotNull(member);
+    public MirValueId Value { get; } = Requires.NotNull(value);
 }
 
 public sealed class MirStructLiteralInstruction(MirValueId result, StructTypeSymbol type, IReadOnlyList<MirStructLiteralField> fields, TextSpan span) : MirInstruction(result, type, span, hasSideEffects: false)
 {
-    public IReadOnlyList<MirStructLiteralField> Fields { get; } = fields;
+    public IReadOnlyList<MirStructLiteralField> Fields { get; } = Requires.NotNull(fields);
 
     public override IReadOnlyList<MirValueId> Uses
     {
@@ -253,8 +253,8 @@ public sealed class MirStructLiteralInstruction(MirValueId result, StructTypeSym
 
 public sealed class MirLoadMemberInstruction(MirValueId result, BladeType type, MirValueId receiver, AggregateMemberSymbol member, TextSpan span) : MirInstruction(result, type, span, hasSideEffects: false)
 {
-    public MirValueId Receiver { get; } = receiver;
-    public AggregateMemberSymbol Member { get; } = member;
+    public MirValueId Receiver { get; } = Requires.NotNull(receiver);
+    public AggregateMemberSymbol Member { get; } = Requires.NotNull(member);
 
     public override IReadOnlyList<MirValueId> Uses => [Receiver];
 
@@ -320,8 +320,8 @@ public sealed class MirLoadDerefInstruction(
 
 public sealed class MirBitfieldExtractInstruction(MirValueId result, BladeType type, MirValueId receiver, AggregateMemberSymbol member, TextSpan span) : MirInstruction(result, type, span, hasSideEffects: false)
 {
-    public MirValueId Receiver { get; } = receiver;
-    public AggregateMemberSymbol Member { get; } = member;
+    public MirValueId Receiver { get; } = Requires.NotNull(receiver);
+    public AggregateMemberSymbol Member { get; } = Requires.NotNull(member);
 
     public override IReadOnlyList<MirValueId> Uses => [Receiver];
 
@@ -342,9 +342,9 @@ public sealed class MirBitfieldInsertInstruction(
     AggregateMemberSymbol member,
     TextSpan span) : MirInstruction(result, aggregateType, span, hasSideEffects: false)
 {
-    public MirValueId Receiver { get; } = receiver;
-    public MirValueId Value { get; } = value;
-    public AggregateMemberSymbol Member { get; } = member;
+    public MirValueId Receiver { get; } = Requires.NotNull(receiver);
+    public MirValueId Value { get; } = Requires.NotNull(value);
+    public AggregateMemberSymbol Member { get; } = Requires.NotNull(member);
 
     public override IReadOnlyList<MirValueId> Uses => [Receiver, Value];
 
@@ -366,9 +366,9 @@ public sealed class MirInsertMemberInstruction(
     AggregateMemberSymbol member,
     TextSpan span) : MirInstruction(result, aggregateType, span, hasSideEffects: false)
 {
-    public MirValueId Receiver { get; } = receiver;
-    public MirValueId Value { get; } = value;
-    public AggregateMemberSymbol Member { get; } = member;
+    public MirValueId Receiver { get; } = Requires.NotNull(receiver);
+    public MirValueId Value { get; } = Requires.NotNull(value);
+    public AggregateMemberSymbol Member { get; } = Requires.NotNull(member);
 
     public override IReadOnlyList<MirValueId> Uses => [Receiver, Value];
 
@@ -392,7 +392,7 @@ public sealed class MirCallInstruction(
     : MirInstruction(result, resultType, span, hasSideEffects: true)
 {
     public FunctionSymbol Function { get; } = Requires.NotNull(function);
-    public IReadOnlyList<MirValueId> Arguments { get; } = arguments;
+    public IReadOnlyList<MirValueId> Arguments { get; } = Requires.NotNull(arguments);
     public IReadOnlyList<(MirValueId Value, BladeType Type)> ExtraResults { get; } = extraResults ?? [];
 
     public override IReadOnlyList<MirValueId> Uses => Arguments;
@@ -448,7 +448,7 @@ public sealed class MirSpawnInstruction(
 {
     public BoundSpawnOperatorKind OperatorKind { get; } = operatorKind;
     public TaskSymbol Task { get; } = Requires.NotNull(task);
-    public IReadOnlyList<MirValueId> Arguments { get; } = arguments;
+    public IReadOnlyList<MirValueId> Arguments { get; } = Requires.NotNull(arguments);
     public int RequestedResultCount { get; } = requestedResultCount;
     public IReadOnlyList<(MirValueId Value, BladeType Type)> ExtraResults { get; } = extraResults ?? [];
 
@@ -501,7 +501,7 @@ public sealed class MirIntrinsicCallInstruction(
     : MirInstruction(result, resultType, span, hasSideEffects: true)
 {
     public P2Mnemonic Mnemonic { get; } = mnemonic;
-    public IReadOnlyList<MirValueId> Arguments { get; } = arguments;
+    public IReadOnlyList<MirValueId> Arguments { get; } = Requires.NotNull(arguments);
 
     public override IReadOnlyList<MirValueId> Uses => Arguments;
 
@@ -578,7 +578,7 @@ public sealed class MirStoreDerefInstruction(
 public sealed class MirStorePlaceInstruction(StoragePlace place, MirValueId value, TextSpan span)
     : MirInstruction(result: null, resultType: null, span, hasSideEffects: true)
 {
-    public StoragePlace Place { get; } = place;
+    public StoragePlace Place { get; } = Requires.NotNull(place);
     public MirValueId Value { get; } = value;
 
     public override IReadOnlyList<MirValueId> Uses => [Value];
@@ -598,7 +598,7 @@ public sealed class MirUpdatePlaceInstruction(
     int? pointerArithmeticStride = null)
     : MirInstruction(result: null, resultType: null, span, hasSideEffects: true)
 {
-    public StoragePlace Place { get; } = place;
+    public StoragePlace Place { get; } = Requires.NotNull(place);
     public BoundBinaryOperatorKind OperatorKind { get; } = operatorKind;
     public MirValueId Value { get; } = value;
     public int? PointerArithmeticStride { get; } = pointerArithmeticStride;
@@ -633,8 +633,8 @@ public sealed class MirInlineAsmInstruction(
 {
     public AsmVolatility Volatility { get; } = volatility;
     public InlineAsmFlagOutput? FlagOutput { get; } = flagOutput;
-    public IReadOnlyList<InlineAsmLine> ParsedLines { get; } = parsedLines;
-    public IReadOnlyList<MirInlineAsmBinding> Bindings { get; } = bindings;
+    public IReadOnlyList<InlineAsmLine> ParsedLines { get; } = Requires.NotNull(parsedLines);
+    public IReadOnlyList<MirInlineAsmBinding> Bindings { get; } = Requires.NotNull(bindings);
 
     public override IReadOnlyList<MirValueId> Uses
     {
@@ -682,7 +682,7 @@ public sealed class MirYieldToInstruction(FunctionSymbol targetFunction, IReadOn
     : MirInstruction(result: null, resultType: null, span, hasSideEffects: true)
 {
     public FunctionSymbol TargetFunction { get; } = Requires.NotNull(targetFunction);
-    public IReadOnlyList<MirValueId> Arguments { get; } = arguments;
+    public IReadOnlyList<MirValueId> Arguments { get; } = Requires.NotNull(arguments);
 
     public override IReadOnlyList<MirValueId> Uses => Arguments;
 
@@ -808,7 +808,7 @@ public abstract class MirTerminator(TextSpan span)
 public sealed class MirGotoTerminator(MirBlockRef target, IReadOnlyList<MirValueId> arguments, TextSpan span) : MirTerminator(span)
 {
     public MirBlockRef Target { get; } = Requires.NotNull(target);
-    public IReadOnlyList<MirValueId> Arguments { get; } = arguments;
+    public IReadOnlyList<MirValueId> Arguments { get; } = Requires.NotNull(arguments);
 
     public override IReadOnlyList<MirValueId> Uses => Arguments;
 
@@ -839,8 +839,8 @@ public sealed class MirBranchTerminator(
     public MirValueId Condition { get; } = condition;
     public MirBlockRef TrueTarget { get; } = Requires.NotNull(trueTarget);
     public MirBlockRef FalseTarget { get; } = Requires.NotNull(falseTarget);
-    public IReadOnlyList<MirValueId> TrueArguments { get; } = trueArguments;
-    public IReadOnlyList<MirValueId> FalseArguments { get; } = falseArguments;
+    public IReadOnlyList<MirValueId> TrueArguments { get; } = Requires.NotNull(trueArguments);
+    public IReadOnlyList<MirValueId> FalseArguments { get; } = Requires.NotNull(falseArguments);
 
     /// <summary>
     /// When set, the branch consumes the hardware flag directly instead of testing a register.
@@ -887,7 +887,7 @@ public sealed class MirBranchTerminator(
 
 public sealed class MirReturnTerminator(IReadOnlyList<MirValueId> values, TextSpan span) : MirTerminator(span)
 {
-    public IReadOnlyList<MirValueId> Values { get; } = values;
+    public IReadOnlyList<MirValueId> Values { get; } = Requires.NotNull(values);
 
     public override IReadOnlyList<MirValueId> Uses => Values;
 
@@ -904,11 +904,4 @@ public sealed class MirReturnTerminator(IReadOnlyList<MirValueId> values, TextSp
 
         return changed ? new MirReturnTerminator(rewritten, Span) : this;
     }
-}
-
-public sealed class MirUnreachableTerminator(TextSpan span) : MirTerminator(span)
-{
-    public override IReadOnlyList<MirValueId> Uses => [];
-
-    public override MirTerminator RewriteUses(IReadOnlyDictionary<MirValueId, MirValueId> mapping) => this;
 }

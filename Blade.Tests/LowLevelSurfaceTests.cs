@@ -82,15 +82,15 @@ public class LowLevelSurfaceTests
         Assert.That(InlineAssemblyBindingAnalysis.IncludesWrite(InlineAsmBindingAccess.Read), Is.False);
     }
 
-[Test]
+    [Test]
     public void LowLevelModelTypes_ExposeExpectedSurface()
     {
         AsmPhysicalRegisterOperand physical = new(new P2Register(0x1F8));
         Assert.That(physical.Address, Is.EqualTo(0x1F8));
         Assert.That(physical.Format(), Is.EqualTo("PTRA"));
 
-        LirUnreachableTerminator lirUnreachable = new(new TextSpan(4, 2));
-        Assert.That(lirUnreachable.Span, Is.EqualTo(new TextSpan(4, 2)));
+        LirReturnTerminator lirReturn = new([], new TextSpan(4, 2));
+        Assert.That(lirReturn.Span, Is.EqualTo(new TextSpan(4, 2)));
 
     }
 }

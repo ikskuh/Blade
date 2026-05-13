@@ -415,6 +415,23 @@ public sealed class RegressionHarnessTests
     }
 
     [Test]
+    public void RegressionCommandLine_MissingRootedEnvironmentHardwarePort_IsIgnored()
+    {
+        string? previous = Environment.GetEnvironmentVariable("BLADE_TEST_PORT");
+        string missingPortPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "missing-serial-port");
+        try
+        {
+            Environment.SetEnvironmentVariable("BLADE_TEST_PORT", missingPortPath);
+            RegressionRunOptions options = ParseRegressionCommandLine();
+            Assert.That(options.HardwarePort, Is.Null);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("BLADE_TEST_PORT", previous);
+        }
+    }
+
+    [Test]
     public void RegressionCommandLine_CliHardwarePortOverridesEnvironment()
     {
         string? previous = Environment.GetEnvironmentVariable("BLADE_TEST_PORT");

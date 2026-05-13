@@ -148,7 +148,6 @@ internal static class LirStructuralEquality
                 && OperandsEqual(lhs.TrueArguments, rhs.TrueArguments, context)
                 && OperandsEqual(lhs.FalseArguments, rhs.FalseArguments, context),
             (LirReturnTerminator lhs, LirReturnTerminator rhs) => OperandsEqual(lhs.Values, rhs.Values, context),
-            (LirUnreachableTerminator, LirUnreachableTerminator) => true,
             _ => false,
         };
     }

@@ -675,8 +675,8 @@ public static class MirLowerer
             List<MirBlock> blocks = new(_blocks.Count);
             foreach (BlockBuilder block in _blocks)
             {
-                MirTerminator terminator = block.Terminator ?? new MirUnreachableTerminator(new TextSpan(0, 0));
-                blocks.Add(new MirBlock(block.Label, block.Parameters, block.Instructions, terminator));
+                Assert.Invariant(block.Terminator is not null);
+                blocks.Add(new MirBlock(block.Label, block.Parameters, block.Instructions, block.Terminator));
             }
 
             return new MirFunction(_symbol, _isEntryPoint, _returnTypes, blocks, _returnSlots, _flagValues);
@@ -874,11 +874,7 @@ public static class MirLowerer
 
         private void LowerLoopTransfer(bool isBreak, TextSpan span)
         {
-            if (_loopStack.Count == 0)
-            {
-                _currentBlock.Terminator = new MirUnreachableTerminator(span);
-                return;
-            }
+            Assert.Invariant(_loopStack.Count > 0, "Loop stack is empty.");
 
             LoopContext loop = _loopStack.Peek();
             MirBlockRef target = isBreak ? loop.BreakLabel : loop.ContinueLabel;

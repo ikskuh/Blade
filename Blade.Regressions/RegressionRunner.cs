@@ -2115,7 +2115,15 @@ internal static class HardwarePortResolver
             return string.IsNullOrWhiteSpace(explicitPort) ? null : explicitPort;
 
         string? envPort = Environment.GetEnvironmentVariable("BLADE_TEST_PORT");
-        return string.IsNullOrWhiteSpace(envPort) ? null : envPort;
+        if (string.IsNullOrWhiteSpace(envPort))
+            return null;
+
+        // Detached hardware commonly leaves a stale rooted device path in the environment.
+        // Treat that as unavailable so the regression suite does not attempt live hardware runs.
+        if (Path.IsPathRooted(envPort) && !File.Exists(envPort))
+            return null;
+
+        return envPort;
     }
 }
 
