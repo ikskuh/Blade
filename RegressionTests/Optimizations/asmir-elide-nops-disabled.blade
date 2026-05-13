@@ -6,8 +6,6 @@
 // - MOV ?1, ?1
 // - OR ?1, #0
 // - ADD ?1, #0
-// SEQUENCE:
-// - JMP #blade_halt
 // NOTE:
 //   Negative case for elide-nops: with optimization disabled, the inline no-ops remain
 //   and the entry-point exit still targets the runtime halt hook.

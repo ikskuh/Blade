@@ -1,11 +1,11 @@
 // EXPECT: pass
 // STAGE: final-asm
 // ARGS: --runtime=runtime_launcher.blade
-// CONTAINS:
-// - ? LONG 66
-// - blade_entry
-// - JMP #blade_halt
+// EXACT:
+// - NOP
+// - COGID ?1
+// - COGSTOP ?1
 
 cog task main {
-    var flag: u32 = 1;
+    asm volatile { NOP };
 }
