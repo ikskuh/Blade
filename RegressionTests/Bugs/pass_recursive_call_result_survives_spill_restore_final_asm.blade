@@ -1,11 +1,11 @@
 // EXPECT: pass
 // STAGE: final-asm
 // SEQUENCE:
-// - PUSHB PB
-// - MOV PB, PA
-// - MOV PA, PA
-// - POPB PB
-// - QMUL PB, PA
+// - PUSHB ?1
+// - CALLB #f_factorial
+// - MOV ?2, ?1
+// - POPB ?1
+// - QMUL ?2, ?1
 // NOTE:
 //   Recursive calls spill the live caller value across CALLB. The recursive
 //   lowering now preserves the live caller input in PB and restores that register

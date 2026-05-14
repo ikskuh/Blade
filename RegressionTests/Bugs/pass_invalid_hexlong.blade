@@ -1,0 +1,54 @@
+// EXPECT: pass
+// STAGE: final-asm
+// CONTAINS:
+// - CMP ?2, ?1 WC
+// - SHL ?, #4
+// - ADD ?, #1
+// ! MOV ?1, #0
+// ! GETNIB ?1, ?, #7
+// ! CALLPA ?1, #f_rt_write_byte
+// ! MOV ?1, #4
+// ! MOV ?1, #1
+// NOTE:
+//   The loop-bound register from rt_write_hex_long's header compare must not be
+//   reused as the body scratch register. If it is, the helper resets the bound
+//   to 0 inside the loop and exits early.
+
+hub const RT_TXD_PIN: u32 = 62;
+
+hub const HEX_DIGIT_ASC_OFFSET: u8 = '0';
+hub const HEX_CHAR_ASC_OFFSET: u8 = 'A' - 10;
+
+inline asm fn rt_hex_chr(value: nib) u8 {
+          CMP {value}, #10 WCZ
+  IF_GE   ADD {value}, {HEX_CHAR_ASC_OFFSET}
+  IF_LT   ADD {value}, {HEX_DIGIT_ASC_OFFSET}
+          MOV {return}, {value}
+}
+
+inline asm fn rt_get_top_nib(value: u32) nib {
+     GETNIB {return}, {value}, #7
+}
+
+
+noinline leaf asm fn rt_write_byte(chr: u8)
+{
+    _loop:
+        TESTP   {RT_TXD_PIN}        WC   // wait for empty buffer
+IF_NC   JMP     #_loop                  // if not empty, test again
+        WYPIN   {chr}, {RT_TXD_PIN}      // write PA
+}
+
+noinline fn rt_write_hex_long(value: u32)
+{
+     for(8) {
+          const head: nib = rt_get_top_nib(value);
+          const char: u8 = rt_hex_chr(head);          
+          rt_write_byte(char);
+          value = value << 4;
+     }
+}
+
+cog task main() {
+    rt_write_hex_long(0x11_22_33_44);
+}

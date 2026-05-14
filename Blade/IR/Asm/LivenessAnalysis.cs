@@ -102,7 +102,7 @@ public static class LivenessAnalyzer
                 leaders.Add(i);
             }
             else if (nodes[i] is AsmInstructionNode instruction
-                     && (instruction.Form.IsBranch || instruction.Form.IsReturn))
+                     && (instruction.Form.IsBranch || instruction.Form.IsJump || instruction.Form.IsReturn))
             {
                 if (i + 1 < nodes.Count)
                     leaders.Add(i + 1);
@@ -165,7 +165,7 @@ public static class LivenessAnalyzer
                 continue;
             }
 
-            bool isBranch = lastInstruction.Form.IsBranch;
+            bool isBranch = lastInstruction.Form.IsBranch || lastInstruction.Form.IsJump;
             bool isReturn = lastInstruction.Form.IsReturn;
 
             if (isReturn)
@@ -402,11 +402,10 @@ public static class LivenessAnalyzer
         if (instruction.Mnemonic == P2Mnemonic.MOV && instruction.Operands.Count == 2)
             return;
 
-        List<VirtualAsmValue> explicitReads = [];
-        if (instruction.FlagInput.C is not null)
-            explicitReads.Add(instruction.FlagInput.C);
-        if (instruction.FlagInput.Z is not null)
-            explicitReads.Add(instruction.FlagInput.Z);
+        List<VirtualAsmValue> explicitReads = CollectExplicitReads(instruction);
+        List<VirtualAsmValue> operandReads = CollectOperandReads(instruction);
+        List<VirtualAsmValue> allReads = [.. explicitReads];
+        allReads.AddRange(operandReads);
 
         List<VirtualAsmValue> explicitWrites = [];
         if (instruction.FlagOutput.C is not null)
@@ -463,6 +462,44 @@ public static class LivenessAnalyzer
                     AddEdge(interference, writeRegister, readRegister);
             }
         }
+
+        for (int leftIndex = 0; leftIndex < allReads.Count; leftIndex++)
+        {
+            VirtualAsmValue left = allReads[leftIndex];
+            for (int rightIndex = leftIndex + 1; rightIndex < allReads.Count; rightIndex++)
+            {
+                VirtualAsmValue right = allReads[rightIndex];
+                if (right != left)
+                    AddEdge(interference, left, right);
+            }
+        }
+    }
+
+    private static List<VirtualAsmValue> CollectExplicitReads(AsmInstructionNode instruction)
+    {
+        List<VirtualAsmValue> explicitReads = [];
+        if (instruction.FlagInput.C is not null)
+            explicitReads.Add(instruction.FlagInput.C);
+        if (instruction.FlagInput.Z is not null)
+            explicitReads.Add(instruction.FlagInput.Z);
+
+        return explicitReads;
+    }
+
+    private static List<VirtualAsmValue> CollectOperandReads(AsmInstructionNode instruction)
+    {
+        List<VirtualAsmValue> operandReads = [];
+        for (int operandIndex = 0; operandIndex < instruction.Operands.Count; operandIndex++)
+        {
+            if (instruction.Operands[operandIndex] is not AsmRegisterOperand operand)
+                continue;
+
+            P2OperandAccess access = instruction.Form.Operands[operandIndex].Access;
+            if (access is P2OperandAccess.Read or P2OperandAccess.ReadWrite)
+                operandReads.Add(operand.Value);
+        }
+
+        return operandReads;
     }
 
     private static AsmSymbolOperand? FindImmediateSymbolTarget(AsmInstructionNode instruction)

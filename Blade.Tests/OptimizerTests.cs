@@ -982,6 +982,60 @@ public class OptimizerTests
     }
 
     [Test]
+    public void AsmOptimizer_DceRegPreservesLoopBodyUpdatesAcrossJumpBackedge()
+    {
+        AsmRegisterOperand limit = AsmRegister(1);
+        AsmRegisterOperand index = AsmRegister(2);
+        AsmRegisterOperand carried = AsmRegister(3);
+        AsmRegisterOperand scratch = AsmRegister(4);
+        AsmRegisterOperand shiftAmount = AsmRegister(5);
+        AsmRegisterOperand increment = AsmRegister(6);
+        ControlFlowLabelSymbol loopHeader = new("f_loop_header");
+        ControlFlowLabelSymbol loopBody = new("f_loop_body");
+        ControlFlowLabelSymbol done = new("f_done");
+
+        AsmModule module = CreateAsmModule(functions:
+        [
+            CreateAsmFunction("f", isEntryPoint: false, CallingConventionTier.General,
+            [
+                new AsmInstructionNode(P2Mnemonic.MOV, [limit, new AsmImmediateOperand(8)]),
+                new AsmInstructionNode(P2Mnemonic.MOV, [index, new AsmImmediateOperand(0)]),
+                new AsmInstructionNode(P2Mnemonic.MOV, [carried, new AsmImmediateOperand(1)]),
+                new AsmLabelNode(loopHeader),
+                new AsmInstructionNode(
+                    P2Mnemonic.CMP,
+                    [index, limit],
+                    flagOutput: new AsmFlagOutput(P2FlagEffect.WC, null, null)),
+                new AsmInstructionNode(
+                    P2Mnemonic.JMP,
+                    [new AsmSymbolOperand(done, AsmSymbolAddressingMode.Immediate)],
+                    condition: P2ConditionCode.IF_NC),
+                new AsmLabelNode(loopBody),
+                new AsmInstructionNode(P2Mnemonic.GETNIB, [scratch, carried, new AsmImmediateOperand(7)]),
+                new AsmInstructionNode(P2Mnemonic.MOV, [new AsmSymbolOperand(P2SpecialRegister.OUTA), scratch]),
+                new AsmInstructionNode(P2Mnemonic.MOV, [shiftAmount, new AsmImmediateOperand(4)]),
+                new AsmInstructionNode(P2Mnemonic.SHL, [carried, shiftAmount]),
+                new AsmInstructionNode(P2Mnemonic.MOV, [increment, new AsmImmediateOperand(1)]),
+                new AsmInstructionNode(P2Mnemonic.ADD, [index, increment]),
+                new AsmInstructionNode(
+                    P2Mnemonic.JMP,
+                    [new AsmSymbolOperand(loopHeader, AsmSymbolAddressingMode.Immediate)]),
+                new AsmLabelNode(done),
+                new AsmInstructionNode(P2Mnemonic.RET, []),
+            ]),
+        ]);
+
+        AsmOptimization dce = OptimizationRegistry.GetAsmOptimization("dce-reg")!;
+        AsmFunction function = AsmOptimizer.Optimize(module, [dce]).Functions[0];
+        AsmInstructionNode[] instructions = function.Nodes.OfType<AsmInstructionNode>().ToArray();
+
+        Assert.That(instructions.Any(static instruction => instruction.Mnemonic == P2Mnemonic.GETNIB), Is.True);
+        Assert.That(instructions.Any(static instruction => instruction.Mnemonic == P2Mnemonic.SHL), Is.True);
+        Assert.That(instructions.Any(static instruction => instruction.Mnemonic == P2Mnemonic.ADD), Is.True);
+        Assert.That(instructions.Any(static instruction => instruction.Mnemonic == P2Mnemonic.JMP && instruction.Condition is null), Is.True);
+    }
+
+    [Test]
     public void AsmOptimizer_PreservesInstructionUsedByGeneralReturnStore()
     {
         AsmRegisterOperand r1 = AsmRegister(1);

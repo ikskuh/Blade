@@ -1,0 +1,20 @@
+// EXPECT: pass
+// ARGS: --runtime=../../Blade.HwTestRunner/Runtime.blade -fno-asmir-opt=*
+// STAGE: final-asm
+// CONTAINS:
+// - CMP ?1, ?2 WC
+// ! CMP ?1, ?1 WC
+// - SHL ?, ?
+// - ADD ?, ?
+// NOTE:
+//   Reproduces the exact no-ASMIR-opt runtime compile path that previously let
+//   register allocation collapse both compare inputs in rt_write_hex_long onto
+//   the same physical register. That turns the loop guard into CMP r, r and
+//   breaks the emitted hex output on hardware.
+cog task main {
+    
+    extern cog var rt_result: u32;
+    extern cog var rt_param0: u32;
+    
+    rt_result = rt_param0;
+}

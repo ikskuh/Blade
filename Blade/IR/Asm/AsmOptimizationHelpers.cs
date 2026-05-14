@@ -299,7 +299,7 @@ internal static class AsmOptimizationHelpers
             if (function.Nodes[i] is not AsmInstructionNode instruction)
                 continue;
 
-            if (!instruction.Form.IsBranch
+            if (!(instruction.Form.IsBranch || instruction.Form.IsJump)
                 || instruction.Form.IsReturn)
             {
                 continue;
