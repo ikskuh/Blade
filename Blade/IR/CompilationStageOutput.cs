@@ -64,6 +64,11 @@ public sealed class CompilationStageOutput
     /// </summary>
     public IReadOnlyList<AsmModule>? AsmModules { get; set; }
 
+    /// <summary>
+    /// Gets or sets the ASMIR modules after optimization and legalization, but before register allocation.
+    /// </summary>
+    public IReadOnlyList<AsmModule>? PreRegisterAllocationAsmModules { get; set; }
+
     public bool IsComplete => this.AsmModules is not null
                            && this.CogResourceLayouts is not null
                            ;

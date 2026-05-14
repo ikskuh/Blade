@@ -720,7 +720,7 @@ public sealed class RegressionHarnessTests
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.HwErr));
-            Assert.That(fixtureResult.Details, Has.Some.StartsWith("hardware run 1 [] failed:"));
+            Assert.That(fixtureResult.Details, Has.Some.StartsWith("hardware run 1 [] ended with status Crashed:"));
         });
     }
 
@@ -756,7 +756,7 @@ public sealed class RegressionHarnessTests
         {
             Assert.That(result.Succeeded, Is.False);
             Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.HwErr));
-            Assert.That(fixtureResult.Details, Has.Some.StartsWith("hardware run 1 [] failed:"));
+            Assert.That(fixtureResult.Details, Has.Some.StartsWith("hardware run 1 [] ended with status Crashed:"));
         });
     }
 
@@ -1019,6 +1019,7 @@ public sealed class RegressionHarnessTests
             Assert.That(File.Exists(secondRunDumpPath), Is.True);
             Assert.That(firstRunDump, Does.Contain("Run: 1"));
             Assert.That(firstRunDump, Does.Contain("Arguments: [0x1]"));
+            Assert.That(firstRunDump, Does.Contain("Status: Success"));
             Assert.That(firstRunDump, Does.Contain("Expected Outputs:"));
             Assert.That(firstRunDump, Does.Contain("[0] 0x00000010 | unsigned 16 | signed 16"));
             Assert.That(firstRunDump, Does.Contain("[0] 0x00000001 | unsigned 1 | signed 1"));
@@ -1027,11 +1028,76 @@ public sealed class RegressionHarnessTests
             Assert.That(firstRunDump, Does.Contain("stderr-one<CR><LF>" + Environment.NewLine));
             Assert.That(secondRunDump, Does.Contain("Run: 2"));
             Assert.That(secondRunDump, Does.Contain("Arguments: [0x2]"));
+            Assert.That(secondRunDump, Does.Contain("Status: Success"));
             Assert.That(secondRunDump, Does.Contain("Expected Outputs:"));
             Assert.That(secondRunDump, Does.Contain("[0] 0x00000020 | unsigned 32 | signed 32"));
             Assert.That(secondRunDump, Does.Contain("[0] 0x00000021 | unsigned 33 | signed 33"));
             Assert.That(secondRunDump, Does.Contain("second<LF>" + Environment.NewLine + "<ETX>00000021<LF>" + Environment.NewLine + "<EOT>"));
             Assert.That(secondRunDump, Does.Contain("stderr-two<EOT>"));
+        });
+    }
+
+    [Test]
+    public void HwErrFixture_WritesStatusStreamsAndExceptionForFailedRun()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        WriteHardwareRuntime(temp);
+        temp.WriteFile("Demonstrators/hw_error_artifacts.blade", """
+        // EXPECT: pass-hw
+        // RUNS:
+        // - [0x1] = 0x10
+        cog task main {
+            var x: u32 = 0;
+            _ = x;
+        }
+        """);
+
+        temp.MakeDir("tools");
+        WriteExecutable(temp.GetFullPath("tools/turboprop"), """
+        #!/bin/sh
+        /bin/cat >/dev/null
+        printf 'stderr-before-crash\n' >&2
+        printf '\002partial-log'
+        """);
+
+        using EnvironmentScope environment = new();
+        string? currentPath = Environment.GetEnvironmentVariable("PATH");
+        string toolSearchPath = string.IsNullOrWhiteSpace(currentPath)
+            ? temp.GetFullPath("tools")
+            : temp.GetFullPath("tools") + Path.PathSeparator + currentPath;
+        environment.Set("PATH", toolSearchPath);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = true,
+            HardwarePort = "/dev/fake-p2",
+            HardwareLoader = HardwareLoaderKind.Turboprop,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(item =>
+            item.RelativePath == "Demonstrators/hw_error_artifacts.blade");
+        if (fixtureResult.Outcome == RegressionFixtureOutcome.Skipped)
+            Assert.Ignore("flexspin is not available in this environment");
+
+        Assert.That(fixtureResult.ArtifactDirectoryPath, Is.Not.Null);
+        string dumpText = File.ReadAllText(Path.Combine(fixtureResult.ArtifactDirectoryPath!, "hardware-run-01.txt"));
+        string issuesText = File.ReadAllText(Path.Combine(fixtureResult.ArtifactDirectoryPath!, "issues.txt"));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.HwErr));
+            Assert.That(dumpText, Does.Contain("Status: Crashed"));
+            Assert.That(dumpText, Does.Contain("Outputs:" + Environment.NewLine + "<not available>"));
+            Assert.That(dumpText, Does.Contain("partial-log"));
+            Assert.That(dumpText, Does.Contain("<STX>partial-log"));
+            Assert.That(dumpText, Does.Contain("stderr-before-crash<LF>"));
+            Assert.That(dumpText, Does.Contain("Exception:"));
+            Assert.That(dumpText, Does.Contain("FixtureException"));
+            Assert.That(issuesText, Does.Contain("ended with status Crashed"));
+            Assert.That(issuesText, Does.Contain("FixtureException"));
         });
     }
 
@@ -1223,6 +1289,7 @@ public sealed class RegressionHarnessTests
         foreach (RegressionStage stage in new[]
                  {
                      RegressionStage.AsmirPreOptimization,
+                     RegressionStage.AsmirPreRegisterAllocation,
                      RegressionStage.Asmir,
                      RegressionStage.FinalAsm,
                  })

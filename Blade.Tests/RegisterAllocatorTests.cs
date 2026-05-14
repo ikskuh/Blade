@@ -95,6 +95,6 @@ public class RegisterAllocatorTests
         CogResourceLayoutSet cogResourceLayouts = IrTestFactory.CreateSimpleCogResourceLayouts(asmModule, imagePlan, includeDefaultBladeHalt: false);
         MirModule mirModule = CreateMirModule();
         LirModule lirModule = CreateLirModule();
-        return new IrBuildResult(imagePlan, imagePlacement, layoutSolution, cogResourceLayouts, mirModule, mirModule, lirModule, lirModule, asmModule, asmModule, string.Empty);
+        return new IrBuildResult(imagePlan, imagePlacement, layoutSolution, cogResourceLayouts, mirModule, mirModule, lirModule, lirModule, asmModule, asmModule, asmModule, string.Empty);
     }
 }

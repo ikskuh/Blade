@@ -112,6 +112,7 @@ public static class CodeNormalizer
             RegressionStage.LirPreOptimization => StripSemicolonComment,
             RegressionStage.Lir => StripSemicolonComment,
             RegressionStage.AsmirPreOptimization => StripAssemblyComment,
+            RegressionStage.AsmirPreRegisterAllocation => StripAssemblyComment,
             RegressionStage.Asmir => StripAssemblyComment,
             RegressionStage.FinalAsm => StripAssemblyComment,
             _ => throw new InvalidOperationException($"Unknown stage '{stage}'."),

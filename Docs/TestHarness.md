@@ -152,6 +152,7 @@ The strict form supports these entry shapes:
 // STAGE: lir-preopt
 // STAGE: lir
 // STAGE: asmir-preopt
+// STAGE: asmir-prealloc
 // STAGE: asmir
 // STAGE: final-asm
 ```
@@ -225,7 +226,7 @@ Snippet matching is token-safe: whitespace is normalized, but identifiers are no
 Comment stripping depends on the selected stage:
 
 - `bound`, `mir-preopt`, `mir`, `lir-preopt`, `lir` strip `;` comments.
-- `asmir-preopt`, `asmir`, `final-asm` strip `'` comments.
+- `asmir-preopt`, `asmir-prealloc`, `asmir`, `final-asm` strip `'` comments.
 
 ### `EXACT`
 

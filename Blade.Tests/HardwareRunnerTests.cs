@@ -19,11 +19,11 @@ public sealed class HardwareRunnerTests
         FakeLoaderPaths paths = InstallFakeLoaders(temp, includeTurboprop: true, includeLoadp2: true);
         using EnvironmentScope environment = CreateLoaderEnvironment(paths);
 
-        TestResult result = ExecuteFixture(temp, HardwareLoaderKind.Auto);
+        TestRun result = ExecuteFixture(temp, HardwareLoaderKind.Auto);
 
         Assert.Multiple(() =>
         {
-            Assert.That(result.Outputs, Is.EqualTo(new[] { 0xCAFEBABEU }));
+            Assert.That(result.Result!.Outputs, Is.EqualTo(new[] { 0xCAFEBABEU }));
             Assert.That(File.Exists(paths.TurbopropArgsPath), Is.True);
             Assert.That(File.Exists(paths.Loadp2ArgsPath), Is.False);
         });
@@ -36,11 +36,11 @@ public sealed class HardwareRunnerTests
         FakeLoaderPaths paths = InstallFakeLoaders(temp, includeTurboprop: false, includeLoadp2: true);
         using EnvironmentScope environment = CreateLoaderEnvironment(paths);
 
-        TestResult result = ExecuteFixture(temp, HardwareLoaderKind.Auto);
+        TestRun result = ExecuteFixture(temp, HardwareLoaderKind.Auto);
 
         Assert.Multiple(() =>
         {
-            Assert.That(result.Outputs, Is.EqualTo(new[] { 0xCAFEBABEU }));
+            Assert.That(result.Result!.Outputs, Is.EqualTo(new[] { 0xCAFEBABEU }));
             Assert.That(File.Exists(paths.Loadp2ArgsPath), Is.True);
         });
     }
@@ -52,7 +52,7 @@ public sealed class HardwareRunnerTests
         FakeLoaderPaths paths = InstallFakeLoaders(temp, includeTurboprop: true, includeLoadp2: false);
         using EnvironmentScope environment = CreateLoaderEnvironment(paths);
 
-        TestResult result = ExecuteFixture(
+        TestRun result = ExecuteFixture(
             temp,
             HardwareLoaderKind.Turboprop,
             parameters: [new FixtureParameter(0xAABBCCDDU)]);
@@ -179,8 +179,13 @@ public sealed class HardwareRunnerTests
         Runner runner = CreateRunner(HardwareLoaderKind.Turboprop);
         runner.Timeout = 50;
 
-        TimeoutException ex = Assert.Throws<TimeoutException>(() => runner.Execute(temp.GetFullPath("fixture.bin"), CreateConfig(), []))!;
-        Assert.That(ex.Message, Does.Contain("turboprop"));
+        TestRun result = runner.Execute(temp.GetFullPath("fixture.bin"), CreateConfig(), []);
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Status, Is.EqualTo(TestStatus.TimedOut));
+            Assert.That(result.Exception, Is.TypeOf<TimeoutException>());
+            Assert.That(result.Exception!.Message, Does.Contain("turboprop"));
+        });
     }
 
     [Test]
@@ -194,8 +199,13 @@ public sealed class HardwareRunnerTests
         """);
         using EnvironmentScope environment = CreateLoaderEnvironment(paths);
 
-        FixtureException ex = Assert.Throws<FixtureException>(() => ExecuteFixture(temp, HardwareLoaderKind.Turboprop))!;
-        Assert.That(ex.Message, Does.Contain("turboprop"));
+        TestRun result = ExecuteFixture(temp, HardwareLoaderKind.Turboprop);
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Status, Is.EqualTo(TestStatus.Crashed));
+            Assert.That(result.Exception, Is.TypeOf<FixtureException>());
+            Assert.That(result.Exception!.Message, Does.Contain("turboprop"));
+        });
     }
 
     [Test]
@@ -209,8 +219,13 @@ public sealed class HardwareRunnerTests
         """);
         using EnvironmentScope environment = CreateLoaderEnvironment(paths);
 
-        FixtureException ex = Assert.Throws<FixtureException>(() => ExecuteFixture(temp, HardwareLoaderKind.Turboprop))!;
-        Assert.That(ex.Message, Does.Contain("turboprop"));
+        TestRun result = ExecuteFixture(temp, HardwareLoaderKind.Turboprop);
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Status, Is.EqualTo(TestStatus.Crashed));
+            Assert.That(result.Exception, Is.TypeOf<FixtureException>());
+            Assert.That(result.Exception!.Message, Does.Contain("turboprop"));
+        });
     }
 
     [Test]
@@ -226,7 +241,7 @@ public sealed class HardwareRunnerTests
         """);
         using EnvironmentScope environment = CreateLoaderEnvironment(paths);
 
-        TestResult result = ExecuteFixture(
+        TestRun result = ExecuteFixture(
             temp,
             HardwareLoaderKind.Turboprop,
             parameters: [new FixtureParameter(0x11223344U), new FixtureParameter(true)]);
@@ -234,10 +249,38 @@ public sealed class HardwareRunnerTests
         Assert.Multiple(() =>
         {
             Assert.That(result.Inputs, Is.EqualTo(new[] { 0x11223344U, 1U }));
-            Assert.That(result.Outputs, Is.EqualTo(new[] { 0xCAFEBABEU, 0x2AU }));
+            Assert.That(result.Result!.Outputs, Is.EqualTo(new[] { 0xCAFEBABEU, 0x2AU }));
             Assert.That(result.Log.ToArray(), Is.EqualTo(Encoding.ASCII.GetBytes("trace-data")));
             Assert.That(result.StdOut.ToArray(), Is.EqualTo(Encoding.ASCII.GetBytes("\u0002trace-data\u0003CAFEBABE\n0000002A\n\u0004")));
             Assert.That(result.StdErr.ToArray(), Is.EqualTo(Encoding.ASCII.GetBytes("stderr-line\n")));
+        });
+    }
+
+    [Test]
+    public void LoaderProtocol_CapturesPartialLogWhenResultNeverArrives()
+    {
+        using TempDirectory temp = new();
+        FakeLoaderPaths paths = InstallCustomTurboprop(temp, """
+        #!/bin/sh
+        /bin/cat >/dev/null
+        printf 'stderr-before-timeout\n' >&2
+        printf '\002partial-log'
+        /bin/sleep 30
+        """);
+        using EnvironmentScope environment = CreateLoaderEnvironment(paths);
+
+        Runner runner = CreateRunner(HardwareLoaderKind.Turboprop);
+        runner.Timeout = 50;
+
+        TestRun result = runner.Execute(temp.GetFullPath("fixture.bin"), CreateConfig(), []);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Status, Is.EqualTo(TestStatus.TimedOut));
+            Assert.That(result.Result, Is.Null);
+            Assert.That(result.Log.ToArray(), Is.EqualTo(Encoding.ASCII.GetBytes("partial-log")));
+            Assert.That(result.StdOut.ToArray(), Is.EqualTo(Encoding.ASCII.GetBytes("\u0002partial-log")));
+            Assert.That(result.StdErr.ToArray(), Is.EqualTo(Encoding.ASCII.GetBytes("stderr-before-timeout\n")));
         });
     }
 
@@ -256,17 +299,17 @@ public sealed class HardwareRunnerTests
         using EnvironmentScope environment = CreateLoaderEnvironment(paths);
         environment.Set("BLADE_HW_TURBOPROP_COMPLETED", markerPath);
 
-        TestResult result = ExecuteFixture(temp, HardwareLoaderKind.Turboprop);
+        TestRun result = ExecuteFixture(temp, HardwareLoaderKind.Turboprop);
         bool completed = SpinWait.SpinUntil(() => File.Exists(markerPath), 250);
 
         Assert.Multiple(() =>
         {
-            Assert.That(result.Outputs, Is.EqualTo(new[] { 0xCAFEBABEU }));
+            Assert.That(result.Result!.Outputs, Is.EqualTo(new[] { 0xCAFEBABEU }));
             Assert.That(completed, Is.False);
         });
     }
 
-    private static TestResult ExecuteFixture(
+    private static TestRun ExecuteFixture(
         TempDirectory temp,
         HardwareLoaderKind loader,
         bool turbopropNoVersionCheck = false,

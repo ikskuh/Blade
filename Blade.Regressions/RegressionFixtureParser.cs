@@ -258,6 +258,7 @@ internal static class RegressionFixtureParser
                             "lir-preopt" => RegressionStage.LirPreOptimization,
                             "lir" => RegressionStage.Lir,
                             "asmir-preopt" => RegressionStage.AsmirPreOptimization,
+                            "asmir-prealloc" => RegressionStage.AsmirPreRegisterAllocation,
                             "asmir" => RegressionStage.Asmir,
                             "final-asm" => RegressionStage.FinalAsm,
                             _ => throw new InvalidOperationException($"Unsupported STAGE value '{directiveValue}'."),

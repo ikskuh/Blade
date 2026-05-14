@@ -19,9 +19,9 @@ public readonly struct FixtureParameter(uint value)
     public FixtureParameter(int value)
         : this(unchecked((uint)value))
     {
-        
+
     }
-    
+
     public FixtureParameter(bool value)
         : this(value ? 1 : 0)
     {
@@ -29,7 +29,7 @@ public readonly struct FixtureParameter(uint value)
     }
 
     public uint UInt => this.value;
-    
+
     public int Int => unchecked((int)this.value);
 }
 
@@ -136,7 +136,7 @@ public sealed class Runner
     /// <summary>
     /// Executes one fixture binary and returns its captured protocol output.
     /// </summary>
-    public TestResult Execute(string file, FixtureConfig config, FixtureParameter[] parameters)
+    public TestRun Execute(string file, FixtureConfig config, FixtureParameter[] parameters)
     {
         ArgumentNullException.ThrowIfNull(file, nameof(file));
         ArgumentNullException.ThrowIfNull(config, nameof(config));
@@ -144,10 +144,10 @@ public sealed class Runner
 
         if (!File.Exists(file))
             throw new FileNotFoundException("File not found", file);
-        
-        if(parameters.Length > config.ParameterCount)
+
+        if (parameters.Length > config.ParameterCount)
             throw new ArgumentOutOfRangeException(nameof(parameters));
-        
+
         byte[] testBinary = File.ReadAllBytes(file);
         uint[] inputs = CaptureInputs(parameters);
 
@@ -162,7 +162,7 @@ public sealed class Runner
         };
     }
 
-    private TestResult ExecuteLoadp2(byte[] testBinary, uint[] inputs)
+    private TestRun ExecuteLoadp2(byte[] testBinary, uint[] inputs)
     {
         using TempFile patchedFile = new();
         patchedFile.WriteAllBytes(testBinary);
@@ -182,33 +182,18 @@ public sealed class Runner
         startInfo.ArgumentList.Add(patchedFile.Path);
 
         using Process process = StartProcess(startInfo, "loadp2");
-        try
+
+
+        return ExecuteRun(process, "loadp2", inputs, postamble: (stdin) =>
         {
-            FixtureProtocolResult protocolResult = ReadFixtureResult(process.StandardOutput.BaseStream, "loadp2");
-
-            CloseStandardInput(process);
-            bool exitedNaturally = process.HasExited;
-            if (!exitedNaturally)
-                KillProcess(process);
-
-            protocolResult.Output.ReadToEnd();
-            byte[] stderr = ReadToEnd(process.StandardError.BaseStream);
-
-            if (exitedNaturally && process.ExitCode != 0)
-                throw new FixtureException($"loadp2 crashed with exit code {process.ExitCode}");
-
-            return CreateTestResult(inputs, protocolResult, stderr);
-        }
-        catch (Exception)
-        {
-            KillProcess(process);
-            DumpStderr(process);
-            throw;
-        }
+            stdin.Close();
+        });
     }
 
-    private TestResult ExecuteTurboprop(byte[] testBinary, uint[] inputs)
+    private TestRun ExecuteTurboprop(byte[] testBinary, uint[] inputs)
     {
+        byte[] loadableBinary = PadToLongBoundary(testBinary);
+
         ProcessStartInfo startInfo = new()
         {
             FileName = "turboprop",
@@ -225,18 +210,97 @@ public sealed class Runner
         startInfo.ArgumentList.Add("-");
 
         using Process process = StartProcess(startInfo, "turboprop");
+
+        return ExecuteRun(process, "turboprop", inputs, preamble: (stdin) =>
+        {
+            stdin.Write(loadableBinary, 0, loadableBinary.Length);
+            stdin.Close();
+        });
+    }
+
+    private TestRun ExecuteRun(Process process, string loaderName, uint[] inputs, Action<Stream>? preamble = null, Action<Stream>? postamble = null)
+    {
+        using CancellationTokenSource cts = new(this.Timeout);
+        CancellationToken cancellationToken = cts.Token;
+
         try
         {
-            byte[] loadableBinary = PadToLongBoundary(testBinary);
-            process.StandardInput.BaseStream.Write(loadableBinary, 0, loadableBinary.Length);
-            process.StandardInput.Close();
+            var stdin = process.StandardInput.BaseStream;
+            var stdout = process.StandardOutput.BaseStream;
+            var stderr = process.StandardError.BaseStream;
 
-            FixtureProtocolResult protocolResult = ReadFixtureResult(process.StandardOutput.BaseStream, "turboprop");
-            KillProcess(process);
+            FixtureOutputStream output = new(stdout);
+            FixtureOutputStream error = new(stderr);
+            ReadOnlySequence<byte> log = ReadOnlySequence<byte>.Empty;
+            TestResult result;
 
-            protocolResult.Output.ReadToEnd();
-            byte[] stderr = ReadToEnd(process.StandardError.BaseStream);
-            return CreateTestResult(inputs, protocolResult, stderr);
+            try
+            {
+                try
+                {
+                    preamble?.Invoke(stdin);
+
+                    log = this.ReadFixtureLog(output, loaderName, cancellationToken);
+
+                    result = this.ReadFixtureResult(output, loaderName, cancellationToken);
+
+                    postamble?.Invoke(stdin);
+
+                    bool exitedNaturally = process.WaitForExit(milliseconds: 20);
+                    if (!exitedNaturally)
+                    {
+                        KillProcess(process);
+                    }
+
+                    if (exitedNaturally && process.ExitCode != 0)
+                        throw new FixtureException($"{loaderName} crashed with exit code {process.ExitCode}");
+                }
+                finally
+                {
+                    // Ensure we've killed the process when leaving this block:
+                    KillProcess(process);
+
+                    output.ReadToEnd();
+                    error.ReadToEnd();
+                }
+            }
+            catch (TimeoutException ex)
+            {
+                return new TestRun(
+                    inputs,
+                    ex,
+                    TestStatus.TimedOut,
+                    new ReadOnlySequence<byte>(output.GetCapturedData()),
+                    new ReadOnlySequence<byte>(error.GetCapturedData()),
+                    ResolveCapturedLog(output, log));
+            }
+            catch (FixtureException ex)
+            {
+                return new TestRun(
+                    inputs,
+                    ex,
+                    TestStatus.Crashed,
+                    new ReadOnlySequence<byte>(output.GetCapturedData()),
+                    new ReadOnlySequence<byte>(error.GetCapturedData()),
+                    ResolveCapturedLog(output, log));
+            }
+            catch (Exception ex)
+            {
+                return new TestRun(
+                    inputs,
+                    ex,
+                    TestStatus.UnexpectedError,
+                    new ReadOnlySequence<byte>(output.GetCapturedData()),
+                    new ReadOnlySequence<byte>(error.GetCapturedData()),
+                    ResolveCapturedLog(output, log));
+            }
+
+            return new TestRun(
+                inputs,
+                result,
+                new ReadOnlySequence<byte>(output.GetCapturedData()),
+                new ReadOnlySequence<byte>(error.GetCapturedData()),
+                log);
         }
         catch (Exception)
         {
@@ -245,6 +309,7 @@ public sealed class Runner
             throw;
         }
     }
+
 
     private static byte[] PadToLongBoundary(byte[] input)
     {
@@ -300,23 +365,8 @@ public sealed class Runner
         }
     }
 
-    private static TestResult CreateTestResult(uint[] inputs, FixtureProtocolResult protocolResult, byte[] stderr)
+    private ReadOnlySequence<byte> ReadFixtureLog(FixtureOutputStream output, string loaderName, CancellationToken cancellationToken)
     {
-        byte[] stdout = protocolResult.Output.GetCapturedData();
-        return new TestResult(
-            inputs,
-            protocolResult.Outputs,
-            new ReadOnlySequence<byte>(protocolResult.Log),
-            new ReadOnlySequence<byte>(stdout),
-            new ReadOnlySequence<byte>(stderr));
-    }
-
-    private FixtureProtocolResult ReadFixtureResult(Stream stdout, string loaderName)
-    {
-        FixtureOutputStream output = new(stdout);
-        using CancellationTokenSource cts = new(this.Timeout);
-        CancellationToken cancellationToken = cts.Token;
-
         int stxIndex = output.WaitForByte(
             STX,
             cancellationToken,
@@ -328,6 +378,16 @@ public sealed class Runner
             $"Blade code did not exit within the total timeout of {this.Timeout} ms via {loaderName}.",
             $"{loaderName} exited before Blade code completed.");
 
+        byte[] captured = output.GetCapturedData();
+        int logStart = stxIndex + 1;
+        int logLength = etxIndex - logStart;
+        if (logLength == 0)
+            return ReadOnlySequence<byte>.Empty;
+        return new(captured[logStart..etxIndex]);
+    }
+
+    private TestResult ReadFixtureResult(FixtureOutputStream output, string loaderName, CancellationToken cancellationToken)
+    {
         List<uint> outputs = [];
         while (true)
         {
@@ -343,11 +403,27 @@ public sealed class Runner
             outputs.Add(ParseOutput(resultText, loaderName));
         }
 
+        return new TestResult([.. outputs]);
+    }
+
+    private static ReadOnlySequence<byte> ResolveCapturedLog(FixtureOutputStream output, ReadOnlySequence<byte> parsedLog)
+    {
+        ArgumentNullException.ThrowIfNull(output, nameof(output));
+
+        if (!parsedLog.IsEmpty)
+            return parsedLog;
+
         byte[] captured = output.GetCapturedData();
-        int logStart = stxIndex + 1;
-        int logLength = etxIndex - logStart;
-        byte[] log = logLength == 0 ? [] : captured[logStart..etxIndex];
-        return new FixtureProtocolResult(output, [.. outputs], log);
+        int stxIndex = Array.IndexOf(captured, STX);
+        if (stxIndex < 0 || stxIndex + 1 >= captured.Length)
+            return ReadOnlySequence<byte>.Empty;
+
+        int etxIndex = Array.IndexOf(captured, ETX, stxIndex + 1);
+        int logEndExclusive = etxIndex >= 0 ? etxIndex : captured.Length;
+        if (logEndExclusive <= stxIndex + 1)
+            return ReadOnlySequence<byte>.Empty;
+
+        return new ReadOnlySequence<byte>(captured[(stxIndex + 1)..logEndExclusive]);
     }
 
     private static uint ParseOutput(string resultText, string loaderName)
@@ -377,7 +453,7 @@ public sealed class Runner
     private void PatchParameters(byte[] input, FixtureParameter[] parameters)
     {
         int size = (4 * (parameters.Length + 4));
-        if(input.Length < size)
+        if (input.Length < size)
             throw new ArgumentException($"Test binary must be at least {size} bytes large!");
         Trace.Assert(BitConverter.IsLittleEndian);
         for (int i = 0; i < parameters.Length; i++)
@@ -441,25 +517,6 @@ public sealed class Runner
         }
     }
 
-    private sealed class FixtureProtocolResult
-    {
-        public FixtureProtocolResult(FixtureOutputStream output, uint[] outputs, byte[] log)
-        {
-            ArgumentNullException.ThrowIfNull(output);
-            ArgumentNullException.ThrowIfNull(outputs);
-            ArgumentNullException.ThrowIfNull(log);
-
-            Output = output;
-            Outputs = outputs;
-            Log = log;
-        }
-
-        public FixtureOutputStream Output { get; }
-
-        public uint[] Outputs { get; }
-
-        public byte[] Log { get; }
-    }
 }
 
 [System.Serializable]

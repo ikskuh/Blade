@@ -523,3 +523,17 @@ Implement a validator that checks if IR code is valid between all stages.
 ## Miscompilation: `rep loop` gets compiled to `JMP` loop
 
 ## "MODCZ" inline assembly syntax not support
+
+
+## There's a difference between "non-elidable" and "non-reorderable"
+
+We have different requirements for instructions, instruction pairs or sequences in the code:
+
+- Whatever (optimizers can go nuts)
+- The instruction must be executed (like a WRLONG)
+- The instruction must be executed, and must not be reordered relative to other instructions
+  - "RDLONG, WRLONG" (atomics)
+
+- Instructions with sideeffects are always non-elidable
+- `volatile asm` blocks cannot be reordered
+

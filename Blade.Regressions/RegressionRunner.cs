@@ -188,7 +188,7 @@ public static class RegressionRunner
                         evaluatedFixture,
                         hardwareSummary,
                         issues,
-                        hardwareExecution.CompletedRuns);
+                        hardwareExecution.CapturedRuns);
                 }
 
                 return new RegressionFixtureResult(
@@ -376,6 +376,7 @@ public static class RegressionRunner
             stageOutputs[RegressionStage.LirPreOptimization] = dumps.Single(static dump => dump.FileName == "15_lir_preopt.ir").RenderPlainText();
             stageOutputs[RegressionStage.Lir] = dumps.Single(static dump => dump.FileName == "20_lir.ir").RenderPlainText();
             stageOutputs[RegressionStage.AsmirPreOptimization] = dumps.Single(static dump => dump.FileName == "25_asmir_preopt.ir").RenderPlainText();
+            stageOutputs[RegressionStage.AsmirPreRegisterAllocation] = dumps.Single(static dump => dump.FileName == "28_asmir_prealloc.ir").RenderPlainText();
             stageOutputs[RegressionStage.Asmir] = dumps.Single(static dump => dump.FileName == "30_asmir.ir").RenderPlainText();
             stageOutputs[RegressionStage.FinalAsm] = assemblyText;
         }
@@ -881,15 +882,15 @@ public static class RegressionRunner
             bool succeeded = true;
             string? itemFailureReason = null;
 
-                if (gapStart < gapEnd)
+            if (gapStart < gapEnd)
+            {
+                if (SnippetMatcher.IndexOf(normalizedActual, normalizedNeg, gapStart, gapEnd, negativeBindings) is PatternMatch absoluteMatch)
                 {
-                    if (SnippetMatcher.IndexOf(normalizedActual, normalizedNeg, gapStart, gapEnd, negativeBindings) is PatternMatch absoluteMatch)
-                    {
-                        matches.Add(CreateTraceMatch(normalizedActual, absoluteMatch, negativeBindings));
-                        itemFailureReason = $"unexpected snippet in sequence gap: {negative.Pattern.Source}";
-                        issues.Add(itemFailureReason);
-                        succeeded = false;
-                        failureReason ??= itemFailureReason;
+                    matches.Add(CreateTraceMatch(normalizedActual, absoluteMatch, negativeBindings));
+                    itemFailureReason = $"unexpected snippet in sequence gap: {negative.Pattern.Source}";
+                    issues.Add(itemFailureReason);
+                    succeeded = false;
+                    failureReason ??= itemFailureReason;
                 }
             }
 
@@ -1007,7 +1008,7 @@ public static class RegressionRunner
             List<string> issues = [];
             bool observedMismatch = false;
             bool allRunsMatchedExpected = fixture.Expectation.HardwareRuns.Count > 0;
-            List<HardwareRunCapture> completedRuns = [];
+            List<HardwareRunCapture> capturedRuns = [];
 
             for (int i = 0; i < fixture.Expectation.HardwareRuns.Count; i++)
             {
@@ -1017,7 +1018,7 @@ public static class RegressionRunner
 
                 try
                 {
-                    TestResult testResult = HardwareFixtureRunner.Run(
+                    TestRun testResult = HardwareFixtureRunner.Run(
                         binaryResult.BinaryBytes,
                         hardwarePort,
                         config,
@@ -1025,16 +1026,28 @@ public static class RegressionRunner
                         hardwareLoader,
                         hardwareTurbopropNoVersionCheck);
 
-                    if (testResult.Outputs.Count == 0 || testResult.Outputs.Count > HardwareVectorWidth)
+                    if (testResult.Result is null)
                     {
+                        capturedRuns.Add(new HardwareRunCapture(i + 1, run, testResult));
                         return HardwareExecutionResult.Error(
-                            [$"hardware run {i + 1} {FormatHardwareRunArguments(run)} produced {testResult.Outputs.Count} outputs; hardware fixtures support between 1 and 8 outputs"],
+                            BuildHardwareRunFailureDetails(i + 1, run, testResult),
                             binaryResult.BinaryBytes,
-                            [.. completedRuns]);
+                            [.. capturedRuns]);
                     }
 
-                    TestResult normalizedResult = NormalizeHardwareTestResult(testResult);
-                    completedRuns.Add(new HardwareRunCapture(i + 1, run, normalizedResult));
+                    if (testResult.Result.Outputs.Count == 0 || testResult.Result.Outputs.Count > HardwareVectorWidth)
+                    {
+                        TestRun capturedRun = NormalizeHardwareTestRun(testResult);
+                        capturedRuns.Add(new HardwareRunCapture(i + 1, run, capturedRun));
+                        return HardwareExecutionResult.Error(
+                            [$"hardware run {i + 1} {FormatHardwareRunArguments(run)} produced {testResult.Result.Outputs.Count} outputs; hardware fixtures support between 1 and {HardwareVectorWidth} outputs"],
+                            binaryResult.BinaryBytes,
+                            [.. capturedRuns]);
+                    }
+
+                    TestRun normalizedRun = NormalizeHardwareTestRun(testResult);
+                    capturedRuns.Add(new HardwareRunCapture(i + 1, run, normalizedRun));
+                    TestResult normalizedResult = normalizedRun.Result!;
 
                     bool runPassed = normalizedResult.Outputs.SequenceEqual(run.ExpectedOutputs);
                     if (isPassHw && !runPassed)
@@ -1056,7 +1069,7 @@ public static class RegressionRunner
                             $"hardware run {i + 1} {FormatHardwareRunArguments(run)} failed: {ex.Message}",
                             ex),
                         binaryResult.BinaryBytes,
-                        [.. completedRuns]);
+                        [.. capturedRuns]);
                 }
             }
 
@@ -1065,13 +1078,13 @@ public static class RegressionRunner
                 return HardwareExecutionResult.UnexpectedSuccess(
                     ["all hardware runs unexpectedly produced the correct result"],
                     binaryResult.BinaryBytes,
-                    [.. completedRuns]);
+                    [.. capturedRuns]);
             }
 
             if (observedMismatch)
-                return HardwareExecutionResult.Mismatch(issues, binaryResult.BinaryBytes, [.. completedRuns]);
+                return HardwareExecutionResult.Mismatch(issues, binaryResult.BinaryBytes, [.. capturedRuns]);
 
-            return HardwareExecutionResult.Succeeded(binaryResult.BinaryBytes, [.. completedRuns]);
+            return HardwareExecutionResult.Succeeded(binaryResult.BinaryBytes, [.. capturedRuns]);
         }
         catch (Exception ex)
         {
@@ -1088,16 +1101,34 @@ public static class RegressionRunner
         return details;
     }
 
-    private static TestResult NormalizeHardwareTestResult(TestResult result)
+    private static List<string> BuildHardwareRunFailureDetails(int runIndex, HardwareRunExpectation run, TestRun testRun)
     {
-        ArgumentNullException.ThrowIfNull(result);
+        ArgumentNullException.ThrowIfNull(run, nameof(run));
+        ArgumentNullException.ThrowIfNull(testRun, nameof(testRun));
 
-        return new TestResult(
-            ZeroFillHardwareValues(result.Inputs),
-            ZeroFillHardwareValues(result.Outputs),
-            result.Log,
-            result.StdOut,
-            result.StdErr);
+        List<string> details =
+        [
+            $"hardware run {runIndex} {FormatHardwareRunArguments(run)} ended with status {testRun.Status}:",
+        ];
+
+        if (testRun.Exception is null)
+        {
+            details.Add("No exception was recorded.");
+            return details;
+        }
+
+        details.AddRange(SplitLines(testRun.Exception.ToString()));
+        return details;
+    }
+
+    private static TestRun NormalizeHardwareTestRun(TestRun run)
+    {
+        ArgumentNullException.ThrowIfNull(run, nameof(run));
+        Debug.Assert(run.Result is not null);
+
+        TestResult result = run.Result;
+        TestResult normalizedResult = new(ZeroFillHardwareValues(result.Outputs));
+        return new TestRun(run.Inputs, normalizedResult, run.StdOut, run.StdErr, run.Log);
     }
 
     private static string FormatHardwareRunMismatch(int runIndex, HardwareRunExpectation run, IReadOnlyList<uint> actualOutputs)
@@ -1350,6 +1381,7 @@ public static class RegressionRunner
             RegressionStage.LirPreOptimization => "lir-preopt",
             RegressionStage.Lir => "lir",
             RegressionStage.AsmirPreOptimization => "asmir-preopt",
+            RegressionStage.AsmirPreRegisterAllocation => "asmir-prealloc",
             RegressionStage.Asmir => "asmir",
             RegressionStage.FinalAsm => "final-asm",
             _ => throw new InvalidOperationException($"Unknown stage '{stage}'."),
@@ -1454,7 +1486,7 @@ internal sealed class ArtifactWriter(string repositoryRootPath, bool enabled)
         EvaluatedFixture evaluatedFixture,
         string summary,
         IReadOnlyList<string> issues,
-        IReadOnlyList<HardwareRunCapture>? hardwareRuns = null)
+        IReadOnlyList<HardwareRunCapture>? hardwareRuns)
     {
         if (!_enabled)
             return null;
@@ -1730,12 +1762,12 @@ internal sealed class HardwareExecutionResult
         HardwareExecutionKind kind,
         IReadOnlyList<string> issues,
         byte[]? binaryBytes,
-        IReadOnlyList<HardwareRunCapture> completedRuns)
+        IReadOnlyList<HardwareRunCapture> capturedRuns)
     {
         Kind = kind;
         Issues = issues;
         BinaryBytes = binaryBytes;
-        CompletedRuns = completedRuns;
+        CapturedRuns = capturedRuns;
     }
 
     public HardwareExecutionKind Kind { get; }
@@ -1744,38 +1776,38 @@ internal sealed class HardwareExecutionResult
     public bool IsTechnicalError => Kind == HardwareExecutionKind.Error;
     public IReadOnlyList<string> Issues { get; }
     public byte[]? BinaryBytes { get; }
-    public IReadOnlyList<HardwareRunCapture> CompletedRuns { get; }
+    public IReadOnlyList<HardwareRunCapture> CapturedRuns { get; }
 
     public static HardwareExecutionResult NotAttempted() => new(HardwareExecutionKind.NotAttempted, [], null, []);
 
-    public static HardwareExecutionResult Succeeded(byte[] binaryBytes, IReadOnlyList<HardwareRunCapture> completedRuns) => new(HardwareExecutionKind.Succeeded, [], binaryBytes, completedRuns);
+    public static HardwareExecutionResult Succeeded(byte[] binaryBytes, IReadOnlyList<HardwareRunCapture> capturedRuns) => new(HardwareExecutionKind.Succeeded, [], binaryBytes, capturedRuns);
 
-    public static HardwareExecutionResult Mismatch(IReadOnlyList<string> issues, byte[]? binaryBytes = null, IReadOnlyList<HardwareRunCapture>? completedRuns = null) => new(HardwareExecutionKind.Mismatch, issues, binaryBytes, completedRuns ?? []);
+    public static HardwareExecutionResult Mismatch(IReadOnlyList<string> issues, byte[]? binaryBytes = null, IReadOnlyList<HardwareRunCapture>? capturedRuns = null) => new(HardwareExecutionKind.Mismatch, issues, binaryBytes, capturedRuns ?? []);
 
-    public static HardwareExecutionResult UnexpectedSuccess(IReadOnlyList<string> issues, byte[]? binaryBytes = null, IReadOnlyList<HardwareRunCapture>? completedRuns = null) => new(HardwareExecutionKind.UnexpectedSuccess, issues, binaryBytes, completedRuns ?? []);
+    public static HardwareExecutionResult UnexpectedSuccess(IReadOnlyList<string> issues, byte[]? binaryBytes = null, IReadOnlyList<HardwareRunCapture>? capturedRuns = null) => new(HardwareExecutionKind.UnexpectedSuccess, issues, binaryBytes, capturedRuns ?? []);
 
-    public static HardwareExecutionResult Error(IReadOnlyList<string> issues, byte[]? binaryBytes = null, IReadOnlyList<HardwareRunCapture>? completedRuns = null) => new(HardwareExecutionKind.Error, issues, binaryBytes, completedRuns ?? []);
+    public static HardwareExecutionResult Error(IReadOnlyList<string> issues, byte[]? binaryBytes = null, IReadOnlyList<HardwareRunCapture>? capturedRuns = null) => new(HardwareExecutionKind.Error, issues, binaryBytes, capturedRuns ?? []);
 }
 
 internal sealed class HardwareRunCapture
 {
-    public HardwareRunCapture(int runIndex, HardwareRunExpectation expectation, TestResult result)
+    public HardwareRunCapture(int runIndex, HardwareRunExpectation expectation, TestRun run)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(runIndex);
 
         ArgumentNullException.ThrowIfNull(expectation);
-        ArgumentNullException.ThrowIfNull(result);
+        ArgumentNullException.ThrowIfNull(run);
 
         RunIndex = runIndex;
         Expectation = expectation;
-        Result = result;
+        Run = run;
     }
 
     public int RunIndex { get; }
 
     public HardwareRunExpectation Expectation { get; }
 
-    public TestResult Result { get; }
+    public TestRun Run { get; }
 }
 
 internal static class MatcherTraceFormatter
@@ -1940,18 +1972,34 @@ internal static class HardwareResultDumpFormatter
         builder.Append("Arguments: [");
         builder.Append(string.Join(", ", run.Expectation.ParameterLiterals));
         builder.AppendLine("]");
+        builder.Append("Status: ");
+        builder.AppendLine(run.Run.Status.ToString());
         AppendValueList(builder, "Expected Outputs", run.Expectation.ExpectedOutputs);
         builder.AppendLine();
 
-        AppendValueList(builder, "Inputs", run.Result.Inputs);
+        AppendValueList(builder, "Inputs", run.Run.Inputs);
         builder.AppendLine();
-        AppendValueList(builder, "Outputs", run.Result.Outputs);
+        if (run.Run.Result is null)
+        {
+            builder.AppendLine("Outputs:");
+            builder.AppendLine("<not available>");
+        }
+        else
+        {
+            AppendValueList(builder, "Outputs", run.Run.Result.Outputs);
+        }
         builder.AppendLine();
-        AppendByteSection(builder, "Log", run.Result.Log);
+        AppendByteSection(builder, "Log", run.Run.Log);
         builder.AppendLine();
-        AppendByteSection(builder, "StdOut", run.Result.StdOut);
+        AppendByteSection(builder, "StdOut", run.Run.StdOut);
         builder.AppendLine();
-        AppendByteSection(builder, "StdErr", run.Result.StdErr);
+        AppendByteSection(builder, "StdErr", run.Run.StdErr);
+        if (run.Run.Exception is not null)
+        {
+            builder.AppendLine();
+            builder.AppendLine("Exception:");
+            builder.AppendLine(run.Run.Exception.ToString());
+        }
         return builder.ToString();
     }
 
@@ -2075,7 +2123,7 @@ internal static class HardwareResultDumpFormatter
 
 internal static class HardwareFixtureRunner
 {
-    public static TestResult Run(
+    public static TestRun Run(
         byte[] binaryBytes,
         string portName,
         FixtureConfig config,

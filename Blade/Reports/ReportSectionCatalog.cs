@@ -66,6 +66,7 @@ public static class ReportSectionCatalog
         AddLirSection(sections, "lir-preopt", "LIR (Preopt)", "15_lir_preopt.ir", output.Stages.PreOptimizationLirModules);
         AddLirSection(sections, "lir", "LIR", "20_lir.ir", output.Stages.LirModules);
         AddAsmSection(sections, "asmir-preopt", "ASMIR (Preopt)", "25_asmir_preopt.ir", output.Stages.PreOptimizationAsmModules);
+        AddAsmSection(sections, "asmir-prealloc", "ASMIR (Prealloc)", "28_asmir_prealloc.ir", output.Stages.PreRegisterAllocationAsmModules);
         AddAsmSection(sections, "asmir", "ASMIR", "30_asmir.ir", output.Stages.AsmModules);
         AddMemoryMapSection(sections, output);
         AddFinalAssemblySection(sections, output);

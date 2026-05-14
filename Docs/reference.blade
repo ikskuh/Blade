@@ -14,23 +14,34 @@
 //   The file will eventually also be semantically valid.
 //
 
-// As a "main" function doesn't make sense for blade, we just allow top-level code
-// to be written.
-// Top-level code might be intermixed with function declarations, but a warning
-// diagnostic is emitted if the top-level code is interrupted by function or global declarations.
-// (this file will emit warnings so explanatory code is tight to the required explaining top-level code).
+// Regular compilation units accept declarations and top-level `assert` statements,
+// not loose runtime statements.
 //
-// The root file's top-level code starts at address `000`.
-// Imported modules' top-level code is compiled as an implicit zero-argument procedure.
+// A root program starts from a task named `main`.
 //
-// Global variable declarations are not top-level code.
-empty_call();
+// The root module must declare a task named `main`.
+//
+// Using `cog task main` is the intended entrypoint, but all other storage classes are also accepted.
+// The compiler must emit a warning though as it requires implicit bootstrap code to launch a non-cog task.
+
+cog task main {
+    // this task will be executed from cog memory    
+}
+
+hub task hub_task {
+    // this task will be executed from hub memory    
+}
+
+lut task lut_task {
+    // this task will be executed from lut memory    
+}
 
 //////////////////////////////////////////////////////////////////////////////
 // Functions
 //////////////////////////////////////////////////////////////////////////////
 
-// functions are declared in a Rust-similar manner, and blocks use curly braces:
+// functions are declared in a Rust-similar manner, and blocks use curly braces.
+// A function that returns no runtime values simply omits a return type:
 fn empty_call() {
 
 }
@@ -44,21 +55,21 @@ fn sum_of_two(a: u32, b: u32) -> u32 {
 
 // the propeller 2 can also be used to return values through the C and Z flags.
 // this allows us returning three values natively, one regular 32 bit value,
-// and up to two booleans with explicit locations:
-fn get_three() -> u32, bool, bit {
+// and up to two bitsized values with implicit or explicit locations:
+fn get_three() -> u32, bool, u1 {
     // return then accepts up to three comma-separated values:
     return 100, false, 1;
 }
 
 // functions can also specify an explicit placement for the two additional values:
-fn get_three_specific() -> u32@cog, bool@C, bit@Z {
+fn get_three_specific() -> u32@cog, bool@C, u1@Z {
     // in this case, the default return value is returned through
     // the register slot, the boolean value is returned in the C flag
-    // and the bit value is returned in the Z flag.
+    // and the u1 value is returned in the Z flag.
     return 100, false, 1;
 }
 
-// by default, booleans and bit values will be returned in a flag instead of
+// by default, bitsized values will be returned in a flag instead of
 // a register, as the flags allow efficient processing for conditionals,
 // while a 0/1 value in a register would require unwrapping again, thus
 // `get_state_default` and `get_state_explicit` will behave equivalently
@@ -73,21 +84,40 @@ fn get_state_explicit() -> bool@C {
 // The return values will determine what flags the compiler will restore when
 // invoking the `RET` instruction:
 //
-// The default is `RET WCZ`, which restores all flags from the caller.
-// If a single bool/bit value is returned, the compiler will place it in C or Z,
-// thus using `RET WC` or `RET WZ`.
-// If both bit/bool-values are returned, the compiler uses a bare `RET`.
+// - No flag-stored returns: `RET WCZ` is used to restore the callers flags on return.
+// - Only a C-flag return: `RET WZ` is used to restore the callers Z flag on return.
+// - Only a Z-flag return: `RET WC` is used to restore the callers C flag on return.
+// - Both C and Z flag return: `RET` is used to not restore any flags on return.
+//
+// If the bit-sized return values don't specify a storage location, the compiler can choose to put
+// them in either C or Z, and will choose the one that results in the most efficient code for the caller.
 //
 // The selection of the C/Z flag for a return value depends on the potential callers
-// to reduce code size if possible. It's not defined that the first bit return value
+// to reduce code size if possible. It's not defined that the first bitsized return value
 // is returned in "C" or "Z".
 //
-// Default placement of bool/bit return values is call-graph-dependent and not part of a stable ABI.
+// Default placement of bitsized return values is call-graph-dependent and not part of a stable ABI.
 // Blade assumes whole-program compilation and does not support separate object-file compilation.
 //
 // If three values are returned, the first return value is always returned
 // inside a register, as the last two are guaranteed to be returned in flags.
-// This is also true if the first value is a bit/bool type.
+// This is also true if the first value is a bitsized type.
+
+//////////////////////////////////////////////////////////////////////////////
+// Function placement
+//////////////////////////////////////////////////////////////////////////////
+
+// Functions can be either placed in the "default space" or an explicit storage class.
+// If placed in an explicit storage class, calling them changes the current execution mode of the cog,
+// otherwise the compiler can choose to place them in any storage class it deems fit, and may even duplicate the function:
+
+// no keyword is automatic placement:
+fn placed_auto() {}
+
+// using a storage class keyword places functions explicity:
+cog fn placed_in_cog() {}
+lut fn placed_in_lut() {}
+hub fn placed_in_hub() {}
 
 //////////////////////////////////////////////////////////////////////////////
 // Calling Conventions
@@ -146,7 +176,7 @@ noinline fn cc_noinline() {
     // 
     // All other functions may be automatically inlined by the compiler,
     // and functions with only a *single caller* must be force-inlined
-    // into their caller (unless they use `noinline`). 
+    // into their caller (unless they use `noinline` or `rec`). 
 }
 
 // noinline functions still can use an explicit calling convention,
@@ -167,6 +197,10 @@ noinline rec fn cc_noinline_rec() {
 // The Propeller 2 supports a fancy way of doing coroutines through `CALLD`.
 // This is natively supported in Blade by the use of:
 coro fn cc_coro1(value: u32) {
+    // A `coro fn` can never return, thus also never declares a return type.
+    // `coro fn` cannot be called through regular means, and must be invoked
+    // by `yieldto`.
+
     while(true) {
         // Coroutines can call regular functions. The coroutine itself does not
         // count towards the stack size limit, as they do not use the internal
@@ -195,8 +229,12 @@ coro fn cc_coro2() {
     }
 }
 
-// The coroutine subsystem can be entered by invoking a "yieldto" on the toplevel:
-yieldto cc_coro1(10);
+// The coroutine subsystem can be entered from task code:
+cog task coro_launcher {
+    yieldto cc_coro1(10);
+}
+
+
 
 // There are three special calling conventions in Blade, which cater the
 // Propeller 2 interrupt system.
@@ -230,41 +268,191 @@ int3 fn cc_int3() {
     // implicit return also has the same rules as explicit return:
 }
 
+// TODO: Introduce function pointer types, so we can actually refer and use `intX fn`!
+
+//////////////////////////////////////////////////////////////////////////////
+// Layouts and Tasks
+//////////////////////////////////////////////////////////////////////////////
+
+// Layouts are the solution to the following issue:
+//
+// We compile two tasks that both call a "hub fn". A "hub fn" requires a stable call address
+// and must not be duplicated by the compiler, which means the code of this function needs to
+// be able to refer to cog and lut global variables without breaking either task.
+//
+// Layouts are declarations of global state that can be shared between multiple tasks and functions.
+// A layout gives you the guarantee that all declared variables in that layout have the same storage address
+// in all tasks that import the layout, thus allowing sharing of code between different tasks.
+//
+// This does not mean that the data is shared, as cog and lut variables are always cog-local.
+layout SharedState {
+    lut var table: [2]u32 = [1, 2];
+}
+
+// Layouts can inherit from other layouts.
+// This is similar to how class inheritance works in other languages, but in Blade
+// the inheritance is about global state, not code execution.
+layout WorkerState : SharedState {
+    cog var counter: u32 = 0;
+}
+
+// Layouts and tasks can inherit more than one layout, and the order of the layouts in the inheritance list does not matter:
+layout FusedState : WorkerState, SharedState {
+    // Aliasing in layouts must emit a warning:
+    cog var counter: u32 = 0;
+}
+
+// Tasks are declared with an explicit storage class and act as the unit of runtime entry.
+// Each task also behaves as an implicit private layout for its stored members.
+// A task may declare zero or one startup parameter and may import layouts after a colon.
+// Startup parameters must fit into 32 bits.
+cog task worker(step: u32) : WorkerState {
+
+    // Layout variables can be implicity accessed and are visible in a task's scope,
+    // but they can also be explicitly imported into the scope as regular variables:
+    counter = step;
+
+    // We can access the "table" variable from the parent layout as well, and it behaves
+    // like a regular variable:
+    _ = WorkerState.table[0];
+}
+
+// Task bodies may contain stored declarations, local function declarations, and statements.
+cog task task_scope_demo {
+    cog var local_state: u32 = 0;
+
+    fn bump() {
+        local_state += 1;
+    }
+
+    bump();
+}
+
+// Regular functions can also declare layout and alignment metadata after the signature.
+// `layout(...)` imports the listed layouts into the function body, while `align(...)`
+// requests an explicit function alignment.
+// The caller must already provide access to every layout required by the callee.
+// In other words, the caller's effective layout set must be a superset of the callee's.
+fn state_user() : layout(WorkerState), align(16) {
+    counter += 1;
+}
+
+// Other function attributes use the same comma-separated metadata syntax.
+// `used` keeps the symbol live even when it appears otherwise unreferenced.
+// `linkname("literal")` requests a specific emitted assembly symbol name.
+fn exported_state_user() : layout(WorkerState), used, linkname("state_user_export") {
+    counter += 1;
+}
+
+// Tasks are launched with `spawn` or `spawnpair`.
+// Both forms accept the task's single startup value when one is declared.
+cog task spawn_demo {
+    // Launch a new cog that executes "worker(1)".
+    // This statement will trap when no more cogs are available.
+    spawn worker(1);
+
+    // If the cog id is required, spawn can be used as a function-like call
+    // with a single return value that captures the cog id.
+    // This statement will also trap when no more cogs are available.
+    var id: u32 = spawn worker(2);
+
+    var ok: bool = undefined;
+
+    // If we want to know if spawning the cog worked, we can use the variant
+    // with two return slots. The second return slot is a boolean that receives
+    // true if the cog was successfully spawned.
+    id, ok = spawn worker(3);
+    
+    // "spawnpair" uses the same syntax and semantics as spawn, but will launch the same task on an even/odd
+    // cog pair, thus the spawned task will run twice afterwards.
+    // The returned cogid is the id of the even cog.
+    // NOTE: spawnpair does not implicitly enable LUT sharing.
+    spawnpair worker(4);
+    id = spawnpair worker(4);
+    id, ok = spawnpair worker(4);
+}
+
 //////////////////////////////////////////////////////////////////////////////
 // Variables
 //////////////////////////////////////////////////////////////////////////////
 
-// Global variables in blade can be declared in three storage spaces,
+// Global variables in blade can be declared in three storage spaces (cog, lut, hub),
 // and two classifications (var/const).
-// All of these values require a constant, comptime initializer.
-
-// "cog var" are guaranteed to be allocated in register
-// space and do not require load/stores to be accessed:
-// The address of a "cog var" yields as "*cog T".
-cog var rv_01: u32 = 0;
-
-// "lut var" is allocated in the LUT memory and will
-// require RDLUT and WRLUT instructions to be accessed.
-// The address of a "lut var" yields as "*lut T".
-lut var lv_01: u32 = 0;
-
-// "hub var" is allocated in the HUB memory and will
-// require RDLONG,RDWORD,RDBYTE and WRLONG,WRWORD,WRBYTE
-// instructions to be accessed.
-// The address of a "hub var" yields as "*hub T".
-hub var hv_01: u32 = 0;
-
-// The constant versions of the variables can be read, but never be written.
-// The language assumes them as immutable, and the compiler may always inline
-// the values of constants into the emitted code to elide loads.
 //
-// The storage class is still required to retain proper pointer semantics.
-cog const rc_01: u32 = 0;
-lut const lc_01: u32 = 0;
-hub const hc_01: u32 = 0;
+// All of these values require a constant, compile-time known initializer.
+
+layout Globals
+{
+    // "cog var" are guaranteed to be allocated in register
+    // space and do not require load/stores to be accessed:
+    // The address of a "cog var" yields as "*cog T".
+    cog var rv_01: u32 = 0;
+
+    // "lut var" is allocated in the LUT memory and will
+    // require RDLUT and WRLUT instructions to be accessed.
+    // The address of a "lut var" yields as "*lut T".
+    lut var lv_01: u32 = 0;
+
+    // "hub var" is allocated in the HUB memory and will
+    // require RDLONG,RDWORD,RDBYTE and WRLONG,WRWORD,WRBYTE
+    // instructions to be accessed.
+    // The address of a "hub var" yields as "*hub T".
+    hub var hv_01: u32 = 0;
+
+    // The constant versions of the variables can be read, but never be written.
+    // The language assumes them as immutable, and the compiler may always inline
+    // the values of constants into the emitted code to elide loads.
+    //
+    // The storage class is still required to retain proper pointer semantics.
+    cog const rc_01: u32 = 0;
+    lut const lc_01: u32 = 0;
+    hub const hc_01: u32 = 0;
+    
+    // Stored declarations place attributes after the type, separated by spaces rather than commas.
+    // `align(...)`, `used`, and `linkname("literal")` are variable attributes; `layout(...)` is not.
+    cog var aligned_words: [16]u32 align(16) = undefined;
+    cog var exported_words: [16]u32 used linkname("exported_words") align(16) = undefined;
+    
+    // This declaration creates an external variable, which has no storage or 
+    // location defined, and must exist with the exact name somewhere in the generated
+    // assembly:
+    extern cog var ext_var: u32;
+
+    // external variables are available for all storage kinds:
+    extern cog var ext_cog_var: u32;
+    extern lut var ext_lut_var: u32;
+    extern hub var ext_hub_var: u32;
+
+    // External variables can also be explicitly allocated instead
+    // of needing a true external source:
+    extern cog var DIRA: u32 @(0x1FA); // assigns "DIRA" the location 0x1FA
+    extern cog var DIRB: u32 @(0x1FB); // this is basically an alias type which
+    extern cog var OUTA: u32 @(0x1FC); // replaces a global constant pointer which
+    extern cog var OUTB: u32 @(0x1FD); // would need deref/ref semantics
+    extern cog const INA: u32 @(0x1FE); // external variables can also be assigned const,
+    extern cog const INB: u32 @(0x1FF); // which prevents writing to them.
+    extern cog var PTRA: u32 @(0x1F8);
+    extern cog var PTRB: u32 @(0x1F9);
+    extern cog var PA: u32 @(0x1F6);
+    extern cog var PB: u32 @(0x1F7);
+
+}
+
+// The only variables that can be declared outside a layout are comptime and hub variables.
+// "cog var" and "lut var" must always be declared inside a layout to guarantee
+// correct compilation.
+hub var hv_02: u32 = 10;
+
+// There's an additional storage space available for const variables: comptime
+// These constants are guaranteed to be evaluated at compile time, have no associated storage space
+// and will always be inlined into the code that uses them.
+// 
+// They are a way of defining constants that shall never have an address, and should always be treated
+// like a literal of that value.
+comptime const cc_01: u32 = 10 * 200;
 
 // Blade also supports another type of variable, which is a plain var or const:
-fn showcase_locals(param: u32) {
+fn showcase_locals(param: u32) : layout(Globals) {
     // Locals do not have a defined storage type, and may be fully elided
     // by the compiler. They are essentially defined as "ephemeral names to
     // SSA values".
@@ -289,34 +477,6 @@ fn showcase_locals(param: u32) {
     //            the same storage location for *all recursive invocations*,
     //            which is not the intent of saving a pointer to a local.
 }
-
-// The top-level code also can use local variables, which, in contrast to
-// globals, cannot be accessed by functions. They are effectively scoped
-// to the top-level code alone:
-var toplevel_var: u32 = 0;
-
-// TODO: cog var foo: align(value) = 0;
-
-// This declaration creates an external variable:
-extern cog var ext_var: u32;
-
-// external variables are available for all storage kinds:
-extern cog var ext_cog_var: u32;
-extern lut var ext_lut_var: u32;
-extern hub var ext_hub_var: u32;
-
-// External variables can also be explicitly allocated instead
-// of needing a true external source:
-extern cog var DIRA: u32 @(0x1FA); // assigns "DIRA" the location 0x1FA
-extern cog var DIRB: u32 @(0x1FB); // this is basically an alias type which
-extern cog var OUTA: u32 @(0x1FC); // replaces a global constant pointer which
-extern cog var OUTB: u32 @(0x1FD); // would need deref/ref semantics
-extern cog const INA: u32 @(0x1FE); // external variables can also be assigned const,
-extern cog const INB: u32 @(0x1FF); // which prevents writing to them.
-extern cog var PTRA: u32 @(0x1F8);
-extern cog var PTRB: u32 @(0x1F9);
-extern cog var PA: u32 @(0x1F6);
-extern cog var PB: u32 @(0x1F7);
 
 //////////////////////////////////////////////////////////////////////////////
 // Control Flow
@@ -429,7 +589,7 @@ fn control_flow_ret2() -> u32, bool {
     return 0, true;
 }
 
-fn control_flow_ret3() -> u32, bool, bit {
+fn control_flow_ret3() -> u32, bool, u1 {
     // Return three values from a function:
     return 0, true, 0;
 }
@@ -540,57 +700,63 @@ type T = u32;
 
 fn builtin_types() {
     const N: u32 = 0; // required helper for array sizes
+    
+    // single-bit types can be stored in flags efficiently:
+    var v_00: bool = true; // or "false"
+    var v_01: u1 = 0; // or "1"
+    var v_02: i1 = 0; // or "-1"
 
-    // The following basic integer types are supported by Blade:
-    var v_00: u8 = 0;
-    var v_01: u16 = 0;
-    var v_02: u32 = 0;
+    // Blade supports fixed-width integers written as `uN` and `iN` with `N` between 1 and 32:
+    var v_03: u8 = 0;
+    var v_04: u16 = 0;
+    var v_05: u32 = 0;
     
     // Two's complement signed integers:
-    var v_03: i8 = 0;
-    var v_04: i16 = 0;
-    var v_05: i32 = 0;
+    var v_06: i8 = 0;
+    var v_07: i16 = 0;
+    var v_08: i32 = 0;
 
-    // single-bit types, can be stored in flags efficiently:
-    var v_06: bool = true; // or "false"
-    var v_07: bit = 0; // or "1"
+    // special payload-oriented integers:
+    var v_09: u2 = 0; // 2-bit unsigned integer payload type
+    var v_10: u4 = 0; // 4-bit unsigned integer payload type
 
-    // special ints:
-    var v_08: nib = 0; // 4 bit unsigned integer
+    // Non-standard widths use the same `uN` / `iN` spelling:
+    var v_11: u5 = 0;
+    var v_12: i7 = 0;
 
     // arrays:
-    var v_09: [N]u8 = []; // Array of N bytes
+    var v_13: [N]u8 = []; // Array of N bytes
 
     // arrays are packed efficiently when possible
-    var v_10: [N]bool = []; // Backed into a sequence of u32, using BITx instructions
-    var v_11: [N]nib = []; // Backed into a sequence of u32, using GETNIB,SETNIB,ROLNIB
-    var v_12: [N]u8 = []; // Backed into a sequence of u32, using GETBYTE,SETBYTE,ROLBYTE
-    var v_13: [N]u16 = []; // Backed into a sequence of u32, using GETWORD,SETWORD,ROLWORD
+    var v_14: [N]bool = []; // Backed into a sequence of u32, using BITx instructions
+    var v_15: [N]u4 = []; // Backed into a sequence of u32, using GETNIB,SETNIB,ROLNIB
+    var v_16: [N]u8 = []; // Backed into a sequence of u32, using GETBYTE,SETBYTE,ROLBYTE
+    var v_17: [N]u16 = []; // Backed into a sequence of u32, using GETWORD,SETWORD,ROLWORD
 
     // The SIMD type:
-    // A type that can be coerced from/to [4]u8, but allows additional operations
+    // A 32 bit large type that can be coerced from/to [4]u8, but allows additional operations
     // and swizzling, behaves like a RGBA8888 color type kinda:
-    var v_14: u8x4 = [1,2,3,4];
+    var v_18: u8x4 = [1,2,3,4];
 
     // Pointer types can also be defined, and always require a storage type:
-    var v_15: *cog T = undefined; // ptr to a single register
-    var v_16: [*]cog T = undefined; // ptr to an array of unknown length
+    var v_19: *cog T = undefined; // ptr to a single register
+    var v_20: [*]cog T = undefined; // ptr to an array of unknown length
     
-    var v_17: *lut T = undefined; // ptr to a single lut variable
-    var v_18: [*]lut T = undefined; // ptr to an array of unknown length
+    var v_21: *lut T = undefined; // ptr to a single lut variable
+    var v_22: [*]lut T = undefined; // ptr to an array of unknown length
     
-    var v_19: *hub T = undefined; // ptr to a single hub variable
-    var v_20: [*]hub T = undefined; // ptr to an array of unknown length
+    var v_23: *hub T = undefined; // ptr to a single hub variable
+    var v_24: [*]hub T = undefined; // ptr to an array of unknown length
 
     // Pointers  also can have additional attributes in addition to their
     // arity and the storage space:
-    var v_21: *cog align(8) T = undefined; // The pointers address must be aligned to a multiple of 8
-    var v_22: *cog const T = undefined; // The pointee cannot be changed through this pointer
-    var v_23: *lut volatile T = undefined; // The compiler may not elide reads or writes through the pointer, as the value may be changed externally through other cogs
+    var v_25: *cog align(8) T = undefined; // The pointers address must be aligned to a multiple of 8
+    var v_26: *cog const T = undefined; // The pointee cannot be changed through this pointer
+    var v_27: *lut volatile T = undefined; // The compiler may not elide reads or writes through the pointer, as the value may be changed externally through other cogs
 
     // This variable combines all possible pointer attributes and shows them in the nominal order.
     // The order is not fixed and can be swapped, but the following is the designated order of attributes:
-    var v_24: *hub const volatile align(4) T = undefined;
+    var v_28: *hub const volatile align(4) T = undefined;
 }
 
 type Array = [4]u16;
@@ -639,69 +805,18 @@ type OpenEnum = enum (u8) {
 type Bitfield = bitfield (u32) {
     lsb: bool, // bit offset 0
     
-    low: nib, // bit offset 1
-    high: nib, // bit offset 5
+    low: u4, // bit offset 1
+    high: u4, // bit offset 5
 
     storage: u16, // bit offset 9
 
-    mode: bit, // bit offset 25
+    mode: u1, // bit offset 25
     chainload: bool, // bit offset 26
 
-    detector: nib, // bit offset 27
+    detector: u4, // bit offset 27
 
-    msb: bit, // bit offset 31
+    msb: u1, // bit offset 31
 };
-
-//////////////////////////////////////////////////////////////////////////////
-// Built-in Types
-//////////////////////////////////////////////////////////////////////////////
-
-import builtin; // see "Module Subsystem" for explanations
-
-// All of the following types are defined in the "builtin" module, which is always
-// available and provided by the compiler.
-// Thus, they need to be addressed as "builtin.MemorySpace" instead of "MemorySpace" in
-// the code!
-
-// The builtin module looks like this:
-// <start contents of "builtin" module>
-//
-//      // This type is the return value of the "memoryof" operator:
-//      type MemorySpace = enum(u32) {
-//          // The item is stored in registers.
-//          cog,
-//          // The item is stored in the LUT.
-//          lut,
-//          // The item is stored in the Hub.
-//          hub,
-//      };
-//
-//      layout IntRegs {
-//          extern cog var IJMP3: u32 @(0x1F0);
-//          extern cog var IRET3: u32 @(0x1F1);
-//          extern cog var IJMP2: u32 @(0x1F2);
-//          extern cog var IRET2: u32 @(0x1F3);
-//          extern cog var IJMP1: u32 @(0x1F4);
-//          extern cog var IRET1: u32 @(0x1F5);
-//      }
-//
-//      layout IO {
-//          extern cog var DIRA: u32 @(0x1FA);
-//          extern cog var DIRB: u32 @(0x1FB);
-//          extern cog var OUTA: u32 @(0x1FC);
-//          extern cog var OUTB: u32 @(0x1FD);
-//          extern cog const INA: u32 @(0x1FE);
-//          extern cog const INB: u32 @(0x1FF);
-//      }
-//
-//      layout SFR : IO, IntRegs {
-//          extern cog var PA: u32 @(0x1F6);
-//          extern cog var PB: u32 @(0x1F7);
-//          extern cog var PTRA: u32 @(0x1F8);
-//          extern cog var PTRB: u32 @(0x1F9);
-//      }
-//
-// <end contents of "builtin" module>
 
 //////////////////////////////////////////////////////////////////////////////
 // Expressions & Operators
@@ -722,11 +837,17 @@ fn func_2(x: u32, y: u32) -> u32  {
 // Important note: Expressions in Blade are not statements and cannot be used
 // standalone. Among expression-like constructs, only assignments and function
 // calls can stand alone as statements.
+//
+// Functions returning values must have their return values used:
+// - A function returning a single value can be used in an expression or assigned to a variable, but not used as a standalone statement.
+// - A function returning multiple values must be used in an assignment with the same number of destinations.
+//
+// If an expression shall be used for clarity or because the return value is not needed, it can be assigned to a dummy variable or explicitly discarded with "_ = <expr>".
 // 
 // Also, postfix or prefix "++" and "--" operators like the C family are explicitly
 // excluded as they obscure the code readability and reasoning capabilities
 // over the language.
-fn expressions() {
+fn expressions() : layout(Globals) {
     var a: [2]u32 = [0,0];
     var x: u32 = 0;
     var y: u32 = 0;
@@ -736,6 +857,7 @@ fn expressions() {
     var f: Bitfield = undefined;
     var s: u8 = undefined;
     var e: OpenEnum = undefined;
+    var v: u8x4 = undefined;
 
     x = y; // assignment is a statement, and cannot be nested into expressions
 
@@ -781,6 +903,10 @@ fn expressions() {
     x = func_2(x=10, y=20); // function calls with named arguments
     x = func_2(10, y=20); // function calls with mixed arguments (names must come after positionals, no conflicts)
 
+    // `if` also exists as an expression form and always requires an `else` branch.
+    // Both branches must be assignable to a common result type.
+    x = if (b) x else y;
+
     x = a[1]; // array/ptr read at index
     a[0] = x; // array/ptr write to index
 
@@ -808,9 +934,33 @@ fn expressions() {
     // Target type and source value must have the same bit size.
     f = bitcast(Bitfield, x);
 
+    // field access operators, availabel for structs, unions and bitfields:
+    f.lsb = true;  // write the field value
+    _     = f.msb; // read the field value
+
+    // simd vectors (u8x4) behave similar to structs with four logical fields, but allow multiple aliases for their names:
+    _ = [ v.x, v.r, v[0] ]; // read the first component (bits 0..7) of the vector with different aliases
+    _ = [ v.y, v.g, v[1] ]; // read the second component (bits 8..15) of the vector with different aliases
+    _ = [ v.z, v.b, v[2] ]; // read the third component (bits 16..23) of the vector with different aliases
+    _ = [ v.w, v.a, v[3] ]; // read the fourth component (bits 24..31) of the vector with different aliases
+
+    // the fields can also use swizzling, which allows fusing/reordering the fields:
+    _ = v.xyzw; // returns vector unchanged
+    _ = v.wzyx; // returns vector with reversed byte order
+    _ = v.xxxx; // returns vector with all components being the first component
+    _ = v.xxyy; // returns vector with the first two components being the first component of v, and the last two components being the second component of v
+
+    // vectors and swizzle expressions can also be used with the spread operator in which they expand to a sequence of the swizzled components:
+    v = [ 1, v.xyz... ]; // expands to v = [ 1, v.x, v.y, v.z ];
+    _ = func_2(v.xy...); // expands to func_2(v.x, v.y);
+    _ = [ v..., v... ]; // expands to [ v.x, v.y, v.z, v.w, v.x, v.y, v.z, v.w ];
+
+    // It's not possible to use swizzling for writing a vector:
+    // v.xyzw = [1,2,3,4]; // this is not allowed, as it would be ambiguous how to swizzle the input vector for the write operation.
+
     // reinterpret is unsafe, but allowed. Casting an illegal value into a
     // closed enum produces an invalid enum value.
-    // This is equivalent to a closed enum containing `undefined` data.
+    // This is equivalent to a closed enum initialized to `undefined`.
     // Once a closed enum contains such an invalid value, subsequent behavior
     // is undefined.
     var foo: ClosedEnum = bitcast(ClosedEnum, x);
@@ -828,6 +978,9 @@ fn expressions() {
     cls = memoryof(rv_01); // returns MemorySpace.cog
     cls = memoryof(lv_01); // returns MemorySpace.lut
     cls = memoryof(hv_01); // returns MemorySpace.hub
+
+    // One-argument queries require a stored variable with a stable memory space.
+    // Automatic locals and parameters cannot be used with the one-argument form.
 
     // A lot of operators also support lhs-fused assignment operations:
 
@@ -847,13 +1000,19 @@ fn expressions() {
     x >>>= y;
     x <%<= y;
     x >%>= y;
+
+    // Discarding the result of an expression can be done with "_ = <expr>".
+    _ = 0;
+    
+    // _ is not a valid identifier in blade, but a special syntax that can be used when an assignment target is being left out.
+    // lhs-fused operators cannot be used with _, as they require a variable on the left-hand side.
 }
 
 // Blade provides all instruction mnemonics over intrinsic functions.
 // These functions map 1:1 to the CPU instructions and can be used
 // to directly perform special instructions without dropping down to
 // inline assembly:
-fn intrinsics(a: u32, b: u32) {
+fn intrinsics(a: u32, b: u32) : layout(Globals) {
 
     // COGID writes to D, but doesn't read, so we can just call it
     // and fetch the result:
@@ -910,7 +1069,7 @@ fn pointer_arithmetics() {
 fn multi_return_demo() {
     var x: u32  = undefined;
     var a: bool = undefined;
-    var b: bit  = undefined;
+    var b: u1  = undefined;
 
     // In general, the number of result targets must
     // match the number of that functions return values.
@@ -978,6 +1137,13 @@ fn values() {
     // "undefined" is a value that makes the compiler not initialize the value, but just leave it as is.
     // this is potentially unsafe, but allows good optimizations and communication that the value isn't
     // relevant at initialization time.
+    //
+    // Reading `undefined` yields an undefined, arbitrary value that is not guaranteed to be the same
+    // across multiple reads, and is not necessarily a valid value for the type.
+    //
+    // Writing `undefined` to a variable effectivly discards the previous value and allows the compiler to
+    // optimize the code in a way that doesn't preserve the previous value beyond this point.
+    //
     // This is an expression that can be used anywhere:
     x = undefined; 
     func_1(undefined);
@@ -1025,7 +1191,7 @@ fn values() {
     // to enable font mappings and such.
 
     e = ClosedEnum.first; // You can access the items of an enumeration by the name
-    e = .first; // Enum literals are the values of enumerations and can be used without their enclosing type.
+    e = .first; // Bare enum literals require context that already expects an enum type.
 
     // Structs can be constructed like this:
     s = Point {
@@ -1044,24 +1210,26 @@ fn values() {
 //////////////////////////////////////////////////////////////////////////////
 
 // Imports the given file as a namespace.
-// Importing a module never executes its top-level code automatically.
+//
 // Declarations from the imported file are visible through "alias.SymName".
+// All declarations from the imported file are also visible in the importing file, but require the "alias." prefix to be accessed,
+// there is no private/public mechanism.
+// 
 // The file path must be a relative path to the importing file, and use forward / as a file separator.
 import "./path/to/file.blade" as alias;
 
-// Calling the namespace executes the imported file's top-level code.
-// Each call re-executes that top-level code.
-// Top-level locals are created anew for each call; module globals persist.
-alias();
-
-// There's nothing that forbids calling a top-level module code twice:
-alias();
+// Imported modules are namespaces and allow accessing their contents
+// through a qualified name:
+cog task import_demo {
+    spawn alias.worker(10);
+}
 
 // The compiler can also receive module definitions on the command line.
 // 
 // These modules are then imported through their identifier, and also allow potential renaming
 // through "as". While files require renaming ("file.blade" is not a valid identifier), modules
 // can be used through their import name or an alias name assigned with "as".
+//
 // Each named module has it's own import table and is defined by a root file.
 // The same file may not be shared between two modules.
 import extmod;
@@ -1075,16 +1243,64 @@ assert true;
 
 // This construct takes one or two parameters:
 assert true; // Will print an error if "false" is passed instead
+assert true, "Assertion description"; // The optional message must be a string literal.
 
-assert true, "Assertion description"; // Will print the given message string when "false" is passed instead.
-
-// Assertions always evaluate at compile time, thus they can only operate on constant values. As the compiler
-// is free to inline constant values (and omit their storage unless their address is taken), we can do the following:
-
-cog const global_state: u32 = 100;
+// Assertions always evaluate at compile time, thus they can only operate on constant values.
+// As the compiler is free to inline constant values (and omit their storage unless their address is taken), we can do the following:
+comptime const global_state: u32 = 100;
 assert global_state < 200, "global_state must always be less than 200!";
 
 // We can also use state queries with the builtin operators:
-assert sizeof(global_state) == 1;
-assert alignof(global_state) >= 1; // don't be confused, a u32 cog var is aligned to 1 as the addressible unit is 32 bit wide!
-assert memoryof(global_state) == .cog; // assert variables have proper placement
+assert sizeof(WorkerState.counter) == 1;
+assert alignof(WorkerState.counter) >= 1; // don't be confused, a u32 cog var is aligned to 1 as the addressible unit is 32 bit wide!
+assert memoryof(WorkerState.counter) == .cog; // assert variables have proper placement
+
+//////////////////////////////////////////////////////////////////////////////
+// Built-in Types
+//////////////////////////////////////////////////////////////////////////////
+
+import builtin; // see "Module Subsystem" for explanations
+
+// All of the following types are defined in the compiler-provided "builtin" module.
+// The module still has to be imported explicitly before names like
+// "builtin.MemorySpace" become available in source code.
+
+// The builtin module looks like this:
+// <start contents of "builtin" module>
+//
+//      // This type is the return value of the "memoryof" operator:
+//      type MemorySpace = enum(u32) {
+//          // The item is stored in registers.
+//          cog,
+//          // The item is stored in the LUT.
+//          lut,
+//          // The item is stored in the Hub.
+//          hub,
+//      };
+//
+//      layout IntRegs {
+//          extern cog var IJMP3: u32 @(0x1F0);
+//          extern cog var IRET3: u32 @(0x1F1);
+//          extern cog var IJMP2: u32 @(0x1F2);
+//          extern cog var IRET2: u32 @(0x1F3);
+//          extern cog var IJMP1: u32 @(0x1F4);
+//          extern cog var IRET1: u32 @(0x1F5);
+//      }
+//
+//      layout IO {
+//          extern cog var DIRA: u32 @(0x1FA);
+//          extern cog var DIRB: u32 @(0x1FB);
+//          extern cog var OUTA: u32 @(0x1FC);
+//          extern cog var OUTB: u32 @(0x1FD);
+//          extern cog const INA: u32 @(0x1FE);
+//          extern cog const INB: u32 @(0x1FF);
+//      }
+//
+//      layout SFR : IO, IntRegs {
+//          extern cog var PA: u32 @(0x1F6);
+//          extern cog var PB: u32 @(0x1F7);
+//          extern cog var PTRA: u32 @(0x1F8);
+//          extern cog var PTRB: u32 @(0x1F9);
+//      }
+//
+// <end contents of "builtin" module>

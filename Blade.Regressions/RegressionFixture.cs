@@ -43,6 +43,7 @@ public enum RegressionStage
     LirPreOptimization,
     Lir,
     AsmirPreOptimization,
+    AsmirPreRegisterAllocation,
     Asmir,
     FinalAsm,
 }

@@ -26,6 +26,7 @@ internal readonly struct TestCompilationStages
         LirModule preOptimizationLirModule,
         LirModule lirModule,
         AsmModule preOptimizationAsmModule,
+        AsmModule preRegisterAllocationAsmModule,
         AsmModule asmModule,
         string assemblyText)
         : this(new CompilationStageOutput
@@ -39,6 +40,7 @@ internal readonly struct TestCompilationStages
             PreOptimizationLirModules = [preOptimizationLirModule],
             LirModules = [lirModule],
             PreOptimizationAsmModules = [preOptimizationAsmModule],
+            PreRegisterAllocationAsmModules = [preRegisterAllocationAsmModule],
             AsmModules = [asmModule],
         })
     {
@@ -72,6 +74,10 @@ internal readonly struct TestCompilationStages
     public IReadOnlyList<AsmModule> PreOptimizationAsmModules => Requires.NotNull(_inner.PreOptimizationAsmModules);
 
     public AsmModule PreOptimizationAsmModule => GetSingleModule(PreOptimizationAsmModules, "pre-optimization ASMIR");
+
+    public IReadOnlyList<AsmModule> PreRegisterAllocationAsmModules => Requires.NotNull(_inner.PreRegisterAllocationAsmModules);
+
+    public AsmModule PreRegisterAllocationAsmModule => GetSingleModule(PreRegisterAllocationAsmModules, "pre-register-allocation ASMIR");
 
     public IReadOnlyList<AsmModule> AsmModules => Requires.NotNull(_inner.AsmModules);
 

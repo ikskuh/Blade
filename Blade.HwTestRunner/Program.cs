@@ -45,11 +45,12 @@ internal static class Program
             ParameterCount = 0,
         };
 
-        TestResult result;
-        try {
+        TestRun result;
+        try
+        {
             result = runner.Execute(binary, config, []);
         }
-        catch(TimeoutException ex)
+        catch (TimeoutException ex)
         {
             Console.Error.WriteLine(ex.Message);
             return 1;
@@ -59,13 +60,19 @@ internal static class Program
             Console.Error.WriteLine(ex.Message);
             return 1;
         }
-        if (result.Outputs.Count != 1)
+        if (result.Result is null)
         {
-            Console.Error.WriteLine($"Expected exactly one output, but received {result.Outputs.Count}.");
+            Console.Error.WriteLine(result.Exception!.ToString());
             return 1;
         }
 
-        uint exitCode = result.Outputs[0];
+        if (result.Result.Outputs.Count != 1)
+        {
+            Console.Error.WriteLine($"Expected exactly one output, but received {result.Result.Outputs.Count}.");
+            return 1;
+        }
+
+        uint exitCode = result.Result.Outputs[0];
 
         if (expected != exitCode)
         {

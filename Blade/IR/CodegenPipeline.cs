@@ -35,6 +35,8 @@ public static class CodegenPipeline
                 asmModules[i] = AsmLegalizer.Legalize(asmModules[i]);
         }
 
+        buildResult.PreRegisterAllocationAsmModules = asmModules.ToList();
+
         CogResourceLayoutSet cogResourceLayouts = CogResourcePlanner.Build(
             asmModules,
             buildResult.ImagePlan,

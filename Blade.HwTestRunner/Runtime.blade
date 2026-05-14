@@ -87,22 +87,22 @@ inline asm volatile fn halt() {
 cog task _start : Runtime
 {
     asm volatile {
-     rt_result0:    JMP #over
-     rt_param0:     LONG 0
-     rt_param1:     LONG 0
-     rt_param2:     LONG 0
-     rt_param3:     LONG 0
-     rt_param4:     LONG 0
-     rt_param5:     LONG 0
-     rt_param6:     LONG 0
-     rt_param7:     LONG 0
-     rt_result1:    LONG 0
-     rt_result2:    LONG 0
-     rt_result3:    LONG 0
-     rt_result4:    LONG 0
-     rt_result5:    LONG 0
-     rt_result6:    LONG 0
-     rt_result7:    LONG 0
+        JMP #over   // rt_result0
+        LONG 0      // rt_param0
+        LONG 0      // rt_param1
+        LONG 0      // rt_param2
+        LONG 0      // rt_param3
+        LONG 0      // rt_param4
+        LONG 0      // rt_param5
+        LONG 0      // rt_param6
+        LONG 0      // rt_param7
+        LONG 0      // rt_result1
+        LONG 0      // rt_result2
+        LONG 0      // rt_result3
+        LONG 0      // rt_result4
+        LONG 0      // rt_result5
+        LONG 0      // rt_result6
+        LONG 0      // rt_result7
     over:
     };
     

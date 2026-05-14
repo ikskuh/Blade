@@ -129,6 +129,7 @@ internal static class CommandLineParser
             or "--dump-lir-preopt"
             or "--dump-lir"
             or "--dump-asmir-preopt"
+            or "--dump-asmir-prealloc"
             or "--dump-asmir"
             or "--dump-mmap"
             or "--dump-final-asm"

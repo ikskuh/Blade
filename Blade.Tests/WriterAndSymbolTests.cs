@@ -80,7 +80,7 @@ public class WriterAndSymbolTests
         CogResourceLayoutSet cogResourceLayouts = IrTestFactory.CreateEmptyCogResourceLayouts(imagePlan);
         CompilationOutput output = CreateCompilationOutput(
             program,
-            new IrBuildResult(imagePlan, imagePlacement, layoutSolution, cogResourceLayouts, mir, mir, lir, lir, asm, asm, "DAT\n"),
+            new IrBuildResult(imagePlan, imagePlacement, layoutSolution, cogResourceLayouts, mir, mir, lir, lir, asm, asm, asm, "DAT\n"),
             diagnostics: []);
 
         IReadOnlyList<ReportSection> sections = ReportSectionCatalog.BuildSections(output);
@@ -88,6 +88,34 @@ public class WriterAndSymbolTests
 
         Assert.That(finalAssembly.FileName, Is.EqualTo("40_final.spin2"));
         Assert.That(finalAssembly.RenderPlainText(), Does.Contain("DAT"));
+    }
+
+    [Test]
+    public void ReportSectionCatalog_IncludesAsmirPreallocBetweenAsmirStages()
+    {
+        BoundProgram program = IrTestFactory.CreateBoundProgram("/tmp/test.blade");
+        MirModule mir = CreateMirModule();
+        LirModule lir = CreateLirModule();
+        AsmModule asm = CreateAsmModule();
+        ImagePlan imagePlan = IrTestFactory.CreateSingleEntryImagePlan(program.EntryPoint);
+        ImagePlacement imagePlacement = ImagePlacer.Place(imagePlan);
+        LayoutSolution layoutSolution = LayoutSolver.SolveStableLayouts(program, imagePlacement);
+        CogResourceLayoutSet cogResourceLayouts = IrTestFactory.CreateEmptyCogResourceLayouts(imagePlan);
+        CompilationOutput output = CreateCompilationOutput(
+            program,
+            new IrBuildResult(imagePlan, imagePlacement, layoutSolution, cogResourceLayouts, mir, mir, lir, lir, asm, asm, asm, "DAT\n"),
+            diagnostics: []);
+
+        IReadOnlyList<ReportSection> sections = ReportSectionCatalog.BuildSections(output);
+
+        Assert.That(
+            sections.Select(static section => section.FileName),
+            Does.Contain("25_asmir_preopt.ir")
+                .And.Contain("28_asmir_prealloc.ir")
+                .And.Contain("30_asmir.ir"));
+        Assert.That(
+            sections.Where(static section => section.Id.StartsWith("asmir", StringComparison.Ordinal)).Select(static section => section.Id),
+            Is.EqualTo(new[] { "asmir-preopt", "asmir-prealloc", "asmir" }));
     }
 
     [Test]
@@ -103,7 +131,7 @@ public class WriterAndSymbolTests
         CogResourceLayoutSet cogResourceLayouts = IrTestFactory.CreateEmptyCogResourceLayouts(imagePlan);
         CompilationOutput output = CreateCompilationOutput(
             program,
-            new IrBuildResult(imagePlan, imagePlacement, layoutSolution, cogResourceLayouts, mir, mir, lir, lir, asm, asm, "DAT\n"),
+            new IrBuildResult(imagePlan, imagePlacement, layoutSolution, cogResourceLayouts, mir, mir, lir, lir, asm, asm, asm, "DAT\n"),
             diagnostics: []);
 
         IReadOnlyList<ReportSection> dumps = ReportSectionCatalog.BuildSections(output);
