@@ -1132,6 +1132,9 @@ public static class AsmLowerer
             case LirConvertOperation:
                 LowerConvert(nodes, op, ctx);
                 break;
+            case LirAggregateFlagTransportOperation:
+                LowerAggregateFlagTransport(nodes, op, ctx);
+                break;
             case LirStructLiteralOperation structLiteral:
                 LowerStructLiteral(nodes, op, structLiteral, ctx);
                 break;
@@ -1805,7 +1808,7 @@ public static class AsmLowerer
             return;
         }
 
-        AsmRegisterOperand value = OpReg(op.Operands[1], ctx);
+        AsmRegisterOperand value = LowerAggregateScalarMemberValue(nodes, op.Operands[1], member.Type, ctx);
         AsmRegisterOperand destLane = DestRegLane(op, shape.Lane, ctx);
         EmitAggregateInsertInPlace(nodes, destLane, value, shape);
     }
@@ -1882,10 +1885,65 @@ public static class AsmLowerer
                 return;
             }
 
-            AsmRegisterOperand value = OpReg(op.Operands[i], ctx);
+            AsmRegisterOperand value = LowerAggregateScalarMemberValue(nodes, op.Operands[i], resolvedMember.Type, ctx);
             AsmRegisterOperand destLane = DestRegLane(op, shape.Lane, ctx);
             EmitAggregateInsertInPlace(nodes, destLane, value, shape);
         }
+    }
+
+    /// <summary>
+    /// Materializes a dedicated aggregate flag transport into a register-backed 0/1 value.
+    /// </summary>
+    private static void LowerAggregateFlagTransport(
+        List<AsmNode> nodes,
+        LirOpInstruction op,
+        LoweringContext ctx)
+    {
+        Assert.Invariant(
+            IsSingleBitType(op.ResultType),
+            $"Aggregate flag transport '{op.DisplayName}' must produce a single-bit result.");
+        Assert.Invariant(
+            op.Operands[0] is LirFlagOperand,
+            $"Aggregate flag transport '{op.DisplayName}' requires a flag operand.");
+
+        LirFlagOperand flagOperand = (LirFlagOperand)op.Operands[0];
+        MirFlag sourceMeaning = GetOrAssignCanonicalFlagMeaning(flagOperand.Flag, ctx);
+        nodes.Add(new AsmInstructionNode(
+            MapAggregateFlagToRegisterMnemonic(sourceMeaning),
+            [DestReg(op, ctx)],
+            flagInput: CreateFlagInput(sourceMeaning, ctx.GetFlag(flagOperand.Flag)),
+            condition: op.Predicate));
+    }
+
+    /// <summary>
+    /// Materializes an aggregate scalar member into a register, preserving single-bit flag
+    /// meaning before the value is inserted into an aggregate lane.
+    /// </summary>
+    private static AsmRegisterOperand LowerAggregateScalarMemberValue(
+        List<AsmNode> nodes,
+        LirOperand operand,
+        BladeType? memberType,
+        LoweringContext ctx)
+    {
+        if (!IsSingleBitType(memberType))
+            return OpReg(operand, ctx);
+
+        Assert.Invariant(
+            operand is not LirFlagOperand,
+            "Aggregate single-bit flag operands must be materialized before aggregate lowering.");
+
+        AsmOperand lowered = LowerSingleBitValueOperand(nodes, operand, ctx);
+        if (lowered is AsmRegisterOperand registerOperand)
+            return registerOperand;
+
+        if (lowered is AsmImmediateOperand immediateOperand)
+        {
+            VirtualAsmRegister tempRegister = new();
+            nodes.Add(Emit(P2Mnemonic.MOV, new AsmRegisterOperand(tempRegister), immediateOperand));
+            return new AsmRegisterOperand(tempRegister);
+        }
+
+        return Assert.UnreachableValue<AsmRegisterOperand>($"Single-bit aggregate member operands must materialize to a register-backed value, got {lowered.GetType().Name}."); // pragma: force-coverage
     }
 
     private static void LowerBitfieldExtract(
@@ -3810,6 +3868,18 @@ public static class AsmLowerer
             MirFlag.NC => P2Mnemonic.WRNC,
             MirFlag.Z => P2Mnemonic.WRZ,
             MirFlag.NZ => P2Mnemonic.WRNZ,
+            _ => Assert.UnreachableValue<P2Mnemonic>(), // pragma: force-coverage
+        };
+    }
+
+    private static P2Mnemonic MapAggregateFlagToRegisterMnemonic(MirFlag flag)
+    {
+        return flag switch
+        {
+            MirFlag.C => P2Mnemonic.WRC,
+            MirFlag.NC => P2Mnemonic.WRNC,
+            MirFlag.Z => P2Mnemonic.WRNZ,
+            MirFlag.NZ => P2Mnemonic.WRZ,
             _ => Assert.UnreachableValue<P2Mnemonic>(), // pragma: force-coverage
         };
     }

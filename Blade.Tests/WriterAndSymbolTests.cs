@@ -441,6 +441,83 @@ public class WriterAndSymbolTests
     }
 
     [Test]
+    public void CompilerDriver_RewritesAggregateFlagOperandsBeforeAggregateStores()
+    {
+        CompilationResult compilation = CompilerDriver.Compile("""
+            type Packet = struct {
+                flag: bool,
+                tag: u8,
+            };
+
+            type Flags = bitfield (u32) {
+                flag: bool,
+                lower: nib,
+                upper: nib,
+                bytev: u8,
+            };
+
+            noinline fn make_packet(left: u32, right: u32) -> Packet {
+                return Packet {
+                    .flag = left == right,
+                    .tag = 7,
+                };
+            }
+
+            cog task main {
+                extern cog var rt_param0: u32;
+                extern cog var rt_param1: u32;
+                extern cog var rt_result: u32;
+
+                cog var packet: Packet = undefined;
+                cog var packet_c: Packet = undefined;
+                cog var packet_reg: Packet = undefined;
+                cog var flags: Flags = undefined;
+                cog var flags_nc: Flags = undefined;
+                cog var stored_flag: bool = false;
+                cog var zero: u32 = 0;
+
+                packet = make_packet(rt_param0, rt_param1);
+                packet_c = Packet {
+                    .flag = rt_param0 < rt_param1,
+                    .tag = 9,
+                };
+                stored_flag = rt_param0 < rt_param1;
+                packet_reg = Packet {
+                    .flag = stored_flag,
+                    .tag = 0,
+                };
+                flags = bitcast(Flags, zero);
+                flags_nc = bitcast(Flags, zero);
+                packet.flag = rt_param0 != rt_param1;
+                packet_reg.flag = stored_flag;
+                flags.flag = rt_param0 == rt_param1;
+                flags_nc.flag = rt_param0 >= rt_param1;
+
+                rt_result = (if (packet.flag) 1 else 0)
+                    | (bitcast(u32, flags) << 1)
+                    | ((if (packet_c.flag) 1 else 0) << 16)
+                    | ((if (packet_reg.flag) 1 else 0) << 17)
+                    | (bitcast(u32, flags_nc) << 18);
+            }
+            """, "<input>");
+
+        Assert.That(compilation.Diagnostics, Is.Empty);
+
+        TestCompilationStages stages = compilation.Stages;
+        string lirText = RenderLirText([stages.PreOptimizationLirModule]);
+        string assemblyText = stages.AssemblyText;
+        int transportCount = lirText.Split("aggregate.flag.transport", System.StringSplitOptions.None).Length - 1;
+
+        Assert.That(transportCount, Is.GreaterThanOrEqualTo(3));
+        Assert.That(assemblyText, Does.Contain("WRC"));
+        Assert.That(assemblyText, Does.Contain("WRNC"));
+        Assert.That(assemblyText, Does.Contain("WRNZ"));
+        Assert.That(assemblyText, Does.Contain("WRZ"));
+        Assert.That(assemblyText, Does.Not.Contain("BITNZ"));
+        Assert.That(assemblyText, Does.Not.Contain("BITZ"));
+    }
+
+    [Test]
     public void AsmWritersAndHelpers_SupportModczOperands()
     {
         AsmModule asm = CreateAsmModule(functions:

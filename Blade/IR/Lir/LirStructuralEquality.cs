@@ -232,6 +232,7 @@ internal static class LirStructuralEquality
                 && lhs.Stride == rhs.Stride,
             (LirPointerDifferenceOperation lhs, LirPointerDifferenceOperation rhs) => lhs.Stride == rhs.Stride,
             (LirConvertOperation, LirConvertOperation) => true,
+            (LirAggregateFlagTransportOperation, LirAggregateFlagTransportOperation) => true,
             (LirStructLiteralOperation lhs, LirStructLiteralOperation rhs) => MembersEqual(lhs.Members, rhs.Members),
             (LirLoadMemberOperation lhs, LirLoadMemberOperation rhs) => ReferenceEquals(lhs.Member, rhs.Member),
             (LirLoadIndexOperation lhs, LirLoadIndexOperation rhs) =>

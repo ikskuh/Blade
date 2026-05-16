@@ -89,6 +89,7 @@
   },
   "lir": {
     "covered": [
+      "LirAggregateFlagTransportOperation",
       "LirBinaryOperation",
       "LirBitfieldExtractOperation",
       "LirBitfieldInsertOperation",

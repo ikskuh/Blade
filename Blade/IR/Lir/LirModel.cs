@@ -265,6 +265,18 @@ public sealed class LirConvertOperation : LirOperation
     public override bool IsValidOperandCount(int operandCount) => operandCount == 1;
 }
 
+/// <summary>
+/// Materializes a flag-backed single-bit value into a register for aggregate storage.
+/// </summary>
+public sealed class LirAggregateFlagTransportOperation : LirOperation
+{
+    public override string DisplayName => "aggregate.flag.transport";
+
+    public override bool IsValidResultType(BladeType? resultType) => IsSingleBitScalarType(resultType);
+
+    public override bool IsValidOperandCount(int operandCount) => operandCount == 1;
+}
+
 public sealed class LirStructLiteralOperation(IReadOnlyList<AggregateMemberSymbol> members) : LirOperation
 {
     public IReadOnlyList<AggregateMemberSymbol> Members { get; } = members;

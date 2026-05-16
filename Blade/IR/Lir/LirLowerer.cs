@@ -132,8 +132,9 @@ public static class LirLowerer
                 }
             }
 
+            IReadOnlyList<LirInstruction> rewrittenInstructions = RewriteAggregateFlagOperands(instructions);
             LirTerminator terminator = LowerTerminator(mirBlock.Terminator, GetValueOperand, GetBlockRef);
-            blocks.Add(new LirBlock(GetBlockRef(mirBlock.Ref), parameters, instructions, terminator));
+            blocks.Add(new LirBlock(GetBlockRef(mirBlock.Ref), parameters, rewrittenInstructions, terminator));
         }
 
         return new LirFunction(mirFunction, blocks, flagValues);
@@ -605,6 +606,146 @@ public static class LirLowerer
             operands.Add(getValueOperand(field.Value));
         return operands;
     }
+
+    private static IReadOnlyList<LirInstruction> RewriteAggregateFlagOperands(IReadOnlyList<LirInstruction> instructions)
+    {
+        List<LirInstruction> rewritten = new(instructions.Count);
+        bool changed = false;
+
+        foreach (LirInstruction instruction in instructions)
+        {
+            if (instruction is LirOpInstruction op && TryRewriteAggregateFlagOperands(op, out IReadOnlyList<LirInstruction>? replacements))
+            {
+                rewritten.AddRange(Requires.NotNull(replacements));
+                changed = true;
+                continue;
+            }
+
+            rewritten.Add(instruction);
+        }
+
+        return changed ? rewritten : instructions;
+    }
+
+    private static bool TryRewriteAggregateFlagOperands(LirOpInstruction instruction, out IReadOnlyList<LirInstruction>? replacements)
+    {
+        switch (instruction.Operation)
+        {
+            case LirStructLiteralOperation structLiteral:
+                return TryRewriteAggregateFlagOperands(instruction, structLiteral.Members, instruction.Operands, out replacements);
+
+            case LirInsertMemberOperation insertMember when IsSingleBitAggregateMember(insertMember.Member):
+                return TryRewriteAggregateFlagOperand(instruction, 1, insertMember.Member.Type, out replacements);
+
+            case LirBitfieldInsertOperation bitfieldInsert when IsSingleBitAggregateMember(bitfieldInsert.Member):
+                return TryRewriteAggregateFlagOperand(instruction, 1, bitfieldInsert.Member.Type, out replacements);
+
+            default:
+                replacements = null;
+                return false;
+        }
+    }
+
+    private static bool TryRewriteAggregateFlagOperands(
+        LirOpInstruction instruction,
+        IReadOnlyList<AggregateMemberSymbol> members,
+        IReadOnlyList<LirOperand> operands,
+        out IReadOnlyList<LirInstruction>? replacements)
+    {
+        Assert.Invariant(
+            members.Count == operands.Count,
+            $"Aggregate instruction '{instruction.DisplayName}' must have the same number of members and operands.");
+
+        List<LirInstruction>? prefix = null;
+        List<LirOperand>? rewrittenOperands = null;
+
+        for (int i = 0; i < operands.Count; i++)
+        {
+            if (!IsSingleBitAggregateMember(members[i]) || operands[i] is not LirFlagOperand flagOperand)
+                continue;
+
+            prefix ??= new List<LirInstruction>();
+            rewrittenOperands ??= new List<LirOperand>(operands);
+
+            LirVirtualRegister transportRegister = new();
+            prefix.Add(CreateAggregateFlagTransportInstruction(transportRegister, flagOperand, members[i].Type, instruction));
+            rewrittenOperands[i] = new LirRegisterOperand(transportRegister);
+        }
+
+        if (prefix is null || rewrittenOperands is null)
+        {
+            replacements = null;
+            return false;
+        }
+
+        prefix.Add(new LirOpInstruction(
+            instruction.Operation,
+            instruction.Destination,
+            instruction.ResultType,
+            rewrittenOperands,
+            instruction.HasSideEffects,
+            instruction.Predicate,
+            instruction.WritesC,
+            instruction.WritesZ,
+            instruction.Span));
+
+        replacements = prefix;
+        return true;
+    }
+
+    private static bool TryRewriteAggregateFlagOperand(
+        LirOpInstruction instruction,
+        int operandIndex,
+        BladeType memberType,
+        out IReadOnlyList<LirInstruction>? replacements)
+    {
+        if (instruction.Operands[operandIndex] is not LirFlagOperand flagOperand)
+        {
+            replacements = null;
+            return false;
+        }
+
+        List<LirOperand> rewrittenOperands = new(instruction.Operands);
+        LirVirtualRegister transportRegister = new();
+        rewrittenOperands[operandIndex] = new LirRegisterOperand(transportRegister);
+
+        replacements =
+        [
+            CreateAggregateFlagTransportInstruction(transportRegister, flagOperand, memberType, instruction),
+            new LirOpInstruction(
+                instruction.Operation,
+                instruction.Destination,
+                instruction.ResultType,
+                rewrittenOperands,
+                instruction.HasSideEffects,
+                instruction.Predicate,
+                instruction.WritesC,
+                instruction.WritesZ,
+                instruction.Span),
+        ];
+        return true;
+    }
+
+    private static LirOpInstruction CreateAggregateFlagTransportInstruction(
+        LirVirtualRegister destination,
+        LirFlagOperand source,
+        BladeType resultType,
+        LirOpInstruction consumer)
+    {
+        return new LirOpInstruction(
+            new LirAggregateFlagTransportOperation(),
+            destination,
+            resultType,
+            [source],
+            hasSideEffects: false,
+            consumer.Predicate,
+            writesC: false,
+            writesZ: false,
+            consumer.Span);
+    }
+
+    private static bool IsSingleBitAggregateMember(AggregateMemberSymbol member)
+        => member.Type is ScalarTypeSymbol { BitWidth: 1 };
 
     private static IReadOnlyList<LirOperand> FlattenRepForIterOperands(
         MirRepForIterInstruction instruction,
