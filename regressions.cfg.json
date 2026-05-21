@@ -1,4 +1,7 @@
 {
+    "hardware": {
+        "port": "ws://p2aas.fritz.box:12880/"
+    },
     "pools": [
         {
             "path": "Examples", // The file path relative to this configuration file

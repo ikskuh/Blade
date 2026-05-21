@@ -589,6 +589,9 @@ public static class RegisterAllocator
             FunctionLiveness liveness = livenessMap[function];
             Dictionary<VirtualAsmValue, int> coloring = coloringMap[function];
             Dictionary<int, AsmRegisterConstraint> colorConstraints = functionColorConstraints.GetValueOrDefault(function) ?? [];
+            Dictionary<StoragePlace, HashSet<int>> placeColors = CollectTiedPlaceColors(colorConstraints);
+            Dictionary<P2Register, HashSet<int>> fixedRegisterColors = CollectFixedRegisterColors(colorConstraints);
+            Dictionary<int, HashSet<int>> colorInterference = BuildColorInterference(liveness, coloring);
             bool foundLayout = cogResourceLayouts.TryGetLayout(function.OwningImage, out CogResourceLayout? functionLayout);
             Assert.Invariant(foundLayout, $"Function '{function.Symbol.Name}' must belong to one image layout.");
             CogResourceLayout layout = Assert.NotNull(functionLayout);
@@ -619,6 +622,7 @@ public static class RegisterAllocator
             // Assign global slots to each color
             Dictionary<int, AllocatedLocation> colorToLocation = [];
             HashSet<int> usedByThisFunction = [];
+            Dictionary<P2Register, List<StoragePlace>> specialRegisterPlaces = [];
 
             // All slots that cannot be used by ANY color in this function
             HashSet<int> alwaysForbidden = new(imageReservedDedicatedAddresses[layout]);
@@ -648,15 +652,24 @@ public static class RegisterAllocator
                     if (preferredRegister is { } physicalRegister)
                     {
                         bool preferredIsFree = physicalRegister.IsSpecial
-                            || (layout.IsRegisterAddressAvailable(new CogAddress(physicalRegister.Address))
+                            ? CanAssignPreferredSpecialRegister(
+                                place,
+                                physicalRegister,
+                                placeColors,
+                                fixedRegisterColors,
+                                specialRegisterPlaces,
+                                colorInterference)
+                            : layout.IsRegisterAddressAvailable(new CogAddress(physicalRegister.Address))
                                 && !alwaysForbidden.Contains(physicalRegister.Address)
                                 && !usedByThisFunction.Contains(physicalRegister.Address)
-                                && !calleeSlots.Contains(physicalRegister.Address));
+                                && !calleeSlots.Contains(physicalRegister.Address);
                         if (preferredIsFree)
                         {
                             placeLocations[place] = AllocatedLocation.ForPhysicalRegister(physicalRegister);
                             if (!physicalRegister.IsSpecial)
                                 usedByThisFunction.Add(physicalRegister.Address);
+                            else
+                                TrackSpecialRegisterPlace(specialRegisterPlaces, physicalRegister, place);
                             continue;
                         }
                     }
@@ -730,6 +743,159 @@ public static class RegisterAllocator
         }
 
         return (result, placeLocations);
+    }
+
+    private static Dictionary<StoragePlace, HashSet<int>> CollectTiedPlaceColors(
+        IReadOnlyDictionary<int, AsmRegisterConstraint> colorConstraints)
+    {
+        Dictionary<StoragePlace, HashSet<int>> result = [];
+
+        foreach ((int color, AsmRegisterConstraint constraint) in colorConstraints)
+        {
+            if (constraint.Kind != AsmRegisterConstraintKind.TiedStoragePlace)
+                continue;
+
+            StoragePlace place = constraint.TiedPlace!;
+            if (!result.TryGetValue(place, out HashSet<int>? colors))
+            {
+                colors = [];
+                result.Add(place, colors);
+            }
+
+            colors.Add(color);
+        }
+
+        return result;
+    }
+
+    private static Dictionary<P2Register, HashSet<int>> CollectFixedRegisterColors(
+        IReadOnlyDictionary<int, AsmRegisterConstraint> colorConstraints)
+    {
+        Dictionary<P2Register, HashSet<int>> result = [];
+
+        foreach ((int color, AsmRegisterConstraint constraint) in colorConstraints)
+        {
+            if (constraint.Kind != AsmRegisterConstraintKind.FixedPhysicalRegister)
+                continue;
+
+            P2Register register = constraint.FixedRegister!.Value;
+            if (!result.TryGetValue(register, out HashSet<int>? colors))
+            {
+                colors = [];
+                result.Add(register, colors);
+            }
+
+            colors.Add(color);
+        }
+
+        return result;
+    }
+
+    private static Dictionary<int, HashSet<int>> BuildColorInterference(
+        FunctionLiveness liveness,
+        IReadOnlyDictionary<VirtualAsmValue, int> coloring)
+    {
+        Dictionary<int, HashSet<int>> result = [];
+
+        foreach ((VirtualAsmValue register, HashSet<VirtualAsmValue> neighbors) in liveness.InterferenceGraph)
+        {
+            if (!coloring.TryGetValue(register, out int color))
+                continue;
+
+            if (!result.TryGetValue(color, out HashSet<int>? colorNeighbors))
+            {
+                colorNeighbors = [];
+                result.Add(color, colorNeighbors);
+            }
+
+            foreach (VirtualAsmValue neighbor in neighbors)
+            {
+                if (!coloring.TryGetValue(neighbor, out int neighborColor)
+                    || neighborColor == color)
+                {
+                    continue;
+                }
+
+                colorNeighbors.Add(neighborColor);
+                if (!result.TryGetValue(neighborColor, out HashSet<int>? neighborSet))
+                {
+                    neighborSet = [];
+                    result.Add(neighborColor, neighborSet);
+                }
+
+                neighborSet.Add(color);
+            }
+        }
+
+        return result;
+    }
+
+    private static bool CanAssignPreferredSpecialRegister(
+        StoragePlace place,
+        P2Register preferredRegister,
+        IReadOnlyDictionary<StoragePlace, HashSet<int>> placeColors,
+        IReadOnlyDictionary<P2Register, HashSet<int>> fixedRegisterColors,
+        IReadOnlyDictionary<P2Register, List<StoragePlace>> specialRegisterPlaces,
+        IReadOnlyDictionary<int, HashSet<int>> colorInterference)
+    {
+        if (!placeColors.TryGetValue(place, out HashSet<int>? candidateColors))
+            return true;
+
+        if (fixedRegisterColors.TryGetValue(preferredRegister, out HashSet<int>? fixedColors))
+        {
+            foreach (int candidateColor in candidateColors)
+            {
+                foreach (int fixedColor in fixedColors)
+                {
+                    if (ColorsInterfere(candidateColor, fixedColor, colorInterference))
+                        return false;
+                }
+            }
+        }
+
+        if (!specialRegisterPlaces.TryGetValue(preferredRegister, out List<StoragePlace>? assignedPlaces))
+            return true;
+
+        foreach (StoragePlace assignedPlace in assignedPlaces)
+        {
+            if (!placeColors.TryGetValue(assignedPlace, out HashSet<int>? assignedColors))
+                continue;
+
+            foreach (int candidateColor in candidateColors)
+            {
+                foreach (int assignedColor in assignedColors)
+                {
+                    if (ColorsInterfere(candidateColor, assignedColor, colorInterference))
+                        return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private static bool ColorsInterfere(
+        int leftColor,
+        int rightColor,
+        IReadOnlyDictionary<int, HashSet<int>> colorInterference)
+    {
+        return leftColor == rightColor
+            || (colorInterference.TryGetValue(leftColor, out HashSet<int>? neighbors)
+                && neighbors.Contains(rightColor));
+    }
+
+    private static void TrackSpecialRegisterPlace(
+        IDictionary<P2Register, List<StoragePlace>> specialRegisterPlaces,
+        P2Register register,
+        StoragePlace place)
+    {
+        if (!specialRegisterPlaces.TryGetValue(register, out List<StoragePlace>? places))
+        {
+            places = [];
+            specialRegisterPlaces.Add(register, places);
+        }
+
+        places.Add(place);
     }
 
     private static HashSet<StoragePlace> CollectCallClobberedPlaces(

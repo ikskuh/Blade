@@ -123,7 +123,7 @@ cog task _start : Runtime
     // enable smart pin
     @DIRH(RT_TXD_PIN);
 
-    @WAITX(1_000_000);
+    @WAITX(10_000_000);
 
     // Initialize hub stack pointer (PTRB) for rec fn (CALLB/RETB/PUSHB/POPB).
     // Point well above the program binary so the stack does not clobber code/data.

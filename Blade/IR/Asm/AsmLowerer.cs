@@ -724,6 +724,11 @@ public static class AsmLowerer
             {
                 Assert.Invariant(function!.Blocks.Count > 0, "Specialized functions must have an entry block.");
                 IReadOnlyList<LirBlockParameter> entryParameters = function.Blocks[0].Parameters;
+                P2SpecialRegister transportRegister = IsTaskEntryFunction(function.Symbol)
+                    ? P2SpecialRegister.PTRA
+                    : functionTier == CallingConventionTier.Leaf
+                        ? P2SpecialRegister.PA
+                        : P2SpecialRegister.PB;
                 List<StoragePlace> parameterPlaces = [];
                 for (int i = 0; i < entryParameters.Count; i++)
                 {
@@ -734,14 +739,9 @@ public static class AsmLowerer
                         parameterPlaces,
                         $"{abiPrefix}_{function.Name}_arg{i}",
                         entryParameters[i].Type,
-                        StoragePlaceRegisterRole.InternalShared);
+                        StoragePlaceRegisterRole.InternalShared,
+                        preferredRegisters: i == 0 ? [new P2Register(transportRegister)] : null);
                 }
-
-                P2SpecialRegister transportRegister = IsTaskEntryFunction(function.Symbol)
-                    ? P2SpecialRegister.PTRA
-                    : functionTier == CallingConventionTier.Leaf
-                        ? P2SpecialRegister.PA
-                        : P2SpecialRegister.PB;
                 List<StoragePlace> returnPlaces = CreateSpecializedReturnPlaces(currentImage, function, functionTier, storageCatalog);
                 specializedCallingConvention[functionKey] = new SpecializedCallingConventionInfo(transportRegister, parameterPlaces, returnPlaces);
             }

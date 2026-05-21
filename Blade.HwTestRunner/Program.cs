@@ -31,12 +31,11 @@ internal static class Program
 
         Console.WriteLine("Create runner...");
 
-        Runner runner = new()
-        {
-            PortName = options.PortName,
-            Loader = options.Loader,
-            TurbopropNoVersionCheck = options.TurbopropNoVersionCheck,
-        };
+        Runner runner = Runner.Create(new RunnerConfiguration(
+            options.PortName,
+            options.Loader,
+            Runner.DefaultTimeoutMs,
+            options.TurbopropNoVersionCheck));
 
         Console.WriteLine("Launch runner...");
 
@@ -123,28 +122,20 @@ internal static class Program
 
         if (positional.Count > 2)
             throw new InvalidOperationException("Too many positional arguments.");
+        if (string.IsNullOrWhiteSpace(portName))
+            throw new InvalidOperationException("Missing required --port.");
 
-        string resolvedPort = ResolvePortName(portName);
         return new ProgramOptions(
             positional.Count >= 1 ? positional[0] : null,
             positional.Count == 2 ? positional[1] : null,
-            resolvedPort,
+            portName,
             HardwareLoaderSettings.ResolveLoader(loader),
             HardwareLoaderSettings.ResolveTurbopropNoVersionCheck(turbopropNoVersionCheck));
     }
 
-    private static string ResolvePortName(string? explicitPortName)
-    {
-        if (!string.IsNullOrWhiteSpace(explicitPortName))
-            return explicitPortName;
-
-        string? environmentPort = Environment.GetEnvironmentVariable("BLADE_TEST_PORT");
-        return string.IsNullOrWhiteSpace(environmentPort) ? "/dev/ttyUSB0" : environmentPort;
-    }
-
     private static void PrintUsage()
     {
-        Console.Error.WriteLine("usage: Blade.HwTestRunner [--port <port>] [--hw-loader auto|loadp2|turboprop] [--hw-turboprop-no-version-check|--hw-turboprop-version-check] <binary> [<expectedOutput>]");
+        Console.Error.WriteLine("usage: Blade.HwTestRunner --port <port-or-endpoint> [--hw-loader auto|p2aas|loadp2|turboprop] [--hw-turboprop-no-version-check|--hw-turboprop-version-check] <binary> [<expectedOutput>]");
     }
 }
 

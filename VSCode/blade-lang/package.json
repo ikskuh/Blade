@@ -39,6 +39,17 @@
         "language": "blade",
         "scopeName": "source.blade",
         "path": "./syntaxes/blade.tmLanguage.json"
+      },
+      {
+          "language": "blade-markdown-injection",
+          "scopeName": "markdown.blade.codeblock",
+          "path": "./syntaxes/blade.tmLanguage.json",
+          "injectTo": [
+              "text.html.markdown"
+          ],
+          "embeddedLanguages": {
+              "meta.embedded.block.blade": "blade"
+          }
       }
     ],
     "commands": [

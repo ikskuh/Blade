@@ -3,7 +3,6 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Text;
 using System.Threading;
 
 namespace Blade.HwTestRunner;
@@ -28,8 +27,10 @@ public readonly struct FixtureParameter(uint value)
 
     }
 
+    /// <summary>Gets the parameter value as an unsigned 32-bit integer.</summary>
     public uint UInt => this.value;
 
+    /// <summary>Gets the parameter value as a signed 32-bit integer.</summary>
     public int Int => unchecked((int)this.value);
 }
 
@@ -44,9 +45,13 @@ public sealed class FixtureConfig
     public int ParameterCount { get; set; } = 0;
 }
 
+/// <summary>
+/// Selects the transport used to upload and run hardware fixtures.
+/// </summary>
 public enum HardwareLoaderKind
 {
     Auto,
+    P2AAS,
     Loadp2,
     Turboprop,
 }
@@ -86,9 +91,10 @@ public static class HardwareLoaderSettings
         return normalized switch
         {
             "auto" => HardwareLoaderKind.Auto,
+            "p2aas" => HardwareLoaderKind.P2AAS,
             "loadp2" => HardwareLoaderKind.Loadp2,
             "turboprop" => HardwareLoaderKind.Turboprop,
-            _ => throw new ArgumentException($"Invalid hardware loader '{value}'. Expected auto, loadp2, or turboprop.", nameof(value)),
+            _ => throw new ArgumentException($"Invalid hardware loader '{value}'. Expected auto, p2aas, loadp2, or turboprop.", nameof(value)),
         };
     }
 
@@ -107,31 +113,84 @@ public static class HardwareLoaderSettings
     }
 }
 
-public sealed class Runner
+/// <summary>Describes how to create a hardware fixture runner.</summary>
+public sealed record class RunnerConfiguration
 {
-    const byte STX = 0x02;
-    const byte ETX = 0x03;
-    const byte EOT = 0x04;
-    const int ExitTimeoutMs = 3000;
-
-    /// <summary>
-    /// 
-    /// </summary>
-    public string PortName { get; init; } = "";
-
-    /// <summary>
-    /// Total timeout in milliseconds until the fixture protocol must complete.
-    /// </summary>
-    public int Timeout { get; set; } = 3500;
-
-    public HardwareLoaderKind Loader { get; set; } = HardwareLoaderKind.Auto;
-
-    public bool TurbopropNoVersionCheck { get; set; }
-
-    public Runner()
+    /// <summary>Initializes a runner configuration.</summary>
+    public RunnerConfiguration(string portName, HardwareLoaderKind loader, int timeoutMs, bool turbopropNoVersionCheck)
     {
+        if (string.IsNullOrWhiteSpace(portName))
+            throw new ArgumentException("Port name or endpoint must be a non-empty string.", nameof(portName));
 
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(timeoutMs);
+
+        this.PortName = portName;
+        this.Loader = loader;
+        this.TimeoutMs = timeoutMs;
+        this.TurbopropNoVersionCheck = turbopropNoVersionCheck;
     }
+
+    /// <summary>Gets the serial port path or websocket endpoint used to reach the hardware target.</summary>
+    public string PortName { get; }
+
+    /// <summary>Gets the requested backend selection used by <see cref="Runner.Create(RunnerConfiguration)"/>.</summary>
+    public HardwareLoaderKind Loader { get; }
+
+    /// <summary>Gets the total timeout in milliseconds until the fixture protocol must complete.</summary>
+    public int TimeoutMs { get; }
+
+    /// <summary>Gets whether turboprop should skip its version check.</summary>
+    public bool TurbopropNoVersionCheck { get; }
+}
+
+/// <summary>Executes hardware fixtures through one of the supported transport backends.</summary>
+public abstract class Runner
+{
+    private const byte STX = 0x02;
+    private const byte ETX = 0x03;
+    private const byte EOT = 0x04;
+    private const int ExitTimeoutMs = 3000;
+
+    private readonly string portName;
+    private readonly int timeoutMs;
+    private readonly bool turbopropNoVersionCheck;
+
+    /// <summary>Gets the default total timeout in milliseconds for hardware fixture runs.</summary>
+    public const int DefaultTimeoutMs = 3500;
+
+    /// <summary>Initializes the shared runner state for one backend implementation.</summary>
+    protected Runner(RunnerConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        this.portName = configuration.PortName;
+        this.timeoutMs = configuration.TimeoutMs;
+        this.turbopropNoVersionCheck = configuration.TurbopropNoVersionCheck;
+    }
+
+    /// <summary>Creates a concrete backend-specific runner for the supplied configuration.</summary>
+    public static Runner Create(RunnerConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        HardwareLoaderKind selectedLoader = ResolveLoader(configuration.PortName, configuration.Loader);
+        return selectedLoader switch
+        {
+            HardwareLoaderKind.P2AAS => new P2AASRunner(configuration),
+            HardwareLoaderKind.Loadp2 => new LoadP2Runner(configuration),
+            HardwareLoaderKind.Turboprop => new TurboPropRunner(configuration),
+            _ => throw new UnreachableException(),
+        };
+    }
+
+    /// <summary>Gets the serial port path or websocket endpoint used to reach the hardware target.</summary>
+    protected string PortName => this.portName;
+
+    /// <summary>Gets the total timeout in milliseconds until the fixture protocol must complete.</summary>
+    protected int TimeoutMs => this.timeoutMs;
+
+    /// <summary>Gets whether turboprop should skip its version check.</summary>
+    protected bool TurbopropNoVersionCheck => this.turbopropNoVersionCheck;
 
     /// <summary>
     /// Executes one fixture binary and returns its captured protocol output.
@@ -153,166 +212,17 @@ public sealed class Runner
 
         PatchParameters(testBinary, parameters);
 
-        HardwareLoaderKind selectedLoader = ResolveLoader();
-        return selectedLoader switch
-        {
-            HardwareLoaderKind.Loadp2 => ExecuteLoadp2(testBinary, inputs),
-            HardwareLoaderKind.Turboprop => ExecuteTurboprop(testBinary, inputs),
-            _ => throw new UnreachableException(),
-        };
+        using P2Transport transport = CreateTransport(testBinary);
+        return ExecuteTransportRun(transport, inputs);
     }
 
-    private TestRun ExecuteLoadp2(byte[] testBinary, uint[] inputs)
+    /// <summary>Creates the backend-specific transport for one fixture execution.</summary>
+    protected abstract P2Transport CreateTransport(byte[] testBinary);
+
+    protected static byte[] PadToLongBoundary(byte[] input)
     {
-        using TempFile patchedFile = new();
-        patchedFile.WriteAllBytes(testBinary);
+        ArgumentNullException.ThrowIfNull(input);
 
-        ProcessStartInfo startInfo = new()
-        {
-            FileName = "loadp2",
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-
-        startInfo.ArgumentList.Add("-p"); // port name
-        startInfo.ArgumentList.Add(this.PortName);
-        startInfo.ArgumentList.Add("-t"); // keep terminal connection open
-        startInfo.ArgumentList.Add("-q"); // quiet mode
-        startInfo.ArgumentList.Add(patchedFile.Path);
-
-        using Process process = StartProcess(startInfo, "loadp2");
-
-
-        return ExecuteRun(process, "loadp2", inputs, postamble: (stdin) =>
-        {
-            stdin.Close();
-        });
-    }
-
-    private TestRun ExecuteTurboprop(byte[] testBinary, uint[] inputs)
-    {
-        byte[] loadableBinary = PadToLongBoundary(testBinary);
-
-        ProcessStartInfo startInfo = new()
-        {
-            FileName = "turboprop",
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-
-        startInfo.ArgumentList.Add($"--port={this.PortName}");
-        startInfo.ArgumentList.Add("--monitor");
-        startInfo.ArgumentList.Add("--monitor-format=raw");
-        if (this.TurbopropNoVersionCheck)
-            startInfo.ArgumentList.Add("--no-version-check");
-        startInfo.ArgumentList.Add("-");
-
-        using Process process = StartProcess(startInfo, "turboprop");
-
-        return ExecuteRun(process, "turboprop", inputs, preamble: (stdin) =>
-        {
-            stdin.Write(loadableBinary, 0, loadableBinary.Length);
-            stdin.Close();
-        });
-    }
-
-    private TestRun ExecuteRun(Process process, string loaderName, uint[] inputs, Action<Stream>? preamble = null, Action<Stream>? postamble = null)
-    {
-        using CancellationTokenSource cts = new(this.Timeout);
-        CancellationToken cancellationToken = cts.Token;
-
-        try
-        {
-            var stdin = process.StandardInput.BaseStream;
-            var stdout = process.StandardOutput.BaseStream;
-            var stderr = process.StandardError.BaseStream;
-
-            FixtureOutputStream output = new(stdout);
-            FixtureOutputStream error = new(stderr);
-            ReadOnlySequence<byte> log = ReadOnlySequence<byte>.Empty;
-            TestResult result;
-
-            try
-            {
-                try
-                {
-                    preamble?.Invoke(stdin);
-
-                    log = this.ReadFixtureLog(output, loaderName, cancellationToken);
-
-                    result = this.ReadFixtureResult(output, loaderName, cancellationToken);
-
-                    postamble?.Invoke(stdin);
-
-                    bool exitedNaturally = process.WaitForExit(milliseconds: 20);
-                    if (!exitedNaturally)
-                    {
-                        KillProcess(process);
-                    }
-
-                    if (exitedNaturally && process.ExitCode != 0)
-                        throw new FixtureException($"{loaderName} crashed with exit code {process.ExitCode}");
-                }
-                finally
-                {
-                    // Ensure we've killed the process when leaving this block:
-                    KillProcess(process);
-
-                    output.ReadToEnd();
-                    error.ReadToEnd();
-                }
-            }
-            catch (TimeoutException ex)
-            {
-                return new TestRun(
-                    inputs,
-                    ex,
-                    TestStatus.TimedOut,
-                    new ReadOnlySequence<byte>(output.GetCapturedData()),
-                    new ReadOnlySequence<byte>(error.GetCapturedData()),
-                    ResolveCapturedLog(output, log));
-            }
-            catch (FixtureException ex)
-            {
-                return new TestRun(
-                    inputs,
-                    ex,
-                    TestStatus.Crashed,
-                    new ReadOnlySequence<byte>(output.GetCapturedData()),
-                    new ReadOnlySequence<byte>(error.GetCapturedData()),
-                    ResolveCapturedLog(output, log));
-            }
-            catch (Exception ex)
-            {
-                return new TestRun(
-                    inputs,
-                    ex,
-                    TestStatus.UnexpectedError,
-                    new ReadOnlySequence<byte>(output.GetCapturedData()),
-                    new ReadOnlySequence<byte>(error.GetCapturedData()),
-                    ResolveCapturedLog(output, log));
-            }
-
-            return new TestRun(
-                inputs,
-                result,
-                new ReadOnlySequence<byte>(output.GetCapturedData()),
-                new ReadOnlySequence<byte>(error.GetCapturedData()),
-                log);
-        }
-        catch (Exception)
-        {
-            KillProcess(process);
-            DumpStderr(process);
-            throw;
-        }
-    }
-
-
-    private static byte[] PadToLongBoundary(byte[] input)
-    {
         int remainder = input.Length % 4;
         if (remainder == 0)
             return input;
@@ -322,18 +232,42 @@ public sealed class Runner
         return padded;
     }
 
-    private HardwareLoaderKind ResolveLoader()
+    protected static Process StartProcess(ProcessStartInfo startInfo, string loaderName)
     {
-        if (this.Loader != HardwareLoaderKind.Auto)
-            return this.Loader;
+        ArgumentNullException.ThrowIfNull(startInfo);
+        ArgumentNullException.ThrowIfNull(loaderName);
 
-        return IsCommandAvailable("turboprop")
-            ? HardwareLoaderKind.Turboprop
-            : HardwareLoaderKind.Loadp2;
+        try
+        {
+            return Process.Start(startInfo) ?? throw new FixtureException($"Failed to start {loaderName}.");
+        }
+        catch (FixtureException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new FixtureException($"Failed to start {loaderName}: {ex.Message}", ex);
+        }
     }
 
-    private static bool IsCommandAvailable(string fileName)
+    protected static void ValidateProcessExit(Process process, string loaderName)
     {
+        ArgumentNullException.ThrowIfNull(process);
+        ArgumentNullException.ThrowIfNull(loaderName);
+
+        bool exitedNaturally = process.WaitForExit(milliseconds: 20);
+        if (!exitedNaturally)
+            KillProcess(process);
+
+        if (exitedNaturally && process.ExitCode != 0)
+            throw new FixtureException($"{loaderName} crashed with exit code {process.ExitCode}");
+    }
+
+    protected static bool IsCommandAvailable(string fileName)
+    {
+        ArgumentNullException.ThrowIfNull(fileName);
+
         string? pathValue = Environment.GetEnvironmentVariable("PATH");
         if (string.IsNullOrWhiteSpace(pathValue))
             return false;
@@ -349,33 +283,144 @@ public sealed class Runner
         return false;
     }
 
-    private static Process StartProcess(ProcessStartInfo startInfo, string loaderName)
+    protected static void KillProcess(Process process)
     {
+        ArgumentNullException.ThrowIfNull(process);
+
         try
         {
-            return Process.Start(startInfo) ?? throw new FixtureException($"Failed to start {loaderName}.");
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
         }
-        catch (FixtureException)
+        catch
         {
-            throw;
         }
-        catch (Exception ex)
+
+        try
         {
-            throw new FixtureException($"Failed to start {loaderName}: {ex.Message}", ex);
+            process.WaitForExit(ExitTimeoutMs);
+        }
+        catch
+        {
         }
     }
 
-    private ReadOnlySequence<byte> ReadFixtureLog(FixtureOutputStream output, string loaderName, CancellationToken cancellationToken)
+    protected static bool IsWebSocketEndpoint(string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+
+        if (!Uri.TryCreate(value, UriKind.Absolute, out Uri? endpoint))
+            return false;
+
+        return IsWebSocketScheme(endpoint.Scheme);
+    }
+
+    protected static bool IsWebSocketScheme(string scheme)
+    {
+        ArgumentNullException.ThrowIfNull(scheme);
+
+        return string.Equals(scheme, Uri.UriSchemeWs, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(scheme, Uri.UriSchemeWss, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private TestRun ExecuteTransportRun(P2Transport transport, uint[] inputs)
+    {
+        using CancellationTokenSource cts = new(transport.TimeoutMs);
+        CancellationToken cancellationToken = cts.Token;
+        bool completedSuccessfully = false;
+
+        FixtureOutputStream output = new(transport.StandardOutput);
+        FixtureOutputStream error = new(transport.StandardError);
+        ReadOnlySequence<byte> log = ReadOnlySequence<byte>.Empty;
+        TestResult result;
+
+        try
+        {
+            try
+            {
+                transport.BeforeProtocol();
+
+                log = this.ReadFixtureLog(output, transport.LoaderName, cancellationToken, transport.TimeoutMs);
+
+                result = this.ReadFixtureResult(output, transport.LoaderName, cancellationToken, transport.TimeoutMs);
+
+                transport.AfterProtocol();
+                completedSuccessfully = true;
+            }
+            finally
+            {
+                transport.Cleanup(completedSuccessfully);
+
+                if (transport.CaptureRemainingOutput)
+                {
+                    output.ReadToEnd();
+                    error.ReadToEnd();
+                }
+            }
+        }
+        catch (TimeoutException ex)
+        {
+            return new TestRun(
+                inputs,
+                ex,
+                TestStatus.TimedOut,
+                new ReadOnlySequence<byte>(output.GetCapturedData()),
+                new ReadOnlySequence<byte>(error.GetCapturedData()),
+                ResolveCapturedLog(output, log));
+        }
+        catch (FixtureException ex)
+        {
+            return new TestRun(
+                inputs,
+                ex,
+                TestStatus.Crashed,
+                new ReadOnlySequence<byte>(output.GetCapturedData()),
+                new ReadOnlySequence<byte>(error.GetCapturedData()),
+                ResolveCapturedLog(output, log));
+        }
+        catch (Exception ex)
+        {
+            return new TestRun(
+                inputs,
+                ex,
+                TestStatus.UnexpectedError,
+                new ReadOnlySequence<byte>(output.GetCapturedData()),
+                new ReadOnlySequence<byte>(error.GetCapturedData()),
+                ResolveCapturedLog(output, log));
+        }
+
+        return new TestRun(
+            inputs,
+            result,
+            new ReadOnlySequence<byte>(output.GetCapturedData()),
+            new ReadOnlySequence<byte>(error.GetCapturedData()),
+            log);
+    }
+
+    private static HardwareLoaderKind ResolveLoader(string portName, HardwareLoaderKind loader)
+    {
+        if (loader != HardwareLoaderKind.Auto)
+            return loader;
+
+        if (IsWebSocketEndpoint(portName))
+            return HardwareLoaderKind.P2AAS;
+
+        return IsCommandAvailable("turboprop")
+            ? HardwareLoaderKind.Turboprop
+            : HardwareLoaderKind.Loadp2;
+    }
+
+    private ReadOnlySequence<byte> ReadFixtureLog(FixtureOutputStream output, string loaderName, CancellationToken cancellationToken, int timeoutMs)
     {
         int stxIndex = output.WaitForByte(
             STX,
             cancellationToken,
-            $"No response from fixture within the total timeout of {this.Timeout} ms via {loaderName}.",
+            $"No response from fixture within the total timeout of {timeoutMs} ms via {loaderName}.",
             $"{loaderName} exited before the fixture responded.");
         int etxIndex = output.WaitForByte(
             ETX,
             cancellationToken,
-            $"Blade code did not exit within the total timeout of {this.Timeout} ms via {loaderName}.",
+            $"Blade code did not exit within the total timeout of {timeoutMs} ms via {loaderName}.",
             $"{loaderName} exited before Blade code completed.");
 
         byte[] captured = output.GetCapturedData();
@@ -386,14 +431,14 @@ public sealed class Runner
         return new(captured[logStart..etxIndex]);
     }
 
-    private TestResult ReadFixtureResult(FixtureOutputStream output, string loaderName, CancellationToken cancellationToken)
+    private TestResult ReadFixtureResult(FixtureOutputStream output, string loaderName, CancellationToken cancellationToken, int timeoutMs)
     {
         List<uint> outputs = [];
         while (true)
         {
             byte firstByte = output.ReadByte(
                 cancellationToken,
-                $"Fixture outputs were not complete within the total timeout of {this.Timeout} ms via {loaderName}.",
+                $"Fixture outputs were not complete within the total timeout of {timeoutMs} ms via {loaderName}.",
                 $"{loaderName} exited before writing the fixture result.");
 
             if (firstByte == EOT)
@@ -466,57 +511,59 @@ public sealed class Runner
         }
     }
 
-    static byte[] ReadToEnd(Stream stream)
+    /// <summary>Defines the hooks that backend-specific transports expose to the shared protocol execution path.</summary>
+    protected abstract class P2Transport : IDisposable
     {
-        using MemoryStream ms = new();
-        stream.CopyTo(ms);
-        return ms.ToArray();
+        protected P2Transport(
+            string loaderName,
+            Stream standardInput,
+            Stream standardOutput,
+            Stream standardError,
+            int timeoutMs,
+            bool captureRemainingOutput)
+        {
+            ArgumentNullException.ThrowIfNull(loaderName);
+            ArgumentNullException.ThrowIfNull(standardInput);
+            ArgumentNullException.ThrowIfNull(standardOutput);
+            ArgumentNullException.ThrowIfNull(standardError);
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(timeoutMs);
+
+            this.LoaderName = loaderName;
+            this.StandardInput = standardInput;
+            this.StandardOutput = standardOutput;
+            this.StandardError = standardError;
+            this.TimeoutMs = timeoutMs;
+            this.CaptureRemainingOutput = captureRemainingOutput;
+        }
+
+        internal string LoaderName { get; }
+
+        internal Stream StandardInput { get; }
+
+        internal Stream StandardOutput { get; }
+
+        internal Stream StandardError { get; }
+
+        internal int TimeoutMs { get; }
+
+        internal bool CaptureRemainingOutput { get; }
+
+        internal virtual void BeforeProtocol()
+        {
+        }
+
+        internal virtual void AfterProtocol()
+        {
+        }
+
+        internal virtual void Cleanup(bool completedSuccessfully)
+        {
+        }
+
+        public virtual void Dispose()
+        {
+        }
     }
-
-    static void CloseStandardInput(Process process)
-    {
-        try
-        {
-            process.StandardInput.Close();
-        }
-        catch
-        {
-        }
-    }
-
-    static void KillProcess(Process process)
-    {
-        try
-        {
-            if (!process.HasExited)
-                process.Kill(entireProcessTree: true);
-        }
-        catch
-        {
-        }
-
-        try
-        {
-            process.WaitForExit(ExitTimeoutMs);
-        }
-        catch
-        {
-        }
-    }
-
-    static void DumpStderr(Process process)
-    {
-        try
-        {
-            byte[] stderrBytes = ReadToEnd(process.StandardError.BaseStream);
-            if (stderrBytes.Length > 0)
-                Console.Error.WriteLine("stderr: {0}", Convert.ToHexString(stderrBytes));
-        }
-        catch
-        {
-        }
-    }
-
 }
 
 [System.Serializable]

@@ -10,6 +10,7 @@ internal sealed class RegressionSuiteConfiguration(
     string repositoryRootPath,
     string configPath,
     IReadOnlyList<RegressionPoolConfiguration> pools,
+    string? hardwarePort,
     string? hardwareRuntimePath,
     string? irCoverageGuardPath)
 {
@@ -21,6 +22,9 @@ internal sealed class RegressionSuiteConfiguration(
 
     /// <summary>Gets the configured regression pools that supply fixture files.</summary>
     public IReadOnlyList<RegressionPoolConfiguration> Pools { get; } = pools;
+
+    /// <summary>Gets the optional hardware port or endpoint configured for regression runs.</summary>
+    public string? HardwarePort { get; } = hardwarePort;
 
     /// <summary>Gets the optional hardware runtime fixture used by hardware tests.</summary>
     public string? HardwareRuntimePath { get; } = hardwareRuntimePath;
@@ -66,6 +70,7 @@ internal static class RegressionConfigurationLoader
             ?? throw new InvalidOperationException("Regression config path has no parent directory.");
 
         List<RegressionPoolConfiguration> pools = LoadPools(root, configDirectoryPath, repositoryRootPath);
+        string? hardwarePort = LoadOptionalHardwarePort(root);
         string? hardwareRuntimePath = LoadOptionalFilePath(root, "hardwareRuntimePath", configDirectoryPath);
         string? irCoverageGuardPath = LoadOptionalFilePath(root, "irCoverageGuardPath", configDirectoryPath);
 
@@ -73,8 +78,26 @@ internal static class RegressionConfigurationLoader
             repositoryRootPath,
             configPath,
             pools,
+            hardwarePort,
             hardwareRuntimePath,
             irCoverageGuardPath);
+    }
+
+    private static string? LoadOptionalHardwarePort(JsonElement root)
+    {
+        if (!root.TryGetProperty("hardware", out JsonElement hardwareElement))
+            return null;
+
+        if (hardwareElement.ValueKind != JsonValueKind.Object)
+            throw new InvalidOperationException("Regression config property 'hardware' must be an object when present.");
+
+        if (!hardwareElement.TryGetProperty("port", out JsonElement portElement))
+            throw new InvalidOperationException("Regression config property 'hardware' is missing required property 'port'.");
+
+        if (portElement.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(portElement.GetString()))
+            throw new InvalidOperationException("Regression config property 'hardware.port' must be a non-empty string.");
+
+        return portElement.GetString();
     }
 
     private static List<RegressionPoolConfiguration> LoadPools(

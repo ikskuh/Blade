@@ -1,9 +1,14 @@
 using System;
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using Blade.HwTestRunner;
 
 namespace Blade.Tests;
@@ -165,6 +170,100 @@ public sealed class HardwareRunnerTests
     }
 
     [Test]
+    public void AutoLoader_SelectsP2AASWhenEndpointIsWebSocketUrl()
+    {
+        using TempDirectory temp = new();
+        using FakeP2AASServer server = FakeP2AASServer.CreateSuccess();
+
+        TestRun result = ExecuteFixture(temp, HardwareLoaderKind.Auto, portName: server.Url);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Result!.Outputs, Is.EqualTo(new[] { 0xCAFEBABEU }));
+            Assert.That(server.UploadedFrames, Has.Count.EqualTo(1));
+            Assert.That(BinaryPrimitives.ReadUInt32LittleEndian(server.UploadedFrames[0].AsSpan(0, sizeof(uint))), Is.EqualTo(32U));
+            Assert.That(server.UploadedFrames[0], Has.Length.EqualTo(36));
+        });
+    }
+
+    [Test]
+    public void P2AASLoader_UploadsLengthPrefixedPaddedBinary()
+    {
+        using TempDirectory temp = new();
+        using FakeP2AASServer server = FakeP2AASServer.CreateSuccess();
+
+        TestRun result = ExecuteFixture(
+            temp,
+            HardwareLoaderKind.P2AAS,
+            parameters: [new FixtureParameter(0x01020304U)],
+            binaryLength: 30,
+            portName: server.Url);
+
+        IReadOnlyList<byte[]> uploadedFrames = server.UploadedFrames;
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Result!.Outputs, Is.EqualTo(new[] { 0xCAFEBABEU }));
+            Assert.That(uploadedFrames, Has.Count.EqualTo(1));
+            Assert.That(uploadedFrames[0], Has.Length.EqualTo(36));
+            Assert.That(BinaryPrimitives.ReadUInt32LittleEndian(uploadedFrames[0].AsSpan(0, sizeof(uint))), Is.EqualTo(32U));
+            Assert.That(uploadedFrames[0][8], Is.EqualTo(0x04));
+            Assert.That(uploadedFrames[0][9], Is.EqualTo(0x03));
+            Assert.That(uploadedFrames[0][10], Is.EqualTo(0x02));
+            Assert.That(uploadedFrames[0][11], Is.EqualTo(0x01));
+            Assert.That(uploadedFrames[0][34], Is.EqualTo(0));
+            Assert.That(uploadedFrames[0][35], Is.EqualTo(0));
+        });
+    }
+
+    [Test]
+    public void P2AASLoader_RejectsTextFrames()
+    {
+        using TempDirectory temp = new();
+        using FakeP2AASServer server = FakeP2AASServer.CreateTextFrame();
+
+        TestRun result = ExecuteFixture(temp, HardwareLoaderKind.P2AAS, portName: server.Url);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Status, Is.EqualTo(TestStatus.Crashed));
+            Assert.That(result.Exception, Is.TypeOf<FixtureException>());
+            Assert.That(result.Exception!.Message, Does.Contain("text frame"));
+        });
+    }
+
+    [Test]
+    public void P2AASLoader_MapsPolicyViolationToTimeout()
+    {
+        using TempDirectory temp = new();
+        using FakeP2AASServer server = FakeP2AASServer.CreatePolicyViolation();
+
+        TestRun result = ExecuteFixture(temp, HardwareLoaderKind.P2AAS, portName: server.Url);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Status, Is.EqualTo(TestStatus.TimedOut));
+            Assert.That(result.Exception, Is.TypeOf<TimeoutException>());
+            Assert.That(result.Log.ToArray(), Is.EqualTo(Encoding.ASCII.GetBytes("partial-log")));
+        });
+    }
+
+    [Test]
+    public void P2AASLoader_TreatsFramesAsContinuousByteStream()
+    {
+        using TempDirectory temp = new();
+        using FakeP2AASServer server = FakeP2AASServer.CreateSplitSuccess();
+
+        TestRun result = ExecuteFixture(temp, HardwareLoaderKind.P2AAS, portName: server.Url);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Status, Is.EqualTo(TestStatus.Success));
+            Assert.That(result.Result!.Outputs, Is.EqualTo(new[] { 0xCAFEBABEU, 0x2AU }));
+            Assert.That(result.Log.IsEmpty, Is.True);
+        });
+    }
+
+    [Test]
     public void LoaderProtocol_TimesOutWhenEndMarkerNeverArrives()
     {
         using TempDirectory temp = new();
@@ -176,8 +275,7 @@ public sealed class HardwareRunnerTests
         """);
         using EnvironmentScope environment = CreateLoaderEnvironment(paths);
 
-        Runner runner = CreateRunner(HardwareLoaderKind.Turboprop);
-        runner.Timeout = 50;
+        Runner runner = CreateRunner(HardwareLoaderKind.Turboprop, timeoutMs: 50);
 
         TestRun result = runner.Execute(temp.GetFullPath("fixture.bin"), CreateConfig(), []);
         Assert.Multiple(() =>
@@ -269,8 +367,7 @@ public sealed class HardwareRunnerTests
         """);
         using EnvironmentScope environment = CreateLoaderEnvironment(paths);
 
-        Runner runner = CreateRunner(HardwareLoaderKind.Turboprop);
-        runner.Timeout = 50;
+        Runner runner = CreateRunner(HardwareLoaderKind.Turboprop, timeoutMs: 50);
 
         TestRun result = runner.Execute(temp.GetFullPath("fixture.bin"), CreateConfig(), []);
 
@@ -314,24 +411,29 @@ public sealed class HardwareRunnerTests
         HardwareLoaderKind loader,
         bool turbopropNoVersionCheck = false,
         FixtureParameter[]? parameters = null,
-        int binaryLength = 32)
+        int binaryLength = 32,
+        string? portName = null,
+        int timeoutMs = Runner.DefaultTimeoutMs)
     {
         string fixturePath = temp.GetFullPath("fixture.bin");
         if (!File.Exists(fixturePath))
             File.WriteAllBytes(fixturePath, new byte[binaryLength]);
 
-        Runner runner = CreateRunner(loader);
-        runner.TurbopropNoVersionCheck = turbopropNoVersionCheck;
+        Runner runner = CreateRunner(loader, portName, timeoutMs, turbopropNoVersionCheck);
         return runner.Execute(fixturePath, CreateConfig(), parameters ?? []);
     }
 
-    private static Runner CreateRunner(HardwareLoaderKind loader)
+    private static Runner CreateRunner(
+        HardwareLoaderKind loader,
+        string? portName = null,
+        int timeoutMs = Runner.DefaultTimeoutMs,
+        bool turbopropNoVersionCheck = false)
     {
-        return new Runner
-        {
-            PortName = "/dev/fake-p2",
-            Loader = loader,
-        };
+        return Runner.Create(new RunnerConfiguration(
+            portName ?? "/dev/fake-p2",
+            loader,
+            timeoutMs,
+            turbopropNoVersionCheck));
     }
 
     private static FixtureConfig CreateConfig()
@@ -429,6 +531,254 @@ public sealed class HardwareRunnerTests
         string TurbopropStdinPath,
         string Loadp2ArgsPath,
         string Loadp2BinaryPath);
+
+    private sealed class FakeP2AASServer : IDisposable
+    {
+        private readonly HttpListener listener;
+        private readonly CancellationTokenSource cancellationSource = new();
+        private readonly Task serverTask;
+        private readonly Func<WebSocket, byte[], CancellationToken, Task> sessionHandler;
+        private readonly TaskCompletionSource<IReadOnlyList<byte[]>> uploadCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private WebSocket? activeSocket;
+        private Exception? failure;
+
+        private FakeP2AASServer(Func<WebSocket, byte[], CancellationToken, Task> sessionHandler)
+        {
+            this.sessionHandler = sessionHandler;
+            int port = ReservePort();
+            this.Url = new UriBuilder("ws", "127.0.0.1", port, "/").Uri.AbsoluteUri;
+            this.listener = new HttpListener();
+            this.listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+            this.listener.Start();
+            this.serverTask = Task.Run(RunAsync);
+        }
+
+        public string Url { get; }
+
+        public IReadOnlyList<byte[]> UploadedFrames => this.uploadCompletion.Task.GetAwaiter().GetResult();
+
+        public static FakeP2AASServer CreateSuccess()
+        {
+            return new FakeP2AASServer(async (socket, _, cancellationToken) =>
+            {
+                await SendBinaryAsync(socket, Encoding.ASCII.GetBytes("\u0002\u0003CAFEBABE\n\u0004"), cancellationToken);
+                await CloseSocketOutputAsync(socket, WebSocketCloseStatus.NormalClosure, "done", cancellationToken);
+            });
+        }
+
+        public static FakeP2AASServer CreateTextFrame()
+        {
+            return new FakeP2AASServer(async (socket, _, cancellationToken) =>
+            {
+                await SendTextAsync(socket, "text-output", cancellationToken);
+                await CloseSocketOutputAsync(socket, WebSocketCloseStatus.NormalClosure, "done", cancellationToken);
+            });
+        }
+
+        public static FakeP2AASServer CreatePolicyViolation()
+        {
+            return new FakeP2AASServer(async (socket, _, cancellationToken) =>
+            {
+                await SendBinaryAsync(socket, Encoding.ASCII.GetBytes("\u0002partial-log"), cancellationToken);
+                await CloseSocketOutputAsync(socket, WebSocketCloseStatus.PolicyViolation, "bridge timeout", cancellationToken);
+            });
+        }
+
+        public static FakeP2AASServer CreateSplitSuccess()
+        {
+            return new FakeP2AASServer(async (socket, _, cancellationToken) =>
+            {
+                await SendBinaryAsync(socket, [0x02], cancellationToken);
+                await SendBinaryAsync(socket, [0x03, (byte)'C', (byte)'A'], cancellationToken);
+                await SendBinaryAsync(socket, Encoding.ASCII.GetBytes("FEBABE\n0000002A\n"), cancellationToken);
+                await SendBinaryAsync(socket, [0x04], cancellationToken);
+                await CloseSocketOutputAsync(socket, WebSocketCloseStatus.NormalClosure, "done", cancellationToken);
+            });
+        }
+
+        public void Dispose()
+        {
+            this.cancellationSource.Cancel();
+
+            try
+            {
+                this.activeSocket?.Abort();
+            }
+            catch
+            {
+            }
+
+            this.listener.Close();
+
+            try
+            {
+                this.serverTask.GetAwaiter().GetResult();
+            }
+            catch (Exception ex) when (ShouldIgnoreDuringDispose(ex))
+            {
+            }
+
+            this.cancellationSource.Dispose();
+            if (this.failure is not null)
+                throw new InvalidOperationException("Fake P2AAS server failed.", this.failure);
+        }
+
+        private async Task RunAsync()
+        {
+            try
+            {
+                HttpListenerContext context = await this.listener.GetContextAsync();
+                HttpListenerWebSocketContext webSocketContext = await context.AcceptWebSocketAsync(subProtocol: null);
+                this.activeSocket = webSocketContext.WebSocket;
+                using WebSocket socket = this.activeSocket;
+                IReadOnlyList<byte[]> uploadFrames = await ReceiveUploadFramesAsync(socket, this.cancellationSource.Token);
+                byte[] payload = ValidateUploadFrames(uploadFrames);
+                this.uploadCompletion.TrySetResult(uploadFrames);
+                await this.sessionHandler(socket, payload, this.cancellationSource.Token);
+            }
+            catch (Exception ex) when (ShouldIgnoreDuringDispose(ex))
+            {
+                this.uploadCompletion.TrySetCanceled(this.cancellationSource.Token);
+            }
+            catch (Exception ex)
+            {
+                this.failure = ex;
+                this.uploadCompletion.TrySetException(ex);
+            }
+            finally
+            {
+                this.activeSocket = null;
+            }
+        }
+
+        private static int ReservePort()
+        {
+            using TcpListener listener = new(IPAddress.Loopback, 0);
+            listener.Start();
+            return ((IPEndPoint)listener.LocalEndpoint).Port;
+        }
+
+        private static bool ShouldIgnoreDuringDispose(Exception ex)
+        {
+            return ex is HttpListenerException or ObjectDisposedException or OperationCanceledException;
+        }
+
+        private static async Task<IReadOnlyList<byte[]>> ReceiveUploadFramesAsync(WebSocket socket, CancellationToken cancellationToken)
+        {
+            byte[] firstFrame = await ReceiveBinaryMessageAsync(socket, cancellationToken);
+            if (firstFrame.Length == sizeof(uint))
+            {
+                uint payloadLength = BinaryPrimitives.ReadUInt32LittleEndian(firstFrame);
+                byte[] secondFrame = await ReceiveBinaryMessageAsync(socket, cancellationToken);
+                if (secondFrame.Length != payloadLength)
+                {
+                    throw new InvalidOperationException(
+                        $"Upload payload frame length {secondFrame.Length} did not match prefix {payloadLength}.");
+                }
+
+                return [firstFrame, secondFrame];
+            }
+
+            return [firstFrame];
+        }
+
+        private static byte[] ValidateUploadFrames(IReadOnlyList<byte[]> uploadFrames)
+        {
+            if (uploadFrames.Count == 0)
+                throw new InvalidOperationException("Upload message was missing.");
+
+            if (uploadFrames.Count == 1)
+                return ValidateSingleFrameUpload(uploadFrames[0]);
+
+            if (uploadFrames.Count == 2)
+                return ValidateTwoFrameUpload(uploadFrames[0], uploadFrames[1]);
+
+            throw new InvalidOperationException($"Expected one or two upload frames, but received {uploadFrames.Count}.");
+        }
+
+        private static byte[] ValidateSingleFrameUpload(byte[] uploadMessage)
+        {
+            if (uploadMessage.Length < sizeof(uint))
+                throw new InvalidOperationException("Upload message was missing the 4-byte payload length prefix.");
+
+            uint payloadLength = BinaryPrimitives.ReadUInt32LittleEndian(uploadMessage.AsSpan(0, sizeof(uint)));
+            int actualPayloadLength = uploadMessage.Length - sizeof(uint);
+            if (payloadLength == 0)
+                throw new InvalidOperationException("Upload payload length must be greater than zero.");
+
+            if (payloadLength > 524288)
+                throw new InvalidOperationException("Upload payload length exceeded the P2AAS maximum size.");
+
+            if (payloadLength % 4 != 0)
+                throw new InvalidOperationException("Upload payload length must be divisible by four.");
+
+            if (payloadLength != actualPayloadLength)
+            {
+                throw new InvalidOperationException(
+                    $"Upload payload length prefix {payloadLength} did not match actual payload length {actualPayloadLength}.");
+            }
+
+            return uploadMessage[sizeof(uint)..];
+        }
+
+        private static byte[] ValidateTwoFrameUpload(byte[] lengthFrame, byte[] payloadFrame)
+        {
+            if (lengthFrame.Length != sizeof(uint))
+                throw new InvalidOperationException("The length frame must contain exactly 4 bytes.");
+
+            uint payloadLength = BinaryPrimitives.ReadUInt32LittleEndian(lengthFrame);
+            int actualPayloadLength = payloadFrame.Length;
+            if (payloadLength == 0)
+                throw new InvalidOperationException("Upload payload length must be greater than zero.");
+
+            if (payloadLength > 524288)
+                throw new InvalidOperationException("Upload payload length exceeded the P2AAS maximum size.");
+
+            if (payloadLength % 4 != 0)
+                throw new InvalidOperationException("Upload payload length must be divisible by four.");
+
+            if (payloadLength != actualPayloadLength)
+            {
+                throw new InvalidOperationException(
+                    $"Upload payload length prefix {payloadLength} did not match actual payload length {actualPayloadLength}.");
+            }
+
+            return payloadFrame;
+        }
+
+        private static async Task<byte[]> ReceiveBinaryMessageAsync(WebSocket socket, CancellationToken cancellationToken)
+        {
+            byte[] buffer = new byte[4096];
+            using MemoryStream stream = new();
+
+            while (true)
+            {
+                WebSocketReceiveResult result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);
+                if (result.MessageType != WebSocketMessageType.Binary)
+                    throw new InvalidOperationException($"Expected a binary upload message, but received {result.MessageType}.");
+
+                stream.Write(buffer, 0, result.Count);
+                if (result.EndOfMessage)
+                    return stream.ToArray();
+            }
+        }
+
+        private static Task SendBinaryAsync(WebSocket socket, byte[] bytes, CancellationToken cancellationToken)
+        {
+            return socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Binary, endOfMessage: true, cancellationToken);
+        }
+
+        private static Task SendTextAsync(WebSocket socket, string text, CancellationToken cancellationToken)
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes(text);
+            return socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, endOfMessage: true, cancellationToken);
+        }
+
+        private static Task CloseSocketOutputAsync(WebSocket socket, WebSocketCloseStatus status, string description, CancellationToken cancellationToken)
+        {
+            return socket.CloseOutputAsync(status, description, cancellationToken);
+        }
+    }
 
     private sealed class EnvironmentScope : IDisposable
     {

@@ -30,7 +30,7 @@ These silicon bugs must be respected by the compiler, otherwise miscompilations 
 
 ## Missing optimizations
 
-```
+```pasm
     ' function count_string (Leaf)
   count_string
   count_string_bb0
@@ -108,12 +108,12 @@ reg var a: u32 = 0;
 reg var b: u32 = 0;
 
 if(a == b) { // MARKER 1
-    asm volatile { 
+    asm volatile {
         COGATN #1  // MARKER 2
     };
 }
 else { // MARKER 3
-    asm volatile { 
+    asm volatile {
         COGATN #2 // MARKER 4
     };
 }
@@ -125,7 +125,7 @@ else { // MARKER 3
   l_top_bb0
     MOV _r3, g_a
     MOV _r2, g_b
-    CMP _r3, _r2 WZ 
+    CMP _r3, _r2 WZ
     WRZ _r2
     TJZ _r2, #l_top_bb3   ' MARKER 3
     JMP #l_top_bb2        ' MARKER 1
@@ -214,18 +214,15 @@ probable solution is to:
 
 ## Assert.NotNull
 
-            AsmOperand yieldStateDestination = ctx.Tier == CallingConventionTier.Coroutine
-                && ctx.CoroutineCallingConvention.TryGetValue(ctx.Function.Name, out CoroutineCallingConventionInfo? sourceInfo)
-                && sourceInfo is not null
-                ? new AsmPlaceOperand(sourceInfo.StatePlace)
-                : ctx.TopLevelYieldStatePlace is not null
-                    ? new AsmPlaceOperand(ctx.TopLevelYieldStatePlace)
-                    : Assert.UnreachableValue<AsmOperand>();
-
-## introduce new dump "asmir-prealloc"
-
-New dump to analyze the code after ASMIR optimizations but before
-the register allocator folded variables.
+```cs
+AsmOperand yieldStateDestination = ctx.Tier == CallingConventionTier.Coroutine
+    && ctx.CoroutineCallingConvention.TryGetValue(ctx.Function.Name, out CoroutineCallingConventionInfo? sourceInfo)
+    && sourceInfo is not null
+    ? new AsmPlaceOperand(sourceInfo.StatePlace)
+    : ctx.TopLevelYieldStatePlace is not null
+        ? new AsmPlaceOperand(ctx.TopLevelYieldStatePlace)
+        : Assert.UnreachableValue<AsmOperand>();
+```
 
 ## Missed optimization
 
@@ -274,7 +271,7 @@ Apply new `?` operand matching instead of hardcoding internals like generated sy
 ## Argument/return fusion
 
 Implement optimization that function argument/retval storage places can be fused.
-Different labels for clarity, but same memory slot for efficiency when proven that 
+Different labels for clarity, but same memory slot for efficiency when proven that
 they cannot overlap anyways.
 
 ## Rework register allocator to run backwards
@@ -346,7 +343,6 @@ Right now `Demonstrators/HwTest/hw_struct_literal_lowering.blade` only tests the
 
 see generated code
 
-
 ## Arbitrarily sized integers
 
 `cog var c: uint(5) = 0;` in `RegressionTests/TestSuiteExport/accept/types.blade` is not sanctioned right now.
@@ -355,7 +351,7 @@ see generated code
 
 This can be encoded using e.g. `BITH` or `NOT g_reinterpreted_signed, #0`
 
-```
+```blade
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
@@ -363,7 +359,7 @@ This can be encoded using e.g. `BITH` or `NOT g_reinterpreted_signed, #0`
 // - main_c_4294967295      LONG $FFFFFFFF
 // ! MOV g_reinterpreted_signed, #-1
 cog task main {
-    
+
     cog var reinterpreted_signed: i8 = 0;
     reinterpreted_signed = bitcast(i8, 255 as u8);
 }
@@ -373,7 +369,7 @@ cog task main {
 
 `comptime const` as a comptime-only value type that must be pasted verbatim.
 
-## Top-level `asset` must be legal
+## Top-level `assert` must be legal
 
 See name.
 
@@ -415,7 +411,7 @@ nib_loop:
 
 If it's zero, the loop body can be fully omitted when lowering, and must emit a warning.
 
-The optimization can also be used for comptime-known captures with counter and ranges: 
+The optimization can also be used for comptime-known captures with counter and ranges:
 
 ```blade
 for(10..20) -> value {
@@ -438,7 +434,7 @@ which does not need to compare the iterator value, which saves a lot of cycles.
 
 ## Allow `#{binding}` in inline asm
 
-```
+```pasm
 ADD {value}, #{HEX_CHAR_ASC_OFFSET}
 ```
 
@@ -492,14 +488,9 @@ Right now, all `hub const` values are emitted into the binary imgae. This is onl
 
 All unpointed values can be erased.
 
-### g_global_yield_state must be deleted
-
-it can be safely replaced by "yield to INA", which is effectively a value discard.
-
-This means we should introduce this concept on a broader scale to implement it.
-
 ## Inline asm support for `LONG {foo}`
 
+Data directives (LONG, WORD, BYTE) with bindings aren't supported right now
 
 ## Bug: UnaryPlus should never reach AsmLowerer
 
@@ -507,23 +498,25 @@ This means we should introduce this concept on a broader scale to implement it.
 case BoundUnaryOperatorKind.UnaryPlus:
 ```
 
-##  MIR/LIR/ASMIR Optimization: Common subexpression elimination
+## MIR/LIR/ASMIR Optimization: Common subexpression elimination
 
 Eliminate equal parts of the IR tree
 
-##  MIR/LIR/ASMIR Optimization: Equal block elimination
+## MIR/LIR/ASMIR Optimization: Equal block elimination
 
 Eliminate equal parts of the IR tree
 
 ## MIR/LIR/ASMIR Validator
- 
-Implement a validator that checks if IR code is valid between all stages.
 
+Implement a validator that checks if IR code is valid between all stages.
 
 ## Miscompilation: `rep loop` gets compiled to `JMP` loop
 
+This is a lowering issue.
+
 ## "MODCZ" inline assembly syntax not support
 
+This fix is syntactical.
 
 ## There's a difference between "non-elidable" and "non-reorderable"
 
@@ -537,3 +530,21 @@ We have different requirements for instructions, instruction pairs or sequences 
 - Instructions with sideeffects are always non-elidable
 - `volatile asm` blocks cannot be reordered
 
+## Fix `coro fn` implementation
+
+Right now, it creates unusable code. This also requires a rewrite of the register allocator.
+
+
+### g_global_yield_state must be deleted
+
+it can be safely replaced by "yield to INA", which is effectively a value discard.
+
+This means we should introduce this concept on a broader scale to implement it.
+
+## Fully rework register allocation
+
+Right now, the register allocator is going nuts and is doing a lot of bad stuff, and it's messy as fuck.
+
+It looks like the register allocator is based on incredibly wrong assumptions for our architecture, as it seems to assume register saving.
+
+Multiple files fail because of this.

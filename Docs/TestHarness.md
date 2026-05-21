@@ -297,24 +297,28 @@ This keeps the harness strict enough to catch real codegen changes while still i
 ## Commands
 
 - `just regressions` runs the full regression corpus
-- `just regressions -- --hw-port <port>` runs the full regression corpus and enables real hardware execution for `EXPECT: pass-hw` and `EXPECT: xfail-hw` fixtures
+- `just regressions` also uses the checked-in `hardware.port` from `regressions.cfg.json` when hardware fixtures are enabled
+- `just regressions -- --hw-port <port-or-endpoint>` overrides the configured hardware port or endpoint for that run
+- `just regressions -- --hw-loader p2aas --hw-port <ws-endpoint>` forces the hardware runner to use `p2aas`
 - `just regressions -- --hw-loader turboprop --hw-port <port>` forces the hardware runner to use `turboprop`
 - `just regressions -- --hw-turboprop-no-version-check --hw-port <port>` passes `--no-version-check` when `turboprop` is selected
 - `just coverage` runs `dotnet test --collect:"XPlat Code Coverage"`
 
-Hardware port resolution order for `EXPECT: pass-hw` is:
+Hardware endpoint resolution order for `EXPECT: pass-hw` is:
 
-- `--hw-port <port>`
-- `BLADE_TEST_PORT`
+- `--hw-port <port-or-endpoint>`
+- `hardware.port` in `regressions.cfg.json`
 - no hardware execution; the fixture still runs as a normal compile/FlexSpin regression using the hardware runtime
 
 Hardware loader resolution order is:
 
-- `--hw-loader auto|loadp2|turboprop`
-- `BLADE_TEST_LOADER=auto|loadp2|turboprop`
+- `--hw-loader auto|p2aas|loadp2|turboprop`
+- `BLADE_TEST_LOADER=auto|p2aas|loadp2|turboprop`
 - `auto`
 
-`auto` selects `turboprop` when it is available on `PATH`, otherwise it falls back to `loadp2`.
+`auto` selects `p2aas` when the resolved hardware endpoint uses a WebSocket scheme.
+Otherwise it selects `turboprop` when it is available on `PATH`, and falls back to `loadp2`.
+The `p2aas` path pads the patched binary to a 4-byte boundary, sends one binary WebSocket message containing `uint32_le(payload_length) + payload_bytes`, and then treats incoming binary WebSocket frames as the fixture byte stream.
 The `loadp2` path writes the patched binary to a temporary file and runs `loadp2 -p <port> -t -q <file>`.
 The `turboprop` path pads the patched binary to a 4-byte boundary, streams it through stdin, and runs `turboprop --port=<port> --monitor --monitor-format=raw -`.
 
@@ -325,7 +329,7 @@ The `turboprop` version check is enabled by default. Disable it for faster runs 
 
 Use `--hw-turboprop-version-check` to force the version check back on when the environment variable is set.
 
-The NUnit suite contains a thin wrapper that invokes the regression runner in-process, so the regression harness contributes to the existing coverage data without a second coverage pipeline.
+The NUnit suite contains a thin wrapper that invokes the regression runner in-process, so `dotnet test` uses the same `regressions.cfg.json` configuration and contributes to the existing coverage data without a second coverage pipeline.
 
 
 ## FlexSpin availability

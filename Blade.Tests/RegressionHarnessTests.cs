@@ -399,51 +399,43 @@ public sealed class RegressionHarnessTests
     }
 
     [Test]
-    public void RegressionCommandLine_UsesEnvironmentHardwarePortWhenCliFlagIsAbsent()
+    public void RegressionCommandLine_DoesNotUseLegacyHardwarePortEnvironmentWhenCliFlagIsAbsent()
     {
-        string? previous = Environment.GetEnvironmentVariable("BLADE_TEST_PORT");
+        string legacyHardwarePortEnvironmentVariable = string.Concat("BLADE_TEST", "_PORT");
+        string? previous = Environment.GetEnvironmentVariable(legacyHardwarePortEnvironmentVariable);
         try
         {
-            Environment.SetEnvironmentVariable("BLADE_TEST_PORT", "env-port");
-            RegressionRunOptions options = ParseRegressionCommandLine();
-            Assert.That(options.HardwarePort, Is.EqualTo("env-port"));
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("BLADE_TEST_PORT", previous);
-        }
-    }
-
-    [Test]
-    public void RegressionCommandLine_MissingRootedEnvironmentHardwarePort_IsIgnored()
-    {
-        string? previous = Environment.GetEnvironmentVariable("BLADE_TEST_PORT");
-        string missingPortPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "missing-serial-port");
-        try
-        {
-            Environment.SetEnvironmentVariable("BLADE_TEST_PORT", missingPortPath);
+            Environment.SetEnvironmentVariable(legacyHardwarePortEnvironmentVariable, "env-port");
             RegressionRunOptions options = ParseRegressionCommandLine();
             Assert.That(options.HardwarePort, Is.Null);
         }
         finally
         {
-            Environment.SetEnvironmentVariable("BLADE_TEST_PORT", previous);
+            Environment.SetEnvironmentVariable(legacyHardwarePortEnvironmentVariable, previous);
         }
     }
 
     [Test]
-    public void RegressionCommandLine_CliHardwarePortOverridesEnvironment()
+    public void RegressionCommandLine_ParsesHardwarePortFlag()
     {
-        string? previous = Environment.GetEnvironmentVariable("BLADE_TEST_PORT");
+        RegressionRunOptions options = ParseRegressionCommandLine("--hw-port", "cli-port");
+        Assert.That(options.HardwarePort, Is.EqualTo("cli-port"));
+    }
+
+    [Test]
+    public void RegressionCommandLine_CliHardwarePortOverridesLegacyEnvironment()
+    {
+        string legacyHardwarePortEnvironmentVariable = string.Concat("BLADE_TEST", "_PORT");
+        string? previous = Environment.GetEnvironmentVariable(legacyHardwarePortEnvironmentVariable);
         try
         {
-            Environment.SetEnvironmentVariable("BLADE_TEST_PORT", "env-port");
+            Environment.SetEnvironmentVariable(legacyHardwarePortEnvironmentVariable, "env-port");
             RegressionRunOptions options = ParseRegressionCommandLine("--hw-port", "cli-port");
             Assert.That(options.HardwarePort, Is.EqualTo("cli-port"));
         }
         finally
         {
-            Environment.SetEnvironmentVariable("BLADE_TEST_PORT", previous);
+            Environment.SetEnvironmentVariable(legacyHardwarePortEnvironmentVariable, previous);
         }
     }
 
@@ -451,11 +443,13 @@ public sealed class RegressionHarnessTests
     [NonParallelizable]
     public void RegressionCommandLine_ParsesHardwareLoaderFlag()
     {
+        RegressionRunOptions p2AasOptions = ParseRegressionCommandLine("--hw-loader", "p2aas");
         RegressionRunOptions turbopropOptions = ParseRegressionCommandLine("--hw-loader", "turboprop");
         RegressionRunOptions loadp2Options = ParseRegressionCommandLine("--hw-loader", "loadp2");
 
         Assert.Multiple(() =>
         {
+            Assert.That(p2AasOptions.HardwareLoader, Is.EqualTo(HardwareLoaderKind.P2AAS));
             Assert.That(turbopropOptions.HardwareLoader, Is.EqualTo(HardwareLoaderKind.Turboprop));
             Assert.That(loadp2Options.HardwareLoader, Is.EqualTo(HardwareLoaderKind.Loadp2));
         });
@@ -613,6 +607,77 @@ public sealed class RegressionHarnessTests
     }
 
     [Test]
+    public void RegressionRunner_ConfigRejectsNonObjectHardwareSection()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        WriteRegressionConfig(temp, """
+        {
+            "hardware": [],
+            "pools": [
+                { "path": "Examples", "expect": "accept" }
+            ]
+        }
+        """);
+
+        InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() => RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        }))!;
+
+        Assert.That(ex.Message, Is.EqualTo("Regression config property 'hardware' must be an object when present."));
+    }
+
+    [Test]
+    public void RegressionRunner_ConfigRejectsHardwareSectionWithoutPort()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        WriteRegressionConfig(temp, """
+        {
+            "hardware": {},
+            "pools": [
+                { "path": "Examples", "expect": "accept" }
+            ]
+        }
+        """);
+
+        InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() => RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        }))!;
+
+        Assert.That(ex.Message, Is.EqualTo("Regression config property 'hardware' is missing required property 'port'."));
+    }
+
+    [Test]
+    public void RegressionRunner_ConfigRejectsEmptyHardwarePort()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        WriteRegressionConfig(temp, """
+        {
+            "hardware": {
+                "port": "   "
+            },
+            "pools": [
+                { "path": "Examples", "expect": "accept" }
+            ]
+        }
+        """);
+
+        InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() => RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        }))!;
+
+        Assert.That(ex.Message, Is.EqualTo("Regression config property 'hardware.port' must be a non-empty string."));
+    }
+
+    [Test]
     public void AcceptPool_IgnoresInFileExpectDirectivesAndRequiresCleanCompile()
     {
         using TempDirectory temp = new();
@@ -749,6 +814,42 @@ public sealed class RegressionHarnessTests
 
         RegressionFixtureResult fixtureResult = result.FixtureResults.Single(result =>
             result.RelativePath == "Demonstrators/hw_xfail_exec.blade");
+        if (fixtureResult.Outcome == RegressionFixtureOutcome.Skipped)
+            Assert.Ignore("flexspin is not available in this environment");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.False);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.HwErr));
+            Assert.That(fixtureResult.Details, Has.Some.StartsWith("hardware run 1 [] ended with status Crashed:"));
+        });
+    }
+
+    [Test]
+    public void PassHwFixture_UsesConfiguredHardwarePort_WhenOptionIsAbsent()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        WriteHardwareRuntime(temp);
+        WriteRegressionConfigWithHardwarePort(temp, "/configured-port");
+        temp.WriteFile("Demonstrators/hw_exec_from_config.blade", """
+        // EXPECT: pass-hw
+        // RUNS:
+        // - [] = 0x0
+        cog task main {
+            var x: u32 = 0;
+            _ = x;
+        }
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(result =>
+            result.RelativePath == "Demonstrators/hw_exec_from_config.blade");
         if (fixtureResult.Outcome == RegressionFixtureOutcome.Skipped)
             Assert.Ignore("flexspin is not available in this environment");
 
@@ -1885,6 +1986,39 @@ public sealed class RegressionHarnessTests
 
         RegressionFixtureResult fixtureResult = result.FixtureResults.Single(r =>
             r.RelativePath == "Demonstrators/xfailhw_no_port.blade");
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(fixtureResult.Outcome, Is.EqualTo(RegressionFixtureOutcome.Ok));
+        });
+    }
+
+    [Test]
+    public void XFailHwFixture_ExplicitEmptyHardwarePort_DisablesConfiguredHardware()
+    {
+        using TempDirectory temp = new();
+        WriteMinimalRegressionRepository(temp);
+        WriteHardwareRuntime(temp);
+        WriteRegressionConfigWithHardwarePort(temp, "/configured-port");
+        temp.WriteFile("Demonstrators/xfailhw_disabled_config.blade", """
+        // EXPECT: xfail-hw
+        // RUNS:
+        // - [] = 0x1
+        cog task main {
+            var x: u32 = 1;
+            _ = x;
+        }
+        """);
+
+        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        {
+            RepositoryRootPath = temp.Path,
+            WriteFailureArtifacts = false,
+            HardwarePort = "",
+        });
+
+        RegressionFixtureResult fixtureResult = result.FixtureResults.Single(r =>
+            r.RelativePath == "Demonstrators/xfailhw_disabled_config.blade");
         Assert.Multiple(() =>
         {
             Assert.That(result.Succeeded, Is.True);
@@ -3075,6 +3209,11 @@ public sealed class RegressionHarnessTests
 
     private static void WriteRegressionConfig(TempDirectory temp)
     {
+        WriteRegressionConfigWithHardwarePort(temp, null);
+    }
+
+    private static void WriteRegressionConfigWithHardwarePort(TempDirectory temp, string? hardwarePort)
+    {
         bool hasHardwareRuntime = File.Exists(Path.Combine(temp.Path, "Blade.HwTestRunner", "Runtime.blade"));
         bool hasIrCoverageGuard = File.Exists(Path.Combine(temp.Path, "RegressionTests", "ir-regression-guard.json"));
 
@@ -3087,7 +3226,16 @@ public sealed class RegressionHarnessTests
     ]
 """;
 
-        List<string> properties = [poolsProperty];
+        List<string> properties = [];
+        if (!string.IsNullOrWhiteSpace(hardwarePort))
+        {
+            properties.Add(
+                "    \"hardware\": {" + Environment.NewLine
+                + $"        \"port\": {JsonSerializer.Serialize(hardwarePort)}" + Environment.NewLine
+                + "    }");
+        }
+
+        properties.Add(poolsProperty);
         if (hasHardwareRuntime)
             properties.Add("    \"hardwareRuntimePath\": \"Blade.HwTestRunner/Runtime.blade\"");
         if (hasIrCoverageGuard)

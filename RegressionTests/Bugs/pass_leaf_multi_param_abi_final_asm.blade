@@ -1,18 +1,17 @@
 // EXPECT: pass
 // STAGE: final-asm
 // CONTAINS:
-// - MOV ?, ?1
 // - CALLPA ?, #?2
-// - MOV ?, PA
-// - MOV PA, ?
+// SEQUENCE:
+// - ?2
+// - leaf_sub_bb0
+// ! MOV PA, ?
 // - SUB PA, ?
-// - MOV ?3, PA
+// - RET WCZ
 // ! SUB PA, PA
-// ! g_leaf_leaf_sub_arg1
 // NOTE:
-//   Covers a two-parameter leaf function. Parameter 0 arrives in PA and is
-//   copied into internal storage before arithmetic while parameter 1 travels
-//   through a shared ABI slot.
+//   Covers a two-parameter leaf function. Parameter 0 now stays in PA for the
+//   leaf body, while parameter 1 still travels through a shared ABI slot.
 cog task main {
     
     noinline leaf fn leaf_sub(a: u32, b: u32) -> u32 {

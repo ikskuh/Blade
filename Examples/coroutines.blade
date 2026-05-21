@@ -6,11 +6,13 @@ cog task main
     // Launch coroutine loop:
     yieldto blink_on();
 
-    fn sleep() {
+    fn sleep()
+    {
         @WAITX(clock_delay - 2);
     }
 
-    coro fn blink_on() {
+    coro fn blink_on()
+    {
         loop {
             @DRVH(pin);
             sleep();
@@ -18,7 +20,8 @@ cog task main
         }
     }
 
-    coro fn blink_off() {
+    coro fn blink_off()
+    {
         loop {
             @DRVH(pin);
             sleep();

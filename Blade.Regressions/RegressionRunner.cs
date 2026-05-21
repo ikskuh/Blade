@@ -72,7 +72,7 @@ public static class RegressionRunner
         RegressionRunOptions effectiveOptions = options ?? new RegressionRunOptions();
         RegressionSuiteConfiguration configuration = RegressionConfigurationLoader.Load(effectiveOptions);
         string repositoryRootPath = configuration.RepositoryRootPath;
-        string? hardwarePort = HardwarePortResolver.Resolve(effectiveOptions.HardwarePort);
+        string? hardwarePort = HardwarePortResolver.Resolve(effectiveOptions.HardwarePort, configuration.HardwarePort);
         HardwareLoaderKind hardwareLoader = HardwareLoaderSettings.ResolveLoader(effectiveOptions.HardwareLoader);
         bool hardwareTurbopropNoVersionCheck = HardwareLoaderSettings.ResolveTurbopropNoVersionCheck(effectiveOptions.HardwareTurbopropNoVersionCheck);
         bool isFullRun = effectiveOptions.Filters.Count == 0;
@@ -2138,12 +2138,11 @@ internal static class HardwareFixtureRunner
 
         try
         {
-            Runner runner = new()
-            {
-                PortName = portName,
-                Loader = hardwareLoader,
-                TurbopropNoVersionCheck = turbopropNoVersionCheck,
-            };
+            Runner runner = Runner.Create(new RunnerConfiguration(
+                portName,
+                hardwareLoader,
+                Runner.DefaultTimeoutMs,
+                turbopropNoVersionCheck));
 
             return runner.Execute(binaryPath, config, parameters);
         }
@@ -2156,22 +2155,16 @@ internal static class HardwareFixtureRunner
 
 internal static class HardwarePortResolver
 {
-    // Pass an empty string to explicitly disable hardware (suppress env var lookup).
-    public static string? Resolve(string? explicitPort)
+    // Pass an empty string to explicitly disable configured hardware.
+    public static string? Resolve(string? explicitPort, string? configuredPort)
     {
         if (explicitPort is not null)
             return string.IsNullOrWhiteSpace(explicitPort) ? null : explicitPort;
 
-        string? envPort = Environment.GetEnvironmentVariable("BLADE_TEST_PORT");
-        if (string.IsNullOrWhiteSpace(envPort))
+        if (string.IsNullOrWhiteSpace(configuredPort))
             return null;
 
-        // Detached hardware commonly leaves a stale rooted device path in the environment.
-        // Treat that as unavailable so the regression suite does not attempt live hardware runs.
-        if (Path.IsPathRooted(envPort) && !File.Exists(envPort))
-            return null;
-
-        return envPort;
+        return configuredPort;
     }
 }
 
@@ -2413,7 +2406,7 @@ internal static class RegressionCommandLine
             ConfigPath = configPath,
             Filters = filters,
             WriteFailureArtifacts = writeFailureArtifacts,
-            HardwarePort = HardwarePortResolver.Resolve(hardwarePort),
+            HardwarePort = hardwarePort,
             HardwareLoader = HardwareLoaderSettings.ResolveLoader(hardwareLoader),
             HardwareTurbopropNoVersionCheck = HardwareLoaderSettings.ResolveTurbopropNoVersionCheck(turbopropNoVersionCheck),
             Json = json,

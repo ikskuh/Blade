@@ -57,15 +57,7 @@ required capability.
 
 ## Hardware Config
 
-The server reads repo-root `.blade_mcp.json`:
-
-```json
-{
-  "hardware": {
-    "serial_port": "/dev/serial/by-id/..."
-  }
-}
-```
+The server reads repo-root `.blade_mcp.json`. The checked-in file is intentionally device-agnostic; add a local `hardware.serial_port` value only in uncommitted changes when you want MCP-driven serial execution.
 
 Hardware execution is considered available only when the configured device path exists.
 

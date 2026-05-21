@@ -1,5 +1,1 @@
-{
-  "hardware": {
-    "serial_port": "/dev/serial/by-id/usb-FTDI_FT231X_USB_UART_DUAB9RPU-if00-port0"
-  }
-}
+{}
