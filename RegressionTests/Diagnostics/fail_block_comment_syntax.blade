@@ -1,0 +1,9 @@
+// EXPECT: fail
+// DIAGNOSTICS: ExpectedExpression
+// NOTE:
+//   Blade never supported block comments. Slash-star must be rejected as
+//   ordinary punctuation, not treated as comment syntax.
+
+cog task main {
+    cog var x: u32 = /* 1;
+}

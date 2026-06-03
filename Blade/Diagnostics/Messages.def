@@ -14,9 +14,6 @@ located InvalidNumberLiteral: E0003
     message: $"Invalid number literal '{text}'."
     param:   string text
 
-located UnterminatedBlockComment: E0004
-    message: "Unterminated block comment."
-
 located InvalidCharacterLiteral: E0005
     message: "Invalid character literal."
 

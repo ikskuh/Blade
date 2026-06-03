@@ -89,12 +89,6 @@ public sealed class Lexer(SourceText source, DiagnosticBag diagnostics)
                 return NextToken();
             }
 
-            if (Lookahead == '*')
-            {
-                SkipBlockComment();
-                return NextToken();
-            }
-
             Advance();
             if (Current == '=')
             {
@@ -126,38 +120,6 @@ public sealed class Lexer(SourceText source, DiagnosticBag diagnostics)
         Advance(2);
         while (_position < _source.Length && Current != '\n' && Current != '\r')
             Advance();
-    }
-
-    private void SkipBlockComment()
-    {
-        int commentStart = _position;
-        // Skip past /*
-        Advance(2);
-
-        int depth = 1;
-        while (_position < _source.Length && depth > 0)
-        {
-            if (Current == '/' && Lookahead == '*')
-            {
-                Advance(2);
-                depth++;
-            }
-            else if (Current == '*' && Lookahead == '/')
-            {
-                Advance(2);
-                depth--;
-            }
-            else
-            {
-                Advance();
-            }
-        }
-
-        if (depth > 0)
-        {
-            TextSpan span = TextSpan.FromBounds(commentStart, _position);
-            Diagnostics.Report(new UnterminatedBlockCommentError(Diagnostics.CurrentSource, span));
-        }
     }
 
     private Token ReadNumber()

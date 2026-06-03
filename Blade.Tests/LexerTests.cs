@@ -675,25 +675,11 @@ public class LexerTests
     }
 
     [Test]
-    public void BlockComment_IsSkipped()
+    public void SlashStar_LexesAsOrdinaryTokens()
     {
-        List<Token> tokens = Lex("/* comment */ 42");
-        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.IntegerLiteral));
-        AssertIntegerValue(tokens[0], 42L);
-    }
-
-    [Test]
-    public void NestedBlockComment_IsSkipped()
-    {
-        List<Token> tokens = Lex("/* outer /* inner */ still comment */ 42");
-        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.IntegerLiteral));
-    }
-
-    [Test]
-    public void UnterminatedBlockComment_ReportsDiagnostic()
-    {
-        List<Token> tokens = LexWithDiagnostics("/* unterminated", out DiagnosticBag diagnostics);
-        Assert.That(diagnostics.Count, Is.EqualTo(1));
+        List<Token> tokens = Lex("/*");
+        Assert.That(tokens[0].Kind, Is.EqualTo(TokenKind.Slash));
+        Assert.That(tokens[1].Kind, Is.EqualTo(TokenKind.Star));
     }
 
     // --- @ token ---

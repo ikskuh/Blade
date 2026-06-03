@@ -161,26 +161,6 @@
         }
       ]
     },
-    "block-comment": {
-      "begin": "/\\*",
-      "beginCaptures": {
-        "0": {
-          "name": "punctuation.definition.comment.begin.blade"
-        }
-      },
-      "end": "\\*/",
-      "endCaptures": {
-        "0": {
-          "name": "punctuation.definition.comment.end.blade"
-        }
-      },
-      "name": "comment.block.blade",
-      "patterns": [
-        {
-          "include": "#block-comment"
-        }
-      ]
-    },
     "char-literals": {
       "match": "(')((?:\\\\(?:[0tnre]|x[0-9A-Fa-f]{2}|u\\{[0-9A-Fa-f]+\\})|[^'\\\\]))(')","captures": {
         "1": {
@@ -205,9 +185,6 @@
           },
           "end": "$",
           "name": "comment.line.double-slash.blade"
-        },
-        {
-          "include": "#block-comment"
         }
       ]
     },

@@ -18,7 +18,6 @@ public class DiagnosticBagTests
         bag.Report(new UnexpectedCharacterError(bag.CurrentSource, Span, '$'));
         bag.Report(new UnterminatedStringError(bag.CurrentSource, Span));
         bag.Report(new InvalidNumberLiteralError(bag.CurrentSource, Span, "0x"));
-        bag.Report(new UnterminatedBlockCommentError(bag.CurrentSource, Span));
         bag.Report(new InvalidCharacterLiteralError(bag.CurrentSource, Span));
         bag.Report(new InvalidEscapeSequenceError(bag.CurrentSource, Span));
         bag.Report(new UnexpectedTokenError(bag.CurrentSource, Span, "identifier", "EOF"));
@@ -82,7 +81,7 @@ public class DiagnosticBagTests
         bag.Report(new UnsupportedLoweringError(bag.CurrentSource, Span, "store.index"));
         bag.Report(new DuplicateVariableClauseError(bag.CurrentSource, Span, "@(...)"));
 
-        Assert.That(bag.Count, Is.EqualTo(66));
+        Assert.That(bag.Count, Is.EqualTo(65));
         Assert.That(bag.HasErrors, Is.True);
         Assert.That(bag.Last().Code, Is.EqualTo("E0108"));
     }

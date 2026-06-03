@@ -16,7 +16,6 @@ The language never had block comments in the first place, the agents hallucinate
 
 Resolution:
 Fully delete block comment lexing and the related unterminated-block-comment diagnostics.
-
 ## FINDING-2: Top-Level `assert` Not Supported
 
 Description:
