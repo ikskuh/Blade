@@ -1,0 +1,10 @@
+// EXPECT: pass
+// NOTE:
+//   Top-level asserts must evaluate after same-module top-level const bindings
+//   are available, even when the assertion appears first in source order.
+
+assert answer == 42;
+
+hub const answer: u32 = 42;
+
+cog task main { }

@@ -670,6 +670,17 @@ public class ParserTests
     }
 
     [Test]
+    public void TopLevelAssert_ParsesWithoutUnexpectedToken()
+    {
+        (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("assert true;");
+        AssertNoDiagnostics(diag);
+
+        Assert.That(unit.Members[0], Is.TypeOf<GlobalStatementSyntax>());
+        GlobalStatementSyntax global = (GlobalStatementSyntax)unit.Members[0];
+        Assert.That(global.Statement, Is.TypeOf<AssertStatementSyntax>());
+    }
+
+    [Test]
     public void TopLevelIfStatement_ReportsUnexpectedToken()
     {
         (CompilationUnitSyntax unit, DiagnosticBag diag) = Parse("if (flag) { return; }");

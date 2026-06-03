@@ -100,6 +100,9 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
             case TokenKind.ConstKeyword:
                 return ParseVariableDeclaration(externKeyword: null);
 
+            case TokenKind.AssertKeyword:
+                return ParseGlobalStatement();
+
             case TokenKind.TypeKeyword:
                 return ParseTypeAliasDeclaration();
 

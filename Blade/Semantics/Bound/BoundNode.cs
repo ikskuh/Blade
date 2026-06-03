@@ -8,6 +8,7 @@ public enum BoundNodeKind
     Module,
     GlobalVariableMember,
     FunctionMember,
+    TopLevelAssertMember,
 
     BlockStatement,
     VariableDeclarationStatement,

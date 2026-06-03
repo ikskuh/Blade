@@ -201,6 +201,7 @@ public sealed class ComptimeBinderHelperTests
             EmptyCompilationUnit(),
             [],
             functionMembers,
+            [],
             IrTestFactory.CreateExports(functions: functionMembers, importedModules: effectiveImportedModules));
     }
 
@@ -216,6 +217,7 @@ public sealed class ComptimeBinderHelperTests
             EmptyCompilationUnit(),
             [],
             functionMembers,
+            [],
             IrTestFactory.CreateExports(functions: functionMembers, importedModules: effectiveImportedModules));
     }
 

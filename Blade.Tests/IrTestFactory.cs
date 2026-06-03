@@ -227,6 +227,7 @@ internal static class IrTestFactory
             new CompilationUnitSyntax([], new Token(TokenKind.EndOfFile, new TextSpan(0, 0), string.Empty)),
             globalVariables ?? [],
             functionMembers,
+            [],
             exportedSymbols ?? CreateExports(globalVariables, functionMembers));
     }
 

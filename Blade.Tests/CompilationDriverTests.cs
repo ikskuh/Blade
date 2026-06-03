@@ -51,4 +51,27 @@ public sealed class CompilationDriverTests
         Assert.That(cycle.Source.FilePath, Is.EqualTo(temp.GetFullPath("b.blade")));
         Assert.That(cycle.GetLocation().FilePath, Is.EqualTo(temp.GetFullPath("b.blade")));
     }
+
+    [Test]
+    public void TopLevelAssert_CanReferenceLaterHubConst_AndIsStoredOnRootModule()
+    {
+        CompilationResult result = CompilerDriver.Compile(
+            """
+            assert answer == 42;
+
+            hub const answer: u32 = 42;
+
+            cog task main { }
+            """,
+            filePath: "<input>",
+            new CompilationOptions
+            {
+                EmitIr = false,
+            });
+
+        Assert.That(result.Diagnostics.Any(d => d.IsError), Is.False);
+        Assert.That(result.BoundProgram, Is.Not.Null);
+        Assert.That(result.BoundProgram!.RootModule.TopLevelAssertions, Has.Count.EqualTo(1));
+        Assert.That(result.BoundProgram.RootModule.TopLevelAssertions[0].Message, Is.Null);
+    }
 }

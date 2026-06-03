@@ -14,6 +14,7 @@ public sealed class BoundModule(
     CompilationUnitSyntax syntax,
     IReadOnlyList<GlobalVariableSymbol> globalVariables,
     IReadOnlyList<BoundFunctionMember> functions,
+    IReadOnlyList<BoundTopLevelAssertMember> topLevelAssertions,
     IReadOnlyDictionary<string, Symbol> exportedSymbols) : BoundNode(BoundNodeKind.Module, Requires.NotNull(syntax).Span)
 {
     /// <summary>
@@ -37,6 +38,11 @@ public sealed class BoundModule(
     public IReadOnlyList<BoundFunctionMember> Functions { get; } = Requires.NotNull(functions);
 
     /// <summary>
+    /// Gets the compile-time assert members declared at module scope.
+    /// </summary>
+    public IReadOnlyList<BoundTopLevelAssertMember> TopLevelAssertions { get; } = Requires.NotNull(topLevelAssertions);
+
+    /// <summary>
     /// Gets the exported symbols that may be referenced from importing modules.
     /// </summary>
     public IReadOnlyDictionary<string, Symbol> ExportedSymbols { get; } = Requires.NotNull(exportedSymbols);
@@ -44,6 +50,22 @@ public sealed class BoundModule(
 
 public abstract class BoundMember(BoundNodeKind kind, TextSpan span) : BoundNode(kind, span)
 {
+}
+
+/// <summary>
+/// Represents one compile-time assertion declared at module scope.
+/// </summary>
+public sealed class BoundTopLevelAssertMember(BoundExpression condition, string? message, TextSpan span) : BoundMember(BoundNodeKind.TopLevelAssertMember, span)
+{
+    /// <summary>
+    /// Gets the bound boolean condition for the module-level assertion.
+    /// </summary>
+    public BoundExpression Condition { get; } = Requires.NotNull(condition);
+
+    /// <summary>
+    /// Gets the optional message emitted if the assertion fails.
+    /// </summary>
+    public string? Message { get; } = message;
 }
 
 public sealed class BoundFunctionMember(FunctionSymbol symbol, BoundBlockStatement body, TextSpan span) : BoundMember(BoundNodeKind.FunctionMember, span)

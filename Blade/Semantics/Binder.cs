@@ -187,6 +187,8 @@ public sealed class Binder
 
         List<GlobalVariableSymbol> boundGlobals = new();
         List<BoundFunctionMember> ordinaryFunctions = new();
+        List<AssertStatementSyntax> pendingTopLevelAssertions = new();
+        List<BoundTopLevelAssertMember> boundTopLevelAssertions = new();
 
         foreach (MemberSyntax member in unit.Members)
         {
@@ -220,6 +222,21 @@ public sealed class Binder
                     if (_functions.ContainsKey(asmFunction.Name.Text))
                         ordinaryFunctions.Add(BindAsmFunction(asmFunction));
                     break;
+
+                case GlobalStatementSyntax { Statement: AssertStatementSyntax assertStatement }:
+                    pendingTopLevelAssertions.Add(assertStatement);
+                    break;
+            }
+        }
+
+        _currentScope = _globalScope;
+        foreach (AssertStatementSyntax assertStatement in pendingTopLevelAssertions)
+        {
+            BoundTopLevelAssertMember? boundAssert = BindTopLevelAssert(assertStatement);
+            if (boundAssert is not null)
+            {
+                EvaluateBoundAssert(assertStatement, boundAssert.Condition, boundAssert.Message);
+                boundTopLevelAssertions.Add(boundAssert);
             }
         }
 
@@ -230,6 +247,7 @@ public sealed class Binder
             unit,
             boundGlobals,
             ordinaryFunctions,
+            boundTopLevelAssertions,
             exportedSymbols);
     }
 
@@ -599,6 +617,7 @@ public sealed class Binder
             effectiveSyntax,
             [],
             [],
+            [],
             new Dictionary<string, Symbol>());
     }
 
@@ -660,6 +679,7 @@ public sealed class Binder
             baseBuiltinModule.Syntax,
             baseBuiltinModule.GlobalVariables,
             baseBuiltinModule.Functions,
+            baseBuiltinModule.TopLevelAssertions,
             exportedSymbols);
         _moduleDefinitionCache[BuiltinRuntimeModulePath] = builtinRuntimeModule;
         return builtinRuntimeModule;
@@ -707,6 +727,7 @@ public sealed class Binder
         BoundModule builtinBaseModule = new(
             BuiltinModulePath,
             emptySyntax,
+            [],
             [],
             [],
             exportedSymbols);
@@ -2607,14 +2628,30 @@ public sealed class Binder
 
     private BoundStatement? BindAssertStatement(AssertStatementSyntax assertStatement)
     {
-        if (assertStatement.CommaToken is not null && assertStatement.MessageLiteral is null)
+        BoundTopLevelAssertMember? boundAssert = BindTopLevelAssert(assertStatement);
+        if (boundAssert is null)
             return new BoundErrorStatement(assertStatement.Span);
+
+        return EvaluateBoundAssert(assertStatement, boundAssert.Condition, boundAssert.Message);
+    }
+
+    private BoundTopLevelAssertMember? BindTopLevelAssert(AssertStatementSyntax assertStatement)
+    {
+        if (assertStatement.CommaToken is not null && assertStatement.MessageLiteral is null)
+            return null;
 
         BoundExpression condition = BindExpression(assertStatement.Condition, BuiltinTypes.Bool);
-
         if (condition is BoundErrorExpression)
-            return new BoundErrorStatement(assertStatement.Span);
+            return null;
 
+        string? message = assertStatement.MessageLiteral is { } messageLiteral
+            ? DecodeUtf8Literal(messageLiteral)
+            : null;
+        return new BoundTopLevelAssertMember(condition, message, assertStatement.Span);
+    }
+
+    private BoundStatement? EvaluateBoundAssert(AssertStatementSyntax assertStatement, BoundExpression condition, string? message)
+    {
         if (!TryEvaluateAssertCondition(condition, out ComptimeResult value, out ComptimeFailure failure))
         {
             if (!ContainsErrorExpression(condition))
@@ -2633,9 +2670,7 @@ public sealed class Binder
         if (conditionValue)
             return null;
 
-        _diagnostics.ReportAssertionFailed(
-            assertStatement.Span,
-            assertStatement.MessageLiteral is { } messageLiteral ? DecodeUtf8Literal(messageLiteral) : null);
+        _diagnostics.ReportAssertionFailed(assertStatement.Span, message);
         return new BoundErrorStatement(assertStatement.Span);
     }
 

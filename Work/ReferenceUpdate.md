@@ -1,39 +1,5 @@
 # Reference Update
 
-## FINDING-1: Nested Block Comments Are Implemented
-
-Description:
-The language reference says Blade only supports line comments introduced with `//`, but the lexer still accepts nested block comments `/* ... */` and reports unterminated block comments.
-
-Evidence:
-- `Lexer.NextToken` dispatches `/*` to `SkipBlockComment`.
-- `Lexer.SkipBlockComment` tracks nesting depth for nested block comments.
-
-Triage: Compiler Bug
-
-Reasoning:
-The language never had block comments in the first place, the agents hallucinated this feature and implemented it.
-
-Resolution:
-Fully delete block comment lexing and the related unterminated-block-comment diagnostics.
-## FINDING-2: Top-Level `assert` Not Supported
-
-Description:
-The language reference allows top-level `assert` statements, but the parser still treats them as unexpected top-level input and emits a diagnostic before falling back to statement parsing.
-
-Evidence:
-- `Parser.ParseTopLevelMember` has no `AssertKeyword` case and routes non-declarations through `ParseUnexpectedTopLevelMember`.
-- `Parser.ParseUnexpectedTopLevelMember` reports `UnexpectedTokenError(..., "top-level declaration", ...)` before delegating to `ParseGlobalStatement`.
-- `ParseStatement` still accepts `AssertKeyword`, so top-level `assert` is parsed only after already being diagnosed as invalid top-level syntax.
-
-Triage: Compiler Bug
-
-Reasoning:
-Top-level `assert` is part of the language, but the top-level parser entry assumes only declarations are valid and reports an error for `assert` first.
-
-Resolution:
-Teach `ParseTopLevelMember` to accept top-level `assert` directly without first reporting an unexpected top-level token.
-
 ## FINDING-6: Obsolete Type Spellings Remain Accepted
 
 Description:

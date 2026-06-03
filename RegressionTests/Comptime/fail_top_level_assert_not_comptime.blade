@@ -1,0 +1,9 @@
+// EXPECT: fail
+// DIAGNOSTICS:
+// - ComptimeValueRequired
+
+hub var state: u32 = 1;
+
+assert state == 1;
+
+cog task main { }

@@ -42,6 +42,7 @@
       "BoundStructLiteralExpression",
       "BoundSymbolAssignmentTarget",
       "BoundSymbolExpression",
+      "BoundTopLevelAssertMember",
       "BoundUnaryExpression",
       "BoundVariableDeclarationStatement",
       "BoundWhileStatement",

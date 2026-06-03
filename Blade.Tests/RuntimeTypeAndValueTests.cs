@@ -386,6 +386,7 @@ public sealed class RuntimeTypeAndValueTests
             syntax,
             [],
             [],
+            [],
             new Dictionary<string, Symbol>(StringComparer.Ordinal));
     }
 
