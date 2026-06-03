@@ -93,7 +93,7 @@ Before reporting a task as completed:
 
 - `just accept-changes` must return without any findings.
 - Your changes must have 100% code coverage.
-- All language-related changes must have a positive and negative demonstrator file inside `Demonstrators/`.
+- All language-related changes must have a positive and negative demonstrator file inside `RegressionTests/`.
 
 ## Syntax & Grammar Changes
 
@@ -140,11 +140,11 @@ When code appears unreachable, immediately log it into `Work/Unreachable.md`.
 
 ## Testing
 
-Always prefer a new code sample in `Demonstrators/` over a dedicated unit test in `Blade.Tests`.
+Always prefer a new code sample in `RegressionTests/` over a dedicated unit test in `Blade.Tests`.
 A unit test asserts code, a Demonstrator asserts compiler compliance.
 
 When compiler behavior can be covered by the regression harness, do not add or modify `Blade.Tests/BinderTests.cs`.
-Add or update a fixture under `RegressionTests/` or `Demonstrators/` instead.
+Add or update a fixture under `RegressionTests/` instead.
 Only touch `BinderTests.cs` when the behavior cannot be expressed through the regression harness, or when the user explicitly asks for a binder unit test.
 
 **100% branch coverage required.** Run `just coverage`; query uncovered lines:
@@ -166,8 +166,8 @@ Matches diagnostics and codegen against header expectations; validates assembly 
 and semantics through a hardware test runner.
 
 - `Examples/` — pristine, no headers, zero diagnostics only.
-- `Demonstrators/` — may have expectation headers, part of regression corpus.
-- `RegressionTests/` — focused bug/diagnostic/assembly fixtures.
+- `Demonstrators/` — Demonstrators contain files that demonstrate different language features.
+- `RegressionTests/` — Regression test fixtures, always implement new positive and negative regression tests here.
 - `EXPECT: fail` — malformed or semantically invalid programs.
 - `EXPECT: xfail` — valid programs that fail due to known compiler gaps.
 

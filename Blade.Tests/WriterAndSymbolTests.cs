@@ -195,7 +195,9 @@ public class WriterAndSymbolTests
         Assert.That(sharedHubSection, Does.Contain("$80000  -- -- -- --  -"));
         Assert.That(sharedHubSection, Does.Not.Contain("$00004  -- -- -- --  -"));
         Assert.That(imageSection, Does.Contain("cog\naddr  state      init   owner\n$000  allocated  -      code"));
-        Assert.That(imageSection, Does.Contain("$00B  free       -      -"));
+        Assert.That(
+            imageSection,
+            Does.Match(@"\$000  allocated  -      code\r?\n\*\r?\n\$[0-9A-F]{3}  allocated  -      code\r?\n\$[0-9A-F]{3}  free       -      -"));
         Assert.That(imageSection, Does.Contain("$1F0  reserved   -      -\n*\n$1FF  reserved   -      -"));
         Assert.That(imageSection, Does.Contain("lut\naddr  state      init   owner\n$000  free       -      -\n*\n$1FF  free       -      -"));
     }

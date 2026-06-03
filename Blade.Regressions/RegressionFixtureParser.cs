@@ -95,6 +95,20 @@ internal static class RegressionFixtureParser
         return new RegressionFixture(discoveredFixture.AbsolutePath, discoveredFixture.RelativePath, kind, text, bodyText, expectation);
     }
 
+    /// <summary>Parses an encoded regression expectation from raw fixture text without loading a file from disk.</summary>
+    public static RegressionExpectation ParseEncodedExpectation(string fixtureText)
+    {
+        ArgumentNullException.ThrowIfNull(fixtureText);
+
+        HeaderScanResult headerScan = HeaderScanResult.Scan(fixtureText);
+        RegressionExpectation expectation = headerScan.HasDirectiveHeader
+            ? ParseExpectation(headerScan)
+            : CreateDefaultExpectation(RegressionExpectationKind.Pass);
+
+        ValidateExpectation(expectation, requireFailDiagnosticAssertions: headerScan.HasDirectiveHeader);
+        return expectation;
+    }
+
     private static IEnumerable<string> EnumerateExpectedDiagnosticNames(RegressionExpectation expectation)
     {
         foreach (string name in expectation.LooseDiagnosticNames)

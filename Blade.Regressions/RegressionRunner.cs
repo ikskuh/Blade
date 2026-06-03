@@ -101,6 +101,31 @@ public static class RegressionRunner
         RegressionIrCoverageReport? irCoverageReport = irCoverageSession?.Complete();
         return new RegressionRunResult(repositoryRootPath, fixtureResults, irCoverageReport);
     }
+
+    /// <summary>Parses an encoded regression expectation from raw fixture text without discovering or compiling a fixture.</summary>
+    public static RegressionExpectation ParseEncodedExpectation(string fixtureText)
+    {
+        return RegressionFixtureParser.ParseEncodedExpectation(fixtureText);
+    }
+
+    /// <summary>Evaluates parsed code assertions against raw stage output without invoking the compiler pipeline.</summary>
+    /// <returns>A tuple containing any assertion issues and the formatted matcher trace, if one was produced.</returns>
+    public static (IReadOnlyList<string> Issues, string? MatcherTraceText) EvaluateCodeAssertionsAgainstStageOutput(
+        RegressionExpectation expectation,
+        RegressionStage stage,
+        string actualText)
+    {
+        ArgumentNullException.ThrowIfNull(expectation);
+        ArgumentNullException.ThrowIfNull(actualText);
+
+        NormalizedSourceText normalizedActual = CodeNormalizer.NormalizeBladeStage(stage, actualText);
+        CodeAssertionEvaluationResult evaluationResult = EvaluateNormalizedAssertions(expectation, normalizedActual, stage);
+        string? matcherTraceText = evaluationResult.MatcherTraceReport is null
+            ? null
+            : MatcherTraceFormatter.Format(evaluationResult.MatcherTraceReport);
+        return (evaluationResult.Issues, matcherTraceText);
+    }
+
     private static RegressionFixtureResult EvaluateFixture(
         RegressionSuiteConfiguration configuration,
         DiscoveredRegressionFixture discoveredFixture,

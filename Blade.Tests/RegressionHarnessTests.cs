@@ -2308,303 +2308,357 @@ public sealed class RegressionHarnessTests
     [Test]
     public void CodeAssertions_ContainsBlocksHaveIndependentWildcardBindings()
     {
-        using TempDirectory temp = new();
-        WriteMinimalRegressionRepository(temp);
-        temp.WriteFile("Demonstrators/contains_independent_bindings.blade", """
-        // EXPECT: pass
-        // STAGE: final-asm
-        // FLEXSPIN: forbidden
-        // CONTAINS:
-        // - MOV ?1, #1
-        // - ADD ?1, #2
-        // CONTAINS:
-        // - MOV ?1, #3
-        // - ADD ?1, #4
-        cog task main {
-            asm volatile {
-                MOV PA, #1
-                ADD PA, #2
-                MOV PB, #3
-                ADD PB, #4
-            };
-        }
-        """);
+        RegressionExpectation expectation = ParseEncodedExpectation(
+            """
+            // EXPECT: pass
+            // STAGE: final-asm
+            // FLEXSPIN: forbidden
+            // CONTAINS:
+            // - MOV ?1, #1
+            // - ADD ?1, #2
+            // CONTAINS:
+            // - MOV ?1, #3
+            // - ADD ?1, #4
+            cog task main {
+            }
+            """);
 
-        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        Assert.Multiple(() =>
         {
-            RepositoryRootPath = temp.Path,
-            WriteFailureArtifacts = false,
-            Filters = [DemonstratorFilter("contains_independent_bindings.blade")],
+            Assert.That(expectation.ContainsBlocks, Has.Count.EqualTo(2));
+            Assert.That(
+                expectation.ContainsBlocks[0].Items.Select(item => item.Pattern.Source),
+                Is.EqualTo(new[] { "MOV ?1, #1", "ADD ?1, #2" }));
+            Assert.That(
+                expectation.ContainsBlocks[1].Items.Select(item => item.Pattern.Source),
+                Is.EqualTo(new[] { "MOV ?1, #3", "ADD ?1, #4" }));
         });
 
-        Assert.That(result.Succeeded, Is.True, RegressionReportFormatter.Format(result));
+        (IReadOnlyList<string> issues, string traceText) = EvaluateParsedCodeAssertions(
+            expectation,
+            RegressionStage.FinalAsm,
+            """
+            MOV PA, #1
+            ADD PA, #2
+            MOV PB, #3
+            ADD PB, #4
+            """);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(issues, Is.Empty);
+            Assert.That(traceText, Does.Contain("CONTAINS block 1: PASS"));
+            Assert.That(traceText, Does.Contain("CONTAINS block 2: PASS"));
+        });
     }
 
     [Test]
     public void CodeAssertions_SequenceBlocksHaveIndependentWildcardBindings()
     {
-        using TempDirectory temp = new();
-        WriteMinimalRegressionRepository(temp);
-        temp.WriteFile("Demonstrators/sequence_independent_bindings.blade", """
-        // EXPECT: pass
-        // STAGE: final-asm
-        // FLEXSPIN: forbidden
-        // SEQUENCE:
-        // - MOV ?1, #1
-        // - ADD ?1, #2
-        // SEQUENCE:
-        // - MOV ?1, #3
-        // - ADD ?1, #4
-        cog task main {
-            asm volatile {
-                MOV PA, #1
-                ADD PA, #2
-                MOV PB, #3
-                ADD PB, #4
-            };
-        }
-        """);
+        RegressionExpectation expectation = ParseEncodedExpectation(
+            """
+            // EXPECT: pass
+            // STAGE: final-asm
+            // FLEXSPIN: forbidden
+            // SEQUENCE:
+            // - MOV ?1, #1
+            // - ADD ?1, #2
+            // SEQUENCE:
+            // - MOV ?1, #3
+            // - ADD ?1, #4
+            cog task main {
+            }
+            """);
 
-        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
+        Assert.Multiple(() =>
         {
-            RepositoryRootPath = temp.Path,
-            WriteFailureArtifacts = false,
-            Filters = [DemonstratorFilter("sequence_independent_bindings.blade")],
+            Assert.That(expectation.SequenceBlocks, Has.Count.EqualTo(2));
+            Assert.That(
+                expectation.SequenceBlocks[0].Items.Select(item => item.Pattern.Source),
+                Is.EqualTo(new[] { "MOV ?1, #1", "ADD ?1, #2" }));
+            Assert.That(
+                expectation.SequenceBlocks[1].Items.Select(item => item.Pattern.Source),
+                Is.EqualTo(new[] { "MOV ?1, #3", "ADD ?1, #4" }));
         });
 
-        Assert.That(result.Succeeded, Is.True, RegressionReportFormatter.Format(result));
+        (IReadOnlyList<string> issues, string traceText) = EvaluateParsedCodeAssertions(
+            expectation,
+            RegressionStage.FinalAsm,
+            """
+            MOV PA, #1
+            ADD PA, #2
+            MOV PB, #3
+            ADD PB, #4
+            """);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(issues, Is.Empty);
+            Assert.That(traceText, Does.Contain("SEQUENCE block 1: PASS"));
+            Assert.That(traceText, Does.Contain("SEQUENCE block 2: PASS"));
+        });
     }
 
     [Test]
     public void CodeAssertions_ExactRejectsInterleavedUnexpectedTextButAllowsOuterText()
     {
-        using TempDirectory temp = new();
-        WriteMinimalRegressionRepository(temp);
-        temp.WriteFile("Demonstrators/exact_allows_outer_text.blade", """
-        // EXPECT: pass
-        // STAGE: final-asm
-        // FLEXSPIN: forbidden
-        // EXACT:
-        // - MOV PA, #1
-        // - NOP
-        // - ADD PA, #2
-        cog task main {
-            asm volatile {
-                MOV PA, #1
-                NOP
-                ADD PA, #2
-            };
-        }
-        """);
-        temp.WriteFile("Demonstrators/exact_rejects_interleaved_text.blade", """
-        // EXPECT: pass
-        // STAGE: final-asm
-        // FLEXSPIN: forbidden
-        // EXACT:
-        // - MOV PA, #1
-        // - ADD PA, #2
-        cog task main {
-            asm volatile {
-                MOV PA, #1
-                NOP
-                ADD PA, #2
-            };
-        }
-        """);
+        RegressionExpectation allowsOuterText = ParseEncodedExpectation(
+            """
+            // EXPECT: pass
+            // STAGE: final-asm
+            // FLEXSPIN: forbidden
+            // EXACT:
+            // - MOV PA, #1
+            // - NOP
+            // - ADD PA, #2
+            cog task main {
+            }
+            """);
+        RegressionExpectation rejectsInterleavedText = ParseEncodedExpectation(
+            """
+            // EXPECT: pass
+            // STAGE: final-asm
+            // FLEXSPIN: forbidden
+            // EXACT:
+            // - MOV PA, #1
+            // - ADD PA, #2
+            cog task main {
+            }
+            """);
 
-        RegressionRunResult passingResult = RegressionRunner.Run(new RegressionRunOptions
-        {
-            RepositoryRootPath = temp.Path,
-            WriteFailureArtifacts = false,
-            Filters = [DemonstratorFilter("exact_allows_outer_text.blade")],
-        });
-        RegressionRunResult failingResult = RegressionRunner.Run(new RegressionRunOptions
-        {
-            RepositoryRootPath = temp.Path,
-            WriteFailureArtifacts = false,
-            Filters = [DemonstratorFilter("exact_rejects_interleaved_text.blade")],
-        });
-
-        RegressionFixtureResult failingFixture = failingResult.FixtureResults.Single();
         Assert.Multiple(() =>
         {
-            Assert.That(passingResult.Succeeded, Is.True, RegressionReportFormatter.Format(passingResult));
-            Assert.That(failingResult.Succeeded, Is.False);
-            Assert.That(failingFixture.Details, Has.Some.Contains("unexpected text between exact snippets before: ADD PA, #2"));
+            Assert.That(allowsOuterText.Stage, Is.EqualTo(RegressionStage.FinalAsm));
+            Assert.That(allowsOuterText.ExactBlocks, Has.Count.EqualTo(1));
+            Assert.That(
+                allowsOuterText.ExactBlocks[0].Items.Select(item => item.Pattern.Source),
+                Is.EqualTo(new[] { "MOV PA, #1", "NOP", "ADD PA, #2" }));
+            Assert.That(
+                rejectsInterleavedText.ExactBlocks[0].Items.Select(item => item.Pattern.Source),
+                Is.EqualTo(new[] { "MOV PA, #1", "ADD PA, #2" }));
+        });
+
+        (IReadOnlyList<string> passingIssues, string passingTraceText) = EvaluateParsedCodeAssertions(
+            allowsOuterText,
+            RegressionStage.FinalAsm,
+            """
+            SETQ #3
+            MOV PA, #1
+            NOP
+            ADD PA, #2
+            RET
+            """);
+        (IReadOnlyList<string> failingIssues, string failingTraceText) = EvaluateParsedCodeAssertions(
+            rejectsInterleavedText,
+            RegressionStage.FinalAsm,
+            """
+            MOV PA, #1
+            NOP
+            ADD PA, #2
+            """);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(passingIssues, Is.Empty);
+            Assert.That(passingTraceText, Does.Contain("EXACT block 1: PASS"));
+            Assert.That(failingIssues, Has.Some.EqualTo("unexpected text between exact snippets before: ADD PA, #2"));
+            Assert.That(failingTraceText, Does.Contain("EXACT block 1: FAIL"));
         });
     }
 
     [Test]
-    public void CodeAssertions_SequenceNegativesCheckPrefixSuffixAndRejectOnlyNegativeBlocks()
+    public void CodeAssertions_SequenceNegativeGapChecksUseSyntheticStageOutput()
     {
-        using TempDirectory temp = new();
-        WriteMinimalRegressionRepository(temp);
-        temp.WriteFile("Demonstrators/sequence_negative_edges.blade", """
-        // EXPECT: pass
-        // STAGE: final-asm
-        // FLEXSPIN: forbidden
-        // SEQUENCE:
-        // ! WAITX
-        // - MOV PA, #1
-        // ! WAITX
-        cog task main {
-            asm volatile {
-                MOV PA, #1
-            };
-        }
-        """);
-        temp.WriteFile("Demonstrators/sequence_only_negative.blade", """
-        // EXPECT: pass
-        // STAGE: final-asm
-        // SEQUENCE:
-        // ! NOP
-        cog task main {
-        }
-        """);
-        temp.WriteFile("Demonstrators/exact_negative_edges.blade", """
-        // EXPECT: pass
-        // STAGE: final-asm
-        // FLEXSPIN: forbidden
-        // EXACT:
-        // ! WAITX
-        // - MOV PA, #1
-        // ! WAITX
-        cog task main {
-            asm volatile {
-                MOV PA, #1
-            };
-        }
-        """);
-        temp.WriteFile("Demonstrators/exact_only_negative.blade", """
-        // EXPECT: pass
-        // STAGE: final-asm
-        // EXACT:
-        // ! NOP
-        cog task main {
-        }
-        """);
+        RegressionExpectation expectation = ParseEncodedExpectation(
+            """
+            // EXPECT: pass
+            // STAGE: final-asm
+            // FLEXSPIN: forbidden
+            // SEQUENCE:
+            // ! WAITX
+            // - MOV PA, #1
+            // ! WAITX
+            cog task main {
+            }
+            """);
 
-        RegressionRunResult passingResult = RegressionRunner.Run(new RegressionRunOptions
-        {
-            RepositoryRootPath = temp.Path,
-            WriteFailureArtifacts = false,
-            Filters = [DemonstratorFilter("sequence_negative_edges.blade")],
-        });
-        RegressionRunResult exactPassingResult = RegressionRunner.Run(new RegressionRunOptions
-        {
-            RepositoryRootPath = temp.Path,
-            WriteFailureArtifacts = false,
-            Filters = [DemonstratorFilter("exact_negative_edges.blade")],
-        });
-        RegressionRunResult failingResult = RegressionRunner.Run(new RegressionRunOptions
-        {
-            RepositoryRootPath = temp.Path,
-            WriteFailureArtifacts = false,
-            Filters = [DemonstratorFilter("sequence_only_negative.blade")],
-        });
-        RegressionRunResult exactFailingResult = RegressionRunner.Run(new RegressionRunOptions
-        {
-            RepositoryRootPath = temp.Path,
-            WriteFailureArtifacts = false,
-            Filters = [DemonstratorFilter("exact_only_negative.blade")],
-        });
-
-        RegressionFixtureResult failingFixture = failingResult.FixtureResults.Single();
-        RegressionFixtureResult exactFailingFixture = exactFailingResult.FixtureResults.Single();
         Assert.Multiple(() =>
         {
-            Assert.That(passingResult.Succeeded, Is.True, RegressionReportFormatter.Format(passingResult));
-            Assert.That(exactPassingResult.Succeeded, Is.True, RegressionReportFormatter.Format(exactPassingResult));
-            Assert.That(failingResult.Succeeded, Is.False);
-            Assert.That(exactFailingResult.Succeeded, Is.False);
-            Assert.That(failingFixture.Details, Has.Some.Contains("SEQUENCE block requires at least one '-' or count item."));
-            Assert.That(exactFailingFixture.Details, Has.Some.Contains("EXACT block requires at least one '-' or count item."));
+            Assert.That(expectation.SequenceBlocks, Has.Count.EqualTo(1));
+            Assert.That(expectation.SequenceBlocks[0].Items.Select(item => item.Kind), Is.EqualTo(new[] { SnippetKind.Negative, SnippetKind.Positive, SnippetKind.Negative }));
+            Assert.That(expectation.SequenceBlocks[0].Items.Select(item => item.Pattern.Source), Is.EqualTo(new[] { "WAITX", "MOV PA, #1", "WAITX" }));
+        });
+
+        (IReadOnlyList<string> issues, string traceText) = EvaluateParsedCodeAssertions(
+            expectation,
+            RegressionStage.FinalAsm,
+            """
+            MOV PA, #1
+            """);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(issues, Is.Empty);
+            Assert.That(traceText, Does.Contain("SEQUENCE block 1: PASS"));
+            Assert.That(traceText, Does.Contain("Item 1: negative PASS"));
+            Assert.That(traceText, Does.Contain("Item 3: negative PASS"));
         });
     }
 
     [Test]
-    public void CodeAssertions_RejectsZeroCountAndAcceptsPositiveCount()
+    public void CodeAssertions_ExactNegativeGapChecksUseSyntheticStageOutput()
     {
-        using TempDirectory temp = new();
-        WriteMinimalRegressionRepository(temp);
-        temp.WriteFile("Demonstrators/count_positive.blade", """
-        // EXPECT: pass
-        // STAGE: final-asm
-        // FLEXSPIN: forbidden
-        // CONTAINS:
-        // 3x NOP
-        cog task main {
-            asm volatile {
-                NOP
-                NOP
-            };
-        }
-        """);
-        temp.WriteFile("Demonstrators/count_zero.blade", """
-        // EXPECT: pass
-        // STAGE: final-asm
-        // CONTAINS:
-        // 0x NOP
-        cog task main {
-        }
-        """);
+        RegressionExpectation expectation = ParseEncodedExpectation(
+            """
+            // EXPECT: pass
+            // STAGE: final-asm
+            // FLEXSPIN: forbidden
+            // EXACT:
+            // ! WAITX
+            // - MOV PA, #1
+            // ! WAITX
+            cog task main {
+            }
+            """);
 
-        RegressionRunResult passingResult = RegressionRunner.Run(new RegressionRunOptions
-        {
-            RepositoryRootPath = temp.Path,
-            WriteFailureArtifacts = false,
-            Filters = [DemonstratorFilter("count_positive.blade")],
-        });
-        RegressionRunResult failingResult = RegressionRunner.Run(new RegressionRunOptions
-        {
-            RepositoryRootPath = temp.Path,
-            WriteFailureArtifacts = false,
-            Filters = [DemonstratorFilter("count_zero.blade")],
-        });
+        (IReadOnlyList<string> issues, string traceText) = EvaluateParsedCodeAssertions(
+            expectation,
+            RegressionStage.FinalAsm,
+            """
+            MOV PA, #1
+            """);
 
-        RegressionFixtureResult failingFixture = failingResult.FixtureResults.Single();
         Assert.Multiple(() =>
         {
-            Assert.That(passingResult.Succeeded, Is.True, RegressionReportFormatter.Format(passingResult));
-            Assert.That(failingResult.Succeeded, Is.False);
-            Assert.That(failingFixture.Details, Has.Some.Contains("CONTAINS count prefixes must be greater than zero. Use '!' for negative assertions."));
+            Assert.That(issues, Is.Empty);
+            Assert.That(traceText, Does.Contain("EXACT block 1: PASS"));
+            Assert.That(traceText, Does.Contain("Item 1: negative PASS"));
+            Assert.That(traceText, Does.Contain("Item 3: negative PASS"));
         });
+    }
+
+    [Test]
+    public void HeaderValidation_RejectsSequenceOnlyNegativeBlock()
+    {
+        InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() => ParseEncodedExpectation(
+            """
+            // EXPECT: pass
+            // STAGE: final-asm
+            // SEQUENCE:
+            // ! NOP
+            cog task main {
+            }
+            """))!;
+
+        Assert.That(ex.Message, Is.EqualTo("SEQUENCE block requires at least one '-' or count item."));
+    }
+
+    [Test]
+    public void HeaderValidation_RejectsExactOnlyNegativeBlock()
+    {
+        InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() => ParseEncodedExpectation(
+            """
+            // EXPECT: pass
+            // STAGE: final-asm
+            // EXACT:
+            // ! NOP
+            cog task main {
+            }
+            """))!;
+
+        Assert.That(ex.Message, Is.EqualTo("EXACT block requires at least one '-' or count item."));
+    }
+
+    [Test]
+    public void CodeAssertions_ContainsCountUsesSyntheticStageOutput()
+    {
+        RegressionExpectation expectation = ParseEncodedExpectation(
+            """
+            // EXPECT: pass
+            // STAGE: final-asm
+            // FLEXSPIN: forbidden
+            // CONTAINS:
+            // 3x NOP
+            cog task main {
+            }
+            """);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(expectation.ContainsBlocks, Has.Count.EqualTo(1));
+            Assert.That(expectation.ContainsBlocks[0].Items, Has.Count.EqualTo(1));
+            Assert.That(expectation.ContainsBlocks[0].Items[0].Kind, Is.EqualTo(SnippetKind.Count));
+            Assert.That(expectation.ContainsBlocks[0].Items[0].Count, Is.EqualTo(3));
+            Assert.That(expectation.ContainsBlocks[0].Items[0].Pattern.Source, Is.EqualTo("NOP"));
+        });
+
+        (IReadOnlyList<string> issues, string traceText) = EvaluateParsedCodeAssertions(
+            expectation,
+            RegressionStage.FinalAsm,
+            """
+            NOP
+            NOP
+            NOP
+            """);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(issues, Is.Empty);
+            Assert.That(traceText, Does.Contain("CONTAINS block 1: PASS"));
+            Assert.That(traceText, Does.Contain("Item 1: 3x PASS"));
+        });
+    }
+
+    [Test]
+    public void HeaderValidation_RejectsZeroCountPrefix()
+    {
+        InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() => ParseEncodedExpectation(
+            """
+            // EXPECT: pass
+            // STAGE: final-asm
+            // CONTAINS:
+            // 0x NOP
+            cog task main {
+            }
+            """))!;
+
+        Assert.That(ex.Message, Is.EqualTo("CONTAINS count prefixes must be greater than zero. Use '!' for negative assertions."));
     }
 
     [Test]
     public void CodeAssertions_WildcardsDoNotFuseIdentifiers()
     {
-        using TempDirectory temp = new();
-        WriteMinimalRegressionRepository(temp);
-        temp.WriteFile("Demonstrators/wildcard_identifier_fusion.blade", """
-        // EXPECT: pass
-        // STAGE: final-asm
-        // FLEXSPIN: forbidden
-        // SEQUENCE:
-        // - ANDN ?1, #10
-        // - AND ?1, #20
-        cog task main {
-            asm volatile {
-                FOO:
-                NFOO:
-                ANDN FOO, #10
-                AND NFOO, #20
-            };
-        }
-        """);
+        RegressionExpectation expectation = ParseEncodedExpectation(
+            """
+            // EXPECT: pass
+            // STAGE: final-asm
+            // FLEXSPIN: forbidden
+            // SEQUENCE:
+            // - ANDN ?1, #10
+            // - AND ?1, #20
+            cog task main {
+            }
+            """);
 
-        RegressionRunResult result = RegressionRunner.Run(new RegressionRunOptions
-        {
-            RepositoryRootPath = temp.Path,
-            WriteFailureArtifacts = false,
-            Filters = [DemonstratorFilter("wildcard_identifier_fusion.blade")],
-        });
+        Assert.That(
+            expectation.SequenceBlocks[0].Items.Select(item => item.Pattern.Source),
+            Is.EqualTo(new[] { "ANDN ?1, #10", "AND ?1, #20" }));
 
-        RegressionFixtureResult fixtureResult = result.FixtureResults.Single();
+        (IReadOnlyList<string> issues, string traceText) = EvaluateParsedCodeAssertions(
+            expectation,
+            RegressionStage.FinalAsm,
+            """
+            FOO:
+            NFOO:
+            ANDN FOO, #10
+            AND NFOO, #20
+            """);
+
         Assert.Multiple(() =>
         {
-            Assert.That(result.Succeeded, Is.False);
-            Assert.That(fixtureResult.Details, Has.Some.Contains("missing ordered snippet: AND ?1, #20"));
+            Assert.That(issues, Has.Some.EqualTo("missing ordered snippet: AND ?1, #20"));
+            Assert.That(traceText, Does.Contain("SEQUENCE block 1: FAIL"));
+            Assert.That(traceText, Does.Contain("?1 = FOO"));
         });
     }
 
@@ -2960,6 +3014,23 @@ public sealed class RegressionHarnessTests
             FlexspinExpectation.Forbidden,
             [],
             []);
+    }
+
+    private static RegressionExpectation ParseEncodedExpectation(string fixtureText)
+    {
+        return RegressionRunner.ParseEncodedExpectation(fixtureText);
+    }
+
+    private static (IReadOnlyList<string> Issues, string TraceText) EvaluateParsedCodeAssertions(
+        RegressionExpectation expectation,
+        RegressionStage stage,
+        string actualText)
+    {
+        (IReadOnlyList<string> issues, string? traceText) = RegressionRunner.EvaluateCodeAssertionsAgainstStageOutput(
+            expectation,
+            stage,
+            actualText);
+        return (issues, traceText ?? string.Empty);
     }
 
     private static SnippetItem CreatePositiveSnippetItem(string text)
@@ -3400,17 +3471,10 @@ public sealed class RegressionHarnessTests
         }
     }
 
-    private sealed class CodeAssertionTestResult
+    private sealed class CodeAssertionTestResult(IReadOnlyList<string> issues, object traceReport, string traceText)
     {
-        public CodeAssertionTestResult(IReadOnlyList<string> issues, object traceReport, string traceText)
-        {
-            Issues = issues;
-            TraceReport = traceReport;
-            TraceText = traceText;
-        }
-
-        public IReadOnlyList<string> Issues { get; }
-        public object TraceReport { get; }
-        public string TraceText { get; }
+        public IReadOnlyList<string> Issues { get; } = issues;
+        public object TraceReport { get; } = traceReport;
+        public string TraceText { get; } = traceText;
     }
 }
