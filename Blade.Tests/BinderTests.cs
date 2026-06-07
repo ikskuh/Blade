@@ -51,35 +51,29 @@ public class BinderTests
 
         List<MemberSyntax> declarations = [];
         List<string> synthesizedMainStatements = [];
+        int cursor = 0;
         foreach (MemberSyntax member in unit.Members)
         {
-            if (member is GlobalStatementSyntax globalStatement)
-                synthesizedMainStatements.Add(source.ToString(globalStatement.Span));
-            else if (member is VariableDeclarationSyntax varDecl)
+            CollectSynthesizedMainSource(source, cursor, member.Span.Start, synthesizedMainStatements);
+
+            if (member is VariableDeclarationSyntax varDecl)
             {
-                // Move variable declarations into the synthetic main task, converting top-level
-                // storage classes (cog/hub) to local declarations (storage class + var keyword).
-                // Top-level 'cog var' and 'hub var' are no longer supported; they must become local.
-                string varDeclText = source.ToString(varDecl.Span);
-                if (varDecl.ExternKeyword == null && varDecl.StorageClassKeyword != null)
+                if (ShouldMoveVariableDeclarationToSyntheticMain(varDecl))
                 {
-                    // Convert "cog var x: T = val;" to "cog var x: T = val;" (same format works locally)
-                    synthesizedMainStatements.Add(varDeclText);
-                }
-                else if (varDecl.ExternKeyword == null && varDecl.StorageClassKeyword == null)
-                {
-                    // Already a plain variable declaration, add as-is
-                    synthesizedMainStatements.Add(varDeclText);
+                    synthesizedMainStatements.Add(source.ToString(varDecl.Span));
                 }
                 else
                 {
-                    // extern or other modifiers stay at top-level
                     declarations.Add(member);
                 }
             }
             else
                 declarations.Add(member);
+
+            cursor = member.Span.End;
         }
+
+        CollectSynthesizedMainSource(source, cursor, text.Length, synthesizedMainStatements);
 
         StringBuilder builder = new();
         foreach (MemberSyntax declaration in declarations)
@@ -94,6 +88,32 @@ public class BinderTests
 
         builder.AppendLine("}");
         return builder.ToString();
+    }
+
+    private static void CollectSynthesizedMainSource(SourceText source, int start, int end, ICollection<string> synthesizedMainStatements)
+    {
+        if (end <= start)
+            return;
+
+        string segment = source.ToString(new TextSpan(start, end - start));
+        if (string.IsNullOrWhiteSpace(segment))
+            return;
+
+        synthesizedMainStatements.Add(segment.Trim());
+    }
+
+    private static bool ShouldMoveVariableDeclarationToSyntheticMain(VariableDeclarationSyntax declaration)
+    {
+        if (declaration.ExternKeyword is not null)
+            return false;
+
+        return declaration.StorageClassKeyword?.Kind switch
+        {
+            null => true,
+            TokenKind.CogKeyword => true,
+            TokenKind.LutKeyword => true,
+            _ => false,
+        };
     }
 
     private static void AppendSection(StringBuilder builder, string text)

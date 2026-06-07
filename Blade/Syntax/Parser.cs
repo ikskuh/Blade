@@ -61,7 +61,14 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
         {
             Token startToken = Current;
             MemberSyntax member = ParseTopLevelMember();
-            members.Add(member);
+            if (member is InvalidMemberSyntax)
+            {
+                Assert.Invariant(Diagnostics.HasErrors, "Invalid top-level members must always be accompanied by a parse error.");
+            }
+            else
+            {
+                members.Add(member);
+            }
 
             // Safety: if we didn't consume any tokens, skip one to avoid infinite loop
             if (Current == startToken)
@@ -101,12 +108,14 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
                 return ParseVariableDeclaration(externKeyword: null);
 
             case TokenKind.AssertKeyword:
-                return ParseGlobalStatement();
+                return ParseAssertStatement();
 
             case TokenKind.TypeKeyword:
                 return ParseTypeAliasDeclaration();
 
             case TokenKind.FnKeyword:
+                return ParseFunctionDeclaration(ParseFunctionPrefix());
+
             case TokenKind.AsmKeyword:
             case TokenKind.VolatileKeyword:
             case TokenKind.ComptimeKeyword:
@@ -147,7 +156,8 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
     private MemberSyntax ParseUnexpectedTopLevelMember()
     {
         Diagnostics.Report(new UnexpectedTokenError(Diagnostics.CurrentSource, Current.Span, "top-level declaration", Current.Text));
-        return ParseGlobalStatement();
+        ICodeBodyItemSyntax invalidItem = ParseCodeBodyItem();
+        return new InvalidMemberSyntax(((SyntaxNode)invalidItem).Span);
     }
 
     private ImportDeclarationSyntax ParseImportDeclaration()
@@ -288,12 +298,12 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
     private TaskBodySyntax ParseTaskBody()
     {
         Token openBrace = MatchToken(TokenKind.OpenBrace);
-        List<SyntaxNode> items = [];
+        List<ITaskBodyItemSyntax> items = [];
 
         while (Current.Kind != TokenKind.CloseBrace && Current.Kind != TokenKind.EndOfFile)
         {
             Token startToken = Current;
-            SyntaxNode item = ParseTaskBodyItem();
+            ITaskBodyItemSyntax item = ParseTaskBodyItem();
             items.Add(item);
 
             if (Current == startToken)
@@ -304,18 +314,20 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
         return new TaskBodySyntax(openBrace, items, closeBrace);
     }
 
-    private SyntaxNode ParseTaskBodyItem()
+    private ITaskBodyItemSyntax ParseTaskBodyItem()
     {
         if (Current.Kind == TokenKind.LayoutKeyword)
         {
             Diagnostics.Report(new UnexpectedTokenError(Diagnostics.CurrentSource, Current.Span, "statement or task declaration item", Current.Text));
-            return ParseLayoutDeclaration();
+            MemberSyntax invalidDeclaration = ParseLayoutDeclaration();
+            return new InvalidBodyItemSyntax(invalidDeclaration.Span);
         }
 
         if (IsTaskDeclarationStart())
         {
             Diagnostics.Report(new UnexpectedTokenError(Diagnostics.CurrentSource, Current.Span, "statement or task declaration item", Current.Text));
-            return ParseTaskDeclaration();
+            MemberSyntax invalidDeclaration = ParseTaskDeclaration();
+            return new InvalidBodyItemSyntax(invalidDeclaration.Span);
         }
 
         switch (Current.Kind)
@@ -335,7 +347,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
             case TokenKind.LutKeyword:
             case TokenKind.HubKeyword:
                 if (LooksLikeFunctionDeclarationStart())
-                    return ParseFunctionDeclaration(ParseFunctionPrefix());
+                    return (ITaskBodyItemSyntax)ParseFunctionDeclaration(ParseFunctionPrefix());
 
                 return ParseVariableDeclaration(externKeyword: null);
 
@@ -355,12 +367,12 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
             case TokenKind.Int2Keyword:
             case TokenKind.Int3Keyword:
                 if (LooksLikeFunctionDeclarationStart())
-                    return ParseFunctionDeclaration(ParseFunctionPrefix());
+                    return (ITaskBodyItemSyntax)ParseFunctionDeclaration(ParseFunctionPrefix());
 
-                return ParseStatement();
+                return (ITaskBodyItemSyntax)ParseCodeBodyItem();
 
             default:
-                return ParseStatement();
+                return (ITaskBodyItemSyntax)ParseCodeBodyItem();
         }
     }
 
@@ -398,7 +410,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
                     return;
                 }
 
-                ParseStatement();
+                ParseCodeBodyItem();
                 return;
 
             case TokenKind.CogKeyword:
@@ -420,7 +432,7 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
                 return;
 
             default:
-                ParseStatement();
+                ParseCodeBodyItem();
                 return;
         }
     }
@@ -813,15 +825,93 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
         return new VariableDeclarationSyntax(externKeyword, storageClass, mutability, name, colon, type, equalsToken, initializer, atClause, alignClause, semi);
     }
 
-    private GlobalStatementSyntax ParseGlobalStatement()
-    {
-        StatementSyntax statement = ParseStatement();
-        return new GlobalStatementSyntax(statement);
-    }
-
     // ──────────────────────────────────────────
     //  Statements
     // ──────────────────────────────────────────
+
+    private ICodeBodyItemSyntax ParseCodeBodyItem()
+    {
+        switch (Current.Kind)
+        {
+            case TokenKind.ImportKeyword:
+                {
+                    Diagnostics.Report(new UnexpectedTokenError(Diagnostics.CurrentSource, Current.Span, "statement, declaration, or assert", Current.Text));
+                    MemberSyntax invalidDeclaration = ParseImportDeclaration();
+                    return new InvalidBodyItemSyntax(invalidDeclaration.Span);
+                }
+
+            case TokenKind.LayoutKeyword:
+                {
+                    Diagnostics.Report(new UnexpectedTokenError(Diagnostics.CurrentSource, Current.Span, "statement, declaration, or assert", Current.Text));
+                    MemberSyntax invalidDeclaration = ParseLayoutDeclaration();
+                    return new InvalidBodyItemSyntax(invalidDeclaration.Span);
+                }
+
+            case TokenKind.ExternKeyword:
+                return ParseVariableDeclaration(NextToken());
+
+            case TokenKind.VarKeyword:
+            case TokenKind.ConstKeyword:
+                return ParseVariableDeclaration(externKeyword: null);
+
+            case TokenKind.CogKeyword:
+            case TokenKind.LutKeyword:
+            case TokenKind.HubKeyword:
+                if (LooksLikeFunctionDeclarationStart() || IsTaskDeclarationStart())
+                {
+                    Diagnostics.Report(new UnexpectedTokenError(Diagnostics.CurrentSource, Current.Span, "statement, declaration, or assert", Current.Text));
+                    MemberSyntax invalidDeclaration = IsTaskDeclarationStart()
+                        ? ParseTaskDeclaration()
+                        : ParseFunctionDeclaration(ParseFunctionPrefix());
+                    return new InvalidBodyItemSyntax(invalidDeclaration.Span);
+                }
+
+                return ParseVariableDeclaration(externKeyword: null);
+
+            case TokenKind.TypeKeyword:
+                {
+                    Diagnostics.Report(new UnexpectedTokenError(Diagnostics.CurrentSource, Current.Span, "statement, declaration, or assert", Current.Text));
+                    MemberSyntax invalidDeclaration = ParseTypeAliasDeclaration();
+                    return new InvalidBodyItemSyntax(invalidDeclaration.Span);
+                }
+
+            case TokenKind.FnKeyword:
+            case TokenKind.VolatileKeyword:
+            case TokenKind.ComptimeKeyword:
+            case TokenKind.LeafKeyword:
+            case TokenKind.InlineKeyword:
+            case TokenKind.NoinlineKeyword:
+            case TokenKind.RecKeyword:
+            case TokenKind.CoroKeyword:
+            case TokenKind.Int1Keyword:
+            case TokenKind.Int2Keyword:
+            case TokenKind.Int3Keyword:
+                if (LooksLikeFunctionDeclarationStart())
+                {
+                    Diagnostics.Report(new UnexpectedTokenError(Diagnostics.CurrentSource, Current.Span, "statement, declaration, or assert", Current.Text));
+                    MemberSyntax invalidDeclaration = ParseFunctionDeclaration(ParseFunctionPrefix());
+                    return new InvalidBodyItemSyntax(invalidDeclaration.Span);
+                }
+
+                return ParseStatement();
+
+            case TokenKind.AsmKeyword:
+                if (LooksLikeFunctionDeclarationStart())
+                {
+                    Diagnostics.Report(new UnexpectedTokenError(Diagnostics.CurrentSource, Current.Span, "statement, declaration, or assert", Current.Text));
+                    MemberSyntax invalidDeclaration = ParseFunctionDeclaration(ParseFunctionPrefix());
+                    return new InvalidBodyItemSyntax(invalidDeclaration.Span);
+                }
+
+                return ParseStatement();
+
+            case TokenKind.AssertKeyword:
+                return ParseAssertStatement();
+
+            default:
+                return ParseStatement();
+        }
+    }
 
     private StatementSyntax ParseStatement()
     {
@@ -829,20 +919,6 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
         {
             case TokenKind.OpenBrace:
                 return ParseBlockStatement();
-
-            case TokenKind.VarKeyword or TokenKind.CogKeyword or TokenKind.LutKeyword or TokenKind.HubKeyword:
-                return new VariableDeclarationStatementSyntax(ParseVariableDeclaration(externKeyword: null));
-
-            case TokenKind.ConstKeyword:
-                // Local const declaration: const name: type = expr;
-                // Disambiguate from const Name = type (type alias at statement level is unusual)
-                if (Peek(1).Kind == TokenKind.Identifier && Peek(2).Kind == TokenKind.Colon)
-                    return new VariableDeclarationStatementSyntax(ParseVariableDeclaration(externKeyword: null));
-                // Fall through to expression/assignment
-                return ParseExpressionOrAssignmentStatement();
-
-            case TokenKind.ExternKeyword:
-                return new VariableDeclarationStatementSyntax(ParseVariableDeclaration(NextToken()));
 
             case TokenKind.IfKeyword:
                 return ParseIfStatement();
@@ -861,9 +937,6 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
 
             case TokenKind.NoirqKeyword:
                 return ParseNoirqStatement();
-
-            case TokenKind.AssertKeyword:
-                return ParseAssertStatement();
 
             case TokenKind.ReturnKeyword:
                 return ParseReturnStatement();
@@ -891,20 +964,20 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
     private BlockStatementSyntax ParseBlockStatement()
     {
         Token openBrace = MatchToken(TokenKind.OpenBrace);
-        List<StatementSyntax> statements = new();
+        List<ICodeBodyItemSyntax> items = new();
 
         while (Current.Kind != TokenKind.CloseBrace && Current.Kind != TokenKind.EndOfFile)
         {
             Token startToken = Current;
-            StatementSyntax statement = ParseStatement();
-            statements.Add(statement);
+            ICodeBodyItemSyntax item = ParseCodeBodyItem();
+            items.Add(item);
 
             if (Current == startToken)
                 NextToken();
         }
 
         Token closeBrace = MatchToken(TokenKind.CloseBrace);
-        return new BlockStatementSyntax(openBrace, statements, closeBrace);
+        return new BlockStatementSyntax(openBrace, items, closeBrace);
     }
 
     private IfStatementSyntax ParseIfStatement()
@@ -914,19 +987,19 @@ public sealed class Parser(SourceText source, IReadOnlyList<Token> tokens, Diagn
         ExpressionSyntax condition = ParseExpression();
         Token closeParen = MatchToken(TokenKind.CloseParen);
 
-        StatementSyntax thenBody = Current.Kind == TokenKind.OpenBrace
+        ICodeBodyItemSyntax thenBody = Current.Kind == TokenKind.OpenBrace
             ? ParseBlockStatement()
-            : ParseStatement();
+            : ParseCodeBodyItem();
 
         ElseClauseSyntax? elseClause = null;
         if (Current.Kind == TokenKind.ElseKeyword)
         {
             Token elseKw = NextToken();
-            StatementSyntax elseBody = Current.Kind == TokenKind.IfKeyword
+            ICodeBodyItemSyntax elseBody = Current.Kind == TokenKind.IfKeyword
                 ? ParseIfStatement()
                 : Current.Kind == TokenKind.OpenBrace
                     ? ParseBlockStatement()
-                    : ParseStatement();
+                    : ParseCodeBodyItem();
             elseClause = new ElseClauseSyntax(elseKw, elseBody);
         }
 

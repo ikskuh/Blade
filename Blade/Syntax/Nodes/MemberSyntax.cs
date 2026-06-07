@@ -9,9 +9,14 @@ namespace Blade.Syntax.Nodes;
 /// <summary>
 /// Base class for top-level declarations.
 /// </summary>
-public abstract class MemberSyntax(TextSpan span) : SyntaxNode(span)
+public abstract class MemberSyntax(TextSpan span) : MemberOrStatementSyntax(span)
 {
 }
+
+/// <summary>
+/// Recovery node for invalid top-level members that should be dropped from the compilation unit.
+/// </summary>
+public sealed class InvalidMemberSyntax(TextSpan span) : MemberSyntax(span);
 
 /// <summary>
 /// Common interface for function declaration syntax nodes that carry a signature
@@ -26,7 +31,7 @@ public interface IFunctionSignatureSyntax
     SeparatedSyntaxList<ReturnItemSyntax>? ReturnSpec { get; }
 }
 
-public sealed class ImportDeclarationSyntax(Token importKeyword, Token source, Token? asKeyword, Token? alias, Token semicolon) : MemberSyntax(TextSpan.FromBounds(importKeyword.Span.Start, semicolon.Span.End))
+public sealed class ImportDeclarationSyntax(Token importKeyword, Token source, Token? asKeyword, Token? alias, Token semicolon) : MemberSyntax(TextSpan.FromBounds(importKeyword.Span.Start, semicolon.Span.End)), ITaskBodyItemSyntax
 {
     [ExcludeFromCodeCoverage]
     public Token ImportKeyword { get; } = importKeyword;
@@ -51,7 +56,7 @@ public sealed class FunctionDeclarationSyntax(Token? storageClassKeyword, IReadO
                                   SeparatedSyntaxList<ParameterSyntax> parameters, Token closeParen,
                                   Token? arrow, SeparatedSyntaxList<ReturnItemSyntax>? returnSpec,
                                   FunctionMetadataSyntax? metadata,
-                                  BlockStatementSyntax body) : MemberSyntax(TextSpan.FromBounds([storageClassKeyword, ..modifiers, fnKeyword, Requires.NotNull(body)])), IFunctionSignatureSyntax
+                                  BlockStatementSyntax body) : MemberSyntax(TextSpan.FromBounds([storageClassKeyword, ..modifiers, fnKeyword, Requires.NotNull(body)])), IFunctionSignatureSyntax, ITaskBodyItemSyntax
 {
     public Token? StorageClassKeyword { get; } = storageClassKeyword;
     public IReadOnlyList<Token> Modifiers { get; } = Requires.NotNull(modifiers);
@@ -72,7 +77,7 @@ public sealed class FunctionDeclarationSyntax(Token? storageClassKeyword, IReadO
 public sealed class VariableDeclarationSyntax(Token? externKeyword, Token? storageClassKeyword, Token mutabilityKeyword,
                                   Token name, Token colon, TypeSyntax type, Token? equalsToken,
                                   ExpressionSyntax? initializer, AddressClauseSyntax? atClause,
-                                  AlignClauseSyntax? alignClause, Token semicolon) : MemberSyntax(TextSpan.FromBounds((externKeyword ?? storageClassKeyword ?? mutabilityKeyword).Span.Start, semicolon.Span.End))
+                                  AlignClauseSyntax? alignClause, Token semicolon) : MemberSyntax(TextSpan.FromBounds((externKeyword ?? storageClassKeyword ?? mutabilityKeyword).Span.Start, semicolon.Span.End)), ICodeBodyItemSyntax, ITaskBodyItemSyntax
 {
     public Token? ExternKeyword { get; } = externKeyword;
     public Token? StorageClassKeyword { get; } = storageClassKeyword;
@@ -89,7 +94,7 @@ public sealed class VariableDeclarationSyntax(Token? externKeyword, Token? stora
     public Token Semicolon { get; } = semicolon;
 }
 
-public sealed class TypeAliasDeclarationSyntax(Token typeOrConstKeyword, Token name, Token equalsToken, TypeSyntax type, Token semicolon) : MemberSyntax(TextSpan.FromBounds(typeOrConstKeyword.Span.Start, semicolon.Span.End))
+public sealed class TypeAliasDeclarationSyntax(Token typeOrConstKeyword, Token name, Token equalsToken, TypeSyntax type, Token semicolon) : MemberSyntax(TextSpan.FromBounds(typeOrConstKeyword.Span.Start, semicolon.Span.End)), ITaskBodyItemSyntax
 {
     public Token TypeOrConstKeyword { get; } = typeOrConstKeyword;
     public Token Name { get; } = name;
@@ -104,7 +109,7 @@ public sealed class AsmFunctionDeclarationSyntax(Token? storageClassKeyword, IRe
                                     Token openParen, SeparatedSyntaxList<ParameterSyntax> parameters, Token closeParen,
                                     Token? arrow, SeparatedSyntaxList<ReturnItemSyntax>? returnSpec,
                                     FunctionMetadataSyntax? metadata,
-                                    InlineAsmBodySyntax body) : MemberSyntax(TextSpan.FromBounds([storageClassKeyword, ..modifiers, asmKeyword, volatileKeyword, fnKeyword, body])), IFunctionSignatureSyntax
+                                    InlineAsmBodySyntax body) : MemberSyntax(TextSpan.FromBounds([storageClassKeyword, ..modifiers, asmKeyword, volatileKeyword, fnKeyword, body])), IFunctionSignatureSyntax, ITaskBodyItemSyntax
 {
     public Token? StorageClassKeyword { get; } = storageClassKeyword;
     public IReadOnlyList<Token> Modifiers { get; } = Requires.NotNull(modifiers);
@@ -255,7 +260,13 @@ public sealed class TaskDeclarationSyntax(
     public TaskBodySyntax Body { get; } = body;
 }
 
-public sealed class GlobalStatementSyntax(StatementSyntax statement) : MemberSyntax(Requires.NotNull(statement).Span)
+public sealed class AssertStatementSyntax(Token assertKeyword, ExpressionSyntax condition, Token? commaToken, Token? messageLiteral, Token semicolon) : MemberSyntax(TextSpan.FromBounds(assertKeyword.Span.Start, semicolon.Span.End)), ICodeBodyItemSyntax, ITaskBodyItemSyntax
 {
-    public StatementSyntax Statement { get; } = Requires.NotNull(statement);
+    [ExcludeFromCodeCoverage]
+    public Token AssertKeyword { get; } = assertKeyword;
+    public ExpressionSyntax Condition { get; } = Requires.NotNull(condition);
+    public Token? CommaToken { get; } = commaToken;
+    public Token? MessageLiteral { get; } = messageLiteral;
+    [ExcludeFromCodeCoverage]
+    public Token Semicolon { get; } = semicolon;
 }

@@ -19,7 +19,7 @@ public sealed class ParameterSyntax(Token? storageClassKeyword, Token name, Toke
 /// <summary>
 /// Represents the mixed declaration-and-statement body of a task declaration.
 /// </summary>
-public sealed class TaskBodySyntax(Token openBrace, IReadOnlyList<SyntaxNode> items, Token closeBrace) : SyntaxNode(TextSpan.FromBounds(openBrace.Span.Start, closeBrace.Span.End))
+public sealed class TaskBodySyntax(Token openBrace, IReadOnlyList<ITaskBodyItemSyntax> items, Token closeBrace) : SyntaxNode(TextSpan.FromBounds(openBrace.Span.Start, closeBrace.Span.End))
 {
     /// <summary>
     /// Gets the opening brace token of the task body.
@@ -30,7 +30,7 @@ public sealed class TaskBodySyntax(Token openBrace, IReadOnlyList<SyntaxNode> it
     /// <summary>
     /// Gets the declarations and statements contained in the task body.
     /// </summary>
-    public IReadOnlyList<SyntaxNode> Items { get; } = Requires.NotNull(items);
+    public IReadOnlyList<ITaskBodyItemSyntax> Items { get; } = Requires.NotNull(items);
 
     /// <summary>
     /// Gets the closing brace token of the task body.
@@ -113,11 +113,11 @@ public sealed class FunctionMetadataSyntax(Token colon, SeparatedSyntaxList<Func
     public SeparatedSyntaxList<FunctionMetadataPropertySyntax> Properties { get; } = Requires.NotNull(properties);
 }
 
-public sealed class ElseClauseSyntax(Token elseKeyword, StatementSyntax body) : SyntaxNode(TextSpan.FromBounds(elseKeyword.Span.Start, Requires.NotNull(body).Span.End))
+public sealed class ElseClauseSyntax(Token elseKeyword, ICodeBodyItemSyntax body) : SyntaxNode(TextSpan.FromBounds(elseKeyword.Span.Start, ((SyntaxNode)Requires.NotNull(body)).Span.End))
 {
     [ExcludeFromCodeCoverage]
     public Token ElseKeyword { get; } = elseKeyword;
-    public StatementSyntax Body { get; } = Requires.NotNull(body);
+    public ICodeBodyItemSyntax Body { get; } = Requires.NotNull(body);
 }
 
 public sealed class FieldInitializerSyntax(Token dot, Token name, Token equalsToken, ExpressionSyntax value) : SyntaxNode(TextSpan.FromBounds(dot.Span.Start, Requires.NotNull(value).Span.End))

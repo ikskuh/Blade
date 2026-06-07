@@ -44,13 +44,25 @@ public sealed class ComptimeBinderHelperTests
 
         List<MemberSyntax> declarations = [];
         List<string> synthesizedMainStatements = [];
+        int cursor = 0;
         foreach (MemberSyntax member in unit.Members)
         {
-            if (member is GlobalStatementSyntax globalStatement)
-                synthesizedMainStatements.Add(source.ToString(globalStatement.Span));
+            CollectSynthesizedMainSource(source, cursor, member.Span.Start, synthesizedMainStatements);
+
+            if (member is VariableDeclarationSyntax declaration
+                && ShouldMoveVariableDeclarationToSyntheticMain(declaration))
+            {
+                synthesizedMainStatements.Add(source.ToString(declaration.Span).Trim());
+            }
             else
+            {
                 declarations.Add(member);
+            }
+
+            cursor = member.Span.End;
         }
+
+        CollectSynthesizedMainSource(source, cursor, text.Length, synthesizedMainStatements);
 
         StringWriter writer = new();
         foreach (MemberSyntax declaration in declarations)
@@ -68,6 +80,32 @@ public sealed class ComptimeBinderHelperTests
 
         writer.WriteLine("}");
         return writer.ToString();
+    }
+
+    private static void CollectSynthesizedMainSource(SourceText source, int start, int end, ICollection<string> synthesizedMainStatements)
+    {
+        if (end <= start)
+            return;
+
+        string segment = source.ToString(new TextSpan(start, end - start));
+        if (string.IsNullOrWhiteSpace(segment))
+            return;
+
+        synthesizedMainStatements.Add(segment.Trim());
+    }
+
+    private static bool ShouldMoveVariableDeclarationToSyntheticMain(VariableDeclarationSyntax declaration)
+    {
+        if (declaration.ExternKeyword is not null)
+            return false;
+
+        return declaration.StorageClassKeyword?.Kind switch
+        {
+            null => true,
+            TokenKind.CogKeyword => true,
+            TokenKind.LutKeyword => true,
+            _ => false,
+        };
     }
 
     private static BoundFunctionMember GetFunction(BoundProgram program, string name)

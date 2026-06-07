@@ -53,10 +53,25 @@ public sealed class Binder
         new Dictionary<string, long>(StringComparer.Ordinal) { ["cog"] = 0, ["lut"] = 1, ["hub"] = 2, ["_cog"] = 0, ["_lut"] = 1, ["_hub"] = 2 },
         isOpen: false);
 
+    /// <summary>
+    /// Maps a visible layout member name to the declaring layout and stored global symbol.
+    /// </summary>
     private readonly record struct LayoutMemberBinding(LayoutSymbol Layout, GlobalVariableSymbol Variable);
+
+    /// <summary>
+    /// Pairs a stored layout declaration syntax node with the global symbol declared for it.
+    /// </summary>
     private readonly record struct StoredLayoutMemberBinding(VariableDeclarationSyntax Declaration, GlobalVariableSymbol Symbol);
+
+    /// <summary>
+    /// Pairs a task-local extern declaration with the global symbol bound for that external storage.
+    /// </summary>
     private readonly record struct TaskExternalBinding(VariableDeclarationSyntax Declaration, GlobalVariableSymbol Symbol);
-    private readonly record struct TaskLocalFunctionBinding(FunctionSymbol Symbol, SyntaxNode Syntax);
+
+    /// <summary>
+    /// Pairs a task-local function member syntax node with the function symbol declared for it.
+    /// </summary>
+    private readonly record struct TaskLocalFunctionBinding(FunctionSymbol Symbol, MemberSyntax Syntax);
 
     private sealed class BindContext : IDisposable
     {
@@ -223,7 +238,7 @@ public sealed class Binder
                         ordinaryFunctions.Add(BindAsmFunction(asmFunction));
                     break;
 
-                case GlobalStatementSyntax { Statement: AssertStatementSyntax assertStatement }:
+                case AssertStatementSyntax assertStatement:
                     pendingTopLevelAssertions.Add(assertStatement);
                     break;
             }
@@ -786,17 +801,17 @@ public sealed class Binder
         return exportedSymbols;
     }
 
-    private static BlockStatementSyntax CreateSyntheticBlockStatement(IReadOnlyList<StatementSyntax> statements)
+    private static BlockStatementSyntax CreateSyntheticBlockStatement(IReadOnlyList<ICodeBodyItemSyntax> items)
     {
-        Requires.NotNull(statements);
+        Requires.NotNull(items);
 
-        TextSpan blockSpan = statements.Count > 0
-            ? TextSpan.FromBounds(statements[0].Span.Start, statements[^1].Span.End)
+        TextSpan blockSpan = items.Count > 0
+            ? TextSpan.FromBounds(((SyntaxNode)items[0]).Span.Start, ((SyntaxNode)items[^1]).Span.End)
             : new TextSpan(0, 0);
 
         Token openBrace = new(TokenKind.OpenBrace, new TextSpan(blockSpan.Start, 0), string.Empty);
         Token closeBrace = new(TokenKind.CloseBrace, new TextSpan(blockSpan.End, 0), string.Empty);
-        return new BlockStatementSyntax(openBrace, statements, closeBrace);
+        return new BlockStatementSyntax(openBrace, items, closeBrace);
     }
 
     private void CollectTopLevelTypes(CompilationUnitSyntax unit)
@@ -1201,7 +1216,7 @@ public sealed class Binder
     private List<TypeSymbol> CollectTaskLocalTypeAliases(TaskDeclarationSyntax taskDeclaration, Scope taskScope)
     {
         List<TypeSymbol> aliases = [];
-        foreach (SyntaxNode item in taskDeclaration.Body.Items)
+        foreach (ITaskBodyItemSyntax item in taskDeclaration.Body.Items)
         {
             if (item is not TypeAliasDeclarationSyntax typeAlias)
                 continue;
@@ -1220,7 +1235,7 @@ public sealed class Binder
     private List<TaskLocalFunctionBinding> CollectTaskLocalFunctions(TaskDeclarationSyntax taskDeclaration, Scope taskScope)
     {
         List<TaskLocalFunctionBinding> localFunctions = [];
-        foreach (SyntaxNode item in taskDeclaration.Body.Items)
+        foreach (ITaskBodyItemSyntax item in taskDeclaration.Body.Items)
         {
             FunctionSymbol? symbol = item switch
             {
@@ -1236,7 +1251,7 @@ public sealed class Binder
                 continue;
 
             _pendingFunctionBodies.Add(symbol);
-            localFunctions.Add(new TaskLocalFunctionBinding(symbol, item));
+            localFunctions.Add(new TaskLocalFunctionBinding(symbol, (MemberSyntax)item));
         }
 
         return localFunctions;
@@ -1274,7 +1289,7 @@ public sealed class Binder
     private static IReadOnlyList<VariableDeclarationSyntax> GetTaskStoredDeclarations(TaskDeclarationSyntax taskDeclaration)
     {
         List<VariableDeclarationSyntax> declarations = [];
-        foreach (SyntaxNode item in taskDeclaration.Body.Items)
+        foreach (ITaskBodyItemSyntax item in taskDeclaration.Body.Items)
         {
             if (item is VariableDeclarationSyntax declaration
                 && MapStorageClass(declaration.StorageClassKeyword) is not null
@@ -1290,7 +1305,7 @@ public sealed class Binder
     private IReadOnlyList<TaskExternalBinding> CollectTaskExternalBindings(TaskDeclarationSyntax taskDeclaration, Scope taskScope)
     {
         List<TaskExternalBinding> bindings = [];
-        foreach (SyntaxNode item in taskDeclaration.Body.Items)
+        foreach (ITaskBodyItemSyntax item in taskDeclaration.Body.Items)
         {
             if (item is not VariableDeclarationSyntax declaration
                 || MapStorageClass(declaration.StorageClassKeyword) is null
@@ -1410,22 +1425,18 @@ public sealed class Binder
 
     private BoundFunctionMember BindTaskEntryFunction(TaskSymbol task, TaskDeclarationSyntax taskDeclaration, Scope taskScope)
     {
-        List<StatementSyntax> statements = [];
-        foreach (SyntaxNode item in taskDeclaration.Body.Items)
+        List<ICodeBodyItemSyntax> items = [];
+        foreach (ITaskBodyItemSyntax item in taskDeclaration.Body.Items)
         {
             switch (item)
             {
-                case StatementSyntax statement:
-                    statements.Add(statement);
-                    break;
-
-                case VariableDeclarationSyntax declaration when MapStorageClass(declaration.StorageClassKeyword) is null:
-                    statements.Add(new VariableDeclarationStatementSyntax(declaration));
+                case ICodeBodyItemSyntax codeItem when codeItem is not VariableDeclarationSyntax declaration || MapStorageClass(declaration.StorageClassKeyword) is null:
+                    items.Add(codeItem);
                     break;
             }
         }
 
-        BlockStatementSyntax bodySyntax = CreateSyntheticBlockStatement(statements);
+        BlockStatementSyntax bodySyntax = CreateSyntheticBlockStatement(items);
         return BindBlockFunction(task.EntryFunction, bodySyntax, taskDeclaration.Span, bodySyntax.Span, taskScope, task);
     }
 
@@ -1916,9 +1927,9 @@ public sealed class Binder
         }
 
         List<BoundStatement> statements = new();
-        foreach (StatementSyntax statement in block.Statements)
+        foreach (ICodeBodyItemSyntax item in block.Items)
         {
-            if (BindStatementNullable(statement) is BoundStatement boundStatement)
+            if (BindCodeBodyItemNullable(item) is BoundStatement boundStatement)
                 statements.Add(boundStatement);
         }
 
@@ -1928,8 +1939,20 @@ public sealed class Binder
         return new BoundBlockStatement(statements, block.Span);
     }
 
-    private BoundStatement BindStatement(StatementSyntax statement)
-        => BindStatementNullable(statement) ?? new BoundBlockStatement([], statement.Span);
+    private BoundStatement BindCodeBodyItem(ICodeBodyItemSyntax item)
+        => BindCodeBodyItemNullable(item) ?? new BoundBlockStatement([], ((SyntaxNode)item).Span);
+
+    private BoundStatement? BindCodeBodyItemNullable(ICodeBodyItemSyntax item)
+    {
+        return item switch
+        {
+            StatementSyntax statement => BindStatementNullable(statement),
+            VariableDeclarationSyntax declaration => BindLocalVariableDeclaration(declaration),
+            AssertStatementSyntax assertStatement => BindAssertStatement(assertStatement),
+            InvalidBodyItemSyntax => Assert.UnreachableValue<BoundStatement?>("Binder must not run on invalid body syntax."), // pragma: force-coverage
+            _ => Assert.UnreachableValue<BoundStatement?>(), // pragma: force-coverage
+        };
+    }
 
     private BoundStatement? BindStatementNullable(StatementSyntax statement)
     {
@@ -1937,9 +1960,6 @@ public sealed class Binder
         {
             case BlockStatementSyntax block:
                 return BindBlockStatement(block, createScope: true);
-
-            case VariableDeclarationStatementSyntax variableDeclStatement:
-                return BindLocalVariableDeclaration(variableDeclStatement.Declaration);
 
             case ExpressionStatementSyntax expressionStatement:
                 {
@@ -1965,7 +1985,7 @@ public sealed class Binder
                     BoundStatement thenBody = ifStatement.ThenBody switch
                     {
                         BlockStatementSyntax thenBlock => BindBlockStatement(thenBlock, createScope: true),
-                        _ => BindStatement(ifStatement.ThenBody),
+                        _ => BindCodeBodyItem(ifStatement.ThenBody),
                     };
                     BoundStatement? elseBody = null;
                     if (ifStatement.ElseClause is not null)
@@ -1973,7 +1993,7 @@ public sealed class Binder
                         elseBody = ifStatement.ElseClause.Body switch
                         {
                             BlockStatementSyntax elseBlock => BindBlockStatement(elseBlock, createScope: true),
-                            _ => BindStatement(ifStatement.ElseClause.Body),
+                            _ => BindCodeBodyItem(ifStatement.ElseClause.Body),
                         };
                     }
 
@@ -2048,10 +2068,6 @@ public sealed class Binder
                     BoundBlockStatement body = BindBlockStatement(noirq.Body, createScope: true);
                     return new BoundNoirqStatement(body, noirq.Span);
                 }
-
-            case AssertStatementSyntax assertStatement:
-                return BindAssertStatement(assertStatement);
-
             case ReturnStatementSyntax returnStatement:
                 return BindReturnStatement(returnStatement);
 

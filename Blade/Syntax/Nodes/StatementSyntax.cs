@@ -8,22 +8,17 @@ namespace Blade.Syntax.Nodes;
 /// <summary>
 /// Base class for all statement nodes.
 /// </summary>
-public abstract class StatementSyntax(TextSpan span) : SyntaxNode(span)
+public abstract class StatementSyntax(TextSpan span) : MemberOrStatementSyntax(span), ICodeBodyItemSyntax, ITaskBodyItemSyntax
 {
 }
 
-public sealed class BlockStatementSyntax(Token openBrace, IReadOnlyList<StatementSyntax> statements, Token closeBrace) : StatementSyntax(TextSpan.FromBounds(openBrace.Span.Start, closeBrace.Span.End))
+public sealed class BlockStatementSyntax(Token openBrace, IReadOnlyList<ICodeBodyItemSyntax> items, Token closeBrace) : StatementSyntax(TextSpan.FromBounds(openBrace.Span.Start, closeBrace.Span.End))
 {
     [ExcludeFromCodeCoverage]
     public Token OpenBrace { get; } = openBrace;
-    public IReadOnlyList<StatementSyntax> Statements { get; } = Requires.NotNull(statements);
+    public IReadOnlyList<ICodeBodyItemSyntax> Items { get; } = Requires.NotNull(items);
     [ExcludeFromCodeCoverage]
     public Token CloseBrace { get; } = closeBrace;
-}
-
-public sealed class VariableDeclarationStatementSyntax(VariableDeclarationSyntax declaration) : StatementSyntax(Requires.NotNull(declaration).Span)
-{
-    public VariableDeclarationSyntax Declaration { get; } = Requires.NotNull(declaration);
 }
 
 public sealed class ExpressionStatementSyntax(ExpressionSyntax expression, Token semicolon) : StatementSyntax(TextSpan.FromBounds(Requires.NotNull(expression).Span.Start, semicolon.Span.End))
@@ -53,9 +48,9 @@ public sealed class MultiAssignmentStatementSyntax(SeparatedSyntaxList<Expressio
 }
 
 public sealed class IfStatementSyntax(Token ifKeyword, Token openParen, ExpressionSyntax condition, Token closeParen,
-                         StatementSyntax thenBody, ElseClauseSyntax? elseClause) : StatementSyntax(TextSpan.FromBounds(
+                         ICodeBodyItemSyntax thenBody, ElseClauseSyntax? elseClause) : StatementSyntax(TextSpan.FromBounds(
             ifKeyword.Span.Start,
-            elseClause?.Span.End ?? Requires.NotNull(thenBody).Span.End))
+            elseClause?.Span.End ?? ((SyntaxNode)Requires.NotNull(thenBody)).Span.End))
 {
     [ExcludeFromCodeCoverage]
     public Token IfKeyword { get; } = ifKeyword;
@@ -64,7 +59,7 @@ public sealed class IfStatementSyntax(Token ifKeyword, Token openParen, Expressi
     public ExpressionSyntax Condition { get; } = Requires.NotNull(condition);
     [ExcludeFromCodeCoverage]
     public Token CloseParen { get; } = closeParen;
-    public StatementSyntax ThenBody { get; } = Requires.NotNull(thenBody);
+    public ICodeBodyItemSyntax ThenBody { get; } = Requires.NotNull(thenBody);
     public ElseClauseSyntax? ElseClause { get; } = elseClause;
 }
 
@@ -134,16 +129,6 @@ public sealed class NoirqStatementSyntax(Token noirqKeyword, BlockStatementSynta
     public BlockStatementSyntax Body { get; } = Requires.NotNull(body);
 }
 
-public sealed class AssertStatementSyntax(Token assertKeyword, ExpressionSyntax condition, Token? commaToken, Token? messageLiteral, Token semicolon) : StatementSyntax(TextSpan.FromBounds(assertKeyword.Span.Start, semicolon.Span.End))
-{
-    [ExcludeFromCodeCoverage]
-    public Token AssertKeyword { get; } = assertKeyword;
-    public ExpressionSyntax Condition { get; } = Requires.NotNull(condition);
-    public Token? CommaToken { get; } = commaToken;
-    public Token? MessageLiteral { get; } = messageLiteral;
-    [ExcludeFromCodeCoverage]
-    public Token Semicolon { get; } = semicolon;
-}
 
 public sealed class ReturnStatementSyntax(Token returnKeyword, SeparatedSyntaxList<ExpressionSyntax>? values, Token semicolon) : StatementSyntax(TextSpan.FromBounds(returnKeyword.Span.Start, semicolon.Span.End))
 {
